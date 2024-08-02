@@ -56,17 +56,43 @@ $(BUILD)/%.o: $(KERNEL)/%.c
 bochs: all
 	bochs -q -f bochsrc
 
-qemu-gdb: all
-	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait -M pc -m 8G -boot c -S -s -cpu max -smp cores=2,threads=2 -hda $(BUILD)/$(HDD)
-
-qemu: all
-	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait -M pc -m 8G -boot c -cpu max -smp cores=2,threads=2 -hda $(BUILD)/$(HDD)
-
 #qemu-gdb: all
-	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait -M q35 -m 8G -boot c -S -s -cpu max -smp cores=1,threads=1 -hda $(BUILD)/$(HDD)
+	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait \
+					   -M pc \
+					   -m 8G \
+					   -boot c \
+					   -S -s \
+					   -cpu max -smp cores=2,threads=2 \
+					   -hda $(BUILD)/$(HDD)
 
 #qemu: all
-	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait -M q35 -m 8G -boot c -cpu max -smp cores=1,threads=1 -hda $(BUILD)/$(HDD)
+	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait \
+					   -M pc \
+					   -m 8G \
+					   -boot c \
+					   -cpu max -smp cores=2,threads=2 \
+					   -hda $(BUILD)/$(HDD)
+
+qemu-gdb: all
+	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait \
+					   -M q35 \
+					   -m 8G \
+					   -boot c \
+					   -S -s \
+					   -cpu max -smp cores=2,threads=2 \
+					   -drive if=pflash,format=raw,file=/usr/local/share/qemu/edk2-x86_64-code.fd,readonly=on \
+					   -drive if=pflash,format=raw,file=/usr/local/share/qemu/edk2-x86_64-secure-code.fd,readonly=on \
+					   -net none
+
+qemu: all
+	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait \
+					   -M q35 \
+					   -m 8G \
+					   -cpu max -smp cores=2,threads=2 \
+					   -drive if=pflash,format=raw,file=/usr/local/share/qemu/edk2-x86_64-code.fd,readonly=on \
+					   -drive if=pflash,format=raw,file=/usr/local/share/qemu/edk2-x86_64-secure-code.fd,readonly=on \
+					   -net none
+
 
 qemu-monitor:
 	telnet 127.0.0.1 4444
