@@ -91,6 +91,7 @@ qemu: all
 					   -cpu max -smp cores=2,threads=2 \
 					   -drive if=pflash,format=raw,file=/usr/local/share/qemu/edk2-x86_64-code.fd,readonly=on \
 					   -drive if=pflash,format=raw,file=/usr/local/share/qemu/edk2-x86_64-secure-code.fd,readonly=on \
+					   -drive format=raw,file=fat:rw:./ESP \
 					   -net none
 
 
