@@ -23,6 +23,9 @@ CFLAGS:=$(strip ${CFLAGS})
 
 all: clean $(BUILD)/boot.bin $(BUILD)/loader.bin ${BUILD}/system ${BUILD}/kernel.bin HDDimg
 
+build_efi_app:
+	bash -c "cd .. && source edksetup.sh && build"
+
 HDDimg:
 	dd if=$(BUILD)/boot.bin of=$(BUILD)/$(HDD) bs=1 seek=$(MBR1) skip=90 count=422 conv=notrunc
 	dd if=$(BUILD)/boot.bin of=$(BUILD)/$(HDD) bs=1 seek=$(MBR2) skip=90 count=422 conv=notrunc
