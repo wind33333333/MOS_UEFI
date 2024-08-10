@@ -19,6 +19,7 @@ all: clean build_uefi_boot
 
 build_uefi_boot:
 	bash -c "cd .. && source edksetup.sh && build"
+	mkdir -p ESP/EFI/Boot
 	cp build/DEBUG_GCC/X64/MOSBoot.efi ESP/EFI/Boot/bootx64.efi
 
 $(BUILD)/%.bin: $(BOOTLOADER)/%.asm
@@ -70,7 +71,7 @@ qemu-monitor:
 	telnet 127.0.0.1 4444
 
 clean:
-	-rm -rf ./build/*
-	-rm -rf ./ESP/EFI/Boot/*
+	-rm -rf build
+	-rm -rf ESP
 
 
