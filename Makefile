@@ -45,7 +45,7 @@ $(BUILD)/%.s: $(KERNEL)/%.S
 $(BUILD)/%.o: $(KERNEL)/%.c
 	gcc ${CFLAGS} -c $< -o $@
 
-qemu-debug:all
+qemu-debug:al
 	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait \
 					   -M q35 \
 					   -m 8G \
