@@ -45,15 +45,15 @@ $(BUILD)/%.s: $(KERNEL)/%.S
 $(BUILD)/%.o: $(KERNEL)/%.c
 	gcc ${CFLAGS} -c $< -o $@
 
-qemu-gdb: all
+qemu-debug: all
 	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait \
 					   -M q35 \
 					   -m 8G \
-					   -boot c \
 					   -S -s \
 					   -cpu max -smp cores=2,threads=2 \
 					   -drive if=pflash,format=raw,file=/usr/local/share/qemu/edk2-x86_64-code.fd,readonly=on \
 					   -drive if=pflash,format=raw,file=/usr/local/share/qemu/edk2-x86_64-secure-code.fd,readonly=on \
+					   -drive format=raw,file=fat:rw:./ESP \
 					   -net none
 
 qemu: all
