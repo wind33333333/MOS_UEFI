@@ -17,7 +17,7 @@ CFLAGS:=$(strip ${CFLAGS})
 #all: clean build_uefi_boot ${BUILD}/system ${BUILD}/kernel.bin
 all: clean build_uefi_boot
 
-build_uefi_boot:all
+build_uefi_boot:
 	bash -c "cd .. && source edksetup.sh && build"
 	mkdir -p ESP/EFI/Boot
 	cp build/DEBUG_GCC/X64/MOSBoot.efi ESP/EFI/Boot/bootx64.efi
@@ -45,7 +45,7 @@ $(BUILD)/%.s: $(KERNEL)/%.S
 $(BUILD)/%.o: $(KERNEL)/%.c
 	gcc ${CFLAGS} -c $< -o $@
 
-qemu-debug:
+qemu-debug:all
 	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait \
 					   -M q35 \
 					   -m 8G \
