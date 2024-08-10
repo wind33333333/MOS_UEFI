@@ -17,7 +17,7 @@ CFLAGS:=$(strip ${CFLAGS})
 #all: clean build_uefi_boot ${BUILD}/system ${BUILD}/kernel.bin
 all: clean build_uefi_boot
 
-build_uefi_boot:
+build_uefi_boot:all
 	bash -c "cd .. && source edksetup.sh && build"
 	mkdir -p ESP/EFI/Boot
 	cp build/DEBUG_GCC/X64/MOSBoot.efi ESP/EFI/Boot/bootx64.efi
