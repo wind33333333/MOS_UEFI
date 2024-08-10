@@ -20,7 +20,7 @@ all: clean build_uefi_boot
 build_uefi_boot:
 	bash -c "cd .. && source edksetup.sh && build"
 	mkdir -p ESP/EFI/Boot
-	cp build/DEBUG_GCC/X64/MOSBoot.efi ESP/EFI/Boot/bootx64.efi
+	cp build/DEBUG_GCC5/X64/MOSBoot.efi ESP/EFI/Boot/bootx64.efi
 
 $(BUILD)/%.bin: $(BOOTLOADER)/%.asm
 	nasm $< -o $@
@@ -45,7 +45,7 @@ $(BUILD)/%.s: $(KERNEL)/%.S
 $(BUILD)/%.o: $(KERNEL)/%.c
 	gcc ${CFLAGS} -c $< -o $@
 
-qemu-debug: all
+qemu-debug:
 	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait \
 					   -M q35 \
 					   -m 8G \
