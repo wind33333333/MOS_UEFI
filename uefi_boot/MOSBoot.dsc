@@ -5,7 +5,7 @@
   DSC_SPECIFICATION              = 0x00010005
   OUTPUT_DIRECTORY               = MOS_UEFI/build
   SUPPORTED_ARCHITECTURES        = X64
-  BUILD_TARGETS                  = DEBUG|RELEASE
+  BUILD_TARGETS                  = NOOPT|DEBUG|RELEASE
 
 [LibraryClasses]
     UefiLib|MdePkg/Library/UefiLib/UefiLib.inf

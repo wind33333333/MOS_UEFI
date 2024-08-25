@@ -19,8 +19,8 @@ all: clean build_uefi_boot
 
 build_uefi_boot:
 	bash -c "cd .. && source edksetup.sh && build"
-	mkdir -p ESP/EFI/Boot
-	cp build/DEBUG_GCC/X64/MOSBoot.efi ESP/EFI/Boot/bootx64.efi
+	mkdir -p esp/efi/boot
+	cp build/DEBUG_GCC/X64/MOSBoot.efi esp/efi/boot/bootx64.efi
 
 $(BUILD)/%.bin: $(BOOTLOADER)/%.asm
 	nasm $< -o $@
@@ -51,9 +51,8 @@ qemu-debug:all
 					   -m 8G \
 					   -S -s \
 					   -cpu max -smp cores=2,threads=2 \
-					   -drive if=pflash,format=raw,file=/usr/local/share/qemu/edk2-x86_64-code.fd,readonly=on \
-					   -drive if=pflash,format=raw,file=/usr/local/share/qemu/edk2-x86_64-secure-code.fd,readonly=on \
-					   -drive format=raw,file=fat:rw:./ESP \
+					   -bios OVMF.fd \
+					   -drive format=raw,file=fat:rw:./esp \
 					   -net none
 
 qemu: all
@@ -61,9 +60,8 @@ qemu: all
 					   -M q35 \
 					   -m 8G \
 					   -cpu max -smp cores=2,threads=2 \
-					   -drive if=pflash,format=raw,file=/usr/local/share/qemu/edk2-x86_64-code.fd,readonly=on \
-					   -drive if=pflash,format=raw,file=/usr/local/share/qemu/edk2-x86_64-secure-code.fd,readonly=on \
-					   -drive format=raw,file=fat:rw:./ESP \
+					   -bios OVMF.fd \
+					   -drive format=raw,file=fat:rw:./esp \
 					   -net none
 
 
@@ -72,6 +70,6 @@ qemu-monitor:
 
 clean:
 	-rm -rf build
-	-rm -rf ESP
+	-rm -rf esp
 
 
