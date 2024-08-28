@@ -14,13 +14,6 @@ CFLAGS+= -g						#开启调试符号
 #CFLAGS += -O3                  # 使用 -O3 优化选项
 CFLAGS:=$(strip ${CFLAGS})
 
-#all: clean build_uefi_boot ${BUILD}/system ${BUILD}/kernel.bin
-all: clean build_uefi_boot
-
-build_uefi_boot:
-	bash -c "cd .. && source edksetup.sh && build"
-	mkdir -p esp/efi/boot
-	cp build/DEBUG_GCC/X64/MOSBoot.efi esp/efi/boot/bootx64.efi
 
 $(BUILD)/%.bin: $(BOOTLOADER)/%.asm
 	nasm $< -o $@
@@ -45,7 +38,27 @@ $(BUILD)/%.s: $(KERNEL)/%.S
 $(BUILD)/%.o: $(KERNEL)/%.c
 	gcc ${CFLAGS} -c $< -o $@
 
-qemu-debug:all
+#all: clean build_uefi_boot ${BUILD}/system ${BUILD}/kernel.bin
+all: clean build_uefi_boot
+
+build_uefi_bootPkg:
+	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b NOOPT"
+	mkdir -p esp/efi/boot
+	cp build/NOOPT_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi
+
+debug-uefiboot: all
+	/opt/intel/udkdebugger/bin/udk-gdb-server & \
+	qemu-system-x86_64 -monitor telnet:localhost:4444,server,nowait \
+					   -M q35 \
+					   -m 8G \
+					   -cpu max -smp cores=1,threads=1 \
+					   -bios OVMF_debug.fd \
+					   -drive format=raw,file=fat:rw:./esp \
+					   -net none \
+					   -serial pipe:/tmp/serial
+
+
+qemu-debug: all
 	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait \
 					   -M q35 \
 					   -m 8G \
@@ -55,18 +68,9 @@ qemu-debug:all
 					   -drive format=raw,file=fat:rw:./esp \
 					   -net none
 
-qemu: all
-	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait \
-					   -M q35 \
-					   -m 8G \
-					   -cpu max -smp cores=2,threads=2 \
-					   -bios OVMF.fd \
-					   -drive format=raw,file=fat:rw:./esp \
-					   -net none
-
 
 qemu-monitor:
-	telnet 127.0.0.1 4444
+	telnet localhost 4444
 
 clean:
 	-rm -rf build
