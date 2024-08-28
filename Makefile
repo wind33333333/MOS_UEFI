@@ -38,15 +38,11 @@ $(BUILD)/%.s: $(KERNEL)/%.S
 $(BUILD)/%.o: $(KERNEL)/%.c
 	gcc ${CFLAGS} -c $< -o $@
 
-#all: clean build_uefi_boot ${BUILD}/system ${BUILD}/kernel.bin
-all: clean build_uefi_boot
-
-build_uefi_bootPkg:
-	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b NOOPT"
-	mkdir -p esp/efi/boot
-	cp build/NOOPT_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi
-
-debug-uefiboot: all
+debug-uefiboot: clean
+	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b DEBUG" && \
+	cp build/DEBUG_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi && \
+	if [ ! -p /tmp/serial.in ]; then mkfifo /tmp/serial.in; fi; \
+    if [ ! -p /tmp/serial.out ]; then mkfifo /tmp/serial.out; fi; \
 	/opt/intel/udkdebugger/bin/udk-gdb-server & \
 	qemu-system-x86_64 -monitor telnet:localhost:4444,server,nowait \
 					   -M q35 \
@@ -58,8 +54,10 @@ debug-uefiboot: all
 					   -serial pipe:/tmp/serial
 
 
-qemu-debug: all
-	qemu-system-x86_64 -monitor telnet:127.0.0.1:4444,server,nowait \
+debug-kernel: clean ${BUILD}/system ${BUILD}/kernel.bin
+	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b RELEASE" && \
+	cp build/RELEASE_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi && \
+	qemu-system-x86_64 -monitor telnet:localhost:4444,server,nowait \
 					   -M q35 \
 					   -m 8G \
 					   -S -s \
@@ -68,12 +66,13 @@ qemu-debug: all
 					   -drive format=raw,file=fat:rw:./esp \
 					   -net none
 
-
 qemu-monitor:
 	telnet localhost 4444
 
 clean:
 	-rm -rf build
 	-rm -rf esp
+	-mkdir -p build
+	-mkdir -p esp/efi/boot
 
 
