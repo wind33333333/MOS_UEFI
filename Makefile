@@ -44,15 +44,27 @@ debug-uefi_bootPkg: clean
 	-mkfifo /tmp/serial.in /tmp/serial.out
 	-pkill udk-gdb-server
 	/opt/intel/udkdebugger/bin/udk-gdb-server &
-	qemu-system-x86_64 -monitor telnet:localhost:4444,server,nowait -serial pipe:/tmp/serial -net none -M q35 -m 8G \
- 					   -cpu max -smp cores=1,threads=1 -bios OVMF_debug.fd -drive format=raw,file=fat:rw:./esp
+	qemu-system-x86_64 -monitor telnet:localhost:4444,server,nowait \
+					   -serial pipe:/tmp/serial \
+					   -net none \
+					   -M q35 \
+					   -m 8G \
+ 					   -cpu max -smp cores=1,threads=1 \
+ 					   -bios OVMF_debug.fd \
+ 					   -drive format=raw,file=fat:rw:./esp
 
 
 debug-kernel: clean ${BUILD}/system ${BUILD}/kernel.bin
 	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b RELEASE"
 	cp build/RELEASE_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi
-	qemu-system-x86_64 -monitor telnet:localhost:4444,server,nowait -S -s -net none -M q35 -m 8G \
-					   -cpu max -smp cores=1,threads=1 -bios OVMF.fd -drive format=raw,file=fat:rw:./esp
+	qemu-system-x86_64 -monitor telnet:localhost:4444,server,nowait \
+					   -S -s \
+					   -net none \
+					   -M q35 \
+					   -m 8G \
+					   -cpu max -smp cores=1,threads=1 \
+					   -bios OVMF.fd \
+					   -drive format=raw,file=fat:rw:./esp
 
 qemu-monitor:
 	telnet localhost 4444
