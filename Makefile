@@ -38,11 +38,14 @@ $(BUILD)/%.s: $(KERNEL)/%.S
 $(BUILD)/%.o: $(KERNEL)/%.c
 	gcc ${CFLAGS} -c $< -o $@
 
+gdb:
+	gdb
+
 debug-uefiboot: clean
-	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b DEBUG" && \
-	cp build/DEBUG_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi && \
-	if [ ! -p /tmp/serial.in ]; then mkfifo /tmp/serial.in; fi; \
-    if [ ! -p /tmp/serial.out ]; then mkfifo /tmp/serial.out; fi; \
+	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b DEBUG"
+	cp build/DEBUG_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi
+	-mkfifo /tmp/serial.in /tmp/serial.out || true
+	pkill udk-gdb-server
 	/opt/intel/udkdebugger/bin/udk-gdb-server & \
 	qemu-system-x86_64 -monitor telnet:localhost:4444,server,nowait \
 					   -M q35 \
@@ -55,8 +58,8 @@ debug-uefiboot: clean
 
 
 debug-kernel: clean ${BUILD}/system ${BUILD}/kernel.bin
-	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b RELEASE" && \
-	cp build/RELEASE_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi && \
+	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b RELEASE"
+	cp build/RELEASE_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi
 	qemu-system-x86_64 -monitor telnet:localhost:4444,server,nowait \
 					   -M q35 \
 					   -m 8G \
