@@ -38,9 +38,6 @@ $(BUILD)/%.s: $(KERNEL)/%.S
 $(BUILD)/%.o: $(KERNEL)/%.c
 	gcc ${CFLAGS} -c $< -o $@
 
-gdb:
-	gdb
-
 debug-uefiboot: clean
 	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b DEBUG"
 	cp build/DEBUG_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi
