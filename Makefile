@@ -76,4 +76,8 @@ clean:
 	-rm -rf build esp
 	-mkdir -p build esp/efi/boot
 
+#clion gdb 符号挂在配置
+#localhost:1234
+#source /opt/intel/udkdebugger/script/udk_gdb_script
+#
 
