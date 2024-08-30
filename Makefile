@@ -68,6 +68,7 @@ debug-kernel: clean ${BUILD}/system ${BUILD}/kernel.bin
 					   -bios OVMF.fd \
 					   -drive format=raw,file=fat:rw:./esp &
 
+
 qemu-monitor:
 	telnet localhost 4444
 
