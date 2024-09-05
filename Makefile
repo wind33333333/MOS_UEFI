@@ -52,7 +52,9 @@ debug-uefi_bootPkg: clean
 					   -m 8G \
  					   -cpu max -smp cores=1,threads=1 \
  					   -bios OVMF_debug.fd \
- 					   -drive format=raw,file=fat:rw:./esp &
+ 					   -device qemu-xhci,id=xhci \
+                       -device usb-storage,bus=xhci.0,drive=usbdisk \
+                       -drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp &
 
 
 debug-kernel: clean ${BUILD}/system ${BUILD}/kernel.bin
@@ -66,7 +68,9 @@ debug-kernel: clean ${BUILD}/system ${BUILD}/kernel.bin
 					   -m 8G \
 					   -cpu max -smp cores=1,threads=1 \
 					   -bios OVMF.fd \
-					   -drive format=raw,file=fat:rw:./esp &
+ 					   -device qemu-xhci,id=xhci \
+                       -device usb-storage,bus=xhci.0,drive=usbdisk \
+                       -drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp &
 
 
 qemu-monitor:
