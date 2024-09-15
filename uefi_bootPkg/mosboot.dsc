@@ -8,7 +8,6 @@
   BUILD_TARGETS                  = NOOPT|DEBUG|RELEASE
 
 [LibraryClasses]
-    DebugLib|MdePkg/Library/UefiDebugLibConOut/UefiDebugLibConOut.inf
     UefiLib|MdePkg/Library/UefiLib/UefiLib.inf
     UefiApplicationEntryPoint|MdePkg/Library/UefiApplicationEntryPoint/UefiApplicationEntryPoint.inf
     PrintLib|MdePkg/Library/BasePrintLib/BasePrintLib.inf

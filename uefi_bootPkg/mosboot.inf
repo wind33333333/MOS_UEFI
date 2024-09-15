@@ -16,3 +16,6 @@
 [LibraryClasses]
     UefiApplicationEntryPoint
     UefiLib
+
+[Protocols]
+    gEfiGraphicsOutputProtocolGuid
