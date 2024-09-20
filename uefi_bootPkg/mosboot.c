@@ -38,11 +38,11 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
     Print(L"\n");
     Print(L"CurrenMode:%d %d*%d FrameBufferBase:0x%lx FrameBufferSize:0x%lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
 
-    Print(L"Enter Resolution Mode Number:");
-    while(1){
+    Print(L"Please enter a resolution mode or keep the default:");
+    while(time){
         Print(L"%02ds",time);
         gBS->Stall(1000000);
-        Print(L"%c%c%c",0x8,0x8,0x8);
+        Print(L"\b\b\b");
         time--;
         SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key); // 读取按键
         if(time==0){
@@ -80,16 +80,18 @@ Reenter:
 
     if(value >= gGraphicsOutput->Mode->MaxMode){
         for(unsigned int i=0;i<inputindex;i++){
-            Print(L"%c",0x8);
+            Print(L"\b");
         }
         goto Reenter;
     }
 
     gGraphicsOutput->SetMode(gGraphicsOutput,value);
     gBS->CloseProtocol(gGraphicsOutput,&gEfiGraphicsOutputProtocolGuid,ImageHandle,NULL);
+
+DefaultResolution:
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
     Print(L"Current Mode:%02d,Version:%x,Format:%d,Horizontal:%d,Vertical:%d,ScanLine:%d,FrameBufferBase:%010lx,FrameBufferSize:%010lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->Version,gGraphicsOutput->Mode->Info->PixelFormat,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->Info->PixelsPerScanLine,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
-DefaultResolution:
+
 
 
     while(1);
