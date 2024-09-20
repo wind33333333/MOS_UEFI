@@ -13,8 +13,9 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
     EFI_INPUT_KEY Key;
     EFI_EVENT WaitList[1];  // 事件列表，可以包含多个事件
     CHAR16 inputbuffer[5];
-    unsigned int inputindex = 0;
-    unsigned int value = 0;
+    unsigned int inputindex;
+    unsigned int value;
+    unsigned int time=31;
 
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
     SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE);
@@ -38,9 +39,23 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
     Print(L"CurrenMode:%d %d*%d FrameBufferBase:0x%lx FrameBufferSize:0x%lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
 
     Print(L"Enter Resolution Mode Number:");
+    while(1){
+        Print(L"%02ds",time);
+        gBS->Stall(1000000);
+        Print(L"%c%c%c",0x8,0x8,0x8);
+        time--;
+        SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key); // 读取按键
+        if(time==0){
+            goto DefaultResolution;
+        }else if(Key.ScanCode || Key.UnicodeChar){
+            goto Reenter;
+        }
+    }
+
 Reenter:
     SystemTable->ConIn->Reset(SystemTable->ConIn,FALSE);
     WaitList[0] = SystemTable->ConIn->WaitForKey;
+    inputindex=0;
     while(1){
         gBS->WaitForEvent(1, WaitList, NULL);
         SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key); // 读取按键
@@ -49,7 +64,7 @@ Reenter:
             Print(L"%c", Key.UnicodeChar);
             inputbuffer[inputindex]=Key.UnicodeChar;
             inputindex++;
-        }else if(Key.UnicodeChar==0xD){//回车
+        }else if(Key.UnicodeChar==0xD && inputindex>0){//回车
             break;
         }else if(Key.UnicodeChar==0x8 && inputindex>0){//退格
             Print(L"%c",Key.UnicodeChar);
@@ -58,6 +73,7 @@ Reenter:
         }
     }
 
+    value=0;
     for(unsigned int i=0;i<inputindex;i++){
         value=value*10+(inputbuffer[i]-0x30);
     }
@@ -66,17 +82,14 @@ Reenter:
         for(unsigned int i=0;i<inputindex;i++){
             Print(L"%c",0x8);
         }
-        inputindex=0;
-        value=0;
         goto Reenter;
     }
 
     gGraphicsOutput->SetMode(gGraphicsOutput,value);
     gBS->CloseProtocol(gGraphicsOutput,&gEfiGraphicsOutputProtocolGuid,ImageHandle,NULL);
+    SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
     Print(L"Current Mode:%02d,Version:%x,Format:%d,Horizontal:%d,Vertical:%d,ScanLine:%d,FrameBufferBase:%010lx,FrameBufferSize:%010lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->Version,gGraphicsOutput->Mode->Info->PixelFormat,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->Info->PixelsPerScanLine,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
-
-
-    Print(L"%c %d",inputbuffer[1],value);
+DefaultResolution:
 
 
     while(1);
