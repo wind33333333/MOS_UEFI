@@ -5,7 +5,7 @@
 EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *SystemTable){
 
     CpuBreakpoint();
-    //EFI_STATUS Status;
+    EFI_STATUS Status;
     EFI_GRAPHICS_OUTPUT_PROTOCOL* gGraphicsOutput = 0;
     EFI_GRAPHICS_OUTPUT_MODE_INFORMATION* Info = 0;
     UINTN InfoSize = 0;
@@ -13,9 +13,9 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
     EFI_INPUT_KEY Key;
     EFI_EVENT WaitList[1];  // 事件列表，可以包含多个事件
     CHAR16 inputbuffer[5];
-    unsigned int inputindex;
-    unsigned int value;
-    unsigned int time=31;
+    UINT32 inputindex=0;
+    UINT32 value=0;
+    UINT32 time=30;
 
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
     SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE);
@@ -39,23 +39,21 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
     Print(L"CurrenMode:%d %d*%d FrameBufferBase:0x%lx FrameBufferSize:0x%lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
 
     Print(L"Please enter a resolution mode or keep the default:");
-    while(time){
+    SystemTable->ConIn->Reset(SystemTable->ConIn,FALSE);
+    while(1){
         Print(L"%02ds",time);
+        SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key); // 读取按键
         gBS->Stall(1000000);
         Print(L"\b\b\b");
         time--;
-        SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key); // 读取按键
-        if(time==0){
+        if(Key.ScanCode || Key.UnicodeChar){
+            break;
+        }else if(time==0){
             goto DefaultResolution;
-        }else if(Key.ScanCode || Key.UnicodeChar){
-            goto Reenter;
         }
     }
 
-Reenter:
-    SystemTable->ConIn->Reset(SystemTable->ConIn,FALSE);
     WaitList[0] = SystemTable->ConIn->WaitForKey;
-    inputindex=0;
     while(1){
         gBS->WaitForEvent(1, WaitList, NULL);
         SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key); // 读取按键
@@ -64,34 +62,32 @@ Reenter:
             Print(L"%c", Key.UnicodeChar);
             inputbuffer[inputindex]=Key.UnicodeChar;
             inputindex++;
-        }else if(Key.UnicodeChar==0xD && inputindex>0){//回车
-            break;
         }else if(Key.UnicodeChar==0x8 && inputindex>0){//退格
             Print(L"%c",Key.UnicodeChar);
             inputindex--;
             inputbuffer[inputindex]=0;
+        }else if(Key.UnicodeChar==0xD && inputindex>0){//回车
+            value=0;
+            for(unsigned int i=0;i<inputindex;i++){
+            value=value*10+(inputbuffer[i]-0x30);
+            }
+
+            Status=gGraphicsOutput->SetMode(gGraphicsOutput,value);
+            if(EFI_ERROR(Status)){
+                for(unsigned int i=0;i<inputindex;i++){
+                    Print(L"\b");
+                }
+                inputindex=0;
+                continue;
+            }
+            gBS->CloseProtocol(gGraphicsOutput,&gEfiGraphicsOutputProtocolGuid,ImageHandle,NULL);
+            SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
+            break;
         }
     }
-
-    value=0;
-    for(unsigned int i=0;i<inputindex;i++){
-        value=value*10+(inputbuffer[i]-0x30);
-    }
-
-    if(value >= gGraphicsOutput->Mode->MaxMode){
-        for(unsigned int i=0;i<inputindex;i++){
-            Print(L"\b");
-        }
-        goto Reenter;
-    }
-
-    gGraphicsOutput->SetMode(gGraphicsOutput,value);
-    gBS->CloseProtocol(gGraphicsOutput,&gEfiGraphicsOutputProtocolGuid,ImageHandle,NULL);
 
 DefaultResolution:
-    SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
     Print(L"Current Mode:%02d,Version:%x,Format:%d,Horizontal:%d,Vertical:%d,ScanLine:%d,FrameBufferBase:%010lx,FrameBufferSize:%010lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->Version,gGraphicsOutput->Mode->Info->PixelFormat,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->Info->PixelsPerScanLine,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
-
 
 
     while(1);
