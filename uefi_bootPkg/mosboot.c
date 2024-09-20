@@ -20,7 +20,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
     SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE);
 
-    for(unsigned int i=0;i<SystemTable->ConOut->Mode->MaxMode;i++){
+    for(UINT32 i=0;i<SystemTable->ConOut->Mode->MaxMode;i++){
         SystemTable->ConOut->QueryMode(SystemTable->ConOut,i,&Columns,&Rows);
         Print(L"TextMode:%d Columns:%d Rows:%d\n",i,Columns,Rows);
     }
@@ -28,7 +28,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
     Print(L"CurrenTextMode:%d Columns:%d Rows:%d\n",SystemTable->ConOut->Mode->Mode,Columns,Rows);
 
     gBS->LocateProtocol(&gEfiGraphicsOutputProtocolGuid,NULL,(VOID **)&gGraphicsOutput);
-    for(unsigned int i = 0;i < gGraphicsOutput->Mode->MaxMode;i++){
+    for(UINT32 i = 0;i < gGraphicsOutput->Mode->MaxMode;i++){
         gGraphicsOutput->QueryMode(gGraphicsOutput,i,&InfoSize,&Info);
         if((SystemTable->ConOut->Mode->CursorColumn+20)>Columns)
             Print(L"\n");
@@ -37,24 +37,22 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
     }
     Print(L"\n");
     Print(L"CurrenMode:%d %d*%d FrameBufferBase:0x%lx FrameBufferSize:0x%lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
-
     Print(L"Please enter a resolution mode or keep the default:");
     SystemTable->ConIn->Reset(SystemTable->ConIn,FALSE);
-    while(1){
+    while(time){
         Print(L"%02ds",time);
         SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key); // 读取按键
         gBS->Stall(1000000);
         Print(L"\b\b\b");
         time--;
         if(Key.ScanCode || Key.UnicodeChar){
+            time=TRUE;
             break;
-        }else if(time==0){
-            goto DefaultResolution;
         }
     }
 
     WaitList[0] = SystemTable->ConIn->WaitForKey;
-    while(1){
+    while(time){
         gBS->WaitForEvent(1, WaitList, NULL);
         SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key); // 读取按键
 
@@ -86,9 +84,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
         }
     }
 
-DefaultResolution:
     Print(L"Current Mode:%02d,Version:%x,Format:%d,Horizontal:%d,Vertical:%d,ScanLine:%d,FrameBufferBase:%010lx,FrameBufferSize:%010lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->Version,gGraphicsOutput->Mode->Info->PixelFormat,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->Info->PixelsPerScanLine,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
-
 
     while(1);
 
