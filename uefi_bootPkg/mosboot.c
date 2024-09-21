@@ -20,15 +20,19 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
     SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE); //显示光标
 
-    for(UINT32 i=0;i<SystemTable->ConOut->Mode->MaxMode;i++){
+
+
+    //分辨率配置
+    for(UINT32 i=0;i<SystemTable->ConOut->Mode->MaxMode;i++){  //打印所有文本模式
         SystemTable->ConOut->QueryMode(SystemTable->ConOut,i,&Columns,&Rows);
         Print(L"TextMode:%d Columns:%d Rows:%d\n",i,Columns,Rows);
     }
+    //打印当前文本模式
     SystemTable->ConOut->QueryMode(SystemTable->ConOut,SystemTable->ConOut->Mode->Mode,&Columns,&Rows);
     Print(L"CurrenTextMode:%d Columns:%d Rows:%d\n",SystemTable->ConOut->Mode->Mode,Columns,Rows);
 
     gBS->LocateProtocol(&gEfiGraphicsOutputProtocolGuid,NULL,(VOID **)&gGraphicsOutput);
-    for(UINT32 i = 0;i < gGraphicsOutput->Mode->MaxMode;i++){
+    for(UINT32 i = 0;i < gGraphicsOutput->Mode->MaxMode;i++){ //打印所有分辨率模式
         gGraphicsOutput->QueryMode(gGraphicsOutput,i,&InfoSize,&Info);
         if((SystemTable->ConOut->Mode->CursorColumn+20)>Columns)
             Print(L"\n");
@@ -37,6 +41,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
     }
     Print(L"\n");
     Print(L"CurrenMode:%d %d*%d FrameBufferBase:0x%lx FrameBufferSize:0x%lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
+    //输入分辨率模式
     Print(L"Please enter a resolution mode or keep the default:");
     SystemTable->ConIn->Reset(SystemTable->ConIn,FALSE);
     while(time){
@@ -50,7 +55,6 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
             break;
         }
     }
-
     WaitList[0] = SystemTable->ConIn->WaitForKey;
     while(time){
         gBS->WaitForEvent(1, WaitList, NULL);
