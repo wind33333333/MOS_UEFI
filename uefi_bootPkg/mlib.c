@@ -27,7 +27,7 @@ EFI_STATUS EFIAPI PrintInput (IN EFI_SYSTEM_TABLE* SystemTable,CHAR16* InputBuff
         gBS->WaitForEvent(1, WaitList, NULL);
         SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key); // 读取按键
 
-        if(Key.UnicodeChar>0 && InputIndex<InputBufferLength){
+        if(Key.UnicodeChar>=0x20 && Key.UnicodeChar<=0x7E && InputIndex<InputBufferLength){
             Print(L"%c", Key.UnicodeChar);
             InputBuffer[InputIndex]=Key.UnicodeChar;
             InputIndex++;
