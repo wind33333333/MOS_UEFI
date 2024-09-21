@@ -14,11 +14,11 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
     EFI_EVENT WaitList[1];  // 事件列表，可以包含多个事件
     CHAR16 inputbuffer[5];
     UINT32 inputindex=0;
-    UINT32 value=0;
+    UINT32 resolutionmode =0;         //分辨率模式号
     UINT32 time=30;
 
-    SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
-    SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE);
+    SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
+    SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE); //显示光标
 
     for(UINT32 i=0;i<SystemTable->ConOut->Mode->MaxMode;i++){
         SystemTable->ConOut->QueryMode(SystemTable->ConOut,i,&Columns,&Rows);
@@ -65,12 +65,12 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
             inputindex--;
             inputbuffer[inputindex]=0;
         }else if(Key.UnicodeChar==0xD && inputindex>0){//回车
-            value=0;
+            resolutionmode=0;
             for(unsigned int i=0;i<inputindex;i++){
-            value=value*10+(inputbuffer[i]-0x30);
+                resolutionmode=resolutionmode*10+(inputbuffer[i]-0x30);
             }
 
-            Status=gGraphicsOutput->SetMode(gGraphicsOutput,value);
+            Status=gGraphicsOutput->SetMode(gGraphicsOutput,resolutionmode);
             if(EFI_ERROR(Status)){
                 for(unsigned int i=0;i<inputindex;i++){
                     Print(L"\b");
@@ -79,11 +79,11 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
                 continue;
             }
             gBS->CloseProtocol(gGraphicsOutput,&gEfiGraphicsOutputProtocolGuid,ImageHandle,NULL);
-            SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
             break;
         }
     }
 
+    SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
     Print(L"Current Mode:%02d,Version:%x,Format:%d,Horizontal:%d,Vertical:%d,ScanLine:%d,FrameBufferBase:%010lx,FrameBufferSize:%010lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->Version,gGraphicsOutput->Mode->Info->PixelFormat,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->Info->PixelsPerScanLine,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
 
     while(1);
