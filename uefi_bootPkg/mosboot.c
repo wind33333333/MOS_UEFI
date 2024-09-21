@@ -6,6 +6,31 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
 
     CpuBreakpoint();
     EFI_STATUS Status;
+
+    SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
+    SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE); //显示光标
+
+    /******************内存获取************************/
+    UINTN MemMapSize = 0;
+    EFI_MEMORY_DESCRIPTOR* MemMap = 0;
+    UINTN MapKey = 0;
+    UINTN DescriptorSize = 0;
+    UINT32 DesVersion = 0;
+
+    Print(L"Get EFI_MEMORY_DESCRIPTOR Structure\n");
+    gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
+    gBS->AllocatePool(EfiRuntimeServicesData,MemMapSize,(VOID**)&MemMap);
+    gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
+
+    for(UINT32 i = 0; i< MemMapSize / DescriptorSize; i++){
+        EFI_MEMORY_DESCRIPTOR* MMap = (EFI_MEMORY_DESCRIPTOR*) (((CHAR8*)MemMap) + i * DescriptorSize);
+        Print(L"MemoryMap %4d %10d (%10lx~%10lx) %016lx\n",MMap->Type,MMap->NumberOfPages,MMap->PhysicalStart,MMap->PhysicalStart + (MMap->NumberOfPages << 12),MMap->Attribute);
+    }
+    gBS->FreePool(MemMap);
+
+
+
+    /*****************分辨率配置**********************/
     EFI_GRAPHICS_OUTPUT_PROTOCOL* gGraphicsOutput = 0;
     EFI_GRAPHICS_OUTPUT_MODE_INFORMATION* Info = 0;
     UINTN InfoSize = 0;
@@ -17,12 +42,6 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
     UINT32 resolutionmode =0;         //分辨率模式号
     UINT32 time=30;
 
-    SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
-    SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE); //显示光标
-
-
-
-    //分辨率配置
     for(UINT32 i=0;i<SystemTable->ConOut->Mode->MaxMode;i++){  //打印所有文本模式
         SystemTable->ConOut->QueryMode(SystemTable->ConOut,i,&Columns,&Rows);
         Print(L"TextMode:%d Columns:%d Rows:%d\n",i,Columns,Rows);
