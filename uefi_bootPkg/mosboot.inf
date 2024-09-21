@@ -9,6 +9,7 @@
 
 [Sources]
     mosboot.c
+    mlib.c
 
 [Packages]
     MdePkg/MdePkg.dec

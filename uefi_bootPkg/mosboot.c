@@ -1,36 +1,16 @@
 #include <Uefi.h>
 #include <Library/UefiLib.h>
 #include <Library/UefiBootServicesTableLib.h>
+#include "mlib.h"
 
-EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *SystemTable){
+EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* SystemTable){
 
     CpuBreakpoint();
     EFI_STATUS Status;
 
+    /*****************分辨率配置**********************/
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
     SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE); //显示光标
-
-    /******************内存获取************************/
-    UINTN MemMapSize = 0;
-    EFI_MEMORY_DESCRIPTOR* MemMap = 0;
-    UINTN MapKey = 0;
-    UINTN DescriptorSize = 0;
-    UINT32 DesVersion = 0;
-
-    Print(L"Get EFI_MEMORY_DESCRIPTOR Structure\n");
-    gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
-    gBS->AllocatePool(EfiRuntimeServicesData,MemMapSize,(VOID**)&MemMap);
-    gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
-
-    for(UINT32 i = 0; i< MemMapSize / DescriptorSize; i++){
-        EFI_MEMORY_DESCRIPTOR* MMap = (EFI_MEMORY_DESCRIPTOR*) (((CHAR8*)MemMap) + i * DescriptorSize);
-        Print(L"MemoryMap %4d %10d (%10lx~%10lx) %016lx\n",MMap->Type,MMap->NumberOfPages,MMap->PhysicalStart,MMap->PhysicalStart + (MMap->NumberOfPages << 12),MMap->Attribute);
-    }
-    gBS->FreePool(MemMap);
-
-
-
-    /*****************分辨率配置**********************/
     EFI_GRAPHICS_OUTPUT_PROTOCOL* gGraphicsOutput = 0;
     EFI_GRAPHICS_OUTPUT_MODE_INFORMATION* Info = 0;
     UINTN InfoSize = 0;
@@ -48,7 +28,10 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
     }
     //打印当前文本模式
     SystemTable->ConOut->QueryMode(SystemTable->ConOut,SystemTable->ConOut->Mode->Mode,&Columns,&Rows);
-    Print(L"CurrenTextMode:%d Columns:%d Rows:%d\n",SystemTable->ConOut->Mode->Mode,Columns,Rows);
+    Print(L"Curren Text Mode:%d Columns:%d Rows:%d\n",SystemTable->ConOut->Mode->Mode,Columns,Rows);
+    Print(L"Please enter text mode or keep default: ");
+
+    PrintInput(ImageHandle,SystemTable);
 
     gBS->LocateProtocol(&gEfiGraphicsOutputProtocolGuid,NULL,(VOID **)&gGraphicsOutput);
     for(UINT32 i = 0;i < gGraphicsOutput->Mode->MaxMode;i++){ //打印所有分辨率模式
@@ -59,9 +42,9 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
         gBS->FreePool(Info);
     }
     Print(L"\n");
-    Print(L"CurrenMode:%d %d*%d FrameBufferBase:0x%lx FrameBufferSize:0x%lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
+    Print(L"Curren Mode:%d %d*%d FrameBase:0x%lx FrameSize:0x%lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
     //输入分辨率模式
-    Print(L"Please enter a resolution mode or keep the default:");
+    Print(L"Please enter a resolution mode or keep the default: ");
     SystemTable->ConIn->Reset(SystemTable->ConIn,FALSE);
     while(time){
         Print(L"%02ds",time);
@@ -105,11 +88,29 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE *System
             break;
         }
     }
-
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
-    Print(L"Current Mode:%02d,Version:%x,Format:%d,Horizontal:%d,Vertical:%d,ScanLine:%d,FrameBufferBase:%010lx,FrameBufferSize:%010lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->Version,gGraphicsOutput->Mode->Info->PixelFormat,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->Info->PixelsPerScanLine,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
+
+
+    /******************内存获取************************/
+    UINTN MemMapSize = 0;
+    EFI_MEMORY_DESCRIPTOR* MemMap = 0;
+    UINTN MapKey = 0;
+    UINTN DescriptorSize = 0;
+    UINT32 DesVersion = 0;
+
+    Print(L"Get EFI_MEMORY_DESCRIPTOR Structure\n");
+    gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
+    gBS->AllocatePool(EfiRuntimeServicesData,MemMapSize,(VOID**)&MemMap);
+    gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
+
+    for(UINT32 i = 0; i< MemMapSize / DescriptorSize; i++){
+        EFI_MEMORY_DESCRIPTOR* MMap = (EFI_MEMORY_DESCRIPTOR*) (((CHAR8*)MemMap) + i * DescriptorSize);
+        Print(L"MemoryMap %4d %10d (%10lx~%10lx) %016lx\n",MMap->Type,MMap->NumberOfPages,MMap->PhysicalStart,MMap->PhysicalStart + (MMap->NumberOfPages << 12),MMap->Attribute);
+    }
+    gBS->FreePool(MemMap);
 
     while(1);
 
     return EFI_SUCCESS;
 }
+
