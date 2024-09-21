@@ -31,11 +31,34 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     Print(L"Curren Text Mode:%d Columns:%d Rows:%d\n",SystemTable->ConOut->Mode->Mode,Columns,Rows);
     Print(L"Please enter text mode or keep default: ");
 
-    keyCountdown(SystemTable,100);
-    CHAR16 str1[10];
-    PrintInput(SystemTable,str1,sizeof(str1));
+    Status=keyCountdown(SystemTable,30);
+    if(Status){
+        while(1){
+            CHAR16 InputBuffer[5];
+            UINT32 InputIndex = 0;
+            UINT32 Mode = 0;
+            PrintInput(SystemTable, InputBuffer,sizeof(InputBuffer)/sizeof(CHAR16));
+            for(;InputIndex<(sizeof(InputBuffer)/sizeof(CHAR16));InputIndex++){
+                if(InputBuffer[InputIndex]>=0x30 && InputBuffer[InputIndex]<=0x39){
+                    Mode = Mode * 10 + (InputBuffer[InputIndex] - 0x30);
+                }else if(InputBuffer[InputIndex]==0x0){
+                    break;
+                }else if(InputBuffer[InputIndex]>0){
+                    Mode = 0xFFFF;
+                }
+            }
 
-    while(1){
+            Status = SystemTable->ConOut->SetMode(SystemTable->ConOut, Mode);
+            if(!EFI_ERROR(Status))
+                break;
+
+            for(UINT32 i = 0;i<InputIndex;i++){
+                    Print(L"\b");
+            }
+        }
+}
+
+/*    while(1){
         CHAR16 InputStr[5];
         UINT32 Mode = 0;
         UINT32 charlength=0;
@@ -55,7 +78,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
             continue;
         }
         break;
-    }
+    }*/
 
     gBS->LocateProtocol(&gEfiGraphicsOutputProtocolGuid,NULL,(VOID **)&gGraphicsOutput);
     for(UINT32 i = 0;i < gGraphicsOutput->Mode->MaxMode;i++){ //打印所有分辨率模式
