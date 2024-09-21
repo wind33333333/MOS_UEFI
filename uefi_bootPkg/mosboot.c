@@ -35,7 +35,6 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     CHAR16 str1[10];
     PrintInput(SystemTable,str1,sizeof(str1));
 
-
     while(1){
         CHAR16 InputStr[5];
         UINT32 Mode = 0;
