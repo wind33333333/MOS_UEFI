@@ -1,6 +1,3 @@
-#include <Uefi.h>
-#include <Library/UefiLib.h>
-#include <Library/UefiBootServicesTableLib.h>
 #include "mlib.h"
 
 EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* SystemTable){
@@ -8,21 +5,12 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     CpuBreakpoint();
     EFI_STATUS Status;
 
-    /*****************分辨率配置**********************/
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
     SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE); //显示光标
-    EFI_GRAPHICS_OUTPUT_PROTOCOL* gGraphicsOutput = 0;
-    EFI_GRAPHICS_OUTPUT_MODE_INFORMATION* Info = 0;
-    UINTN InfoSize = 0;
-    UINTN Columns, Rows;
-    EFI_INPUT_KEY Key;
-    EFI_EVENT WaitList[1];  // 事件列表，可以包含多个事件
-    CHAR16 inputbuffer[5];
-    UINT32 inputindex=0;
-    UINT32 resolutionmode =0;         //分辨率模式号
-    UINT32 time=30;
 
-    for(UINT32 i=0;i<SystemTable->ConOut->Mode->MaxMode;i++){  //打印所有文本模式
+    //region 文本模式
+    UINTN Columns, Rows;
+    for(UINT32 i=0;i<SystemTable->ConOut->Mode->MaxMode;i++){
         SystemTable->ConOut->QueryMode(SystemTable->ConOut,i,&Columns,&Rows);
         Print(L"TextMode:%d Columns:%d Rows:%d\n",i,Columns,Rows);
     }
@@ -31,57 +19,39 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     Print(L"Curren Text Mode:%d Columns:%d Rows:%d\n",SystemTable->ConOut->Mode->Mode,Columns,Rows);
     Print(L"Please enter text mode or keep default: ");
 
+    //设置文本模式
     Status=keyCountdown(SystemTable,30);
     if(Status){
         while(1){
             CHAR16 InputBuffer[5];
-            UINT32 InputIndex = 0;
+            UINT32 InputBufferLength = sizeof(InputBuffer)/sizeof(CHAR16);
             UINT32 Mode = 0;
-            PrintInput(SystemTable, InputBuffer,sizeof(InputBuffer)/sizeof(CHAR16));
-            for(;InputIndex<(sizeof(InputBuffer)/sizeof(CHAR16));InputIndex++){
-                if(InputBuffer[InputIndex]>=0x30 && InputBuffer[InputIndex]<=0x39){
-                    Mode = Mode * 10 + (InputBuffer[InputIndex] - 0x30);
-                }else if(InputBuffer[InputIndex]==0x0){
-                    break;
-                }else if(InputBuffer[InputIndex]>0){
+            PrintInput(SystemTable, InputBuffer,&InputBufferLength);
+            for(UINT32 i=0;i<InputBufferLength;i++){
+                if(InputBuffer[i]<0x30 || InputBuffer[i]>0x39){
                     Mode = 0xFFFF;
+                    break;
                 }
+                Mode = Mode * 10 + (InputBuffer[i] - 0x30);
             }
 
             Status = SystemTable->ConOut->SetMode(SystemTable->ConOut, Mode);
             if(!EFI_ERROR(Status))
                 break;
 
-            for(UINT32 i = 0;i<InputIndex;i++){
+            for(UINT32 i = 0;i<InputBufferLength;i++){
                     Print(L"\b");
             }
         }
-}
+    }
+    //endregion
 
-/*    while(1){
-        CHAR16 InputStr[5];
-        UINT32 Mode = 0;
-        UINT32 charlength=0;
-        Status = PrintInput(SystemTable, InputStr, 5);
-        if(Status == 0 && InputStr[0] == 0)
-            continue;
-        for(;charlength<5;charlength++){
-            if(InputStr[charlength]==0)
-            break;
-            Mode = Mode * 10 + (InputStr[charlength] - 0x30);
-        }
-        Status = SystemTable->ConOut->SetMode(SystemTable->ConOut, Mode);
-        if(EFI_ERROR(Status)){
-            for(UINT32 i=0;i<charlength;i++){
-                Print(L"\b");
-            }
-            continue;
-        }
-        break;
-    }*/
-
+    //region 分辨率模式
+    EFI_GRAPHICS_OUTPUT_PROTOCOL* gGraphicsOutput = 0;
+    EFI_GRAPHICS_OUTPUT_MODE_INFORMATION* Info = 0;
+    UINTN InfoSize = 0;
     gBS->LocateProtocol(&gEfiGraphicsOutputProtocolGuid,NULL,(VOID **)&gGraphicsOutput);
-    for(UINT32 i = 0;i < gGraphicsOutput->Mode->MaxMode;i++){ //打印所有分辨率模式
+    for(UINT32 i = 0;i < gGraphicsOutput->Mode->MaxMode;i++){
         gGraphicsOutput->QueryMode(gGraphicsOutput,i,&InfoSize,&Info);
         if((SystemTable->ConOut->Mode->CursorColumn+20)>Columns)
             Print(L"\n");
@@ -89,56 +59,37 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
         gBS->FreePool(Info);
     }
     Print(L"\n");
-    Print(L"Curren Mode:%d %d*%d FrameBase:0x%lx FrameSize:0x%lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
+    Print(L"Curren Mode:%d %d*%d   FrameBase:0x%lx   FrameSize:0x%lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
     //输入分辨率模式
     Print(L"Please enter a resolution mode or keep the default: ");
-    SystemTable->ConIn->Reset(SystemTable->ConIn,FALSE);
-    while(time){
-        Print(L"%02ds",time);
-        SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key); // 读取按键
-        gBS->Stall(1000000);
-        Print(L"\b\b\b");
-        time--;
-        if(Key.ScanCode || Key.UnicodeChar){
-            time=TRUE;
-            break;
-        }
-    }
-    WaitList[0] = SystemTable->ConIn->WaitForKey;
-    while(time){
-        gBS->WaitForEvent(1, WaitList, NULL);
-        SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key); // 读取按键
-
-        if(Key.UnicodeChar>=0x30 && Key.UnicodeChar<=0x39 && inputindex<5){
-            Print(L"%c", Key.UnicodeChar);
-            inputbuffer[inputindex]=Key.UnicodeChar;
-            inputindex++;
-        }else if(Key.UnicodeChar==0x8 && inputindex>0){//退格
-            Print(L"%c",Key.UnicodeChar);
-            inputindex--;
-            inputbuffer[inputindex]=0;
-        }else if(Key.UnicodeChar==0xD && inputindex>0){//回车
-            resolutionmode=0;
-            for(unsigned int i=0;i<inputindex;i++){
-                resolutionmode=resolutionmode*10+(inputbuffer[i]-0x30);
-            }
-
-            Status=gGraphicsOutput->SetMode(gGraphicsOutput,resolutionmode);
-            if(EFI_ERROR(Status)){
-                for(unsigned int i=0;i<inputindex;i++){
-                    Print(L"\b");
+    Status=keyCountdown(SystemTable,30);
+    if(Status){
+        while(1){
+            CHAR16 InputBuffer[5];
+            UINT32 InputBufferLength = sizeof(InputBuffer) / sizeof(CHAR16);
+            UINT32 Mode = 0;
+            PrintInput(SystemTable, InputBuffer,&InputBufferLength);
+            for(UINT32 i = 0;i<InputBufferLength;i++){
+                if(InputBuffer[i]<0x30 || InputBuffer[i]>0x39){
+                    Mode = 0xFFFF;
+                    break;
                 }
-                inputindex=0;
-                continue;
+                Mode = Mode * 10 + (InputBuffer[i] - 0x30);
             }
-            gBS->CloseProtocol(gGraphicsOutput,&gEfiGraphicsOutputProtocolGuid,ImageHandle,NULL);
-            break;
+            Status=gGraphicsOutput->SetMode(gGraphicsOutput,Mode);
+            if(!EFI_ERROR(Status))
+                break;
+
+            for(UINT32 i = 0;i<InputBufferLength;i++){
+                Print(L"\b");
+            }
         }
     }
-    SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
+    gBS->CloseProtocol(gGraphicsOutput,&gEfiGraphicsOutputProtocolGuid,ImageHandle,NULL);
+    SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
+    //endregion
 
-
-    /******************内存获取************************/
+    //region 内存获取
     UINTN MemMapSize = 0;
     EFI_MEMORY_DESCRIPTOR* MemMap = 0;
     UINTN MapKey = 0;
@@ -155,6 +106,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
         Print(L"MemoryMap %4d %10d (%10lx~%10lx) %016lx\n",MMap->Type,MMap->NumberOfPages,MMap->PhysicalStart,MMap->PhysicalStart + (MMap->NumberOfPages << 12),MMap->Attribute);
     }
     gBS->FreePool(MemMap);
+    //endregion
 
     while(1);
 
