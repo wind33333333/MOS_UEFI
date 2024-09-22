@@ -51,12 +51,13 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     EFI_GRAPHICS_OUTPUT_PROTOCOL* gGraphicsOutput = 0;
     EFI_GRAPHICS_OUTPUT_MODE_INFORMATION* Info = 0;
     UINTN InfoSize = 0;
+    SystemTable->ConOut->QueryMode(SystemTable->ConOut,SystemTable->ConOut->Mode->Mode,&Columns,&Rows);
     gBS->LocateProtocol(&gEfiGraphicsOutputProtocolGuid,NULL,(VOID **)&gGraphicsOutput);
     for(UINT32 i = 0;i < gGraphicsOutput->Mode->MaxMode;i++){
         gGraphicsOutput->QueryMode(gGraphicsOutput,i,&InfoSize,&Info);
-        if((SystemTable->ConOut->Mode->CursorColumn+31)>Columns)
+        if((SystemTable->ConOut->Mode->CursorColumn+34)>Columns)
             Print(L"\n");
-        Print(L"ResolutionMode:%2d H:%4d V:%4d    ",i,Info->HorizontalResolution,Info->VerticalResolution);
+        Print(L"ResolutionMode:%2d H:%4d V:%4d   ",i,Info->HorizontalResolution,Info->VerticalResolution);
         gBS->FreePool(Info);
     }
     Print(L"\n");
@@ -97,14 +98,17 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     UINTN DescriptorSize = 0;
     UINT32 DesVersion = 0;
 
-    Print(L"Get EFI_MEMORY_DESCRIPTOR Structure\n");
+    Print(L"Get Memory Map\n");
     gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
     gBS->AllocatePool(EfiRuntimeServicesData,MemMapSize,(VOID**)&MemMap);
     gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
 
+
     for(UINT32 i = 0; i< MemMapSize / DescriptorSize; i++){
         EFI_MEMORY_DESCRIPTOR* MMap = (EFI_MEMORY_DESCRIPTOR*) (((CHAR8*)MemMap) + i * DescriptorSize);
-        Print(L"MMap %4d %10d (%10lx~%10lx) %016lx\n",MMap->Type,MMap->NumberOfPages,MMap->PhysicalStart,MMap->PhysicalStart + (MMap->NumberOfPages << 12),MMap->Attribute);
+        if((SystemTable->ConOut->Mode->CursorColumn+44)>Columns)
+            Print(L"\n");
+        Print(L"%2d  %2d  %16lx %16lx   ",i,MMap->Type,MMap->NumberOfPages,MMap->PhysicalStart);
     }
     gBS->FreePool(MemMap);
     //endregion
