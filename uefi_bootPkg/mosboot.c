@@ -16,7 +16,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     }
     //打印当前文本模式
     SystemTable->ConOut->QueryMode(SystemTable->ConOut,SystemTable->ConOut->Mode->Mode,&Columns,&Rows);
-    Print(L"Curren Text Mode:%02d    Columns:%4d    Rows:%4d\n",SystemTable->ConOut->Mode->Mode,Columns,Rows);
+    Print(L"CurrenTextMode:%02d    Columns:%4d    Rows:%4d\n",SystemTable->ConOut->Mode->Mode,Columns,Rows);
     Print(L"Please enter text mode or keep default: ");
 
     //设置文本模式
@@ -56,11 +56,11 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
         gGraphicsOutput->QueryMode(gGraphicsOutput,i,&InfoSize,&Info);
         if((SystemTable->ConOut->Mode->CursorColumn+20)>Columns)
             Print(L"\n");
-        Print(L"Resolution Mode:%02d H:%4d V:%4d    ",i,Info->HorizontalResolution,Info->VerticalResolution);
+        Print(L"ResolutionMode:%02d H:%4d V:%4d    ",i,Info->HorizontalResolution,Info->VerticalResolution);
         gBS->FreePool(Info);
     }
     Print(L"\n");
-    Print(L"Curren Resolution Mode:%02d H:%4d V:%4d   FrameBase:0x%lx   FrameSize:0x%lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
+    Print(L"CRMode:%02d H:%d V:%d FrameBase:0x%lx FrameSize:0x%lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
     //输入分辨率模式
     Print(L"Please enter a resolution mode or keep the default: ");
     Status=keyCountdown(SystemTable,30);
