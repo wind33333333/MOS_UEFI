@@ -4,8 +4,8 @@
 
 EFI_STATUS EFIAPI keyCountdown (IN EFI_SYSTEM_TABLE* SystemTable,UINT32 Times){
     EFI_INPUT_KEY Key;
-    while(1){
-        Print(L"%03ds",Times);
+    while(Times){
+        Print(L"%3ds",Times);
         SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key); // 读取按键
         gBS->Stall(1000000);
         Print(L"\b\b\b\b");
