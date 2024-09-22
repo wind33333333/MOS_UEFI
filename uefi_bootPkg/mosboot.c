@@ -12,11 +12,11 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     UINTN Columns, Rows;
     for(UINT32 i=0;i<SystemTable->ConOut->Mode->MaxMode;i++){
         SystemTable->ConOut->QueryMode(SystemTable->ConOut,i,&Columns,&Rows);
-        Print(L"TextMode:%02d    Columns:%4d    Rows:%4d\n",i,Columns,Rows);
+        Print(L"TextMode:%2d    Columns:%4d    Rows:%4d\n",i,Columns,Rows);
     }
     //打印当前文本模式
     SystemTable->ConOut->QueryMode(SystemTable->ConOut,SystemTable->ConOut->Mode->Mode,&Columns,&Rows);
-    Print(L"CurrenTextMode:%02d    Columns:%4d    Rows:%4d\n",SystemTable->ConOut->Mode->Mode,Columns,Rows);
+    Print(L"CurrenTextMode:%2d    Columns:%4d    Rows:%4d\n",SystemTable->ConOut->Mode->Mode,Columns,Rows);
     Print(L"Please enter text mode or keep default: ");
 
     //设置文本模式
@@ -54,13 +54,13 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     gBS->LocateProtocol(&gEfiGraphicsOutputProtocolGuid,NULL,(VOID **)&gGraphicsOutput);
     for(UINT32 i = 0;i < gGraphicsOutput->Mode->MaxMode;i++){
         gGraphicsOutput->QueryMode(gGraphicsOutput,i,&InfoSize,&Info);
-        if((SystemTable->ConOut->Mode->CursorColumn+20)>Columns)
+        if((SystemTable->ConOut->Mode->CursorColumn+31)>Columns)
             Print(L"\n");
-        Print(L"ResolutionMode:%02d H:%4d V:%4d    ",i,Info->HorizontalResolution,Info->VerticalResolution);
+        Print(L"ResolutionMode:%2d H:%4d V:%4d    ",i,Info->HorizontalResolution,Info->VerticalResolution);
         gBS->FreePool(Info);
     }
     Print(L"\n");
-    Print(L"CRMode:%02d H:%d V:%d FrameBase:0x%lx FrameSize:0x%lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
+    Print(L"CRMode:%2d H:%d V:%d FrameBase:0x%lx FrameSize:0x%lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
     //输入分辨率模式
     Print(L"Please enter a resolution mode or keep the default: ");
     Status=keyCountdown(SystemTable,30);
