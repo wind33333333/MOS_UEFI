@@ -44,3 +44,29 @@ EFI_STATUS EFIAPI PrintInput (IN EFI_SYSTEM_TABLE* SystemTable,IN OUT CHAR16* In
     }
     return 0;
 }
+
+
+EFI_STATUS PrintNode(EFI_DEVICE_PATH_PROTOCOL * Node)
+{
+    Print(L"(%d %d)/", Node->Type, Node->SubType);
+    return 0;
+}
+
+EFI_DEVICE_PATH_PROTOCOL* WalkthroughDevicePath(EFI_DEVICE_PATH_PROTOCOL* DevPath, EFI_STATUS (*Callbk)(EFI_DEVICE_PATH_PROTOCOL*))
+{
+    EFI_DEVICE_PATH_PROTOCOL* pDevPath = DevPath;
+    while(!IsDevicePathEnd (pDevPath))
+    {
+        if(Callbk)
+        {
+            EFI_STATUS Status = Callbk(pDevPath);
+            if(Status != 0)
+            {
+                if(Status < 0) pDevPath = NULL;
+                break;
+            }
+        }
+        pDevPath = NextDevicePathNode (pDevPath);
+    }
+    return pDevPath;
+}

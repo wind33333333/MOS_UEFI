@@ -20,3 +20,10 @@
 
 [Protocols]
     gEfiGraphicsOutputProtocolGuid
+    gEfiDevicePathProtocolGuid
+    gEfiDevicePathToTextProtocolGuid
+    gEfiSimpleFileSystemProtocolGuid
+    gEfiLoadedImageProtocolGuid
+
+[Guids]
+  gEfiFileInfoGuid

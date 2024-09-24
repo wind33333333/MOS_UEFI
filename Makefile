@@ -21,7 +21,6 @@ $(BUILD)/%.bin: $(BOOTLOADER)/%.asm
 ${BUILD}/kernel.bin: ${BUILD}/system
 	objcopy -I elf64-x86-64 -S -R ".eh_frame" -R ".comment" -O binary $^ $@
 	nm ${BUILD}/system | sort > ${BUILD}/system.map
-	cp $(BUILD)/kernel.bin ESP/EFI/Boot/kernel.bin
 
 ${BUILD}/system: ${BUILD}/head.o ${BUILD}/main.o ${BUILD}/printk.o ${BUILD}/interrupt.o \
  				${BUILD}/ioapic.o ${BUILD}/ap.o ${BUILD}/acpi.o ${BUILD}/idt.o ${BUILD}/apic.o \
@@ -60,6 +59,8 @@ debug-uefi_bootPkg: clean
 debug-kernel: clean ${BUILD}/system ${BUILD}/kernel.bin
 	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b RELEASE"
 	cp build/RELEASE_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi
+	cp $(BUILD)/kernel.bin esp/kernel.bin
+	-pkill udk-gdb-server
 	-pkill qemu-system-x86
 	qemu-system-x86_64 -monitor telnet:localhost:4444,server,nowait \
 					   -S -s \
