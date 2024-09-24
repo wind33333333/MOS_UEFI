@@ -105,7 +105,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
 
     for(UINT32 i = 0; i< MemMapSize / DescriptorSize; i++){
         EFI_MEMORY_DESCRIPTOR* MMap = (EFI_MEMORY_DESCRIPTOR*) (((CHAR8*)MemMap) + i * DescriptorSize);
-        Print(L"M:%03d T:%02d A:%016lx N:%016lx S:%016lx E:%016lx\n",i,MMap->Type,MMap->Attribute,MMap->NumberOfPages,MMap->PhysicalStart,MMap->PhysicalStart + (MMap->NumberOfPages << 12)-1);
+        Print(L"M:%3d T:%2d A:%16lx N:%16lx S:%16lx E:%16lx\n",i,MMap->Type,MMap->Attribute,MMap->NumberOfPages,MMap->PhysicalStart,MMap->PhysicalStart + (MMap->NumberOfPages << 12)-1);
     }
     gBS->FreePool(MemMap);
 
