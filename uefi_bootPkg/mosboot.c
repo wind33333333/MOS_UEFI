@@ -2,7 +2,7 @@
 
 EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* SystemTable){
 
-    //CpuBreakpoint();
+    CpuBreakpoint();
     EFI_STATUS Status;
 
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
@@ -20,13 +20,13 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     Print(L"Please enter text mode or keep default: ");
 
     //设置文本模式
-    Status=keyCountdown(SystemTable,30);
+    Status=keyCountdown(30);
     if(Status){
         while(1){
             CHAR16 InputBuffer[5];
             UINT32 InputBufferLength = sizeof(InputBuffer)/sizeof(CHAR16);
             UINT32 Mode = 0;
-            PrintInput(SystemTable, InputBuffer,&InputBufferLength);
+            PrintInput(InputBuffer,&InputBufferLength);
             for(UINT32 i=0;i<InputBufferLength;i++){
                 if(InputBuffer[i]<0x30 || InputBuffer[i]>0x39){
                     Mode = 0xFFFF;
@@ -64,13 +64,13 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     Print(L"CRMode:%2d H:%d V:%d FrameBase:0x%lx FrameSize:0x%lx\n",gGraphicsOutput->Mode->Mode,gGraphicsOutput->Mode->Info->HorizontalResolution,gGraphicsOutput->Mode->Info->VerticalResolution,gGraphicsOutput->Mode->FrameBufferBase,gGraphicsOutput->Mode->FrameBufferSize);
     //输入分辨率模式
     Print(L"Please enter a resolution mode or keep the default: ");
-    Status=keyCountdown(SystemTable,30);
+    Status=keyCountdown(30);
     if(Status){
         while(1){
             CHAR16 InputBuffer[5];
             UINT32 InputBufferLength = sizeof(InputBuffer) / sizeof(CHAR16);
             UINT32 Mode = 0;
-            PrintInput(SystemTable, InputBuffer,&InputBufferLength);
+            PrintInput(InputBuffer,&InputBufferLength);
             for(UINT32 i = 0;i<InputBufferLength;i++){
                 if(InputBuffer[i]<0x30 || InputBuffer[i]>0x39){
                     Mode = 0xFFFF;
@@ -108,9 +108,6 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
         Print(L"M:%3d T:%2d A:%16lx N:%16lx S:%16lx E:%16lx\n",i,MMap->Type,MMap->Attribute,MMap->NumberOfPages,MMap->PhysicalStart,MMap->PhysicalStart + (MMap->NumberOfPages << 12)-1);
     }
     gBS->FreePool(MemMap);
-
-    while(1);
-
     //endregion
 
     //region 读取kernel.bin

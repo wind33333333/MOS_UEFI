@@ -78,7 +78,7 @@ qemu-monitor:
 	telnet localhost 4444
 
 clean:
-	-rm -rf build esp
+	-rm -rf build esp/efi
 	-mkdir -p build esp/efi/boot
 
 #clion gdb uefi符号挂载
