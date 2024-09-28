@@ -12,7 +12,7 @@ SECTIONS
 		_end_init_text = .;
     }
     /*内核初始化数据段*/
-	. = ALIGN(8);
+	. = ALIGN(4096);
 	.init_data :
 	{
 		_start_init_data = .;

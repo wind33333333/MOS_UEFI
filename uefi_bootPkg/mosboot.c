@@ -91,7 +91,15 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
     //endregion
 
-    //region 内存获取
+    //region 获取ACPI
+
+    VOID *VendorTable;
+    EfiGetSystemConfigurationTable(&gEfiAcpiTableGuid, &VendorTable);
+    Print(L"rsdp:%16lx\n",(UINT64)VendorTable);
+
+    //endregion
+
+    //region 内存图获取
     UINTN MemMapSize = 0;
     EFI_MEMORY_DESCRIPTOR* MemMap = 0;
     UINTN MapKey = 0;
@@ -137,7 +145,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
 
     EFI_FILE_INFO* FileInfo;
     UINTN BufferSize = 0;
-    EFI_PHYSICAL_ADDRESS pages = 0x100000;
+    EFI_PHYSICAL_ADDRESS pages = KERNELSTARTADDR;
 
     BufferSize = sizeof(EFI_FILE_INFO) + sizeof(CHAR16) * 100;
     gBS->AllocatePool(EfiRuntimeServicesData,BufferSize,(VOID**)&FileInfo);
@@ -159,8 +167,13 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
 
     //endregion
 
+    //region 进入内核
 
-    while(1);
+    //gBS->ExitBootServices(gBS->ExitBootServices,);
+    void (*KernelEntryPoint)(EFI_MEMORY_DESCRIPTOR* MemMap) = (void(*)(EFI_MEMORY_DESCRIPTOR* MemMap))KERNELSTARTADDR;
+    KernelEntryPoint(MemMap);
+
+    //endregion
 
     return EFI_SUCCESS;
 }

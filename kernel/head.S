@@ -4,13 +4,18 @@
 .section    .init_text, "ax"
 .globl _start
 _start:
+////////////关中断
+    cli
 ////////////////////////////bsp/ap核
     movl    $0x1B,%ecx           //IA32_APIC_BASE=0x1b 寄存器
     rdmsr
     or      $0xc00,%eax          //bit10 X2APIC使能   bit11 APIC全局使能
     wrmsr
-    test     $0x100,%eax         //測試bit8 1bsp 0ap
+    test    $0x100,%eax         //测试bit8 1=bsp 0=ap
     jz      kernel_stack_init
+
+/////////////////////////保存loader通过rdi传递过来的SystemTable指针
+    mov     %rdi,SystemTable(%rip)
 
 ///////////////////////////获取cpu核心数量
     mov        $1,%eax
@@ -19,25 +24,44 @@ _start:
 
 ///////////////////////////开辟多核栈空间
     shl        $14,%rbx                 //每个核心分配16k栈
-    movabs     kenelstack_top,%rax
+    mov        kenelstack_top(%rip),%rax
     add        %rbx,%rax
-    movabs     %rax,kenelstack_top       //内核栈顶
+    mov        %rax,kenelstack_top(%rip)       //内核栈顶
 
-///////////////////////////初始化多核内核栈
+///////////////////////////初始化多核内核栈，切换页表
 kernel_stack_init:
+    mov     $(__Tmp_PML4T-VBASEADDR),%rax
+    mov     %rax,%cr3
+
     mov     $0x802,%ecx
     rdmsr                           //获取APIC ID
     shl     $14,%rax                //每个核心分配16k栈
-    movabs  $kenelstack_top,%rbx
-    mov     (%rbx),%rsp
-    sub     %rax,%rsp               //计算每个内核栈 栈顶=VBASESTACK-(APIC ID*16K)
+    mov     kenelstack_top(%rip),%rsp
+    sub     %rax,%rsp               //计算每个内核栈 栈顶=kernelstack_top-(APIC ID*16K)
 
-	jmp	    Kernel_init             //进入C语言Kernel_init
+    movabs     $Kernel_init,%rax
+    jmp     %rax                    //切换到0xFFFF800000000000内核空间，进入C语言Kernel_init
 
 //===============================初始化程序数据=================================================
 .section    .init_data, "wa"
 
-    .global   IDT_POINTER
+    .globl __Tmp_PML4T
+    __Tmp_PML4T:
+    .quad	(__Tmp_PDPTT-VBASEADDR)+0x3
+    .fill   0x800-(. - __Tmp_PML4T),1,0
+    .quad	(__Tmp_PDPTT-VBASEADDR)+0x3
+    .fill	0xFF8-(. - __Tmp_PML4T),1,0
+    .quad   (__Tmp_PML4T - VBASEADDR)+0x103
+
+    .globl __Tmp_PDPTT
+    __Tmp_PDPTT:
+    .quad   0x00000083  //0-1G
+    .quad   0x40000083  //1-2G
+    .quad   0x80000083  //2-3G
+    .quad   0xC0000083  //3-4G
+    .fill	0x1000-(. - __Tmp_PDPTT),1,0
+
+.global   IDT_POINTER
     IDT_POINTER:
     IDT_LIMIT:	.word	IDT_END - IDT_Table - 1
     IDT_BASE:	.quad	IDT_Table
@@ -151,4 +175,6 @@ interrupt_entry:
     __PML4T:
     	.quad	0
     	.fill	0xFF8-(. -__PML4T),1,0
-    	.quad   (__PML4T- VBASEADDR)+0x103
+    	.quad   (__PML4T - VBASEADDR)+0x103
+
+    SystemTable:     .quad   0
