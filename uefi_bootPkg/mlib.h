@@ -71,18 +71,19 @@ typedef struct {
 
 typedef struct{
     /*显卡信息*/
-    UINT32* FrameBufferBase;
+    UINT64  FrameBufferBase;
     UINT32  HorizontalResolution;
     UINT32  VerticalResolution;
     UINT64  FrameBufferSize;
 
     /*内存图*/
-    EFI_MEMORY_DESCRIPTOR* MemoryMap;
+    EFI_MEMORY_DESCRIPTOR* MemMap;
+    UINT64 MemMapSize;
 
-    /*XSDT*/
-    XSDT_Struct* XSDT;
+    /*RSDP*/
+    RSDP_Struct* RSDP;
 
-} __attribute__((packed)) BootInfo;
+} __attribute__((packed)) BootInfo_struct;
 
 
 

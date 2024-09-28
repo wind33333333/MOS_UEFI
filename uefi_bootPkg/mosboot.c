@@ -8,6 +8,10 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
     SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE); //显示光标
 
+    //开辟一块内存存放kernel需要的参数
+    BootInfo_struct *BootInfo;
+    gBS->AllocatePool(EfiRuntimeServicesData,sizeof(BootInfo),(void*)&BootInfo);
+
     //region 文本模式
     UINTN Columns, Rows;
     for(UINT32 i=0;i<SystemTable->ConOut->Mode->MaxMode;i++){
@@ -87,17 +91,12 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
             }
         }
     }
+    BootInfo->FrameBufferBase=gGraphicsOutput->Mode->FrameBufferBase;
+    BootInfo->FrameBufferSize=gGraphicsOutput->Mode->FrameBufferSize;
+    BootInfo->HorizontalResolution=gGraphicsOutput->Mode->Info->HorizontalResolution;
+    BootInfo->VerticalResolution=gGraphicsOutput->Mode->Info->VerticalResolution;
     gBS->CloseProtocol(gGraphicsOutput,&gEfiGraphicsOutputProtocolGuid,ImageHandle,NULL);
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
-    //endregion
-
-    //region 获取ACPI
-
-    RSDP_Struct *RSDP;
-    EfiGetSystemConfigurationTable(&gEfiAcpiTableGuid, (void*)&RSDP);
-    Print(L"RSDP:%lx XSDT:%x\n",RSDP,RSDP->XsdtAddress);
-
-
     //endregion
 
     //region 内存图获取
@@ -111,12 +110,23 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
     gBS->AllocatePool(EfiRuntimeServicesData,MemMapSize,(VOID**)&MemMap);
     gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
+    BootInfo->MemMap=MemMap;
+    BootInfo->MemMapSize=MemMapSize;
 
     for(UINT32 i = 0; i< MemMapSize / DescriptorSize; i++){
         EFI_MEMORY_DESCRIPTOR* MMap = (EFI_MEMORY_DESCRIPTOR*) (((CHAR8*)MemMap) + i * DescriptorSize);
         Print(L"M:%3d T:%2d A:%16lx N:%16lx S:%16lx E:%16lx\n",i,MMap->Type,MMap->Attribute,MMap->NumberOfPages,MMap->PhysicalStart,MMap->PhysicalStart + (MMap->NumberOfPages << 12)-1);
     }
     gBS->FreePool(MemMap);
+    //endregion
+
+    //region 获取ACPI
+
+    RSDP_Struct *RSDP;
+    EfiGetSystemConfigurationTable(&gEfiAcpiTableGuid, (void*)&RSDP);
+    Print(L"RSDP:%0xlx XSDT:%0xlx\n",RSDP,RSDP->XsdtAddress);
+    BootInfo->RSDP=RSDP;
+
     //endregion
 
     //region 读取kernel.bin
@@ -171,8 +181,8 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     //region 进入内核
 
     //gBS->ExitBootServices(gBS->ExitBootServices,);
-    void (*KernelEntryPoint)(EFI_MEMORY_DESCRIPTOR* MemMap) = (void(*)(EFI_MEMORY_DESCRIPTOR* MemMap))KERNELSTARTADDR;
-    KernelEntryPoint(MemMap);
+    void (*KernelEntryPoint)(BootInfo_struct* BootInfo) = (void(*)(BootInfo_struct* BootInfo))KERNELSTARTADDR;
+    KernelEntryPoint(BootInfo);
 
     //endregion
 
