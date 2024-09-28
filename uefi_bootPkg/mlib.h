@@ -38,7 +38,7 @@ typedef struct {
     UINT8 HpetNumber;               // HPET 的编号
     UINT16 MinimumTick;             // HPET 支持的最小时间间隔
     UINT8 PageProtection;           // 页保护属性
-}__attribut__((packed)) HPET_Struct;
+}__attribute__((packed)) HPET_Struct;
 
 
 typedef struct {
@@ -52,7 +52,7 @@ typedef struct {
 
 typedef struct {
     ACPI_TABLE_HEADER Header;
-    MADTStruct* TablePointers[];        // 指向其他 ACPI 表的 64 位指针数组
+    MADT_Struct* TablePointers[];        // 指向其他 ACPI 表的 64 位指针数组
 } __attribute__((packed)) XSDT_Struct;
 
 typedef struct {
