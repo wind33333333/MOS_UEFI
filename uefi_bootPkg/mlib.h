@@ -64,7 +64,7 @@ typedef struct {
 
     // ACPI 2.0 及以后版本的扩展
     UINT32 Length;            // 整个 RSDP 结构的长度
-    XSDTStruct *XsdtAddress;  // XSDT 表（64 位地址）
+    XSDT_Struct *XsdtAddress;  // XSDT 表（64 位地址）
     UINT8 ExtendedChecksum;   // 扩展校验和，覆盖整个 RSDP 结构
     UINT8 Reserved[3];        // 保留字段，必须为 0
 } __attribute__((packed)) RSDP_Struct;
