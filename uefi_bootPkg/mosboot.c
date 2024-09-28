@@ -93,9 +93,10 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
 
     //region 获取ACPI
 
-    VOID *VendorTable;
-    EfiGetSystemConfigurationTable(&gEfiAcpiTableGuid, &VendorTable);
-    Print(L"rsdp:%16lx\n",(UINT64)VendorTable);
+    RSDP_Struct Struct *RSDP;
+    EfiGetSystemConfigurationTable(&gEfiAcpiTableGuid, (void*)&RSDP);
+    Print(L"RSDP:%lx XSDT:%x\n",RSDP,RSDP->XsdtAddress);
+
 
     //endregion
 
