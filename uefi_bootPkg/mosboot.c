@@ -8,9 +8,10 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
     SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE); //显示光标
 
-    //开辟一块内存存放kernel需要的参数
+    //region 开辟一块内存存放boot传递给kernel的参数
     BootInfo_struct *BootInfo;
     gBS->AllocatePool(EfiRuntimeServicesData,sizeof(BootInfo),(void*)&BootInfo);
+    //endregion
 
     //region 文本模式
     UINTN Columns, Rows;
@@ -99,34 +100,11 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
     //endregion
 
-    //region 内存图获取
-    UINTN MemMapSize = 0;
-    EFI_MEMORY_DESCRIPTOR* MemMap = 0;
-    UINTN MapKey = 0;
-    UINTN DescriptorSize = 0;
-    UINT32 DesVersion = 0;
-
-    Print(L"Get Memory Map\n");
-    gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
-    gBS->AllocatePool(EfiRuntimeServicesData,MemMapSize,(VOID**)&MemMap);
-    gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
-    BootInfo->MemMap=MemMap;
-    BootInfo->MemMapSize=MemMapSize;
-
-    for(UINT32 i = 0; i< MemMapSize / DescriptorSize; i++){
-        EFI_MEMORY_DESCRIPTOR* MMap = (EFI_MEMORY_DESCRIPTOR*) (((CHAR8*)MemMap) + i * DescriptorSize);
-        Print(L"M:%3d T:%2d A:%16lx N:%16lx S:%16lx E:%16lx\n",i,MMap->Type,MMap->Attribute,MMap->NumberOfPages,MMap->PhysicalStart,MMap->PhysicalStart + (MMap->NumberOfPages << 12)-1);
-    }
-    gBS->FreePool(MemMap);
-    //endregion
-
     //region 获取ACPI
-
     RSDP_Struct *RSDP;
     EfiGetSystemConfigurationTable(&gEfiAcpiTableGuid, (void*)&RSDP);
     Print(L"RSDP:%0xlx XSDT:%0xlx\n",RSDP,RSDP->XsdtAddress);
     BootInfo->RSDP=RSDP;
-
     //endregion
 
     //region 读取kernel.bin
@@ -164,7 +142,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     Print(L"\tFileName:%s\t Size:%d\t FileSize:%d\t Physical Size:%d\n",FileInfo->FileName,FileInfo->Size,FileInfo->FileSize,FileInfo->PhysicalSize);
 
     Print(L"Read kernel file to memory\n");
-    gBS->AllocatePages(AllocateAddress,EfiLoaderData,(FileInfo->FileSize + 0x1000 - 1) / 0x1000,&pages);
+    gBS->AllocatePages(AllocateAddress,EfiRuntimeServicesData,(FileInfo->FileSize + 0x1000 - 1) / 0x1000,&pages);
     BufferSize = FileInfo->FileSize;
     FileHandle->Read(FileHandle,&BufferSize,(VOID*)pages);
     gBS->FreePool(FileInfo);
@@ -178,9 +156,35 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
 
     //endregion
 
-    //region 进入内核
+    //region 内存图获取
+    UINTN MemMapSize = 0;
+    EFI_MEMORY_DESCRIPTOR* MemMap = 0;
+    UINTN MapKey = 0;
+    UINTN DescriptorSize = 0;
+    UINT32 DesVersion = 0;
 
-    //gBS->ExitBootServices(gBS->ExitBootServices,);
+    Print(L"Get Memory Map\n");
+    gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
+    gBS->AllocatePool(EfiRuntimeServicesData,MemMapSize,(VOID**)&MemMap);
+    gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
+
+    for(UINT32 i = 0; i< MemMapSize / DescriptorSize; i++){
+        EFI_MEMORY_DESCRIPTOR* MMap = (EFI_MEMORY_DESCRIPTOR*) (((CHAR8*)MemMap) + i * DescriptorSize);
+        Print(L"M:%3d T:%2d A:%16lx N:%16lx S:%16lx E:%16lx\n",i,MMap->Type,MMap->Attribute,MMap->NumberOfPages,MMap->PhysicalStart,MMap->PhysicalStart + (MMap->NumberOfPages << 12)-1);
+    }
+
+    gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
+    BootInfo->MemMap=MemMap;
+    BootInfo->MemMapSize=MemMapSize;
+    BootInfo->MemDescriptorSize=DescriptorSize;
+    BootInfo->gRTS=SystemTable->RuntimeServices;
+    Status=gBS->ExitBootServices(ImageHandle,MapKey);
+    if(EFI_ERROR(Status))
+        Print(L"ERROR: %r. Failed to Boot/gBS->ExitBootService().\n",Status);
+
+//endregion
+
+    //region 进入内核
     void (*KernelEntryPoint)(BootInfo_struct* BootInfo) = (void(*)(BootInfo_struct* BootInfo))KERNELSTARTADDR;
     KernelEntryPoint(BootInfo);
 

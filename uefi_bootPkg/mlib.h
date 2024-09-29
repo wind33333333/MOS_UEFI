@@ -78,10 +78,14 @@ typedef struct{
 
     /*内存图*/
     EFI_MEMORY_DESCRIPTOR* MemMap;
+    UINT64 MemDescriptorSize;
     UINT64 MemMapSize;
 
     /*RSDP*/
     RSDP_Struct* RSDP;
+
+    /*UEFI RunTimeServices Point*/
+    EFI_RUNTIME_SERVICES* gRTS;
 
 } __attribute__((packed)) BootInfo_struct;
 
