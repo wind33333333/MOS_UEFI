@@ -156,7 +156,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
 
     //endregion
 
-    //region 内存图获取释放boot进入kernel 位于0x100000
+    //region 内存图获取释放boot，BootInfo结构指针通过rdi寄存器传递，kernel位于0x100000
     UINTN MemMapSize = 0;
     EFI_MEMORY_DESCRIPTOR* MemMap = 0;
     UINTN MapKey = 0;
