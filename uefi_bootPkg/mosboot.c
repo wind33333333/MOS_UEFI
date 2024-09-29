@@ -10,7 +10,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
 
     //region 开辟一块内存存放boot传递给kernel的参数
     BootInfo_struct *BootInfo;
-    gBS->AllocatePool(EfiRuntimeServicesData,sizeof(BootInfo),(void*)&BootInfo);
+    gBS->AllocatePool(EfiLoaderData,sizeof(BootInfo),(void*)&BootInfo);
     //endregion
 
     //region 文本模式
@@ -137,12 +137,12 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     EFI_PHYSICAL_ADDRESS pages = KERNELSTARTADDR;
 
     BufferSize = sizeof(EFI_FILE_INFO) + sizeof(CHAR16) * 100;
-    gBS->AllocatePool(EfiRuntimeServicesData,BufferSize,(VOID**)&FileInfo);
+    gBS->AllocatePool(EfiLoaderData,BufferSize,(VOID**)&FileInfo);
     FileHandle->GetInfo(FileHandle,&gEfiFileInfoGuid,&BufferSize,FileInfo);
     Print(L"\tFileName:%s\t Size:%d\t FileSize:%d\t Physical Size:%d\n",FileInfo->FileName,FileInfo->Size,FileInfo->FileSize,FileInfo->PhysicalSize);
 
     Print(L"Read kernel file to memory\n");
-    gBS->AllocatePages(AllocateAddress,EfiRuntimeServicesData,(FileInfo->FileSize + 0x1000 - 1) / 0x1000,&pages);
+    gBS->AllocatePages(AllocateAddress,EfiRuntimeServicesCode,(FileInfo->FileSize + 0x1000 - 1) / 0x1000,&pages);
     BufferSize = FileInfo->FileSize;
     FileHandle->Read(FileHandle,&BufferSize,(VOID*)pages);
     gBS->FreePool(FileInfo);
@@ -165,7 +165,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
 
     Print(L"Get Memory Map\n");
     gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
-    gBS->AllocatePool(EfiRuntimeServicesData,MemMapSize,(VOID**)&MemMap);
+    gBS->AllocatePool(EfiLoaderData,MemMapSize,(VOID**)&MemMap);
     gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
 
     for(UINT32 i = 0; i< MemMapSize / DescriptorSize; i++){
@@ -182,7 +182,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     if(EFI_ERROR(Status))
         Print(L"ERROR: %r. Failed to Boot/gBS->ExitBootService().\n",Status);
 
-    //进入内核
+    //进入内核  rdi=传递BootInfo结构指针
     void (*KernelEntryPoint)(BootInfo_struct* BootInfo) = (void(*)(BootInfo_struct* BootInfo))KERNELSTARTADDR;
     KernelEntryPoint(BootInfo);
     //endregion
