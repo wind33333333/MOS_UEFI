@@ -156,7 +156,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
 
     //endregion
 
-    //region 内存图获取
+    //region 内存图获取释放boot进入kernel 位于0x100000
     UINTN MemMapSize = 0;
     EFI_MEMORY_DESCRIPTOR* MemMap = 0;
     UINTN MapKey = 0;
@@ -182,12 +182,9 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     if(EFI_ERROR(Status))
         Print(L"ERROR: %r. Failed to Boot/gBS->ExitBootService().\n",Status);
 
-//endregion
-
-    //region 进入内核
+    //进入内核
     void (*KernelEntryPoint)(BootInfo_struct* BootInfo) = (void(*)(BootInfo_struct* BootInfo))KERNELSTARTADDR;
     KernelEntryPoint(BootInfo);
-
     //endregion
 
     return EFI_SUCCESS;
