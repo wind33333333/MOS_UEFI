@@ -1,10 +1,10 @@
 #include "lib.h"
 #include "printk.h"
-#include "ioapic.h"
+//#include "ioapic.h"
 #include "ap.h"
-#include "acpi.h"
+//#include "acpi.h"
 #include "idt.h"
-#include "apic.h"
+//#include "apic.h"
 #include "memory.h"
 #include "gdt.h"
 #include "tss.h"
@@ -15,16 +15,21 @@
 __attribute__((section(".init_text"))) void Kernel_init(void) {
     unsigned int cpu_id = 0;
     unsigned char bsp_flags = 0;
+
+    BootInfo_struct b={0};
+    b.MemDescriptorSize=BootInfo->MemDescriptorSize;
+    b.gRTS=BootInfo->gRTS;
+
     get_cpuinfo(&cpu_id, &bsp_flags);                    //获取cpu信息
     pos_init(bsp_flags);                                //初始化输出控制台
     memory_init(bsp_flags);                             //初始化内存管理器
     gdt_init(bsp_flags);                                //初始化GDT
     tss_init(cpu_id, bsp_flags);                         //初始化TSS
     idt_init(bsp_flags);                                //初始化IDT
-    acpi_init(bsp_flags);                               //初始化acpi
+    //acpi_init(bsp_flags);                               //初始化acpi
     hpet_init(bsp_flags);                               //初始化hpet
-    ioapic_init(bsp_flags);                             //初始化ioapic
-    apic_init();                                        //初始化apic
+    //ioapic_init(bsp_flags);                             //初始化ioapic
+    //apic_init();                                        //初始化apic
     page_init(bsp_flags);                               //初始化内核页表
     ap_init(cpu_id, bsp_flags);                          //初始化ap核
 

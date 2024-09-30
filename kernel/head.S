@@ -14,8 +14,8 @@ _start:
     test    $0x100,%eax         //测试bit8 1=bsp 0=ap
     jz      kernel_stack_init
 
-/////////////////////////保存loader通过rdi传递过来的SystemTable指针
-    mov     %rdi,SystemTable(%rip)
+/////////////////////////保存loader通过rdi传递过来的BootInfo指针
+    mov     %rdi,BootInfo(%rip)
 
 ///////////////////////////获取cpu核心数量
     mov        $1,%eax
@@ -40,7 +40,7 @@ kernel_stack_init:
     sub     %rax,%rsp               //计算每个内核栈 栈顶=kernelstack_top-(APIC ID*16K)
 
     movabs     $Kernel_init,%rax
-    jmp     %rax                    //切换到0xFFFF800000000000内核空间，进入C语言Kernel_init
+    jmp     *%rax                    //切换到0xFFFF800000000000内核空间，进入C语言Kernel_init
 
 //===============================初始化程序数据=================================================
 .section    .init_data, "wa"
@@ -61,13 +61,16 @@ kernel_stack_init:
     .quad   0xC0000083  //3-4G
     .fill	0x1000-(. - __Tmp_PDPTT),1,0
 
-.global   IDT_POINTER
+    .globl   IDT_POINTER
     IDT_POINTER:
     IDT_LIMIT:	.word	IDT_END - IDT_Table - 1
     IDT_BASE:	.quad	IDT_Table
 
     .globl kenelstack_top
     kenelstack_top:   .quad   _end
+
+    .globl BootInfo
+    BootInfo:     .quad   0
 
     .equ    VBASEADDR,0xffff800000000000      //内核虛擬地址基址
 
@@ -176,5 +179,3 @@ interrupt_entry:
     	.quad	0
     	.fill	0xFF8-(. -__PML4T),1,0
     	.quad   (__PML4T - VBASEADDR)+0x103
-
-    SystemTable:     .quad   0
