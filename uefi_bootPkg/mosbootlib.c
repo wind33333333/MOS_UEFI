@@ -1,6 +1,4 @@
-#include "mlib.h"
-
-
+#include "mosbootlib.h"
 
 EFI_STATUS EFIAPI keyCountdown (UINT32 Times){
     EFI_INPUT_KEY Key;

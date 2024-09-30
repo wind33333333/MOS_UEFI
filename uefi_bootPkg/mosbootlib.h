@@ -1,5 +1,5 @@
-#ifndef __MLIB__
-#define __MLIB__
+#ifndef __MOSBOOTLIB__
+#define __MOSBOOTLIB__
 
 #include <Uefi.h>
 #include <Library/UefiLib.h>
