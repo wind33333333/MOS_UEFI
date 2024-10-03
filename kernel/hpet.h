@@ -1,7 +1,7 @@
 #ifndef _HPET_H_
 #define _HPET_H_
 
-#include "cpuinfo.h"
+#include "cpu.h"
 #include "lib.h"
 #include "printk.h"
 #include "memory.h"

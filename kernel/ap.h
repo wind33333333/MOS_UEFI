@@ -2,7 +2,7 @@
 #define __SMP_INIT__
 #include "printk.h"
 #include "lib.h"
-#include "cpuinfo.h"
+#include "cpu.h"
 
 void ap_init(unsigned int cpu_id,unsigned char bsp_flags);
 

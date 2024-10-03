@@ -1,10 +1,10 @@
-#ifndef _GET_CPUINFO_H
-#define _GET_CPUINFO_H
+#ifndef _CPU_H
+#define _CPU_H
 
 #include "printk.h"
 #include "lib.h"
 
-void get_cpuinfo(unsigned int *cpu_id,unsigned char *bsp_flags);
+void cpu_init(unsigned int *cpu_id,unsigned char *bsp_flags);
 
 struct {
     char manufacturer_name[13];
@@ -15,7 +15,6 @@ struct {
     unsigned int bus_frequency;
     unsigned int tsc_frequency;
 }cpu_info;
-
 
 
 #endif

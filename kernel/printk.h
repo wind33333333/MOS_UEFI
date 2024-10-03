@@ -7,7 +7,7 @@
 #include "lib.h"
 #include "memory.h"
 #include "printk.h"
-#include "cpuinfo.h"
+#include "cpu.h"
 
 void pos_init(unsigned char bsp_flags);
 

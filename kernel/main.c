@@ -9,18 +9,17 @@
 #include "gdt.h"
 #include "tss.h"
 #include "page.h"
-#include "cpuinfo.h"
+#include "cpu.h"
 #include "hpet.h"
 
 __attribute__((section(".init_text"))) void Kernel_init(void) {
     unsigned int cpu_id = 0;
     unsigned char bsp_flags = 0;
 
-    BootInfo_struct b={0};
-    b.MemDescriptorSize=BootInfo->MemDescriptorSize;
-    b.gRTS=BootInfo->gRTS;
+    cpu_init(&cpu_id, &bsp_flags);                    //获取cpu信息
 
-    get_cpuinfo(&cpu_id, &bsp_flags);                    //获取cpu信息
+    BootInfo_struct b = {0};
+
     pos_init(bsp_flags);                                //初始化输出控制台
     memory_init(bsp_flags);                             //初始化内存管理器
     gdt_init(bsp_flags);                                //初始化GDT

@@ -2,7 +2,7 @@
 #define __acpi_init__
 #include "lib.h"
 #include "printk.h"
-#include "cpuinfo.h"
+#include "cpu.h"
 #include "ioapic.h"
 #include "hpet.h"
 

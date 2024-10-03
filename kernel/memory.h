@@ -3,7 +3,7 @@
 
 #include "printk.h"
 #include "lib.h"
-#include "cpuinfo.h"
+#include "cpu.h"
 
 void memory_init(unsigned char bsp_flags);
 

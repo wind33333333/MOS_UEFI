@@ -4,7 +4,7 @@
 #include "lib.h"
 #include "hpet.h"
 #include "interrupt.h"
-#include "cpuinfo.h"
+#include "cpu.h"
 
 void apic_init(void);
 void enable_apic_time (unsigned long time,unsigned int model,unsigned int ivt);
