@@ -2,7 +2,6 @@
 
 void cpu_init(unsigned int *cpu_id,unsigned char *bsp_flags) {
 
-    //初始化CPU
     __asm__ __volatile__(
             //IA32_APIC_BASE (MSR 0x1B)
             /*
@@ -22,7 +21,11 @@ APIC Base Address（APIC 基地址，bit 12-31）：
             "rdmsr                   \n\t"
             "or         $0xC00,%%eax \n\t"
             "wrmsr                   \n\t"
+            "shr        $8,%%eax     \n\t"
+            "and        $1,%%eax     \n\t"
+            :"=a"(*bsp_flags)::"%rcx","%rdx");
 
+    __asm__ __volatile__(
             //region CR4
             /*    CR4 寄存器的结构（按位）
     CR4.PSE（第 4 位） - Page Size Extension（页大小扩展）
@@ -96,7 +99,9 @@ APIC Base Address（APIC 基地址，bit 12-31）：
             "mov        %%cr4,%%rax        \n\t"
             "or         $0x50E80,%%rax     \n\t"
             "mov        %%rax,%%cr4        \n\t"
+            :::"%rax");
 
+    __asm__ __volatile__(
             //region XCR0
             /*
     x87 状态（bit 0）：
@@ -131,7 +136,9 @@ APIC Base Address（APIC 基地址，bit 12-31）：
             "xgetbv                       \n\t"
             "or         %%r8d,%%eax       \n\t"
             "xsetbv                       \n\t"
+            :::"%rax","%rbx","%rcx","%rdx","%r8");
 
+    __asm__ __volatile__(
             //region EFER 寄存器（MSR 0xC0000080)
             /*
     SCE（bit 0） - System Call Enable
@@ -144,10 +151,12 @@ APIC Base Address（APIC 基地址，bit 12-31）：
     描述：启用 NX（No-eXecute） 位功能。NX 位用于控制某些内存页面的执行权限。如果该位被设置为 1，操作系统可以使用分页机制将特定的内存页面标记为不可执行，以防止执行非代码数据，如栈或堆内存，防止某些缓冲区溢出攻击。
     用途：增强系统安全性，通过将某些内存区域标记为不可执行，防止恶意代码利用缓冲区溢出漏洞执行任意代码。*/
             "mov        $0xC0000080,%%ecx  \n\t"
-            "rdmsr                       \n\t"
+            "rdmsr                         \n\t"
             "or         $0x801,%%eax       \n\t"
-            "wrmsr                       \n\t"
+            "wrmsr                         \n\t"
+            :::"%rax","%rcx","%rdx");
 
+    __asm__ __volatile__(
             //region CR0
             /*
                 PE（Protection Enable，bit 0）
@@ -186,21 +195,13 @@ APIC Base Address（APIC 基地址，bit 12-31）：
             "mov        %%cr0,%%rax        \n\t"
             "or         $0x10002,%%rax     \n\t"
             "mov        %%rax,%%cr0        \n\t"
-            :::"%rax","%rbx","%rcx","%rdx","%r8");
+            :::"%rax");
 
     // 获取当前CPU id号
     __asm__ __volatile__ (
             "movl       $0x802,%%ecx   \n\t"
             "rdmsr                     \n\t"
             :"=a"(*cpu_id)::"%rcx", "%rdx");
-
-    // 获取当前CPU的flags
-    __asm__ __volatile__( \
-            "movl    $0x1B,%%ecx  \n\t"          /*IA32_APIC_BASE=0x1b 寄存器*/
-            "rdmsr                \n\t"         //bit10 X2APIC使能   bit11 APIC全局使能
-            "shr     $8,%%eax      \n\t"
-            "and     $1,%%eax      \n\t"
-            :"=a"(*bsp_flags)::);
 
     if (*bsp_flags) {
         // 获取CPU厂商
