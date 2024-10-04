@@ -6,16 +6,16 @@ void cpu_init(unsigned int *cpu_id,unsigned char *bsp_flags) {
     __asm__ __volatile__(
             //IA32_APIC_BASE (MSR 0x1B)
             /*
-EN（Enable，本地 APIC 启用位，bit 0）：
-作用：控制是否启用本地 APIC。设置为 1 时启用本地 APIC；设置为 0 时禁用。
-重要性：如果未启用 APIC，处理器将无法使用高级中断控制机制。
-BSP（Bootstrap Processor，系统启动处理器标志位，bit 1）：
-作用：标记该处理器是否是系统的启动处理器（BSP）。系统启动时，BSP 是首先执行初始化代码的 CPU，其它处理器是 AP（Application Processors，应用处理器）。
-重要性：BSP 的作用是在多处理器系统启动时执行初始化任务，确保系统正常运行。
-X2APIC（X2APIC 模式启用位，bit 8）：
+X2APIC（X2APIC 模式启用位，bit 10）：
 作用：如果该位被设置为 1，处理器启用 X2APIC 模式。X2APIC 是 APIC 的扩展版本，提供了更多的功能，例如更大的中断目标地址空间。
 重要性：X2APIC 模式在大型多处理器系统中尤为重要，因为它允许更高效的中断处理，并支持更大的 CPU 核心数量。
-APIC Base Address（APIC 基地址，bit 36-51）：
+EN（Enable，本地 APIC 启用位，bit 11）：
+作用：控制是否启用本地 APIC。设置为 1 时启用本地 APIC；设置为 0 时禁用。
+重要性：如果未启用 APIC，处理器将无法使用高级中断控制机制。
+BSP（Bootstrap Processor，系统启动处理器标志位，bit 9）：
+作用：标记该处理器是否是系统的启动处理器（BSP）。系统启动时，BSP 是首先执行初始化代码的 CPU，其它处理器是 AP（Application Processors，应用处理器）。
+重要性：BSP 的作用是在多处理器系统启动时执行初始化任务，确保系统正常运行。
+APIC Base Address（APIC 基地址，bit 12-31）：
 作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
 重要性：APIC 基地址用于访问本地 APIC 的寄存器，通常不需要修改这个值，除非系统有特殊的硬件需求。*/
             "movl       $0x1B,%%ecx  \n\t"
