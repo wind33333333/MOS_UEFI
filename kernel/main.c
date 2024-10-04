@@ -17,14 +17,6 @@ __attribute__((section(".init_text"))) void Kernel_init(void) {
     unsigned char bsp_flags = 0;
 
     cpu_init(&cpu_id, &bsp_flags);                    //获取cpu信息
-
-    UINT32 v = 0;
-    BootInfo_struct b = {0};
-    __asm__ __volatile__(
-            "vmovdqa    %%ymm0,-0x20(%%rsp) \n\t"
-            :::);
-    color_printk(RED,BLACK,"v:%d,%d,%d,%d,%d\n",v,b.gRTS,b.MemDescriptorSize,b.RSDP,b.MemMap);
-
     pos_init(bsp_flags);                                //初始化输出控制台
     memory_init(bsp_flags);                             //初始化内存管理器
     gdt_init(bsp_flags);                                //初始化GDT
