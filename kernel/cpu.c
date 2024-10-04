@@ -19,9 +19,9 @@ APIC Base Address（APIC 基地址，bit 12-31）：
 作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
 重要性：APIC 基地址用于访问本地 APIC 的寄存器，通常不需要修改这个值，除非系统有特殊的硬件需求。*/
             "movl       $0x1B,%%ecx  \n\t"
-            "rdmsr                  \n\t"
+            "rdmsr                   \n\t"
             "or         $0xC00,%%eax \n\t"
-            "wrmsr                  \n\t"
+            "wrmsr                   \n\t"
 
             //region CR4
             /*    CR4 寄存器的结构（按位）
@@ -94,7 +94,7 @@ APIC Base Address（APIC 基地址，bit 12-31）：
     描述：启用内存保护密钥功能。该功能允许程序在不修改页表的情况下控制内存的访问权限。
     用途：提供更灵活的内存保护机制，用于区分不同的内存访问权限。*/
             "mov        %%cr4,%%rax        \n\t"
-            "or         $0x50E80,%%rax    \n\t"
+            "or         $0x50E80,%%rax     \n\t"
             "mov        %%rax,%%cr4        \n\t"
 
             //region XCR0
@@ -120,10 +120,17 @@ APIC Base Address（APIC 基地址，bit 12-31）：
     PKRU 状态（bit 8）：
     描述：控制 PKRU 状态的保存与恢复。PKRU（Protection Keys for Userspace）是内存保护的一种机制。
     用途：启用该位后，处理器会保存和恢复与 PKRU 相关的状态。*/
+            "mov        $0x7,%%r8d        \n\t"
             "mov        $0,%%ecx          \n\t"
-            "xgetbv                      \n\t"
-            "or         $0x7,%%eax         \n\t"
-            "xsetbv                      \n\t"
+            "mov        $0x7,%%eax        \n\t"
+            "cpuid                        \n\t"
+            "test       $0x10000,%%ebx    \n\t"  //bit16置位表示支持avx512指令集
+            "jz        1f                 \n\t"
+            "mov        $0x27,%%r8d       \n\t"
+            "1:mov        $0,%%ecx        \n\t"
+            "xgetbv                       \n\t"
+            "or         %%r8d,%%eax       \n\t"
+            "xsetbv                       \n\t"
 
             //region EFER 寄存器（MSR 0xC0000080)
             /*
@@ -179,7 +186,7 @@ APIC Base Address（APIC 基地址，bit 12-31）：
             "mov        %%cr0,%%rax        \n\t"
             "or         $0x10002,%%rax     \n\t"
             "mov        %%rax,%%cr0        \n\t"
-            :::"%rax","%rcx","%rdx");
+            :::"%rax","%rbx","%rcx","%rdx","%r8");
 
     // 获取当前CPU id号
     __asm__ __volatile__ (
