@@ -4,7 +4,7 @@
 #include "printk.h"
 #include "lib.h"
 
-void cpu_init(unsigned int *cpu_id,unsigned char *bsp_flags);
+void cpuInit(unsigned int *cpuId,unsigned char *bspFlags);
 
 struct {
     char manufacturer_name[13];

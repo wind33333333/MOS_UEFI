@@ -40,7 +40,6 @@ typedef struct {
     UINT8 PageProtection;           // 页保护属性
 }__attribute__((packed)) HPET_Struct;
 
-
 typedef struct {
     ACPI_TABLE_HEADER Header;        // 标准 ACPI 表头
     UINT32 LocalApicAddress;       // 本地 APIC 的物理地址
@@ -48,7 +47,6 @@ typedef struct {
     // 接下来的部分是可变长度的 APIC 条目
     UINT8 ApicStructure[];         // APIC 条目数组
 }__attribute__((packed)) MADT_Struct;
-
 
 typedef struct {
     ACPI_TABLE_HEADER Header;
@@ -88,7 +86,6 @@ typedef struct{
     EFI_RUNTIME_SERVICES* gRTS;
 
 } __attribute__((packed)) BootInfo_struct;
-
 
 
 #endif

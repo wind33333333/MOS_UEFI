@@ -28,7 +28,7 @@
 
 extern long IDT_Table[256];
 extern int IDT_POINTER;
-void idt_init(unsigned char bsp_flags);
+void idtInit(unsigned char bspFlags);
 
 
 #endif

@@ -1,7 +1,7 @@
 #include "gdt.h"
 
-__attribute__((section(".init_text"))) void gdt_init(unsigned char bsp_flags) {
-    if (bsp_flags) {
+__attribute__((section(".init_text"))) void gdtInit(unsigned char bspFlags) {
+    if (bspFlags) {
         gdt_ptr.limit = (cpu_info.cores_num * 16 + TSS_START * 8 + 0xFFF & PAGE_4K_MASK) - 1;
         gdt_ptr.base = LADDR_TO_HADDR(alloc_pages((gdt_ptr.limit + 1) >> PAGE_4K_SHIFT));              //分配GDT内存
         memory_management_struct.kernel_end = (unsigned long)gdt_ptr.base;

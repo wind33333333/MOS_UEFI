@@ -1,6 +1,6 @@
 #include "cpu.h"
 
-void cpu_init(unsigned int *cpu_id,unsigned char *bsp_flags) {
+void cpuInit(unsigned int *cpuId,unsigned char *bspFlags) {
 
     __asm__ __volatile__(
             //IA32_APIC_BASE (MSR 0x1B)
@@ -23,7 +23,7 @@ APIC Base Address（APIC 基地址，bit 12-31）：
             "wrmsr                   \n\t"
             "shr        $8,%%eax     \n\t"
             "and        $1,%%eax     \n\t"
-            :"=a"(*bsp_flags)::"%rcx","%rdx");
+            :"=a"(*bspFlags)::"%rcx","%rdx");
 
     __asm__ __volatile__(
             //region CR4
@@ -201,9 +201,9 @@ APIC Base Address（APIC 基地址，bit 12-31）：
     __asm__ __volatile__ (
             "movl       $0x802,%%ecx   \n\t"
             "rdmsr                     \n\t"
-            :"=a"(*cpu_id)::"%rcx", "%rdx");
+            :"=a"(*cpuId)::"%rcx", "%rdx");
 
-    if (*bsp_flags) {
+    if (*bspFlags) {
         // 获取CPU厂商
         __asm__ __volatile__(
                 "xor    %%eax, %%eax \n\t"

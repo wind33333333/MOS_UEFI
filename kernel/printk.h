@@ -9,7 +9,7 @@
 #include "printk.h"
 #include "cpu.h"
 
-void pos_init(unsigned char bsp_flags);
+void posInit(unsigned char bspFlags);
 void clearScreen(void);
 
 

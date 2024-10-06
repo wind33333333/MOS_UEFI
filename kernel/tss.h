@@ -22,7 +22,7 @@
 #define TSS_TYPE    (0x9UL << 40)
 #define TSS_LIMIT   (0x67UL & 0xFFFF) | ((0x67UL >> 16)<<48)
 
-void tss_init(unsigned int cpu_id,unsigned char bsp_flags);
+void tssInit(unsigned int cpuId,unsigned char bspFlags);
 
 typedef struct {
     unsigned int    reserved0;

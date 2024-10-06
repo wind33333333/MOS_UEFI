@@ -4,7 +4,7 @@
 #include "memory.h"
 #include "idt.h"
 
-void    gdt_init(unsigned char bsp_flags);
+void    gdtInit(unsigned char bspFlags);
 
 typedef struct {
     unsigned short limit;

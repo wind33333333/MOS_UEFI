@@ -1,8 +1,8 @@
 #include "page.h"
 
-__attribute__((section(".init_text"))) void page_init(unsigned char bsp_flags) {
+__attribute__((section(".init_text"))) void pageInit(unsigned char bspFlags) {
 
-    if (bsp_flags) {
+    if (bspFlags) {
         unsigned long pml4_bak[256] = {0};
         unsigned long pml4e_num = (((memory_management_struct.kernel_end >> 12) - ((memory_management_struct.kernel_end >> 12) & ~(512UL * 512 * 512 - 1))) +
                                    (512UL * 512 * 512 - 1)) / (512UL * 512 * 512);

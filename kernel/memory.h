@@ -5,7 +5,7 @@
 #include "lib.h"
 #include "cpu.h"
 
-void memory_init(unsigned char bsp_flags);
+void memoryInit(unsigned char bspFlags);
 
 void *alloc_pages(unsigned long required_length);
 

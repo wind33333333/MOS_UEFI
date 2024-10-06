@@ -346,9 +346,9 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
     return i;
 }
 
-__attribute__((section(".init_text"))) void pos_init(unsigned char bsp_flags) {
+__attribute__((section(".init_text"))) void posInit(unsigned char bspFlags) {
 
-    if (bsp_flags) {
+    if (bspFlags) {
         Pos.XResolution = bootInfo->horizontalResolution;
         Pos.YResolution = bootInfo->verticalResolution;
 

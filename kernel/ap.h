@@ -4,8 +4,8 @@
 #include "lib.h"
 #include "cpu.h"
 
-void ap_init(unsigned int cpu_id,unsigned char bsp_flags);
+void apInit(unsigned int cpuId,unsigned char bspFlags);
 
-__attribute__((section(".init.data"))) unsigned int cpu_init_num = 0;
+__attribute__((section(".init.data"))) unsigned int cpuInit_num = 0;
 
 #endif

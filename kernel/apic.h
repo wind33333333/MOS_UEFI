@@ -6,7 +6,7 @@
 #include "interrupt.h"
 #include "cpu.h"
 
-void apic_init(void);
+void apicInit(void);
 void enable_apic_time (unsigned long time,unsigned int model,unsigned int ivt);
 
 //中断结束发送EOI

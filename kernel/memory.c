@@ -1,10 +1,9 @@
 #include "memory.h"
 #include "printk.h"
 
+__attribute__((section(".init_text"))) void memoryInit(unsigned char bspFlags) {
 
-__attribute__((section(".init_text"))) void memory_init(unsigned char bsp_flags) {
-
-    if (bsp_flags) {
+    if (bspFlags) {
         unsigned int x = 0;
         unsigned long totalmem = 0;
         struct E820 *p = (struct E820 *) E820_BASE;

@@ -1,12 +1,12 @@
-#ifndef __acpi_init__
-#define __acpi_init__
+#ifndef __acpiInit__
+#define __acpiInit__
 #include "lib.h"
 #include "printk.h"
 #include "cpu.h"
 #include "ioapic.h"
 #include "hpet.h"
 
-void acpi_init(unsigned char bsp_flags);
+void acpiInit(unsigned char bspFlags);
 
 typedef struct {
     unsigned int IRQ;
