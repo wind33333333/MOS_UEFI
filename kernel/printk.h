@@ -54,7 +54,7 @@ struct position
 	int XCharSize;
 	int YCharSize;
 
-	unsigned long FB_addr;
+	UINT32* FB_addr;
 	unsigned long FB_length;
     char lock;
 }Pos;
@@ -63,7 +63,7 @@ struct position
 
 */
 
-void putchar(UINT32 * fb,int Xsize,int x,int y,UINT32 FRcolor,UINT32 BKcolor,UINT8 font);
+void putchar(UINT32 *fb, UINT32 Xsize, UINT32 x, UINT32 y, UINT32 FRcolor, UINT32 BKcolor,UINT8 font);
 
 /*
 

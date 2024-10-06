@@ -28,7 +28,7 @@ __attribute__((section(".init_text"))) void pageInit(UINT8 bspFlags) {
 
         SET_CR3(HADDR_TO_LADDR(&__PML4T));
 
-        map_pages(HADDR_TO_LADDR(Pos.FB_addr), Pos.FB_addr, Pos.FB_length / 4096, PAGE_ROOT_RW);
+        map_pages(HADDR_TO_LADDR(Pos.FB_addr), (UINT64)Pos.FB_addr, Pos.FB_length / 4096, PAGE_ROOT_RW);
         map_pages(HADDR_TO_LADDR(ioapic_baseaddr), (unsigned long) ioapic_baseaddr, 1,
                   PAGE_UC);
         map_pages(HADDR_TO_LADDR(hpet_attr.baseaddr), hpet_attr.baseaddr, 1, PAGE_UC);

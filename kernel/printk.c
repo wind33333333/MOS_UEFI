@@ -1,7 +1,6 @@
 #include "printk.h"
 
-void putchar(UINT32 *fb, int Xsize, int x, int y, UINT32 FRcolor, UINT32 BKcolor,
-        UINT8 font) {
+void putchar(UINT32 *fb, UINT32 Xsize, UINT32 x, UINT32 y, UINT32 FRcolor, UINT32 BKcolor,UINT8 font) {
     int i = 0, j = 0;
     UINT32 *addr = NULL;
     UINT8 *fontp = NULL;
@@ -354,7 +353,7 @@ __attribute__((section(".init_text"))) void posInit(UINT8 bspFlags) {
         Pos.XCharSize = 8;
         Pos.YCharSize = 16;
 
-        Pos.FB_addr = LADDR_TO_HADDR(bootInfo->frameBufferBase);
+        Pos.FB_addr = (UINT32*)(LADDR_TO_HADDR(bootInfo->frameBufferBase));
         Pos.FB_length = bootInfo->frameBufferSize;
         Pos.lock = 0;
 

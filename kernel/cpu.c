@@ -19,10 +19,10 @@ APIC Base Address（APIC 基地址，bit 12-31）：
 重要性：APIC 基地址用于访问本地 APIC 的寄存器，通常不需要修改这个值，除非系统有特殊的硬件需求。*/
             "movl       $0x1B,%%ecx  \n\t"
             "rdmsr                   \n\t"
-            "or         $0xC00,%%eax \n\t"
+            "orl        $0xC00,%%eax \n\t"
             "wrmsr                   \n\t"
-            "shr        $8,%%eax     \n\t"
-            "and        $1,%%eax     \n\t"
+            "shrl       $8,%%eax     \n\t"
+            "andl       $1,%%eax     \n\t"
             :"=a"(*bspFlags)::"%rcx","%rdx");
 
     __asm__ __volatile__(
@@ -96,9 +96,9 @@ APIC Base Address（APIC 基地址，bit 12-31）：
     位位置：bit 22
     描述：启用内存保护密钥功能。该功能允许程序在不修改页表的情况下控制内存的访问权限。
     用途：提供更灵活的内存保护机制，用于区分不同的内存访问权限。*/
-            "mov        %%cr4,%%rax        \n\t"
-            "or         $0x50E80,%%rax     \n\t"
-            "mov        %%rax,%%cr4        \n\t"
+            "movq       %%cr4,%%rax        \n\t"
+            "orq        $0x50E80,%%rax     \n\t"
+            "movq       %%rax,%%cr4        \n\t"
             :::"%rax");
 
     __asm__ __volatile__(
@@ -125,16 +125,16 @@ APIC Base Address（APIC 基地址，bit 12-31）：
     PKRU 状态（bit 8）：
     描述：控制 PKRU 状态的保存与恢复。PKRU（Protection Keys for Userspace）是内存保护的一种机制。
     用途：启用该位后，处理器会保存和恢复与 PKRU 相关的状态。*/
-            "mov        $0x7,%%r8d        \n\t"  //avx256
-            "mov        $0,%%ecx          \n\t"
-            "mov        $0x7,%%eax        \n\t"
+            "movl       $0x7,%%r8d        \n\t"  //avx256
+            "movl       $0,%%ecx          \n\t"
+            "movl       $0x7,%%eax        \n\t"
             "cpuid                        \n\t"
-            "test       $0x10000,%%ebx    \n\t"  //bit16置位表示支持avx512指令集
-            "jz        1f                 \n\t"
-            "mov        $0x27,%%r8d       \n\t" //avx512
-            "1:mov        $0,%%ecx        \n\t"
+            "testl      $0x10000,%%ebx    \n\t"  //bit16置位表示支持avx512指令集
+            "jz         1f                 \n\t"
+            "movl       $0x27,%%r8d       \n\t" //avx512
+            "1:movl     $0,%%ecx        \n\t"
             "xgetbv                       \n\t"
-            "or         %%r8d,%%eax       \n\t"
+            "orl        %%r8d,%%eax       \n\t"
             "xsetbv                       \n\t"
             :::"%rax","%rbx","%rcx","%rdx","%r8");
 
@@ -150,9 +150,9 @@ APIC Base Address（APIC 基地址，bit 12-31）：
     NXE（bit 11） - No-Execute Enable
     描述：启用 NX（No-eXecute） 位功能。NX 位用于控制某些内存页面的执行权限。如果该位被设置为 1，操作系统可以使用分页机制将特定的内存页面标记为不可执行，以防止执行非代码数据，如栈或堆内存，防止某些缓冲区溢出攻击。
     用途：增强系统安全性，通过将某些内存区域标记为不可执行，防止恶意代码利用缓冲区溢出漏洞执行任意代码。*/
-            "mov        $0xC0000080,%%ecx  \n\t"
+            "movl       $0xC0000080,%%ecx  \n\t"
             "rdmsr                         \n\t"
-            "or         $0x801,%%eax       \n\t"
+            "orl        $0x801,%%eax       \n\t"
             "wrmsr                         \n\t"
             :::"%rax","%rcx","%rdx");
 
@@ -192,9 +192,9 @@ APIC Base Address（APIC 基地址，bit 12-31）：
                 PG（Paging Enable，bit 31）
                 描述：该位控制是否启用分页机制。如果设置为 1，启用分页机制，使虚拟地址转换为物理地址；如果为 0，禁用分页。
                 用途：分页是现代操作系统实现虚拟内存和内存保护的基础。该位在现代操作系统中必须启用。*/
-            "mov        %%cr0,%%rax        \n\t"
-            "or         $0x10002,%%rax     \n\t"
-            "mov        %%rax,%%cr0        \n\t"
+            "movq       %%cr0,%%rax        \n\t"
+            "orq        $0x10002,%%rax     \n\t"
+            "movq       %%rax,%%cr0        \n\t"
             :::"%rax");
 
     // 获取当前CPU id号
@@ -206,64 +206,64 @@ APIC Base Address（APIC 基地址，bit 12-31）：
     if (*bspFlags) {
         // 获取CPU厂商
         __asm__ __volatile__(
-                "xor    %%eax, %%eax \n\t"
+                "xorl    %%eax, %%eax \n\t"
                 "cpuid         \n\t"
-                "mov    %%ebx, (%%rdi) \n\t"
-                "mov    %%edx, 4(%%rdi)\n\t"
-                "mov    %%ecx, 8(%%rdi) \n\t"
+                "movl    %%ebx, (%%rdi) \n\t"
+                "movl    %%edx, 4(%%rdi)\n\t"
+                "movl    %%ecx, 8(%%rdi) \n\t"
                 "movb   $0, 12(%%rdi) \n\t"
                 ::"D"(&cpu_info.manufacturer_name):"%rax", "%rbx", "%rcx", "%rdx");
 
         // 获取CPU核心数量
         __asm__ __volatile__(
-                "mov        $1,%%eax    \n\t"
+                "movl        $1,%%eax    \n\t"
                 "cpuid                  \n\t"
-                "shr        $16,%%ebx   \n\t"         //右移16位得到cpu数量
+                "shrl        $16,%%ebx   \n\t"         //右移16位得到cpu数量
                 :"=b"(cpu_info.cores_num)::"%rax", "%rcx", "%rdx");
 
         // 获取CPU型号
         __asm__ __volatile__(
-                "mov    $0x80000002, %%eax \n\t"
+                "movl    $0x80000002, %%eax \n\t"
                 "cpuid         \n\t"
-                "mov    %%eax, (%%rdi)   \n\t"
-                "mov    %%ebx, 4(%%rdi)  \n\t"
-                "mov    %%ecx, 8(%%rdi)  \n\t"
-                "mov    %%edx, 12(%%rdi) \n\t"
+                "movl    %%eax, (%%rdi)   \n\t"
+                "movl    %%ebx, 4(%%rdi)  \n\t"
+                "movl    %%ecx, 8(%%rdi)  \n\t"
+                "movl    %%edx, 12(%%rdi) \n\t"
 
-                "mov    $0x80000003, %%eax \n\t"
+                "movl    $0x80000003, %%eax \n\t"
                 "cpuid         \n\t"
-                "mov    %%eax, 16(%%rdi)   \n\t"
-                "mov    %%ebx, 20(%%rdi)  \n\t"
-                "mov    %%ecx, 24(%%rdi)  \n\t"
-                "mov    %%edx, 28(%%rdi) \n\t"
+                "movl    %%eax, 16(%%rdi)   \n\t"
+                "movl    %%ebx, 20(%%rdi)  \n\t"
+                "movl    %%ecx, 24(%%rdi)  \n\t"
+                "movl    %%edx, 28(%%rdi) \n\t"
 
-                "mov    $0x80000004, %%eax \n\t"
+                "movl    $0x80000004, %%eax \n\t"
                 "cpuid         \n\t"
-                "mov    %%eax, 32(%%rdi)   \n\t"
-                "mov    %%ebx, 36(%%rdi)  \n\t"
-                "mov    %%ecx, 40(%%rdi)  \n\t"
-                "mov    %%edx, 44(%%rdi) \n\t"
+                "movl    %%eax, 32(%%rdi)   \n\t"
+                "movl    %%ebx, 36(%%rdi)  \n\t"
+                "movl    %%ecx, 40(%%rdi)  \n\t"
+                "movl    %%edx, 44(%%rdi) \n\t"
 
-                "mov    $0, 48(%%rdi) \n\t"
+                "movl    $0, 48(%%rdi) \n\t"
                 ::"D"(&cpu_info.model_name):"%rax", "%rbx", "%rcx", "%rdx");
 
         // 获取CPU频率
         __asm__ __volatile__(
-                "mov    $0x16, %%eax \n\t"
+                "movl    $0x16, %%eax \n\t"
                 "cpuid         \n\t"
-                "shl    $32,%%rdx  \n\t"
-                "or     %%rdx,%%rax \n\t"
+                "shlq    $32,%%rdx  \n\t"
+                "orq     %%rdx,%%rax \n\t"
                 :"=a"(cpu_info.fundamental_frequency), "=b"(cpu_info.maximum_frequency), "=c"(cpu_info.bus_frequency)::"%rdx");
 
         // 获取CPU TSC频率
         __asm__ __volatile__(
-                "mov    $0x15,%%eax  \n\t"
+                "movl    $0x15,%%eax  \n\t"
                 "cpuid               \n\t"
-                "test   %%ecx,%%ecx  \n\t"
+                "testl   %%ecx,%%ecx  \n\t"
                 "jz     .1           \n\t"            //如果ecx等于0则获取到的tsc频率无效
-                "xchg   %%rax,%%rbx  \n\t"
-                "mul    %%rcx        \n\t"
-                "div    %%rbx        \n\t"
+                "xchgq   %%rax,%%rbx  \n\t"
+                "mulq    %%rcx        \n\t"
+                "divq    %%rbx        \n\t"
                 ".1:                 \n\t"
                 :"=a"(cpu_info.tsc_frequency)::"%rcx", "%rbx", "%rdx");
 

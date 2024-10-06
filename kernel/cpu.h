@@ -7,8 +7,8 @@
 void cpuInit(UINT32 *cpuId,UINT8 *bspFlags);
 
 struct {
-    char manufacturer_name[13];
-    char model_name[49];
+    CHAR8 manufacturer_name[13];
+    CHAR8 model_name[49];
     UINT32 fundamental_frequency;
     UINT32 maximum_frequency;
     UINT32 cores_num;
