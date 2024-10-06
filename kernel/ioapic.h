@@ -1,11 +1,11 @@
 #ifndef __IOAPIC_H__
 #define __IOAPIC_H__
-#include "lib.h"
+#include "moslib.h"
 #include "cpu.h"
 #include "hpet.h"
 
-void ioapicInit(unsigned char bspFlags);
+void ioapicInit(UINT8 bspFlags);
 
-unsigned int *ioapic_baseaddr= 0;
+UINT32 *ioapic_baseaddr= 0;
 
 #endif

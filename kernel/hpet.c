@@ -1,6 +1,6 @@
 #include "hpet.h"
 
-void hpetInit(unsigned char bspFlags) {
+void hpetInit(UINT8 bspFlags) {
 
     if (bspFlags) {
 

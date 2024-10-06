@@ -1,6 +1,6 @@
 #ifndef __TSS_INIT_H__
 #define __TSS_INIT_H__
-#include "lib.h"
+#include "moslib.h"
 #include "memory.h"
 #include "gdt.h"
 
@@ -22,10 +22,10 @@
 #define TSS_TYPE    (0x9UL << 40)
 #define TSS_LIMIT   (0x67UL & 0xFFFF) | ((0x67UL >> 16)<<48)
 
-void tssInit(unsigned int cpuId,unsigned char bspFlags);
+void tssInit(UINT32 cpuId,UINT8 bspFlags);
 
 typedef struct {
-    unsigned int    reserved0;
+    UINT32    reserved0;
     unsigned long   rsp0;
     unsigned long   rsp1;
     unsigned long   rsp2;
@@ -38,8 +38,8 @@ typedef struct {
     unsigned long   ist6;
     unsigned long   ist7;
     unsigned long   reserved2;
-    unsigned short  reserved3;
-    unsigned short  iomap_base;
+    UINT16  reserved3;
+    UINT16  iomap_base;
 } __attribute__((packed)) _tss;
 
 typedef struct {

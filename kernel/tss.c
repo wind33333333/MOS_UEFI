@@ -1,6 +1,6 @@
 #include "tss.h"
 
-__attribute__((section(".init_text"))) void tssInit(unsigned int cpuId,unsigned char bspFlags) {
+__attribute__((section(".init_text"))) void tssInit(UINT32 cpuId,UINT8 bspFlags) {
     if (bspFlags) {
         tss_ptr.limit = (cpu_info.cores_num * 104 + 0xFFF) & PAGE_4K_MASK;
         tss_ptr.base = (_tss *)LADDR_TO_HADDR(alloc_pages(tss_ptr.limit >> PAGE_4K_SHIFT));   //分配tss_tables内存

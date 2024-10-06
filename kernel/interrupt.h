@@ -3,7 +3,7 @@
 
 #include "linkage.h"
 #include "printk.h"
-#include "lib.h"
+#include "moslib.h"
 #include "apic.h"
 #include "hpet.h"
 

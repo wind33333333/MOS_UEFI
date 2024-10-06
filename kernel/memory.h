@@ -2,10 +2,10 @@
 #define __MEMORY_H__
 
 #include "printk.h"
-#include "lib.h"
+#include "moslib.h"
 #include "cpu.h"
 
-void memoryInit(unsigned char bspFlags);
+void memoryInit(UINT8 bspFlags);
 
 void *alloc_pages(unsigned long required_length);
 
@@ -35,7 +35,7 @@ extern unsigned long __PML4T[512];
 struct E820 {
     unsigned long address;
     unsigned long length;
-    unsigned int type;
+    UINT32 type;
 }__attribute__((packed));
 
 typedef struct {
@@ -53,7 +53,7 @@ typedef struct {
     unsigned long kernel_start;
     unsigned long kernel_end;
 
-    unsigned char lock;
+    UINT8 lock;
 } Global_Memory_Descriptor;
 
 Global_Memory_Descriptor memory_management_struct = {0};

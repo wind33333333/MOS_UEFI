@@ -1,14 +1,19 @@
+#ifndef __UEFI_H__
+#define __UEFI_H__
+
+#include "moslib.h"
+
 typedef void VOID;
 typedef unsigned char UINT8;
 typedef unsigned short UINT16;
 typedef UINT8 CHAR8;
-typedef unsigned short CHAR16;
-typedef unsigned int  UINT32;
+typedef UINT16 CHAR16;
+typedef unsigned int UINT32;
 typedef unsigned long long  UINT64;
 typedef UINT64 UINTN;
 typedef UINT64 EFI_PHYSICAL_ADDRESS;
 typedef UINT64 EFI_VIRTUAL_ADDRESS;
-typedef unsigned char BOOLEAN;
+typedef UINT8 BOOLEAN;
 typedef short INT16;
 typedef UINT64 EFI_STATUS;
 typedef VOID *EFI_HANDLE;
@@ -100,30 +105,12 @@ typedef struct {
 } EFI_TIME_CAPABILITIES;
 
 
-typedef 
+typedef
 EFI_STATUS
 (EFIAPI *EFI_GET_TIME)(
   OUT  EFI_TIME                    *Time,
   OUT  EFI_TIME_CAPABILITIES       *Capabilities OPTIONAL
   );
-
-#pragma pack(1)
-typedef struct
-{
-  UINT8 Blue;
-  UINT8 Green;
-  UINT8 Red;
-  UINT8 Reserved;
-} BGR_PIXEL;
-
-typedef struct
-{
-    EFI_PHYSICAL_ADDRESS       FrameBufferBase;
-    UINT64                     FrameBufferSize;
-    UINT32                     HorizontalResolution;
-    UINT32                     VerticalResolution;
-    UINT32                     PixelsPerScanLine;
-} VIDEO_CONFIG;
 
 typedef struct
 {
@@ -135,87 +122,6 @@ typedef struct
     UINT64  Attribute;
     UINT64  ReservedB;
 } EFI_MEMORY_DESCRIPTOR;
-
-typedef struct
-{
-    VOID *Buffer;
-    UINTN MapSize;
-    UINTN MapKey;
-    UINTN DescriptorSize;
-    UINT32 DescriptorVersion;
-} MEMORY_MAP;
-
-typedef struct
-{
-    UINTN Size;
-    UINTN PageSize;
-    UINTN Width;
-    UINTN Height;
-    UINTN Offset;
-    UINT64 PixelStart;
-    UINT64 BitsPerPx;
-} BMP_CONFIG;
-
-typedef struct SDT_HEADER
-{
-    CHAR8 Signature[4];
-    UINT32 Length;
-    UINT8 Revision;
-    UINT8 CheckSum;
-    CHAR8 OEMID[6];
-    CHAR8 TableID[8];
-    UINT32 OEMRevision;
-    UINT32 CreatorID;
-    UINT32 CreatorRevision;
-} SDT_HEADER;
-
-typedef struct MADT
-{
-    SDT_HEADER Header;
-    UINT32 LapicAddress;
-    UINT32 Flags;
-} MADT;
-
-typedef struct MADT_ENTRY
-{
-    UINT8 EntryType;
-    UINT8 RecordLength;
-} MADT_ENTRY;
-
-typedef struct LAPIC
-{
-    MADT_ENTRY Entry;
-    UINT8 ProcessorID;
-    UINT8 LapicID;
-    UINT32 Flags;
-} LAPIC;
-
-typedef struct IOAPIC
-{
-    MADT_ENTRY Entry;
-    UINT8 IopaicID;
-    UINT8 Reserved;
-    UINT32 IoapicAddress;
-    UINT32 GlobalSystemInterruptBase;
-} IOAPIC;
-
-typedef struct ISO
-{
-    MADT_ENTRY Entry;
-    UINT8 BusSource;
-    UINT8 IrqSourece;
-    UINT32 Gsi;
-    UINT16 Flags;
-} ISO;
-
-typedef struct NMI
-{
-    MADT_ENTRY Entry;
-    UINT8 AcpiProcessorID;
-    UINT16 Flags;
-    UINT8 Lint;
-} NMI;
-
 
 ///
 /// Data structure that precedes all of the standard EFI table types.
@@ -716,15 +622,6 @@ typedef struct {
   EFI_QUERY_VARIABLE_INFO           QueryVariableInfo;
 } EFI_RUNTIME_SERVICES;
 
-typedef struct
-{
-    VIDEO_CONFIG VideoConfig;
-    MEMORY_MAP   MemoryMap;
-    BMP_CONFIG   AsciiBmp;
-    EFI_PHYSICAL_ADDRESS KernelEntryPoint;
-    EFI_PHYSICAL_ADDRESS MadtAddress;
-    EFI_RUNTIME_SERVICES *RunTimeServices;
-} BOOT_CONFIG;
 
 //region BootInfo结构
 typedef struct {
@@ -798,4 +695,4 @@ typedef struct{
 extern  BootInfo* bootInfo;
 //endregion
 
-#pragma pack()
+#endif

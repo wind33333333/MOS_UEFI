@@ -1,4 +1,4 @@
-#include "lib.h"
+#include "moslib.h"
 #include "printk.h"
 //#include "ioapic.h"
 #include "ap.h"
@@ -13,8 +13,8 @@
 #include "hpet.h"
 
 __attribute__((section(".init_text"))) void Kernel_init(void) {
-    unsigned int cpuId = 0;
-    unsigned char bspFlags = 0;
+    UINT32 cpuId = 0;
+    UINT8 bspFlags = 0;
 
     cpuInit(&cpuId, &bspFlags);                    //获取cpu信息
     posInit(bspFlags);                                //初始化输出控制台

@@ -6,7 +6,7 @@
 #include "cpu.h"
 #include "hpet.h"
 
-void pageInit(unsigned char bspFlags);
+void pageInit(UINT8 bspFlags);
 
 
 

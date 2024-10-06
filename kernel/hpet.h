@@ -2,7 +2,7 @@
 #define _HPET_H_
 
 #include "cpu.h"
-#include "lib.h"
+#include "moslib.h"
 #include "printk.h"
 #include "memory.h"
 #include "ioapic.h"
@@ -26,8 +26,8 @@
 
 typedef struct {
     unsigned long baseaddr;
-    unsigned int frequency;
-    unsigned int timernum;
+    UINT32 frequency;
+    UINT32 timernum;
 }HPET_ATTR;
 
 HPET_ATTR hpet_attr = {0};
@@ -58,6 +58,6 @@ typedef struct {
 
 HPET_Registers hpetRegisters = {0};
 
-void hpetInit(unsigned char bspFlags);
+void hpetInit(UINT8 bspFlags);
 
 #endif

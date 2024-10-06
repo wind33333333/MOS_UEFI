@@ -1,49 +1,49 @@
 #include "memory.h"
 #include "printk.h"
 
-__attribute__((section(".init_text"))) void memoryInit(unsigned char bspFlags) {
+__attribute__((section(".init_text"))) void memoryInit(UINT8 bspFlags) {
 
     if (bspFlags) {
-        unsigned int x = 0;
-        unsigned long totalmem = 0;
+        UINT32 x = 0;
+        unsigned long totalMem = 0;
         struct E820 *p = (struct E820 *) E820_BASE;
-        for (unsigned int i = 0; i < *(unsigned int *) E820_SIZE; i++) {
+        for (UINT32 i = 0; i < *(UINT32 *) E820_SIZE; i++) {
             color_printk(ORANGE, BLACK, "Addr: %#018lX\t Len: %#018lX\t Type: %d\n", p->address,p->length, p->type);
             if (p->type == 1) {
                 memory_management_struct.e820[x].address = p->address & PAGE_4K_MASK;
                 memory_management_struct.e820[x].length = p->length & PAGE_4K_MASK;
                 memory_management_struct.e820[x].type = p->type;
                 memory_management_struct.e820_length++;
-                totalmem += p->length;
+                totalMem += p->length;
                 memory_management_struct.total_pages +=
                         memory_management_struct.e820[x].length >> PAGE_4K_SHIFT;
                 x++;
             }
             p++;
         }
-        color_printk(ORANGE, BLACK, "OS Can Used Total RAM: %#018lX=%ldMB\n", totalmem,
-                     totalmem / 1024 / 1024);
+        color_printk(ORANGE, BLACK, "OS Can Used Total RAM: %#018lX=%ldMB\n", totalMem,
+                     totalMem / 1024 / 1024);
 
         //bits map construction init
-        totalmem = memory_management_struct.e820[memory_management_struct.e820_length - 1].address +
+        totalMem = memory_management_struct.e820[memory_management_struct.e820_length - 1].address +
                    memory_management_struct.e820[memory_management_struct.e820_length - 1].length;
         memory_management_struct.bits_map = (unsigned long *) kenelstack_top;
-        memory_management_struct.bits_size = totalmem >> PAGE_4K_SHIFT;
+        memory_management_struct.bits_size = totalMem >> PAGE_4K_SHIFT;
         memory_management_struct.bits_length =
                 (memory_management_struct.bits_size + 63) / 8 & 0xFFFFFFFFFFFFFFF8UL;
         memset(memory_management_struct.bits_map, 0xff, memory_management_struct.bits_length);
 
         //bit map 1M以上可用空间置0，i=1跳过1M保持使用置1，等全部初始化后再释放
-        for (unsigned int i = 1; i < memory_management_struct.e820_length; i++) {
+        for (UINT32 i = 1; i < memory_management_struct.e820_length; i++) {
             memset(memory_management_struct.bits_map +
                    ((memory_management_struct.e820[i].address >> PAGE_4K_SHIFT) >> 6), 0,
                    (memory_management_struct.e820[i].length >> PAGE_4K_SHIFT) >> 3);
-            totalmem = memory_management_struct.e820[i].address +
+            totalMem = memory_management_struct.e820[i].address +
                        memory_management_struct.e820[i].length & 0xFFFFFFFFFFFF8000UL;
-            for (; totalmem < (memory_management_struct.e820[i].address +
-                               memory_management_struct.e820[i].length); totalmem += PAGE_4K_SIZE) {
-                *(memory_management_struct.bits_map + (totalmem >> PAGE_4K_SHIFT >> 6)) ^=
-                        1UL << (totalmem >> PAGE_4K_SHIFT) % 64;
+            for (; totalMem < (memory_management_struct.e820[i].address +
+                               memory_management_struct.e820[i].length); totalMem += PAGE_4K_SIZE) {
+                *(memory_management_struct.bits_map + (totalMem >> PAGE_4K_SHIFT >> 6)) ^=
+                        1UL << (totalMem >> PAGE_4K_SHIFT) % 64;
             }
         }
 
@@ -57,11 +57,11 @@ __attribute__((section(".init_text"))) void memoryInit(unsigned char bspFlags) {
         memset(memory_management_struct.bits_map + ((0x100000 >> PAGE_4K_SHIFT) >> 6), 0xFF,
                (HADDR_TO_LADDR(memory_management_struct.kernel_end) - 0x100000) >> PAGE_4K_SHIFT
                                                                                 >> 3);
-        totalmem = HADDR_TO_LADDR(memory_management_struct.kernel_end) & 0xFFFFFFFFFFFF8000UL;
-        for (; totalmem <
-               HADDR_TO_LADDR(memory_management_struct.kernel_end); totalmem += PAGE_4K_SIZE) {
-            *(memory_management_struct.bits_map + (totalmem >> PAGE_4K_SHIFT >> 6)) ^=
-                    1UL << ((totalmem - 0x100000) >> PAGE_4K_SHIFT) % 64;
+        totalMem = HADDR_TO_LADDR(memory_management_struct.kernel_end) & 0xFFFFFFFFFFFF8000UL;
+        for (; totalMem <
+               HADDR_TO_LADDR(memory_management_struct.kernel_end); totalMem += PAGE_4K_SIZE) {
+            *(memory_management_struct.bits_map + (totalMem >> PAGE_4K_SHIFT >> 6)) ^=
+                    1UL << ((totalMem - 0x100000) >> PAGE_4K_SHIFT) % 64;
         }
 
         memory_management_struct.alloc_pages += (memory_management_struct.e820[0].length

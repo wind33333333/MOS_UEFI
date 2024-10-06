@@ -1,14 +1,13 @@
-
 #include <stdarg.h>
 #include "printk.h"
 #include "linkage.h"
 
 
-void putchar(unsigned int *fb, int Xsize, int x, int y, unsigned int FRcolor, unsigned int BKcolor,
-        unsigned char font) {
+void putchar(UINT32 *fb, int Xsize, int x, int y, UINT32 FRcolor, UINT32 BKcolor,
+        UINT8 font) {
     int i = 0, j = 0;
-    unsigned int *addr = NULL;
-    unsigned char *fontp = NULL;
+    UINT32 *addr = NULL;
+    UINT8 *fontp = NULL;
     int testval = 0;
     fontp = font_ascii[font];
 
@@ -179,7 +178,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
                 if (!(flags & LEFT))
                     while (--field_width > 0)
                         *str++ = ' ';
-                *str++ = (unsigned char) va_arg(args, int);
+                *str++ = (UINT8) va_arg(args, int);
                 while (--field_width > 0)
                     *str++ = ' ';
                 break;
@@ -210,7 +209,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
                     str = number(str, va_arg(args, unsigned long), 8, field_width, precision,
                                  flags);
                 else
-                    str = number(str, va_arg(args, unsigned int), 8, field_width, precision, flags);
+                    str = number(str, va_arg(args, UINT32), 8, field_width, precision, flags);
                 break;
 
             case 'p':
@@ -234,7 +233,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
                     str = number(str, va_arg(args, unsigned long), 16, field_width, precision,
                                  flags);
                 else
-                    str = number(str, va_arg(args, unsigned int), 16, field_width, precision,
+                    str = number(str, va_arg(args, UINT32), 16, field_width, precision,
                                  flags);
                 break;
 
@@ -248,7 +247,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
                     str = number(str, va_arg(args, unsigned long), 10, field_width, precision,
                                  flags);
                 else
-                    str = number(str, va_arg(args, unsigned int), 10, field_width, precision,
+                    str = number(str, va_arg(args, UINT32), 10, field_width, precision,
                                  flags);
                 break;
 
@@ -286,7 +285,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
 /*
 
 */
-int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ...) {
+int color_printk(UINT32 FRcolor, UINT32 BKcolor, const char *fmt, ...) {
     SPIN_LOCK(Pos.lock);
     int i = 0;
     int count = 0;
@@ -304,10 +303,10 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
             count--;
             goto Label_tab;
         }
-        if ((unsigned char) *(buf + count) == '\n') {
+        if ((UINT8) *(buf + count) == '\n') {
             Pos.YPosition++;
             Pos.XPosition = 0;
-        } else if ((unsigned char) *(buf + count) == '\b') {
+        } else if ((UINT8) *(buf + count) == '\b') {
             Pos.XPosition--;
             if (Pos.XPosition < 0) {
                 Pos.XPosition = (Pos.XResolution / Pos.XCharSize - 1) * Pos.XCharSize;
@@ -317,7 +316,7 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
             }
             putchar(Pos.FB_addr, Pos.XResolution, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor, ' ');
-        } else if ((unsigned char) *(buf + count) == '\t') {
+        } else if ((UINT8) *(buf + count) == '\t') {
             line = ((Pos.XPosition + 8) & ~(8 - 1)) - Pos.XPosition;
 
             Label_tab:
@@ -328,7 +327,7 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
         } else {
             putchar(Pos.FB_addr, Pos.XResolution, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor,
-                    (unsigned char) *(buf + count));
+                    (UINT8) *(buf + count));
             Pos.XPosition++;
         }
 
@@ -346,7 +345,7 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
     return i;
 }
 
-__attribute__((section(".init_text"))) void posInit(unsigned char bspFlags) {
+__attribute__((section(".init_text"))) void posInit(UINT8 bspFlags) {
 
     if (bspFlags) {
         Pos.XResolution = bootInfo->horizontalResolution;

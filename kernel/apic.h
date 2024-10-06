@@ -1,13 +1,13 @@
 #ifndef __ACPI_H__
 #define __ACPI_H__
 
-#include "lib.h"
+#include "moslib.h"
 #include "hpet.h"
 #include "interrupt.h"
 #include "cpu.h"
 
 void apicInit(void);
-void enable_apic_time (unsigned long time,unsigned int model,unsigned int ivt);
+void enable_apic_time (unsigned long time,UINT32 model,UINT32 ivt);
 
 //中断结束发送EOI
 #define EOI() \

@@ -1,13 +1,13 @@
 #ifndef __GDT_INIT_H__
 #define __GDT_INIT_H__
-#include "lib.h"
+#include "moslib.h"
 #include "memory.h"
 #include "idt.h"
 
-void    gdtInit(unsigned char bspFlags);
+void    gdtInit(UINT8 bspFlags);
 
 typedef struct {
-    unsigned short limit;
+    UINT16 limit;
     unsigned long *base;
 } __attribute__((packed)) _gdt_ptr;
 

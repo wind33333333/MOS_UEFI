@@ -54,9 +54,9 @@ __attribute__((section(".init_text"))) void apicInit(void) {
     return;
 }
 
-void enable_apic_time (unsigned long time,unsigned int model,unsigned int ivt){
+void enable_apic_time (unsigned long time,UINT32 model,UINT32 ivt){
 
-    unsigned int model_ivt = model | ivt;
+    UINT32 model_ivt = model | ivt;
     __asm__ __volatile(   \
          "xorl   %%edx,%%edx     \n\t"
          "movl   %0,%%eax        \n\t"         /*bit0-7中断向量号,bit16屏蔽标志 0未屏蔽 1屏蔽,bit17 18 00/一次计数 01/周期计数 10/TSC-Deadline*/

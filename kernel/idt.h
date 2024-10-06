@@ -1,6 +1,6 @@
 #ifndef __IDT_H__
 #define __IDT_H__
-#include "lib.h"
+#include "moslib.h"
 #include "gdt.h"
 #include "interrupt.h"
 
@@ -28,7 +28,7 @@
 
 extern long IDT_Table[256];
 extern int IDT_POINTER;
-void idtInit(unsigned char bspFlags);
+void idtInit(UINT8 bspFlags);
 
 
 #endif

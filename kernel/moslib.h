@@ -1,5 +1,5 @@
-#ifndef __LIB_H__
-#define __LIB_H__
+#ifndef __MOSLIB_H__
+#define __MOSLIB_H__
 
 #include "Uefi.h"
 
@@ -139,7 +139,7 @@ int memcmp(void *FirstPart, void *SecondPart, long Count) {
 		set memory at Address with C ,number is Count
 */
 
-void *memset(void *Address, unsigned char C, long Count) {
+void *memset(void *Address, UINT8 C, long Count) {
     int d0, d1;
     unsigned long tmp = C * 0x0101010101010101UL;
     __asm__ __volatile__    (    "cld	\n\t"
@@ -334,8 +334,8 @@ unsigned long bit_clean(unsigned long *addr, unsigned long nr) {
 
 */
 
-unsigned char io_in8(unsigned short port) {
-    unsigned char ret = 0;
+UINT8 io_in8(UINT16 port) {
+    UINT8 ret = 0;
     __asm__ __volatile__(    "inb	%%dx,	%0	\n\t"
                              "mfence			\n\t"
             :"=a"(ret)
@@ -348,8 +348,8 @@ unsigned char io_in8(unsigned short port) {
 
 */
 
-unsigned int io_in32(unsigned short port) {
-    unsigned int ret = 0;
+UINT32 io_in32(UINT16 port) {
+    UINT32 ret = 0;
     __asm__ __volatile__(    "inl	%%dx,	%0	\n\t"
                              "mfence			\n\t"
             :"=a"(ret)
@@ -362,7 +362,7 @@ unsigned int io_in32(unsigned short port) {
 
 */
 
-void io_out8(unsigned short port, unsigned char value) {
+void io_out8(UINT16 port, UINT8 value) {
     __asm__ __volatile__(    "outb	%0,	%%dx	\n\t"
                              "mfence			\n\t"
             :
@@ -374,7 +374,7 @@ void io_out8(unsigned short port, unsigned char value) {
 
 */
 
-void io_out32(unsigned short port, unsigned int value) {
+void io_out32(UINT16 port, UINT32 value) {
     __asm__ __volatile__(    "outl	%0,	%%dx	\n\t"
                              "mfence			\n\t"
             :
@@ -393,8 +393,8 @@ __asm__ __volatile__("cld;rep;insw;mfence;"::"d"(port),"D"(buffer),"c"(nr):"memo
 __asm__ __volatile__("cld;rep;outsw;mfence;"::"d"(port),"S"(buffer),"c"(nr):"memory")
 
 unsigned long rdmsr(unsigned long address) {
-    unsigned int tmp0 = 0;
-    unsigned int tmp1 = 0;
+    UINT32 tmp0 = 0;
+    UINT32 tmp1 = 0;
     __asm__ __volatile__("rdmsr	\n\t":"=d"(tmp0), "=a"(tmp1):"c"(address):"memory");
     return (unsigned long) tmp0 << 32 | tmp1;
 }

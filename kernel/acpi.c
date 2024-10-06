@@ -1,6 +1,6 @@
 #include "acpi.h"
 
-__attribute__((section(".init_text"))) void acpiInit(unsigned char bspFlags) {
+__attribute__((section(".init_text"))) void acpiInit(UINT8 bspFlags) {
     if (bspFlags) {
         RSDP *rsdp = (RSDP *) 0xe0000;
         RSDT *rsdt = (RSDT *) 0;
@@ -15,8 +15,8 @@ __attribute__((section(".init_text"))) void acpiInit(unsigned char bspFlags) {
             }
         }
 
-        for (unsigned int i = 0; i < (rsdt->Length - 36) / 4; i++) {
-            switch (*(unsigned int *) rsdt->Entry[i]) {
+        for (UINT32 i = 0; i < (rsdt->Length - 36) / 4; i++) {
+            switch (*(UINT32 *) rsdt->Entry[i]) {
                 case 0x43495041:        //"APIC"
                     madt = (MADT *) rsdt->Entry[i];
                     break;
@@ -32,11 +32,11 @@ __attribute__((section(".init_text"))) void acpiInit(unsigned char bspFlags) {
 
         IOAPIC *ioapic = 0;
         InterruptSourceOverride *isr = 0;
-        unsigned int j =0;
-        for (unsigned int i = 0; i < ((madt->Length - 44) / 2); i++) {
+        UINT32 j =0;
+        for (UINT32 i = 0; i < ((madt->Length - 44) / 2); i++) {
             if ((madt->Header[i].Type == 1) && (madt->Header[i].Length == 0xC)) {
                 ioapic = (IOAPIC *) &madt->Header[i];
-                ioapic_baseaddr = LADDR_TO_HADDR((unsigned int *) ioapic->ioapic_address);
+                ioapic_baseaddr = LADDR_TO_HADDR((UINT32 *) ioapic->ioapic_address);
             } else if ((madt->Header[i].Type == 2) && (madt->Header[i].Length == 0xA)) {
                 isr = (InterruptSourceOverride *) &madt->Header[i];
                 irq_to_gsi[j].IRQ = isr->Source;

@@ -1,7 +1,7 @@
 #include "ioapic.h"
 
 //初始化ioapic
-__attribute__((section(".init_text"))) void ioapicInit(unsigned char bspFlags) {
+__attribute__((section(".init_text"))) void ioapicInit(UINT8 bspFlags) {
     /*初始化ioapic
      * 索引寄存器0xFEC00000 32bit bit0-7
      * 数据寄存器0xFEC00010 32bit

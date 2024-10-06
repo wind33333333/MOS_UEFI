@@ -4,12 +4,13 @@
 #include <stdarg.h>
 #include "font.h"
 #include "linkage.h"
-#include "lib.h"
+#include "moslib.h"
 #include "memory.h"
 #include "printk.h"
 #include "cpu.h"
+#include "Uefi.h"
 
-void posInit(unsigned char bspFlags);
+void posInit(UINT8 bspFlags);
 void clearScreen(void);
 
 
@@ -37,7 +38,7 @@ void clearScreen(void);
 
 */
 
-extern unsigned char font_ascii[256][16];
+extern UINT8 font_ascii[256][16];
 
 char buf[4096]={0};
 
@@ -62,7 +63,7 @@ struct position
 
 */
 
-void putchar(unsigned int * fb,int Xsize,int x,int y,unsigned int FRcolor,unsigned int BKcolor,unsigned char font);
+void putchar(UINT32 * fb,int Xsize,int x,int y,UINT32 FRcolor,UINT32 BKcolor,UINT8 font);
 
 /*
 
@@ -95,7 +96,7 @@ int vsprintf(char * buf,const char *fmt, va_list args);
 
 */
 
-int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...);
+int color_printk(UINT32 FRcolor,UINT32 BKcolor,const char * fmt,...);
 
 #endif
 
