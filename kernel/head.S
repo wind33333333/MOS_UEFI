@@ -15,7 +15,7 @@ _start:
     jz      kernel_stack_init
 
 /////////////////////////保存loader通过rdi传递过来的BootInfo指针
-    mov     %rdi,BootInfo(%rip)
+    mov     %rdi,bootInfo(%rip)
 
 ///////////////////////////获取cpu核心数量
     mov        $1,%eax
@@ -69,8 +69,8 @@ kernel_stack_init:
     .globl kenelstack_top
     kenelstack_top:   .quad   _end
 
-    .globl BootInfo
-    BootInfo:     .quad   0
+    .globl bootInfo
+    bootInfo:     .quad   0
 
     .equ    VBASEADDR,0xffff800000000000      //内核虛擬地址基址
 

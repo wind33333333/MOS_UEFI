@@ -349,8 +349,8 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
 __attribute__((section(".init_text"))) void pos_init(unsigned char bsp_flags) {
 
     if (bsp_flags) {
-        Pos.XResolution = BootInfo->HorizontalResolution;
-        Pos.YResolution = BootInfo->VerticalResolution;
+        Pos.XResolution = bootInfo->horizontalResolution;
+        Pos.YResolution = bootInfo->verticalResolution;
 
         Pos.XPosition = 0;
         Pos.YPosition = 0;
@@ -358,16 +358,16 @@ __attribute__((section(".init_text"))) void pos_init(unsigned char bsp_flags) {
         Pos.XCharSize = 8;
         Pos.YCharSize = 16;
 
-        Pos.FB_addr = LADDR_TO_HADDR(BootInfo->FrameBufferBase);
-        Pos.FB_length = BootInfo->FrameBufferSize;
+        Pos.FB_addr = LADDR_TO_HADDR(bootInfo->frameBufferBase);
+        Pos.FB_length = bootInfo->frameBufferSize;
         Pos.lock = 0;
 
-        ClearScreen();
+        clearScreen();
     }
     return;
 }
 
-void ClearScreen(void){
+void clearScreen(void){
     for(UINT64 i=0;i<(Pos.FB_length/sizeof(UINT32));i++){
         *((UINT32*)Pos.FB_addr+i)=BLACK;
     }
