@@ -4,17 +4,9 @@
 #include "moslib.h"
 
 typedef void VOID;
-typedef unsigned char UINT8;
-typedef unsigned short UINT16;
-typedef UINT8 CHAR8;
-typedef UINT16 CHAR16;
-typedef unsigned int UINT32;
-typedef unsigned long long  UINT64;
 typedef UINT64 UINTN;
 typedef UINT64 EFI_PHYSICAL_ADDRESS;
 typedef UINT64 EFI_VIRTUAL_ADDRESS;
-typedef UINT8 BOOLEAN;
-typedef short INT16;
 typedef UINT64 EFI_STATUS;
 typedef VOID *EFI_HANDLE;
 

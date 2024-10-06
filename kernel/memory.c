@@ -1,5 +1,4 @@
 #include "memory.h"
-#include "printk.h"
 
 __attribute__((section(".init_text"))) void memoryInit(UINT8 bspFlags) {
 

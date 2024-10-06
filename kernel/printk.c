@@ -1,7 +1,4 @@
-#include <stdarg.h>
 #include "printk.h"
-#include "linkage.h"
-
 
 void putchar(UINT32 *fb, int Xsize, int x, int y, UINT32 FRcolor, UINT32 BKcolor,
         UINT8 font) {

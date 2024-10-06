@@ -1,7 +1,17 @@
 #ifndef __MOSLIB_H__
 #define __MOSLIB_H__
 
-#include "Uefi.h"
+typedef unsigned char UINT8;
+typedef UINT8 BOOLEAN;
+typedef UINT8 CHAR8;
+typedef unsigned short UINT16;
+typedef UINT16 CHAR16;
+typedef unsigned int UINT32;
+typedef unsigned long long  UINT64;
+typedef char INT8;
+typedef short INT16;
+typedef int INT32;
+typedef long long INT64;
 
 #define BOCHS_DG()    __asm__ __volatile__ ("xchg %%bx,%%bx \n\t":: :);
 
