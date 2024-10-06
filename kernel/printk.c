@@ -346,12 +346,11 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
     return i;
 }
 
-//显存起始地址由loader调用int10保存在0x600+0x28地址处
 __attribute__((section(".init_text"))) void pos_init(unsigned char bsp_flags) {
 
     if (bsp_flags) {
-        Pos.XResolution = 1440;
-        Pos.YResolution = 900;
+        Pos.XResolution = BootInfo->HorizontalResolution;
+        Pos.YResolution = BootInfo->VerticalResolution;
 
         Pos.XPosition = 0;
         Pos.YPosition = 0;
@@ -359,9 +358,20 @@ __attribute__((section(".init_text"))) void pos_init(unsigned char bsp_flags) {
         Pos.XCharSize = 8;
         Pos.YCharSize = 16;
 
-        Pos.FB_addr = (unsigned long)LADDR_TO_HADDR(*(unsigned int *)0x628);
-        Pos.FB_length = (Pos.XResolution * Pos.YResolution * 4 + PAGE_4K_SIZE - 1) & PAGE_4K_MASK;
+        Pos.FB_addr = LADDR_TO_HADDR(BootInfo->FrameBufferBase);
+        Pos.FB_length = BootInfo->FrameBufferSize;
         Pos.lock = 0;
+
+        ClearScreen();
     }
+    return;
+}
+
+void ClearScreen(void){
+    for(UINT64 i=0;i<(Pos.FB_length/sizeof(UINT32));i++){
+        *((UINT32*)Pos.FB_addr+i)=BLACK;
+    }
+    Pos.XPosition=0;
+    Pos.YPosition=0;
     return;
 }

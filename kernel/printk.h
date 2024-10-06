@@ -10,6 +10,7 @@
 #include "cpu.h"
 
 void pos_init(unsigned char bsp_flags);
+void ClearScreen(void);
 
 
 #define ZEROPAD	1		/* pad with zero */
