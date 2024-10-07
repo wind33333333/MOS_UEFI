@@ -2,7 +2,7 @@
 
 __attribute__((section(".init_text"))) void init_gdt(UINT8 bsp_flags) {
     if (bsp_flags) {
-        gdt_ptr.limit = (cpu_info.cores_num * 16 + TSS_START * 8 + 0xFFF & PAGE_4K_MASK) - 1;
+        gdt_ptr.limit = (cpu_info_t.cores_num * 16 + TSS_START * 8 + 0xFFF & PAGE_4K_MASK) - 1;
         gdt_ptr.base = LADDR_TO_HADDR(allocPages((gdt_ptr.limit + 1) >> PAGE_4K_SHIFT));              //分配GDT内存
         memoryManagement.kernelEndAddress = (UINT64)gdt_ptr.base;
 

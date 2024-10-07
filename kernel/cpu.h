@@ -14,7 +14,6 @@ struct {
     UINT32 cores_num;
     UINT32 bus_frequency;
     UINT32 tsc_frequency;
-}cpu_info;
-
+}cpu_info_t;
 
 #endif

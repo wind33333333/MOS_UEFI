@@ -212,14 +212,14 @@ APIC Base Address（APIC 基地址，bit 12-31）：
                 "movl    %%edx, 4(%%rdi)\n\t"
                 "movl    %%ecx, 8(%%rdi) \n\t"
                 "movb   $0, 12(%%rdi) \n\t"
-                ::"D"(&cpu_info.manufacturer_name):"%rax", "%rbx", "%rcx", "%rdx");
+                ::"D"(&cpu_info_t.manufacturer_name):"%rax", "%rbx", "%rcx", "%rdx");
 
         // 获取CPU核心数量
         __asm__ __volatile__(
                 "movl        $1,%%eax    \n\t"
                 "cpuid                  \n\t"
                 "shrl        $16,%%ebx   \n\t"         //右移16位得到cpu数量
-                :"=b"(cpu_info.cores_num)::"%rax", "%rcx", "%rdx");
+                :"=b"(cpu_info_t.cores_num)::"%rax", "%rcx", "%rdx");
 
         // 获取CPU型号
         __asm__ __volatile__(
@@ -245,7 +245,7 @@ APIC Base Address（APIC 基地址，bit 12-31）：
                 "movl    %%edx, 44(%%rdi) \n\t"
 
                 "movl    $0, 48(%%rdi) \n\t"
-                ::"D"(&cpu_info.model_name):"%rax", "%rbx", "%rcx", "%rdx");
+                ::"D"(&cpu_info_t.model_name):"%rax", "%rbx", "%rcx", "%rdx");
 
         // 获取CPU频率
         __asm__ __volatile__(
@@ -253,7 +253,7 @@ APIC Base Address（APIC 基地址，bit 12-31）：
                 "cpuid         \n\t"
                 "shlq    $32,%%rdx  \n\t"
                 "orq     %%rdx,%%rax \n\t"
-                :"=a"(cpu_info.fundamental_frequency), "=b"(cpu_info.maximum_frequency), "=c"(cpu_info.bus_frequency)::"%rdx");
+                :"=a"(cpu_info_t.fundamental_frequency), "=b"(cpu_info_t.maximum_frequency), "=c"(cpu_info_t.bus_frequency)::"%rdx");
 
         // 获取CPU TSC频率
         __asm__ __volatile__(
@@ -265,7 +265,7 @@ APIC Base Address（APIC 基地址，bit 12-31）：
                 "mulq    %%rcx        \n\t"
                 "divq    %%rbx        \n\t"
                 ".1:                 \n\t"
-                :"=a"(cpu_info.tsc_frequency)::"%rcx", "%rbx", "%rdx");
+                :"=a"(cpu_info_t.tsc_frequency)::"%rcx", "%rbx", "%rdx");
 
     }
 
