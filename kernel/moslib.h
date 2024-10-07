@@ -149,7 +149,7 @@ int memcmp(void *FirstPart, void *SecondPart, long Count) {
 		set memory at Address with C ,number is Count
 */
 
-void *memSet(void *Address, UINT8 C, long Count) {
+void *mem_set(void *Address, UINT8 C, long Count) {
     int d0, d1;
     UINT64 tmp = C * 0x0101010101010101UL;
     __asm__ __volatile__    (    "cld	\n\t"
