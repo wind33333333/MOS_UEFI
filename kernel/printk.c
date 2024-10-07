@@ -344,8 +344,8 @@ int color_printk(UINT32 FRcolor, UINT32 BKcolor, const char *fmt, ...) {
 __attribute__((section(".init_text"))) void init_output(UINT8 bsp_flags) {
 
     if (bsp_flags) {
-        Pos.XResolution = bootInfo->horizontal_resolution;
-        Pos.YResolution = bootInfo->vertical_resolution;
+        Pos.XResolution = boot_info->horizontal_resolution;
+        Pos.YResolution = boot_info->vertical_resolution;
 
         Pos.XPosition = 0;
         Pos.YPosition = 0;
@@ -353,8 +353,8 @@ __attribute__((section(".init_text"))) void init_output(UINT8 bsp_flags) {
         Pos.XCharSize = 8;
         Pos.YCharSize = 16;
 
-        Pos.FB_addr = (UINT32*)(LADDR_TO_HADDR(bootInfo->frame_buffer_base));
-        Pos.FB_length = bootInfo->frame_buffer_size;
+        Pos.FB_addr = (UINT32*)(LADDR_TO_HADDR(boot_info->frame_buffer_base));
+        Pos.FB_length = boot_info->frame_buffer_size;
         Pos.lock = 0;
 
         clear_screen();

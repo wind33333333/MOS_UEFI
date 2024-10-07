@@ -25,7 +25,7 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
         //bits map construction init
         total_mem = memory_management.e820[memory_management.e820_length - 1].address +
                    memory_management.e820[memory_management.e820_length - 1].length;
-        memory_management.bits_map = (UINT64 *) kenelstack_top;
+        memory_management.bits_map = (UINT64 *) kernel_stack_top;
         memory_management.bits_size = total_mem >> PAGE_4K_SHIFT;
         memory_management.bits_length =
                 (memory_management.bits_size + 63) / 8 & 0xFFFFFFFFFFFFFFF8UL;
@@ -48,7 +48,7 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
         //kernel_end_address结束地址加上bit map对齐4K地址
         memory_management.kernel_start_address = (UINT64) &_start_text;
         memory_management.kernel_end_address =
-                kenelstack_top + (memory_management.bits_length + 0xfff) &
+                kernel_stack_top + (memory_management.bits_length + 0xfff) &
                 0xFFFFFFFFFFFFF000UL;
 
         //把内核1M开始到kernel_end_address地址bit map置1，标记为已使用

@@ -12,7 +12,7 @@
 #include "cpu.h"
 #include "hpet.h"
 
-__attribute__((section(".init_text"))) void Kernel_init(void) {
+__attribute__((section(".init_text"))) void init_kernel(void) {
     UINT32 cpu_id = 0;
     UINT8 bsp_flags = 0;
 

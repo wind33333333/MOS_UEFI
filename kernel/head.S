@@ -14,8 +14,8 @@ _start:
     test    $0x100,%eax         //测试bit8 1=bsp 0=ap
     jz      kernel_stack_init
 
-/////////////////////////保存loader通过rdi传递过来的BootInfo指针
-    mov     %rdi,bootInfo(%rip)
+/////////////////////////保存loader通过rdi传递过来的boot_info指针
+    mov     %rdi,boot_info(%rip)
 
 ///////////////////////////获取cpu核心数量
     mov        $1,%eax
@@ -24,55 +24,55 @@ _start:
 
 ///////////////////////////开辟多核栈空间
     shl        $14,%rbx                 //每个核心分配16k栈
-    mov        kenelstack_top(%rip),%rax
+    mov        kernel_stack_top(%rip),%rax
     add        %rbx,%rax
-    mov        %rax,kenelstack_top(%rip)       //内核栈顶
+    mov        %rax,kernel_stack_top(%rip)       //内核栈顶
 
 ///////////////////////////初始化多核内核栈，切换页表
 kernel_stack_init:
-    mov     $(__Tmp_PML4T-VBASEADDR),%rax
+    mov     $tmp_pml4t-HBASE_ADDR,%rax
     mov     %rax,%cr3
 
     mov     $0x802,%ecx
     rdmsr                           //获取APIC ID
     shl     $14,%rax                //每个核心分配16k栈
-    mov     kenelstack_top(%rip),%rsp
+    mov     kernel_stack_top(%rip),%rsp
     sub     %rax,%rsp               //计算每个内核栈 栈顶=kernelstack_top-(APIC ID*16K)
 
-    movabs     $Kernel_init,%rax
-    jmp     *%rax                    //切换到0xFFFF800000000000内核空间，进入C语言Kernel_init
+    movabs     $init_kernel,%rax
+    jmp     *%rax                   //切换到0xFFFF800000000000内核空间，进入C语言init_kernel
 
 //===============================初始化程序数据=================================================
 .section    .init_data, "wa"
 
-    .globl __Tmp_PML4T
-    __Tmp_PML4T:
-    .quad	(__Tmp_PDPTT-VBASEADDR)+0x3
-    .fill   0x800-(. - __Tmp_PML4T),1,0
-    .quad	(__Tmp_PDPTT-VBASEADDR)+0x3
-    .fill	0xFF8-(. - __Tmp_PML4T),1,0
-    .quad   (__Tmp_PML4T - VBASEADDR)+0x103
+    .globl tmp_pml4t
+    tmp_pml4t:
+    .quad	(tmp_pdptt-HBASE_ADDR)+0x3
+    .fill   0x800-(. - tmp_pml4t),1,0
+    .quad	(tmp_pdptt-HBASE_ADDR)+0x3
+    .fill	0xFF8-(. - tmp_pml4t),1,0
+    .quad   (tmp_pml4t - HBASE_ADDR)+0x103
 
-    .globl __Tmp_PDPTT
-    __Tmp_PDPTT:
+    .globl tmp_pdptt
+    tmp_pdptt:
     .quad   0x00000083  //0-1G
     .quad   0x40000083  //1-2G
     .quad   0x80000083  //2-3G
     .quad   0xC0000083  //3-4G
-    .fill	0x1000-(. - __Tmp_PDPTT),1,0
+    .fill	0x1000-(. - tmp_pdptt),1,0
 
-    .globl   IDT_POINTER
-    IDT_POINTER:
-    IDT_LIMIT:	.word	IDT_END - IDT_Table - 1
-    IDT_BASE:	.quad	IDT_Table
+    .globl   idt_pointer
+    idt_pointer:
+    idt_limit:	.word	idt_end - idt_table - 1
+    idt_base:	.quad	idt_table
 
-    .globl kenelstack_top
-    kenelstack_top:   .quad   _end
+    .globl kernel_stack_top
+    kernel_stack_top:   .quad   _end
 
-    .globl bootInfo
-    bootInfo:     .quad   0
+    .globl boot_info
+    boot_info:     .quad   0
 
-    .equ    VBASEADDR,0xffff800000000000      //内核虛擬地址基址
+    .equ    HBASE_ADDR,0xffff800000000000      //内核虛擬地址基址
 
 
 //========================================正式内核代码=================================================
@@ -169,13 +169,13 @@ interrupt_entry:
 //========================================正式内核数据=================================================
 .section    .data, "wa"
 
-    .globl IDT_Table
-    IDT_Table:
-    	.fill  0x1000-(.-IDT_Table),1,0
-    IDT_END:
+    .globl idt_table
+    idt_table:
+    	.fill  0x1000-(.-idt_table),1,0
+    idt_end:
 
-    .globl __PML4T
-    __PML4T:
+    .globl pml4t
+    pml4t:
     	.quad	0
-    	.fill	0xFF8-(. -__PML4T),1,0
-    	.quad   (__PML4T - VBASEADDR)+0x103
+    	.fill	0xFF8-(. -pml4t),1,0
+    	.quad   (pml4t - HBASE_ADDR)+0x103

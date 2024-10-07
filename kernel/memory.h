@@ -16,9 +16,9 @@ map_pages(UINT64 phy_addr, UINT64 vir_addr, UINT64 page_number, UINT64 attr);
 
 void unmap_pages(UINT64 phy_addr, UINT64 page_number);
 
-extern UINT64 kenelstack_top;
+extern UINT64 kernel_stack_top;
 extern UINT64 _start_text;
-extern UINT64 __PML4T[512];
+extern UINT64 pml4t[512];
 
 #define e820_t_SIZE    0x500
 #define e820_t_BASE    0x504

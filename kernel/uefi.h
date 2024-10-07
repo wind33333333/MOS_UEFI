@@ -684,7 +684,7 @@ typedef struct{
 
 } __attribute__((packed)) boot_info_t;
 
-extern  boot_info_t* bootInfo;
+extern  boot_info_t* boot_info;
 //endregion
 
 #endif

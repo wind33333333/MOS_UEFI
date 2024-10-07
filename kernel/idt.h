@@ -26,8 +26,8 @@
 #define SEL_CODE64      (0x8UL << 16)
 
 
-extern long IDT_Table[256];
-extern int IDT_POINTER;
+extern long idt_table[256];
+extern int idt_pointer;
 void init_idt(UINT8 bsp_flags);
 
 
