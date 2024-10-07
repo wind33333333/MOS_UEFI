@@ -4,8 +4,8 @@
 #include "gdt.h"
 #include "interrupt.h"
 
-#define SET_GATE_L(OFFSET,IST,TYPE) (IST | TYPE | SEL_CODE64 | DPL_0 | P | ((unsigned long)(OFFSET) & 0x000000000000FFFF) | (((unsigned long)(OFFSET) >> 16) << 48))
-#define SET_GATE_H(OFFSET) ((unsigned long)(OFFSET) >> 32)
+#define SET_GATE_L(OFFSET,IST,TYPE) (IST | TYPE | SEL_CODE64 | DPL_0 | P | ((UINT64)(OFFSET) & 0x000000000000FFFF) | (((UINT64)(OFFSET) >> 16) << 48))
+#define SET_GATE_H(OFFSET) ((UINT64)(OFFSET) >> 32)
 #define SET_GATE(BASE,NUM,OFFSET,IST,TYPE) \
                 do{\
                 BASE[NUM*2] = SET_GATE_L(OFFSET,IST,TYPE);\

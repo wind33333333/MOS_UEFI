@@ -7,61 +7,61 @@
 
 void memoryInit(UINT8 bspFlags);
 
-void *alloc_pages(unsigned long required_length);
+void *alloc_pages(UINT64 required_length);
 
-int free_pages(void *pages_addr, unsigned long required_length);
+int free_pages(void *pages_addr, UINT64 required_length);
 
 void
-map_pages(unsigned long paddr, unsigned long vaddr, unsigned long page_num, unsigned long attr);
+map_pages(UINT64 paddr, UINT64 vaddr, UINT64 page_num, UINT64 attr);
 
-void unmap_pages(unsigned long paddr, unsigned long page_num);
+void unmap_pages(UINT64 paddr, UINT64 page_num);
 
-extern unsigned long kenelstack_top;
-extern unsigned long _start_text;
-extern unsigned long __PML4T[512];
+extern UINT64 kenelstack_top;
+extern UINT64 _start_text;
+extern UINT64 __PML4T[512];
 
 #define E820_SIZE    0x500
 #define E820_BASE    0x504
 
-#define PAGE_OFFSET    ((unsigned long)0xffff800000000000)
+#define PAGE_OFFSET    ((UINT64)0xffff800000000000)
 #define PAGE_4K_SHIFT    12
 #define PAGE_4K_SIZE    (1UL << PAGE_4K_SHIFT)
 #define PAGE_4K_MASK    (~ (PAGE_4K_SIZE - 1))
-#define PAGE_4K_ALIGN(addr)    (((unsigned long)(addr) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
+#define PAGE_4K_ALIGN(addr)    (((UINT64)(addr) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
 
-#define HADDR_TO_LADDR(addr)    ((unsigned long)(addr) & (~PAGE_OFFSET))
-#define LADDR_TO_HADDR(addr)    ((unsigned long *)((unsigned long)(addr) | PAGE_OFFSET))
+#define HADDR_TO_LADDR(addr)    ((UINT64)(addr) & (~PAGE_OFFSET))
+#define LADDR_TO_HADDR(addr)    ((UINT64 *)((UINT64)(addr) | PAGE_OFFSET))
 
-struct E820 {
-    unsigned long address;
-    unsigned long length;
+typedef struct{
+    UINT64 address;
+    UINT64 length;
     UINT32 type;
-}__attribute__((packed));
+} __attribute__((packed)) E820;
 
 typedef struct {
-    struct E820 e820[12];
-    unsigned long e820_length;
+    E820 e820[12];
+    UINT64 e820_length;
 
-    unsigned long *bits_map;
-    unsigned long bits_size;
-    unsigned long bits_length;
+    UINT64 *bits_map;
+    UINT64 bits_size;
+    UINT64 bits_length;
 
-    unsigned long total_pages;
-    unsigned long alloc_pages;
-    unsigned long free_pages;
+    UINT64 total_pages;
+    UINT64 alloc_pages;
+    UINT64 free_pages;
 
-    unsigned long kernel_start;
-    unsigned long kernel_end;
+    UINT64 kernel_start;
+    UINT64 kernel_end;
 
     UINT8 lock;
 } Global_Memory_Descriptor;
 
 Global_Memory_Descriptor memory_management_struct = {0};
 
-unsigned long *pml4t_vbase = (unsigned long *) 0xFFFFFFFFFFFFF000;  //pml4虚拟地址基址
-unsigned long *pdptt_vbase = (unsigned long *) 0xFFFFFFFFFFE00000;  //pdpt虚拟地址基址
-unsigned long *pdt_vbase = (unsigned long *) 0xFFFFFFFFC0000000;    //pd虚拟地址基址
-unsigned long *ptt_vbase = (unsigned long *) 0xFFFFFF8000000000;    //pt虚拟地址基址
+UINT64 *pml4t_vbase = (UINT64 *) 0xFFFFFFFFFFFFF000;  //pml4虚拟地址基址
+UINT64 *pdptt_vbase = (UINT64 *) 0xFFFFFFFFFFE00000;  //pdpt虚拟地址基址
+UINT64 *pdt_vbase = (UINT64 *) 0xFFFFFFFFC0000000;    //pd虚拟地址基址
+UINT64 *ptt_vbase = (UINT64 *) 0xFFFFFF8000000000;    //pt虚拟地址基址
 
 
 #define MFENCE() __asm__ __volatile__ ("mfence":::);

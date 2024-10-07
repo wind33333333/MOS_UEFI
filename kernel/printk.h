@@ -55,7 +55,7 @@ struct position
 	int YCharSize;
 
 	UINT32* FB_addr;
-	unsigned long FB_length;
+	UINT64 FB_length;
     char lock;
 }Pos;
 

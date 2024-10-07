@@ -3,8 +3,8 @@
 __attribute__((section(".init_text"))) void pageInit(UINT8 bspFlags) {
 
     if (bspFlags) {
-        unsigned long pml4_bak[256] = {0};
-        unsigned long pml4e_num = (((memory_management_struct.kernel_end >> 12) - ((memory_management_struct.kernel_end >> 12) & ~(512UL * 512 * 512 - 1))) +
+        UINT64 pml4_bak[256] = {0};
+        UINT64 pml4e_num = (((memory_management_struct.kernel_end >> 12) - ((memory_management_struct.kernel_end >> 12) & ~(512UL * 512 * 512 - 1))) +
                                    (512UL * 512 * 512 - 1)) / (512UL * 512 * 512);
 
         for (UINT32 i = 0; i < pml4e_num; i++) {
@@ -29,7 +29,7 @@ __attribute__((section(".init_text"))) void pageInit(UINT8 bspFlags) {
         SET_CR3(HADDR_TO_LADDR(&__PML4T));
 
         map_pages(HADDR_TO_LADDR(Pos.FB_addr), (UINT64)Pos.FB_addr, Pos.FB_length / 4096, PAGE_ROOT_RW);
-        map_pages(HADDR_TO_LADDR(ioapic_baseaddr), (unsigned long) ioapic_baseaddr, 1,
+        map_pages(HADDR_TO_LADDR(ioapic_baseaddr), (UINT64) ioapic_baseaddr, 1,
                   PAGE_UC);
         map_pages(HADDR_TO_LADDR(hpet_attr.baseaddr), hpet_attr.baseaddr, 1, PAGE_UC);
     }

@@ -7,11 +7,11 @@ __attribute__((section(".init_text"))) void tssInit(UINT32 cpuId,UINT8 bspFlags)
 
         for (int i = 0; i < cpu_info.cores_num; i++) {
             tss_ptr.base[i].reserved0 = 0;
-            tss_ptr.base[i].rsp0 = (unsigned long) LADDR_TO_HADDR(alloc_pages(4) + PAGE_4K_SIZE * 4);
+            tss_ptr.base[i].rsp0 = (UINT64) LADDR_TO_HADDR(alloc_pages(4) + PAGE_4K_SIZE * 4);
             tss_ptr.base[i].rsp1 = 0;
             tss_ptr.base[i].rsp2 = 0;
             tss_ptr.base[i].reserved1 = 0;
-            tss_ptr.base[i].ist1 = (unsigned long) LADDR_TO_HADDR(alloc_pages(4) + PAGE_4K_SIZE * 4);
+            tss_ptr.base[i].ist1 = (UINT64) LADDR_TO_HADDR(alloc_pages(4) + PAGE_4K_SIZE * 4);
             tss_ptr.base[i].ist2 = 0;
             tss_ptr.base[i].ist3 = 0;
             tss_ptr.base[i].ist4 = 0;

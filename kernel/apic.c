@@ -54,7 +54,7 @@ __attribute__((section(".init_text"))) void apicInit(void) {
     return;
 }
 
-void enable_apic_time (unsigned long time,UINT32 model,UINT32 ivt){
+void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt){
 
     UINT32 model_ivt = model | ivt;
     __asm__ __volatile(   \

@@ -8,7 +8,7 @@ void    gdtInit(UINT8 bspFlags);
 
 typedef struct {
     UINT16 limit;
-    unsigned long *base;
+    UINT64 *base;
 } __attribute__((packed)) _gdt_ptr;
 
 __attribute__((section(".init_data"))) _gdt_ptr gdt_ptr={0,0};

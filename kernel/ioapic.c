@@ -201,7 +201,7 @@ __attribute__((section(".init_text"))) void ioapicInit(UINT8 bspFlags) {
                 "mfence                      \n\t"
                 "mov     %%eax,(%%rsi)       \n\t" //从SATA中断
                 "mfence                      \n\t"
-                ::"D"(ioapic_baseaddr),"S"((unsigned long)ioapic_baseaddr+0x10):"%rax", "%rcx", "%rdx");
+                ::"D"(ioapic_baseaddr),"S"((UINT64)ioapic_baseaddr+0x10):"%rax", "%rcx", "%rdx");
     }
     return;
 }

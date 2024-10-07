@@ -8,8 +8,8 @@ __attribute__((section(".init_text"))) void acpiInit(UINT8 bspFlags) {
         HPET *hpet = (HPET *) 0;
         MCFG *mcfg = (MCFG *) 0;
 
-        for (; rsdp < 0x100000; rsdp = (unsigned long *) rsdp + 2) {
-            if (*(unsigned long *) rsdp == 0x2052545020445352) {  //'RSD PTR '
+        for (; rsdp < 0x100000; rsdp = (UINT64 *) rsdp + 2) {
+            if (*(UINT64 *) rsdp == 0x2052545020445352) {  //'RSD PTR '
                 rsdt = (RSDT *) rsdp->RsdtAddress;
                 break;
             }
@@ -22,7 +22,7 @@ __attribute__((section(".init_text"))) void acpiInit(UINT8 bspFlags) {
                     break;
                 case 0x54455048:        //"HPET"
                     hpet = (HPET *) rsdt->Entry[i];
-                    hpet_attr.baseaddr = (unsigned long)LADDR_TO_HADDR(hpet->BaseAddressUpper);
+                    hpet_attr.baseaddr = (UINT64)LADDR_TO_HADDR(hpet->BaseAddressUpper);
                     break;
                 case 0x4746434D:        //"MCFG"
                     mcfg = (MCFG *) rsdt->Entry[i];

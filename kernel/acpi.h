@@ -23,7 +23,7 @@ typedef struct {
     UINT8 Revision;              // ACPI版本号
     UINT32 RsdtAddress;           // RSDT的物理地址（32位）
     UINT32 Length;                // RSDP结构长度（仅在ACPI 2.0中使用）
-    unsigned long XsdtAddress;           // XSDT的物理地址（仅在ACPI 2.0中使用）
+    UINT64 XsdtAddress;           // XSDT的物理地址（仅在ACPI 2.0中使用）
     UINT8 ExtendedChecksum;      // 扩展校验和（仅在ACPI 2.0中使用）
     UINT8 Reserved[3];           // 保留，必须为0
 } __attribute__((packed)) RSDP;
@@ -54,7 +54,7 @@ typedef struct {
     UINT32 OEMRevision;           // OEM表修订版
     UINT32 CreatorID;             // 表的创建者ID
     UINT32 CreatorRevision;       // 表的创建者修订版
-    unsigned long Entry[];              // ACPI表指针数组（64位指针）
+    UINT64 Entry[];              // ACPI表指针数组（64位指针）
 } __attribute__((packed)) XSDT;
 
 // APIC结构的公共头部
@@ -131,7 +131,7 @@ typedef struct {
 } MCFGHeader;
 
 typedef struct {
-    unsigned long BaseAddress;       // PCIe配置空间的基地址
+    UINT64 BaseAddress;       // PCIe配置空间的基地址
     UINT32 SegmentGroupNumber;// PCIe段组号
     UINT8 StartBusNumber;     // 起始总线号
     UINT8 EndBusNumber;       // 结束总线号

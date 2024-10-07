@@ -202,7 +202,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
             case 'o':
 
                 if (qualifier == 'l')
-                    str = number(str, va_arg(args, unsigned long), 8, field_width, precision,
+                    str = number(str, va_arg(args, UINT64), 8, field_width, precision,
                                  flags);
                 else
                     str = number(str, va_arg(args, UINT32), 8, field_width, precision, flags);
@@ -215,7 +215,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
                     flags |= ZEROPAD;
                 }
 
-                str = number(str, (unsigned long) va_arg(args, void *), 16, field_width, precision,
+                str = number(str, (UINT64) va_arg(args, void *), 16, field_width, precision,
                              flags);
                 break;
 
@@ -226,7 +226,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
             case 'X':
 
                 if (qualifier == 'l')
-                    str = number(str, va_arg(args, unsigned long), 16, field_width, precision,
+                    str = number(str, va_arg(args, UINT64), 16, field_width, precision,
                                  flags);
                 else
                     str = number(str, va_arg(args, UINT32), 16, field_width, precision,
@@ -240,7 +240,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
             case 'u':
 
                 if (qualifier == 'l')
-                    str = number(str, va_arg(args, unsigned long), 10, field_width, precision,
+                    str = number(str, va_arg(args, UINT64), 10, field_width, precision,
                                  flags);
                 else
                     str = number(str, va_arg(args, UINT32), 10, field_width, precision,

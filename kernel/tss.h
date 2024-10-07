@@ -6,11 +6,11 @@
 
 #define SET_TSS_L(BASE)  \
     (TSS_TYPE | P | TSS_LIMIT | DPL_0 | \
-    (((unsigned long)(BASE) & 0x000000000000FFFF) << 16) | \
-    (((unsigned long)(BASE) >> 16) & 0x00000000000000FF) << 32 | \
-    (((unsigned long)(BASE) >> 24) & 0x00000000000000FF) << 56)
+    (((UINT64)(BASE) & 0x000000000000FFFF) << 16) | \
+    (((UINT64)(BASE) >> 16) & 0x00000000000000FF) << 32 | \
+    (((UINT64)(BASE) >> 24) & 0x00000000000000FF) << 56)
 
-#define SET_TSS_H(BASE)  ((unsigned long)(BASE) >> 32)
+#define SET_TSS_H(BASE)  ((UINT64)(BASE) >> 32)
 
 #define SET_TSS(GDTBASE,NUM,BASE) \
                do { \
@@ -26,24 +26,24 @@ void tssInit(UINT32 cpuId,UINT8 bspFlags);
 
 typedef struct {
     UINT32    reserved0;
-    unsigned long   rsp0;
-    unsigned long   rsp1;
-    unsigned long   rsp2;
-    unsigned long   reserved1;
-    unsigned long   ist1;
-    unsigned long   ist2;
-    unsigned long   ist3;
-    unsigned long   ist4;
-    unsigned long   ist5;
-    unsigned long   ist6;
-    unsigned long   ist7;
-    unsigned long   reserved2;
+    UINT64   rsp0;
+    UINT64   rsp1;
+    UINT64   rsp2;
+    UINT64   reserved1;
+    UINT64   ist1;
+    UINT64   ist2;
+    UINT64   ist3;
+    UINT64   ist4;
+    UINT64   ist5;
+    UINT64   ist6;
+    UINT64   ist7;
+    UINT64   reserved2;
     UINT16  reserved3;
     UINT16  iomap_base;
 } __attribute__((packed)) _tss;
 
 typedef struct {
-    unsigned long limit;
+    UINT64 limit;
     _tss * base;
 } _tss_ptr;
 

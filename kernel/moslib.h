@@ -33,7 +33,7 @@ typedef long long INT64;
 #define container_of(ptr, type, member)                            \
 ({                                            \
     typeof(((type *)0)->member) * p = (ptr);                    \
-    (type *)((unsigned long)p - (unsigned long)&(((type *)0)->member));        \
+    (type *)((UINT64)p - (UINT64)&(((type *)0)->member));        \
 })
 
 
@@ -151,7 +151,7 @@ int memcmp(void *FirstPart, void *SecondPart, long Count) {
 
 void *memset(void *Address, UINT8 C, long Count) {
     int d0, d1;
-    unsigned long tmp = C * 0x0101010101010101UL;
+    UINT64 tmp = C * 0x0101010101010101UL;
     __asm__ __volatile__    (    "cld	\n\t"
                                  "rep	\n\t"
                                  "stosq	\n\t"
@@ -320,7 +320,7 @@ int strlen(char *String) {
 
 */
 
-unsigned long bit_set(unsigned long *addr, unsigned long nr) {
+UINT64 bit_set(UINT64 *addr, UINT64 nr) {
     return *addr | (1UL << nr);
 }
 
@@ -328,7 +328,7 @@ unsigned long bit_set(unsigned long *addr, unsigned long nr) {
 
 */
 
-unsigned long bit_get(unsigned long *addr, unsigned long nr) {
+UINT64 bit_get(UINT64 *addr, UINT64 nr) {
     return *addr & (1UL << nr);
 }
 
@@ -336,7 +336,7 @@ unsigned long bit_get(unsigned long *addr, unsigned long nr) {
 
 */
 
-unsigned long bit_clean(unsigned long *addr, unsigned long nr) {
+UINT64 bit_clean(UINT64 *addr, UINT64 nr) {
     return *addr & (~(1UL << nr));
 }
 
@@ -402,14 +402,14 @@ __asm__ __volatile__("cld;rep;insw;mfence;"::"d"(port),"D"(buffer),"c"(nr):"memo
 #define port_outsw(port, buffer, nr)    \
 __asm__ __volatile__("cld;rep;outsw;mfence;"::"d"(port),"S"(buffer),"c"(nr):"memory")
 
-unsigned long rdmsr(unsigned long address) {
+UINT64 rdmsr(UINT64 address) {
     UINT32 tmp0 = 0;
     UINT32 tmp1 = 0;
     __asm__ __volatile__("rdmsr	\n\t":"=d"(tmp0), "=a"(tmp1):"c"(address):"memory");
-    return (unsigned long) tmp0 << 32 | tmp1;
+    return (UINT64) tmp0 << 32 | tmp1;
 }
 
-void wrmsr(unsigned long address, unsigned long value) {
+void wrmsr(UINT64 address, UINT64 value) {
     __asm__ __volatile__("wrmsr	\n\t"::"d"(value >> 32), "a"(value &
                                                                 0xffffffff), "c"(address):"memory");
 }

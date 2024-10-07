@@ -1,11 +1,10 @@
 #include "memory.h"
 
 __attribute__((section(".init_text"))) void memoryInit(UINT8 bspFlags) {
-
     if (bspFlags) {
         UINT32 x = 0;
-        unsigned long totalMem = 0;
-        struct E820 *p = (struct E820 *) E820_BASE;
+        UINT64 totalMem = 0;
+        E820 *p = (E820 *) E820_BASE;
         for (UINT32 i = 0; i < *(UINT32 *) E820_SIZE; i++) {
             color_printk(ORANGE, BLACK, "Addr: %#018lX\t Len: %#018lX\t Type: %d\n", p->address,p->length, p->type);
             if (p->type == 1) {
@@ -26,7 +25,7 @@ __attribute__((section(".init_text"))) void memoryInit(UINT8 bspFlags) {
         //bits map construction init
         totalMem = memory_management_struct.e820[memory_management_struct.e820_length - 1].address +
                    memory_management_struct.e820[memory_management_struct.e820_length - 1].length;
-        memory_management_struct.bits_map = (unsigned long *) kenelstack_top;
+        memory_management_struct.bits_map = (UINT64 *) kenelstack_top;
         memory_management_struct.bits_size = totalMem >> PAGE_4K_SHIFT;
         memory_management_struct.bits_length =
                 (memory_management_struct.bits_size + 63) / 8 & 0xFFFFFFFFFFFFFFF8UL;
@@ -47,7 +46,7 @@ __attribute__((section(".init_text"))) void memoryInit(UINT8 bspFlags) {
         }
 
         //kernel_end结束地址加上bit map对齐4K地址
-        memory_management_struct.kernel_start = (unsigned long) &_start_text;
+        memory_management_struct.kernel_start = (UINT64) &_start_text;
         memory_management_struct.kernel_end =
                 kenelstack_top + (memory_management_struct.bits_length + 0xfff) &
                 0xFFFFFFFFFFFFF000UL;
@@ -83,7 +82,7 @@ __attribute__((section(".init_text"))) void memoryInit(UINT8 bspFlags) {
 
 
 ////物理页分配器
-void *alloc_pages(unsigned long page_num) {
+void *alloc_pages(UINT64 page_num) {
     SPIN_LOCK(memory_management_struct.lock);
 
     if (memory_management_struct.free_pages < page_num || page_num == 0) {
@@ -91,16 +90,16 @@ void *alloc_pages(unsigned long page_num) {
         return (void *) -1;
     }
 
-    unsigned long start_idx = 0;
-    unsigned long current_length = 0;
+    UINT64 start_idx = 0;
+    UINT64 current_length = 0;
 
-    for (unsigned long i = 0; i < (memory_management_struct.bits_size / 64); i++) {
+    for (UINT64 i = 0; i < (memory_management_struct.bits_size / 64); i++) {
         if ((memory_management_struct.bits_map[i] == 0xFFFFFFFFFFFFFFFFUL)) {
             current_length = 0;
             continue;
         }
 
-        for (unsigned long j = 0; j < 64; j++) {
+        for (UINT64 j = 0; j < 64; j++) {
             if (memory_management_struct.bits_map[i] & (1UL << j)) {
                 current_length = 0;
                 continue;
@@ -112,7 +111,7 @@ void *alloc_pages(unsigned long page_num) {
             current_length++;
 
             if (current_length == page_num) {
-                for (unsigned long y = 0; y < page_num; y++) {
+                for (UINT64 y = 0; y < page_num; y++) {
                     (memory_management_struct.bits_map[(start_idx + y) / 64] |= (1UL
                             << ((start_idx + y) % 64)));
                 }
@@ -131,7 +130,7 @@ void *alloc_pages(unsigned long page_num) {
 
 
 ///物理页释放器
-int free_pages(void *pages_addr, unsigned long page_num) {
+int free_pages(void *pages_addr, UINT64 page_num) {
     SPIN_LOCK(memory_management_struct.lock);
     if ((UINT64)(pages_addr + (page_num << PAGE_4K_SHIFT)) >
         (memory_management_struct.e820[memory_management_struct.e820_length - 1].address +
@@ -140,10 +139,10 @@ int free_pages(void *pages_addr, unsigned long page_num) {
         return -1;
     }
 
-    for (unsigned long i = 0; i < page_num; i++) {
-        (memory_management_struct.bits_map[(((unsigned long) pages_addr >> PAGE_4K_SHIFT) + i) /
+    for (UINT64 i = 0; i < page_num; i++) {
+        (memory_management_struct.bits_map[(((UINT64) pages_addr >> PAGE_4K_SHIFT) + i) /
                                            64] ^= (1UL
-                << (((unsigned long) pages_addr >> PAGE_4K_SHIFT) + i) % 64));
+                << (((UINT64) pages_addr >> PAGE_4K_SHIFT) + i) % 64));
     }
     memory_management_struct.alloc_pages -= page_num;
     memory_management_struct.free_pages += page_num;
@@ -153,30 +152,30 @@ int free_pages(void *pages_addr, unsigned long page_num) {
 
 
 //释放物理内存映射虚拟内存
-void unmap_pages(unsigned long vaddr, unsigned long page_num) {
-    unsigned long nums[] = {
+void unmap_pages(UINT64 vaddr, UINT64 page_num) {
+    UINT64 nums[] = {
             ((page_num + ((vaddr >> 12) - ((vaddr >> 12) & ~(512UL - 1)))) + (512UL - 1)) / 512UL,
             ((page_num + ((vaddr >> 12) - ((vaddr >> 12) & ~(512UL * 512 - 1)))) +
              (512UL * 512 - 1)) / (512UL * 512),
             ((page_num + ((vaddr >> 12) - ((vaddr >> 12) & ~(512UL * 512 * 512 - 1)))) +
              (512UL * 512 * 512 - 1)) / (512UL * 512 * 512)};
-    unsigned long level_offsets[] = {21, 30, 39};
-    unsigned long *table_bases[] = {ptt_vbase, pdt_vbase, pdptt_vbase, pml4t_vbase};
-    unsigned long offset = vaddr & 0xFFFFFFFFFFFFUL;
-    unsigned long k;
+    UINT64 level_offsets[] = {21, 30, 39};
+    UINT64 *table_bases[] = {ptt_vbase, pdt_vbase, pdptt_vbase, pml4t_vbase};
+    UINT64 offset = vaddr & 0xFFFFFFFFFFFFUL;
+    UINT64 k;
 
     //释放页表 PT
     free_pages((void *) (ptt_vbase[(offset >> 12)] & PAGE_4K_MASK), page_num);
     memset(&ptt_vbase[(offset >> 12)], 0, page_num << 3);
 
     // 刷新 TLB
-    for (unsigned long i = 0; i < page_num; i++) {
+    for (UINT64 i = 0; i < page_num; i++) {
         INVLPG((vaddr & PAGE_4K_MASK) + i * 4096);
     }
 
     //释放页目录表PD 页目录指针表PDPT 四级页目录表PLM4
-    for (unsigned long i = 0; i < 3; i++) {
-        for (unsigned long j = 0; j < nums[i]; j++) {
+    for (UINT64 i = 0; i < 3; i++) {
+        for (UINT64 j = 0; j < nums[i]; j++) {
             k = 0;
             while (table_bases[i][(offset >> level_offsets[i] << 9) + j * 512 + k] == 0) {
                 if (k == 511) {
@@ -195,30 +194,30 @@ void unmap_pages(unsigned long vaddr, unsigned long page_num) {
 
 
 //物理内存映射虚拟内存
-void map_pages(unsigned long paddr, unsigned long vaddr, unsigned long page_num, unsigned long attr) {
+void map_pages(UINT64 paddr, UINT64 vaddr, UINT64 page_num, UINT64 attr) {
 
-    unsigned long nums[] = {
+    UINT64 nums[] = {
             ((page_num + ((vaddr >> 12) - ((vaddr >> 12) & ~(512UL * 512 * 512 - 1)))) +
              (512UL * 512 * 512 - 1)) / (512UL * 512 * 512),
             ((page_num + ((vaddr >> 12) - ((vaddr >> 12) & ~(512UL * 512 - 1)))) +
              (512UL * 512 - 1)) / (512UL * 512),
             ((page_num + ((vaddr >> 12) - ((vaddr >> 12) & ~(512UL - 1)))) + (512UL - 1)) / 512UL};
-    unsigned long level_offsets[] = {39, 30, 21};
-    unsigned long *table_bases[] = {pml4t_vbase, pdptt_vbase, pdt_vbase, ptt_vbase};
-    unsigned long offset = vaddr & 0xFFFFFFFFFFFFUL;
+    UINT64 level_offsets[] = {39, 30, 21};
+    UINT64 *table_bases[] = {pml4t_vbase, pdptt_vbase, pdt_vbase, ptt_vbase};
+    UINT64 offset = vaddr & 0xFFFFFFFFFFFFUL;
 
-    for (unsigned long i = 0; i < 3; i++) {
-        for (unsigned long j = 0; j < nums[i]; j++) {
+    for (UINT64 i = 0; i < 3; i++) {
+        for (UINT64 j = 0; j < nums[i]; j++) {
             if (table_bases[i][(offset >> level_offsets[i]) + j] == 0) {
                 table_bases[i][(offset >> level_offsets[i]) + j] =
-                        (unsigned long) alloc_pages(1) | (attr & 0x3F | PAGE_RW);
+                        (UINT64) alloc_pages(1) | (attr & 0x3F | PAGE_RW);
                 memset(&table_bases[i + 1][(offset >> level_offsets[i] << 9) + j * 512], 0x0, 4096);
             }
         }
     }
 
     //PT 映射页表
-    for (unsigned long i = 0; i < page_num; i++) {
+    for (UINT64 i = 0; i < page_num; i++) {
         ptt_vbase[(offset >> 12) + i] = (paddr & PAGE_4K_MASK) + i * 4096 | attr;
         INVLPG((vaddr & PAGE_4K_MASK) + i * 4096);
     }
@@ -231,18 +230,18 @@ void map_pages(unsigned long paddr, unsigned long vaddr, unsigned long page_num,
 
 //物理内存映射虚拟内存
 void
-map_pages11(unsigned long paddr, unsigned long vaddr, unsigned long page_num, unsigned long attr) {
+map_pages11(UINT64 paddr, UINT64 vaddr, UINT64 page_num, UINT64 attr) {
 
-    unsigned long num;
-    unsigned long offset = vaddr & 0xFFFFFFFFFFFFUL;
+    UINT64 num;
+    UINT64 offset = vaddr & 0xFFFFFFFFFFFFUL;
 
     //PML4 映射四级页目录表
     num = ((page_num + ((vaddr >> 12) - ((vaddr >> 12) & ~(512UL * 512 * 512 - 1)))) +
            (512UL * 512 * 512 - 1)) / (512UL * 512 * 512);
-    for (unsigned long i = 0; i < num; i++) {
+    for (UINT64 i = 0; i < num; i++) {
         if (pml4t_vbase[(offset >> 39) + i] == 0) {
             pml4t_vbase[(offset >> 39) + i] =
-                    (unsigned long) alloc_pages(1) | (attr & 0x3F | PAGE_RW);
+                    (UINT64) alloc_pages(1) | (attr & 0x3F | PAGE_RW);
             memset(&pdptt_vbase[(offset >> 39 << 9) + i * 512], 0x0, 4096);
         }
     }
@@ -251,26 +250,26 @@ map_pages11(unsigned long paddr, unsigned long vaddr, unsigned long page_num, un
     num = ((page_num + ((vaddr >> 12) - ((vaddr >> 12) & ~(512UL * 512 - 1)))) +
            (512UL * 512 - 1)) /
           (512UL * 512);
-    for (unsigned long i = 0; i < num; i++) {
+    for (UINT64 i = 0; i < num; i++) {
         if (pdptt_vbase[(offset >> 30) + i] == 0) {
             pdptt_vbase[(offset >> 30) + i] =
-                    (unsigned long) alloc_pages(1) | (attr & 0x13F | PAGE_RW);
+                    (UINT64) alloc_pages(1) | (attr & 0x13F | PAGE_RW);
             memset(&pdt_vbase[(offset >> 30 << 9) + i * 512], 0x0, 4096);
         }
     }
 
     //PD 映射页目录表
     num = ((page_num + ((vaddr >> 12) - ((vaddr >> 12) & ~(512UL - 1)))) + (512UL - 1)) / 512UL;
-    for (unsigned long i = 0; i < num; i++) {
+    for (UINT64 i = 0; i < num; i++) {
         if (pdt_vbase[(offset >> 21) + i] == 0) {
             pdt_vbase[(offset >> 21) + i] =
-                    (unsigned long) alloc_pages(1) | (attr & 0x13F | PAGE_RW);
+                    (UINT64) alloc_pages(1) | (attr & 0x13F | PAGE_RW);
             memset(&ptt_vbase[(offset >> 21 << 9) + i * 512], 0x0, 4096);
         }
     }
 
     //PT 映射页表
-    for (unsigned long i = 0; i < page_num; i++) {
+    for (UINT64 i = 0; i < page_num; i++) {
         ptt_vbase[(offset >> 12) + i] = (paddr & PAGE_4K_MASK) + i * 4096 | attr;
         INVLPG((vaddr & PAGE_4K_MASK) + i * 4096);
     }
@@ -280,22 +279,22 @@ map_pages11(unsigned long paddr, unsigned long vaddr, unsigned long page_num, un
 
 
 //释放物理内存映射虚拟内存
-void unmap_pages11(unsigned long vaddr, unsigned long page_num) {
-    unsigned long num, j;
-    unsigned long offset = vaddr & 0xFFFFFFFFFFFFUL;
+void unmap_pages11(UINT64 vaddr, UINT64 page_num) {
+    UINT64 num, j;
+    UINT64 offset = vaddr & 0xFFFFFFFFFFFFUL;
 
     //释放页表 PT
     free_pages((void *) (ptt_vbase[(offset >> 12)] & PAGE_4K_MASK), page_num);
     memset(&ptt_vbase[(offset >> 12)], 0, page_num << 3);
 
     // 刷新 TLB
-    for (unsigned long i = 0; i < page_num; i++) {
+    for (UINT64 i = 0; i < page_num; i++) {
         INVLPG((vaddr & PAGE_4K_MASK) + i * 4096);
     }
 
     //释放页目录 PD
     num = ((page_num + ((vaddr >> 12) - ((vaddr >> 12) & ~(512UL - 1)))) + (512UL - 1)) / 512UL;
-    for (unsigned long i = 0; i < num; i++) {
+    for (UINT64 i = 0; i < num; i++) {
         j = 0;
         while (ptt_vbase[(offset >> 21 << 9) + i * 512 + j] == 0) {
             if (j == 511) {
@@ -311,7 +310,7 @@ void unmap_pages11(unsigned long vaddr, unsigned long page_num) {
     num = ((page_num + ((vaddr >> 12) - ((vaddr >> 12) & ~(512UL * 512 - 1)))) +
            (512UL * 512 - 1)) /
           (512UL * 512);
-    for (unsigned long i = 0; i < num; i++) {
+    for (UINT64 i = 0; i < num; i++) {
         j = 0;
         while (pdt_vbase[(offset >> 30 << 9) + i * 512UL + j] == 0) {
             if (j == 511) {
@@ -326,7 +325,7 @@ void unmap_pages11(unsigned long vaddr, unsigned long page_num) {
     //释放页目录表 PML4T
     num = ((page_num + ((vaddr >> 12) - ((vaddr >> 12) & ~(512UL * 512 * 512 - 1)))) +
            (512UL * 512 * 512 - 1)) / (512UL * 512 * 512);
-    for (unsigned long i = 0; i < num; i++) {
+    for (UINT64 i = 0; i < num; i++) {
         j = 0;
         while (pdptt_vbase[(offset >> 39 << 9) + i * 512UL + j] == 0) {
             if (j == 511) {

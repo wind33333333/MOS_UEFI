@@ -16,7 +16,7 @@ __attribute__((section(".init_text"))) void Kernel_init(void) {
     UINT32 cpuId = 0;
     UINT8 bspFlags = 0;
 
-    cpuInit(&cpuId, &bspFlags);                    //获取cpu信息
+    cpuInit(&cpuId, &bspFlags);                    //获取cpu信息和初始化cpu开启高级功能
     posInit(bspFlags);                                //初始化输出控制台
     memoryInit(bspFlags);                             //初始化内存管理器
     gdtInit(bspFlags);                                //初始化GDT
