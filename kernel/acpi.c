@@ -45,19 +45,19 @@ __attribute__((section(".init_text"))) void acpiInit(UINT8 bspFlags) {
             }
         }
 
-        color_printk(YELLOW, BLACK, "RSDP: %#018lX \tRSDT: %#018lX\n", rsdp,
+        colorPrintK(YELLOW, BLACK, "RSDP: %#018lX \tRSDT: %#018lX\n", rsdp,
                      rsdt);
-        color_printk(YELLOW, BLACK, "APIC: %#018lX \tIOAPIC ADDR: %#018lX\n", madt,
+        colorPrintK(YELLOW, BLACK, "APIC: %#018lX \tIOAPIC ADDR: %#018lX\n", madt,
                      ioapic_baseaddr);
 
-        color_printk(YELLOW, BLACK, "HPET: %#018lX \tHPET ADDR: %#018lX\n", hpet, hpet_attr.baseaddr);
+        colorPrintK(YELLOW, BLACK, "HPET: %#018lX \tHPET ADDR: %#018lX\n", hpet, hpet_attr.baseaddr);
 
-        color_printk(YELLOW, BLACK, "MCFG: %#018lX \n", mcfg);
+        colorPrintK(YELLOW, BLACK, "MCFG: %#018lX \n", mcfg);
 
         for (int i = 0; i < 24; ++i) {
             if ((irq_to_gsi[i].IRQ == 0x0) && (irq_to_gsi[i].GSI == 0x0))
                 break;
-            color_printk(YELLOW, BLACK, "IRQ#%d -> GSI#%d\n", irq_to_gsi[i].IRQ,
+            colorPrintK(YELLOW, BLACK, "IRQ#%d -> GSI#%d\n", irq_to_gsi[i].IRQ,
                          irq_to_gsi[i].GSI);
 
         }

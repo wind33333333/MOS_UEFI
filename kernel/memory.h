@@ -7,14 +7,14 @@
 
 void memoryInit(UINT8 bspFlags);
 
-void *alloc_pages(UINT64 required_length);
+void *allocPages(UINT64 pageNumber);
 
-int free_pages(void *pages_addr, UINT64 required_length);
+int freePages(void *pagesAddr, UINT64 pageNumber);
 
 void
-map_pages(UINT64 paddr, UINT64 vaddr, UINT64 page_num, UINT64 attr);
+mapPages(UINT64 phyAddr, UINT64 virAddr, UINT64 pageNumber, UINT64 attr);
 
-void unmap_pages(UINT64 paddr, UINT64 page_num);
+void unMapPages(UINT64 phyAddr, UINT64 pageNumber);
 
 extern UINT64 kenelstack_top;
 extern UINT64 _start_text;
@@ -40,36 +40,36 @@ typedef struct{
 
 typedef struct {
     E820 e820[12];
-    UINT64 e820_length;
+    UINT64 e820Length;
 
-    UINT64 *bits_map;
-    UINT64 bits_size;
-    UINT64 bits_length;
+    UINT64 *bitsMap;
+    UINT64 bitsSize;
+    UINT64 bitsLength;
 
-    UINT64 total_pages;
-    UINT64 alloc_pages;
-    UINT64 free_pages;
+    UINT64 totalPages;
+    UINT64 allocPages;
+    UINT64 freePages;
 
-    UINT64 kernel_start;
-    UINT64 kernel_end;
+    UINT64 kernelStartAddress;
+    UINT64 kernelEndAddress;
 
     UINT8 lock;
-} Global_Memory_Descriptor;
+} GlobalMemoryDescriptor;
 
-Global_Memory_Descriptor memory_management_struct = {0};
+GlobalMemoryDescriptor memoryManagement = {0};
 
-UINT64 *pml4t_vbase = (UINT64 *) 0xFFFFFFFFFFFFF000;  //pml4虚拟地址基址
-UINT64 *pdptt_vbase = (UINT64 *) 0xFFFFFFFFFFE00000;  //pdpt虚拟地址基址
-UINT64 *pdt_vbase = (UINT64 *) 0xFFFFFFFFC0000000;    //pd虚拟地址基址
-UINT64 *ptt_vbase = (UINT64 *) 0xFFFFFF8000000000;    //pt虚拟地址基址
+UINT64 *pml4tVirBase = (UINT64 *) 0xFFFFFFFFFFFFF000;  //pml4虚拟地址基址
+UINT64 *pdpttVirBase = (UINT64 *) 0xFFFFFFFFFFE00000;  //pdpt虚拟地址基址
+UINT64 *pdtVirBase = (UINT64 *) 0xFFFFFFFFC0000000;    //pd虚拟地址基址
+UINT64 *pttVirBase= (UINT64 *) 0xFFFFFF8000000000;    //pt虚拟地址基址
 
 
 #define MFENCE() __asm__ __volatile__ ("mfence":::);
 #define LFENCE() __asm__ __volatile__ ("lfence":::);
 #define SFENCE() __asm__ __volatile__ ("sfence":::);
-#define INVLPG(vaddr) __asm__ __volatile__("invlpg (%0)"::"r"(vaddr):);
-#define SET_CR3(paddr) __asm__ __volatile__("mov %0,%%cr3"::"r"(paddr):);
-#define GET_CR3(paddr) __asm__ __volatile__("mov %%cr3,%0":"=r"(paddr)::);
+#define INVLPG(virAddr) __asm__ __volatile__("invlpg (%0)"::"r"(virAddr):);
+#define SET_CR3(phyAddr) __asm__ __volatile__("mov %0,%%cr3"::"r"(phyAddr):);
+#define GET_CR3(phyAddr) __asm__ __volatile__("mov %%cr3,%0":"=r"(phyAddr)::);
 
 
 #define PAGE_NX     1UL<<63

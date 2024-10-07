@@ -281,7 +281,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
 /*
 
 */
-int color_printk(UINT32 FRcolor, UINT32 BKcolor, const char *fmt, ...) {
+int colorPrintK(UINT32 FRcolor, UINT32 BKcolor, const char *fmt, ...) {
     SPIN_LOCK(Pos.lock);
     int i = 0;
     int count = 0;
