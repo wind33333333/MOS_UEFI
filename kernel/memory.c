@@ -1,7 +1,7 @@
 #include "memory.h"
 
-__attribute__((section(".init_text"))) void memoryInit(UINT8 bspFlags) {
-    if (bspFlags) {
+__attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
+    if (bsp_flags) {
         UINT32 x = 0;
         UINT64 totalMem = 0;
         E820 *p = (E820 *) E820_BASE;

@@ -4,7 +4,7 @@
 #include "memory.h"
 #include "idt.h"
 
-void    gdtInit(UINT8 bspFlags);
+void    init_gdt(UINT8 bsp_flags);
 
 typedef struct {
     UINT16 limit;

@@ -1,7 +1,7 @@
 #include "idt.h"
 
-__attribute__((section(".init_text"))) void idtInit(UINT8 bspFlags) {
-    if (bspFlags) {
+__attribute__((section(".init_text"))) void init_idt(UINT8 bsp_flags) {
+    if (bsp_flags) {
         //初始化中断向量表为默认中断
         for (int i = 0; i < 256; i++) {
             SET_GATE(IDT_Table, i, ignore, IST_1, TYPE_INT);

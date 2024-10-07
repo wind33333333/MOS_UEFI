@@ -58,6 +58,6 @@ typedef struct {
 
 HPET_Registers hpetRegisters = {0};
 
-void hpetInit(UINT8 bspFlags);
+void init_hpet(UINT8 bsp_flags);
 
 #endif

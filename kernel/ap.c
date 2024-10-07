@@ -1,8 +1,8 @@
 #include "ap.h"
 
 //多核处理器初始化
-__attribute__((section(".init_text"))) void apInit(UINT32 cpuId,UINT8 bspFlags) {
-    if (bspFlags) {
+__attribute__((section(".init_text"))) void init_ap(UINT32 cpu_id,UINT8 bsp_flags) {
+    if (bsp_flags) {
         colorPrintK(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
         colorPrintK(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.cores_num,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
 
@@ -23,12 +23,12 @@ __attribute__((section(".init_text"))) void apInit(UINT32 cpuId,UINT8 bspFlags) 
                 :: :"%rax", "%rcx", "%rdx");
     }
 
-    colorPrintK(GREEN, BLACK, "CPU%d init successful\n", cpuId);
+    colorPrintK(GREEN, BLACK, "CPU%d init successful\n", cpu_id);
 
-    cpuInit_num++;
+    init_cpu_num++;
 
     while(1){
-        if(cpuInit_num == cpu_info.cores_num)
+        if(init_cpu_num == cpu_info.cores_num)
             break;
     }
 

@@ -4,8 +4,8 @@
 #include "moslib.h"
 #include "cpu.h"
 
-void apInit(UINT32 cpuId,UINT8 bspFlags);
+void init_ap(UINT32 cpu_id,UINT8 bsp_flags);
 
-__attribute__((section(".init.data"))) UINT32 cpuInit_num = 0;
+__attribute__((section(".init.data"))) UINT32 init_cpu_num = 0;
 
 #endif

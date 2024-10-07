@@ -4,7 +4,7 @@
 #include "printk.h"
 #include "moslib.h"
 
-void cpuInit(UINT32 *cpuId,UINT8 *bspFlags);
+void init_cpu(UINT32 *cpu_id,UINT8 *bsp_flags);
 
 struct {
     CHAR8 manufacturer_name[13];

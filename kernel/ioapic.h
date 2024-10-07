@@ -4,7 +4,7 @@
 #include "cpu.h"
 #include "hpet.h"
 
-void ioapicInit(UINT8 bspFlags);
+void init_ipapic(UINT8 bsp_flags);
 
 UINT32 *ioapic_baseaddr= 0;
 

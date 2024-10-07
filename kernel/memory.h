@@ -5,7 +5,7 @@
 #include "moslib.h"
 #include "cpu.h"
 
-void memoryInit(UINT8 bspFlags);
+void init_memory(UINT8 bsp_flags);
 
 void *allocPages(UINT64 pageNumber);
 

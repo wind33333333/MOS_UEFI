@@ -1,8 +1,8 @@
 #include "hpet.h"
 
-void hpetInit(UINT8 bspFlags) {
+void init_hpet(UINT8 bsp_flags) {
 
-    if (bspFlags) {
+    if (bsp_flags) {
 
         hpetRegisters.GCAP_ID = (UINT64 *) LADDR_TO_HADDR(hpet_attr.baseaddr + 0);
         hpetRegisters.GEN_CONF = (UINT64 *) LADDR_TO_HADDR(hpet_attr.baseaddr + 0x10);

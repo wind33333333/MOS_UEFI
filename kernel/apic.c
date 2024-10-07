@@ -1,6 +1,6 @@
 #include "apic.h"
 
-__attribute__((section(".init_text"))) void apicInit(void) {
+__attribute__((section(".init_text"))) void init_apic(void) {
     __asm__ __volatile__ (
             "movl    $0x1b,%%ecx  \n\t"         //IA32_APIC_BASE=0x1b 寄存器
             "rdmsr                \n\t"

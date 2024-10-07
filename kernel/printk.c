@@ -341,9 +341,9 @@ int colorPrintK(UINT32 FRcolor, UINT32 BKcolor, const char *fmt, ...) {
     return i;
 }
 
-__attribute__((section(".init_text"))) void posInit(UINT8 bspFlags) {
+__attribute__((section(".init_text"))) void init_output(UINT8 bsp_flags) {
 
-    if (bspFlags) {
+    if (bsp_flags) {
         Pos.XResolution = bootInfo->horizontalResolution;
         Pos.YResolution = bootInfo->verticalResolution;
 

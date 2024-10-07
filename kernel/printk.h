@@ -10,7 +10,7 @@
 #include "cpu.h"
 #include "Uefi.h"
 
-void posInit(UINT8 bspFlags);
+void init_output(UINT8 bsp_flags);
 void clearScreen(void);
 
 

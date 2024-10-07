@@ -1,7 +1,7 @@
 #include "ioapic.h"
 
 //初始化ioapic
-__attribute__((section(".init_text"))) void ioapicInit(UINT8 bspFlags) {
+__attribute__((section(".init_text"))) void init_ipapic(UINT8 bsp_flags) {
     /*初始化ioapic
      * 索引寄存器0xFEC00000 32bit bit0-7
      * 数据寄存器0xFEC00010 32bit
@@ -13,7 +13,7 @@ __attribute__((section(".init_text"))) void ioapicInit(UINT8 bspFlags) {
      * 索引0x3E-0x3F 中断投递寄存器23 读写
     */
 
-    if(bspFlags) {
+    if(bsp_flags) {
         __asm__ __volatile__ (
                 "mov    $0xFF,%%al \n\t"
                 "out    %%al,$0x21 \n\t"

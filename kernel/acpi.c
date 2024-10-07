@@ -1,7 +1,7 @@
 #include "acpi.h"
 
-__attribute__((section(".init_text"))) void acpiInit(UINT8 bspFlags) {
-    if (bspFlags) {
+__attribute__((section(".init_text"))) void init_acpi(UINT8 bsp_flags) {
+    if (bsp_flags) {
         RSDP *rsdp = (RSDP *) 0xe0000;
         RSDT *rsdt = (RSDT *) 0;
         MADT *madt = (MADT *) 0;

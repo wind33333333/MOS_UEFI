@@ -13,21 +13,21 @@
 #include "hpet.h"
 
 __attribute__((section(".init_text"))) void Kernel_init(void) {
-    UINT32 cpuId = 0;
-    UINT8 bspFlags = 0;
+    UINT32 cpu_id = 0;
+    UINT8 bsp_flags = 0;
 
-    cpuInit(&cpuId, &bspFlags);                    //获取cpu信息和初始化cpu开启高级功能
-    posInit(bspFlags);                                //初始化输出控制台
-    memoryInit(bspFlags);                             //初始化内存管理器
-    gdtInit(bspFlags);                                //初始化GDT
-    tssInit(cpuId, bspFlags);                         //初始化TSS
-    idtInit(bspFlags);                                //初始化IDT
-    //acpiInit(bspFlags);                               //初始化acpi
-    hpetInit(bspFlags);                               //初始化hpet
-    //ioapicInit(bspFlags);                             //初始化ioapic
-    //apicInit();                                        //初始化apic
-    pageInit(bspFlags);                               //初始化内核页表
-    apInit(cpuId, bspFlags);                          //初始化ap核
+    init_cpu(&cpu_id, &bsp_flags);                    //获取cpu信息和初始化cpu开启高级功能
+    init_output(bsp_flags);                                //初始化输出控制台
+    init_memory(bsp_flags);                             //初始化内存管理器
+    init_gdt(bsp_flags);                                //初始化GDT
+    init_tss(cpu_id, bsp_flags);                         //初始化TSS
+    init_idt(bsp_flags);                                //初始化IDT
+    //init_acpi(bsp_flags);                               //初始化acpi
+    init_hpet(bsp_flags);                               //初始化hpet
+    //init_ipapic(bsp_flags);                             //初始化ioapic
+    //init_apic();                                        //初始化apic
+    init_page(bsp_flags);                               //初始化内核页表
+    init_ap(cpu_id, bsp_flags);                          //初始化ap核
 
 
     //ENABLE_HPET_TIMES(*hpetRegisters.TIM0_CONF,*hpetRegisters.TIM0_COMP,0x3000000,HPET_PERIODIC,0);

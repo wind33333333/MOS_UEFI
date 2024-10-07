@@ -1,8 +1,8 @@
 #include "page.h"
 
-__attribute__((section(".init_text"))) void pageInit(UINT8 bspFlags) {
+__attribute__((section(".init_text"))) void init_page(UINT8 bsp_flags) {
 
-    if (bspFlags) {
+    if (bsp_flags) {
         UINT64 pml4_bak[256] = {0};
         UINT64 pml4e_num = (((memoryManagement.kernelEndAddress >> 12) - ((memoryManagement.kernelEndAddress >> 12) & ~(512UL * 512 * 512 - 1))) +
                                    (512UL * 512 * 512 - 1)) / (512UL * 512 * 512);

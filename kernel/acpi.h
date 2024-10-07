@@ -1,12 +1,12 @@
-#ifndef __acpiInit__
-#define __acpiInit__
+#ifndef __init_acpi__
+#define __init_acpi__
 #include "moslib.h"
 #include "printk.h"
 #include "cpu.h"
 #include "ioapic.h"
 #include "hpet.h"
 
-void acpiInit(UINT8 bspFlags);
+void init_acpi(UINT8 bsp_flags);
 
 typedef struct {
     UINT32 IRQ;
