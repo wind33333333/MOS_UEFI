@@ -6,7 +6,7 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
         UINT64 totalMem = 0;
         E820 *p = (E820 *) E820_BASE;
         for (UINT32 i = 0; i < *(UINT32 *) E820_SIZE; i++) {
-            colorPrintK(ORANGE, BLACK, "Addr: %#018lX\t Len: %#018lX\t Type: %d\n", p->address,p->length, p->type);
+            color_printk(ORANGE, BLACK, "Addr: %#018lX\t Len: %#018lX\t Type: %d\n", p->address,p->length, p->type);
             if (p->type == 1) {
                 memoryManagement.e820[x].address = p->address & PAGE_4K_MASK;
                 memoryManagement.e820[x].length = p->length & PAGE_4K_MASK;
@@ -19,7 +19,7 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
             }
             p++;
         }
-        colorPrintK(ORANGE, BLACK, "OS Can Used Total RAM: %#018lX=%ldMB\n", totalMem,
+        color_printk(ORANGE, BLACK, "OS Can Used Total RAM: %#018lX=%ldMB\n", totalMem,
                      totalMem / 1024 / 1024);
 
         //bits map construction init
@@ -69,11 +69,11 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
         memoryManagement.freePages =
                 memoryManagement.totalPages - memoryManagement.allocPages;
 
-        colorPrintK(ORANGE, BLACK,
+        color_printk(ORANGE, BLACK,
                      "bitsMap: %#018lX \tbitsSize: %#018lX \tbitsLength: %#018lX\n",
                      memoryManagement.bitsMap, memoryManagement.bitsSize,
                      memoryManagement.bitsLength);
-        colorPrintK(ORANGE, BLACK, "OS Can Used Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",
+        color_printk(ORANGE, BLACK, "OS Can Used Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",
                      memoryManagement.totalPages, memoryManagement.allocPages,
                      memoryManagement.freePages);
     }

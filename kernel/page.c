@@ -20,10 +20,10 @@ __attribute__((section(".init_text"))) void init_page(UINT8 bsp_flags) {
             pml4tVirBase[i] = pml4_bak[i];             //还原PML4E
         }
 
-        colorPrintK(ORANGE, BLACK, "OS Can Used Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",
+        color_printk(ORANGE, BLACK, "OS Can Used Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",
                      memoryManagement.totalPages, memoryManagement.allocPages,
                      memoryManagement.freePages);
-        colorPrintK(ORANGE, BLACK, "OS StartAddr: %#018lX \tEndAddr: %#018lX \n",
+        color_printk(ORANGE, BLACK, "OS StartAddr: %#018lX \tEndAddr: %#018lX \n",
                      memoryManagement.kernelStartAddress, memoryManagement.kernelEndAddress);
 
         SET_CR3(HADDR_TO_LADDR(&__PML4T));

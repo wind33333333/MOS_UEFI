@@ -3,8 +3,8 @@
 //多核处理器初始化
 __attribute__((section(".init_text"))) void init_ap(UINT32 cpu_id,UINT8 bsp_flags) {
     if (bsp_flags) {
-        colorPrintK(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info_t.manufacturer_name, cpu_info_t.model_name);
-        colorPrintK(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info_t.cores_num,cpu_info_t.fundamental_frequency,cpu_info_t.maximum_frequency,cpu_info_t.bus_frequency,cpu_info_t.tsc_frequency);
+        color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info_t.manufacturer_name, cpu_info_t.model_name);
+        color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info_t.cores_num,cpu_info_t.fundamental_frequency,cpu_info_t.maximum_frequency,cpu_info_t.bus_frequency,cpu_info_t.tsc_frequency);
 
         __asm__ __volatile__ (
                 "xor %%rdx,	%%rdx	\n\t"
@@ -23,7 +23,7 @@ __attribute__((section(".init_text"))) void init_ap(UINT32 cpu_id,UINT8 bsp_flag
                 :: :"%rax", "%rcx", "%rdx");
     }
 
-    colorPrintK(GREEN, BLACK, "CPU%d init successful\n", cpu_id);
+    color_printk(GREEN, BLACK, "CPU%d init successful\n", cpu_id);
 
     init_cpu_num++;
 

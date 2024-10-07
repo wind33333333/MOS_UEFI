@@ -11,7 +11,7 @@
 #include "uefi.h"
 
 void init_output(UINT8 bsp_flags);
-void clearScreen(void);
+void clear_screen(void);
 
 
 #define ZEROPAD	1		/* pad with zero */
@@ -96,7 +96,7 @@ int vsprintf(char * buf,const char *fmt, va_list args);
 
 */
 
-int colorPrintK(UINT32 FRcolor,UINT32 BKcolor,const char * fmt,...);
+int color_printk(UINT32 FRcolor,UINT32 BKcolor,const char * fmt,...);
 
 #endif
 

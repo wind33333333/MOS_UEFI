@@ -281,7 +281,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
 /*
 
 */
-int colorPrintK(UINT32 FRcolor, UINT32 BKcolor, const char *fmt, ...) {
+int color_printk(UINT32 FRcolor, UINT32 BKcolor, const char *fmt, ...) {
     SPIN_LOCK(Pos.lock);
     int i = 0;
     int count = 0;
@@ -357,12 +357,12 @@ __attribute__((section(".init_text"))) void init_output(UINT8 bsp_flags) {
         Pos.FB_length = bootInfo->frame_buffer_size;
         Pos.lock = 0;
 
-        clearScreen();
+        clear_screen();
     }
     return;
 }
 
-void clearScreen(void){
+void clear_screen(void){
     for(UINT64 i=0;i<(Pos.FB_length/sizeof(UINT32));i++){
         *((UINT32*)Pos.FB_addr+i)=BLACK;
     }

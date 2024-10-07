@@ -33,7 +33,7 @@ void init_hpet(UINT8 bsp_flags) {
 
         hpet_attr.timernum = (*hpetRegisters.GCAP_ID >> 8 & 0x1F)+1;
         hpet_attr.frequency = *hpetRegisters.GCAP_ID >> 32;
-        colorPrintK(YELLOW, BLACK, "HPET Clock Frequency: %dhz  TimerNum: %d \n",hpet_attr.frequency,hpet_attr.timernum);
+        color_printk(YELLOW, BLACK, "HPET Clock Frequency: %dhz  TimerNum: %d \n",hpet_attr.frequency,hpet_attr.timernum);
 
 
     }
