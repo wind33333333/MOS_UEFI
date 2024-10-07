@@ -8,7 +8,7 @@
 #include "memory.h"
 #include "printk.h"
 #include "cpu.h"
-#include "Uefi.h"
+#include "uefi.h"
 
 void init_output(UINT8 bsp_flags);
 void clearScreen(void);

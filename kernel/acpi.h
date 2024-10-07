@@ -111,7 +111,7 @@ typedef struct {
     UINT32 EventTimerBlockID;         // 事件计时器块ID
     UINT32 BaseAddressLower;          // 基地址低32位
     UINT32 BaseAddressUpper;          // 基地址高32位（可选）
-    UINT8 HpetNumber;               // HPET的编号
+    UINT8 hpetNumber;               // HPET的编号
     UINT16 MinimumClockTick;        // 最小时钟周期，以飞秒为单位
     UINT8 PageProtection;           // 页保护属性
 } __attribute__((packed)) HPET;

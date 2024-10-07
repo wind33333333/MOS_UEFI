@@ -621,70 +621,70 @@ typedef struct {
     UINT32 length;             // 表的总长度，包括头部
     UINT8 revision;            // 表的修订版本
     UINT8 checksum;            // 校验和，所有字节的和应为 0
-    CHAR8 oemId[6];            // OEM 标识符
-    CHAR8 oemTableId[8];       // OEM 表标识符
-    UINT32 oemRevision;        // OEM 表修订版本
-    UINT32 creatorId;          // 创建者的标识符
-    UINT32 creatorRevision;    // 创建者的修订版本
-} __attribute__((packed)) AcpiTableHeader;
+    CHAR8 oem_id[6];            // OEM 标识符
+    CHAR8 oem_table_id[8];       // OEM 表标识符
+    UINT32 oem_revision;        // OEM 表修订版本
+    UINT32 creator_id;          // 创建者的标识符
+    UINT32 creator_revision;    // 创建者的修订版本
+} __attribute__((packed)) acpi_table_header_t;
 
 typedef struct {
-    AcpiTableHeader header;         // 标准 ACPI 表头
-    UINT32 eventTimerBlockId;       // 定时器块的 ID
+    acpi_table_header_t header;         // 标准 ACPI 表头
+    UINT32 event_timer_block_id;       // 定时器块的 ID
     UINT64 address;     // 定时器寄存器的地址
-    UINT8  hpetNumber;               // HPET 的编号
-    UINT16 minimumTick;             // HPET 支持的最小时间间隔
-    UINT8  pageProtection;           // 页保护属性
-}__attribute__((packed)) Hpet;
+    UINT8  hpet_number;               // HPET 的编号
+    UINT16 minimum_tick;             // HPET 支持的最小时间间隔
+    UINT8  page_protection;           // 页保护属性
+}__attribute__((packed)) hpet_t;
 
 typedef struct {
-    AcpiTableHeader header;        // 标准 ACPI 表头
-    UINT32 localApicAddress;       // 本地 APIC 的物理地址
+    acpi_table_header_t header;        // 标准 ACPI 表头
+    UINT32 local_apic_address;       // 本地 APIC 的物理地址
     UINT32 flags;                  // 标志，表示系统支持哪些 APIC 功能
-    // 接下来的部分是可变长度的 APIC 条目
-    UINT8 apicStructure[];         // APIC 条目数组
-}__attribute__((packed)) Madt;
+                                     // 接下来的部分是可变长度的 APIC 条目
+    UINT8 apic_structure[];         // APIC 条目数组
+}__attribute__((packed)) madt_t;
 
 typedef struct {
-    AcpiTableHeader header;
-    Madt* tablePointers[];        // 指向其他 ACPI 表的 64 位指针数组
-} __attribute__((packed)) Xsdt;
+    acpi_table_header_t header;
+    madt_t* table_pointers[];        // 指向其他 ACPI 表的 64 位指针数组
+} __attribute__((packed)) xsdt_t;
 
 typedef struct {
     CHAR8 signature[8];       // "RSD PTR "
-    UINT8 checkSum;           // 校验和
-    CHAR8 oemId[6];           // OEM 标识符
+    UINT8 checksum;           // 校验和
+    CHAR8 oem_id[6];           // OEM 标识符
     UINT8 revision;           // ACPI 版本号
-    UINT32 rsdtAddress;       // RSDT 表（32 位地址）
+    UINT32 rsdt_address;       // RSDT 表（32 位地址）
 
     // ACPI 2.0 及以后版本的扩展
     UINT32 length;            // 整个 RSDP 结构的长度
-    Xsdt* xsdtAddress;        // XSDT 表（64 位地址）
-    UINT8 extendedChecksum;   // 扩展校验和，覆盖整个 RSDP 结构
+    xsdt_t* xsdt_address;        // XSDT 表（64 位地址）
+    UINT8 extended_checksum;   // 扩展校验和，覆盖整个 RSDP 结构
     UINT8 reserved[3];        // 保留字段，必须为 0
-} __attribute__((packed)) Rsdp;
+} __attribute__((packed)) rsdp_t;
 
 typedef struct{
     /*显卡信息*/
-    UINT64  frameBufferBase;
-    UINT32  horizontalResolution;
-    UINT32  verticalResolution;
-    UINT64  frameBufferSize;
+    UINT64  frame_buffer_base;
+    UINT32  horizontal_resolution;
+    UINT32  vertical_resolution;
+    UINT64  frame_buffer_size;
 
     /*内存图*/
-    EFI_MEMORY_DESCRIPTOR* memMap;
-    UINT64 memDescriptorSize;
-    UINT64 memMapSize;
+    EFI_MEMORY_DESCRIPTOR* mem_map;
+    UINT64 mem_descriptor_size;
+    UINT64 mem_map_size;
 
     /*RSDP*/
-    Rsdp* rsdp;
+    rsdp_t* rsdp;
 
     /*UEFI RunTimeServices Point*/
     EFI_RUNTIME_SERVICES* gRTS;
 
-} __attribute__((packed)) BootInfo;
+} __attribute__((packed)) boot_info_t;
 
-extern  BootInfo* bootInfo;
+extern  boot_info_t* bootInfo;
 //endregion
 
 #endif
