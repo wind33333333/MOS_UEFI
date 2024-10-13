@@ -2,7 +2,7 @@
 
 EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* SystemTable){
 
-    //CpuBreakpoint();
+//    CpuBreakpoint();
     EFI_STATUS Status;
 
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
@@ -103,7 +103,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     //region 获取ACPI
     RSDP_Struct *RSDP;
     EfiGetSystemConfigurationTable(&gEfiAcpiTableGuid, (void*)&RSDP);
-    Print(L"RSDP:%0xlx XSDT:%0xlx\n",RSDP,RSDP->XsdtAddress);
+    Print(L"RSDP:%lx   XSDT:%lx\n",RSDP,RSDP->XsdtAddress);
     BootInfo->RSDP=RSDP;
     //endregion
 

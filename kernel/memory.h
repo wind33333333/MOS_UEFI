@@ -20,9 +20,6 @@ extern UINT64 kernel_stack_top;
 extern UINT64 _start_text;
 extern UINT64 pml4t[512];
 
-#define e820_t_SIZE    0x500
-#define e820_t_BASE    0x504
-
 #define PAGE_OFFSET    ((UINT64)0xffff800000000000)
 #define PAGE_4K_SHIFT    12
 #define PAGE_4K_SIZE    (1UL << PAGE_4K_SHIFT)
@@ -36,11 +33,11 @@ typedef struct{
     UINT64 address;
     UINT64 length;
     UINT32 type;
-} __attribute__((packed)) e820_t;
+}available_physical_memory_t;
 
 typedef struct {
-    e820_t e820[12];
-    UINT64 e820_length;
+    available_physical_memory_t available_physical_memory[20];
+    UINT32 available_physical_memory_number;
     UINT64 total_physical_memory;
 
     UINT64 *bits_map;
