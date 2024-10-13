@@ -31,11 +31,10 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
                      memory_management.total_physical_memory / 1024 / 1024);
 
         //初始化bitmap
-        UINT64 total_mem = 0;
         memory_management.total_physical_pages=memory_management.total_physical_memory>>PAGE_4K_SHIFT;
-        total_mem = memory_management.free_physical_memory[memory_management.free_physical_memory_number - 1].address +
-                   memory_management.free_physical_memory[memory_management.free_physical_memory_number - 1].length;
         memory_management.bits_map = (UINT64 *) kernel_stack_top;
+        UINT64 total_mem = memory_management.free_physical_memory[memory_management.free_physical_memory_number - 1].address +
+                           memory_management.free_physical_memory[memory_management.free_physical_memory_number - 1].length;
         memory_management.bits_size = total_mem >> PAGE_4K_SHIFT;
         memory_management.bits_length =
                 (memory_management.bits_size + 63) / 8 & 0xFFFFFFFFFFFFFFF8UL;
@@ -83,7 +82,7 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
                      "bits_map: %#018lX \tbits_size: %#018lX \tbits_length: %#018lX\n",
                      memory_management.bits_map, memory_management.bits_size,
                      memory_management.bits_length);
-        color_printk(ORANGE, BLACK, "OS Can Used Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",
+        color_printk(ORANGE, BLACK, "Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",
                      memory_management.total_physical_pages, memory_management.alloc_physical_pages,
                      memory_management.free_physical_pages);
     }
