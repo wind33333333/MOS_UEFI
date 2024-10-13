@@ -2,6 +2,27 @@
 
 __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
     if (bsp_flags) {
+
+        //UINT32 efi_mem_descriptor_index = 0;
+        UINT32 e820_index = 0;
+        for(UINT32 efi_mem_descriptor_index = 0;efi_mem_descriptor_index < (boot_info->mem_map_size/boot_info->mem_descriptor_size);efi_mem_descriptor_index++){
+        //while(efi_mem_descriptor_index != (boot_info->mem_map_size/boot_info->mem_descriptor_size)){
+            if(boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_LOADER_CODE | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_LOADER_DATA | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_BOOT_SERVICES_CODE | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_BOOT_SERVICES_DATA | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_CONVENTIONAL_MEMORY | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_ACPI_RECLAIM_MEMORY){
+                if(boot_info->mem_map[efi_mem_descriptor_index].PhysicalStart==(memory_management.e820[e820_index].address+memory_management.e820[e820_index].length)){
+                    memory_management.e820[e820_index].length+=(boot_info->mem_map[efi_mem_descriptor_index].NumberOfPages<<12);
+                    memory_management.e820[e820_index].type=1;
+                } else{
+                    color_printk(ORANGE, BLACK, "Addr: %#018lX\t Len: %#018lX\t Type: %d\n",memory_management.e820[e820_index].address,memory_management.e820[e820_index].length,memory_management.e820[e820_index].type);
+                    e820_index++;
+                    memory_management.e820[e820_index].address=boot_info->mem_map[efi_mem_descriptor_index].PhysicalStart;
+                    memory_management.e820[e820_index].length=boot_info->mem_map[efi_mem_descriptor_index].NumberOfPages<<12;
+                    memory_management.e820[e820_index].type=1;
+                }
+            }
+            //efi_mem_descriptor_index++;
+        }
+
+
         UINT32 x = 0;
         UINT64 total_mem = 0;
         e820_t *p = (e820_t *) e820_t_BASE;
