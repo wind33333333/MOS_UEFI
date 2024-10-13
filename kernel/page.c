@@ -21,8 +21,8 @@ __attribute__((section(".init_text"))) void init_page(UINT8 bsp_flags) {
         }
 
         color_printk(ORANGE, BLACK, "OS Can Used Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",
-                     memory_management.total_pages, memory_management.alloc_pages,
-                     memory_management.free_pages);
+                     memory_management.total_physical_pages, memory_management.alloc_physical_pages,
+                     memory_management.free_physical_pages);
         color_printk(ORANGE, BLACK, "OS StartAddr: %#018lX \tEndAddr: %#018lX \n",
                      memory_management.kernel_start_address, memory_management.kernel_end_address);
 
