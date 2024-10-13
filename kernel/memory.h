@@ -41,6 +41,7 @@ typedef struct{
 typedef struct {
     e820_t e820[12];
     UINT64 e820_length;
+    UINT64 total_physical_memory;
 
     UINT64 *bits_map;
     UINT64 bits_size;
