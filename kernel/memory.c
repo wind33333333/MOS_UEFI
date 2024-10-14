@@ -9,14 +9,14 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
                 if(boot_info->mem_map[efi_mem_descriptor_index].PhysicalStart==(memory_management.free_physical_memory[free_physical_memory_index].address+memory_management.free_physical_memory[free_physical_memory_index].length)){
                     memory_management.free_physical_memory[free_physical_memory_index].length+=(boot_info->mem_map[efi_mem_descriptor_index].NumberOfPages<<12);
                     memory_management.total_physical_memory+=(boot_info->mem_map[efi_mem_descriptor_index].NumberOfPages<<12);
-                } else{
+                }else{
                     free_physical_memory_index++;
                     memory_management.free_physical_memory[free_physical_memory_index].address=boot_info->mem_map[efi_mem_descriptor_index].PhysicalStart;
                     memory_management.free_physical_memory[free_physical_memory_index].length=boot_info->mem_map[efi_mem_descriptor_index].NumberOfPages<<12;
                     memory_management.total_physical_memory+=(boot_info->mem_map[efi_mem_descriptor_index].NumberOfPages<<12);
                 }
                 memory_management.free_physical_memory[free_physical_memory_index].type=1;
-            } else if(boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_RUNTIME_SERVICES_CODE | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_RUNTIME_SERVICES_DATA | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_ACPI_MEMORY_NVS){
+            }else if(boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_RUNTIME_SERVICES_CODE | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_RUNTIME_SERVICES_DATA | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_ACPI_MEMORY_NVS){
                 memory_management.total_physical_memory+=(boot_info->mem_map[efi_mem_descriptor_index].NumberOfPages<<12);
             }
         }
@@ -30,7 +30,7 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
         color_printk(ORANGE, BLACK, "Total RAM: %#018lX=%ldMB\n", memory_management.total_physical_memory,
                      memory_management.total_physical_memory / 1024 / 1024);
 
-        //初始化bitmap
+        // 全部置位 bitmap（置为1表示已使用，清除0表示未使用）
         memory_management.total_physical_pages=memory_management.total_physical_memory>>PAGE_4K_SHIFT;
         memory_management.bits_map = (UINT64 *) kernel_stack_top;
         UINT64 total_mem = memory_management.free_physical_memory[memory_management.free_physical_memory_number - 1].address +
@@ -40,18 +40,10 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
                 (memory_management.bits_size + 63) / 8 & 0xFFFFFFFFFFFFFFF8UL;
         mem_set(memory_management.bits_map, 0xff, memory_management.bits_length);
 
-        //bit map 1M以上可用空间置0，i=1跳过1M保持使用置1，等全部初始化后再释放
+        //初始化bitmap，i=1跳过1M,1M之前的内存需要用来存放ap核初始化代码暂时保持置位，把后面可用的内存全部初始化，等全部初始化后再释放前1M
         for (UINT32 i = 1; i < memory_management.free_physical_memory_number; i++) {
-            mem_set(memory_management.bits_map +
-                   ((memory_management.free_physical_memory[i].address >> PAGE_4K_SHIFT) >> 6), 0,
-                   (memory_management.free_physical_memory[i].length >> PAGE_4K_SHIFT) >> 3);
-            total_mem = memory_management.free_physical_memory[i].address +
-                       memory_management.free_physical_memory[i].length & 0xFFFFFFFFFFFF8000UL;
-            for (; total_mem < (memory_management.free_physical_memory[i].address +
-                               memory_management.free_physical_memory[i].length); total_mem += PAGE_4K_SIZE) {
-                *(memory_management.bits_map + (total_mem >> PAGE_4K_SHIFT >> 6)) ^=
-                        1UL << (total_mem >> PAGE_4K_SHIFT) % 64;
-            }
+            free_pages((void*)memory_management.free_physical_memory[i].address,
+                       memory_management.free_physical_memory[i].length >> PAGE_4K_SHIFT);
         }
 
         //kernel_end_address结束地址加上bit map对齐4K地址
@@ -60,16 +52,8 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
                 kernel_stack_top + (memory_management.bits_length + 0xfff) &
                 0xFFFFFFFFFFFFF000UL;
 
-        //把内核1M开始到kernel_end_address地址bit map置1，标记为已使用
-        mem_set(memory_management.bits_map + ((0x100000 >> PAGE_4K_SHIFT) >> 6), 0xFF,
-               (HADDR_TO_LADDR(memory_management.kernel_end_address) - 0x100000) >> PAGE_4K_SHIFT
-                                                                                >> 3);
-        total_mem = HADDR_TO_LADDR(memory_management.kernel_end_address) & 0xFFFFFFFFFFFF8000UL;
-        for (; total_mem <
-               HADDR_TO_LADDR(memory_management.kernel_end_address); total_mem += PAGE_4K_SIZE) {
-            *(memory_management.bits_map + (total_mem >> PAGE_4K_SHIFT >> 6)) ^=
-                    1UL << ((total_mem - 0x100000) >> PAGE_4K_SHIFT) % 64;
-        }
+        //通过free_pages函数的异或位操作实现把内核0x100000-kerne_end_address map位图标记为已使用空间。
+        free_pages((void*)0x100000, HADDR_TO_LADDR(memory_management.kernel_end_address)>>PAGE_4K_SHIFT);
 
         memory_management.alloc_physical_pages += (memory_management.free_physical_memory[0].length
                 >> PAGE_4K_SHIFT);
