@@ -142,7 +142,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     Print(L"\tFileName:%s\t Size:%d\t FileSize:%d\t Physical Size:%d\n",FileInfo->FileName,FileInfo->Size,FileInfo->FileSize,FileInfo->PhysicalSize);
 
     Print(L"Read kernel file to memory\n");
-    gBS->AllocatePages(AllocateAddress,EfiRuntimeServicesCode,(FileInfo->FileSize + 0x1000 - 1) / 0x1000,&pages);
+    gBS->AllocatePages(AllocateAddress,EfiLoaderCode,(FileInfo->FileSize + 0x1000 - 1) / 0x1000,&pages);
     BufferSize = FileInfo->FileSize;
     FileHandle->Read(FileHandle,&BufferSize,(VOID*)pages);
     gBS->FreePool(FileInfo);
