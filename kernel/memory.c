@@ -31,7 +31,6 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
                      memory_management.total_physical_memory / 1024 / 1024);
 
         // 全部置位 bitmap（置为1表示已使用，清除0表示未使用）
-        memory_management.total_physical_pages=memory_management.total_physical_memory>>PAGE_4K_SHIFT;
         memory_management.bits_map = (UINT64 *) kernel_stack_top;
         UINT64 total_mem = memory_management.free_physical_memory[memory_management.free_physical_memory_number - 1].address +
                            memory_management.free_physical_memory[memory_management.free_physical_memory_number - 1].length;
@@ -55,10 +54,12 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
         //通过free_pages函数的异或位操作实现把内核0x100000-kerne_end_address map位图标记为已使用空间。
         free_pages((void*)0x100000, HADDR_TO_LADDR(memory_management.kernel_end_address)>>PAGE_4K_SHIFT);
 
-        memory_management.alloc_physical_pages += (memory_management.free_physical_memory[0].length
-                >> PAGE_4K_SHIFT);
-        memory_management.alloc_physical_pages += (
-                (HADDR_TO_LADDR(memory_management.kernel_end_address) - 0x100000) >> PAGE_4K_SHIFT);
+        //总物理页
+        memory_management.total_physical_pages=memory_management.total_physical_memory>>PAGE_4K_SHIFT;
+        //已分配物理页
+        memory_management.alloc_physical_pages = ((memory_management.free_physical_memory[0].length
+                >> PAGE_4K_SHIFT)+((HADDR_TO_LADDR(memory_management.kernel_end_address) - 0x100000) >> PAGE_4K_SHIFT));
+        //空闲物理页
         memory_management.free_physical_pages =
                 memory_management.total_physical_pages - memory_management.alloc_physical_pages;
 
