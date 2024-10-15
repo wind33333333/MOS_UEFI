@@ -58,10 +58,10 @@ typedef struct {
 
 global_memory_descriptor_t memory_management = {0};
 
-UINT64 *pml4t_vbase = (UINT64 *) 0xFFFFFFFFFFFFF000;  //pml4虚拟地址基址
-UINT64 *pdptt_vbase = (UINT64 *) 0xFFFFFFFFFFE00000;  //pdpt虚拟地址基址
-UINT64 *pdt_vbase = (UINT64 *) 0xFFFFFFFFC0000000;    //pd虚拟地址基址
-UINT64 *ptt_vbase= (UINT64 *) 0xFFFFFF8000000000;    //pt虚拟地址基址
+UINT64 *pml4t_vbase = (UINT64 *) 0xFFFFFFFFFFFFF000;  //pml4t虚拟地址基址
+UINT64 *pdptt_vbase = (UINT64 *) 0xFFFFFFFFFFE00000;  //pdptt虚拟地址基址
+UINT64 *pdt_vbase = (UINT64 *) 0xFFFFFFFFC0000000;    //pdt虚拟地址基址
+UINT64 *ptt_vbase= (UINT64 *) 0xFFFFFF8000000000;    //ptt虚拟地址基址
 
 
 #define MFENCE() __asm__ __volatile__ ("mfence":::);
