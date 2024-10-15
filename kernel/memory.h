@@ -33,20 +33,22 @@ typedef struct{
     UINT64 address;
     UINT64 length;
     UINT32 type;
-}free_physical_memory_t;
+}mem_map_t;
 
 typedef struct {
-    free_physical_memory_t free_physical_memory[20];
-    UINT32 free_physical_memory_number;
-    UINT64 total_physical_memory;
+    mem_map_t mem_map[20];
+    UINT32 mem_map_number;
 
-    UINT64 *bits_map;
-    UINT64 bits_size;
-    UINT64 bits_length;
+    UINT64 avl_mem_size;
+    UINT64 total_mem_size;
 
-    UINT64 total_physical_pages;
-    UINT64 alloc_physical_pages;
-    UINT64 free_physical_pages;
+    UINT64 *bitmap;
+    UINT64 bitmap_size;
+    UINT64 bitmap_length;
+
+    UINT64 total_pages;
+    UINT64 used_pages;
+    UINT64 avl_pages;
 
     UINT64 kernel_start_address;
     UINT64 kernel_end_address;

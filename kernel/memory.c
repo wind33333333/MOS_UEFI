@@ -3,73 +3,69 @@
 __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
     if (bsp_flags) {
         //查找memmap中可用物理内存并合并，统计总物理内存容量。
-        UINT32 free_physical_memory_index = 0;
-        for(UINT32 efi_mem_descriptor_index = 0;efi_mem_descriptor_index < (boot_info->mem_map_size/boot_info->mem_descriptor_size);efi_mem_descriptor_index++){
-            if(boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_LOADER_CODE | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_LOADER_DATA | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_BOOT_SERVICES_CODE | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_BOOT_SERVICES_DATA | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_CONVENTIONAL_MEMORY | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_ACPI_RECLAIM_MEMORY){
-                if(boot_info->mem_map[efi_mem_descriptor_index].PhysicalStart==(memory_management.free_physical_memory[free_physical_memory_index].address+memory_management.free_physical_memory[free_physical_memory_index].length)){
-                    memory_management.free_physical_memory[free_physical_memory_index].length+=(boot_info->mem_map[efi_mem_descriptor_index].NumberOfPages<<12);
-                    memory_management.total_physical_memory+=(boot_info->mem_map[efi_mem_descriptor_index].NumberOfPages<<12);
+        UINT32 mem_map_index = 0;
+        for(UINT32 i = 0;i < (boot_info->mem_map_size/boot_info->mem_descriptor_size);i++){
+            if(boot_info->mem_map[i].Type==EFI_LOADER_CODE | boot_info->mem_map[i].Type==EFI_LOADER_DATA | boot_info->mem_map[i].Type==EFI_BOOT_SERVICES_CODE | boot_info->mem_map[i].Type==EFI_BOOT_SERVICES_DATA | boot_info->mem_map[i].Type==EFI_CONVENTIONAL_MEMORY | boot_info->mem_map[i].Type==EFI_ACPI_RECLAIM_MEMORY){
+                if(boot_info->mem_map[i].PhysicalStart==(memory_management.mem_map[mem_map_index].address+memory_management.mem_map[mem_map_index].length)){
+                    memory_management.mem_map[mem_map_index].length+=(boot_info->mem_map[i].NumberOfPages<<12);
                 }else{
-                    free_physical_memory_index++;
-                    memory_management.free_physical_memory[free_physical_memory_index].address=boot_info->mem_map[efi_mem_descriptor_index].PhysicalStart;
-                    memory_management.free_physical_memory[free_physical_memory_index].length=boot_info->mem_map[efi_mem_descriptor_index].NumberOfPages<<12;
-                    memory_management.total_physical_memory+=(boot_info->mem_map[efi_mem_descriptor_index].NumberOfPages<<12);
+                    mem_map_index++;
+                    memory_management.mem_map[mem_map_index].address=boot_info->mem_map[i].PhysicalStart;
+                    memory_management.mem_map[mem_map_index].length=boot_info->mem_map[i].NumberOfPages<<12;
                 }
-                memory_management.free_physical_memory[free_physical_memory_index].type=1;
-            }else if(boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_RUNTIME_SERVICES_CODE | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_RUNTIME_SERVICES_DATA | boot_info->mem_map[efi_mem_descriptor_index].Type==EFI_ACPI_MEMORY_NVS){
-                memory_management.total_physical_memory+=(boot_info->mem_map[efi_mem_descriptor_index].NumberOfPages<<12);
+                memory_management.avl_mem_size+=(boot_info->mem_map[i].NumberOfPages<<12);
+                memory_management.total_mem_size+=(boot_info->mem_map[i].NumberOfPages<<12);
+                memory_management.mem_map[mem_map_index].type=1;
+            }else if(boot_info->mem_map[i].Type==EFI_RUNTIME_SERVICES_CODE | boot_info->mem_map[i].Type==EFI_RUNTIME_SERVICES_DATA | boot_info->mem_map[i].Type==EFI_ACPI_MEMORY_NVS){
+                memory_management.total_mem_size+=(boot_info->mem_map[i].NumberOfPages<<12);
             }
         }
-        memory_management.free_physical_memory_number=free_physical_memory_index+1;
+        memory_management.mem_map_number=mem_map_index+1;
         //打印可用物理内存和总物理内存
-        for(UINT32 i=0;i<memory_management.free_physical_memory_number;i++) {
+        for(UINT32 i=0;i<memory_management.mem_map_number;i++) {
             color_printk(ORANGE, BLACK, "Start Physial Addr: %#018lX\t Length: %#018lX\t Type: %d\n",
-                         memory_management.free_physical_memory[i].address, memory_management.free_physical_memory[i].length,
-                         memory_management.free_physical_memory[i].type);
+                         memory_management.mem_map[i].address, memory_management.mem_map[i].length,
+                         memory_management.mem_map[i].type);
         }
-        color_printk(ORANGE, BLACK, "Total RAM: %#018lX=%ldMB\n", memory_management.total_physical_memory,
-                     memory_management.total_physical_memory / 1024 / 1024);
+        color_printk(ORANGE, BLACK, "Total RAM: %#018lX=%ldMB   Available RAM: %#018lX=%ldMB\n", memory_management.total_mem_size,memory_management.total_mem_size/1024/1024,memory_management.avl_mem_size,memory_management.avl_mem_size/1024/1024);
 
         // 全部置位 bitmap（置为1表示已使用，清除0表示未使用）
-        memory_management.bits_map = (UINT64 *) kernel_stack_top;
-        UINT64 total_mem = memory_management.free_physical_memory[memory_management.free_physical_memory_number - 1].address +
-                           memory_management.free_physical_memory[memory_management.free_physical_memory_number - 1].length;
-        memory_management.bits_size = total_mem >> PAGE_4K_SHIFT;
-        memory_management.bits_length =
-                (memory_management.bits_size + 63) / 8 & 0xFFFFFFFFFFFFFFF8UL;
-        mem_set(memory_management.bits_map, 0xff, memory_management.bits_length);
+        memory_management.bitmap = (UINT64 *) kernel_stack_top;
+        memory_management.bitmap_size = (memory_management.mem_map[memory_management.mem_map_number - 1].address+memory_management.mem_map[memory_management.mem_map_number - 1].length) >> PAGE_4K_SHIFT;
+        memory_management.bitmap_length =(memory_management.bitmap_size + 63) / 8 & 0xFFFFFFFFFFFFFFF8UL;
+        mem_set(memory_management.bitmap, 0xff, memory_management.bitmap_length);
 
         //初始化bitmap，i=1跳过1M,1M之前的内存需要用来存放ap核初始化代码暂时保持置位，把后面可用的内存全部初始化，等全部初始化后再释放前1M
-        for (UINT32 i = 1; i < memory_management.free_physical_memory_number; i++) {
-            free_pages((void*)memory_management.free_physical_memory[i].address,
-                       memory_management.free_physical_memory[i].length >> PAGE_4K_SHIFT);
+        for (UINT32 i = 1; i < memory_management.mem_map_number; i++) {
+            free_pages((void*)memory_management.mem_map[i].address,
+                       memory_management.mem_map[i].length >> PAGE_4K_SHIFT);
         }
 
         //kernel_end_address结束地址加上bit map对齐4K地址
         memory_management.kernel_start_address = (UINT64) &_start_text;
         memory_management.kernel_end_address =
-                kernel_stack_top + (memory_management.bits_length + 0xfff) &
+                kernel_stack_top + (memory_management.bitmap_length + 0xfff) &
                 0xFFFFFFFFFFFFF000UL;
 
         //通过free_pages函数的异或位操作实现把内核0x100000-kerne_end_address map位图标记为已使用空间。
         free_pages((void*)0x100000, HADDR_TO_LADDR(memory_management.kernel_end_address)>>PAGE_4K_SHIFT);
 
         //总物理页
-        memory_management.total_physical_pages=memory_management.total_physical_memory>>PAGE_4K_SHIFT;
+        memory_management.total_pages=memory_management.avl_mem_size>>PAGE_4K_SHIFT;
         //已分配物理页
-        memory_management.alloc_physical_pages = ((memory_management.free_physical_memory[0].length
+        memory_management.used_pages = ((memory_management.mem_map[0].length
                 >> PAGE_4K_SHIFT)+((HADDR_TO_LADDR(memory_management.kernel_end_address) - 0x100000) >> PAGE_4K_SHIFT));
         //空闲物理页
-        memory_management.free_physical_pages =
-                memory_management.total_physical_pages - memory_management.alloc_physical_pages;
+        memory_management.avl_pages =
+                memory_management.total_pages - memory_management.used_pages;
 
         color_printk(ORANGE, BLACK,
-                     "bits_map: %#018lX \tbits_size: %#018lX \tbits_length: %#018lX\n",
-                     memory_management.bits_map, memory_management.bits_size,
-                     memory_management.bits_length);
+                     "Bitmap: %#018lX \tBitmapSize: %#018lX \tBitmapLength: %#018lX\n",
+                     memory_management.bitmap, memory_management.bitmap_size,
+                     memory_management.bitmap_length);
         color_printk(ORANGE, BLACK, "Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",
-                     memory_management.total_physical_pages, memory_management.alloc_physical_pages,
-                     memory_management.free_physical_pages);
+                     memory_management.total_pages, memory_management.used_pages,
+                     memory_management.avl_pages);
     }
     return;
 }
@@ -79,7 +75,7 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
 void *alloc_pages(UINT64 page_number) {
     SPIN_LOCK(memory_management.lock);
 
-    if (memory_management.free_physical_pages < page_number || page_number == 0) {
+    if (memory_management.avl_pages < page_number || page_number == 0) {
         memory_management.lock = 0;
         return (void *) -1;
     }
@@ -87,14 +83,14 @@ void *alloc_pages(UINT64 page_number) {
     UINT64 start_idx = 0;
     UINT64 current_length = 0;
 
-    for (UINT64 i = 0; i < (memory_management.bits_size / 64); i++) {
-        if ((memory_management.bits_map[i] == 0xFFFFFFFFFFFFFFFFUL)) {
+    for (UINT64 i = 0; i < (memory_management.bitmap_size / 64); i++) {
+        if ((memory_management.bitmap[i] == 0xFFFFFFFFFFFFFFFFUL)) {
             current_length = 0;
             continue;
         }
 
         for (UINT64 j = 0; j < 64; j++) {
-            if (memory_management.bits_map[i] & (1UL << j)) {
+            if (memory_management.bitmap[i] & (1UL << j)) {
                 current_length = 0;
                 continue;
             }
@@ -106,12 +102,12 @@ void *alloc_pages(UINT64 page_number) {
 
             if (current_length == page_number) {
                 for (UINT64 y = 0; y < page_number; y++) {
-                    (memory_management.bits_map[(start_idx + y) / 64] |= (1UL
+                    (memory_management.bitmap[(start_idx + y) / 64] |= (1UL
                             << ((start_idx + y) % 64)));
                 }
 
-                memory_management.alloc_physical_pages += page_number;
-                memory_management.free_physical_pages -= page_number;
+                memory_management.used_pages += page_number;
+                memory_management.avl_pages -= page_number;
                 memory_management.lock = 0;
                 return (void *) (start_idx << PAGE_4K_SHIFT); // 找到连续空闲块，返回起始索引
             }
@@ -127,19 +123,19 @@ void *alloc_pages(UINT64 page_number) {
 int free_pages(void *pages_addr, UINT64 page_number) {
     SPIN_LOCK(memory_management.lock);
     if ((UINT64)(pages_addr + (page_number << PAGE_4K_SHIFT)) >
-        (memory_management.free_physical_memory[memory_management.free_physical_memory_number - 1].address +
-         memory_management.free_physical_memory[memory_management.free_physical_memory_number - 1].length)) {
+        (memory_management.mem_map[memory_management.mem_map_number - 1].address +
+         memory_management.mem_map[memory_management.mem_map_number - 1].length)) {
         memory_management.lock = 0;
         return -1;
     }
 
     for (UINT64 i = 0; i < page_number; i++) {
-        (memory_management.bits_map[(((UINT64) pages_addr >> PAGE_4K_SHIFT) + i) /
+        (memory_management.bitmap[(((UINT64) pages_addr >> PAGE_4K_SHIFT) + i) /
                                            64] ^= (1UL
                 << (((UINT64) pages_addr >> PAGE_4K_SHIFT) + i) % 64));
     }
-    memory_management.alloc_physical_pages -= page_number;
-    memory_management.free_physical_pages += page_number;
+    memory_management.used_pages -= page_number;
+    memory_management.avl_pages += page_number;
     memory_management.lock = 0;
     return 0;
 }

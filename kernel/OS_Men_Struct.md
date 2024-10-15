@@ -1,4 +1,4 @@
-0x500       free_physical_memory_t内存图
+0x500       mem_map_t内存图
 0x600       显卡图
 0x7c00      boot.bin
 0x10000     tmpstack
