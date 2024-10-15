@@ -23,9 +23,7 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
         memory_management.mem_map_number=mem_map_index+1;
         //打印可用物理内存和总物理内存
         for(UINT32 i=0;i<memory_management.mem_map_number;i++) {
-            color_printk(ORANGE, BLACK, "Start Physial Addr: %#018lX\t Length: %#018lX\t Type: %d\n",
-                         memory_management.mem_map[i].address, memory_management.mem_map[i].length,
-                         memory_management.mem_map[i].type);
+            color_printk(ORANGE, BLACK, "%d  Type:%d    Addr:%#018lX    Length:%#018lX\n",i,memory_management.mem_map[i].type,memory_management.mem_map[i].address, memory_management.mem_map[i].length);
         }
         color_printk(ORANGE, BLACK, "Total RAM: %#018lX=%ldMB   Available RAM: %#018lX=%ldMB\n", memory_management.total_mem_size,memory_management.total_mem_size/1024/1024,memory_management.avl_mem_size,memory_management.avl_mem_size/1024/1024);
 
