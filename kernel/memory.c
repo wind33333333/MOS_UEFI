@@ -32,7 +32,7 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
         // 全部置位 bitmap（置为1表示已使用，清除0表示未使用）
         memory_management.bitmap = (UINT64 *) kernel_stack_top;
         memory_management.bitmap_size = (memory_management.mem_map[memory_management.mem_map_number - 1].address+memory_management.mem_map[memory_management.mem_map_number - 1].length) >> PAGE_4K_SHIFT;
-        memory_management.bitmap_length =(memory_management.bitmap_size + 63) / 8 & 0xFFFFFFFFFFFFFFF8UL;
+        memory_management.bitmap_length =memory_management.bitmap_size>>3;
         mem_set(memory_management.bitmap, 0xff, memory_management.bitmap_length);
 
         //初始化bitmap，i=1跳过1M,1M之前的内存需要用来存放ap核初始化代码暂时保持置位，把后面可用的内存全部初始化，等全部初始化后再释放前1M
@@ -43,9 +43,7 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
 
         //kernel_end_address结束地址加上bit map对齐4K地址
         memory_management.kernel_start_address = (UINT64) &_start_text;
-        memory_management.kernel_end_address =
-                kernel_stack_top + (memory_management.bitmap_length + 0xfff) &
-                0xFFFFFFFFFFFFF000UL;
+        memory_management.kernel_end_address = kernel_stack_top + PAGE_4K_ALIGN(memory_management.bitmap_length);
 
         //通过free_pages函数的异或位操作实现把内核0x100000-kerne_end_address map位图标记为已使用空间。
         free_pages((void*)0x100000, HADDR_TO_LADDR(memory_management.kernel_end_address)>>PAGE_4K_SHIFT);
@@ -102,8 +100,7 @@ void *alloc_pages(UINT64 page_number) {
 
             if (current_length == page_number) {
                 for (UINT64 y = 0; y < page_number; y++) {
-                    (memory_management.bitmap[(start_idx + y) / 64] |= (1UL
-                            << ((start_idx + y) % 64)));
+                    (memory_management.bitmap[(start_idx + y) / 64] |= (1UL << ((start_idx + y) % 64)));
                 }
 
                 memory_management.used_pages += page_number;
@@ -130,9 +127,7 @@ int free_pages(void *pages_addr, UINT64 page_number) {
     }
 
     for (UINT64 i = 0; i < page_number; i++) {
-        (memory_management.bitmap[(((UINT64) pages_addr >> PAGE_4K_SHIFT) + i) /
-                                           64] ^= (1UL
-                << (((UINT64) pages_addr >> PAGE_4K_SHIFT) + i) % 64));
+        (memory_management.bitmap[(((UINT64) pages_addr >> PAGE_4K_SHIFT) + i) / 64] ^= (1UL<< (((UINT64) pages_addr >> PAGE_4K_SHIFT) + i) % 64));
     }
     memory_management.used_pages -= page_number;
     memory_management.avl_pages += page_number;
@@ -145,10 +140,8 @@ int free_pages(void *pages_addr, UINT64 page_number) {
 void unmap_pages(UINT64 vir_addr, UINT64 page_number) {
     UINT64 nums[] = {
             ((page_number + ((vir_addr >> 12) - ((vir_addr >> 12) & ~(512UL - 1)))) + (512UL - 1)) / 512UL,
-            ((page_number + ((vir_addr >> 12) - ((vir_addr >> 12) & ~(512UL * 512 - 1)))) +
-             (512UL * 512 - 1)) / (512UL * 512),
-            ((page_number + ((vir_addr >> 12) - ((vir_addr >> 12) & ~(512UL * 512 * 512 - 1)))) +
-             (512UL * 512 * 512 - 1)) / (512UL * 512 * 512)};
+            ((page_number + ((vir_addr >> 12) - ((vir_addr >> 12) & ~(512UL * 512 - 1)))) + (512UL * 512 - 1)) / (512UL * 512),
+            ((page_number + ((vir_addr >> 12) - ((vir_addr >> 12) & ~(512UL * 512 * 512 - 1)))) + (512UL * 512 * 512 - 1)) / (512UL * 512 * 512)};
     UINT64 level_offsets[] = {21, 30, 39};
     UINT64 *table_bases[] = {ptt_vbase, pdt_vbase, pdptt_vbase, pml4t_vbase};
     UINT64 offset = vir_addr & 0xFFFFFFFFFFFFUL;
@@ -169,8 +162,7 @@ void unmap_pages(UINT64 vir_addr, UINT64 page_number) {
             k = 0;
             while (table_bases[i][(offset >> level_offsets[i] << 9) + j * 512 + k] == 0) {
                 if (k == 511) {
-                    free_pages((void *) ((table_bases[i + 1][(offset >> level_offsets[i]) + j]) &
-                                         PAGE_4K_MASK), 1);
+                    free_pages((void *) ((table_bases[i + 1][(offset >> level_offsets[i]) + j]) & PAGE_4K_MASK), 1);
                     table_bases[i + 1][(offset >> level_offsets[i]) + j] = 0;
                     break;
                 }
@@ -187,10 +179,8 @@ void unmap_pages(UINT64 vir_addr, UINT64 page_number) {
 void map_pages(UINT64 paddr, UINT64 vir_addr, UINT64 page_number, UINT64 attr) {
 
     UINT64 nums[] = {
-            ((page_number + ((vir_addr >> 12) - ((vir_addr >> 12) & ~(512UL * 512 * 512 - 1)))) +
-             (512UL * 512 * 512 - 1)) / (512UL * 512 * 512),
-            ((page_number + ((vir_addr >> 12) - ((vir_addr >> 12) & ~(512UL * 512 - 1)))) +
-             (512UL * 512 - 1)) / (512UL * 512),
+            ((page_number + ((vir_addr >> 12) - ((vir_addr >> 12) & ~(512UL * 512 * 512 - 1)))) + (512UL * 512 * 512 - 1)) / (512UL * 512 * 512),
+            ((page_number + ((vir_addr >> 12) - ((vir_addr >> 12) & ~(512UL * 512 - 1)))) + (512UL * 512 - 1)) / (512UL * 512),
             ((page_number + ((vir_addr >> 12) - ((vir_addr >> 12) & ~(512UL - 1)))) + (512UL - 1)) / 512UL};
     UINT64 level_offsets[] = {39, 30, 21};
     UINT64 *table_bases[] = {pml4t_vbase, pdptt_vbase, pdt_vbase, ptt_vbase};
