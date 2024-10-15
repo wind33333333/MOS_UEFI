@@ -38,9 +38,7 @@ typedef struct{
 typedef struct {
     mem_map_t mem_map[20];
     UINT32 mem_map_number;
-
     UINT64 avl_mem_size;
-    UINT64 total_mem_size;
 
     UINT64 *bitmap;
     UINT64 bitmap_size;

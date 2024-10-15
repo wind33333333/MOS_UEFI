@@ -19,6 +19,7 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
     init_cpu(&cpu_id, &bsp_flags);                    //获取cpu信息和初始化cpu开启高级功能
     init_output(bsp_flags);                                //初始化输出控制台
     init_memory(bsp_flags);                             //初始化内存管理器
+    while(1);
     init_gdt(bsp_flags);                                //初始化GDT
     init_tss(cpu_id, bsp_flags);                         //初始化TSS
     init_idt(bsp_flags);                                //初始化IDT

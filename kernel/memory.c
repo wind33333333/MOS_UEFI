@@ -14,10 +14,7 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
                     memory_management.mem_map[mem_map_index].length=boot_info->mem_map[i].NumberOfPages<<12;
                 }
                 memory_management.avl_mem_size+=(boot_info->mem_map[i].NumberOfPages<<12);
-                memory_management.total_mem_size+=(boot_info->mem_map[i].NumberOfPages<<12);
                 memory_management.mem_map[mem_map_index].type=1;
-            }else if(boot_info->mem_map[i].Type==EFI_RUNTIME_SERVICES_CODE | boot_info->mem_map[i].Type==EFI_RUNTIME_SERVICES_DATA | boot_info->mem_map[i].Type==EFI_ACPI_MEMORY_NVS){
-                memory_management.total_mem_size+=(boot_info->mem_map[i].NumberOfPages<<12);
             }
         }
         memory_management.mem_map_number=mem_map_index+1;
@@ -25,7 +22,7 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
         for(UINT32 i=0;i<memory_management.mem_map_number;i++) {
             color_printk(ORANGE, BLACK, "%d  Type:%d    Addr:%#018lX    Length:%#018lX\n",i,memory_management.mem_map[i].type,memory_management.mem_map[i].address, memory_management.mem_map[i].length);
         }
-        color_printk(ORANGE, BLACK, "Total RAM: %#018lX=%ldMB   Available RAM: %#018lX=%ldMB\n", memory_management.total_mem_size,memory_management.total_mem_size/1024/1024,memory_management.avl_mem_size,memory_management.avl_mem_size/1024/1024);
+        color_printk(ORANGE, BLACK, "Available RAM:%#018lX~%ldMB\n", memory_management.avl_mem_size,memory_management.avl_mem_size/1024/1024);
 
         // 全部置位 bitmap（置为1表示已使用，清除0表示未使用）
         memory_management.bitmap = (UINT64 *) kernel_stack_top;
