@@ -25,9 +25,13 @@
 #define IST_7           (0x7UL << 32)
 #define SEL_CODE64      (0x8UL << 16)
 
+typedef struct{
+    UINT16 limit;
+    UINT64 *base;
+}__attribute__((packed)) idt_ptr_t;
 
-extern long idt_table[256];
-extern int idt_pointer;
+extern idt_ptr_t idt_ptr;
+
 void init_idt(UINT8 bsp_flags);
 
 

@@ -61,10 +61,10 @@ kernel_stack_init:
     .quad   0xC0000083  //3-4G
     .fill	0x1000-(. - tmp_pdptt),1,0
 
-    .globl   idt_pointer
-    idt_pointer:
-    idt_limit:	.word	idt_end - idt_table - 1
-    idt_base:	.quad	idt_table
+    .globl   idt_ptr
+    idt_ptr:
+    idt_limit:	.word	idt_end - idt - 1
+    idt_base:	.quad	idt
 
     .globl kernel_stack_top
     kernel_stack_top:   .quad   _end
@@ -169,9 +169,9 @@ interrupt_entry:
 //========================================正式内核数据=================================================
 .section    .data, "wa"
 
-    .globl idt_table
-    idt_table:
-    	.fill  0x1000-(.-idt_table),1,0
+    .globl idt
+    idt:
+    	.fill  0x1000-(.-idt),1,0
     idt_end:
 
     .globl pml4t
