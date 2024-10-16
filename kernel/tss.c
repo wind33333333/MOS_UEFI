@@ -2,7 +2,7 @@
 
 __attribute__((section(".init_text"))) void init_tss(UINT32 cpu_id,UINT8 bsp_flags) {
     if (bsp_flags) {
-        //
+        //分配tss内存
         tss_t *tss_ptr = (tss_t *)LADDR_TO_HADDR(alloc_pages(PAGE_4K_ALIGN(cpu_info.cores_number * 104) >> PAGE_4K_SHIFT));
 
         for (int i = 0; i < cpu_info.cores_number; i++) {
