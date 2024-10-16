@@ -9,9 +9,9 @@ void    init_gdt(UINT8 bsp_flags);
 typedef struct {
     UINT16 limit;
     UINT64 *base;
-} __attribute__((packed)) _gdt_ptr;
+} __attribute__((packed)) gdt_prt_t;
 
-__attribute__((section(".init_data"))) _gdt_ptr gdt_ptr={0,0};
+__attribute__((section(".init_data"))) gdt_prt_t gdt_ptr={0,0};
 
 #define TSS_START 10
 
