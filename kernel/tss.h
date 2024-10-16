@@ -40,13 +40,13 @@ typedef struct {
     UINT64   reserved2;
     UINT16  reserved3;
     UINT16  iomap_base;
-} __attribute__((packed)) _tss;
+} __attribute__((packed)) tss_t;
 
 typedef struct {
     UINT64 limit;
-    _tss * base;
-} _tss_ptr;
+    tss_t * base;
+} tss_ptr_t;
 
-__attribute__((section(".init_data"))) _tss_ptr tss_ptr = {0,0};
+__attribute__((section(".init_data"))) tss_ptr_t tss_ptr = {0,0};
 
 #endif

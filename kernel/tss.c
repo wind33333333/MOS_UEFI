@@ -3,7 +3,7 @@
 __attribute__((section(".init_text"))) void init_tss(UINT32 cpu_id,UINT8 bsp_flags) {
     if (bsp_flags) {
         tss_ptr.limit = (cpu_info_t.cores_num * 104 + 0xFFF) & PAGE_4K_MASK;
-        tss_ptr.base = (_tss *)LADDR_TO_HADDR(alloc_pages(tss_ptr.limit >> PAGE_4K_SHIFT));   //分配tss_tables内存
+        tss_ptr.base = (tss_t *)LADDR_TO_HADDR(alloc_pages(tss_ptr.limit >> PAGE_4K_SHIFT));   //分配tss_tables内存
 
         for (int i = 0; i < cpu_info_t.cores_num; i++) {
             tss_ptr.base[i].reserved0 = 0;
