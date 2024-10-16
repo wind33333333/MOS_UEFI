@@ -23,7 +23,7 @@ __attribute__((section(".init_text"))) void init_tss(UINT32 cpu_id,UINT8 bsp_fla
             tss_ptr[i].reserved3 = 0;
             tss_ptr[i].iomap_base = 0;
 
-            //设置gdt tss描述符。
+            //设置gdt tss描述符
             SET_TSS(gdt_ptr.base,TSS_DESCRIPTOR_START_INDEX+ i,tss_ptr + i);
             memory_management.kernel_end_address = tss_ptr[i].ist1;
         }
