@@ -42,11 +42,4 @@ typedef struct {
     UINT16  iomap_base;
 } __attribute__((packed)) tss_t;
 
-typedef struct {
-    UINT64 limit;
-    tss_t * base;
-} tss_ptr_t;
-
-__attribute__((section(".init_data"))) tss_ptr_t tss_ptr = {0,0};
-
 #endif
