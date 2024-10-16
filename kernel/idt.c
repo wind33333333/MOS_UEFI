@@ -29,13 +29,10 @@ __attribute__((section(".init_text"))) void init_idt(UINT8 bsp_flags) {
         SET_GATE(idt_ptr.base,18,machine_check,IST_1,TYPE_TRAP);
         SET_GATE(idt_ptr.base,19,SIMD_exception,IST_1,TYPE_TRAP);
         SET_GATE(idt_ptr.base,20,virtualization_exception,IST_1,TYPE_TRAP);
-
         //中断
         SET_GATE(idt_ptr.base,0x20,apic_timer,IST_1,TYPE_INT);
         SET_GATE(idt_ptr.base,0x31,keyboard,IST_1,TYPE_INT);
         SET_GATE(idt_ptr.base,0x32,hpet,IST_1,TYPE_INT);
-
-
     }
 
     __asm__ __volatile__(

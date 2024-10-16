@@ -6,14 +6,16 @@
 
 void init_cpu(UINT32 *cpu_id,UINT8 *bsp_flags);
 
-struct {
+typedef struct {
     CHAR8 manufacturer_name[13];
     CHAR8 model_name[49];
     UINT32 fundamental_frequency;
     UINT32 maximum_frequency;
-    UINT32 cores_num;
+    UINT32 cores_number;
     UINT32 bus_frequency;
     UINT32 tsc_frequency;
 }cpu_info_t;
+
+cpu_info_t cpu_info={0};
 
 #endif

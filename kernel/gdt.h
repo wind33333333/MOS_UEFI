@@ -13,14 +13,16 @@ typedef struct {
 
 __attribute__((section(".init_data"))) gdt_prt_t gdt_ptr={0,0};
 
-#define TSS_START 10
 
-#define CODE64_0 (TYPE_CODE64 | DPL_0 | S | P | L)
-#define DATA64_0 (TYPE_DATA64 | DPL_0 | S | P)
-#define CODE64_3 (TYPE_CODE64 | DPL_3 | S | P | L)
-#define DATA64_3 (TYPE_DATA64 | DPL_3 | S | P)
-#define CODE32_0 (TYPE_CODE32 | DPL_0 | S | P | LIMIT_4G | DB | G)
-#define DATA32_0 (TYPE_DATA32 | DPL_0 | S | P | LIMIT_4G | DB | G)
+//TSS起始选择子
+#define TSS_DESCRIPTOR_START_INDEX 10
+
+#define CODE64_0 (TYPE_CODE64 | DPL_0 | S | P | L)                   //ring0 64位代码段
+#define DATA64_0 (TYPE_DATA64 | DPL_0 | S | P)                       //ring0 64位数据段
+#define CODE64_3 (TYPE_CODE64 | DPL_3 | S | P | L)                   //ring3 64位代码段
+#define DATA64_3 (TYPE_DATA64 | DPL_3 | S | P)                       //ring3 64位数据段
+#define CODE32_0 (TYPE_CODE32 | DPL_0 | S | P | LIMIT_4G | DB | G)   //ring0 32位代码段
+#define DATA32_0 (TYPE_DATA32 | DPL_0 | S | P | LIMIT_4G | DB | G)   //ring0 32位数据段
 
 #define TYPE_CODE64 (0x8UL <<40)
 #define TYPE_DATA64 (0x2UL <<40)

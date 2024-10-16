@@ -2,10 +2,10 @@
 
 __attribute__((section(".init_text"))) void init_tss(UINT32 cpu_id,UINT8 bsp_flags) {
     if (bsp_flags) {
-        tss_ptr.limit = (cpu_info_t.cores_num * 104 + 0xFFF) & PAGE_4K_MASK;
+        tss_ptr.limit = (cpu_info.cores_number * 104 + 0xFFF) & PAGE_4K_MASK;
         tss_ptr.base = (tss_t *)LADDR_TO_HADDR(alloc_pages(tss_ptr.limit >> PAGE_4K_SHIFT));   //分配tss_tables内存
 
-        for (int i = 0; i < cpu_info_t.cores_num; i++) {
+        for (int i = 0; i < cpu_info.cores_number; i++) {
             tss_ptr.base[i].reserved0 = 0;
             tss_ptr.base[i].rsp0 = (UINT64) LADDR_TO_HADDR(alloc_pages(4) + PAGE_4K_SIZE * 4);
             tss_ptr.base[i].rsp1 = 0;
@@ -22,14 +22,14 @@ __attribute__((section(".init_text"))) void init_tss(UINT32 cpu_id,UINT8 bsp_fla
             tss_ptr.base[i].reserved3 = 0;
             tss_ptr.base[i].iomap_base = 0;
 
-            SET_TSS(gdt_ptr.base,TSS_START + i,tss_ptr.base + i);
+            SET_TSS(gdt_ptr.base,TSS_DESCRIPTOR_START_INDEX+ i,tss_ptr.base + i);
             memory_management.kernel_end_address = tss_ptr.base[i].ist1;
         }
     }
 
     __asm__ __volatile__(
             "ltr    %w0 \n\t"
-            ::"r"((cpu_id << 4) + TSS_START * 8):);
+            ::"r"((cpu_id << 4) + TSS_DESCRIPTOR_START_INDEX* 8):);
 
     return;
 }
