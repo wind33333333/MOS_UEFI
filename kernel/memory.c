@@ -5,18 +5,27 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
         //查找memmap中可用物理内存并合并，统计总物理内存容量。
         UINT32 mem_map_index = 0;
         for(UINT32 i = 0;i < (boot_info->mem_map_size/boot_info->mem_descriptor_size);i++){
+            // 使用逻辑或 (||) 来判断内存类型
             if(boot_info->mem_map[i].Type==EFI_LOADER_CODE | boot_info->mem_map[i].Type==EFI_LOADER_DATA | boot_info->mem_map[i].Type==EFI_BOOT_SERVICES_CODE | boot_info->mem_map[i].Type==EFI_BOOT_SERVICES_DATA | boot_info->mem_map[i].Type==EFI_CONVENTIONAL_MEMORY | boot_info->mem_map[i].Type==EFI_ACPI_RECLAIM_MEMORY){
                 if(boot_info->mem_map[i].PhysicalStart==(memory_management.mem_map[mem_map_index].address+memory_management.mem_map[mem_map_index].length)){
+                    // 合并相邻的内存块
                     memory_management.mem_map[mem_map_index].length+=(boot_info->mem_map[i].NumberOfPages<<12);
-                }else{
+                }else if(memory_management.mem_map[mem_map_index].length!=0){
+                    // 开始记录新的内存块
                     mem_map_index++;
                     memory_management.mem_map[mem_map_index].address=boot_info->mem_map[i].PhysicalStart;
                     memory_management.mem_map[mem_map_index].length=boot_info->mem_map[i].NumberOfPages<<12;
+                }else{
+                    // 初始化新的内存块
+                    memory_management.mem_map[mem_map_index].address=boot_info->mem_map[i].PhysicalStart;
+                    memory_management.mem_map[mem_map_index].length=boot_info->mem_map[i].NumberOfPages<<12;
                 }
+                // 更新可用内存大小
                 memory_management.avl_mem_size+=(boot_info->mem_map[i].NumberOfPages<<12);
                 memory_management.mem_map[mem_map_index].type=1;
             }
         }
+        // 最终更新 mem_map 的数量
         memory_management.mem_map_number=mem_map_index+1;
         //打印可用物理内存和总物理内存
         for(UINT32 i=0;i<memory_management.mem_map_number;i++) {
