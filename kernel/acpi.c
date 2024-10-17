@@ -2,11 +2,10 @@
 
 __attribute__((section(".init_text"))) void init_acpi(UINT8 bsp_flags) {
     if (bsp_flags) {
-        RSDP *rsdp = (RSDP *) 0xe0000;
-        RSDT *rsdt = (RSDT *) 0;
-        MADT *madt = (MADT *) 0;
-        HPET *hpet = (HPET *) 0;
-        MCFG *mcfg = (MCFG *) 0;
+//        rsdp_t *rsdp = boot_info->rsdp;
+/*        xsdt_t *xsdt = rsdp->xsdt_address;
+        madt_t *madt = (MADT *) 0;
+        hpet_t *hpet = (HPET *) 0;
 
         for (; rsdp < 0x100000; rsdp = (UINT64 *) rsdp + 2) {
             if (*(UINT64 *) rsdp == 0x2052545020445352) {  //'RSD PTR '
@@ -58,10 +57,9 @@ __attribute__((section(".init_text"))) void init_acpi(UINT8 bsp_flags) {
             if ((irq_to_gsi[i].IRQ == 0x0) && (irq_to_gsi[i].GSI == 0x0))
                 break;
             color_printk(YELLOW, BLACK, "IRQ#%d -> GSI#%d\n", irq_to_gsi[i].IRQ,
-                         irq_to_gsi[i].GSI);
+                         irq_to_gsi[i].GSI);*/
 
         }
 
         return;
     }
-}

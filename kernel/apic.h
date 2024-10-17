@@ -47,8 +47,8 @@ void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt);
         ::"m"(TIME):"%rax","%rcx","%rdx"); \
         } while(0)
 
-#define APIC_ONESHOT 0
-#define APIC_PERIODIC  0x20000
-#define APIC_TSC_DEADLINE 0x40000
+#define APIC_ONESHOT 0              //一次性定时模式
+#define APIC_PERIODIC  0x20000      //周期性定时模式
+#define APIC_TSC_DEADLINE 0x40000   //TSC截止期限模式
 
 #endif
