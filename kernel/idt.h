@@ -1,8 +1,6 @@
 #ifndef __IDT_H__
 #define __IDT_H__
 #include "moslib.h"
-#include "gdt.h"
-#include "interrupt.h"
 
 #define SET_GATE_L(OFFSET,IST,TYPE) (IST | TYPE | SEL_CODE64 | DPL_0 | P | ((UINT64)(OFFSET) & 0x000000000000FFFF) | (((UINT64)(OFFSET) >> 16) << 48))
 #define SET_GATE_H(OFFSET) ((UINT64)(OFFSET) >> 32)

@@ -1,10 +1,6 @@
 #ifndef __ACPI_H__
 #define __ACPI_H__
-
 #include "moslib.h"
-#include "hpet.h"
-#include "interrupt.h"
-#include "cpu.h"
 
 void init_apic(void);
 void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt);

@@ -5,10 +5,7 @@
 #include "font.h"
 #include "linkage.h"
 #include "moslib.h"
-#include "memory.h"
-#include "printk.h"
-#include "cpu.h"
-#include "uefi.h"
+
 
 void init_output(UINT8 bsp_flags);
 void clear_screen(void);

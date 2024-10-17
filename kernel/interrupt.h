@@ -1,13 +1,7 @@
 #ifndef _INTERRUPT_H
 #define _INTERRUPT_H
-
 #include "linkage.h"
-#include "printk.h"
 #include "moslib.h"
-#include "apic.h"
-#include "hpet.h"
-
-
 
 // 定义中断处理函数
 void ignore(void);

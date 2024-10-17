@@ -1,4 +1,9 @@
 #include "page.h"
+#include "printk.h"
+#include "memory.h"
+#include "cpu.h"
+#include "hpet.h"
+#include "ioapic.h"
 
 __attribute__((section(".init_text"))) void init_page(UINT8 bsp_flags) {
 

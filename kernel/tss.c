@@ -1,4 +1,7 @@
 #include "tss.h"
+#include "memory.h"
+#include "gdt.h"
+#include "cpu.h"
 
 __attribute__((section(".init_text"))) void init_tss(UINT32 cpu_id,UINT8 bsp_flags) {
     if (bsp_flags) {

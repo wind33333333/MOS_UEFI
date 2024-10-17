@@ -1,9 +1,6 @@
 #ifndef __MEMORY_H__
 #define __MEMORY_H__
-
-#include "printk.h"
 #include "moslib.h"
-#include "cpu.h"
 
 void init_memory(UINT8 bsp_flags);
 

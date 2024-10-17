@@ -1,8 +1,6 @@
 #ifndef __GDT_INIT_H__
 #define __GDT_INIT_H__
 #include "moslib.h"
-#include "memory.h"
-#include "idt.h"
 
 void    init_gdt(UINT8 bsp_flags);
 

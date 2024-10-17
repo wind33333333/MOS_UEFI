@@ -1,4 +1,7 @@
-#include "interrupt.h"
+#include "printk.h"
+#include "moslib.h"
+#include "apic.h"
+
 
 void do_apic_timer(void) {
     color_printk(RED,BLACK,"apic timer interrupt\n");

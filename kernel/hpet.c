@@ -1,4 +1,6 @@
 #include "hpet.h"
+#include "printk.h"
+#include "memory.h"
 
 void init_hpet(UINT8 bsp_flags) {
 

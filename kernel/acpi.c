@@ -1,8 +1,10 @@
 #include "acpi.h"
+#include "uefi.h"
+
 
 __attribute__((section(".init_text"))) void init_acpi(UINT8 bsp_flags) {
     if (bsp_flags) {
-//        rsdp_t *rsdp = boot_info->rsdp;
+        xsdt_t *rsdp = boot_info->rsdp->xsdt_address;
 /*        xsdt_t *xsdt = rsdp->xsdt_address;
         madt_t *madt = (MADT *) 0;
         hpet_t *hpet = (HPET *) 0;

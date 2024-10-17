@@ -1,11 +1,7 @@
 #ifndef _HPET_H_
 #define _HPET_H_
-
-#include "cpu.h"
 #include "moslib.h"
-#include "printk.h"
-#include "memory.h"
-#include "ioapic.h"
+
 
 #define ENABLE_HPET_TIMES(TIMS_CONF,TIMS_COMP,TIME,MODEL,IRQ) \
         do {   \

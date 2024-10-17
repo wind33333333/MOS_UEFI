@@ -1,4 +1,6 @@
 #include "idt.h"
+#include "gdt.h"
+#include "interrupt.h"
 
 __attribute__((section(".init_text"))) void init_idt(UINT8 bsp_flags) {
     if (bsp_flags) {

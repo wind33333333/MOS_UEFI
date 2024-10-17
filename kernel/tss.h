@@ -1,8 +1,6 @@
 #ifndef __TSS_INIT_H__
 #define __TSS_INIT_H__
 #include "moslib.h"
-#include "memory.h"
-#include "gdt.h"
 
 #define SET_TSS_L(BASE)  \
     (TSS_TYPE | P | TSS_LIMIT | DPL_0 | \
@@ -38,8 +36,8 @@ typedef struct {
     UINT64   ist6;
     UINT64   ist7;
     UINT64   reserved2;
-    UINT16  reserved3;
-    UINT16  iomap_base;
+    UINT16   reserved3;
+    UINT16   iomap_base;
     UINT64   reserved4;
     UINT64   reserved5;
     UINT64   reserved6;

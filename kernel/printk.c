@@ -1,4 +1,7 @@
 #include "printk.h"
+#include "memory.h"
+#include "cpu.h"
+#include "uefi.h"
 
 void putchar(UINT32 *fb, UINT32 Xsize, UINT32 x, UINT32 y, UINT32 FRcolor, UINT32 BKcolor,UINT8 font) {
     int i = 0, j = 0;

@@ -1,4 +1,6 @@
 #include "ap.h"
+#include "printk.h"
+#include "cpu.h"
 
 //多核处理器初始化
 __attribute__((section(".init_text"))) void init_ap(UINT32 cpu_id,UINT8 bsp_flags) {

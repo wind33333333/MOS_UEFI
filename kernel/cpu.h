@@ -1,7 +1,5 @@
 #ifndef _CPU_H
 #define _CPU_H
-
-#include "printk.h"
 #include "moslib.h"
 
 void init_cpu(UINT32 *cpu_id,UINT8 *bsp_flags);

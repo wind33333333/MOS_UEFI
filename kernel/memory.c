@@ -1,4 +1,6 @@
 #include "memory.h"
+#include "printk.h"
+#include "uefi.h"
 
 __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
     if (bsp_flags) {

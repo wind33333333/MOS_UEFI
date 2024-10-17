@@ -1,4 +1,6 @@
 #include "gdt.h"
+#include "memory.h"
+#include "cpu.h"
 
 __attribute__((section(".init_text"))) void init_gdt(UINT8 bsp_flags) {
     if (bsp_flags) {
