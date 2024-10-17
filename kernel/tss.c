@@ -2,8 +2,8 @@
 
 __attribute__((section(".init_text"))) void init_tss(UINT32 cpu_id,UINT8 bsp_flags) {
     if (bsp_flags) {
-        //分配tss内存，每个cpu核心需要一个tss 对齐4k
-        tss_t *tss_ptr = (tss_t *)LADDR_TO_HADDR(alloc_pages(PAGE_4K_ALIGN(cpu_info.cores_number * 104) >> PAGE_4K_SHIFT));
+        //分配tss内存，每个cpu核心需要一个tss 对齐4k,每个tss占104字节，增加24字节对齐到128字节，一个4K页可以存放32个tss
+        tss_t *tss_ptr = (tss_t *)LADDR_TO_HADDR(alloc_pages(PAGE_4K_ALIGN(cpu_info.cores_number * (104+24)) >> PAGE_4K_SHIFT));
 
         //循环初始化tss,每个tss.rsp0和ist1分配16K栈空间
         for (int i = 0; i < cpu_info.cores_number; i++) {
@@ -22,6 +22,9 @@ __attribute__((section(".init_text"))) void init_tss(UINT32 cpu_id,UINT8 bsp_fla
             tss_ptr[i].reserved2 = 0;
             tss_ptr[i].reserved3 = 0;
             tss_ptr[i].iomap_base = 0;
+            tss_ptr[i].reserved4 = 0;
+            tss_ptr[i].reserved5 = 0;
+            tss_ptr[i].reserved6 = 0;
 
             //设置gdt tss描述符
             SET_TSS(gdt_ptr.base,TSS_DESCRIPTOR_START_INDEX+ i,tss_ptr + i);

@@ -1,6 +1,6 @@
 #include "cpu.h"
 
-void init_cpu(UINT32 *cpu_id,UINT8 *bsp_flags) {
+__attribute__((section(".init_text"))) void init_cpu(UINT32 *cpu_id,UINT8 *bsp_flags) {
 
     __asm__ __volatile__(
             //IA32_APIC_BASE (MSR 0x1B)
