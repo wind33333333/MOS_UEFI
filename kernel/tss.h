@@ -38,9 +38,6 @@ typedef struct {
     UINT64   reserved2;
     UINT16   reserved3;
     UINT16   iomap_base;
-    UINT64   reserved4;
-    UINT64   reserved5;
-    UINT64   reserved6;
 } __attribute__((packed)) tss_t;
 
 #endif
