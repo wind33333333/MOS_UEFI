@@ -55,19 +55,19 @@ typedef struct {
 //region madt表
 // 通用的中断控制器条目头
 typedef struct{
-    UINT8 type;             // 中断控制器条目的类型
-    UINT8 length;           // 中断控制器条目的长度
-}__attribute__((packed)) interrupt_controller_header_t;
+    UINT8 type;             // 类型
+    UINT8 length;           // 长度
+}__attribute__((packed)) madt_header_t;
 
 typedef struct {
-    interrupt_controller_header_t   interrupt_controller_header;    // 类型，0 表示本地 APIC条目 长度，通常为 8
+    madt_header_t                   madt_header;    // 类型，0 表示本地 APIC条目 长度，通常为 8
     UINT8                           acpi_processor_id;              // ACPI 处理器 ID
     UINT8                           apic_id;                        // 本地 APIC ID
     UINT32                          flags;                          // 启用状态（1 表示启用）
 }__attribute__((packed)) apic_entry_t;
 
 typedef struct {
-    interrupt_controller_header_t   interrupt_controller_header;    // 类型，1 表示 IO APIC // 条目长度，通常为 12
+    madt_header_t                   madt_header;    // 类型，1 表示 IO APIC // 条目长度，通常为 12
     UINT8                           ioapic_id;                      // IO APIC 的 ID
     UINT8                           reserved;                       // 保留，通常为 0
     UINT32                          ioapic_address;                 // IO APIC 的内存映射基地址
@@ -75,7 +75,7 @@ typedef struct {
 }__attribute__((packed)) ioapic_entry_t;
 
 typedef struct {
-    interrupt_controller_header_t   interrupt_controller_header;   // 类型，2 表示中断源重定向  条目长度，通常为 10
+    madt_header_t                   madt_header;   // 类型，2 表示中断源重定向  条目长度，通常为 10
     UINT8                           bus_source;                    // 总线源（通常为 0，表示 ISA 总线）
     UINT8                           irq_source;                    // ISA IRQ 号（0-15）
     UINT32                          global_system_interrupt;       // 重定向后的全局系统中断号
@@ -83,18 +83,18 @@ typedef struct {
 }__attribute__((packed)) interrupt_source_override_entry_t;
 
 typedef struct {
-    interrupt_controller_header_t   interrupt_controller_header;   // 类型，4 表示 NMI 源  条目长度，通常为 6
+    madt_header_t                   madt_header;            // 类型，4 表示 NMI 源  条目长度，通常为 6
     UINT8                           acpi_processor_id;             // ACPI 处理器 ID，0xFF 表示所有处理器
     UINT16                          flags;                         // 标志位，表示触发模式和极性
     UINT8                           lint;                          // LINT 引脚，表示使用 LINT0 或 LINT1
-}__attribute__((packed)) nmi_source_entry_t;
+}__attribute__((packed)) nmi_entry_t;
 
 typedef struct {
     acpi_table_header_t                       header;                         // 标准 ACPI 表头
     UINT32                                    local_apic_address;             // 本地 APIC 的物理地址
     UINT32                                    flags;                          // 标志，表示系统支持哪些 APIC 功能
     // 接下来的部分是可变长度的 APIC 条目
-    interrupt_controller_header_t             interrupt_controller_header[];  // APIC 条目数组
+    madt_header_t                             madt_header[];  // APIC 条目数组
 }__attribute__((packed)) madt_t;
 //endregion
 
