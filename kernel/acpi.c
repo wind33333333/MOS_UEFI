@@ -12,31 +12,23 @@ __attribute__((section(".init_text"))) void init_acpi(UINT8 bsp_flags) {
         hpett_t *hpett;
         mcfg_t *mcfg;
 
-        for (UINT32 i = 0; i < ((xsdt->header.length - sizeof(acpi_table_header_t)) / 4); i++) {
+        for (UINT32 i = 0; i < ((xsdt->acpi_header.length - sizeof(acpi_header_t)) / 4); i++) {
             if(*xsdt->entry[i]==0x43495041) {//"APIC"
                 madt = (madt_t *) xsdt->entry[i];
                 madt_header_t *madt_header = (madt_header_t *)&madt->madt_header;
-                apic_entry_t *apic_entry;
-                ioapic_entry_t *ioapic_entry;
-                interrupt_source_override_entry_t *interrupt_source_override_entry;
-                nmi_entry_t *nmi_source_entry;
-                while((UINT64)madt_header < ((UINT64)madt+madt->header.length)){
+                while((UINT64)madt_header < ((UINT64)madt+madt->acpi_header.length)){
                     if(madt_header->type == 0){//local apic
-                        apic_entry=(apic_entry_t *)madt_header;
-                        madt_header=(madt_header_t *)((UINT64)madt_header+apic_entry->madt_header.length);
+                        madt_header=(madt_header_t *)((UINT64)madt_header+((apic_entry_t *)madt_header)->madt_header.length);
                     }else if (madt_header->type == 1) {//ioapic
-                        ioapic_entry=(ioapic_entry_t*)madt_header;
-                        ioapic_baseaddr=(UINT32 *) LADDR_TO_HADDR(ioapic_entry->ioapic_address);
-                        color_printk(RED,BLACK,"IOAPIC Addr:%#lX\n",ioapic_entry->ioapic_address);
-                        madt_header=(madt_header_t *)((UINT64)madt_header+ioapic_entry->madt_header.length);
+                        ioapic_baseaddr=(UINT32 *)LADDR_TO_HADDR(((ioapic_entry_t *)madt_header)->ioapic_address);
+                        color_printk(RED,BLACK,"IOAPIC Addr:%#lX\n",((ioapic_entry_t *)madt_header)->ioapic_address);
+                        madt_header=(madt_header_t *)((UINT64)madt_header+((ioapic_entry_t *)madt_header)->madt_header.length);
                     }else if(madt_header->type == 2){//中断重定向
-                        interrupt_source_override_entry=(interrupt_source_override_entry_t *)madt_header;
-                        color_printk(RED,BLACK,"IRQ#%d -> GSI#%d\n",interrupt_source_override_entry->irq_source,interrupt_source_override_entry->global_system_interrupt);
-                        madt_header=(madt_header_t *)((UINT64)madt_header+interrupt_source_override_entry->madt_header.length);
+                        color_printk(RED,BLACK,"IRQ#%d -> GSI#%d\n",((interrupt_source_override_entry_t *)madt_header)->irq_source,((interrupt_source_override_entry_t *)madt_header)->global_system_interrupt);
+                        madt_header=(madt_header_t *)((UINT64)madt_header+((interrupt_source_override_entry_t *)madt_header)->madt_header.length);
                     }else if(madt_header->type == 4){//nmi中断
-                        nmi_source_entry=(nmi_entry_t *)madt_header;
-                        color_printk(RED,BLACK,"NMI ApicProcessorID:%#lX LINT:%d\n",nmi_source_entry->acpi_processor_id,nmi_source_entry->lint);
-                        madt_header=(madt_header_t *)((UINT64)(madt_header+nmi_source_entry->madt_header.length));
+                        color_printk(RED,BLACK,"NMI ApicProcessorID:%#lX LINT:%d\n",((nmi_entry_t *)madt_header)->acpi_processor_id,((nmi_entry_t *)madt_header)->lint);
+                        madt_header=(madt_header_t *)((UINT64)(madt_header+((nmi_entry_t *)madt_header)->madt_header.length));
                     }
                 }
             }else if(*xsdt->entry[i]==0x54455048) {//"HPET"
