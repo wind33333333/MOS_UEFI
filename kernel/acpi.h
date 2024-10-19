@@ -64,7 +64,7 @@ typedef struct {
     UINT8                           acpi_processor_id;              // ACPI 处理器 ID
     UINT8                           apic_id;                        // 本地 APIC ID
     UINT32                          flags;                          // 启用状态（1 表示启用）
-}__attribute__((packed)) apic_entry;
+}__attribute__((packed)) apic_entry_t;
 
 typedef struct {
     interrupt_controller_header_t   interrupt_controller_header;    // 类型，1 表示 IO APIC // 条目长度，通常为 12
@@ -84,8 +84,9 @@ typedef struct {
 
 typedef struct {
     interrupt_controller_header_t   interrupt_controller_header;   // 类型，4 表示 NMI 源  条目长度，通常为 6
-    UINT16                          flags;                         // 中断标志（边沿/电平触发等）
-    UINT32                          global_system_interrupt;       // NMI 所关联的全局系统中断号
+    UINT8                           acpi_processor_id;             // ACPI 处理器 ID，0xFF 表示所有处理器
+    UINT16                          flags;                         // 标志位，表示触发模式和极性
+    UINT8                           lint;                          // LINT 引脚，表示使用 LINT0 或 LINT1
 }__attribute__((packed)) nmi_source_entry_t;
 
 typedef struct {

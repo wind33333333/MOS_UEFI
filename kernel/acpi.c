@@ -16,22 +16,26 @@ __attribute__((section(".init_text"))) void init_acpi(UINT8 bsp_flags) {
             if(*xsdt->entry[i]==0x43495041) {//"APIC"
                 madt = (madt_t *) xsdt->entry[i];
                 interrupt_controller_header_t *interrupt_controller_header = (interrupt_controller_header_t *)&madt->interrupt_controller_header;
+                apic_entry_t *apic_entry;
                 ioapic_entry_t *ioapic_entry;
                 interrupt_source_override_entry_t *interrupt_source_override_entry;
                 nmi_source_entry_t *nmi_source_entry;
                 while((UINT64)interrupt_controller_header < ((UINT64)madt+madt->header.length)){
-                    if (interrupt_controller_header->type == 1) {
+                    if(interrupt_controller_header->type == 0){//local apic
+                        apic_entry=(apic_entry_t *)interrupt_controller_header;
+                        interrupt_controller_header=(interrupt_controller_header_t *)((UINT64)interrupt_controller_header+apic_entry->interrupt_controller_header.length);
+                    }else if (interrupt_controller_header->type == 1) {//ioapic
                         ioapic_entry=(ioapic_entry_t*)interrupt_controller_header;
                         ioapic_baseaddr=(UINT32 *) LADDR_TO_HADDR(ioapic_entry->ioapic_address);
-                        color_printk(RED,BLACK,"IOAPIC Address:%018lx\n",ioapic_baseaddr);
+                        color_printk(RED,BLACK,"IOAPIC Address:%#18lX\n",ioapic_baseaddr);
                         interrupt_controller_header=(interrupt_controller_header_t *)((UINT64)interrupt_controller_header+ioapic_entry->interrupt_controller_header.length);
-                    }else if(interrupt_controller_header->type == 2){
+                    }else if(interrupt_controller_header->type == 2){//中断重定向
                         interrupt_source_override_entry=(interrupt_source_override_entry_t *)interrupt_controller_header;
                         color_printk(RED,BLACK,"IRQ#%d -> GSI#%d\n",interrupt_source_override_entry->irq_source,interrupt_source_override_entry->global_system_interrupt);
                         interrupt_controller_header=(interrupt_controller_header_t *)((UINT64)interrupt_controller_header+interrupt_source_override_entry->interrupt_controller_header.length);
-                    }else if(interrupt_controller_header->type == 4){
+                    }else if(interrupt_controller_header->type == 4){//nmi中断
                         nmi_source_entry=(nmi_source_entry_t *)interrupt_controller_header;
-                        color_printk(RED,BLACK,"NMI GSI#%d\n",nmi_source_entry->global_system_interrupt);
+                        color_printk(RED,BLACK,"NMI AcpiProcessorID:%#lX LINT:%d\n",nmi_source_entry->acpi_processor_id,nmi_source_entry->lint);
                         interrupt_controller_header=(UINT64)(interrupt_controller_header+nmi_source_entry->interrupt_controller_header.length);
                     }
                 }
