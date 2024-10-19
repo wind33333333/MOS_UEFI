@@ -3,26 +3,43 @@
 #include "ioapic.h"
 #include "hpet.h"
 #include "memory.h"
+#include "printk.h"
 
 __attribute__((section(".init_text"))) void init_acpi(UINT8 bsp_flags) {
     if (bsp_flags) {
         xsdt_t *xsdt = boot_info->rsdp->xsdt_address;
-        madt_t *madt = (madt_t *) 0;
-        hpett_t *hpett = (hpett_t *) 0;
-        mcfg_t *mcfg = (mcfg_t *) 0;
+        madt_t *madt;
+        hpett_t *hpett;
+        mcfg_t *mcfg;
 
         for (UINT32 i = 0; i < ((xsdt->header.length - sizeof(acpi_table_header_t)) / 4); i++) {
-            switch (*xsdt->entry[i]) {
-                case 0x43495041:        //"APIC"
-                    madt = (madt_t *) xsdt->entry[i];
-                    break;
-                case 0x54455048:        //"HPET"
-                    hpett = (hpett_t *) xsdt->entry[i];
-                    hpet.address = (UINT64) LADDR_TO_HADDR(hpett->address);
-                    break;
-                case 0x4746434D:        //"MCFG"
+            if(*xsdt->entry[i]==0x43495041) {//"APIC"
+                madt = (madt_t *) xsdt->entry[i];
+                interrupt_controller_header_t *interrupt_controller_header = (interrupt_controller_header_t *)&madt->interrupt_controller_header;
+                ioapic_entry_t *ioapic_entry;
+                interrupt_source_override_entry_t *interrupt_source_override_entry;
+                nmi_source_entry_t *nmi_source_entry;
+                while((UINT64)interrupt_controller_header < ((UINT64)madt+madt->header.length)){
+                    if (interrupt_controller_header->type == 1) {
+                        ioapic_entry=(ioapic_entry_t*)interrupt_controller_header;
+                        ioapic_baseaddr=(UINT32 *) LADDR_TO_HADDR(ioapic_entry->ioapic_address);
+                        color_printk(RED,BLACK,"IOAPIC Address:%018lx\n",ioapic_baseaddr);
+                        interrupt_controller_header=(interrupt_controller_header_t *)((UINT64)interrupt_controller_header+ioapic_entry->interrupt_controller_header.length);
+                    }else if(interrupt_controller_header->type == 2){
+                        interrupt_source_override_entry=(interrupt_source_override_entry_t *)interrupt_controller_header;
+                        color_printk(RED,BLACK,"IRQ#%d -> GSI#%d\n",interrupt_source_override_entry->irq_source,interrupt_source_override_entry->global_system_interrupt);
+                        interrupt_controller_header=(interrupt_controller_header_t *)((UINT64)interrupt_controller_header+interrupt_source_override_entry->interrupt_controller_header.length);
+                    }else if(interrupt_controller_header->type == 4){
+                        nmi_source_entry=(nmi_source_entry_t *)interrupt_controller_header;
+                        color_printk(RED,BLACK,"NMI GSI#%d\n",nmi_source_entry->global_system_interrupt);
+                        interrupt_controller_header=(UINT64)(interrupt_controller_header+nmi_source_entry->interrupt_controller_header.length);
+                    }
+                }
+            }else if(*xsdt->entry[i]==0x54455048) {//"HPET"
+                hpett = (hpett_t *) xsdt->entry[i];
+                hpet.address = (UINT64) LADDR_TO_HADDR(hpett->address);
+            }else if(*xsdt->entry[i]==0x4746434D){//"MCFG"
                     mcfg = (mcfg_t *) xsdt->entry[i];
-                    break;
             }
         }
 
