@@ -33,7 +33,7 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
         for(UINT32 i=0;i<memory_management.mem_map_number;i++) {
             color_printk(ORANGE, BLACK, "%d  Type:%d    Addr:%#018lX    Length:%#018lX\n",i,memory_management.mem_map[i].type,memory_management.mem_map[i].address, memory_management.mem_map[i].length);
         }
-        color_printk(ORANGE, BLACK, "Available RAM:%#018lX~%ldMB\n", memory_management.avl_mem_size,memory_management.avl_mem_size/1024/1024);
+        color_printk(ORANGE, BLACK, "Available RAM:%#lX~%ldMB\n", memory_management.avl_mem_size,memory_management.avl_mem_size/1024/1024);
 
         // 全部置位 bitmap（置为1表示已使用，清除0表示未使用）
         memory_management.bitmap = (UINT64 *) kernel_stack_top;
@@ -64,7 +64,7 @@ __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
                 memory_management.total_pages - memory_management.used_pages;
 
         color_printk(ORANGE, BLACK,
-                     "Bitmap: %#018lX \tBitmapSize: %#018lX \tBitmapLength: %#018lX\n",
+                     "Bitmap: %#lX \tBitmapSize: %#lX \tBitmapLength: %#lX\n",
                      memory_management.bitmap, memory_management.bitmap_size,
                      memory_management.bitmap_length);
         color_printk(ORANGE, BLACK, "Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",

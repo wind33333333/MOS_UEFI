@@ -27,7 +27,7 @@ __attribute__((section(".init_text"))) void init_acpi(UINT8 bsp_flags) {
                     }else if (interrupt_controller_header->type == 1) {//ioapic
                         ioapic_entry=(ioapic_entry_t*)interrupt_controller_header;
                         ioapic_baseaddr=(UINT32 *) LADDR_TO_HADDR(ioapic_entry->ioapic_address);
-                        color_printk(RED,BLACK,"IOAPIC Address:%#18lX\n",ioapic_baseaddr);
+                        color_printk(RED,BLACK,"IOAPIC Address:%#lX\n",ioapic_entry->ioapic_address);
                         interrupt_controller_header=(interrupt_controller_header_t *)((UINT64)interrupt_controller_header+ioapic_entry->interrupt_controller_header.length);
                     }else if(interrupt_controller_header->type == 2){//中断重定向
                         interrupt_source_override_entry=(interrupt_source_override_entry_t *)interrupt_controller_header;
