@@ -21,12 +21,12 @@
 #define HPET_PERIODIC 1
 
 typedef struct {
-    UINT64 baseaddr;
+    UINT64 address;
     UINT32 frequency;
-    UINT32 timernum;
-}HPET_ATTR;
+    UINT32 time_number;
+}hpet_t;
 
-HPET_ATTR hpet_attr = {0};
+hpet_t hpet = {0};
 
 
 typedef struct {
