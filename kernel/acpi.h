@@ -25,30 +25,40 @@ typedef struct {
 } __attribute__((packed)) acpi_header_t;
 //endregion
 
+//region GAS通用地址结构
+typedef struct{
+    UINT8  space_id;         // 地址空间类型 0x00=系统内存空间 0x01=I/O端口空间 /0x02=PCI配置空间  /0x03=嵌入式控制器空间（EC）/0x04=SMBus /0x07=CMOS /0x0A=固件控制器（Functional Fixed Hardware）
+    UINT8  bit_width;        // 寄存器宽度（以位为单位）
+    UINT8  bit_offset;       // 位偏移
+    UINT8  access_size;      // 访问大小
+    UINT64 address;         // 基地址
+}__attribute__((packed)) acpi_generic_adderss_t ;
+//endregion
+
 //region mcfg表
 typedef struct {
-    UINT64 base_address;        // 配置空间基地址
-    UINT64 pci_segment;         // PCIe 段号
-    UINT64 start_bus_number;    // 起始总线号
-    UINT64 end_bus_number;      // 结束总线号
-    UINT64 reserved;            // 保留字段，通常为 0
+    UINT64              base_address;        // 配置空间基地址
+    UINT16              pci_segment;         // PCIe 段号
+    UINT8               start_bus;           // 起始总线号
+    UINT8               end_bus;             // 结束总线号
+    UINT32              reserved;            // 保留字段，通常为 0
 }__attribute__((packed)) mcfg_entry_t;
 
 typedef struct {
-    acpi_header_t acpi_header;                      // 标准 ACPI 表头（36 字节）
-    UINT64 reserved;                           // 保留字段（8 字节），应为 0
-    mcfg_entry_t config_space_base[];          // PCIe 配置空间的区域描述符列表
-} mcfg_t;
+    acpi_header_t   acpi_header;                 // 标准 ACPI 表头（36 字节）
+    UINT64          reserved;                    // 保留字段（8 字节），应为 0
+    mcfg_entry_t    entry[];                     // PCIe 配置空间的区域描述符列表
+}__attribute__((packed)) mcfg_t;
 //endregion
 
 //region hpet表
 typedef struct {
-    acpi_header_t acpi_header;         // 标准 ACPI 表头
-    UINT32 event_timer_block_id;        // 定时器块的 ID
-    UINT64 address;                     // 定时器寄存器的地址
-    UINT8  hpet_number;                 // HPET 的编号
-    UINT16 minimum_tick;                // HPET 支持的最小时间间隔
-    UINT8  page_protection;             // 页保护属性
+    acpi_header_t               acpi_header;                 // 标准 ACPI 表头
+    UINT32                      event_timer_block_id;        // 定时器块的 ID
+    acpi_generic_adderss_t      acpi_generic_adderss;        // GAS通用地址结构
+    UINT8                       hpet_number;                 // HPET 的编号
+    UINT16                      minimum_tick;                // HPET 支持的最小时间间隔
+    UINT8                       page_protection;             // 页保护属性
 }__attribute__((packed)) hpett_t;
 //endregion
 
@@ -93,8 +103,8 @@ typedef struct {
     acpi_header_t                    acpi_header;                    // 标准 ACPI 表头
     UINT32                           local_apic_address;             // 本地 APIC 的物理地址
     UINT32                           flags;                          // 标志，表示系统支持哪些 APIC 功能
-    // 接下来的部分是可变长度的 APIC 条目
-    madt_header_t                    madt_header[];                  // APIC 条目数组
+    // 接下来的部分是可变长度的 APIC结构数组
+    madt_header_t                    madt_header[];                  // APIC数组
 }__attribute__((packed)) madt_t;
 //endregion
 

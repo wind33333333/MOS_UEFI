@@ -33,9 +33,11 @@ __attribute__((section(".init_text"))) void init_acpi(UINT8 bsp_flags) {
                 }
             }else if(*xsdt->entry[i]==0x54455048) {//"HPET"
                 hpett = (hpett_t *) xsdt->entry[i];
-                hpet.address = (UINT64) LADDR_TO_HADDR(hpett->address);
+                hpet.address = (UINT64) LADDR_TO_HADDR(hpett->acpi_generic_adderss.address);
+                color_printk(RED,BLACK,"HPET MiniMumTick:%d Number:%d SpaceID:%d BitWidth:%d BiteOffset:%d AccessSize:%d Address:%#lX\n",hpett->minimum_tick,hpett->hpet_number,hpett->acpi_generic_adderss.space_id,hpett->acpi_generic_adderss.bit_width,hpett->acpi_generic_adderss.bit_offset,hpett->acpi_generic_adderss.access_size,hpett->acpi_generic_adderss.address);
             }else if(*xsdt->entry[i]==0x4746434D){//"MCFG"
                     mcfg = (mcfg_t *) xsdt->entry[i];
+
             }
         }
 
