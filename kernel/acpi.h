@@ -4,13 +4,6 @@
 
 void init_acpi(UINT8 bsp_flags);
 
-typedef struct {
-    UINT32 IRQ;
-    UINT32 GSI;
-}irq_to_gsi_t;
-
-irq_to_gsi_t irq_to_gsi[24] = {0,0};
-
 //region acpi通用头
 typedef struct {
     CHAR8 signature[4];        // 表的签名，例如 "XSDT" "ACPI" "HPET" "MCFG"
@@ -104,7 +97,7 @@ typedef struct {
     UINT32                           local_apic_address;             // 本地 APIC 的物理地址
     UINT32                           flags;                          // 标志，表示系统支持哪些 APIC 功能
     // 接下来的部分是可变长度的 APIC结构数组
-    madt_header_t                    madt_header[];                  // APIC数组
+    madt_header_t                    entry[];                        // APIC数组
 }__attribute__((packed)) madt_t;
 //endregion
 
