@@ -216,9 +216,9 @@ APIC Base Address（APIC 基地址，bit 12-31）：
 
         // 获取CPU核心数量
         __asm__ __volatile__(
-                "movl        $1,%%eax    \n\t"
-                "cpuid                  \n\t"
-                "shrl        $16,%%ebx   \n\t"         //右移16位得到cpu数量
+                "movl        $0xb,%%eax    \n\t"
+                "movl        $0x1,%%ecx    \n\t"
+                "cpuid                     \n\t"
                 :"=b"(cpu_info.cores_number)::"%rax", "%rcx", "%rdx");
 
         // 获取CPU型号

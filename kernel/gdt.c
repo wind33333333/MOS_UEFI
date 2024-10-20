@@ -31,8 +31,8 @@ __attribute__((section(".init_text"))) void init_gdt(UINT8 bsp_flags) {
             "movw       %%ax,%%ss   \n\t"
             "movw       %%ax,%%ds   \n\t"
             "movw       %%ax,%%es   \n\t"
-            "movw       %%ax,%%fs   \n\t"
-            "movw       %%ax,%%gs   \n\t"
+/*            "movw       %%ax,%%fs   \n\t"
+            "movw       %%ax,%%gs   \n\t"*/
             ::"r"(&gdt_ptr):);
 
     return;
