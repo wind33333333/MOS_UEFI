@@ -20,10 +20,10 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
     init_output(bsp_flags);                             //初始化输出控制台
     init_memory(bsp_flags);                             //初始化内存管理器
     init_gdt(bsp_flags);                                //初始化GDT
-    color_printk(RED,BLACK,"CPU Number:%d\n",cpu_info.cores_number);
     init_tss(cpu_id, bsp_flags);                        //初始化TSS
     init_idt(bsp_flags);                                //初始化IDT
-    init_acpi(bsp_flags);                             //初始化acpi
+    init_acpi(bsp_flags);                               //初始化acpi
+    color_printk(GREEN,BLACK,"CPU Number:%d\n",cpu_info.cores_number);
     while(1);
     //init_hpet(bsp_flags);                             //初始化hpet
     //init_ioapic(bsp_flags);                           //初始化ioapic
