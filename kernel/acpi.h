@@ -86,11 +86,46 @@ typedef struct {
 }__attribute__((packed)) interrupt_source_override_entry_t;
 
 typedef struct {
+    madt_header_t                   madt_header;                   // 类型，3 不可屏蔽中断  条目长度，通常为 8 字节
+    UINT16                          flags;                         // 触发模式和极性标志
+    UINT32                          global_interrupt;              // 全局系统中断号
+}__attribute__((packed)) nmi_source_entry_t;
+
+typedef struct {
     madt_header_t                   madt_header;                   // 类型，4 表示 NMI 源  条目长度，通常为 6
     UINT8                           acpi_processor_id;             // ACPI 处理器 ID，0xFF 表示所有处理器
     UINT16                          flags;                         // 标志位，表示触发模式和极性
     UINT8                           lint;                          // LINT 引脚，表示使用 LINT0 或 LINT1
-}__attribute__((packed)) nmi_entry_t;
+}__attribute__((packed)) lapic_nmi_entry_t;
+
+typedef struct {
+    madt_header_t                   madt_header;               // 类型（5）长度（12）用于指定 64 位地址的本地 APIC（LAPIC）地址
+    UINT16                          reserved;                  // 保留字段（0）
+    UINT64                          lapic_address;             // 64 位 LAPIC 地址
+}__attribute__((packed)) lapic_address_override_entry_t;
+
+typedef struct {
+    madt_header_t                   madt_header;         // 条目类型，固定为 9,条目长度，通常为 16 字节x2APIC 是增强版的 APIC，支持更大范围的 APIC ID
+    UINT16                          reserved;            // 保留字段，必须为 0
+    UINT32                          x2apic_id;           // x2APIC 的 ID
+    UINT32                          flags;               // 标志位，指示处理器是否启用
+    UINT32                          acpi_processor_uid;  // ACPI 中的处理器唯一 ID
+}__attribute__((packed)) processor_lx2apic_entry_t;
+
+typedef struct {
+    madt_header_t                   madt_header;              // 条目类型，固定为 10,条目长度，通常为 12 字节 x2APIC 处理器的 NMI（非屏蔽中断）
+    UINT16                          flags;                    // 标志位，指示 NMI 的触发模式和极性
+    UINT32                          acpi_processor_uid;       // 目标处理器的 ACPI 唯一 ID
+    UINT32                          lint;                     // 本地 APIC 的 LINT 输入引脚（LINT0 或 LINT1）
+    UINT8                           reserved[3];              // 保留字段，必须为 0
+}__attribute__((packed)) lx2apic_nmi_entry_t;
+
+typedef struct {
+    madt_header_t                   madt_header;              // 条目类型，固定为 13 条目长度，通常为 12 字节 处理器系统中 唤醒逻辑
+    UINT16                          reserved;                 // 保留字段，必须为 0
+    UINT32                          mailbox_address;          // 唤醒邮箱的物理地址
+    UINT32                          reserved2;                // 保留字段，必须为 0
+} multiprocessor_wakeup_entry_t;
 
 typedef struct {
     acpi_header_t                    acpi_header;                    // 标准 ACPI 表头
