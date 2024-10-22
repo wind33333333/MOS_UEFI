@@ -20,34 +20,20 @@ __attribute__((section(".init_text"))) void init_gdt(UINT8 bsp_flags) {
         *(gdt_ptr.base + 7) = 0;
     }
 
-    sel_offset_t sel_offset={&&offset,0x8}; //0x8 64位ring0代码段选择子
     __asm__ __volatile__(
-            "lgdt      (%0)      \n\t"
-            "mov       %2,%%ss   \n\t"
-            "mov       %2,%%ds   \n\t"
-            "mov       %2,%%es   \n\t"
-            ".byte 0x48          \n\t"
-            "ljmp      (%1)      \n\t"
-            ::"r"(&gdt_ptr),"r"(&sel_offset),"r"(0x10):);//0x10 64位ring0数据段选择子
-offset:
-    __asm__ __volatile__(
-            "nop   \n\t"
-            :::);
-
-/*    __asm__ __volatile__(
             "lgdt       (%0)        \n\t"
-            "pushq      $0x8        \n\t"       //0x8 64位代码选择子
+            "pushq      $0x8        \n\t"       //0x8 64位ring0 代码选择子
             "movabs     $b1,%%rax   \n\t"
             "pushq      %%rax       \n\t"
             "lretq                  \n\t"       //切换新gdt代码选择子
             "b1:                    \n\t"
-            "movw       $0x10,%%ax  \n\t"       //0x10 64位代码选择子
+            "movw       $0x10,%%ax  \n\t"       //0x10 64位ring0 数据段选择子
             "movw       %%ax,%%ss   \n\t"
             "movw       %%ax,%%ds   \n\t"
             "movw       %%ax,%%es   \n\t"
-*//*            "movw       %%ax,%%fs   \n\t"
-            "movw       %%ax,%%gs   \n\t"*//*
-            ::"r"(&gdt_ptr):);*/
+//            "movw       %%ax,%%fs   \n\t"
+//            "movw       %%ax,%%gs   \n\t"
+            ::"r"(&gdt_ptr):);
 
     return;
 }
