@@ -7,12 +7,12 @@
 
 __attribute__((section(".init_text"))) void init_acpi(UINT8 bsp_flags) {
     if (bsp_flags) {
-        xsdt_t *xsdt = boot_info->rsdp->xsdt_address;
         madt_t *madt;
         hpett_t *hpett;
         mcfg_t *mcfg;
 
         //region XSDT中找出各个ACPI表的指针
+        xsdt_t *xsdt = boot_info->rsdp->xsdt_address;
         for (UINT32 i = 0; i < ((xsdt->acpi_header.length - sizeof(acpi_header_t)) / sizeof(UINT32 *)); i++) {
             switch (*xsdt->entry[i]) {
                 case 0x43495041://"APIC 指针"
