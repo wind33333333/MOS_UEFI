@@ -4,10 +4,15 @@
 
 void    init_gdt(UINT8 bsp_flags);
 
-typedef struct {
+typedef struct{
     UINT16 limit;
     UINT64 *base;
 } __attribute__((packed)) gdt_prt_t;
+
+typedef struct{
+    UINT64 offset;
+    UINT16 selector;
+}__attribute__((packed)) sel_offset_t;
 
 __attribute__((section(".init_data"))) gdt_prt_t gdt_ptr={0,0};
 

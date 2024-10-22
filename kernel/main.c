@@ -23,9 +23,8 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
     init_tss(cpu_id, bsp_flags);                        //初始化TSS
     init_idt(bsp_flags);                                //初始化IDT
     init_acpi(bsp_flags);                               //初始化acpi
-    color_printk(GREEN,BLACK,"CPU Number:%d\n",cpu_info.cores_number);
-    while(1);
-    //init_hpet(bsp_flags);                             //初始化hpet
+    while (1);
+    init_hpet(bsp_flags);                             //初始化hpet
     //init_ioapic(bsp_flags);                           //初始化ioapic
     //init_apic();                                      //初始化apic
     init_page(bsp_flags);                               //初始化内核页表
