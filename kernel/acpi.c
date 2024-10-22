@@ -18,7 +18,8 @@ __attribute__((section(".init_text"))) void init_acpi(UINT8 bsp_flags) {
                 madt_header_t *madt_entry = (madt_header_t *)&madt->entry;
                 while((UINT64)madt_entry < ((UINT64)madt+madt->acpi_header.length)){
                     switch(madt_entry->type) {
-                        case 0://local apic
+                        case 0://APIC ID
+                            color_printk(RED,BLACK,"APIC ID:%d\n",((apic_entry_t*)madt_entry)->apic_id);
                             break;
                         case 1://ioapic
                             ioapic_baseaddr = (UINT32 *) LADDR_TO_HADDR(
@@ -31,12 +32,27 @@ __attribute__((section(".init_text"))) void init_acpi(UINT8 bsp_flags) {
                                          ((interrupt_source_override_entry_t *) madt_entry)->irq_source,
                                          ((interrupt_source_override_entry_t *) madt_entry)->global_system_interrupt);
                             break;
-                        case 3:
-
-                        case 4://local apic nmi
-                            color_printk(RED, BLACK, "NMI ApicProcessorID:%#lX LINT:%d\n",
-                                         ((lapic_nmi_entry_t *) madt_entry)->acpi_processor_id,
-                                         ((lapic_nmi_entry_t *) madt_entry)->lint);
+                        case 3://不可屏蔽中断
+                            color_printk(RED,BLACK,"non-maskable interrupt:%d\n",((nmi_source_entry_t *) madt_entry)->global_interrupt);
+                            break;
+                        case 4://apic nmi引脚
+                            color_printk(RED, BLACK, "APIC NMI ApicID:%#lX LINT:%d\n",
+                                         ((apic_nmi_entry_t *) madt_entry)->apic_id,
+                                         ((apic_nmi_entry_t *) madt_entry)->lint);
+                            break;
+                        case 5://64位local apic地址
+                            color_printk(RED,BLACK,"64-bit local apic address:%#lX\n",((apic_address_override_entry_t *)madt_entry)->apic_address);
+                            break;
+                        case 9://X2APIC ID
+                            color_printk(RED,BLACK,"X2APIC ID:%d\n",((x2apic_entry_t*)madt_entry)->x2apic_id);
+                            break;
+                        case 10://X2APIC不可屏蔽中断
+                            color_printk(RED,BLACK,"X2APIC NMI X2ApicID:%#lX LINT:%d\n",
+                                         ((x2apic_nmi_entry_t *) madt_entry)->x2apic_id,
+                                         ((x2apic_nmi_entry_t *) madt_entry)->lint);
+                            break;
+                        case 13://多处理器唤醒
+                            color_printk(RED,BLACK,"Multiprocessor Wakeup Address:%#lX\n",((multiprocessor_wakeup_entry_t *)madt_entry)->mailbox_address);
                             break;
                     }
                     madt_entry=(madt_header_t *)((UINT64)madt_entry+madt_entry->length);
