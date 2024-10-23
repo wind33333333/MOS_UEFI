@@ -96,10 +96,42 @@ APIC Base Address（APIC 基地址，bit 12-31）：
     位位置：bit 22
     描述：启用内存保护密钥功能。该功能允许程序在不修改页表的情况下控制内存的访问权限。
     用途：提供更灵活的内存保护机制，用于区分不同的内存访问权限。*/
+            "xorq       %%r8,%%r8          \n\t"
+            "movq       $7,%%rax           \n\t"
+            "xorq       %%rcx,%%rcx        \n\t"
+            "cpuid                         \n\t"
+            "test       $4,%%rcx           \n\t"
+            "jz         1f                \n\t"
+            "orq        $0x800,%%r8          \n\t"        //bit11 UMIP
+            "1:                            \n\t"
+
+            "test       $0x80,%%rbx        \n\t"
+            "jz         2f                \n\t"
+            "orq        $0x100000,%%r8       \n\t"        //bit20 SMEP
+            "2:                            \n\t"
+
+            "test       $0x100000,%%rbx    \n\t"
+            "jz         3f                \n\t"
+            "orq        $0x200000,%%r8       \n\t"        //bit21 SMAP
+            "3:                            \n\t"
+
+            "test       $8,%%rcx           \n\t"
+            "jz         4f                \n\t"
+            "orq        $0x400000,%%r8       \n\t"        //bit22 PKE
+            "4:                            \n\t"
+
+            "movq       $1,%%rax           \n\t"
+            "cpuid                         \n\t"
+            "test       $0x20,%%rcx        \n\t"
+            "jz         5f                \n\t"
+            "orq        $0x2000,%%r8         \n\t"        //bit13 VMXE
+            "5:                            \n\t"
+
             "movq       %%cr4,%%rax        \n\t"
-            "orq        $0x50780,%%rax     \n\t"
+            "orq        $0x70780,%%rax     \n\t"
+            "orq        %%r8,%%rax         \n\t"
             "movq       %%rax,%%cr4        \n\t"
-            :::"%rax");
+            :::"%rax","%r8");
 
     __asm__ __volatile__(
             //region XCR0
