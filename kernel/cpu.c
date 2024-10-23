@@ -25,8 +25,8 @@ APIC Base Address（APIC 基地址，bit 12-31）：
             "andl       $1,%%eax     \n\t"
             :"=a"(*bsp_flags)::"%rcx","%rdx");
 
-    __asm__ __volatile__(
-            //region CR4
+   __asm__ __volatile__(
+            //CR4
             /*    CR4 寄存器的结构（按位）
     CR4.PSE（第 4 位） - Page Size Extension（页大小扩展）
     位位置：bit 4
@@ -97,7 +97,7 @@ APIC Base Address（APIC 基地址，bit 12-31）：
     描述：启用内存保护密钥功能。该功能允许程序在不修改页表的情况下控制内存的访问权限。
     用途：提供更灵活的内存保护机制，用于区分不同的内存访问权限。*/
             "movq       %%cr4,%%rax        \n\t"
-            "orq        $0x50E80,%%rax     \n\t"
+            "orq        $0x50780,%%rax     \n\t"
             "movq       %%rax,%%cr4        \n\t"
             :::"%rax");
 

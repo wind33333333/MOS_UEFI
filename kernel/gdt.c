@@ -26,11 +26,15 @@ __attribute__((section(".init_text"))) void init_gdt(UINT8 bsp_flags) {
             "movabs     $b1,%%rax   \n\t"
             "pushq      %%rax       \n\t"
             "lretq                  \n\t"       //切换新gdt代码选择子
+//            ".byte      0x48        \n\t"
+//            "ljmp       (%%rsp)     \n\t"
+//            "add        $16,%%rsp   \n\t"     //jmp远跳转exsi执行报错
             "b1:                    \n\t"
             "mov        %1,%%ss     \n\t"
             "mov        %1,%%ds     \n\t"
             "mov        %1,%%es     \n\t"
+//            "movw       %%ax,%%fs   \n\t"
+//            "movw       %%ax,%%gs   \n\t"
             ::"r"(&gdt_ptr),"r"(0x10):"%rax");   //0x10 64位ring0 数据段选择子
-
     return;
 }
