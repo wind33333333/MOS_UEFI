@@ -30,8 +30,6 @@ __attribute__((section(".init_text"))) void init_gdt(UINT8 bsp_flags) {
             "mov        %1,%%ss     \n\t"
             "mov        %1,%%ds     \n\t"
             "mov        %1,%%es     \n\t"
-//            "movw       %%ax,%%fs   \n\t"
-//            "movw       %%ax,%%gs   \n\t"
             ::"r"(&gdt_ptr),"r"(0x10):"%rax");   //0x10 64位ring0 数据段选择子
 
     return;
