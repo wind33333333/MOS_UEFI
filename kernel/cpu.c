@@ -158,12 +158,12 @@ APIC Base Address（APIC 基地址，bit 12-31）：
     描述：控制 PKRU 状态的保存与恢复。PKRU（Protection Keys for Userspace）是内存保护的一种机制。
     用途：启用该位后，处理器会保存和恢复与 PKRU 相关的状态。*/
             "movl       $0x7,%%r8d        \n\t"  //avx256
-            "movl       $0,%%ecx          \n\t"
+            "xorl       %%ecx,%%ecx       \n\t"
             "movl       $0x7,%%eax        \n\t"
             "cpuid                        \n\t"
             "testl      $0x10000,%%ebx    \n\t"  //bit16置位表示支持avx512指令集
             "jz         not_avx512        \n\t"
-            "movl       $0x27,%%r8d       \n\t" //avx512
+            "movl       $0xE7,%%r8d       \n\t" //avx512
             "not_avx512:                  \n\t"
 
             "movl       $0,%%ecx          \n\t"
