@@ -101,31 +101,31 @@ APIC Base Address（APIC 基地址，bit 12-31）：
             "xorq       %%rcx,%%rcx        \n\t"
             "cpuid                         \n\t"
             "test       $4,%%rcx           \n\t"
-            "jz         1f                \n\t"
-            "orq        $0x800,%%r8          \n\t"        //bit11 UMIP
-            "1:                            \n\t"
+            "jz         not_umip           \n\t"
+            "orq        $0x800,%%r8        \n\t"        //bit11 UMIP
+            "not_umip:                            \n\t"
 
             "test       $0x80,%%rbx        \n\t"
-            "jz         2f                \n\t"
-            "orq        $0x100000,%%r8       \n\t"        //bit20 SMEP
-            "2:                            \n\t"
+            "jz         not_smep           \n\t"
+            "orq        $0x100000,%%r8     \n\t"        //bit20 SMEP
+            "not_smep:                     \n\t"
 
             "test       $0x100000,%%rbx    \n\t"
-            "jz         3f                \n\t"
-            "orq        $0x200000,%%r8       \n\t"        //bit21 SMAP
-            "3:                            \n\t"
+            "jz         not_smap           \n\t"
+            "orq        $0x200000,%%r8     \n\t"        //bit21 SMAP
+            "not_smap:                     \n\t"
 
             "test       $8,%%rcx           \n\t"
-            "jz         4f                \n\t"
-            "orq        $0x400000,%%r8       \n\t"        //bit22 PKE
-            "4:                            \n\t"
+            "jz         not_pke            \n\t"
+            "orq        $0x400000,%%r8     \n\t"        //bit22 PKE
+            "not_pke:                      \n\t"
 
             "movq       $1,%%rax           \n\t"
             "cpuid                         \n\t"
             "test       $0x20,%%rcx        \n\t"
-            "jz         5f                \n\t"
-            "orq        $0x2000,%%r8         \n\t"        //bit13 VMXE
-            "5:                            \n\t"
+            "jz         not_vmxe           \n\t"
+            "orq        $0x2000,%%r8       \n\t"        //bit13 VMXE
+            "not_vmxe:                     \n\t"
 
             "movq       %%cr4,%%rax        \n\t"
             "orq        $0x70780,%%rax     \n\t"
@@ -162,9 +162,11 @@ APIC Base Address（APIC 基地址，bit 12-31）：
             "movl       $0x7,%%eax        \n\t"
             "cpuid                        \n\t"
             "testl      $0x10000,%%ebx    \n\t"  //bit16置位表示支持avx512指令集
-            "jz         1f                 \n\t"
+            "jz         not_avx512        \n\t"
             "movl       $0x27,%%r8d       \n\t" //avx512
-            "1:movl     $0,%%ecx        \n\t"
+            "not_avx512:                  \n\t"
+
+            "movl       $0,%%ecx          \n\t"
             "xgetbv                       \n\t"
             "orl        %%r8d,%%eax       \n\t"
             "xsetbv                       \n\t"
@@ -290,13 +292,13 @@ APIC Base Address（APIC 基地址，bit 12-31）：
         // 获取CPU TSC频率
         __asm__ __volatile__(
                 "movl    $0x15,%%eax  \n\t"
-                "cpuid               \n\t"
+                "cpuid                \n\t"
                 "testl   %%ecx,%%ecx  \n\t"
-                "jz     .1           \n\t"            //如果ecx等于0则获取到的tsc频率无效
+                "jz      invalid      \n\t"            //如果ecx等于0则获取到的tsc频率无效
                 "xchgq   %%rax,%%rbx  \n\t"
                 "mulq    %%rcx        \n\t"
                 "divq    %%rbx        \n\t"
-                ".1:                 \n\t"
+                "invalid:             \n\t"
                 :"=a"(cpu_info.tsc_frequency)::"%rcx", "%rbx", "%rdx");
 
     }
