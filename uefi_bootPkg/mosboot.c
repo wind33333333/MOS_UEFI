@@ -9,7 +9,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE); //显示光标
 
     //region 开辟一块内存存放boot传递给kernel的参数
-    BootInfo_struct *BootInfo;
+    BootInfo_t *BootInfo;
     gBS->AllocatePool(EfiLoaderData,sizeof(BootInfo),(void*)&BootInfo);
     //endregion
 
@@ -183,7 +183,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
         Print(L"ERROR: %r. Failed to Boot/gBS->ExitBootService().\n",Status);
 
     //进入内核  rdi=传递BootInfo结构指针
-    void (*KernelEntryPoint)(BootInfo_struct* BootInfo) = (void(*)(BootInfo_struct* BootInfo))KERNELSTARTADDR;
+    void (*KernelEntryPoint)(BootInfo_t* BootInfo) = (void *)KERNELSTARTADDR;
     KernelEntryPoint(BootInfo);
     //endregion
 

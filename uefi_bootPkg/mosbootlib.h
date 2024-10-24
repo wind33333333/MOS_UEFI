@@ -85,7 +85,7 @@ typedef struct{
     /*UEFI RunTimeServices Point*/
     EFI_RUNTIME_SERVICES* gRTS;
 
-} __attribute__((packed)) BootInfo_struct;
+} __attribute__((packed)) BootInfo_t;
 
 
 #endif
