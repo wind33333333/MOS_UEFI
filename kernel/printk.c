@@ -356,6 +356,7 @@ __attribute__((section(".init_text"))) void init_output(UINT8 bsp_flags) {
         Pos.XCharSize = 8;
         Pos.YCharSize = 16;
 
+        //map_pages(boot_info->frame_buffer_base,LADDR_TO_HADDR(boot_info->frame_buffer_base), PAGE_4K_ALIGN(boot_info->frame_buffer_size)>>PAGE_4K_SHIFT,PAGE_ROOT_UC);
         Pos.FB_addr = (UINT32*)(LADDR_TO_HADDR(boot_info->frame_buffer_base));
         Pos.FB_length = boot_info->frame_buffer_size;
         Pos.lock = 0;
