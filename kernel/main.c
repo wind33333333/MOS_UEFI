@@ -23,7 +23,7 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
     for(UINT32 i=0;i<0x10000;i++){
         *((UINT32 *)boot_info->frame_buffer_base+i) = 0x0000FF00;
     }
-    while (1);
+    //while (1);
 
 
     init_memory(bsp_flags);                             //初始化内存管理器

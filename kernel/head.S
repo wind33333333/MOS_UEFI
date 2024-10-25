@@ -65,6 +65,8 @@ kernel_stack_init:
     .quad   0x140000083  //5
     .quad   0x180000083  //6
     .quad   0x1C0000083  //7
+    .fill   0x800-0x40,1,0
+    .quad   0x4000000083 //256G 显存
     .fill	0x1000-(. - tmp_pdptt),1,0
 
     .globl   idt_ptr
