@@ -28,19 +28,21 @@ _start:
     add        %rbx,%rax
     mov        %rax,kernel_stack_top(%rip)       //内核栈顶
 
-///////////////////////////初始化多核内核栈，切换页表
+///////////////////////////切换页表
 kernel_stack_init:
     mov     $tmp_pml4t-HBASE_ADDR,%rax
     mov     %rax,%cr3
 
+/////////初始化多核内核栈
     mov     $0x802,%ecx
     rdmsr                           //获取APIC ID
     shl     $14,%rax                //每个核心分配16k栈
     mov     kernel_stack_top(%rip),%rsp
     sub     %rax,%rsp               //计算每个内核栈 栈顶=kernelstack_top-(APIC ID*16K)
 
+//切换到0xFFFF800000000000内核空间，进入C语言init_kernel
     movabs     $init_kernel,%rax
-    jmp     *%rax                   //切换到0xFFFF800000000000内核空间，进入C语言init_kernel
+    jmp        *%rax
 
 //===============================初始化程序数据=================================================
 .section    .init_data, "wa"
@@ -55,10 +57,14 @@ kernel_stack_init:
 
     .globl tmp_pdptt
     tmp_pdptt:
-    .quad   0x00000083  //0-1G
-    .quad   0x40000083  //1-2G
-    .quad   0x80000083  //2-3G
-    .quad   0xC0000083  //3-4G
+    .quad   0x00000083  //0
+    .quad   0x40000083  //1
+    .quad   0x80000083  //2
+    .quad   0xC0000083  //3
+    .quad   0x100000083  //4
+    .quad   0x140000083  //5
+    .quad   0x180000083  //6
+    .quad   0x1C0000083  //7
     .fill	0x1000-(. - tmp_pdptt),1,0
 
     .globl   idt_ptr
