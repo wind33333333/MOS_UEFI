@@ -1,7 +1,6 @@
 #include "page.h"
 #include "printk.h"
 #include "memory.h"
-#include "cpu.h"
 #include "hpet.h"
 #include "ioapic.h"
 
