@@ -1,6 +1,11 @@
 #include "cpu.h"
 
+//全局变量
+cpu_info_t cpu_info;
+
 __attribute__((section(".init_text"))) void init_cpu(UINT32 *cpu_id,UINT8 *bsp_flags) {
+    //初始化全局变量
+    mem_set(&cpu_info,0,sizeof(cpu_info_t));
 
     __asm__ __volatile__(
             //IA32_APIC_BASE (MSR 0x1B)

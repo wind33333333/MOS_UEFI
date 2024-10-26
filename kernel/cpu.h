@@ -14,6 +14,6 @@ typedef struct {
     UINT32 tsc_frequency;
 }cpu_info_t;
 
-cpu_info_t cpu_info={0};
+extern cpu_info_t cpu_info;
 
 #endif

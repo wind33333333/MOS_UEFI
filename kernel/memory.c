@@ -2,7 +2,7 @@
 #include "printk.h"
 #include "uefi.h"
 
-global_memory_descriptor_t memory_management = {0};
+global_memory_descriptor_t memory_management;
 
 __attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
     if (bsp_flags) {
