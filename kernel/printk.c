@@ -314,18 +314,18 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
                 if (Pos.YPosition < 0)
                     Pos.YPosition = (Pos.YResolution / Pos.YCharSize - 1) * Pos.YCharSize;
             }
-            putchar(Pos.FB_addr, Pos.XResolution, Pos.XPosition * Pos.XCharSize,
+            putchar(Pos.FB_addr, Pos.PixelsPerScanLine, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor, ' ');
         } else if ((unsigned char) *(buf + count) == '\t') {
             line = ((Pos.XPosition + 8) & ~(8 - 1)) - Pos.XPosition;
 
             Label_tab:
             line--;
-            putchar(Pos.FB_addr, Pos.XResolution, Pos.XPosition * Pos.XCharSize,
+            putchar(Pos.FB_addr, Pos.PixelsPerScanLine, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor, ' ');
             Pos.XPosition++;
         } else {
-            putchar(Pos.FB_addr, Pos.XResolution, Pos.XPosition * Pos.XCharSize,
+            putchar(Pos.FB_addr, Pos.PixelsPerScanLine, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor,
                     (unsigned char) *(buf + count));
             Pos.XPosition++;
