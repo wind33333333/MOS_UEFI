@@ -4,6 +4,6 @@
 
 void init_ipapic(UINT8 bsp_flags);
 
-UINT32 *ioapic_baseaddr= 0;
+UINT32 *ioapic_baseaddr;
 
 #endif

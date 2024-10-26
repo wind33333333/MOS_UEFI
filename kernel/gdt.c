@@ -2,6 +2,8 @@
 #include "memory.h"
 #include "cpu.h"
 
+__attribute__((section(".init_data"))) gdt_ptr_t gdt_ptr;
+
 __attribute__((section(".init_text"))) void init_gdt(UINT8 bsp_flags) {
     if (bsp_flags) {
         //gdt-limit限长=cpu核心数量*tss选择子字节数（tss选择子16字节每个）+ tss描述符起始索引号*8字节（tss起始描述符前是其他系统段描述符），limt对齐4K界限-1

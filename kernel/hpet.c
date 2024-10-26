@@ -2,6 +2,9 @@
 #include "printk.h"
 #include "memory.h"
 
+HPET_Registers hpetRegisters;
+hpet_t hpet;
+
 void init_hpet(UINT8 bsp_flags) {
 
     if (bsp_flags) {

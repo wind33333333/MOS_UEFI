@@ -7,10 +7,9 @@ void    init_gdt(UINT8 bsp_flags);
 typedef struct{
     UINT16 limit;
     UINT64 *base;
-} __attribute__((packed)) gdt_prt_t;
+} __attribute__((packed)) gdt_ptr_t;
 
-__attribute__((section(".init_data"))) gdt_prt_t gdt_ptr={0,0};
-
+extern gdt_ptr_t gdt_ptr;
 
 //TSS起始选择子
 #define TSS_DESCRIPTOR_START_INDEX 10

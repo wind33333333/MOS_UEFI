@@ -26,7 +26,7 @@ typedef struct {
     UINT32 time_number;
 }hpet_t;
 
-hpet_t hpet = {0};
+extern hpet_t hpet;
 
 
 typedef struct {
@@ -52,7 +52,7 @@ typedef struct {
     UINT64 *TIM7_COMP;    // 1E8h ~ 1EFh 定时器7对比寄存器
 } HPET_Registers;
 
-HPET_Registers hpetRegisters = {0};
+extern HPET_Registers hpetRegisters;
 
 void init_hpet(UINT8 bsp_flags);
 
