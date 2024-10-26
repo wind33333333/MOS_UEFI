@@ -40,14 +40,15 @@ extern UINT8 font_ascii[256][16];
 
 struct position
 {
-	int XResolution;
-	int YResolution;
+	UINT32 XResolution;
+	UINT32 YResolution;
+    UINT32 PixelsPerScanLine;
 
-	int XPosition;
-	int YPosition;
+	UINT32 XPosition;
+	UINT32 YPosition;
 
-	int XCharSize;
-	int YCharSize;
+	UINT32 XCharSize;
+	UINT32 YCharSize;
 
 	UINT32* FB_addr;
 	UINT64 FB_length;
@@ -64,14 +65,14 @@ void putchar(UINT32 *fb, UINT32 Xsize, UINT32 x, UINT32 y, UINT32 FRcolor, UINT3
 
 */
 
-int skip_atoi(const char **s);
+UINT32 skip_atoi(const char **s);
 
 /*
 
 */
 
 #define do_div(n,base) ({ \
-int __res; \
+UINT32 __res; \
 __asm__("divq %%rcx":"=a" (n),"=d" (__res):"0" (n),"1" (0),"c" (base)); \
 __res; })
 
@@ -79,19 +80,19 @@ __res; })
 
 */
 
-static char * number(char * str, long num, int base, int size, int precision ,int type);
+static char * number(char * str, long num, UINT32 base, UINT32 size, UINT32 precision ,UINT32 type);
 
 /*
 
 */
 
-int vsprintf(char * buf,const char *fmt, va_list args);
+UINT32 vsprintf(char * buf,const char *fmt, va_list args);
 
 /*
 
 */
 
-int color_printk(UINT32 FRcolor,UINT32 BKcolor,const char * fmt,...);
+UINT32 color_printk(UINT32 FRcolor,UINT32 BKcolor,const char * fmt,...);
 
 #endif
 

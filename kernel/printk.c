@@ -3,15 +3,15 @@
 #include "cpu.h"
 #include "uefi.h"
 
-void putchar(UINT32 *fb, UINT32 Xsize, UINT32 x, UINT32 y, UINT32 FRcolor, UINT32 BKcolor,UINT8 font) {
-    int i = 0, j = 0;
+void putchar(UINT32 *fb, UINT32 PixelsPerScanLine, UINT32 x, UINT32 y, UINT32 FRcolor, UINT32 BKcolor, UINT8 font) {
+    UINT32 i = 0, j = 0;
     UINT32 *addr = NULL;
     UINT8 *fontp = NULL;
-    int testval = 0;
+    UINT32 testval = 0;
     fontp = font_ascii[font];
 
     for (i = 0; i < 16; i++) {
-        addr = fb + Xsize * (y + i) + x;
+        addr = fb + PixelsPerScanLine * (y + i) + x;  // 使用PixelsPerScanLine
         testval = 0x100;
         for (j = 0; j < 8; j++) {
             testval = testval >> 1;
@@ -30,8 +30,8 @@ void putchar(UINT32 *fb, UINT32 Xsize, UINT32 x, UINT32 y, UINT32 FRcolor, UINT3
 
 */
 
-int  skip_atoi(const char **s) {
-    int i = 0;
+UINT32  skip_atoi(const char **s) {
+    UINT32 i = 0;
 
     while (is_digit(**s))
         i = i * 10 + *((*s)++) - '0';
@@ -42,10 +42,10 @@ int  skip_atoi(const char **s) {
 
 */
 
-static char *number(char *str, long num, int base, int size,int precision, int type) {
+static char *number(char *str, long num, UINT32 base, UINT32 size,UINT32 precision, UINT32 type) {
     char c, sign, tmp[50];
     const char *digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    int i;
+    UINT32 i;
 
     if (type & SMALL) digits = "0123456789abcdefghijklmnopqrstuvwxyz";
     if (type & LEFT) type &= ~ZEROPAD;
@@ -100,14 +100,14 @@ static char *number(char *str, long num, int base, int size,int precision, int t
 
 */
 
-int  vsprintf(char *buf, const char *fmt, va_list args) {
+UINT32  vsprintf(char *buf, const char *fmt, va_list args) {
     char *str, *s;
-    int flags;
-    int field_width;
-    int precision;
-    int len, i;
+    UINT32 flags;
+    UINT32 field_width;
+    UINT32 precision;
+    UINT32 len, i;
 
-    int qualifier;        /* 'h', 'l', 'L' or 'Z' for integer fields */
+    UINT32 qualifier;        /* 'h', 'l', 'L' or 'Z' for integer fields */
 
     for (str = buf; *fmt; fmt++) {
 
@@ -143,7 +143,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
             field_width = skip_atoi(&fmt);
         else if (*fmt == '*') {
             fmt++;
-            field_width = va_arg(args, int);
+            field_width = va_arg(args, UINT32);
             if (field_width < 0) {
                 field_width = -field_width;
                 flags |= LEFT;
@@ -159,7 +159,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
                 precision = skip_atoi(&fmt);
             else if (*fmt == '*') {
                 fmt++;
-                precision = va_arg(args, int);
+                precision = va_arg(args, UINT32);
             }
             if (precision < 0)
                 precision = 0;
@@ -177,7 +177,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
                 if (!(flags & LEFT))
                     while (--field_width > 0)
                         *str++ = ' ';
-                *str++ = (UINT8) va_arg(args, int);
+                *str++ = (UINT8) va_arg(args, UINT32);
                 while (--field_width > 0)
                     *str++ = ' ';
                 break;
@@ -256,7 +256,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
                     long *ip = va_arg(args, long *);
                     *ip = (str - buf);
                 } else {
-                    int *ip = va_arg(args, int *);
+                    UINT32 *ip = va_arg(args, UINT32 *);
                     *ip = (str - buf);
                 }
                 break;
@@ -284,11 +284,11 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
 /*
 
 */
-int color_printk(UINT32 FRcolor, UINT32 BKcolor, const char *fmt, ...) {
+UINT32 color_printk(UINT32 FRcolor, UINT32 BKcolor, const char *fmt, ...) {
     SPIN_LOCK(Pos.lock);
-    int i = 0;
-    int count = 0;
-    int line = 0;
+    UINT32 i = 0;
+    UINT32 count = 0;
+    UINT32 line = 0;
     va_list args;
     va_start(args, fmt);
 
@@ -313,18 +313,18 @@ int color_printk(UINT32 FRcolor, UINT32 BKcolor, const char *fmt, ...) {
                 if (Pos.YPosition < 0)
                     Pos.YPosition = (Pos.YResolution / Pos.YCharSize - 1) * Pos.YCharSize;
             }
-            putchar(Pos.FB_addr, Pos.XResolution, Pos.XPosition * Pos.XCharSize,
+            putchar(Pos.FB_addr, Pos.PixelsPerScanLine, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor, ' ');
         } else if ((UINT8) *(buf + count) == '\t') {
             line = ((Pos.XPosition + 8) & ~(8 - 1)) - Pos.XPosition;
 
             Label_tab:
             line--;
-            putchar(Pos.FB_addr, Pos.XResolution, Pos.XPosition * Pos.XCharSize,
+            putchar(Pos.FB_addr, Pos.PixelsPerScanLine, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor, ' ');
             Pos.XPosition++;
         } else {
-            putchar(Pos.FB_addr, Pos.XResolution, Pos.XPosition * Pos.XCharSize,
+            putchar(Pos.FB_addr, Pos.PixelsPerScanLine, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor,
                     (UINT8) *(buf + count));
             Pos.XPosition++;
@@ -354,6 +354,7 @@ __attribute__((section(".init_text"))) void init_output(UINT8 bsp_flags) {
 
         Pos.XResolution = boot_info->horizontal_resolution;
         Pos.YResolution = boot_info->vertical_resolution;
+        Pos.PixelsPerScanLine = boot_info->pixels_per_scan_line;
 
         Pos.XPosition = 0;
         Pos.YPosition = 0;
@@ -372,7 +373,7 @@ __attribute__((section(".init_text"))) void init_output(UINT8 bsp_flags) {
 }
 
 void clear_screen(void){
-    for(UINT64 i=0;i<(Pos.FB_length/sizeof(UINT32));i++){
+    for(UINT64 i=0;i<(Pos.PixelsPerScanLine*Pos.YResolution;i++){
         *((UINT32*)Pos.FB_addr+i)=BLACK;
     }
     Pos.XPosition=0;

@@ -60,9 +60,9 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     gBS->LocateProtocol(&gEfiGraphicsOutputProtocolGuid,NULL,(VOID **)&gGraphicsOutput);
     for(UINT32 i = 0;i < gGraphicsOutput->Mode->MaxMode;i++){
         gGraphicsOutput->QueryMode(gGraphicsOutput,i,&InfoSize,&Info);
-        if((SystemTable->ConOut->Mode->CursorColumn+34)>Columns)
+        if((SystemTable->ConOut->Mode->CursorColumn+38)>Columns)
             Print(L"\n");
-        Print(L"ResolutionMode:%2d H:%4d V:%4d   ",i,Info->HorizontalResolution,Info->VerticalResolution);
+        Print(L"ResolutionMode:%2d H:%4d V:%4d P:%4d   ",i,Info->HorizontalResolution,Info->VerticalResolution,Info->PixelsPerScanLine);
         gBS->FreePool(Info);
     }
     Print(L"\n");

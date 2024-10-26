@@ -27,7 +27,7 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
         }
     }
 
-    //color_printk(RED,BLACK,"Hello Word !!!+++@@@");
+    color_printk(RED,BLACK,"Hello Word !!!+++@@@");
     while (1);
 
 
