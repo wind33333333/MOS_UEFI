@@ -373,7 +373,7 @@ __attribute__((section(".init_text"))) void init_output(UINT8 bsp_flags) {
 }
 
 void clear_screen(void){
-    for(UINT64 i=0;i<(Pos.PixelsPerScanLine*Pos.YResolution;i++){
+    for(UINT64 i=0;i<(Pos.PixelsPerScanLine*Pos.YResolution);i++){
         *((UINT32*)Pos.FB_addr+i)=BLACK;
     }
     Pos.XPosition=0;
