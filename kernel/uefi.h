@@ -639,6 +639,7 @@ typedef struct{
     UINT64  frame_buffer_base;
     UINT32  horizontal_resolution;
     UINT32  vertical_resolution;
+    UINT32  pixels_per_scan_line;
     UINT64  frame_buffer_size;
 
     /*内存图*/

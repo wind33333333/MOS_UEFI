@@ -96,6 +96,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     BootInfo->FrameBufferSize=gGraphicsOutput->Mode->FrameBufferSize;
     BootInfo->HorizontalResolution=gGraphicsOutput->Mode->Info->HorizontalResolution;
     BootInfo->VerticalResolution=gGraphicsOutput->Mode->Info->VerticalResolution;
+    BootInfo->PixelsPerScanLine=gGraphicsOutput->Mode->Info->PixelsPerScanLine;
     gBS->CloseProtocol(gGraphicsOutput,&gEfiGraphicsOutputProtocolGuid,ImageHandle,NULL);
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
     //endregion
