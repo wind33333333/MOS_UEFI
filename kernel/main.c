@@ -20,8 +20,13 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
     init_cpu(&cpu_id, &bsp_flags);                      //获取cpu信息和初始化cpu开启高级功能
     init_output(bsp_flags);                             //初始化输出控制台
 
+/*
+    for(UINT64 i=0;i<(Pos.PixelsPerScanLine*Pos.YResolution);i++){
+        *((UINT32*)Pos.FB_addr+i)=GREEN;
+    }
+
     for(UINT32 x=0;x<100;x++) {
-        UINT32 *x_coordinate=(UINT32*)(x * boot_info->pixels_per_scan_line*4+boot_info->frame_buffer_base);
+        UINT32 *x_coordinate=(UINT32*)(x * Pos.PixelsPerScanLine*4+boot_info->frame_buffer_base);
         for (UINT32 i = 0; i < 100; i++) {
             *(x_coordinate + i) = 0x000000FF;
         }
@@ -29,6 +34,7 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
 
     color_printk(RED,BLACK,"Hello Word !!!+++@@@");
     while (1);
+*/
 
 
     init_memory(bsp_flags);                             //初始化内存管理器

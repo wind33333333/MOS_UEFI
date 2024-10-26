@@ -3,15 +3,16 @@
 #include "cpu.h"
 #include "uefi.h"
 
-void putchar(UINT32 *fb, UINT32 PixelsPerScanLine, UINT32 x, UINT32 y, UINT32 FRcolor, UINT32 BKcolor, UINT8 font) {
-    UINT32 i = 0, j = 0;
-    UINT32 *addr = NULL;
-    UINT8 *fontp = NULL;
-    UINT32 testval = 0;
+void putchar(unsigned int *fb, int Xsize, int x, int y, unsigned int FRcolor, unsigned int BKcolor,
+             unsigned char font) {
+    int i = 0, j = 0;
+    unsigned int *addr = NULL;
+    unsigned char *fontp = NULL;
+    int testval = 0;
     fontp = font_ascii[font];
 
     for (i = 0; i < 16; i++) {
-        addr = fb + PixelsPerScanLine * (y + i) + x;  // 使用PixelsPerScanLine
+        addr = fb + Xsize * (y + i) + x;
         testval = 0x100;
         for (j = 0; j < 8; j++) {
             testval = testval >> 1;
@@ -30,8 +31,8 @@ void putchar(UINT32 *fb, UINT32 PixelsPerScanLine, UINT32 x, UINT32 y, UINT32 FR
 
 */
 
-UINT32  skip_atoi(const char **s) {
-    UINT32 i = 0;
+int  skip_atoi(const char **s) {
+    int i = 0;
 
     while (is_digit(**s))
         i = i * 10 + *((*s)++) - '0';
@@ -42,10 +43,10 @@ UINT32  skip_atoi(const char **s) {
 
 */
 
-static char *number(char *str, long num, UINT32 base, UINT32 size,UINT32 precision, UINT32 type) {
+static char *number(char *str, long num, int base, int size,int precision, int type) {
     char c, sign, tmp[50];
     const char *digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    UINT32 i;
+    int i;
 
     if (type & SMALL) digits = "0123456789abcdefghijklmnopqrstuvwxyz";
     if (type & LEFT) type &= ~ZEROPAD;
@@ -100,14 +101,14 @@ static char *number(char *str, long num, UINT32 base, UINT32 size,UINT32 precisi
 
 */
 
-UINT32  vsprintf(char *buf, const char *fmt, va_list args) {
+int  vsprintf(char *buf, const char *fmt, va_list args) {
     char *str, *s;
-    UINT32 flags;
-    UINT32 field_width;
-    UINT32 precision;
-    UINT32 len, i;
+    int flags;
+    int field_width;
+    int precision;
+    int len, i;
 
-    UINT32 qualifier;        /* 'h', 'l', 'L' or 'Z' for integer fields */
+    int qualifier;        /* 'h', 'l', 'L' or 'Z' for integer fields */
 
     for (str = buf; *fmt; fmt++) {
 
@@ -143,7 +144,7 @@ UINT32  vsprintf(char *buf, const char *fmt, va_list args) {
             field_width = skip_atoi(&fmt);
         else if (*fmt == '*') {
             fmt++;
-            field_width = va_arg(args, UINT32);
+            field_width = va_arg(args, int);
             if (field_width < 0) {
                 field_width = -field_width;
                 flags |= LEFT;
@@ -159,7 +160,7 @@ UINT32  vsprintf(char *buf, const char *fmt, va_list args) {
                 precision = skip_atoi(&fmt);
             else if (*fmt == '*') {
                 fmt++;
-                precision = va_arg(args, UINT32);
+                precision = va_arg(args, int);
             }
             if (precision < 0)
                 precision = 0;
@@ -177,7 +178,7 @@ UINT32  vsprintf(char *buf, const char *fmt, va_list args) {
                 if (!(flags & LEFT))
                     while (--field_width > 0)
                         *str++ = ' ';
-                *str++ = (UINT8) va_arg(args, UINT32);
+                *str++ = (unsigned char) va_arg(args, int);
                 while (--field_width > 0)
                     *str++ = ' ';
                 break;
@@ -205,10 +206,10 @@ UINT32  vsprintf(char *buf, const char *fmt, va_list args) {
             case 'o':
 
                 if (qualifier == 'l')
-                    str = number(str, va_arg(args, UINT64), 8, field_width, precision,
-                                 flags);
+                    str = number(str, va_arg(args, unsigned long), 8, field_width, precision,
+                flags);
                 else
-                    str = number(str, va_arg(args, UINT32), 8, field_width, precision, flags);
+                str = number(str, va_arg(args, unsigned int), 8, field_width, precision, flags);
                 break;
 
             case 'p':
@@ -218,8 +219,8 @@ UINT32  vsprintf(char *buf, const char *fmt, va_list args) {
                     flags |= ZEROPAD;
                 }
 
-                str = number(str, (UINT64) va_arg(args, void *), 16, field_width, precision,
-                             flags);
+                str = number(str, (unsigned long) va_arg(args, void *), 16, field_width, precision,
+                flags);
                 break;
 
             case 'x':
@@ -229,11 +230,11 @@ UINT32  vsprintf(char *buf, const char *fmt, va_list args) {
             case 'X':
 
                 if (qualifier == 'l')
-                    str = number(str, va_arg(args, UINT64), 16, field_width, precision,
-                                 flags);
+                    str = number(str, va_arg(args, unsigned long), 16, field_width, precision,
+                flags);
                 else
-                    str = number(str, va_arg(args, UINT32), 16, field_width, precision,
-                                 flags);
+                str = number(str, va_arg(args, unsigned int), 16, field_width, precision,
+                flags);
                 break;
 
             case 'd':
@@ -243,11 +244,11 @@ UINT32  vsprintf(char *buf, const char *fmt, va_list args) {
             case 'u':
 
                 if (qualifier == 'l')
-                    str = number(str, va_arg(args, UINT64), 10, field_width, precision,
-                                 flags);
+                    str = number(str, va_arg(args, unsigned long), 10, field_width, precision,
+                flags);
                 else
-                    str = number(str, va_arg(args, UINT32), 10, field_width, precision,
-                                 flags);
+                str = number(str, va_arg(args, unsigned int), 10, field_width, precision,
+                flags);
                 break;
 
             case 'n':
@@ -256,7 +257,7 @@ UINT32  vsprintf(char *buf, const char *fmt, va_list args) {
                     long *ip = va_arg(args, long *);
                     *ip = (str - buf);
                 } else {
-                    UINT32 *ip = va_arg(args, UINT32 *);
+                    int *ip = va_arg(args, int *);
                     *ip = (str - buf);
                 }
                 break;
@@ -284,11 +285,11 @@ UINT32  vsprintf(char *buf, const char *fmt, va_list args) {
 /*
 
 */
-UINT32 color_printk(UINT32 FRcolor, UINT32 BKcolor, const char *fmt, ...) {
+int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ...) {
     SPIN_LOCK(Pos.lock);
-    UINT32 i = 0;
-    UINT32 count = 0;
-    UINT32 line = 0;
+    int i = 0;
+    int count = 0;
+    int line = 0;
     va_list args;
     va_start(args, fmt);
 
@@ -302,10 +303,10 @@ UINT32 color_printk(UINT32 FRcolor, UINT32 BKcolor, const char *fmt, ...) {
             count--;
             goto Label_tab;
         }
-        if ((UINT8) *(buf + count) == '\n') {
+        if ((unsigned char) *(buf + count) == '\n') {
             Pos.YPosition++;
             Pos.XPosition = 0;
-        } else if ((UINT8) *(buf + count) == '\b') {
+        } else if ((unsigned char) *(buf + count) == '\b') {
             Pos.XPosition--;
             if (Pos.XPosition < 0) {
                 Pos.XPosition = (Pos.XResolution / Pos.XCharSize - 1) * Pos.XCharSize;
@@ -313,20 +314,20 @@ UINT32 color_printk(UINT32 FRcolor, UINT32 BKcolor, const char *fmt, ...) {
                 if (Pos.YPosition < 0)
                     Pos.YPosition = (Pos.YResolution / Pos.YCharSize - 1) * Pos.YCharSize;
             }
-            putchar(Pos.FB_addr, Pos.PixelsPerScanLine, Pos.XPosition * Pos.XCharSize,
+            putchar(Pos.FB_addr, Pos.XResolution, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor, ' ');
-        } else if ((UINT8) *(buf + count) == '\t') {
+        } else if ((unsigned char) *(buf + count) == '\t') {
             line = ((Pos.XPosition + 8) & ~(8 - 1)) - Pos.XPosition;
 
             Label_tab:
             line--;
-            putchar(Pos.FB_addr, Pos.PixelsPerScanLine, Pos.XPosition * Pos.XCharSize,
+            putchar(Pos.FB_addr, Pos.XResolution, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor, ' ');
             Pos.XPosition++;
         } else {
-            putchar(Pos.FB_addr, Pos.PixelsPerScanLine, Pos.XPosition * Pos.XCharSize,
+            putchar(Pos.FB_addr, Pos.XResolution, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor,
-                    (UINT8) *(buf + count));
+                    (unsigned char) *(buf + count));
             Pos.XPosition++;
         }
 

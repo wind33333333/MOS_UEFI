@@ -59,20 +59,20 @@ struct position
 
 */
 
-void putchar(UINT32 *fb, UINT32 Xsize, UINT32 x, UINT32 y, UINT32 FRcolor, UINT32 BKcolor,UINT8 font);
+void putchar(unsigned int * fb,int Xsize,int x,int y,unsigned int FRcolor,unsigned int BKcolor,unsigned char font);
 
 /*
 
 */
 
-UINT32 skip_atoi(const char **s);
+int skip_atoi(const char **s);
 
 /*
 
 */
 
 #define do_div(n,base) ({ \
-UINT32 __res; \
+int __res; \
 __asm__("divq %%rcx":"=a" (n),"=d" (__res):"0" (n),"1" (0),"c" (base)); \
 __res; })
 
@@ -80,19 +80,19 @@ __res; })
 
 */
 
-static char * number(char * str, long num, UINT32 base, UINT32 size, UINT32 precision ,UINT32 type);
+static char * number(char * str, long num, int base, int size, int precision ,int type);
 
 /*
 
 */
 
-UINT32 vsprintf(char * buf,const char *fmt, va_list args);
+int vsprintf(char * buf,const char *fmt, va_list args);
 
 /*
 
 */
 
-UINT32 color_printk(UINT32 FRcolor,UINT32 BKcolor,const char * fmt,...);
+int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...);
 
 #endif
 
