@@ -20,10 +20,10 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
     init_cpu(&cpu_id, &bsp_flags);                      //获取cpu信息和初始化cpu开启高级功能
     init_output(bsp_flags);                             //初始化输出控制台
 
-    for(UINT32 i=0;i<0x10000;i++){
-        *((UINT32 *)boot_info->frame_buffer_base+i) = 0x0000FF00;
-    }
-    //while (1);
+//    for(UINT32 i=0;i<0x10000;i++){
+//        *((UINT32 *)boot_info->frame_buffer_base+i) = 0x0000FF00;
+//    }
+//    while (1);
 
 
     init_memory(bsp_flags);                             //初始化内存管理器

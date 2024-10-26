@@ -344,9 +344,14 @@ int color_printk(UINT32 FRcolor, UINT32 BKcolor, const char *fmt, ...) {
     return i;
 }
 
+//全局变量buf
+char buf[4096];
+
 __attribute__((section(".init_text"))) void init_output(UINT8 bsp_flags) {
 
     if (bsp_flags) {
+        mem_set(&buf,0,4096);
+
         Pos.XResolution = boot_info->horizontal_resolution;
         Pos.YResolution = boot_info->vertical_resolution;
 

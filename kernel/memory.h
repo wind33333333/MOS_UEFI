@@ -51,7 +51,7 @@ typedef struct {
     UINT8 lock;
 } global_memory_descriptor_t;
 
-global_memory_descriptor_t memory_management = {0};
+extern global_memory_descriptor_t memory_management;
 
 UINT64 *pml4t_vbase = (UINT64 *) 0xFFFFFFFFFFFFF000;  //pml4t虚拟地址基址
 UINT64 *pdptt_vbase = (UINT64 *) 0xFFFFFFFFFFE00000;  //pdptt虚拟地址基址
