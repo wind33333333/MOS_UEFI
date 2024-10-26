@@ -23,17 +23,44 @@ _start:
     shr     $16,%ebx         //右移16位得到cpu数量
 
     /*开辟多核栈空间*/
-    shl     $14,%rbx                 //每个核心分配16k栈
+    shl     $14,%rbx                           //每个核心分配16k栈
     mov     kernel_stack_top(%rip),%rax
     add     %rbx,%rax
     mov     %rax,kernel_stack_top(%rip)       //内核栈顶
 
     /*初始化临时页表*/
+    mov     $0x90000,%r8        //pml4t起始地址
+    mov     $2,%r9              //pml4e数量 (1=512G)
 
+    mov     %r8,%rax            //pml4t递归映射
+    or      $0x103,%rax
+    mov     %rax,0xFF8(%rdi)
+
+    mov     %r8,%rax
+    or      $3,%rax             //pml4e属性
+    mov     %r8,%rdi
+    mov     %r9,%rcx
+init_tmp_pml4t:
+    add     $0x1000,%rax
+    mov     %rax,(%rdi)
+    mov     %rax,0x800(%rdi)
+    add     $8,%rdi
+    loop    init_tmp_pml4t
+
+    mov     %r8,%rdi
+    add     $0x1000,%rdi        //pdptt起始地址
+    mov     $0x83,%rax          //物理地址0开始对等映射
+    mov     %r9,%rcx
+    shl     $9,%rcx             //pml4e*512
+init_tmp_pdptt:
+    stosq
+    add     $0x40000000,%rax
+    loop    init_tmp_pdptt
 
 kernel_stack_init:
     /*切换页表*/
-    mov     $tmp_pml4t-HBASE_ADDR,%rax
+    //mov     $tmp_pml4t-HBASE_ADDR,%rax
+    mov     $0x90000,%rax
     mov     %rax,%cr3
 
     /*初始化多核内核栈*/
@@ -49,28 +76,6 @@ kernel_stack_init:
 
 //===============================初始化程序数据=================================================
 .section    .init_data, "wa"
-
-    .globl tmp_pml4t
-    tmp_pml4t:
-    .quad	(tmp_pdptt-HBASE_ADDR)+0x3
-    .fill   0x800-(. - tmp_pml4t),1,0
-    .quad	(tmp_pdptt-HBASE_ADDR)+0x3
-    .fill	0xFF8-(. - tmp_pml4t),1,0
-    .quad   (tmp_pml4t - HBASE_ADDR)+0x103
-
-    .globl tmp_pdptt
-    tmp_pdptt:
-    .quad   0x00000083  //0
-    .quad   0x40000083  //1
-    .quad   0x80000083  //2
-    .quad   0xC0000083  //3
-    .quad   0x100000083  //4
-    .quad   0x140000083  //5
-    .quad   0x180000083  //6
-    .quad   0x1C0000083  //7
-    .fill   0x800-0x40,1,0
-    .quad   0x4000000083 //256G 显存
-    .fill	0x1000-(. - tmp_pdptt),1,0
 
     .globl   idt_ptr
     idt_ptr:
