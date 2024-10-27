@@ -236,21 +236,25 @@ APIC Base Address（APIC 基地址，bit 12-31）：
             "movq       %%rax,%%cr0        \n\t"
             :::"%rax");
 
-    // 获取当前CPU id号
+    // 获取当前x2apic id号
     __asm__ __volatile__ (
-            "movl       $0x802,%%ecx   \n\t"
-            "rdmsr                     \n\t"
-            :"=a"(*cpu_id)::"%rcx", "%rdx");
+//            "movl       $0x802,%%ecx   \n\t"
+//            "rdmsr                     \n\t"
+//            :"=a"(*cpu_id)::"%rcx", "%rdx");
+            "movl       $0xB,%%eax   \n\t"
+            "xorl       %%ecx,%%ecx  \n\t"
+            "cpuid                   \n\t"
+            :"=d"(*cpu_id)::"%rax", "%rbx","%rcx");
 
     if (*bsp_flags) {
         // 获取CPU厂商
         __asm__ __volatile__(
-                "xorl    %%eax, %%eax \n\t"
-                "cpuid         \n\t"
-                "movl    %%ebx, (%%rdi) \n\t"
-                "movl    %%edx, 4(%%rdi)\n\t"
-                "movl    %%ecx, 8(%%rdi) \n\t"
-                "movb   $0, 12(%%rdi) \n\t"
+                "xorl    %%eax,%%eax     \n\t"
+                "cpuid                   \n\t"
+                "movl    %%ebx,(%%rdi)   \n\t"
+                "movl    %%edx,4(%%rdi)  \n\t"
+                "movl    %%ecx,8(%%rdi)  \n\t"
+                "movb    $0,12(%%rdi)    \n\t"
                 ::"D"(&cpu_info.manufacturer_name):"%rax", "%rbx", "%rcx", "%rdx");
 
         // 获取CPU核心数量 cpuid eax=0xB ecx=1,ebx=核心数量
@@ -262,35 +266,34 @@ APIC Base Address（APIC 基地址，bit 12-31）：
 
         // 获取CPU型号
         __asm__ __volatile__(
-                "movl    $0x80000002, %%eax \n\t"
+                "movl    $0x80000002,%%eax \n\t"
                 "cpuid         \n\t"
-                "movl    %%eax, (%%rdi)   \n\t"
-                "movl    %%ebx, 4(%%rdi)  \n\t"
-                "movl    %%ecx, 8(%%rdi)  \n\t"
-                "movl    %%edx, 12(%%rdi) \n\t"
+                "movl    %%eax,(%%rdi)   \n\t"
+                "movl    %%ebx,4(%%rdi)  \n\t"
+                "movl    %%ecx,8(%%rdi)  \n\t"
+                "movl    %%edx,12(%%rdi) \n\t"
 
-                "movl    $0x80000003, %%eax \n\t"
+                "movl    $0x80000003,%%eax \n\t"
+                "cpuid                     \n\t"
+                "movl    %%eax,16(%%rdi)   \n\t"
+                "movl    %%ebx,20(%%rdi)   \n\t"
+                "movl    %%ecx,24(%%rdi)   \n\t"
+                "movl    %%edx,28(%%rdi)   \n\t"
+
+                "movl    $0x80000004,%%eax \n\t"
                 "cpuid         \n\t"
-                "movl    %%eax, 16(%%rdi)   \n\t"
-                "movl    %%ebx, 20(%%rdi)  \n\t"
-                "movl    %%ecx, 24(%%rdi)  \n\t"
-                "movl    %%edx, 28(%%rdi) \n\t"
-
-                "movl    $0x80000004, %%eax \n\t"
-                "cpuid         \n\t"
-                "movl    %%eax, 32(%%rdi)   \n\t"
-                "movl    %%ebx, 36(%%rdi)  \n\t"
-                "movl    %%ecx, 40(%%rdi)  \n\t"
-                "movl    %%edx, 44(%%rdi) \n\t"
-
-                "movl    $0, 48(%%rdi) \n\t"
+                "movl    %%eax,32(%%rdi)   \n\t"
+                "movl    %%ebx,36(%%rdi)   \n\t"
+                "movl    %%ecx,40(%%rdi)   \n\t"
+                "movl    %%edx,44(%%rdi)   \n\t"
+                "movl    $0,48(%%rdi)      \n\t"
                 ::"D"(&cpu_info.model_name):"%rax", "%rbx", "%rcx", "%rdx");
 
         // 获取CPU频率
         __asm__ __volatile__(
-                "movl    $0x16, %%eax \n\t"
-                "cpuid         \n\t"
-                "shlq    $32,%%rdx  \n\t"
+                "movl    $0x16,%%eax \n\t"
+                "cpuid               \n\t"
+                "shlq    $32,%%rdx   \n\t"
                 "orq     %%rdx,%%rax \n\t"
                 :"=a"(cpu_info.fundamental_frequency), "=b"(cpu_info.maximum_frequency), "=c"(cpu_info.bus_frequency)::"%rdx");
 
