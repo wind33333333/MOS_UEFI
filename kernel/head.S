@@ -91,34 +91,33 @@ kernel_stack_init:
 
 //========================================正式内核代码=================================================
 .section    .text, "ax"
-/*0-20异常处理程序入口*/
-ENTRY(divide_error,do_divide_error,1)
-ENTRY(debug,do_debug,1)
-ENTRY(nmi,do_nmi,1)
-ENTRY(int3,do_int3,1)
-ENTRY(overflow,do_overflow,1)
-ENTRY(bounds,do_bounds,1)
-ENTRY(undefined_opcode,do_undefined_opcode,1)
-ENTRY(dev_not_available,do_dev_not_available,1)
-ENTRY(double_fault,do_double_fault,0)
-ENTRY(coprocessor_segment_overrun,do_coprocessor_segment_overrun,1)
-ENTRY(invalid_TSS,do_invalid_TSS,0)
-ENTRY(segment_not_present,do_segment_not_present,0)
-ENTRY(stack_segment_fault,do_stack_segment_fault,0)
-ENTRY(general_protection,do_general_protection,0)
-ENTRY(page_fault,do_page_fault,0)
-ENTRY(x87_FPU_error,do_x87_FPU_error,1)
-ENTRY(alignment_check,do_alignment_check,0)
-ENTRY(machine_check,do_machine_check,1)
-ENTRY(SIMD_exception,do_SIMD_exception,1)
-ENTRY(virtualization_exception,do_virtualization_exception,1)
+    /*0-20异常处理程序入口*/
+    ENTRY(divide_error,do_divide_error,1)
+    ENTRY(debug,do_debug,1)
+    ENTRY(nmi,do_nmi,1)
+    ENTRY(int3,do_int3,1)
+    ENTRY(overflow,do_overflow,1)
+    ENTRY(bounds,do_bounds,1)
+    ENTRY(undefined_opcode,do_undefined_opcode,1)
+    ENTRY(dev_not_available,do_dev_not_available,1)
+    ENTRY(double_fault,do_double_fault,0)
+    ENTRY(coprocessor_segment_overrun,do_coprocessor_segment_overrun,1)
+    ENTRY(invalid_TSS,do_invalid_TSS,0)
+    ENTRY(segment_not_present,do_segment_not_present,0)
+    ENTRY(stack_segment_fault,do_stack_segment_fault,0)
+    ENTRY(general_protection,do_general_protection,0)
+    ENTRY(page_fault,do_page_fault,0)
+    ENTRY(x87_FPU_error,do_x87_FPU_error,1)
+    ENTRY(alignment_check,do_alignment_check,0)
+    ENTRY(machine_check,do_machine_check,1)
+    ENTRY(SIMD_exception,do_SIMD_exception,1)
+    ENTRY(virtualization_exception,do_virtualization_exception,1)
 
-/*中断处理程序入口*/
-ENTRY(ignore,do_ignore,1)
-ENTRY(keyboard,do_keyboard,1)
-ENTRY(hpet,do_hpet,1)
-ENTRY(apic_timer,do_apic_timer,1)
-
+    /*中断处理程序入口*/
+    ENTRY(ignore,do_ignore,1)
+    ENTRY(keyboard,do_keyboard,1)
+    ENTRY(hpet,do_hpet,1)
+    ENTRY(apic_timer,do_apic_timer,1)
 
     /*中断和异常复用处理程序*/
 interrupt_entry:
@@ -178,16 +177,16 @@ interrupt_entry:
 	addq	$0x10,	%rsp;
 	iretq;
 
-
-
 //========================================正式内核数据=================================================
 .section    .data, "wa"
 
+    /*正式内核IDT*/
     .globl idt
     idt:
     	.fill  0x1000-(.-idt),1,0
     idt_end:
 
+    /*正式内核PML4T*/
     .globl pml4t
     pml4t:
     	.quad	0
