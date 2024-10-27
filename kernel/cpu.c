@@ -22,9 +22,9 @@ BSP（Bootstrap Processor，系统启动处理器标志位，bit 9）：
 APIC Base Address（APIC 基地址，bit 12-31）：
 作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
 重要性：APIC 基地址用于访问本地 APIC 的寄存器，通常不需要修改这个值，除非系统有特殊的硬件需求。*/
-            "movl       $0x1B,%%ecx  \n\t"
+            "movl       $0x1B,%%ecx  \n\t"      //IA32_APIC_BASE=0x1b 寄存器
             "rdmsr                   \n\t"
-            "orl        $0xC00,%%eax \n\t"
+            "orl        $0xC00,%%eax \n\t"      //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
             "wrmsr                   \n\t"
             "shrl       $8,%%eax     \n\t"
             "andl       $1,%%eax     \n\t"
