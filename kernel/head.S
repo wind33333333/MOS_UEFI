@@ -31,12 +31,12 @@ _start:
     movq     $2,%r9              //pml4e数量 (1=512G)
 
     movq     %r8,%rax            //pml4t递归映射
+    movq     %r8,%rdi
     orq      $0x103,%rax
     movq     %rax,0xFF8(%rdi)
 
     movq     %r8,%rax
     orq      $3,%rax             //pml4e属性
-    movq     %r8,%rdi
     movq     %r9,%rcx
 init_tmp_pml4t:
     addq     $0x1000,%rax
