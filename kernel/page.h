@@ -4,6 +4,4 @@
 
 void init_page(UINT8 bsp_flags);
 
-
-
 #endif
