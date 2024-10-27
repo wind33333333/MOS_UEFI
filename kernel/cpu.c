@@ -253,7 +253,7 @@ APIC Base Address（APIC 基地址，bit 12-31）：
                 "movb   $0, 12(%%rdi) \n\t"
                 ::"D"(&cpu_info.manufacturer_name):"%rax", "%rbx", "%rcx", "%rdx");
 
-        // 获取CPU核心数量
+        // 获取CPU核心数量 cpuid eax=0xB ecx=1,ebx=核心数量
         __asm__ __volatile__(
                 "movl        $0xb,%%eax    \n\t"
                 "movl        $0x1,%%ecx    \n\t"

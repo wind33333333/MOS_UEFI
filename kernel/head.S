@@ -4,9 +4,7 @@
 .section    .init_text, "ax"
 .globl _start
 _start:
-    /*关中断*/
     cli
-    /*bsp/ap核*/
     movl    $0x1B,%ecx           //IA32_APIC_BASE=0x1b 寄存器
     rdmsr
     or      $0xc00,%eax          //bit10 X2APIC使能   bit11 APIC全局使能
@@ -17,13 +15,13 @@ _start:
     /*保存loader通过rdi传递过来的boot_info指针*/
     mov     %rdi,boot_info(%rip)
 
-    /*获取cpu核心数量*/
-    mov     $1,%eax
+    /*获取cpu核心数量,cpuid eax=0xB ecx=1,ebx=核心数量*/
+    mov     $0xB,%eax
+    mov     $1,%ecx
     cpuid
-    shr     $16,%ebx         //右移16位得到cpu数量
 
     /*开辟多核栈空间*/
-    shl     $14,%rbx                           //每个核心分配16k栈
+    shl     $14,%rbx                           //每个核心分配16k栈,核心数量*16K
     mov     kernel_stack_top(%rip),%rax
     add     %rbx,%rax
     mov     %rax,kernel_stack_top(%rip)       //内核栈顶
