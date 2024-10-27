@@ -5,67 +5,67 @@
 .globl _start
 _start:
     cli
-    movl    $0x1B,%ecx           //IA32_APIC_BASE=0x1b 寄存器
+    movl     $0x1B,%ecx           //IA32_APIC_BASE=0x1b 寄存器
     rdmsr
-    or      $0xc00,%eax          //bit10 X2APIC使能   bit11 APIC全局使能
+    orl      $0xc00,%eax          //bit10 X2APIC使能   bit11 APIC全局使能
     wrmsr
-    test    $0x100,%eax         //测试bit8 1=bsp 0=ap
-    jz      kernel_stack_init
+    testl    $0x100,%eax         //测试bit8 1=bsp 0=ap
+    jz       kernel_stack_init
 
     /*保存loader通过rdi传递过来的boot_info指针*/
-    mov     %rdi,boot_info(%rip)
+    movq     %rdi,boot_info(%rip)
 
     /*获取cpu核心数量,cpuid eax=0xB ecx=1,ebx=核心数量*/
-    mov     $0xB,%eax
-    mov     $1,%ecx
+    movl     $0xB,%eax
+    movl     $1,%ecx
     cpuid
 
     /*开辟多核栈空间*/
-    shl     $14,%rbx                           //每个核心分配16k栈,核心数量*16K
-    mov     kernel_stack_top(%rip),%rax
-    add     %rbx,%rax
-    mov     %rax,kernel_stack_top(%rip)       //内核栈顶
+    shlq     $14,%rbx                           //每个核心分配16k栈,核心数量*16K
+    movq     kernel_stack_top(%rip),%rax
+    addq     %rbx,%rax
+    movq     %rax,kernel_stack_top(%rip)       //内核栈顶
 
     /*初始化临时页表*/
-    mov     $TMP_PML4T,%r8      //pml4t起始地址
-    mov     $2,%r9              //pml4e数量 (1=512G)
+    movq     $TMP_PML4T,%r8      //pml4t起始地址
+    movq     $2,%r9              //pml4e数量 (1=512G)
 
-    mov     %r8,%rax            //pml4t递归映射
-    or      $0x103,%rax
-    mov     %rax,0xFF8(%rdi)
+    movq     %r8,%rax            //pml4t递归映射
+    orq      $0x103,%rax
+    movq     %rax,0xFF8(%rdi)
 
-    mov     %r8,%rax
-    or      $3,%rax             //pml4e属性
-    mov     %r8,%rdi
-    mov     %r9,%rcx
+    movq     %r8,%rax
+    orq      $3,%rax             //pml4e属性
+    movq     %r8,%rdi
+    movq     %r9,%rcx
 init_tmp_pml4t:
-    add     $0x1000,%rax
-    mov     %rax,(%rdi)
-    mov     %rax,0x800(%rdi)
-    add     $8,%rdi
-    loop    init_tmp_pml4t
+    addq     $0x1000,%rax
+    movq     %rax,(%rdi)
+    movq     %rax,0x800(%rdi)
+    addq     $8,%rdi
+    loopq    init_tmp_pml4t
 
-    mov     %r8,%rdi
-    add     $0x1000,%rdi        //pdptt起始地址
-    mov     $0x83,%rax          //物理地址0开始对等映射
-    mov     %r9,%rcx
-    shl     $9,%rcx             //pml4e*512
+    movq     %r8,%rdi
+    addq     $0x1000,%rdi        //pdptt起始地址
+    movq     $0x83,%rax          //物理地址0开始对等映射
+    movq     %r9,%rcx
+    shlq     $9,%rcx             //pml4e*512
 init_tmp_pdptt:
     stosq
-    add     $0x40000000,%rax
-    loop    init_tmp_pdptt
+    addq     $0x40000000,%rax
+    loopq    init_tmp_pdptt
 
 kernel_stack_init:
     /*切换页表*/
-    mov     $TMP_PML4T,%rax
-    mov     %rax,%cr3
+    movq     $TMP_PML4T,%rax
+    movq     %rax,%cr3
 
     /*初始化多核内核栈*/
-    mov     $0x802,%ecx
+    movl     $0x802,%ecx
     rdmsr                           //获取APIC ID
-    shl     $14,%rax                //每个核心分配16k栈
-    mov     kernel_stack_top(%rip),%rsp
-    sub     %rax,%rsp               //计算每个内核栈 栈顶=kernelstack_top-(APIC ID*16K)
+    shlq     $14,%rax                //每个核心分配16k栈
+    movq     kernel_stack_top(%rip),%rsp
+    subq     %rax,%rsp               //计算每个内核栈 栈顶=kernelstack_top-(APIC ID*16K)
 
     /*切换到0xFFFF800000000000内核空间，进入C语言init_kernel*/
     movabs     $init_kernel,%rax
@@ -86,7 +86,7 @@ kernel_stack_init:
     boot_info:     .quad   0
 
     .equ    HBASE_ADDR,0xffff800000000000      //内核虛擬地址基址
-    .equ    TMP_PML4T,0x90000                   //临时PML4T
+    .equ    TMP_PML4T,0x90000                  //临时PML4T
 
 
 //========================================正式内核代码=================================================
