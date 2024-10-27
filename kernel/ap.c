@@ -15,12 +15,14 @@ __attribute__((section(".init_text"))) void init_ap(UINT32 cpu_id,UINT8 bsp_flag
                 "movq       $0xC4500,%%rax	    \n\t"    //bit8-10投递模式init101 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
                 "movq       $0x830,%%rcx	    \n\t"    //INIT IPI
                 "wrmsr                      	\n\t"
+
                 "movq       $0x5000,%%rcx	    \n\t"    //延时
                 "loop_delay1:             	    \n\t"
                 "loopq      loop_delay1	        \n\t"
                 "movq       $0x830,%%rcx      	\n\t"
                 "movq       $0xC4610,%%rax	    \n\t"   //Start-up IPI //bit0-7处理器启动地址000VV000的中间两位 ，bit8-10投递模式start-up110 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
                 "wrmsr	                        \n\t"
+
                 "movq       $0x50000,%%rcx	    \n\t"   //延时
                 "loop_delay2:                	\n\t"
                 "loopq      loop_delay2         \n\t"
