@@ -6,9 +6,7 @@ hpet_registers_t hpetRegisters;
 hpet_t hpet;
 
 void init_hpet(UINT8 bsp_flags) {
-
     if (bsp_flags) {
-
         hpetRegisters.gcap_id = (UINT64 *) LADDR_TO_HADDR(hpet.address + 0);
         hpetRegisters.gen_conf = (UINT64 *) LADDR_TO_HADDR(hpet.address + 0x10);
         hpetRegisters.gintr_sta = (UINT64 *) LADDR_TO_HADDR(hpet.address + 0x20);
@@ -39,8 +37,6 @@ void init_hpet(UINT8 bsp_flags) {
         hpet.time_number = (*hpetRegisters.gcap_id >> 8 & 0x1F)+1;
         hpet.frequency = *hpetRegisters.gcap_id >> 32;
         color_printk(YELLOW, BLACK, "HPET Clock Frequency: %dhz  TimerNum: %d \n",hpet.frequency,hpet.time_number);
-
-
     }
     return;
 }
