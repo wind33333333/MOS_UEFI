@@ -69,7 +69,7 @@ debug-kernel: clean ${BUILD}/system ${BUILD}/kernel.bin
 					   -net none \
 					   -M q35 \
 					   -m 8G \
-					   -cpu max -smp cores=1,threads=1 \
+					   -cpu max -smp cores=2,threads=2 \
 					   -bios OVMF.fd \
  					   -device qemu-xhci,id=xhci \
                        -device usb-storage,bus=xhci.0,drive=usbdisk \

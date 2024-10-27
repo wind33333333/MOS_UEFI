@@ -26,7 +26,7 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
     init_acpi(bsp_flags);                               //初始化acpi
     init_hpet(bsp_flags);                               //初始化hpet
     init_ioapic(bsp_flags);                             //初始化ioapic
-    init_apic();                                      //初始化apic
+    init_apic();                                        //初始化apic
     init_page(bsp_flags);                               //初始化内核页表
     init_ap(cpu_id, bsp_flags);                         //初始化ap核
 
