@@ -2,16 +2,16 @@
 
 __attribute__((section(".init_text"))) void init_apic(void) {
     __asm__ __volatile__ (
-            "movl    $0x1b,%%ecx  \n\t"         //IA32_APIC_BASE=0x1b 寄存器
-            "rdmsr                \n\t"
-            "or      $0xc00,%%eax \n\t"         //bit10启用x2apic ,bit11启用xapic
-            "wrmsr                \n\t"
+            "movl     $0x1b,%%ecx  \n\t"         //IA32_APIC_BASE=0x1b 寄存器
+            "rdmsr                 \n\t"
+            "orl      $0xc00,%%eax \n\t"         //bit10启用x2apic ,bit11启用xapic
+            "wrmsr                 \n\t"
 
-            "movl   $0x80f,%%ecx  \n\t"         //SVR寄存器
-            "rdmsr                \n\t"
-            "bts    $8,%%eax      \n\t"         //bit0-7伪中断号，bit8启用local apic
-            "btr    $12,%%eax     \n\t"         //bit12禁用自动广播EOI
-            "wrmsr                \n\t"
+            "movl   $0x80f,%%ecx   \n\t"         //SVR寄存器
+            "rdmsr                 \n\t"
+            "btsl    $8,%%eax      \n\t"         //bit0-7伪中断号，bit8启用local apic
+            "btrl    $12,%%eax     \n\t"         //bit12禁用自动广播EOI
+            "wrmsr                 \n\t"
 
             "movl   $0x808,%%ecx  \n\t"         //TPR优先级寄存器
             "xorl   %%edx,%%edx   \n\t"

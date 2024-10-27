@@ -1,7 +1,9 @@
 #include "ioapic.h"
 
+UINT32 *ioapic_baseaddr;
+
 //初始化ioapic
-__attribute__((section(".init_text"))) void init_ipapic(UINT8 bsp_flags) {
+__attribute__((section(".init_text"))) void init_ioapic(UINT8 bsp_flags) {
     /*初始化ioapic
      * 索引寄存器0xFEC00000 32bit bit0-7
      * 数据寄存器0xFEC00010 32bit

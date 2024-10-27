@@ -1,10 +1,10 @@
 #include "moslib.h"
 #include "printk.h"
-//#include "ioapic.h"
 #include "ap.h"
 #include "acpi.h"
 #include "idt.h"
 #include "apic.h"
+#include "ioapic.h"
 #include "memory.h"
 #include "gdt.h"
 #include "tss.h"
@@ -25,9 +25,9 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
     init_idt(bsp_flags);                                //初始化IDT
     init_acpi(bsp_flags);                               //初始化acpi
     init_hpet(bsp_flags);                               //初始化hpet
+    init_ioapic(bsp_flags);                             //初始化ioapic
+    init_apic();                                      //初始化apic
     while (1);
-    //init_ioapic(bsp_flags);                           //初始化ioapic
-    //init_apic();                                      //初始化apic
     init_page(bsp_flags);                               //初始化内核页表
     init_ap(cpu_id, bsp_flags);                         //初始化ap核
 

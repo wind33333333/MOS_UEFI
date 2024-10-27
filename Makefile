@@ -25,7 +25,7 @@ ${BUILD}/kernel.bin: ${BUILD}/system
 	nm ${BUILD}/system | sort > ${BUILD}/system.map
 
 ${BUILD}/system: ${BUILD}/head.o ${BUILD}/main.o ${BUILD}/printk.o ${BUILD}/interrupt.o \
- 				 ${BUILD}/ap.o ${BUILD}/idt.o ${BUILD}/acpi.o \
+ 				 ${BUILD}/ap.o ${BUILD}/idt.o ${BUILD}/acpi.o ${BUILD}/apic.o ${BUILD}/ioapic.o \
 				 ${BUILD}/memory.o ${BUILD}/gdt.o ${BUILD}/tss.o ${BUILD}/page.o ${BUILD}/cpu.o \
 				 ${BUILD}/hpet.o
 	ld -b elf64-x86-64 -z muldefs -o $@ $^ -T $(KERNEL)/Kernel.lds
