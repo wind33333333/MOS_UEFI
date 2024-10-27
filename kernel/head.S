@@ -27,7 +27,7 @@ _start:
     mov     %rax,kernel_stack_top(%rip)       //内核栈顶
 
     /*初始化临时页表*/
-    mov     $0x90000,%r8        //pml4t起始地址
+    mov     $TMP_PML4T,%r8      //pml4t起始地址
     mov     $2,%r9              //pml4e数量 (1=512G)
 
     mov     %r8,%rax            //pml4t递归映射
@@ -57,8 +57,7 @@ init_tmp_pdptt:
 
 kernel_stack_init:
     /*切换页表*/
-    //mov     $tmp_pml4t-HBASE_ADDR,%rax
-    mov     $0x90000,%rax
+    mov     $TMP_PML4T,%rax
     mov     %rax,%cr3
 
     /*初始化多核内核栈*/
@@ -87,6 +86,7 @@ kernel_stack_init:
     boot_info:     .quad   0
 
     .equ    HBASE_ADDR,0xffff800000000000      //内核虛擬地址基址
+    .equ    TMP_PML4T,0x90000                   //临时PML4T
 
 
 //========================================正式内核代码=================================================
