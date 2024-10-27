@@ -14,30 +14,29 @@ __attribute__((section(".init_text"))) void init_ioapic(UINT8 bsp_flags) {
      * ...
      * 索引0x3E-0x3F 中断投递寄存器23 读写
     */
-
     if(bsp_flags) {
         __asm__ __volatile__ (
-                "mov    $0xFF,%%al \n\t"
-                "out    %%al,$0x21 \n\t"
-                "out    %%al,$0xA1 \n\t"               //禁用主从8259A
+                "movb    $0xFF,%%al \n\t"
+                "outb    %%al,$0x21 \n\t"
+                "outb    %%al,$0xA1 \n\t"               //禁用主从8259A
 
-                "mov    $0x30,%%al  \n\t"
-                "out    %%al,$0x43  \n\t"
-                "mov    $0,%%al     \n\t"
-                "out    %%al,$0x40  \n\t"            //禁用8054计时器0
-                "out    %%al,$0x40  \n\t"
+                "movb    $0x30,%%al  \n\t"
+                "outb    %%al,$0x43  \n\t"
+                "movb    $0,%%al     \n\t"
+                "outb    %%al,$0x40  \n\t"            //禁用8054计时器0
+                "outb    %%al,$0x40  \n\t"
 
-                "mov    $0x70,%%al  \n\t"
-                "out    %%al,$0x43  \n\t"
-                "mov    $0,%%al     \n\t"
-                "out    %%al,$0x41  \n\t"            //禁用8054计时器1
-                "out    %%al,$0x41  \n\t"
+                "movb    $0x70,%%al  \n\t"
+                "outb    %%al,$0x43  \n\t"
+                "movb    $0,%%al     \n\t"
+                "outb    %%al,$0x41  \n\t"            //禁用8054计时器1
+                "outb    %%al,$0x41  \n\t"
 
-                "mov    $0xB0,%%al \n\t"
-                "out    %%al,$0x43 \n\t"
-                "mov    $0,%%al    \n\t"
-                "out    %%al,$0x42 \n\t"            //禁用8054计时器2
-                "out    %%al,$0x42 \n\t"
+                "movb    $0xB0,%%al \n\t"
+                "outb    %%al,$0x43 \n\t"
+                "movb    $0,%%al    \n\t"
+                "outb    %%al,$0x42 \n\t"            //禁用8054计时器2
+                "outb    %%al,$0x42 \n\t"
                 :::"%rax");
 
         __asm__ __volatile__(
@@ -46,162 +45,162 @@ __attribute__((section(".init_text"))) void init_ioapic(UINT8 bsp_flags) {
                 "mfence                      \n\t"
                 "movl    $0x1000000,(%%rsi)  \n\t"
                 "mfence                      \n\t"
-                "mov    (%%rsi),%%eax        \n\t"           //设置ioapic id
+                "movl    (%%rsi),%%eax        \n\t"           //设置ioapic id
                 "mfence                      \n\t"
                 */
 
-                "mov    $0x10030,%%rax       \n\t"
-                "movl   $0x10,(%%rdi)        \n\t"
+                "movq    $0x10030,%%rax       \n\t"
+                "movl    $0x10,(%%rdi)        \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"
+                "movl    %%eax,(%%rsi)       \n\t"
                 "mfence                      \n\t"
-                "shr    $32,%%rax            \n\t"
-                "movl   $0x11,(%%rdi)        \n\t"
+                "shrq    $32,%%rax            \n\t"
+                "movl    $0x11,(%%rdi)        \n\t"
                 "mfence                      \n\t"
-                "mov    %%eax,(%%rsi)        \n\t"           //主8259A中断
+                "movl    %%eax,(%%rsi)        \n\t"           //主8259A中断
                 "mfence                      \n\t"
 
-                "mov    $0x00031,%%rax       \n\t"
+                "movq    $0x00031,%%rax       \n\t"
                 "movl   $0x12,(%%rdi)        \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"
+                "movl    %%eax,(%%rsi)       \n\t"
                 "mfence                      \n\t"
-                "shr    $32,%%rax            \n\t"
+                "shrq    $32,%%rax            \n\t"
                 "movl   $0x13,(%%rdi)        \n\t"
                 "mfence                      \n\t"
-                "mov    %%eax,(%%rsi)        \n\t"          //ps2键盘中断
+                "movl    %%eax,(%%rsi)        \n\t"          //ps2键盘中断
                 "mfence                      \n\t"
 
-                "mov     $0x00032,%%rax      \n\t"
+                "movq    $0x00032,%%rax      \n\t"
                 "movl    $0x14,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"
+                "movl    %%eax,(%%rsi)       \n\t"
                 "mfence                      \n\t"
-                "shr     $32,%%rax           \n\t"
+                "shrq    $32,%%rax           \n\t"
                 "movl    $0x15,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"          //8254定时器0/HPTE定时器0
+                "movl    %%eax,(%%rsi)       \n\t"          //8254定时器0/HPTE定时器0
                 "mfence                      \n\t"
 
-                "mov     $0x10033,%%rax      \n\t"
+                "movq    $0x10033,%%rax      \n\t"
                 "movl    $0x16,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"
+                "movl    %%eax,(%%rsi)       \n\t"
                 "mfence                      \n\t"
-                "shr     $32,%%rax           \n\t"
+                "shrq    $32,%%rax           \n\t"
                 "movl    $0x17,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"          //串口2中断
+                "movl    %%eax,(%%rsi)       \n\t"          //串口2中断
                 "mfence                      \n\t"
 
-                "mov     $0x10034,%%rax      \n\t"
+                "movq    $0x10034,%%rax      \n\t"
                 "movl    $0x18,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"
+                "movl    %%eax,(%%rsi)       \n\t"
                 "mfence                      \n\t"
-                "shr     $32,%%rax           \n\t"
+                "shrq    $32,%%rax           \n\t"
                 "movl    $0x19,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"        //串口1中断
+                "movl    %%eax,(%%rsi)       \n\t"        //串口1中断
                 "mfence                      \n\t"
 
-                "mov     $0x10035,%%rax      \n\t"
+                "movq    $0x10035,%%rax      \n\t"
                 "movl    $0x1A,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"
+                "movl    %%eax,(%%rsi)       \n\t"
                 "mfence                      \n\t"
-                "shr     $32,%%rax           \n\t"
+                "shrq    $32,%%rax           \n\t"
                 "movl    $0x1B,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"       //并口2中断
+                "movl    %%eax,(%%rsi)       \n\t"       //并口2中断
                 "mfence                      \n\t"
 
-                "mov     $0x10036,%%rax      \n\t"
+                "movq    $0x10036,%%rax      \n\t"
                 "movl    $0x1C,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov %%eax,(%%rsi)           \n\t"
+                "movl    %%eax,(%%rsi)           \n\t"
                 "mfence                      \n\t"
-                "shr     $32,%%rax           \n\t"
+                "shrq    $32,%%rax           \n\t"
                 "movl    $0x1D,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"          //软驱中断
+                "movl    %%eax,(%%rsi)       \n\t"          //软驱中断
                 "mfence                      \n\t"
 
-                "mov     $0x10037,%%rax      \n\t"
+                "movq    $0x10037,%%rax      \n\t"
                 "movl    $0x1E,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"
+                "movl    %%eax,(%%rsi)       \n\t"
                 "mfence                      \n\t"
-                "shr     $32,%%rax           \n\t"
+                "shrq    $32,%%rax           \n\t"
                 "movl    $0x1F,(%%rdi)       \n\t"
                 "mfence                      \n\t"
                 "mov %%eax,(%%rsi)           \n\t"      //并口1中断
                 "mfence                      \n\t"
 
-                "mov     $0x10038,%%rax      \n\t"
+                "movq    $0x10038,%%rax      \n\t"
                 "movl    $0x20,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"
+                "movl    %%eax,(%%rsi)       \n\t"
                 "mfence                      \n\t"
-                "shr     $32,%%rax           \n\t"
+                "shrq    $32,%%rax           \n\t"
                 "movl    $0x21,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"   //CMOS RTC中断/HPTE定时器1
+                "movl    %%eax,(%%rsi)       \n\t"   //CMOS RTC中断/HPTE定时器1
                 "mfence                      \n\t"
 
-                "mov     $0x10039,%%rax      \n\t"
+                "movq    $0x10039,%%rax      \n\t"
                 "movl    $0x26,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"
+                "movl    %%eax,(%%rsi)       \n\t"
                 "mfence                      \n\t"
-                "shr     $32,%%rax           \n\t"
+                "shrq    $32,%%rax           \n\t"
                 "movl    $0x27,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"      //HPTE 定时器2
+                "movl    %%eax,(%%rsi)       \n\t"      //HPTE 定时器2
                 "mfence                      \n\t"
 
-                "mov     $0x1003A,%%rax      \n\t"
+                "movq    $0x1003A,%%rax      \n\t"
                 "movl    $0x28,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"
+                "movl    %%eax,(%%rsi)       \n\t"
                 "mfence                      \n\t"
-                "shr     $32,%%rax           \n\t"
+                "shrq    $32,%%rax           \n\t"
                 "movl    $0x29,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"  //ps2鼠标 /HPET定时器3
+                "movl    %%eax,(%%rsi)       \n\t"  //ps2鼠标 /HPET定时器3
                 "mfence                      \n\t"
 
-                "mov     $0x1003B,%%rax      \n\t"
+                "movq    $0x1003B,%%rax      \n\t"
                 "movl    $0x2A,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"
+                "movl    %%eax,(%%rsi)       \n\t"
                 "mfence                      \n\t"
-                "shr     $32,%%rax           \n\t"
+                "shrq    $32,%%rax           \n\t"
                 "movl    $0x2B,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"  //FERR/DMA
+                "movl    %%eax,(%%rsi)       \n\t"  //FERR/DMA
                 "mfence                      \n\t"
 
-                "mov     $0x1003C,%%rax      \n\t"
+                "movq    $0x1003C,%%rax      \n\t"
                 "movl    $0x2C,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"
+                "movl    %%eax,(%%rsi)       \n\t"
                 "mfence                      \n\t"
-                "shr     $32,%%rax           \n\t"
+                "shrq    $32,%%rax           \n\t"
                 "movl    $0x2D,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"  //主SATA中断
+                "movl    %%eax,(%%rsi)       \n\t"  //主SATA中断
                 "mfence                      \n\t"
 
-                "mov     $0x1003D,%%rax      \n\t"
+                "movq    $0x1003D,%%rax      \n\t"
                 "movl    $0x2E,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t"
+                "movl    %%eax,(%%rsi)       \n\t"
                 "mfence                      \n\t"
-                "shr     $32,%%rax           \n\t"
+                "shrq    $32,%%rax           \n\t"
                 "movl    $0x2F,(%%rdi)       \n\t"
                 "mfence                      \n\t"
-                "mov     %%eax,(%%rsi)       \n\t" //从SATA中断
+                "movl    %%eax,(%%rsi)       \n\t" //从SATA中断
                 "mfence                      \n\t"
                 ::"D"(ioapic_baseaddr),"S"((UINT64)ioapic_baseaddr+0x10):"%rax", "%rcx", "%rdx");
     }
