@@ -9,10 +9,10 @@ void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt);
 #define EOI() \
         do {  \
           __asm__ __volatile__( \
-           "xor     %%edx,%%edx \n\t" \
-           "xor     %%eax,%%eax \n\t" \
-           "mov     $0x80B,%%ecx \n\t" \
-           "wrmsr      \n\t"  \
+           "xorl     %%edx,%%edx   \n\t" \
+           "xorl     %%eax,%%eax   \n\t" \
+           "movl     $0x80B,%%ecx  \n\t" \
+           "wrmsr                  \n\t"  \
             :::"%rdx","%rax");    \
           } while(0)
 
@@ -30,16 +30,16 @@ void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt);
 #define APIC_SET_TSCDEADLINE(TIME) \
         do {                       \
         __asm__ __volatile__( \
-        "rdtscp                    \n\t" \
-        "shl $32,%%rdx             \n\t" \
-        "or %%rdx,%%rax            \n\t" \
-        "add %0,%%rax              \n\t" \
-        "mov %%rax,%%rdx           \n\t" \
-        "mov $0xFFFFFFFF,%%rcx     \n\t" \
-        "and %%rcx,%%rax           \n\t" \
-        "shr $32,%%rdx             \n\t" \
-        "mov $0x6E0,%%ecx          \n\t" /*IA32_TSC_DEADLINE寄存器 TSC-Deadline定时模式 */ \
-        "wrmsr                     \n\t" \
+        "rdtscp                           \n\t" \
+        "shll       $32,%%rdx             \n\t" \
+        "orq        %%rdx,%%rax           \n\t" \
+        "addq       %0,%%rax              \n\t" \
+        "movq       %%rax,%%rdx           \n\t" \
+        "movq       $0xFFFFFFFF,%%rcx     \n\t" \
+        "andq       %%rcx,%%rax           \n\t" \
+        "shrq       $32,%%rdx             \n\t" \
+        "movq       $0x6E0,%%ecx          \n\t" /*IA32_TSC_DEADLINE寄存器 TSC-Deadline定时模式 */ \
+        "wrmsr                            \n\t" \
         ::"m"(TIME):"%rax","%rcx","%rdx"); \
         } while(0)
 
