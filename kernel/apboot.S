@@ -11,13 +11,13 @@
     movw	%ax,%ss
     movw    $0,%sp
 
-    lgdt    ap_gdt_ptr
+    //lgdt    ap_gdt_ptr
 
     movl    %cr0,%eax        // 读取 CR0
     rol     $0x1,%eax        // 设置 PE 位（bit 0）
     movl    %eax,%cr0        // 写回 CR0，开启保护模式
 
-    ljmp    $CODE32_SEL,$ap_code32
+    //ljmp    $CODE32_SEL,$ap_code32
 
 .code32
 ap_code32:
@@ -43,7 +43,7 @@ ap_code32:
     orl     $0x80000001, %eax  //设置 PG（Paging）和 PE（Protected Mode）位
     movl    %eax, %cr0
 
-    ljmp    $CODE64_SEL,$ap_code64
+    //ljmp    $CODE64_SEL,$ap_code64
 
 .code64
 ap_code64:
@@ -55,7 +55,6 @@ ap_code64:
 
     movq    $0x100000,%rax
     jmpq    *%rax                 //进入内核
-
 
     /*AP_GDT*/
     .balign 8
