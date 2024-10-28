@@ -23,7 +23,7 @@
 void init_tss(UINT32 cpu_id,UINT8 bsp_flags);
 
 typedef struct {
-    UINT32    reserved0;
+    UINT32   reserved0;
     UINT64   rsp0;
     UINT64   rsp1;
     UINT64   rsp2;
