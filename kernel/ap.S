@@ -11,7 +11,7 @@
     movw	%ax,%ss
     movw    $0,%sp
 
-    /*GDT*/
+    /*AP_GDT*/
     .balign 8
     ap_gdt:
     reserved:        .quad      0
