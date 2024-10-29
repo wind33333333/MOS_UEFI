@@ -17,19 +17,7 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
     UINT32 cpu_id = 0;
     UINT8 bsp_flags = 0;
 
-/*
-    __asm__ __volatile__ (
-            "movl     $0x1B,%%ecx   \n\t"
-            "rdmsr  \n\t"
-            "l1:                  \n\t"
-            "testl    $0x100,%%eax                  \n\t"
-            "jz       l1                  \n\t"
-            :::"%rax", "%rbx","%rcx");
-*/
-
     init_cpu(&cpu_id, &bsp_flags);                      //获取cpu信息和初始化cpu开启高级功能
-//    if(bsp_flags==0)
-//    while(1);
     init_output(bsp_flags);                             //初始化输出控制台
     init_memory(bsp_flags);                             //初始化内存管理器
     init_gdt(bsp_flags);                                //初始化GDT

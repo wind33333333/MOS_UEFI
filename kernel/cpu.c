@@ -53,7 +53,7 @@ __attribute__((section(".init_text"))) void init_cpu(UINT32 *cpu_id,UINT8 *bsp_f
             "test       $4,%%rcx           \n\t"
             "jz         not_umip           \n\t"
             "orq        $0x800,%%r8        \n\t"        //bit11 UMIP
-            "not_umip:                            \n\t"
+            "not_umip:                     \n\t"
 
             "test       $0x80,%%rbx        \n\t"
             "jz         not_smep           \n\t"
@@ -135,7 +135,7 @@ __attribute__((section(".init_text"))) void init_cpu(UINT32 *cpu_id,UINT8 *bsp_f
 //PG（位 31）：1：启用分页机制，支持虚拟内存管理。0：禁用分页，CPU 只能使用物理内存地址。
 //endregion
             "movq       %%cr0,%%rax                 \n\t"
-            "andq       0xFFFFFFFF9FFFFFFF,%%rax    \n\t"
+            "andq       $0xFFFFFFFF9FFFFFFF,%%rax    \n\t"
             "orq        $0x10002,%%rax              \n\t"
             "movq       %%rax,%%cr0                 \n\t"
             :::"%rax");
@@ -211,7 +211,6 @@ __attribute__((section(".init_text"))) void init_cpu(UINT32 *cpu_id,UINT8 *bsp_f
                 :"=a"(cpu_info.tsc_frequency)::"%rcx", "%rbx", "%rdx");
 
     }
-
     return;
 }
 
