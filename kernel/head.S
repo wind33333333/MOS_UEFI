@@ -4,14 +4,6 @@
 .section    .init_text, "ax"
 .globl _start
 _start:
-//    cli
-//    movl     $0x1B,%ecx           //IA32_APIC_BASE=0x1b 寄存器
-//    rdmsr
-//    orl      $0xc00,%eax          //bit10 X2APIC使能   bit11 APIC全局使能
-//    wrmsr
-//    testl    $0x100,%eax         //测试bit8 1=bsp 0=ap
-//    jz       kernel_stack_init
-
     cli
     movl     $0x1B,%ecx           //IA32_APIC_BASE=0x1b 寄存器
     rdmsr
@@ -66,13 +58,6 @@ init_tmp_pdptt:
     movq     %rax,%cr3
 
 kernel_stack_init:
-    /*初始化多核内核栈*/
-//    movl     $0x802,%ecx
-//    rdmsr                            //获取APIC ID
-//    shlq     $14,%rax                //每个核心分配16k栈
-//    movq     kernel_stack_top(%rip),%rsp
-//    subq     %rax,%rsp               //计算每个内核栈 栈顶=kernelstack_top-(APIC ID*16K)
-
     /*初始化多核内核栈*/
     movl     $0xB,%eax
     xorl     %ecx,%ecx
