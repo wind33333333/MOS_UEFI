@@ -61,11 +61,11 @@ init_tmp_pdptt:
     addq     $0x40000000,%rax
     loopq    init_tmp_pdptt
 
-kernel_stack_init:
     /*切换页表*/
     movq     $TMP_PML4T,%rax
     movq     %rax,%cr3
 
+kernel_stack_init:
     /*初始化多核内核栈*/
 //    movl     $0x802,%ecx
 //    rdmsr                            //获取APIC ID
@@ -77,6 +77,7 @@ kernel_stack_init:
     movl     $0xB,%eax
     xorl     %ecx,%ecx
     cpuid                                   //cpuid eax=0xb,ecx=0 返回edx=x2apic id
+    shlq     $14,%rdx                       //每个核心分配16k栈
     movq     kernel_stack_top(%rip),%rsp
     subq     %rdx,%rsp                      //计算每个内核栈 栈顶=kernelstack_top-(APIC ID*16K)*/
 

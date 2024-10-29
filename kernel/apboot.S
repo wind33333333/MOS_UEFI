@@ -1,6 +1,7 @@
-.section    .init_text, "ax"
+.section    .ap_boot, "ax"
 .code16
-
+.globl _start
+_start:
     cli
     wbinvd
 
@@ -11,13 +12,15 @@
     movw	%ax,%ss
     movw    $0,%sp
 
-    //lgdt    ap_gdt_ptr
+    movl    $ap_gdt_ptr,%eax
+    lgdt    (%eax)
 
     movl    %cr0,%eax        // 读取 CR0
     rol     $0x1,%eax        // 设置 PE 位（bit 0）
     movl    %eax,%cr0        // 写回 CR0，开启保护模式
 
-    //ljmp    $CODE32_SEL,$ap_code32
+    movl    $ap_code32,%eax
+    ljmp    *(%eax)
 
 .code32
 ap_code32:
@@ -43,7 +46,7 @@ ap_code32:
     orl     $0x80000001, %eax  //设置 PG（Paging）和 PE（Protected Mode）位
     movl    %eax, %cr0
 
-    //ljmp    $CODE64_SEL,$ap_code64
+    ljmp    $CODE64_SEL,$ap_code64
 
 .code64
 ap_code64:

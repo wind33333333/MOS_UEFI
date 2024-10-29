@@ -1,6 +1,7 @@
 #include "ap.h"
 #include "printk.h"
 #include "cpu.h"
+#include "memory.h"
 
 __attribute__((section(".init.data"))) UINT32 init_cpu_num = 0;
 
@@ -9,6 +10,11 @@ __attribute__((section(".init_text"))) void init_ap(UINT32 cpu_id,UINT8 bsp_flag
     if (bsp_flags) {
         color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
         color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.cores_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
+
+        extern UINT8 _apboot_start;
+        extern UINT8 _apboot_end;
+
+        memcpy(&_apboot_start, LADDR_TO_HADDR(0x10000),&_apboot_end-&_apboot_start);
 
         __asm__ __volatile__ (
                 "xorq       %%rdx,	%%rdx	    \n\t"

@@ -21,6 +21,13 @@ SECTIONS
 		_end_init_data = .;
 	}
 
+    .apboot_data ALIGN(4096) :
+    {
+        _apboot_start = .;
+        *(.apboot)
+        _apboot_end = .;
+    }
+
     /*正式内核代码段*/
     . = ALIGN(4096);
 	.text :

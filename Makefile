@@ -82,6 +82,7 @@ qemu-monitor:
 clean:
 	-rm -rf build esp/efi
 	-mkdir -p build esp/efi/boot
+	cp /home/wind3/edk2/MOS_UEFI/kernel/apboot.o /home/wind3/edk2/MOS_UEFI/build/apboot.o
 
 #clion gdb uefi符号挂载
 #source /opt/intel/udkdebugger/script/udk_gdb_script
