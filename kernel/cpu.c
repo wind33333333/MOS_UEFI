@@ -209,7 +209,6 @@ __attribute__((section(".init_text"))) void init_cpu(UINT32 *cpu_id,UINT8 *bsp_f
                 "divq    %%rbx        \n\t"
                 "invalid:             \n\t"
                 :"=a"(cpu_info.tsc_frequency)::"%rcx", "%rbx", "%rdx");
-
     }
     return;
 }
