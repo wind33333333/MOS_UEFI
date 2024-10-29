@@ -39,6 +39,12 @@ $(BUILD)/%.s: $(KERNEL)/%.S
 $(BUILD)/%.o: $(KERNEL)/%.c
 	gcc ${CFLAGS} -c $< -o $@
 
+$(BUILD)/apboot.bin: $(KERNEL)/apboot.asm
+	nasm $< -o $@
+
+$(BUILD)/apboot.o: $(BUILD)/apboot.bin
+	objcopy --input binary --output elf64-x86-64 --binary-architecture i386 --rename-section .data=.apboot $< $@
+
 debug-bootloader: clean
 	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b DEBUG"
 	cp build/DEBUG_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi
@@ -82,7 +88,6 @@ qemu-monitor:
 clean:
 	-rm -rf build esp/efi
 	-mkdir -p build esp/efi/boot
-	cp /home/wind3/edk2/MOS_UEFI/kernel/apboot.o /home/wind3/edk2/MOS_UEFI/build/apboot.o
 
 #clion gdb uefi符号挂载
 #source /opt/intel/udkdebugger/script/udk_gdb_script
