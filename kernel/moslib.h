@@ -37,10 +37,12 @@ typedef long long INT64;
 })
 
 
-#define sti()        __asm__ __volatile__ ("sti	\n\t":::"memory")
-#define cli()        __asm__ __volatile__ ("cli	\n\t":::"memory")
-#define nop()        __asm__ __volatile__ ("nop	\n\t")
-#define io_mfence()    __asm__ __volatile__ ("mfence	\n\t":::"memory")
+#define STI()        __asm__ __volatile__ ("sti	\n\t":::"memory")
+#define CLI()        __asm__ __volatile__ ("cli	\n\t":::"memory")
+#define PAUSE()       __asm__ __volatile__ ("pause	\n\t":::"memory")
+#define MFENCE()    __asm__ __volatile__ ("mfence	\n\t":::"memory")
+#define SFENCE()    __asm__ __volatile__ ("sfence	\n\t":::"memory")
+#define LFENCE()    __asm__ __volatile__ ("lfence	\n\t":::"memory")
 
 
 struct List {

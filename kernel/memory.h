@@ -58,10 +58,6 @@ UINT64 *pdptt_vbase = (UINT64 *) 0xFFFFFFFFFFE00000;  //pdptt虚拟地址基址
 UINT64 *pdt_vbase = (UINT64 *) 0xFFFFFFFFC0000000;    //pdt虚拟地址基址
 UINT64 *ptt_vbase= (UINT64 *) 0xFFFFFF8000000000;    //ptt虚拟地址基址
 
-
-#define MFENCE() __asm__ __volatile__ ("mfence":::);
-#define LFENCE() __asm__ __volatile__ ("lfence":::);
-#define SFENCE() __asm__ __volatile__ ("sfence":::);
 #define INVLPG(vir_addr) __asm__ __volatile__("invlpg (%0)"::"r"(vir_addr):);
 #define SET_CR3(phy_addr) __asm__ __volatile__("mov %0,%%cr3"::"r"(phy_addr):);
 #define GET_CR3(phy_addr) __asm__ __volatile__("mov %%cr3,%0":"=r"(phy_addr)::);

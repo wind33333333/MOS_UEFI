@@ -6,15 +6,15 @@
 #define ENABLE_HPET_TIMES(TIMS_CONF,TIMS_COMP,TIME,MODEL,IRQ) \
         do {   \
            (TIMS_CONF) = (((IRQ) << 9) | (1UL << 6) | ((MODEL) << 3) | (1UL << 2)); \
-           io_mfence();                           \
+           MFENCE();                           \
            (TIMS_COMP) = (TIME);                                                  \
-           io_mfence();                                 \
+           MFENCE();                                 \
          }while(0)
 
 #define DISABLE_HPET_TIMES(TIMS_CONF) \
         do {                 \
            (TIMS_CONF) = 0;           \
-           io_mfence();\
+           MFENCE();\
         }while(0)
 
 #define HPET_ONESHOT 0
