@@ -19,37 +19,37 @@ bits 16
 
 bits 32
 ap_code32:
-    mov ax, DATA32_SEL
-    mov ss, ax
-    mov ds, ax
-    mov es, ax
-    mov esp, 0x90000
+    mov ax,DATA32_SEL
+    mov ss,ax
+    mov ds,ax
+    mov es,ax
+    mov esp,0x90000
 
-    mov eax, cr4
-    or eax, 0x20         ; 设置 PAE 位 (bit 5)
-    mov cr4, eax
+    mov eax,cr4
+    or eax,0x20         ; 设置 PAE 位 (bit 5)
+    mov cr4,eax
 
-    mov eax, 0x90000
-    mov cr3, eax
+    mov eax,0x90000
+    mov cr3,eax
 
-    mov ecx, 0xC0000080  ; EFER MSR 的地址
+    mov ecx,0xC0000080  ; EFER MSR 的地址
     rdmsr                ; 读取 EFER
-    or eax, 0x100        ; 设置 LME (Long Mode Enable) 位 (bit 8)
+    or eax,0x100        ; 设置 LME (Long Mode Enable) 位 (bit 8)
     wrmsr                ; 写回 EFER
 
-    mov eax, cr0
-    or eax, 0x80000001   ; 设置 PG (Paging) 和 PE (Protected Mode) 位
-    mov cr0, eax
+    mov eax,cr0
+    or eax,0x80000001   ; 设置 PG (Paging) 和 PE (Protected Mode) 位
+    mov cr0,eax
 
     jmp CODE64_SEL:ap_code64
 
 bits 64
 ap_code64:
-    mov ax, DATA64_SEL
-    mov ss, ax
-    mov ds, ax
-    mov es, ax
-    mov rsp, 0x90000
+    mov ax,DATA64_SEL
+    mov ss,ax
+    mov ds,ax
+    mov es,ax
+    mov rsp,0x90000
     jmp 0x100000           ; 进入内核
 
 align 8
