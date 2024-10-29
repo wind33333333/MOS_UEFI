@@ -18,7 +18,7 @@ typedef long long INT64;
 #define NULL 0
 
 //region 自旋锁
-#define SPIN_LOCK(lock) \
+#define SPIN_LOCK(lock_var) \
     do {                \
     __asm__ __volatile__ ( \
         "mov        $1,%%bl     \n\t" \
@@ -26,7 +26,8 @@ typedef long long INT64;
         "lock                   \n\t" \
         "cmpxchg    %%bl,%0     \n\t" \
         "jnz        1b          \n\t" \
-        ::"m"(lock):"%rax","%rbx"); \
+        "pause                  \n\t" \
+        ::"m"(lock_var):"%rax","%rbx"); \
     } while(0)
 //endregion
 

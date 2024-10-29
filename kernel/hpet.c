@@ -33,7 +33,7 @@ void init_hpet(UINT8 bsp_flags) {
         while(1);
 
         *hpet_registers.main_cnt = 0;
-        MFENCE();
+        SFENCE();
 
         hpet.time_number = (*hpet_registers.gcap_id >> 8 & 0x1F)+1;
         hpet.frequency = *hpet_registers.gcap_id >> 32;
