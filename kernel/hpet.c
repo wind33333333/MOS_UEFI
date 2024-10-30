@@ -28,9 +28,8 @@ void init_hpet(UINT8 bsp_flags) {
         hpet_registers.tim7_conf = (UINT64 *) LADDR_TO_HADDR(hpet.address + 0x1E0);
         hpet_registers.tim7_comp = (UINT64 *) LADDR_TO_HADDR(hpet.address + 0x1E8);
 
-        *hpet_registers.gen_conf = 1;
+        *hpet_registers.gen_conf = 1; //启用hpet
         SFENCE();
-        while(1);
 
         *hpet_registers.main_cnt = 0;
         SFENCE();

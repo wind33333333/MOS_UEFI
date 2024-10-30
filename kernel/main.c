@@ -25,16 +25,13 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
     init_idt(bsp_flags);                                //初始化IDT
     init_acpi(bsp_flags);                               //初始化acpi
     init_hpet(bsp_flags);                               //初始化hpet
-    while(1);
     init_ioapic(bsp_flags);                             //初始化ioapic
     init_apic();                                        //初始化apic
     init_page(bsp_flags);                               //初始化内核页表
     init_ap(cpu_id, bsp_flags);                         //初始化ap核
 
-
     //ENABLE_HPET_TIMES(*hpetRegisters.tim0_conf,*hpetRegisters.tim0_comp,0x3000000,HPET_PERIODIC,0);
     //enable_apic_time(0xF000,APIC_TSC_DEADLINE,0x20);
-
 
     //STI();
     while (1);
