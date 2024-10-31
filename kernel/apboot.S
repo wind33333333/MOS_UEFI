@@ -52,7 +52,6 @@ ap_code64:
     mov    $0x90000,%rsp
     jmp    $0x100000               # 进入内核
 
-.section .data
 .align 8
 
 ap_gdt:
