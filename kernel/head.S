@@ -62,7 +62,8 @@ kernel_stack_init:
     movl     $0xB,%eax
     xorl     %ecx,%ecx
     cpuid                                   //cpuid eax=0xb,ecx=0 返回edx=x2apic id
-    shlq     $14,%rdx                       //每个核心分配16k栈
+    //shlq     $14,%rdx                       //每个核心分配16k栈
+    shlq     $12,%rdx                       //每个核心分配16k栈
     movq     kernel_stack_top(%rip),%rsp
     subq     %rdx,%rsp                      //计算每个内核栈 栈顶=kernelstack_top-(APIC ID*16K)*/
 

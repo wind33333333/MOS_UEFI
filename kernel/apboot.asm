@@ -52,6 +52,7 @@ ap_code64:
     mov rsp,0x90000
     jmp 0x100000           ; 进入内核
 
+
 align 8
 ap_gdt:
                  dq 0                  ; 保留项

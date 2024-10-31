@@ -33,7 +33,9 @@ __attribute__((section(".init_text"))) void init_acpi(UINT8 bsp_flags) {
         while((UINT64)madt_entry < ((UINT64)madt+madt->acpi_header.length)){
             switch(madt_entry->type) {
                 case 0://APIC ID
-                    color_printk(RED,BLACK,"APIC ID:%d\n",((apic_entry_t*)madt_entry)->apic_id);
+                    if(((apic_entry_t*)madt_entry)->apic_id<255){
+                        color_printk(RED, BLACK, "APIC ID:%d\n", ((apic_entry_t *) madt_entry)->apic_id);
+                    }
                     break;
 
                 case 1://ioapic

@@ -30,7 +30,7 @@ __attribute__((section(".init_text"))) void init_page(UINT8 bsp_flags) {
         color_printk(ORANGE, BLACK, "OS StartAddr: %#018lX \tEndAddr: %#018lX \n",
                      memory_management.kernel_start_address, memory_management.kernel_end_address);
 
-        SET_CR3(HADDR_TO_LADDR(&pml4t));
+        SET_CR3(HADDR_TO_LADDR(&pml4t));   //老dell切换页表系统奔溃
 
         map_pages(HADDR_TO_LADDR(Pos.FB_addr), (UINT64)Pos.FB_addr, Pos.FB_length / 4096, PAGE_ROOT_RW);
         map_pages(HADDR_TO_LADDR(ioapic_baseaddr), (UINT64) ioapic_baseaddr, 1,

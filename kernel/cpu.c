@@ -22,6 +22,13 @@ __attribute__((section(".init_text"))) void init_cpu(UINT32 *cpu_id,UINT8 *bsp_f
             "andl       $1,%%eax     \n\t"
             :"=a"(*bsp_flags)::"%rcx","%rdx");
 
+    // 获取当前x2apic id号
+    __asm__ __volatile__ (
+            "movl       $0xB,%%eax   \n\t"
+            "xorl       %%ecx,%%ecx  \n\t"
+            "cpuid                   \n\t"
+            :"=d"(*cpu_id)::"%rax", "%rbx","%rcx");
+
    __asm__ __volatile__(
 //region CR4 寄存器
 //VME（bit 0） 描述：启用虚拟 8086 模式的扩展功能，允许在虚拟 8086 模式中支持虚拟中断。用途：用于实现虚拟机监控或虚拟 8086 环境中的精细中断控制。
@@ -139,13 +146,6 @@ __attribute__((section(".init_text"))) void init_cpu(UINT32 *cpu_id,UINT8 *bsp_f
             "orq        $0x10002,%%rax              \n\t"
             "movq       %%rax,%%cr0                 \n\t"
             :::"%rax");
-
-    // 获取当前x2apic id号
-    __asm__ __volatile__ (
-            "movl       $0xB,%%eax   \n\t"
-            "xorl       %%ecx,%%ecx  \n\t"
-            "cpuid                   \n\t"
-            :"=d"(*cpu_id)::"%rax", "%rbx","%rcx");
 
     if (*bsp_flags) {
         // 获取CPU厂商
