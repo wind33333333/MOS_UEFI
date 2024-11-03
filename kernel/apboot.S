@@ -1,4 +1,3 @@
-#include "linkage.h"
 .section .init_text,"ax"
 .code16
 .globl _apboot_start
@@ -118,6 +117,5 @@ code64_ptr:
     .long   0
     .word   CODE64_SEL
 
-.balign 4
 .globl   _apboot_end
 _apboot_end:

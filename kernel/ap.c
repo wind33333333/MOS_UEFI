@@ -14,12 +14,8 @@ __attribute__((section(".init_text"))) void init_ap(void) {
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.cores_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
 
     memcpy(&_apboot_start, LADDR_TO_HADDR(APBOOT_ADDR),&_apboot_end-&_apboot_start);    //把ap核初始化代码复制到过去
-    ap_rsp = LADDR_TO_HADDR(alloc_pages((cpu_info.cores_number-1)*4));  //每个ap核分配16K栈
-//    apboot_data_t *apboot_data=(apboot_data_t*)LADDR_TO_HADDR(&_apboot_end-&_apboot_start+APBOOT_ADDR);
-//    for(UINT32 i=1;i<(cpu_info.cores_number);i++){
-//        apboot_data[i].rsp = LADDR_TO_HADDR(alloc_pages(4));
-//        apboot_data[i].tr =(TSS_DESCRIPTOR_START_INDEX*8)+(i*16);
-//    }
+    ap_rsp = LADDR_TO_HADDR(alloc_pages((cpu_info.cores_number-1)*4));                    //每个ap核分配16K栈
+    map_pages(LADDR_TO_HADDR(ap_rsp),ap_rsp,(cpu_info.cores_number-1)*4,PAGE_ROOT_RW)
 
     __asm__ __volatile__ (
             "xorq       %%rdx,	%%rdx	    \n\t"
