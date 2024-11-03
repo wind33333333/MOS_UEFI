@@ -8,7 +8,6 @@
 #include "apic.h"
 #include "tss.h"
 
-__attribute__((section(".init.data"))) UINT32 init_cpu_num;
 __attribute__((section(".init.data"))) UINT64 ap_rsp;
 
 //多核处理器初始化
@@ -40,29 +39,6 @@ __attribute__((section(".init_text"))) void init_ap(void) {
             "wrmsr	                        \n\t"   //Start-up IPI
             :: :"%rax", "%rcx", "%rdx");
 
-    UINT32 apic_id;
-    UINT32 cpu_id;
-    __asm__ __volatile__(
-            "movl       $0xB,%%eax   \n\t"
-            "xorl       %%ecx,%%ecx  \n\t"
-            "cpuid                   \n\t"
-            :"=d"(apic_id)::"%rax","%rbx","%rcx");
-
-    for(UINT32 i=0;i<cpu_info.cores_number;i++){
-        if(apic_id==apic_id_table[i]){
-            cpu_id=i;
-            break;
-        }
-    }
-
-    color_printk(GREEN, BLACK, "CPU%d init successful\n", cpu_id);
-    init_cpu_num++;
-
-    while(1){
-        if(init_cpu_num == cpu_info.cores_number)
-            break;
-    }
-
     return;
 }
 
@@ -76,6 +52,6 @@ __attribute__((section(".init_text"))) void ap_main(void){
     LIDT(idt_ptr);
     init_apic();
     SET_CR3(HADDR_TO_LADDR(pml4t));
-    color_printk(GREEN,BLACK,"CPUID:%d ,APICID:%d\n",cpu_id,apic_id);
+    color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);
     while(1);
 }

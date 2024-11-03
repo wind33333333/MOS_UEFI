@@ -31,6 +31,8 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
     init_page();                               //初始化内核页表
     init_ap();                                 //初始化ap核
 
+    color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);
+
     //ENABLE_HPET_TIMES(*hpetRegisters.tim0_conf,*hpetRegisters.tim0_comp,0x3000000,HPET_PERIODIC,0);
     //enable_apic_time(0xF000,APIC_TSC_DEADLINE,0x20);
 
