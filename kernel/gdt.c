@@ -20,6 +20,6 @@ __attribute__((section(".init_text"))) void init_gdt(void) {
     *(gdt_ptr.base + 6) = DATA32_0;        /*6	KERNEL	Data	32-bit	Segment	30*/
     *(gdt_ptr.base + 7) = 0;
 
-    SET_GDT(gdt_ptr,0x8UL,0x10UL);
+    LGDT(gdt_ptr,0x8UL,0x10UL);
     return;
 }

@@ -2,6 +2,7 @@
 #define __IDT_H__
 #include "moslib.h"
 
+#define LIDT(IDT_PTR) __asm__ __volatile__("lidt       (%0)"::"r"(&idt_ptr):);
 #define SET_GATE_L(OFFSET,IST,TYPE) (IST | TYPE | SEL_CODE64 | DPL_0 | P | ((UINT64)(OFFSET) & 0x000000000000FFFF) | (((UINT64)(OFFSET) >> 16) << 48))
 #define SET_GATE_H(OFFSET) ((UINT64)(OFFSET) >> 32)
 #define SET_GATE(BASE,NUM,OFFSET,IST,TYPE) \

@@ -6,6 +6,7 @@
 #include "gdt.h"
 #include "idt.h"
 #include "apic.h"
+#include "tss.h"
 
 __attribute__((section(".init.data"))) UINT32 init_cpu_num;
 __attribute__((section(".init.data"))) UINT64 ap_rsp;
@@ -74,16 +75,9 @@ __attribute__((section(".init_text"))) void ap_main(void){
             :"=d"(apic_id)::"%rax","%rbx","%rcx");
     cpu_id = apicid_to_cpuid(apic_id);
     init_cpu_mode();
-    SET_GDT(gdt_ptr,0x8UL,0x10UL);;
-
-    __asm__ __volatile__(
-            "ltr    %w0      \n\t"
-            ::"r"(TSS_DESCRIPTOR_START_INDEX*8+cpu_id*16):);
-
-    __asm__ __volatile__(
-            "lidt       (%0)  \n\t"
-            ::"r"(&idt_ptr):);
-
+    LGDT(gdt_ptr,0x8UL,0x10UL);;
+    LTR(TSS_DESCRIPTOR_START_INDEX*8+cpu_id*16);
+    LIDT(&idt_ptr);
     init_apic();
     SET_CR3(HADDR_TO_LADDR(pml4t));
 

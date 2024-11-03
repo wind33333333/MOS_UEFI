@@ -30,9 +30,7 @@ __attribute__((section(".init_text"))) void init_tss(void) {
             memory_management.kernel_end_address = tss_ptr[i].ist1;
         }
 
-    __asm__ __volatile__(
-            "ltr    %w0 \n\t"
-            ::"r"(TSS_DESCRIPTOR_START_INDEX * 8):);
+    LTR(TSS_DESCRIPTOR_START_INDEX * 8);
 
     return;
 }

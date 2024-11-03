@@ -20,6 +20,8 @@
 #define TSS_TYPE    (0x9UL << 40)
 #define TSS_LIMIT   (0x67UL & 0xFFFF) | ((0x67UL >> 16)<<48)
 
+#define LTR(TSS_SEL) __asm__ __volatile__("ltr    %w0" ::"r"(TSS_SEL):);
+
 void init_tss(void);
 
 typedef struct {
