@@ -18,7 +18,7 @@ __attribute__((section(".init_text"))) void init_ap(void) {
 
     memcpy(&_apboot_start, LADDR_TO_HADDR(APBOOT_ADDR),&_apboot_end-&_apboot_start);    //把ap核初始化代码复制到过去
     ap_rsp = (UINT64)LADDR_TO_HADDR(alloc_pages((cpu_info.cores_number-1)*4));            //每个ap核分配16K栈
-    map_pages((UINT64)LADDR_TO_HADDR(ap_rsp),ap_rsp,(cpu_info.cores_number-1)*4,PAGE_ROOT_RW);
+    map_pages((UINT64)HADDR_TO_LADDR(ap_rsp),ap_rsp,(cpu_info.cores_number-1)*4,PAGE_ROOT_RW);
 
     __asm__ __volatile__ (
             "xorq       %%rdx,	%%rdx	    \n\t"
@@ -68,18 +68,14 @@ __attribute__((section(".init_text"))) void init_ap(void) {
 
 __attribute__((section(".init_text"))) void ap_main(void){
     UINT32 apic_id,cpu_id;
-    __asm__ __volatile__(
-            "movl   $0xb,%%eax  \n\t"
-            "xorl   %%ecx,%%ecx \n\t"
-            "cpuid              \n\t"
-            :"=d"(apic_id)::"%rax","%rbx","%rcx");
+    GET_APICID(apic_id);
     cpu_id = apicid_to_cpuid(apic_id);
     init_cpu_mode();
-    LGDT(gdt_ptr,0x8UL,0x10UL);;
+    LGDT(gdt_ptr,0x8UL,0x10UL);
     LTR(TSS_DESCRIPTOR_START_INDEX*8+cpu_id*16);
     LIDT(idt_ptr);
     init_apic();
     SET_CR3(HADDR_TO_LADDR(pml4t));
-
+    color_printk(GREEN,BLACK,"CPUID:%d ,APICID:%d\n",cpu_id,apic_id);
     while(1);
 }
