@@ -3,6 +3,7 @@
 #include "moslib.h"
 
 void    init_gdt(void);
+void    set_gdt(void);
 
 typedef struct{
     UINT16 limit;

@@ -3,6 +3,7 @@
 #include "moslib.h"
 
 void init_cpu(void);
+void set_cpu(void);
 
 typedef struct {
     CHAR8 manufacturer_name[13];

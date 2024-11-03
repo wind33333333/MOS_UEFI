@@ -7,6 +7,74 @@ __attribute__((section(".init_text"))) void init_cpu(void) {
     //初始化全局变量
     mem_set(&cpu_info,0,sizeof(cpu_info_t));
 
+    set_cpu();
+
+    // 获取CPU厂商
+    __asm__ __volatile__(
+            "xorl    %%eax,%%eax     \n\t"
+            "cpuid                   \n\t"
+            "movl    %%ebx,(%%rdi)   \n\t"
+            "movl    %%edx,4(%%rdi)  \n\t"
+            "movl    %%ecx,8(%%rdi)  \n\t"
+            "movb    $0,12(%%rdi)    \n\t"
+            ::"D"(&cpu_info.manufacturer_name):"%rax", "%rbx", "%rcx", "%rdx");
+
+    // 获取CPU核心数量 cpuid eax=0xB ecx=1,ebx=核心数量
+    __asm__ __volatile__(
+            "movl        $0xb,%%eax    \n\t"
+            "movl        $0x1,%%ecx    \n\t"
+            "cpuid                     \n\t"
+            :"=b"(cpu_info.cores_number)::"%rax", "%rcx", "%rdx");
+
+    // 获取CPU型号
+    __asm__ __volatile__(
+            "movl    $0x80000002,%%eax \n\t"
+            "cpuid         \n\t"
+            "movl    %%eax,(%%rdi)   \n\t"
+            "movl    %%ebx,4(%%rdi)  \n\t"
+            "movl    %%ecx,8(%%rdi)  \n\t"
+            "movl    %%edx,12(%%rdi) \n\t"
+
+            "movl    $0x80000003,%%eax \n\t"
+            "cpuid                     \n\t"
+            "movl    %%eax,16(%%rdi)   \n\t"
+            "movl    %%ebx,20(%%rdi)   \n\t"
+            "movl    %%ecx,24(%%rdi)   \n\t"
+            "movl    %%edx,28(%%rdi)   \n\t"
+
+            "movl    $0x80000004,%%eax \n\t"
+            "cpuid         \n\t"
+            "movl    %%eax,32(%%rdi)   \n\t"
+            "movl    %%ebx,36(%%rdi)   \n\t"
+            "movl    %%ecx,40(%%rdi)   \n\t"
+            "movl    %%edx,44(%%rdi)   \n\t"
+            "movl    $0,48(%%rdi)      \n\t"
+            ::"D"(&cpu_info.model_name):"%rax", "%rbx", "%rcx", "%rdx");
+
+    // 获取CPU频率
+    __asm__ __volatile__(
+            "movl    $0x16,%%eax \n\t"
+            "cpuid               \n\t"
+            "shlq    $32,%%rdx   \n\t"
+            "orq     %%rdx,%%rax \n\t"
+            :"=a"(cpu_info.fundamental_frequency), "=b"(cpu_info.maximum_frequency), "=c"(cpu_info.bus_frequency)::"%rdx");
+
+    // 获取CPU TSC频率
+    __asm__ __volatile__(
+            "movl    $0x15,%%eax  \n\t"
+            "cpuid                \n\t"
+            "testl   %%ecx,%%ecx  \n\t"
+            "jz      invalid      \n\t"            //如果ecx等于0则获取到的tsc频率无效
+            "xchgq   %%rax,%%rbx  \n\t"
+            "mulq    %%rcx        \n\t"
+            "divq    %%rbx        \n\t"
+            "invalid:             \n\t"
+            :"=a"(cpu_info.tsc_frequency)::"%rcx", "%rbx", "%rdx");
+    return;
+}
+
+__attribute__((section(".init_text"))) void set_cpu(void){
+
     __asm__ __volatile__(
 //region IA32_APIC_BASE (MSR 0x1B)
 //X2APIC（bit 10）：作用：如果该位被设置为 1，处理器启用 X2APIC 模式。X2APIC 是 APIC 的扩展版本，提供了更多的功能，例如更大的中断目标地址空间。
@@ -132,73 +200,11 @@ __attribute__((section(".init_text"))) void init_cpu(void) {
 //CD（位 30）：1：禁用 CPU 缓存，所有内存访问直接访问主存。0：启用 CPU 缓存，提高性能。
 //PG（位 31）：1：启用分页机制，支持虚拟内存管理。0：禁用分页，CPU 只能使用物理内存地址。
 //endregion
-            "movq       %%cr0,%%rax                 \n\t"
+            "movq       %%cr0,%%rax                  \n\t"
             "andq       $0xFFFFFFFF9FFFFFFF,%%rax    \n\t"
-            "orq        $0x10002,%%rax              \n\t"
-            "movq       %%rax,%%cr0                 \n\t"
+            "orq        $0x10002,%%rax               \n\t"
+            "movq       %%rax,%%cr0                  \n\t"
             :::"%rax");
-
-    // 获取CPU厂商
-    __asm__ __volatile__(
-            "xorl    %%eax,%%eax     \n\t"
-            "cpuid                   \n\t"
-            "movl    %%ebx,(%%rdi)   \n\t"
-            "movl    %%edx,4(%%rdi)  \n\t"
-            "movl    %%ecx,8(%%rdi)  \n\t"
-            "movb    $0,12(%%rdi)    \n\t"
-            ::"D"(&cpu_info.manufacturer_name):"%rax", "%rbx", "%rcx", "%rdx");
-
-    // 获取CPU核心数量 cpuid eax=0xB ecx=1,ebx=核心数量
-    __asm__ __volatile__(
-            "movl        $0xb,%%eax    \n\t"
-            "movl        $0x1,%%ecx    \n\t"
-            "cpuid                     \n\t"
-            :"=b"(cpu_info.cores_number)::"%rax", "%rcx", "%rdx");
-
-    // 获取CPU型号
-    __asm__ __volatile__(
-            "movl    $0x80000002,%%eax \n\t"
-            "cpuid         \n\t"
-            "movl    %%eax,(%%rdi)   \n\t"
-            "movl    %%ebx,4(%%rdi)  \n\t"
-            "movl    %%ecx,8(%%rdi)  \n\t"
-            "movl    %%edx,12(%%rdi) \n\t"
-
-            "movl    $0x80000003,%%eax \n\t"
-            "cpuid                     \n\t"
-            "movl    %%eax,16(%%rdi)   \n\t"
-            "movl    %%ebx,20(%%rdi)   \n\t"
-            "movl    %%ecx,24(%%rdi)   \n\t"
-            "movl    %%edx,28(%%rdi)   \n\t"
-
-            "movl    $0x80000004,%%eax \n\t"
-            "cpuid         \n\t"
-            "movl    %%eax,32(%%rdi)   \n\t"
-            "movl    %%ebx,36(%%rdi)   \n\t"
-            "movl    %%ecx,40(%%rdi)   \n\t"
-            "movl    %%edx,44(%%rdi)   \n\t"
-            "movl    $0,48(%%rdi)      \n\t"
-            ::"D"(&cpu_info.model_name):"%rax", "%rbx", "%rcx", "%rdx");
-
-    // 获取CPU频率
-    __asm__ __volatile__(
-            "movl    $0x16,%%eax \n\t"
-            "cpuid               \n\t"
-            "shlq    $32,%%rdx   \n\t"
-            "orq     %%rdx,%%rax \n\t"
-            :"=a"(cpu_info.fundamental_frequency), "=b"(cpu_info.maximum_frequency), "=c"(cpu_info.bus_frequency)::"%rdx");
-
-    // 获取CPU TSC频率
-    __asm__ __volatile__(
-            "movl    $0x15,%%eax  \n\t"
-            "cpuid                \n\t"
-            "testl   %%ecx,%%ecx  \n\t"
-            "jz      invalid      \n\t"            //如果ecx等于0则获取到的tsc频率无效
-            "xchgq   %%rax,%%rbx  \n\t"
-            "mulq    %%rcx        \n\t"
-            "divq    %%rbx        \n\t"
-            "invalid:             \n\t"
-            :"=a"(cpu_info.tsc_frequency)::"%rcx", "%rbx", "%rdx");
     return;
 }
 

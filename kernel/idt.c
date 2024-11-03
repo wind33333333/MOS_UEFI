@@ -43,7 +43,7 @@ __attribute__((section(".init_text"))) void init_idt(void) {
         SET_GATE(idt_ptr.base,0x32,hpet,IST_1,TYPE_INT);
 
     __asm__ __volatile__(
-            "lidt (%0)  \n\t"
+            "lidt       (%0)  \n\t"
             ::"r"(&idt_ptr):);
     return;
 }

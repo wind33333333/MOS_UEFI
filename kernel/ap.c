@@ -4,6 +4,8 @@
 #include "memory.h"
 #include "acpi.h"
 #include "gdt.h"
+#include "idt.h"
+#include "apic.h"
 
 __attribute__((section(".init.data"))) UINT32 init_cpu_num;
 __attribute__((section(".init.data"))) UINT64 ap_rsp;
@@ -14,8 +16,8 @@ __attribute__((section(".init_text"))) void init_ap(void) {
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.cores_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
 
     memcpy(&_apboot_start, LADDR_TO_HADDR(APBOOT_ADDR),&_apboot_end-&_apboot_start);    //把ap核初始化代码复制到过去
-    ap_rsp = LADDR_TO_HADDR(alloc_pages((cpu_info.cores_number-1)*4));                    //每个ap核分配16K栈
-    map_pages(LADDR_TO_HADDR(ap_rsp),ap_rsp,(cpu_info.cores_number-1)*4,PAGE_ROOT_RW)
+    ap_rsp = (UINT64)LADDR_TO_HADDR(alloc_pages((cpu_info.cores_number-1)*4));            //每个ap核分配16K栈
+    map_pages((UINT64)LADDR_TO_HADDR(ap_rsp),ap_rsp,(cpu_info.cores_number-1)*4,PAGE_ROOT_RW);
 
     __asm__ __volatile__ (
             "xorq       %%rdx,	%%rdx	    \n\t"
@@ -64,5 +66,26 @@ __attribute__((section(".init_text"))) void init_ap(void) {
 }
 
 __attribute__((section(".init_text"))) void ap_main(void){
+    UINT32 apic_id,cpu_id;
+    __asm__ __volatile__(
+            "movl   $0xb,%%eax  \n\t"
+            "xorl   %%ecx,%%ecx \n\t"
+            "cpuid              \n\t"
+            :"=d"(apic_id)::"%rax","%rbx","%rcx");
+    cpu_id = apicid_to_cpuid(apic_id);
+    set_cpu();
+    set_gdt();
+
+    __asm__ __volatile__(
+            "ltr    %w0      \n\t"
+            ::"r"(TSS_DESCRIPTOR_START_INDEX*8+cpu_id*16):);
+
+    __asm__ __volatile__(
+            "lidt       (%0)  \n\t"
+            ::"r"(&idt_ptr):);
+
+    init_apic();
+    SET_CR3(HADDR_TO_LADDR(pml4t));
+
     while(1);
 }

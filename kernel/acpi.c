@@ -100,3 +100,16 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
 
     return;
 }
+
+__attribute__((section(".init_text"))) UINT32 apicid_to_cpuid(UINT32 apic_id){
+    for(UINT32 i=0;i<cpu_info.cores_number;i++){
+        if(apic_id==apic_id_table[i])
+            return i;
+    }
+    return 0xFFFFFFFF;
+}
+
+__attribute__((section(".init_text"))) UINT32 cpuid_to_apicid(UINT32 cpu_id){
+            return apic_id_table[cpu_id];
+}
+

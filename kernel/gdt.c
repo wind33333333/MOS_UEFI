@@ -20,21 +20,22 @@ __attribute__((section(".init_text"))) void init_gdt(void) {
     *(gdt_ptr.base + 6) = DATA32_0;        /*6	KERNEL	Data	32-bit	Segment	30*/
     *(gdt_ptr.base + 7) = 0;
 
+    set_gdt();
+    return;
+}
+
+__attribute__((section(".init_text"))) void set_gdt(void){
     __asm__ __volatile__(
             "lgdt       (%0)           \n\t"
             "pushq      $0x8           \n\t"       //0x8 64位ring0 代码选择子
             "movabs     $label,%%rax   \n\t"
             "pushq      %%rax          \n\t"
             "lretq                     \n\t"       //切换新gdt代码选择子
-            //            ".byte      0x48         \n\t"
-            //            "ljmp       (%%rsp)      \n\t"
-            //            "add        $16,%%rsp    \n\t"     //jmp远跳转exsi执行报错
             "label:                    \n\t"
             "mov        %1,%%ss        \n\t"
             "mov        %1,%%ds        \n\t"
             "mov        %1,%%es        \n\t"
-//            "movw       %%ax,%%fs   \n\t"
-//            "movw       %%ax,%%gs   \n\t"
             ::"r"(&gdt_ptr),"r"(0x10):"%rax");   //0x10 64位ring0 数据段选择子
     return;
+
 }
