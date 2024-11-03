@@ -73,8 +73,8 @@ __attribute__((section(".init_text"))) void ap_main(void){
             "cpuid              \n\t"
             :"=d"(apic_id)::"%rax","%rbx","%rcx");
     cpu_id = apicid_to_cpuid(apic_id);
-    set_cpu();
-    set_gdt();
+    init_cpu_mode();
+    SET_GDT(gdt_ptr,0x8UL,0x10UL);;
 
     __asm__ __volatile__(
             "ltr    %w0      \n\t"

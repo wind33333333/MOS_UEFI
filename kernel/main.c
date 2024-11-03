@@ -14,7 +14,8 @@
 #include "uefi.h"
 
 __attribute__((section(".init_text"))) void init_kernel(void) {
-    init_cpu();                                //获取cpu信息和初始化cpu开启高级功能
+    init_cpu_mode();                           //初始化cpu开启高级功能
+    get_cpu_info();                            //获取cpu信息
     init_output();                             //初始化输出控制台
     init_memory();                             //初始化内存管理器
     init_gdt();                                //初始化GDT

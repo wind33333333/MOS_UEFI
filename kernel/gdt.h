@@ -35,5 +35,19 @@ extern gdt_ptr_t gdt_ptr;
 #define DB          (1UL << 54)
 #define G           (1UL << 55)
 
+#define SET_GDT(GDT_PTR,CS,DS) \
+            do{                                             \
+                __asm__ __volatile__(                       \
+                        "lgdt       (%0)                \n\t"    \
+                        "pushq      %1                  \n\t"    \
+                        "leaq       1f(%%rip),%%rax     \n\t"    \
+                        "pushq      %%rax               \n\t"    \
+                        "lretq                          \n\t"    \
+                        "1:                             \n\t"    \
+                        "mov        %2,%%ss             \n\t"    \
+                        "mov        %2,%%ds             \n\t"    \
+                        "mov        %2,%%es             \n\t"    \
+                        ::"r"(&GDT_PTR),"r"(CS),"r"(DS):"%rax");  \
+            }while(0)
 
 #endif

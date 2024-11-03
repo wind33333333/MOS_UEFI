@@ -2,8 +2,8 @@
 #define _CPU_H
 #include "moslib.h"
 
-void init_cpu(void);
-void set_cpu(void);
+void init_cpu_mode(void);
+void get_cpu_info(void);
 
 typedef struct {
     CHAR8 manufacturer_name[13];
@@ -16,5 +16,6 @@ typedef struct {
 }cpu_info_t;
 
 extern cpu_info_t cpu_info;
+
 
 #endif
