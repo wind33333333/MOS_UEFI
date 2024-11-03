@@ -42,6 +42,6 @@ __attribute__((section(".init_text"))) void init_idt(void) {
     SET_GATE(idt_ptr.base,0x31,keyboard,IST_1,TYPE_INT);
     SET_GATE(idt_ptr.base,0x32,hpet,IST_1,TYPE_INT);
 
-    LIDT(&idt_ptr);
+    LIDT(idt_ptr);
     return;
 }

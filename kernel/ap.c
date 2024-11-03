@@ -77,7 +77,7 @@ __attribute__((section(".init_text"))) void ap_main(void){
     init_cpu_mode();
     LGDT(gdt_ptr,0x8UL,0x10UL);;
     LTR(TSS_DESCRIPTOR_START_INDEX*8+cpu_id*16);
-    LIDT(&idt_ptr);
+    LIDT(idt_ptr);
     init_apic();
     SET_CR3(HADDR_TO_LADDR(pml4t));
 
