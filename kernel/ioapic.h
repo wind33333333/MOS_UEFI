@@ -2,7 +2,7 @@
 #define __IOAPIC_H__
 #include "moslib.h"
 
-void init_ioapic(UINT8 bsp_flags);
+void init_ioapic(void);
 extern UINT32 *ioapic_baseaddr;
 
 #endif

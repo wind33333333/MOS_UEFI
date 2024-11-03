@@ -7,7 +7,7 @@
 #include "moslib.h"
 
 
-void init_output(UINT8 bsp_flags);
+void init_output(void);
 void clear_screen(void);
 extern char buf[4096];
 

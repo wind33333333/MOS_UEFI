@@ -3,7 +3,7 @@
 //全局变量
 cpu_info_t cpu_info;
 
-__attribute__((section(".init_text"))) void init_cpu(UINT32 *cpu_id,UINT8 *bsp_flags) {
+__attribute__((section(".init_text"))) void init_cpu(void) {
     //初始化全局变量
     mem_set(&cpu_info,0,sizeof(cpu_info_t));
 
@@ -18,18 +18,9 @@ __attribute__((section(".init_text"))) void init_cpu(UINT32 *cpu_id,UINT8 *bsp_f
             "rdmsr                   \n\t"
             "orl        $0xC00,%%eax \n\t"      //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
             "wrmsr                   \n\t"
-            "shrl       $8,%%eax     \n\t"
-            "andl       $1,%%eax     \n\t"
-            :"=a"(*bsp_flags)::"%rcx","%rdx");
+            :::"%rax","%rcx","%rdx");
 
-    // 获取当前x2apic id号
-    __asm__ __volatile__ (
-            "movl       $0xB,%%eax   \n\t"
-            "xorl       %%ecx,%%ecx  \n\t"
-            "cpuid                   \n\t"
-            :"=d"(*cpu_id)::"%rax", "%rbx","%rcx");
-
-   __asm__ __volatile__(
+    __asm__ __volatile__(
 //region CR4 寄存器
 //VME（bit 0） 描述：启用虚拟 8086 模式的扩展功能，允许在虚拟 8086 模式中支持虚拟中断。用途：用于实现虚拟机监控或虚拟 8086 环境中的精细中断控制。
 //PVI（bit 1） 描述：启用保护模式下的虚拟中断标志，支持在虚拟化环境中进行中断管理。用途：允许虚拟化软件在保护模式下模拟中断处理，用于虚拟机监控程序。
@@ -147,69 +138,67 @@ __attribute__((section(".init_text"))) void init_cpu(UINT32 *cpu_id,UINT8 *bsp_f
             "movq       %%rax,%%cr0                 \n\t"
             :::"%rax");
 
-    if (*bsp_flags) {
-        // 获取CPU厂商
-        __asm__ __volatile__(
-                "xorl    %%eax,%%eax     \n\t"
-                "cpuid                   \n\t"
-                "movl    %%ebx,(%%rdi)   \n\t"
-                "movl    %%edx,4(%%rdi)  \n\t"
-                "movl    %%ecx,8(%%rdi)  \n\t"
-                "movb    $0,12(%%rdi)    \n\t"
-                ::"D"(&cpu_info.manufacturer_name):"%rax", "%rbx", "%rcx", "%rdx");
+    // 获取CPU厂商
+    __asm__ __volatile__(
+            "xorl    %%eax,%%eax     \n\t"
+            "cpuid                   \n\t"
+            "movl    %%ebx,(%%rdi)   \n\t"
+            "movl    %%edx,4(%%rdi)  \n\t"
+            "movl    %%ecx,8(%%rdi)  \n\t"
+            "movb    $0,12(%%rdi)    \n\t"
+            ::"D"(&cpu_info.manufacturer_name):"%rax", "%rbx", "%rcx", "%rdx");
 
-        // 获取CPU核心数量 cpuid eax=0xB ecx=1,ebx=核心数量
-        __asm__ __volatile__(
-                "movl        $0xb,%%eax    \n\t"
-                "movl        $0x1,%%ecx    \n\t"
-                "cpuid                     \n\t"
-                :"=b"(cpu_info.cores_number)::"%rax", "%rcx", "%rdx");
+    // 获取CPU核心数量 cpuid eax=0xB ecx=1,ebx=核心数量
+    __asm__ __volatile__(
+            "movl        $0xb,%%eax    \n\t"
+            "movl        $0x1,%%ecx    \n\t"
+            "cpuid                     \n\t"
+            :"=b"(cpu_info.cores_number)::"%rax", "%rcx", "%rdx");
 
-        // 获取CPU型号
-        __asm__ __volatile__(
-                "movl    $0x80000002,%%eax \n\t"
-                "cpuid         \n\t"
-                "movl    %%eax,(%%rdi)   \n\t"
-                "movl    %%ebx,4(%%rdi)  \n\t"
-                "movl    %%ecx,8(%%rdi)  \n\t"
-                "movl    %%edx,12(%%rdi) \n\t"
+    // 获取CPU型号
+    __asm__ __volatile__(
+            "movl    $0x80000002,%%eax \n\t"
+            "cpuid         \n\t"
+            "movl    %%eax,(%%rdi)   \n\t"
+            "movl    %%ebx,4(%%rdi)  \n\t"
+            "movl    %%ecx,8(%%rdi)  \n\t"
+            "movl    %%edx,12(%%rdi) \n\t"
 
-                "movl    $0x80000003,%%eax \n\t"
-                "cpuid                     \n\t"
-                "movl    %%eax,16(%%rdi)   \n\t"
-                "movl    %%ebx,20(%%rdi)   \n\t"
-                "movl    %%ecx,24(%%rdi)   \n\t"
-                "movl    %%edx,28(%%rdi)   \n\t"
+            "movl    $0x80000003,%%eax \n\t"
+            "cpuid                     \n\t"
+            "movl    %%eax,16(%%rdi)   \n\t"
+            "movl    %%ebx,20(%%rdi)   \n\t"
+            "movl    %%ecx,24(%%rdi)   \n\t"
+            "movl    %%edx,28(%%rdi)   \n\t"
 
-                "movl    $0x80000004,%%eax \n\t"
-                "cpuid         \n\t"
-                "movl    %%eax,32(%%rdi)   \n\t"
-                "movl    %%ebx,36(%%rdi)   \n\t"
-                "movl    %%ecx,40(%%rdi)   \n\t"
-                "movl    %%edx,44(%%rdi)   \n\t"
-                "movl    $0,48(%%rdi)      \n\t"
-                ::"D"(&cpu_info.model_name):"%rax", "%rbx", "%rcx", "%rdx");
+            "movl    $0x80000004,%%eax \n\t"
+            "cpuid         \n\t"
+            "movl    %%eax,32(%%rdi)   \n\t"
+            "movl    %%ebx,36(%%rdi)   \n\t"
+            "movl    %%ecx,40(%%rdi)   \n\t"
+            "movl    %%edx,44(%%rdi)   \n\t"
+            "movl    $0,48(%%rdi)      \n\t"
+            ::"D"(&cpu_info.model_name):"%rax", "%rbx", "%rcx", "%rdx");
 
-        // 获取CPU频率
-        __asm__ __volatile__(
-                "movl    $0x16,%%eax \n\t"
-                "cpuid               \n\t"
-                "shlq    $32,%%rdx   \n\t"
-                "orq     %%rdx,%%rax \n\t"
-                :"=a"(cpu_info.fundamental_frequency), "=b"(cpu_info.maximum_frequency), "=c"(cpu_info.bus_frequency)::"%rdx");
+    // 获取CPU频率
+    __asm__ __volatile__(
+            "movl    $0x16,%%eax \n\t"
+            "cpuid               \n\t"
+            "shlq    $32,%%rdx   \n\t"
+            "orq     %%rdx,%%rax \n\t"
+            :"=a"(cpu_info.fundamental_frequency), "=b"(cpu_info.maximum_frequency), "=c"(cpu_info.bus_frequency)::"%rdx");
 
-        // 获取CPU TSC频率
-        __asm__ __volatile__(
-                "movl    $0x15,%%eax  \n\t"
-                "cpuid                \n\t"
-                "testl   %%ecx,%%ecx  \n\t"
-                "jz      invalid      \n\t"            //如果ecx等于0则获取到的tsc频率无效
-                "xchgq   %%rax,%%rbx  \n\t"
-                "mulq    %%rcx        \n\t"
-                "divq    %%rbx        \n\t"
-                "invalid:             \n\t"
-                :"=a"(cpu_info.tsc_frequency)::"%rcx", "%rbx", "%rdx");
-    }
+    // 获取CPU TSC频率
+    __asm__ __volatile__(
+            "movl    $0x15,%%eax  \n\t"
+            "cpuid                \n\t"
+            "testl   %%ecx,%%ecx  \n\t"
+            "jz      invalid      \n\t"            //如果ecx等于0则获取到的tsc频率无效
+            "xchgq   %%rax,%%rbx  \n\t"
+            "mulq    %%rcx        \n\t"
+            "divq    %%rbx        \n\t"
+            "invalid:             \n\t"
+            :"=a"(cpu_info.tsc_frequency)::"%rcx", "%rbx", "%rdx");
     return;
 }
 

@@ -30,7 +30,7 @@ typedef struct{
 
 extern idt_ptr_t idt_ptr;
 
-void init_idt(UINT8 bsp_flags);
+void init_idt(void);
 
 
 #endif

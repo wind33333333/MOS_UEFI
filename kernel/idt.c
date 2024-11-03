@@ -1,13 +1,19 @@
 #include "idt.h"
 #include "gdt.h"
 #include "interrupt.h"
+#include "memory.h"
 
-__attribute__((section(".init_text"))) void init_idt(UINT8 bsp_flags) {
-    if (bsp_flags) {
-        //初始化中断向量表为默认中断
-        for (int i = 0; i < 256; i++) {
-            SET_GATE(idt_ptr.base, i, ignore, IST_1, TYPE_INT);
-        }
+__attribute__((section(".init_data"))) idt_ptr_t idt_ptr;
+
+__attribute__((section(".init_text"))) void init_idt(void) {
+    idt_ptr.base = (UINT64*)LADDR_TO_HADDR(alloc_pages(1));     //分配IDT指针
+    idt_ptr.limit= 0xFFF;
+    mem_set((void*)idt_ptr.base,0,4096);                    //初始化IDT表为0
+
+    //初始化中断向量表为默认中断
+    for (int i = 0; i < 256; i++) {
+        SET_GATE(idt_ptr.base, i, ignore, IST_1, TYPE_INT);
+    }
 
         //初始化0-20异常
         SET_GATE(idt_ptr.base,0,divide_error,IST_1,TYPE_TRAP);
@@ -35,7 +41,6 @@ __attribute__((section(".init_text"))) void init_idt(UINT8 bsp_flags) {
         SET_GATE(idt_ptr.base,0x20,apic_timer,IST_1,TYPE_INT);
         SET_GATE(idt_ptr.base,0x31,keyboard,IST_1,TYPE_INT);
         SET_GATE(idt_ptr.base,0x32,hpet,IST_1,TYPE_INT);
-    }
 
     __asm__ __volatile__(
             "lidt (%0)  \n\t"

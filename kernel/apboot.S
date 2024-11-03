@@ -1,72 +1,123 @@
-.section .apboot
+#include "linkage.h"
+.section .init_text,"ax"
 .code16
+.globl _apboot_start
+_apboot_start:
     cli
     wbinvd
 
-    mov    %cs,%ax
-    mov    %ax,%ds
-    mov    %ax,%es
-    mov    $0x8000,%ax
-    mov    %ax,%ss
-    mov    $0,%sp
+    movw    %cs,%ax
+    movw    %ax,%ds
+    movw    %ax,%es
 
-    lgdt   ap_gdt_ptr
+    #重定位设置32位 和 64位代码指针 /gdt指针
+    movzxw  %ax,%esi
+    shll    $4,%esi
+    leal    (ap_code32-_apboot_start)(%esi),%eax
+    movl    %eax,code32_ptr-_apboot_start
 
-    mov    %cr0,%eax               # 读取 CR0
-    or     $1,%eax                 # 设置 PE 位 (bit 0)
-    mov    %eax,%cr0               # 写回 CR0，开启保护模式
-    ljmp   $CODE32_SEL,$ap_code32  # 远跳转到 32 位代码
+    leal    (ap_code64-_apboot_start)(%esi),%eax
+    movl    %eax,code64_ptr-_apboot_start
+
+    leal    (ap_gdt-_apboot_start)(%esi),%eax
+    movl    %eax,ap_gdt_ptr+2-_apboot_start
+
+    lgdtl   ap_gdt_ptr-_apboot_start
+
+    movl    %cr0,%eax                        # 读取 CR0
+    orl     $1,%eax                          # 设置 PE 位 (bit 0)
+    movl    %eax,%cr0                        # 写回 CR0，开启保护模式
+    ljmpl   *(code32_ptr - _apboot_start)    # 远跳转到 32 位代码
 
 .code32
+.balign 4
 ap_code32:
-    mov    $DATA32_SEL,%ax
-    mov    %ax,%ss
-    mov    %ax,%ds
-    mov    %ax,%es
-    mov    $0x90000,%esp
+    movw    $DATA32_SEL,%ax
+    movw    %ax,%ds
+    movw    %ax,%es
 
-    mov    %cr4,%eax
-    or     $0x20,%eax              # 设置 PAE 位 (bit 5)
-    mov    %eax,%cr4
+    movl    %cr4,%eax
+    orl     $0x20,%eax              # 设置 PAE 位 (bit 5)
+    movl    %eax,%cr4
 
-    mov    $0x90000,%eax
-    mov    %eax,%cr3
+    movl    $0x90000,%eax
+    movl    %eax,%cr3
 
-    mov    $0xC0000080,%ecx        # EFER MSR 的地址
-    rdmsr                          # 读取 EFER
-    or     $0x100,%eax             # 设置 LME (Long Mode Enable) 位 (bit 8)
-    wrmsr                          # 写回 EFER
+    movl    $0xC0000080,%ecx        # EFER MSR 的地址
+    rdmsr                           # 读取 EFER
+    orl     $0x100,%eax             # 设置 LME (Long Mode Enable) 位 (bit 8)
+    wrmsr                           # 写回 EFER
 
-    mov    %cr0,%eax
-    or     $0x80000001,%eax        # 设置 PG (Paging) 和 PE (Protected Mode) 位
-    mov    %eax,%cr0
-
-    ljmp   $CODE64_SEL,$ap_code64
+    movl    %cr0,%eax
+    orl     $0x80000001,%eax        # 设置 PG (Paging) 和 PE (Protected Mode) 位
+    movl    %eax,%cr0
+    ljmp   *(code64_ptr-_apboot_start)(%esi)
 
 .code64
+.balign 4
 ap_code64:
-    mov    $DATA64_SEL,%ax
-    mov    %ax,%ss
-    mov    %ax,%ds
-    mov    %ax,%es
-    mov    $0x90000,%rsp
-    jmp    $0x100000               # 进入内核
+    movw        $DATA64_SEL,%ax
+    movw        %ax,%ss
+    movw        %ax,%ds
+    movw        %ax,%es
 
-.align 8
+    movl       $0xB,%eax
+    xorl       %ecx,%ecx
+    cpuid
+    movl       %edx,%r8d             #apic_id
 
+    movl       $0xB,%eax
+    movl       $0x1,%ecx
+    cpuid
+    movl       %ebx,%ecx             #核心数量=循环次数
+    movl       %r8d,%eax             #apic_id
+    movabs     $apic_id_table,%rdi   #需要查找的数组
+    movq       (%rdi),%rdi
+    cld
+    repne      scasl
+    je         j_apic_id
+    hlt                             #没找到停机
+
+j_apic_id:
+    inc         %rcx
+    subq        %rcx,%rbx
+    shlq        $14,%rbx                        #每个核心16Kb栈空间
+    movabs      $ap_rsp,%rsp
+    movq        (%rsp),%rsp
+    addq        %rbx,%rsp
+
+    movabs      $ap_main,%rax
+    jmp         *%rax                           #ap_main
+
+.balign 4
 ap_gdt:
-                .quad 0                        # 保留项
-code32_desc:    .quad 0x00CF9A000000FFFF
-data32_desc:    .quad 0x00CF92000000FFFF
-code64_desc:    .quad 0x0020980000000000
-data64_desc:    .quad 0x0000920000000000
+                    .quad 0                        # 保留项
+    code32_desc:    .quad 0x00CF9A000000FFFF
+    data32_desc:    .quad 0x00CF92000000FFFF
+    code64_desc:    .quad 0x0020980000000000
+    data64_desc:    .quad 0x0000920000000000
 ap_gdt_end:
 
+.balign 4
 ap_gdt_ptr:
     .word    ap_gdt_end - ap_gdt - 1
-    .quad    ap_gdt
+    .long    0
 
-.equ CODE32_SEL,code32_desc - ap_gdt
-.equ DATA32_SEL,data32_desc - ap_gdt
-.equ CODE64_SEL,code64_desc - ap_gdt
-.equ DATA64_SEL,data64_desc - ap_gdt
+    .equ CODE32_SEL,code32_desc - ap_gdt
+    .equ DATA32_SEL,data32_desc - ap_gdt
+    .equ CODE64_SEL,code64_desc - ap_gdt
+    .equ DATA64_SEL,data64_desc - ap_gdt
+
+.balign 4
+code32_ptr:
+    .long   0
+    .word   CODE32_SEL
+
+.balign 4
+code64_ptr:
+    .long   0
+    .word   CODE64_SEL
+
+.balign 4
+.globl   _apboot_end
+_apboot_end:

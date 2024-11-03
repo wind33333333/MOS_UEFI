@@ -39,11 +39,11 @@ $(BUILD)/%.s: $(KERNEL)/%.S
 $(BUILD)/%.o: $(KERNEL)/%.c
 	gcc ${CFLAGS} -c $< -o $@
 
-$(BUILD)/apboot.bin: $(KERNEL)/apboot.asm
-	nasm $< -o $@
-
-$(BUILD)/apboot.o: $(BUILD)/apboot.bin
-	objcopy --input binary --output elf64-x86-64 --binary-architecture i386 --rename-section .data=.apboot $< $@
+#$(BUILD)/apboot.bin: $(KERNEL)/apboot.asm
+#	nasm $< -o $@
+#
+#$(BUILD)/apboot.o: $(BUILD)/apboot.bin
+#	objcopy --input binary --output elf64-x86-64 --binary-architecture i386 --rename-section .data=.apboot $< $@
 
 debug-bootloader: clean
 	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b DEBUG"

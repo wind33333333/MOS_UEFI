@@ -52,6 +52,6 @@ typedef struct {
 extern hpet_t hpet;
 extern hpet_registers_t hpetRegisters;
 
-void init_hpet(UINT8 bsp_flags);
+void init_hpet(void);
 
 #endif

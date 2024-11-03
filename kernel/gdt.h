@@ -2,7 +2,7 @@
 #define __GDT_INIT_H__
 #include "moslib.h"
 
-void    init_gdt(UINT8 bsp_flags);
+void    init_gdt(void);
 
 typedef struct{
     UINT16 limit;

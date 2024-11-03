@@ -4,77 +4,84 @@
 
 global_memory_descriptor_t memory_management;
 
-__attribute__((section(".init_text"))) void init_memory(UINT8 bsp_flags) {
-    if (bsp_flags) {
-        //初始化全局变量memory_management
-        mem_set(&memory_management,0,sizeof(global_memory_descriptor_t));
-        //查找memmap中可用物理内存并合并，统计总物理内存容量。
-        UINT32 mem_map_index = 0;
-        for(UINT32 i = 0;i < (boot_info->mem_map_size/boot_info->mem_descriptor_size);i++){
-            // 使用逻辑或 (||) 来判断内存类型
-            if(boot_info->mem_map[i].Type==EFI_LOADER_CODE || boot_info->mem_map[i].Type==EFI_LOADER_DATA || boot_info->mem_map[i].Type==EFI_BOOT_SERVICES_CODE || boot_info->mem_map[i].Type==EFI_BOOT_SERVICES_DATA || boot_info->mem_map[i].Type==EFI_CONVENTIONAL_MEMORY || boot_info->mem_map[i].Type==EFI_ACPI_RECLAIM_MEMORY){
-                if(boot_info->mem_map[i].PhysicalStart==(memory_management.mem_map[mem_map_index].address+memory_management.mem_map[mem_map_index].length)){
-                    // 合并相邻的内存块
-                    memory_management.mem_map[mem_map_index].length+=(boot_info->mem_map[i].NumberOfPages<<12);
-                }else if(memory_management.mem_map[mem_map_index].length!=0){
-                    // 开始记录新的内存块
-                    mem_map_index++;
-                    memory_management.mem_map[mem_map_index].address=boot_info->mem_map[i].PhysicalStart;
-                    memory_management.mem_map[mem_map_index].length=boot_info->mem_map[i].NumberOfPages<<12;
-                }else{
-                    // 初始化新的内存块
-                    memory_management.mem_map[mem_map_index].address=boot_info->mem_map[i].PhysicalStart;
-                    memory_management.mem_map[mem_map_index].length=boot_info->mem_map[i].NumberOfPages<<12;
-                }
-                // 更新可用内存大小
-                memory_management.avl_mem_size+=(boot_info->mem_map[i].NumberOfPages<<12);
-                memory_management.mem_map[mem_map_index].type=1;
+UINT64 *pml4t_vbase;  //pml4t虚拟地址基址
+UINT64 *pdptt_vbase;  //pdptt虚拟地址基址
+UINT64 *pdt_vbase;    //pdt虚拟地址基址
+UINT64 *ptt_vbase;    //ptt虚拟地址基址
+
+__attribute__((section(".init_text"))) void init_memory(void) {
+    pml4t_vbase = (UINT64 *) 0xFFFFFFFFFFFFF000;  //pml4t虚拟地址基址
+    pdptt_vbase = (UINT64 *) 0xFFFFFFFFFFE00000;  //pdptt虚拟地址基址
+    pdt_vbase = (UINT64 *) 0xFFFFFFFFC0000000;    //pdt虚拟地址基址
+    ptt_vbase= (UINT64 *) 0xFFFFFF8000000000;    //ptt虚拟地址基址
+    //初始化全局变量memory_management
+    mem_set(&memory_management,0,sizeof(global_memory_descriptor_t));
+    //查找memmap中可用物理内存并合并，统计总物理内存容量。
+    UINT32 mem_map_index = 0;
+    for(UINT32 i = 0;i < (boot_info->mem_map_size/boot_info->mem_descriptor_size);i++){
+        // 使用逻辑或 (||) 来判断内存类型
+        if(boot_info->mem_map[i].Type==EFI_LOADER_CODE || boot_info->mem_map[i].Type==EFI_LOADER_DATA || boot_info->mem_map[i].Type==EFI_BOOT_SERVICES_CODE || boot_info->mem_map[i].Type==EFI_BOOT_SERVICES_DATA || boot_info->mem_map[i].Type==EFI_CONVENTIONAL_MEMORY || boot_info->mem_map[i].Type==EFI_ACPI_RECLAIM_MEMORY){
+            if(boot_info->mem_map[i].PhysicalStart==(memory_management.mem_map[mem_map_index].address+memory_management.mem_map[mem_map_index].length)){
+                // 合并相邻的内存块
+                memory_management.mem_map[mem_map_index].length+=(boot_info->mem_map[i].NumberOfPages<<12);
+            }else if(memory_management.mem_map[mem_map_index].length!=0){
+                // 开始记录新的内存块
+                mem_map_index++;
+                memory_management.mem_map[mem_map_index].address=boot_info->mem_map[i].PhysicalStart;
+                memory_management.mem_map[mem_map_index].length=boot_info->mem_map[i].NumberOfPages<<12;
+            }else{
+                // 初始化新的内存块
+                memory_management.mem_map[mem_map_index].address=boot_info->mem_map[i].PhysicalStart;
+                memory_management.mem_map[mem_map_index].length=boot_info->mem_map[i].NumberOfPages<<12;
             }
+            // 更新可用内存大小
+            memory_management.avl_mem_size+=(boot_info->mem_map[i].NumberOfPages<<12);
+            memory_management.mem_map[mem_map_index].type=1;
         }
-        // 最终更新 mem_map 的数量
-        memory_management.mem_map_number=mem_map_index+1;
-        //打印可用物理内存和总物理内存
-        for(UINT32 i=0;i<memory_management.mem_map_number;i++) {
-            color_printk(ORANGE, BLACK, "%d  Type:%d    Addr:%#018lX    Length:%#018lX\n",i,memory_management.mem_map[i].type,memory_management.mem_map[i].address, memory_management.mem_map[i].length);
-        }
-        color_printk(ORANGE, BLACK, "Available RAM:%#lX~%ldMB\n", memory_management.avl_mem_size,memory_management.avl_mem_size/1024/1024);
-
-        // 全部置位 bitmap（置为1表示已使用，清除0表示未使用）
-        memory_management.bitmap = (UINT64 *) kernel_stack_top;
-        memory_management.bitmap_size = (memory_management.mem_map[memory_management.mem_map_number - 1].address+memory_management.mem_map[memory_management.mem_map_number - 1].length) >> PAGE_4K_SHIFT;
-        memory_management.bitmap_length =memory_management.bitmap_size>>3;
-        mem_set(memory_management.bitmap, 0xff, memory_management.bitmap_length);
-
-        //初始化bitmap，i=1跳过1M,1M之前的内存需要用来存放ap核初始化代码暂时保持置位，把后面可用的内存全部初始化，等全部初始化后再释放前1M
-        for (UINT32 i = 1; i < memory_management.mem_map_number; i++) {
-            free_pages((void*)memory_management.mem_map[i].address,
-                       memory_management.mem_map[i].length >> PAGE_4K_SHIFT);
-        }
-
-        //kernel_end_address结束地址加上bit map对齐4K地址
-        memory_management.kernel_start_address = (UINT64) &_start_text;
-        memory_management.kernel_end_address = kernel_stack_top + PAGE_4K_ALIGN(memory_management.bitmap_length);
-
-        //通过free_pages函数的异或位操作实现把内核0x100000-kerne_end_address map位图标记为已使用空间。
-        free_pages((void*)0x100000, HADDR_TO_LADDR(memory_management.kernel_end_address)>>PAGE_4K_SHIFT);
-
-        //总物理页
-        memory_management.total_pages=memory_management.avl_mem_size>>PAGE_4K_SHIFT;
-        //已分配物理页
-        memory_management.used_pages = ((memory_management.mem_map[0].length
-                >> PAGE_4K_SHIFT)+((HADDR_TO_LADDR(memory_management.kernel_end_address) - 0x100000) >> PAGE_4K_SHIFT));
-        //空闲物理页
-        memory_management.avl_pages =
-                memory_management.total_pages - memory_management.used_pages;
-
-        color_printk(ORANGE, BLACK,
-                     "Bitmap: %#lX \tBitmapSize: %#lX \tBitmapLength: %#lX\n",
-                     memory_management.bitmap, memory_management.bitmap_size,
-                     memory_management.bitmap_length);
-        color_printk(ORANGE, BLACK, "Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",
-                     memory_management.total_pages, memory_management.used_pages,
-                     memory_management.avl_pages);
     }
+    // 最终更新 mem_map 的数量
+    memory_management.mem_map_number=mem_map_index+1;
+    //打印可用物理内存和总物理内存
+    for(UINT32 i=0;i<memory_management.mem_map_number;i++) {
+        color_printk(ORANGE, BLACK, "%d  Type:%d    Addr:%#018lX    Length:%#018lX\n",i,memory_management.mem_map[i].type,memory_management.mem_map[i].address, memory_management.mem_map[i].length);
+    }
+    color_printk(ORANGE, BLACK, "Available RAM:%#lX~%ldMB\n", memory_management.avl_mem_size,memory_management.avl_mem_size/1024/1024);
+
+    // 全部置位 bitmap（置为1表示已使用，清除0表示未使用）
+    memory_management.bitmap = (UINT64 *) kernel_stack_top;
+    memory_management.bitmap_size = (memory_management.mem_map[memory_management.mem_map_number - 1].address+memory_management.mem_map[memory_management.mem_map_number - 1].length) >> PAGE_4K_SHIFT;
+    memory_management.bitmap_length =memory_management.bitmap_size>>3;
+    mem_set(memory_management.bitmap, 0xff, memory_management.bitmap_length);
+
+    //初始化bitmap，i=1跳过1M,1M之前的内存需要用来存放ap核初始化代码暂时保持置位，把后面可用的内存全部初始化，等全部初始化后再释放前1M
+    for (UINT32 i = 1; i < memory_management.mem_map_number; i++) {
+        free_pages((void*)memory_management.mem_map[i].address,
+                   memory_management.mem_map[i].length >> PAGE_4K_SHIFT);
+    }
+
+    //kernel_end_address结束地址加上bit map对齐4K地址
+    memory_management.kernel_start_address = (UINT64) &_start_text;
+    memory_management.kernel_end_address = kernel_stack_top + PAGE_4K_ALIGN(memory_management.bitmap_length);
+
+    //通过free_pages函数的异或位操作实现把内核0x100000-kerne_end_address map位图标记为已使用空间。
+    free_pages((void*)0x100000, HADDR_TO_LADDR(memory_management.kernel_end_address)>>PAGE_4K_SHIFT);
+
+    //总物理页
+    memory_management.total_pages=memory_management.avl_mem_size>>PAGE_4K_SHIFT;
+    //已分配物理页
+    memory_management.used_pages = ((memory_management.mem_map[0].length
+            >> PAGE_4K_SHIFT)+((HADDR_TO_LADDR(memory_management.kernel_end_address) - 0x100000) >> PAGE_4K_SHIFT));
+    //空闲物理页
+    memory_management.avl_pages =
+            memory_management.total_pages - memory_management.used_pages;
+
+    color_printk(ORANGE, BLACK,
+                 "Bitmap: %#lX \tBitmapSize: %#lX \tBitmapLength: %#lX\n",
+                 memory_management.bitmap, memory_management.bitmap_size,
+                 memory_management.bitmap_length);
+    color_printk(ORANGE, BLACK, "Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",
+                 memory_management.total_pages, memory_management.used_pages,
+                 memory_management.avl_pages);
     return;
 }
 

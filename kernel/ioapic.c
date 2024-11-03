@@ -3,7 +3,7 @@
 UINT32 *ioapic_baseaddr;
 
 //初始化ioapic
-__attribute__((section(".init_text"))) void init_ioapic(UINT8 bsp_flags) {
+__attribute__((section(".init_text"))) void init_ioapic(void) {
     /*初始化ioapic
      * 索引寄存器0xFEC00000 32bit bit0-7
      * 数据寄存器0xFEC00010 32bit
@@ -14,7 +14,6 @@ __attribute__((section(".init_text"))) void init_ioapic(UINT8 bsp_flags) {
      * ...
      * 索引0x3E-0x3F 中断投递寄存器23 读写
     */
-    if(bsp_flags) {
         __asm__ __volatile__ (
                 "movb    $0xFF,%%al \n\t"
                 "outb    %%al,$0x21 \n\t"
@@ -203,6 +202,5 @@ __attribute__((section(".init_text"))) void init_ioapic(UINT8 bsp_flags) {
                 "movl    %%eax,(%%rsi)       \n\t" //从SATA中断
                 "mfence                      \n\t"
                 ::"D"(ioapic_baseaddr),"S"((UINT64)ioapic_baseaddr+0x10):"%rax", "%rcx", "%rdx");
-    }
     return;
 }

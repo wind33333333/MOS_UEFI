@@ -1,28 +1,10 @@
 #include "linkage.h"
-
 //===============================初始化程序代码=================================================
 .section    .init_text, "ax"
 .globl _start
 _start:
     cli
-    movl     $0x1B,%ecx           //IA32_APIC_BASE=0x1b 寄存器
-    rdmsr
-    testl    $0x100,%eax         //测试bit8 1=bsp 0=ap
-    jz       kernel_stack_init
-
-    /*保存loader通过rdi传递过来的boot_info指针*/
-    movq     %rdi,boot_info(%rip)
-
-    /*获取cpu核心数量,cpuid eax=0xB ecx=1,ebx=核心数量*/
-    movl     $0xB,%eax
-    movl     $1,%ecx
-    cpuid
-
-    /*开辟多核栈空间*/
-    shlq     $14,%rbx                           //每个核心分配16k栈,核心数量*16K
-    movq     kernel_stack_top(%rip),%rax
-    addq     %rbx,%rax
-    movq     %rax,kernel_stack_top(%rip)       //内核栈顶
+    movq     %rdi,boot_info(%rip)           //保存loader通过rdi传递过来的boot_info指针
 
     /*初始化临时页表*/
     movq     $TMP_PML4T,%r8      //pml4t起始地址
@@ -57,15 +39,9 @@ init_tmp_pdptt:
     movq     $TMP_PML4T,%rax
     movq     %rax,%cr3
 
-kernel_stack_init:
-    /*初始化多核内核栈*/
-    movl     $0xB,%eax
-    xorl     %ecx,%ecx
-    cpuid                                   //cpuid eax=0xb,ecx=0 返回edx=x2apic id
-    //shlq     $14,%rdx                       //每个核心分配16k栈
-    shlq     $12,%rdx                       //每个核心分配16k栈
     movq     kernel_stack_top(%rip),%rsp
-    subq     %rdx,%rsp                      //计算每个内核栈 栈顶=kernelstack_top-(APIC ID*16K)*/
+    addq     $0x4000,%rsp                     //初始化bsp核心栈，内核结束处+16K
+    movq     %rsp,kernel_stack_top(%rip)
 
     /*切换到0xFFFF800000000000内核空间，进入C语言init_kernel*/
     movabs     $init_kernel,%rax
@@ -73,11 +49,6 @@ kernel_stack_init:
 
 //===============================初始化程序数据=================================================
 .section    .init_data, "wa"
-
-    .globl   idt_ptr
-    idt_ptr:
-    idt_limit:	.word	idt_end - idt - 1
-    idt_base:	.quad	idt
 
     .globl kernel_stack_top
     kernel_stack_top:   .quad   _end
@@ -180,15 +151,3 @@ interrupt_entry:
 //========================================正式内核数据=================================================
 .section    .data, "wa"
 
-    /*正式内核IDT*/
-    .globl idt
-    idt:
-    	.fill  0x1000-(.-idt),1,0
-    idt_end:
-
-    /*正式内核PML4T*/
-    .globl pml4t
-    pml4t:
-    	.quad	0
-    	.fill	0xFF8-(. -pml4t),1,0
-    	.quad   (pml4t - HBASE_ADDR)+0x103

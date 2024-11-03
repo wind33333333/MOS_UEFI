@@ -2,7 +2,9 @@
 #define __init_acpi__
 #include "moslib.h"
 
-void init_acpi(UINT8 bsp_flags);
+void init_acpi(void);
+
+extern UINT32 *apic_id_table;
 
 //region acpi通用头
 typedef struct {

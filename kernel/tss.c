@@ -3,8 +3,7 @@
 #include "gdt.h"
 #include "cpu.h"
 
-__attribute__((section(".init_text"))) void init_tss(UINT32 cpu_id,UINT8 bsp_flags) {
-    if (bsp_flags) {
+__attribute__((section(".init_text"))) void init_tss(void) {
         //分配tss内存，每个cpu核心需要一个tss 对齐4k,每个tss占104字节
         tss_t *tss_ptr = (tss_t *)LADDR_TO_HADDR(alloc_pages(PAGE_4K_ALIGN(cpu_info.cores_number * 104) >> PAGE_4K_SHIFT));
 
@@ -30,11 +29,10 @@ __attribute__((section(".init_text"))) void init_tss(UINT32 cpu_id,UINT8 bsp_fla
             SET_TSS(gdt_ptr.base,TSS_DESCRIPTOR_START_INDEX+ i,tss_ptr + i);
             memory_management.kernel_end_address = tss_ptr[i].ist1;
         }
-    }
 
     __asm__ __volatile__(
             "ltr    %w0 \n\t"
-            ::"r"((cpu_id << 4) + TSS_DESCRIPTOR_START_INDEX * 8):);
+            ::"r"(TSS_DESCRIPTOR_START_INDEX * 8):);
 
     return;
 }

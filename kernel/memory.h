@@ -2,7 +2,7 @@
 #define __MEMORY_H__
 #include "moslib.h"
 
-void init_memory(UINT8 bsp_flags);
+void init_memory(void);
 
 void *alloc_pages(UINT64 page_number);
 
@@ -13,9 +13,14 @@ map_pages(UINT64 phy_addr, UINT64 vir_addr, UINT64 page_number, UINT64 attr);
 
 void unmap_pages(UINT64 phy_addr, UINT64 page_number);
 
+extern UINT64 *pml4t_vbase;  //pml4t虚拟地址基址
+extern UINT64 *pdptt_vbase;  //pdptt虚拟地址基址
+extern UINT64 *pdt_vbase;    //pdt虚拟地址基址
+extern UINT64 *ptt_vbase;    //ptt虚拟地址基址
+
 extern UINT64 kernel_stack_top;
 extern UINT64 _start_text;
-extern UINT64 pml4t[512];
+extern UINT64 *pml4t;
 
 #define PAGE_OFFSET    ((UINT64)0xffff800000000000)
 #define PAGE_4K_SHIFT    12
@@ -52,11 +57,6 @@ typedef struct {
 } global_memory_descriptor_t;
 
 extern global_memory_descriptor_t memory_management;
-
-UINT64 *pml4t_vbase = (UINT64 *) 0xFFFFFFFFFFFFF000;  //pml4t虚拟地址基址
-UINT64 *pdptt_vbase = (UINT64 *) 0xFFFFFFFFFFE00000;  //pdptt虚拟地址基址
-UINT64 *pdt_vbase = (UINT64 *) 0xFFFFFFFFC0000000;    //pdt虚拟地址基址
-UINT64 *ptt_vbase= (UINT64 *) 0xFFFFFF8000000000;    //ptt虚拟地址基址
 
 #define INVLPG(vir_addr) __asm__ __volatile__("invlpg (%0)"::"r"(vir_addr):);
 #define SET_CR3(phy_addr) __asm__ __volatile__("mov %0,%%cr3"::"r"(phy_addr):);

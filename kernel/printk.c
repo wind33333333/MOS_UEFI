@@ -348,9 +348,7 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
 //全局变量buf
 char buf[4096];
 
-__attribute__((section(".init_text"))) void init_output(UINT8 bsp_flags) {
-
-    if (bsp_flags) {
+__attribute__((section(".init_text"))) void init_output(void) {
         mem_set(&buf,0,4096);
 
         Pos.XResolution = boot_info->horizontal_resolution;
@@ -369,7 +367,6 @@ __attribute__((section(".init_text"))) void init_output(UINT8 bsp_flags) {
         Pos.lock = 0;
 
         clear_screen();
-    }
     return;
 }
 

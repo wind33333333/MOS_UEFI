@@ -2,7 +2,7 @@
 #define _CPU_H
 #include "moslib.h"
 
-void init_cpu(UINT32 *cpu_id,UINT8 *bsp_flags);
+void init_cpu(void);
 
 typedef struct {
     CHAR8 manufacturer_name[13];
