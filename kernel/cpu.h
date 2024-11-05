@@ -10,7 +10,7 @@ typedef struct {
     CHAR8 model_name[49];
     UINT32 fundamental_frequency;
     UINT32 maximum_frequency;
-    UINT32 cores_number;
+    UINT32 logical_processors_number;
     UINT32 bus_frequency;
     UINT32 tsc_frequency;
 }cpu_info_t;
@@ -18,9 +18,9 @@ typedef struct {
 #define GET_APICID(APICID) \
                     do{    \
                         __asm__ __volatile__(               \
-                                "movl   $0xb,%%eax  \n\t"   \
-                                "xorl   %%ecx,%%ecx \n\t"   \
-                                "cpuid              \n\t"   \
+                                "movl   $0xb,%%eax   \n\t"   \
+                                "movl   $1,%%ecx     \n\t"   \
+                                "cpuid               \n\t"   \
                                 :"=d"(APICID)::"%rax","%rbx","%rcx"); \
                     }while(0)
 

@@ -15,13 +15,6 @@ __attribute__((section(".init_text"))) void get_cpu_info(void) {
             "movb    $0,12(%%rdi)    \n\t"
             ::"D"(&cpu_info.manufacturer_name):"%rax", "%rbx", "%rcx", "%rdx");
 
-    // 获取CPU核心数量 cpuid eax=0xB ecx=1,ebx=核心数量
-    __asm__ __volatile__(
-            "movl        $0xb,%%eax    \n\t"
-            "movl        $0x1,%%ecx    \n\t"
-            "cpuid                     \n\t"
-            :"=b"(cpu_info.cores_number)::"%rax", "%rcx", "%rdx");
-
     // 获取CPU型号
     __asm__ __volatile__(
             "movl    $0x80000002,%%eax \n\t"
@@ -39,7 +32,7 @@ __attribute__((section(".init_text"))) void get_cpu_info(void) {
             "movl    %%edx,28(%%rdi)   \n\t"
 
             "movl    $0x80000004,%%eax \n\t"
-            "cpuid         \n\t"
+            "cpuid                      \n\t"
             "movl    %%eax,32(%%rdi)   \n\t"
             "movl    %%ebx,36(%%rdi)   \n\t"
             "movl    %%ecx,40(%%rdi)   \n\t"
@@ -139,8 +132,13 @@ __attribute__((section(".init_text"))) void init_cpu_mode(void){
             "orq        $0x2000,%%r8       \n\t"        //bit13 VMXE
             "not_vmxe:                     \n\t"
 
+            "test       $0x20000,%%rcx     \n\t"
+            "jz         not_pcide          \n\t"
+            "orq        $0x20000,%%r8      \n\t"        //bit17 PCIDE
+            "not_pcide:                    \n\t"
+
             "movq       %%cr4,%%rax        \n\t"
-            "orq        $0x707C8,%%rax     \n\t"
+            "orq        $0x507C8,%%rax     \n\t"
             "orq        %%r8,%%rax         \n\t"
             "movq       %%rax,%%cr4        \n\t"
             :::"%rax","%r8");

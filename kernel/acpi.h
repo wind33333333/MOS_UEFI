@@ -6,7 +6,7 @@ void init_acpi(void);
 UINT32 apicid_to_cpuid(UINT32 apic_id);
 UINT32 cpuid_to_apicid(UINT32 cpu_id);
 
-extern UINT32 *apic_id_table;
+extern UINT32 apic_id_table[];
 
 //region acpi通用头
 typedef struct {

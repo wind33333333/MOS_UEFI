@@ -5,10 +5,10 @@
 
 __attribute__((section(".init_text"))) void init_tss(void) {
         //分配tss内存，每个cpu核心需要一个tss 对齐4k,每个tss占104字节
-        tss_t *tss_ptr = (tss_t *)LADDR_TO_HADDR(alloc_pages(PAGE_4K_ALIGN(cpu_info.cores_number * 104) >> PAGE_4K_SHIFT));
+        tss_t *tss_ptr = (tss_t *)LADDR_TO_HADDR(alloc_pages(PAGE_4K_ALIGN(cpu_info.logical_processors_number * 104) >> PAGE_4K_SHIFT));
 
         //循环初始化tss,每个tss.rsp0和ist1分配16K栈空间
-        for (int i = 0; i < cpu_info.cores_number; i++) {
+        for (int i = 0; i < cpu_info.logical_processors_number; i++) {
             tss_ptr[i].reserved0 = 0;
             tss_ptr[i].rsp0 = (UINT64) LADDR_TO_HADDR(alloc_pages(4) + PAGE_4K_SIZE * 4);
             tss_ptr[i].rsp1 = 0;

@@ -43,7 +43,7 @@ __attribute__((section(".init_text"))) void init_page(void) {
     map_pages(HADDR_TO_LADDR(ioapic_baseaddr), (UINT64) ioapic_baseaddr, 1,
               PAGE_ROOT_UC);
     map_pages(HADDR_TO_LADDR(hpet.address), hpet.address, 1, PAGE_ROOT_UC);
-    map_pages(HADDR_TO_LADDR(apic_id_table),(UINT64)apic_id_table,PAGE_4K_ALIGN(cpu_info.cores_number<<2)>>PAGE_4K_SHIFT,PAGE_ROOT_RW);
+    map_pages(HADDR_TO_LADDR(apic_id_table),(UINT64)apic_id_table,PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2)>>PAGE_4K_SHIFT,PAGE_ROOT_RW);
 
     return;
 }

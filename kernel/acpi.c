@@ -6,11 +6,10 @@
 #include "printk.h"
 #include "cpu.h"
 
-    UINT32 *apic_id_table;   //apic_id_table
+    UINT32 apic_id_table[1024];   //apic_id_table
 
 __attribute__((section(".init_text"))) void init_acpi(void) {
-    apic_id_table = (UINT32*) LADDR_TO_HADDR(alloc_pages(PAGE_4K_ALIGN(cpu_info.cores_number<<2)>>PAGE_4K_SHIFT));
-    mem_set((void*)apic_id_table,0,PAGE_4K_ALIGN(cpu_info.cores_number<<2));
+    mem_set((void*)apic_id_table,0x0,PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2));
         madt_t *madt;
         hpett_t *hpett;
         mcfg_t *mcfg;
@@ -34,6 +33,7 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
 
         //region MADT初始化
         UINT32 apic_id_index=0;
+        cpu_info.logical_processors_number=0;
         madt_header_t *madt_entry = (madt_header_t *)&madt->entry;
         while((UINT64)madt_entry < ((UINT64)madt+madt->acpi_header.length)){
             switch(madt_entry->type) {
@@ -41,6 +41,7 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
                     if(((apic_entry_t*)madt_entry)->apic_id != 255){
                         apic_id_table[apic_id_index]=((apic_entry_t *) madt_entry)->apic_id;
                         apic_id_index++;
+                        cpu_info.logical_processors_number++;
                     }
                     break;
 
@@ -102,7 +103,7 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
 }
 
 __attribute__((section(".init_text"))) UINT32 apicid_to_cpuid(UINT32 apic_id){
-    for(UINT32 i=0;i<cpu_info.cores_number;i++){
+    for(UINT32 i=0;i<cpu_info.logical_processors_number;i++){
         if(apic_id==apic_id_table[i])
             return i;
     }

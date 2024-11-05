@@ -61,17 +61,12 @@ ap_code64:
     movw        %ax,%es
 
     movl       $0xB,%eax
-    xorl       %ecx,%ecx
+    movl       $1,%ecx
     cpuid
-    movl       %edx,%r8d             #apic_id
+    movl       %edx,%eax             #apic_id
 
-    movl       $0xB,%eax
-    movl       $0x1,%ecx
-    cpuid
-    movl       %ebx,%ecx             #核心数量=循环次数
-    movl       %r8d,%eax             #apic_id
+    movq       $0xFFFFFFFFFFFFFFFF,%rcx
     movabs     $apic_id_table,%rdi   #需要查找的数组
-    movq       (%rdi),%rdi
     cld
     repne      scasl
     je         j_apic_id
