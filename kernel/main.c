@@ -13,22 +13,26 @@
 #include "hpet.h"
 #include "uefi.h"
 
+//全局变量
+cpu_info_t cpu_info;
+
 __attribute__((section(".init_text"))) void init_kernel(void) {
     UINT32 apic_id,cpu_id;
+    mem_set(&cpu_info,0,sizeof(cpu_info_t));    //初始化全局变量
+    init_output();                             //初始化输出控制台
+    init_acpi();                               //初始化acpi
+    init_memory();                             //初始化内存管理器
     init_cpu_mode();                           //初始化cpu开启高级功能
     get_cpu_info();                            //获取cpu信息
-    init_output();                             //初始化输出控制台
-    init_memory();                             //初始化内存管理器
-    init_acpi();                               //初始化acpi
+    GET_APICID(apic_id);                       //获取apic_ia
+    cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
     init_gdt();                                //初始化GDT
     init_tss();                                //初始化TSS
     init_idt();                                //初始化IDT
-    GET_APICID(apic_id);                       //获取apic_ia
-    cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
     init_hpet();                               //初始化hpet
     init_ioapic();                             //初始化ioapic
     init_apic();                               //初始化apic
-    //init_page();                               //初始化内核页表
+    init_page();                               //初始化内核页表
     init_ap();                                 //初始化ap核
 
     color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);

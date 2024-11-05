@@ -1,10 +1,6 @@
 #include "cpu.h"
 
-//全局变量
-cpu_info_t cpu_info;
-
 __attribute__((section(".init_text"))) void get_cpu_info(void) {
-    mem_set(&cpu_info,0,sizeof(cpu_info_t));    //初始化全局变量
     // 获取CPU厂商
     __asm__ __volatile__(
             "xorl    %%eax,%%eax     \n\t"
