@@ -5,11 +5,10 @@
 #include "memory.h"
 #include "printk.h"
 #include "cpu.h"
+#include "ap.h"
 
-UINT32 apic_id_table[1024];   //apic_id_table
 
 __attribute__((section(".init_text"))) void init_acpi(void) {
-    mem_set((void*)apic_id_table,0x0,1024*sizeof(UINT32));
     madt_t *madt;
     hpett_t *hpett;
     mcfg_t *mcfg;
@@ -38,7 +37,7 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
         switch(madt_entry->type) {
             case 0://APIC ID
                 if(((apic_entry_t*)madt_entry)->apic_id != 255){
-                    apic_id_table[apic_id_index]=((apic_entry_t *) madt_entry)->apic_id;
+                    ((UINT32*)APBOOT_ADDR)[apic_id_index]=((apic_entry_t *) madt_entry)->apic_id;
                     apic_id_index++;
                     cpu_info.logical_processors_number++;
                 }
@@ -96,6 +95,13 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
     mcfg_entry_t *mcfg_entry=(mcfg_entry_t *)&mcfg->entry;
     for(UINT32 j=0;j<((mcfg->acpi_header.length-sizeof(acpi_header_t)-sizeof(UINT64))/sizeof(mcfg_entry_t));j++){
         color_printk(RED,BLACK,"PCIE BaseAddr:%#lX Segment:%d StartBus:%d EndBus:%d\n",mcfg_entry[j].base_address,mcfg_entry[j].pci_segment,mcfg_entry[j].start_bus,mcfg_entry[j].end_bus);
+    }
+
+    //移动apic id到内核空间
+    apic_id_table = (UINT32*)LADDR_TO_HADDR(alloc_pages(PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2)>>PAGE_4K_SHIFT));
+    mem_set((void*)apic_id_table,0x0,PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2));
+    for(UINT32 i=0;i<cpu_info.logical_processors_number;i++){
+        apic_id_table[i]=((UINT32*)APBOOT_ADDR)[i];
     }
 
     return;

@@ -15,6 +15,8 @@ typedef struct {
     UINT32 tsc_frequency;
 }cpu_info_t;
 
+extern cpu_info_t cpu_info;
+
 #define GET_APICID(APICID) \
                     do{    \
                         __asm__ __volatile__(               \
@@ -23,9 +25,6 @@ typedef struct {
                                 "cpuid               \n\t"   \
                                 :"=d"(APICID)::"%rax","%rbx","%rcx"); \
                     }while(0)
-
-
-extern cpu_info_t cpu_info;
 
 
 #endif

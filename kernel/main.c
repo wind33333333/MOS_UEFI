@@ -13,15 +13,17 @@
 #include "hpet.h"
 #include "uefi.h"
 
-//全局变量
+UINT32 *apic_id_table;   //apic_id_table
 cpu_info_t cpu_info;
 
 __attribute__((section(".init_text"))) void init_kernel(void) {
+    apic_id_table=(UINT32*)0;
+    mem_set((void*)&cpu_info,0,sizeof(cpu_info_t));
     UINT32 apic_id,cpu_id;
     mem_set(&cpu_info,0,sizeof(cpu_info_t));    //初始化全局变量
     init_output();                             //初始化输出控制台
-    init_acpi();                               //初始化acpi
     init_memory();                             //初始化内存管理器
+    init_acpi();                               //初始化acpi
     init_cpu_mode();                           //初始化cpu开启高级功能
     get_cpu_info();                            //获取cpu信息
     GET_APICID(apic_id);                       //获取apic_ia
