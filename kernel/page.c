@@ -6,8 +6,6 @@
 #include "acpi.h"
 #include "cpu.h"
 
-UINT64 *pml4t;          //正式内核页表
-
 __attribute__((section(".init_text"))) void init_page(void) {
 
     pml4t = LADDR_TO_HADDR(alloc_pages(1));
