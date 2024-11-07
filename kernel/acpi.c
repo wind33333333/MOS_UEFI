@@ -36,7 +36,8 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
     while((UINT64)madt_entry < ((UINT64)madt+madt->acpi_header.length)){
         switch(madt_entry->type) {
             case 0://APIC ID
-                if(((apic_entry_t*)madt_entry)->apic_id != 255){
+                if(((apic_entry_t*)madt_entry)->flags & 1){
+                    //color_printk(RED, BLACK, "apic id:%d p:%d f:%d\n",((apic_entry_t *) madt_entry)->apic_id,((apic_entry_t *) madt_entry)->processor_id,((apic_entry_t *) madt_entry)->flags);
                     ((UINT32*)APBOOT_ADDR)[apic_id_index]=((apic_entry_t *) madt_entry)->apic_id;
                     apic_id_index++;
                     cpu_info.logical_processors_number++;
@@ -60,9 +61,7 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
                 color_printk(RED,BLACK,"non-maskable interrupt:%d\n",((nmi_source_entry_t *) madt_entry)->global_interrupt);
                 break;
             case 4://apic nmi引脚
-                color_printk(RED, BLACK, "APIC NMI ApicID:%#lX LINT:%d\n",
-                             ((apic_nmi_entry_t *) madt_entry)->apic_id,
-                             ((apic_nmi_entry_t *) madt_entry)->lint);
+                //color_printk(RED, BLACK, "APIC NMI ApicID:%#lX LINT:%d\n",((apic_nmi_entry_t *) madt_entry)->apic_id,((apic_nmi_entry_t *) madt_entry)->lint);
                 break;
 
             case 5://64位local apic地址
@@ -70,7 +69,10 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
                 break;
 
             case 9://X2APIC ID
-                color_printk(RED,BLACK,"X2APIC ID:%d\n",((x2apic_entry_t*)madt_entry)->x2apic_id);
+                color_printk(RED, BLACK, "x2apic id:%d p:%d f:%d\n",((x2apic_entry_t*)madt_entry)->x2apic_id,((x2apic_entry_t*)madt_entry)->processor_id,((x2apic_entry_t*)madt_entry)->flags);
+                ((UINT32*)APBOOT_ADDR)[apic_id_index]=((x2apic_entry_t*)madt_entry)->x2apic_id;
+                apic_id_index++;
+                cpu_info.logical_processors_number++;
                 break;
 
             case 10://X2APIC不可屏蔽中断
