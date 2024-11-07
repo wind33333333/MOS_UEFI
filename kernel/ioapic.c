@@ -1,5 +1,7 @@
 #include "ioapic.h"
 
+UINT32 *ioapic_baseaddr;
+
 //初始化ioapic
 __attribute__((section(".init_text"))) void init_ioapic(void) {
     /*初始化ioapic

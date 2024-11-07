@@ -13,30 +13,17 @@
 #include "hpet.h"
 #include "uefi.h"
 
-UINT32 *apic_id_table;   //apic_id_table
-cpu_info_t cpu_info;
-UINT32 *ioapic_baseaddr;
-__attribute__((section(".init_data"))) gdt_ptr_t gdt_ptr;
-__attribute__((section(".init_data"))) idt_ptr_t idt_ptr;
-UINT64 *pml4t;          //正式内核页表
-
 __attribute__((section(".init_text"))) void init_kernel(void) {
-    apic_id_table=(UINT32*)0;
-    mem_set((void*)&cpu_info,0,sizeof(cpu_info_t));
-    gdt_ptr.base=0;
-    gdt_ptr.limit=0;
-    idt_ptr.base=0;
-    idt_ptr.limit=0;
-    ioapic_baseaddr=(UINT32*)0;
-    pml4t=(UINT64*)0;
     UINT32 apic_id,cpu_id;
+    mem_set(&cpu_info,0,sizeof(cpu_info_t));    //初始化cpu_info
 
-    mem_set(&cpu_info,0,sizeof(cpu_info_t));    //初始化全局变量
     init_output();                             //初始化输出控制台
     init_memory();                             //初始化内存管理器
     init_acpi();                               //初始化acpi
-    init_hpet();                               //初始化hpet
     init_ioapic();                             //初始化ioapic
+    init_hpet();                               //初始化hpet
+    init_cpu();                                //初始化CPU
+
     init_cpu_mode();                           //初始化cpu开启高级功能
     get_cpu_info();                            //获取cpu信息
     GET_APICID(apic_id);                       //获取apic_ia

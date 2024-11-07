@@ -7,6 +7,7 @@
 #include "cpu.h"
 #include "ap.h"
 
+UINT32 *apic_id_table;   //apic_id_table
 
 __attribute__((section(".init_text"))) void init_acpi(void) {
     madt_t *madt;

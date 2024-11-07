@@ -3,6 +3,8 @@
 #include "interrupt.h"
 #include "memory.h"
 
+__attribute__((section(".init_data"))) idt_ptr_t idt_ptr;
+
 __attribute__((section(".init_text"))) void init_idt(void) {
     idt_ptr.base = (UINT64*)LADDR_TO_HADDR(alloc_pages(1));     //分配IDT指针
     idt_ptr.limit= 0xFFF;
