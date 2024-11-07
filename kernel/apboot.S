@@ -63,22 +63,23 @@ ap_code64:
     movl       $0xB,%eax
     movl       $1,%ecx
     cpuid
-    movl       %edx,%eax             #apic_id
+    movl       %edx,%eax                        #apic_id
 
     movq       $0xFFFFFFFFFFFFFFFF,%rcx
-    movabs     $apic_id_table,%rdi   #需要查找的数组
+    movabs     $apic_id_table,%rdi              #需要查找的数组
+    movq       (%rdi),%rdi
     cld
     repne      scasl
     je         j_apic_id
-    hlt                             #没找到停机
+    hlt                                         #没找到停机
 
 j_apic_id:
-    inc         %rcx
-    subq        %rcx,%rbx
-    shlq        $14,%rbx                        #每个核心16Kb栈空间
+    notq        %rcx
+    decq        %rcx
+    shlq        $14,%rcx                        #每个核心16Kb栈空间
     movabs      $ap_rsp,%rsp
     movq        (%rsp),%rsp
-    addq        %rbx,%rsp
+    addq        %rcx,%rsp
 
     movabs      $ap_main,%rax
     jmp         *%rax                           #ap_main

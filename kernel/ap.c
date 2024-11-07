@@ -15,7 +15,7 @@ __attribute__((section(".init_text"))) void init_ap(void) {
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
 
-    memcpy(&_apboot_start, LADDR_TO_HADDR(APBOOT_ADDR),&_apboot_end-&_apboot_start);    //把ap核初始化代码复制到过去
+    memcpy(&_apboot_start, LADDR_TO_HADDR(APBOOT_ADDR),&_apboot_end-&_apboot_start);                 //把ap核初始化代码复制到过去
     ap_rsp = (UINT64)LADDR_TO_HADDR(alloc_pages((cpu_info.logical_processors_number-1)*4));            //每个ap核分配16K栈
     map_pages((UINT64)HADDR_TO_LADDR(ap_rsp),ap_rsp,(cpu_info.logical_processors_number-1)*4,PAGE_ROOT_RW);
 
