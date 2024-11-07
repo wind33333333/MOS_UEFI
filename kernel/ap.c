@@ -46,7 +46,7 @@ __attribute__((section(".init_text"))) void ap_main(void){
     UINT32 apic_id,cpu_id;
     GET_APICID(apic_id);
     cpu_id = apicid_to_cpuid(apic_id);
-    init_cpu_mode();
+    init_cpu_amode();
     LGDT(gdt_ptr,0x8UL,0x10UL);
     LTR(TSS_DESCRIPTOR_START_INDEX*8+cpu_id*16);
     LIDT(idt_ptr);

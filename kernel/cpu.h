@@ -2,7 +2,8 @@
 #define _CPU_H
 #include "moslib.h"
 
-void init_cpu_mode(void);
+void init_cpu(void);
+void init_cpu_amode(void);
 void get_cpu_info(void);
 
 typedef struct {

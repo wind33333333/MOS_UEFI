@@ -24,8 +24,6 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
     init_hpet();                               //初始化hpet
     init_cpu();                                //初始化CPU
 
-    init_cpu_mode();                           //初始化cpu开启高级功能
-    get_cpu_info();                            //获取cpu信息
     GET_APICID(apic_id);                       //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
     init_gdt();                                //初始化GDT

@@ -2,6 +2,13 @@
 
 cpu_info_t cpu_info;
 
+void init_cpu(void){
+    init_cpu_amode();                           //初始化cpu开启高级功能
+    get_cpu_info();                            //获取cpu信息
+
+    return;
+}
+
 __attribute__((section(".init_text"))) void get_cpu_info(void) {
     // 获取CPU厂商
     __asm__ __volatile__(
@@ -60,7 +67,7 @@ __attribute__((section(".init_text"))) void get_cpu_info(void) {
     return;
 }
 
-__attribute__((section(".init_text"))) void init_cpu_mode(void){
+__attribute__((section(".init_text"))) void init_cpu_amode(void){
 
     __asm__ __volatile__(
 //region IA32_APIC_BASE (MSR 0x1B)
