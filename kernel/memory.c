@@ -1,7 +1,6 @@
 #include "memory.h"
 #include "printk.h"
 #include "uefi.h"
-#include "page.h"
 
 global_memory_descriptor_t memory_management;
 
