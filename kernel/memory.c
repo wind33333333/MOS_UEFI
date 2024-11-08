@@ -61,28 +61,28 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     }
 
     //kernel_end_address结束地址加上bit map对齐4K边界
-    memory_management.kernel_start_address = (UINT64) &_start_text;
-    memory_management.kernel_end_address = PAGE_4K_ALIGN(memory_management.bitmap + memory_management.bitmap_length);
+    memory_management.kernel_start_address = (UINT64)_start_text;
+    memory_management.kernel_end_address = PAGE_4K_ALIGN((UINT64)memory_management.bitmap + memory_management.bitmap_length);
 
     //通过free_pages函数的异或位操作实现把内核bitmap位图标记为已使用空间。
-    free_pages((void*)HADDR_TO_LADDR(memory_management.kernel_start_address), memory_management.kernel_end_address-memory_management.kernel_start_address>>PAGE_4K_SHIFT);
+    free_pages((void*)HADDR_TO_LADDR(&_start_init_text), memory_management.kernel_end_address-(UINT64)_start_init_text>>PAGE_4K_SHIFT);
 
     //总物理页
     memory_management.total_pages=memory_management.avl_mem_size>>PAGE_4K_SHIFT;
     //已分配物理页
-    memory_management.used_pages = (memory_management.mem_map[0].length+(memory_management.kernel_end_address-memory_management.kernel_start_address) >> PAGE_4K_SHIFT);
+    memory_management.used_pages = (memory_management.mem_map[0].length+(memory_management.kernel_end_address-(UINT64)_start_init_text) >> PAGE_4K_SHIFT);
     //空闲物理页
     memory_management.avl_pages = memory_management.total_pages - memory_management.used_pages;
 
     color_printk(ORANGE, BLACK,
-                 "Bitmap: %#lX \tBitmapSize: %#lX \tBitmapLength: %#lX\n",
+                 "Bitmap:%#lX \tBitmapSize:%#lX \tBitmapLength:%#lX\n",
                  memory_management.bitmap, memory_management.bitmap_size,
                  memory_management.bitmap_length);
-    color_printk(ORANGE, BLACK, "Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",
+    color_printk(ORANGE, BLACK, "Total 4K PAGEs:%ld \tAlloc:%ld \tFree:%ld\n",
                  memory_management.total_pages, memory_management.used_pages,
                  memory_management.avl_pages);
-    color_printk(ORANGE, BLACK, "kernel start addr: %#lX kernel end addr: %#lX\n",
-                 memory_management.kernel_start_address,memory_management.kernel_end_address);
+    color_printk(ORANGE, BLACK, "Init Kernel Start Addr:%#lX Official kernel Start Addr:%lX kernel end addr:%#lX\n",
+                 _start_init_text,memory_management.kernel_start_address,memory_management.kernel_end_address);
     return;
 }
 
