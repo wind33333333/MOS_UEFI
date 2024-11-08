@@ -27,7 +27,7 @@ __attribute__((section(".init_text"))) void init_page(void) {
     for (UINT32 i = 0; i < pml4e_num; i++) {
         //pml4t[i] = pml4t_vbase[i];            //修改正式内核PML4T 低
         pml4t[i + 256] = pml4t_vbase[i];        //修改正式内核PML4T 高
-        pml4t_vbase[i] = pml4_bak[i];             //还原PML4E
+        pml4t_vbase[i] = pml4_bak[i];           //还原PML4E
     }
 
     color_printk(ORANGE, BLACK, "OS Can Used Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",
