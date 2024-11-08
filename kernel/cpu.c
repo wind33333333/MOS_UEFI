@@ -16,11 +16,11 @@ void init_cpu(void){
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
     init_cpu_amode();                          //初始化cpu开启高级功能
     get_cpu_info();                            //获取cpu信息
+    init_page();                               //初始化内核页表
     init_gdt();                                //初始化GDT
     init_tss();                                //初始化TSS
     init_idt();                                //初始化IDT
     init_apic();                               //初始化apic
-    init_page();                               //初始化内核页表
     init_ap();                                 //初始化ap核
     color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);
     return;
