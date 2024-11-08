@@ -7,6 +7,7 @@
 #include "idt.h"
 #include "apic.h"
 #include "tss.h"
+#include "page.h"
 
 __attribute__((section(".init.data"))) UINT64 ap_rsp;
 

@@ -4,4 +4,6 @@
 
 void init_page(void);
 
+extern UINT64 *pml4t;
+
 #endif

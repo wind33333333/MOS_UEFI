@@ -1,6 +1,7 @@
 #include "memory.h"
 #include "printk.h"
 #include "uefi.h"
+#include "page.h"
 
 global_memory_descriptor_t memory_management;
 
@@ -48,7 +49,7 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     color_printk(ORANGE, BLACK, "Available RAM:%#lX~%ldMB\n", memory_management.avl_mem_size,memory_management.avl_mem_size/1024/1024);
 
     // 全部置位 bitmap（置为1表示已使用，清除0表示未使用）
-    memory_management.bitmap = (UINT64 *) kernel_stack_top;
+    memory_management.bitmap = (UINT64 *) kernel_stack_top;  //bimap的起始地址是kernel结束地址+0x4000
     memory_management.bitmap_size = (memory_management.mem_map[memory_management.mem_map_number - 1].address+memory_management.mem_map[memory_management.mem_map_number - 1].length) >> PAGE_4K_SHIFT;
     memory_management.bitmap_length =memory_management.bitmap_size>>3;
     mem_set(memory_management.bitmap, 0xff, memory_management.bitmap_length);
@@ -59,21 +60,19 @@ __attribute__((section(".init_text"))) void init_memory(void) {
                    memory_management.mem_map[i].length >> PAGE_4K_SHIFT);
     }
 
-    //kernel_end_address结束地址加上bit map对齐4K地址
+    //kernel_end_address结束地址加上bit map对齐4K边界
     memory_management.kernel_start_address = (UINT64) &_start_text;
-    memory_management.kernel_end_address = kernel_stack_top + PAGE_4K_ALIGN(memory_management.bitmap_length);
+    memory_management.kernel_end_address = PAGE_4K_ALIGN(memory_management.bitmap + memory_management.bitmap_length);
 
-    //通过free_pages函数的异或位操作实现把内核0x100000-kerne_end_address map位图标记为已使用空间。
-    free_pages((void*)0x100000, HADDR_TO_LADDR(memory_management.kernel_end_address)>>PAGE_4K_SHIFT);
+    //通过free_pages函数的异或位操作实现把内核bitmap位图标记为已使用空间。
+    free_pages((void*)HADDR_TO_LADDR(memory_management.kernel_start_address), memory_management.kernel_end_address-memory_management.kernel_start_address>>PAGE_4K_SHIFT);
 
     //总物理页
     memory_management.total_pages=memory_management.avl_mem_size>>PAGE_4K_SHIFT;
     //已分配物理页
-    memory_management.used_pages = ((memory_management.mem_map[0].length
-            >> PAGE_4K_SHIFT)+((HADDR_TO_LADDR(memory_management.kernel_end_address) - 0x100000) >> PAGE_4K_SHIFT));
+    memory_management.used_pages = (memory_management.mem_map[0].length+(memory_management.kernel_end_address-memory_management.kernel_start_address) >> PAGE_4K_SHIFT);
     //空闲物理页
-    memory_management.avl_pages =
-            memory_management.total_pages - memory_management.used_pages;
+    memory_management.avl_pages = memory_management.total_pages - memory_management.used_pages;
 
     color_printk(ORANGE, BLACK,
                  "Bitmap: %#lX \tBitmapSize: %#lX \tBitmapLength: %#lX\n",
@@ -82,6 +81,8 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     color_printk(ORANGE, BLACK, "Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",
                  memory_management.total_pages, memory_management.used_pages,
                  memory_management.avl_pages);
+    color_printk(ORANGE, BLACK, "kernel start addr: %#lX kernel end addr: %#lX\n",
+                 memory_management.kernel_start_address,memory_management.kernel_end_address);
     return;
 }
 

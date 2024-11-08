@@ -20,7 +20,7 @@ extern UINT64 *ptt_vbase;    //ptt虚拟地址基址
 
 extern UINT64 kernel_stack_top;
 extern UINT64 _start_text;
-extern UINT64 *pml4t;
+
 
 #define PAGE_OFFSET    ((UINT64)0xffff800000000000)
 #define PAGE_4K_SHIFT    12
