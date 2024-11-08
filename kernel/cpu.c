@@ -1,11 +1,28 @@
 #include "cpu.h"
+#include "idt.h"
+#include "apic.h"
+#include "gdt.h"
+#include "tss.h"
+#include "page.h"
+#include "ap.h"
+#include "acpi.h"
+#include "printk.h"
 
 cpu_info_t cpu_info;
 
 void init_cpu(void){
-    init_cpu_amode();                           //初始化cpu开启高级功能
+    UINT32 apic_id,cpu_id;
+    GET_APICID(apic_id);                       //获取apic_ia
+    cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
+    init_cpu_amode();                          //初始化cpu开启高级功能
     get_cpu_info();                            //获取cpu信息
-
+    init_gdt();                                //初始化GDT
+    init_tss();                                //初始化TSS
+    init_idt();                                //初始化IDT
+    init_apic();                               //初始化apic
+    init_page();                               //初始化内核页表
+    init_ap();                                 //初始化ap核
+    color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);
     return;
 }
 
@@ -14,44 +31,29 @@ __attribute__((section(".init_text"))) void get_cpu_info(void) {
     __asm__ __volatile__(
             "xorl    %%eax,%%eax     \n\t"
             "cpuid                   \n\t"
-            "movl    %%ebx,(%%rdi)   \n\t"
-            "movl    %%edx,4(%%rdi)  \n\t"
-            "movl    %%ecx,8(%%rdi)  \n\t"
-            "movb    $0,12(%%rdi)    \n\t"
-            ::"D"(&cpu_info.manufacturer_name):"%rax", "%rbx", "%rcx", "%rdx");
+            :"=b"(*(UINT32*)&cpu_info.manufacturer_name[0]),"=d"(*(UINT32*)&cpu_info.manufacturer_name[4]),"=c"(*(UINT32*)&cpu_info.manufacturer_name[8])::"%rax","memory");
 
     // 获取CPU型号
     __asm__ __volatile__(
             "movl    $0x80000002,%%eax \n\t"
             "cpuid         \n\t"
-            "movl    %%eax,(%%rdi)   \n\t"
-            "movl    %%ebx,4(%%rdi)  \n\t"
-            "movl    %%ecx,8(%%rdi)  \n\t"
-            "movl    %%edx,12(%%rdi) \n\t"
+            :"=a"(*(UINT32*)&cpu_info.model_name[0]),"=b"(*(UINT32*)&cpu_info.model_name[4]),"=c"(*(UINT32*)&cpu_info.model_name[8]),"=d"(*(UINT32*)&cpu_info.model_name[12])::"memory");
 
+    __asm__ __volatile__(
             "movl    $0x80000003,%%eax \n\t"
             "cpuid                     \n\t"
-            "movl    %%eax,16(%%rdi)   \n\t"
-            "movl    %%ebx,20(%%rdi)   \n\t"
-            "movl    %%ecx,24(%%rdi)   \n\t"
-            "movl    %%edx,28(%%rdi)   \n\t"
+            :"=a"(*(UINT32*)&cpu_info.model_name[16]),"=b"(*(UINT32*)&cpu_info.model_name[20]),"=c"(*(UINT32*)&cpu_info.model_name[24]),"=d"(*(UINT32*)&cpu_info.model_name[28])::"memory");
 
+    __asm__ __volatile__(
             "movl    $0x80000004,%%eax \n\t"
-            "cpuid                      \n\t"
-            "movl    %%eax,32(%%rdi)   \n\t"
-            "movl    %%ebx,36(%%rdi)   \n\t"
-            "movl    %%ecx,40(%%rdi)   \n\t"
-            "movl    %%edx,44(%%rdi)   \n\t"
-            "movl    $0,48(%%rdi)      \n\t"
-            ::"D"(&cpu_info.model_name):"%rax", "%rbx", "%rcx", "%rdx");
+            "cpuid                     \n\t"
+            :"=a"(*(UINT32*)&cpu_info.model_name[32]),"=b"(*(UINT32*)&cpu_info.model_name[36]),"=c"(*(UINT32*)&cpu_info.model_name[40]),"=d"(*(UINT32*)&cpu_info.model_name[44])::"memory");
 
     // 获取CPU频率
     __asm__ __volatile__(
             "movl    $0x16,%%eax \n\t"
             "cpuid               \n\t"
-            "shlq    $32,%%rdx   \n\t"
-            "orq     %%rdx,%%rax \n\t"
-            :"=a"(cpu_info.fundamental_frequency), "=b"(cpu_info.maximum_frequency), "=c"(cpu_info.bus_frequency)::"%rdx");
+            :"=a"(cpu_info.fundamental_frequency), "=b"(cpu_info.maximum_frequency), "=c"(cpu_info.bus_frequency)::"%rdx","memory");
 
     // 获取CPU TSC频率
     __asm__ __volatile__(
@@ -68,21 +70,19 @@ __attribute__((section(".init_text"))) void get_cpu_info(void) {
 }
 
 __attribute__((section(".init_text"))) void init_cpu_amode(void){
-
-    __asm__ __volatile__(
 //region IA32_APIC_BASE (MSR 0x1B)
 //X2APIC（bit 10）：作用：如果该位被设置为 1，处理器启用 X2APIC 模式。X2APIC 是 APIC 的扩展版本，提供了更多的功能，例如更大的中断目标地址空间。
 //EN（bit 11）：作用：控制是否启用本地 APIC。设置为 1 时启用本地 APIC；设置为 0 时禁用。
 //BSP（bit 9）：作用：标记该处理器是否是系统的启动处理器（BSP）。系统启动时，BSP 是首先执行初始化代码的 CPU，其它处理器是 AP（Application Processors，应用处理器）。
 //APIC Base Address（bit 12-31）：作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
 ////endregion
+    __asm__ __volatile__(
             "movl       $0x1B,%%ecx  \n\t"      //IA32_APIC_BASE=0x1b 寄存器
             "rdmsr                   \n\t"
             "orl        $0xC00,%%eax \n\t"      //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
             "wrmsr                   \n\t"
             :::"%rax","%rcx","%rdx");
 
-    __asm__ __volatile__(
 //region CR4 寄存器
 //VME（bit 0） 描述：启用虚拟 8086 模式的扩展功能，允许在虚拟 8086 模式中支持虚拟中断。用途：用于实现虚拟机监控或虚拟 8086 环境中的精细中断控制。
 //PVI（bit 1） 描述：启用保护模式下的虚拟中断标志，支持在虚拟化环境中进行中断管理。用途：允许虚拟化软件在保护模式下模拟中断处理，用于虚拟机监控程序。
@@ -106,6 +106,7 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
 //SMAP（bit 21）描述：启用内核模式下禁止访问用户空间内存。内核模式试图访问用户空间内存会触发错误，除非显式禁用访问。用途：进一步增强内核的安全性，防止潜在的漏洞利用。
 //PKE（bit 22）描述：启用内存保护密钥功能。该功能允许程序在不修改页表的情况下控制内存的访问权限。用途：提供更灵活的内存保护机制，用于区分不同的内存访问权限。
 //endregion
+    __asm__ __volatile__(
             "xorq       %%r8,%%r8          \n\t"
             "movq       $7,%%rax           \n\t"
             "xorq       %%rcx,%%rcx        \n\t"
@@ -148,7 +149,6 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
             "movq       %%rax,%%cr4        \n\t"
             :::"%rax","%r8");
 
-    __asm__ __volatile__(
 //region XCR0 寄存器
 //x87（bit 0）：描述：控制 x87 浮点状态的保存与恢复。x87 是早期的浮点运算单元，负责处理浮点数运算。用途：如果该位被设置为 1，XSAVE 和 XRSTOR 指令将保存和恢复 x87 浮点状态。
 //SSE（bit 1）：描述：控制 SSE 状态（XMM 寄存器）的保存与恢复。SSE 是现代 SIMD 指令集，用于处理浮点和整数数据。用途：设置该位后，XSAVE 和 XRSTOR 将保存和恢复 SSE 的 XMM 寄存器状态。
@@ -158,6 +158,7 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
 //BNDCSR（bit 6）：描述：控制 MPX 的 BNDCSR 状态的保存与恢复。BNDCSR 用于管理 MPX 的边界检查寄存器。用途：启用该位后，处理器会保存和恢复 MPX 边界检查的控制状态。
 //PKRU（bit 8）：描述：控制 PKRU 状态的保存与恢复。PKRU（Protection Keys for Userspace）是内存保护的一种机制。用途：启用该位后，处理器会保存和恢复与 PKRU 相关的状态.
 //endregion
+    __asm__ __volatile__(
             "movl       $0x7,%%r8d        \n\t"  //avx256
             "xorl       %%ecx,%%ecx       \n\t"
             "movl       $0x7,%%eax        \n\t"
@@ -173,19 +174,18 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
             "xsetbv                       \n\t"
             :::"%rax","%rbx","%rcx","%rdx","%r8");
 
-    __asm__ __volatile__(
 //region EFER 寄存器（MSR 0xC0000080)
 //SCE（bit 0） 1:启用 SYSCALL 和 SYSRET 指令。
 //LME（bit 8） 1:启用 64 位长模式。当该位被设置为 1 时，处理器允许进入 64 位模式。在启用长模式时，CR0.PG（分页启用位）和 CR4.PAE（物理地址扩展启用位）也必须设置。
 //NXE（bit 11）1:sfdsfs启用 NX（No-eXecute） 位功能。NX 位用于控制某些内存页面的执行权限。如果该位被设置为 1，操作系统可以使用分页机制将特定的内存页面标记为不可执行，以防止执行非代码数据，如栈或堆内存，防止某些缓冲区溢出攻击。
 //endregion
+    __asm__ __volatile__(
             "movl       $0xC0000080,%%ecx  \n\t"
             "rdmsr                         \n\t"
             "orl        $0x801,%%eax       \n\t"
             "wrmsr                         \n\t"
             :::"%rax","%rcx","%rdx");
 
-    __asm__ __volatile__(
 //region CR0寄存器
 //PE（位 0）：1：启用保护模式，使得 CPU 能使用分段和分页机制。0：CPU 处于实模式，仅支持基础的内存访问。
 //MP（位 1）：1：协处理器错误将触发设备不可用异常 (#NM)。0：不会触发异常，协处理器错误被忽略。
@@ -199,6 +199,7 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
 //CD（位 30）：1：禁用 CPU 缓存，所有内存访问直接访问主存。0：启用 CPU 缓存，提高性能。
 //PG（位 31）：1：启用分页机制，支持虚拟内存管理。0：禁用分页，CPU 只能使用物理内存地址。
 //endregion
+    __asm__ __volatile__(
             "movq       %%cr0,%%rax                  \n\t"
             "andq       $0xFFFFFFFF9FFFFFFF,%%rax    \n\t"
             "orq        $0x10002,%%rax               \n\t"
@@ -206,4 +207,6 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
             :::"%rax");
     return;
 }
+
+
 
