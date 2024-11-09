@@ -30,12 +30,6 @@ __attribute__((section(".init_text"))) void init_page(void) {
         pml4t_vbase[i] = pml4_bak[i];           //还原PML4E
     }
 
-    color_printk(ORANGE, BLACK, "OS Can Used Total 4K PAGEs: %ld \tAlloc: %ld \tFree: %ld\n",
-                 memory_management.total_pages, memory_management.used_pages,
-                 memory_management.avl_pages);
-    color_printk(ORANGE, BLACK, "OS StartAddr: %#018lX \tEndAddr: %#018lX \n",
-                 memory_management.kernel_start_address, memory_management.kernel_end_address);
-
     SET_CR3(HADDR_TO_LADDR(pml4t));   //老dell切换页表系统奔溃
 
 //    map_pages(HADDR_TO_LADDR(Pos.FB_addr), (UINT64)Pos.FB_addr, Pos.FB_length / 4096, PAGE_ROOT_RW);

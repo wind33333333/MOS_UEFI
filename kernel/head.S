@@ -7,16 +7,16 @@ _start:
     movq     %rdi,boot_info(%rip)           //保存loader通过rdi传递过来的boot_info指针
 
     /*初始化临时页表*/
-    movq     $TMP_PML4T,%r8      //pml4t起始地址
-    movq     $2,%r9              //pml4e数量 (1=512G)
+    movq     $tmp_pml4t-HBASE_ADDR,%r8      //pml4t起始地址
+    movq     $2,%r9                         //pml4e数量 (1=512G)
 
-    movq     %r8,%rax            //pml4t递归映射
+    movq     %r8,%rax                       //pml4t递归映射
     movq     %r8,%rdi
     orq      $0x103,%rax
     movq     %rax,0xFF8(%rdi)
 
     movq     %r8,%rax
-    orq      $3,%rax             //pml4e属性
+    orq      $3,%rax                        //pml4e属性
     movq     %r9,%rcx
 init_tmp_pml4t:
     addq     $0x1000,%rax
@@ -35,9 +35,8 @@ init_tmp_pdptt:
     addq     $0x40000000,%rax
     loopq    init_tmp_pdptt
 
-    /*切换页表*/
-    movq     $TMP_PML4T,%rax
-    movq     %rax,%cr3
+    /*设置临时页表*/
+    movq     %r8,%cr3
 
     movq     kernel_stack_top(%rip),%rsp
     addq     $0x4000,%rsp                     //初始化bsp核心栈，内核结束处+16K
@@ -49,6 +48,9 @@ init_tmp_pdptt:
 
 //===============================初始化程序数据=================================================
 .section    .init_data, "wa"
+    .globl  tmp_pml4t
+    tmp_pml4t:
+        .fill   0x3000,1,0
 
     .globl kernel_stack_top
     kernel_stack_top:   .quad   _end

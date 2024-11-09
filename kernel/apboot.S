@@ -39,8 +39,8 @@ ap_code32:
     orl     $0x20,%eax              # 设置 PAE 位 (bit 5)
     movl    %eax,%cr4
 
-    movl    $0x90000,%eax
-    movl    %eax,%cr3
+    movl    $tmp_pml4t-HBASE_ADDR,%eax
+    movl    %eax,%cr3               # 设置临时页表
 
     movl    $0xC0000080,%ecx        # EFER MSR 的地址
     rdmsr                           # 读取 EFER
@@ -112,6 +112,8 @@ code32_ptr:
 code64_ptr:
     .long   0
     .word   CODE64_SEL
+
+    .equ    HBASE_ADDR,0xffff800000000000      //内核虛擬地址基址
 
 .globl   _apboot_end
 _apboot_end:
