@@ -14,6 +14,18 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
     hpett_t *hpett;
     mcfg_t *mcfg;
 
+    //初始化ap_boot_loader_adderss
+    for(UINT32 i=0;i<memory_management.mem_map_number;i++){
+        ap_boot_loader_address=(memory_management.mem_map[i].address+0x10000)&0xFFFFFFFFFFFF0000;   //对齐64K
+        if(ap_boot_loader_address>0x100000){
+            color_printk(RED,BLACK,"Memory less than 1M is not available!\n");
+            while(1);
+        } else if(ap_boot_loader_address<memory_management.mem_map[i].address+memory_management.mem_map[i].length){
+            LADDR_TO_HADDR(ap_boot_loader_address);
+            break;
+        }
+    }
+
     //region XSDT中找出各个ACPI表的指针
     xsdt_t *xsdt = boot_info->rsdp->xsdt_address;
     for (UINT32 i = 0; i < ((xsdt->acpi_header.length - sizeof(acpi_header_t)) / sizeof(UINT32 *)); i++) {
@@ -39,7 +51,7 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
             case 0://APIC ID
                 if(((apic_entry_t*)madt_entry)->flags & 1){
                     //color_printk(RED, BLACK, "apic id:%d p:%d f:%d\n",((apic_entry_t *) madt_entry)->apic_id,((apic_entry_t *) madt_entry)->processor_id,((apic_entry_t *) madt_entry)->flags);
-                    ((UINT32*)APBOOT_ADDR)[apic_id_index]=((apic_entry_t *) madt_entry)->apic_id;
+                    ((UINT32*)ap_boot_loader_address)[apic_id_index]=((apic_entry_t *) madt_entry)->apic_id;
                     apic_id_index++;
                     cpu_info.logical_processors_number++;
                 }
@@ -104,7 +116,7 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
     apic_id_table = (UINT32*)LADDR_TO_HADDR(alloc_pages(PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2)>>PAGE_4K_SHIFT));
     mem_set((void*)apic_id_table,0x0,PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2));
     for(UINT32 i=0;i<cpu_info.logical_processors_number;i++){
-        apic_id_table[i]=((UINT32*)APBOOT_ADDR)[i];
+        apic_id_table[i]=((UINT32*)ap_boot_loader_address)[i];
     }
 
     return;

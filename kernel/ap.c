@@ -10,6 +10,7 @@
 #include "page.h"
 
 __attribute__((section(".init.data"))) UINT64 ap_rsp;
+__attribute__((section(".init.data"))) UINT64 ap_boot_loader_address;
 
 //多核处理器初始化
 __attribute__((section(".init_text"))) void init_ap(void) {

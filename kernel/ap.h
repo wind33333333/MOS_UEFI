@@ -14,7 +14,7 @@ typedef struct {
 extern UINT8 _apboot_start;
 extern UINT8 _apboot_end;
 
-extern UINT32 init_cpu_num;
 extern UINT64 ap_rsp;
+extern UINT64 ap_boot_loader_address;
 
 #endif
