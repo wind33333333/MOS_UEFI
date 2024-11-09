@@ -9,10 +9,8 @@ typedef struct {
     UINT16 tr;
 }__attribute__((packed)) apboot_data_t;
 
-#define APBOOT_ADDR 0x10000
-
-extern UINT8 _apboot_start;
-extern UINT8 _apboot_end;
+extern UINT8 _apboot_start[];
+extern UINT8 _apboot_end[];
 
 extern UINT64 ap_rsp;
 extern UINT64 ap_boot_loader_address;

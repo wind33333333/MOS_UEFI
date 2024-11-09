@@ -16,7 +16,7 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
 
     //初始化ap_boot_loader_adderss
     for(UINT32 i=0;i<memory_management.mem_map_number;i++){
-        ap_boot_loader_address=(memory_management.mem_map[i].address+0x10000)&0xFFFFFFFFFFFF0000;   //对齐64K
+        ap_boot_loader_address= PAGE_4K_ALIGN(memory_management.mem_map[i].address);   //对齐4K
         if(ap_boot_loader_address>0x100000){
             color_printk(RED,BLACK,"Memory less than 1M is not available!\n");
             while(1);
@@ -83,7 +83,7 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
 
             case 9://X2APIC ID
                 color_printk(RED, BLACK, "x2apic id:%d p:%d f:%d\n",((x2apic_entry_t*)madt_entry)->x2apic_id,((x2apic_entry_t*)madt_entry)->processor_id,((x2apic_entry_t*)madt_entry)->flags);
-                ((UINT32*)APBOOT_ADDR)[apic_id_index]=((x2apic_entry_t*)madt_entry)->x2apic_id;
+                ((UINT32*)ap_boot_loader_address)[apic_id_index]=((x2apic_entry_t*)madt_entry)->x2apic_id;
                 apic_id_index++;
                 cpu_info.logical_processors_number++;
                 break;
