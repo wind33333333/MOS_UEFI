@@ -15,7 +15,7 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
     mcfg_t *mcfg;
 
     //初始化ap_boot_loader_adderss
-    ap_boot_loader_address = LADDR_TO_HADDR(memory_management.mem_map[0].address);
+    ap_boot_loader_address = (UINT64)LADDR_TO_HADDR(memory_management.mem_map[0].address);
 
     //region XSDT中找出各个ACPI表的指针
     xsdt_t *xsdt = boot_info->rsdp->xsdt_address;
