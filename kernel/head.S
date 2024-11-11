@@ -16,7 +16,7 @@ _start:
     movq     %rax,0xFF8(%rdi)
 
     movq     %r8,%rax
-    orq      $3,%rax                        //pml4e属性
+    orq      $0x3,%rax                      //pml4e属性
     movq     %r9,%rcx
 init_tmp_pml4t:
     addq     $0x1000,%rax
