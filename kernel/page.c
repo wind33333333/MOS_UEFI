@@ -11,7 +11,6 @@ UINT64 *pml4t;          //正式内核页表
 __attribute__((section(".init_text"))) void init_page(void) {
     pml4t = LADDR_TO_HADDR(alloc_pages(1));
     mem_set((void*)pml4t,0,4096);
-    pml4t[511] = HADDR_TO_LADDR((UINT64)pml4t|0x103);             //递归映射
 
     UINT64 pml4_bak[256] = {0};
     UINT64 pml4e_num = (((memory_management.kernel_end_address >> 12) - ((memory_management.kernel_end_address >> 12) & ~(512UL * 512 * 512 - 1))) +
@@ -29,6 +28,7 @@ __attribute__((section(".init_text"))) void init_page(void) {
         pml4t[i + 256] = pml4t_vbase[i];        //修改正式内核PML4T 高
         pml4t_vbase[i] = pml4_bak[i];           //还原PML4E
     }
+    pml4t[511] = HADDR_TO_LADDR((UINT64)pml4t|0x3);     //递归映射
 
     SET_CR3(HADDR_TO_LADDR(pml4t));   //老dell切换页表系统奔溃
 

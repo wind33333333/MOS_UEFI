@@ -12,7 +12,7 @@ _start:
 
     movq     %r8,%rax                       //pml4t递归映射
     movq     %r8,%rdi
-    orq      $0x103,%rax
+    orq      $0x3,%rax
     movq     %rax,0xFF8(%rdi)
 
     movq     %r8,%rax
