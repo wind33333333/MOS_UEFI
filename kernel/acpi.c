@@ -15,16 +15,7 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
     mcfg_t *mcfg;
 
     //初始化ap_boot_loader_adderss
-    for(UINT32 i=0;i<memory_management.mem_map_number;i++){
-        ap_boot_loader_address= PAGE_4K_ALIGN(memory_management.mem_map[i].address);   //对齐4K
-        if(ap_boot_loader_address>0x100000){
-            color_printk(RED,BLACK,"Memory less than 1M is not available!\n");
-            while(1);
-        } else if(ap_boot_loader_address<memory_management.mem_map[i].address+memory_management.mem_map[i].length){
-            LADDR_TO_HADDR(ap_boot_loader_address);
-            break;
-        }
-    }
+    ap_boot_loader_address = LADDR_TO_HADDR(memory_management.mem_map[0].address);
 
     //region XSDT中找出各个ACPI表的指针
     xsdt_t *xsdt = boot_info->rsdp->xsdt_address;
