@@ -19,15 +19,6 @@
 #define WRMSR(EAX,EDX,ECX) __asm__ __volatile__("wrmsr \n\t" ::"a"(EAX),"d"(EDX),"c"(ECX):"memory")
 #define RDMSR(EAX,EDX,ECX) __asm__ __volatile__("rdmsr \n\t" :"=a"(EAX),"=d"(EDX):"c"(ECX):"memory")
 #define CPUID(OUT_EAX,OUT_EBX,OUT_ECX,OUT_EDX,IN_EAX,IN_ECX) __asm__ __volatile__("cpuid \n\t" :"=a"(OUT_EAX),"=b"(OUT_EBX),"=c"(OUT_ECX),"=d"(OUT_EDX):"a"(IN_EAX),"c"(IN_ECX):"memory")
-#define GET_APICID(APICID) \
-                    do{    \
-                        __asm__ __volatile__(               \
-                                "movl   $0xb,%%eax   \n\t"   \
-                                "movl   $1,%%ecx     \n\t"   \
-                                "cpuid               \n\t"   \
-                                :"=d"(APICID)::"%rax","%rbx","%rcx","memory"); \
-                    }while(0)
-
 
 void init_cpu(void);
 void init_cpu_amode(void);
@@ -35,7 +26,6 @@ void get_cpu_info(void);
 void print_h(void);
 void user_program(void);
 extern  void syscall_entry(void);
-
 
 typedef struct {
     CHAR8 manufacturer_name[13];

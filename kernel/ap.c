@@ -42,8 +42,8 @@ __attribute__((section(".init_text"))) void init_ap(void) {
 }
 
 __attribute__((section(".init_text"))) void ap_main(void){
-    UINT32 apic_id,cpu_id;
-    GET_APICID(apic_id);
+    UINT32 apic_id,cpu_id,tmp;
+    CPUID(tmp,tmp,tmp,apic_id,0xB,0x1);        //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);
     init_cpu_amode();
     SET_CR3(HADDR_TO_LADDR(pml4t));
