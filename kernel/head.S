@@ -152,7 +152,9 @@ interrupt_entry:
     /*系统调用入口*/
 .globl  syscall_entry
 syscall_entry:
+    //手动保存用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
 
     call    print_h
     jmp .
+    //手动恢复用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
     sysretq
