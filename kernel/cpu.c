@@ -78,11 +78,7 @@ __attribute__((section(".init_text"))) void get_cpu_info(void) {
 
     // 获取CPU TSC频率
     CPUID(eax,ebx,ecx,edx,0x15,0);
-    if(ecx!=0){
-       cpu_info.tsc_frequency=ebx*ecx/eax;
-    } else{
-        cpu_info.tsc_frequency=ebx*ecx/eax;
-    }
+    cpu_info.tsc_frequency = (ecx != 0) ? ebx*ecx/eax : 0;
 
     return;
 }
