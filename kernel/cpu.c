@@ -64,49 +64,32 @@ void print_h(void){
 }
 
 __attribute__((section(".init_text"))) void get_cpu_info(void) {
+    UINT32 eax,ebx,ecx,edx;
     // 获取CPU厂商
-    __asm__ __volatile__(
-            "xorl    %%eax,%%eax     \n\t"
-            "cpuid                   \n\t"
-            :"=b"(*(UINT32*)&cpu_info.manufacturer_name[0]),"=d"(*(UINT32*)&cpu_info.manufacturer_name[4]),"=c"(*(UINT32*)&cpu_info.manufacturer_name[8])::"%rax","memory");
+    CPUID(*(UINT32*)&cpu_info.manufacturer_name[8],*(UINT32*)&cpu_info.manufacturer_name[0],*(UINT32*)&cpu_info.manufacturer_name[8],*(UINT32*)&cpu_info.manufacturer_name[4],0,0);
 
     // 获取CPU型号
-    __asm__ __volatile__(
-            "movl    $0x80000002,%%eax \n\t"
-            "cpuid         \n\t"
-            :"=a"(*(UINT32*)&cpu_info.model_name[0]),"=b"(*(UINT32*)&cpu_info.model_name[4]),"=c"(*(UINT32*)&cpu_info.model_name[8]),"=d"(*(UINT32*)&cpu_info.model_name[12])::"memory");
-
-    __asm__ __volatile__(
-            "movl    $0x80000003,%%eax \n\t"
-            "cpuid                     \n\t"
-            :"=a"(*(UINT32*)&cpu_info.model_name[16]),"=b"(*(UINT32*)&cpu_info.model_name[20]),"=c"(*(UINT32*)&cpu_info.model_name[24]),"=d"(*(UINT32*)&cpu_info.model_name[28])::"memory");
-
-    __asm__ __volatile__(
-            "movl    $0x80000004,%%eax \n\t"
-            "cpuid                     \n\t"
-            :"=a"(*(UINT32*)&cpu_info.model_name[32]),"=b"(*(UINT32*)&cpu_info.model_name[36]),"=c"(*(UINT32*)&cpu_info.model_name[40]),"=d"(*(UINT32*)&cpu_info.model_name[44])::"memory");
+    CPUID(*(UINT32*)&cpu_info.model_name[0],*(UINT32*)&cpu_info.model_name[4],*(UINT32*)&cpu_info.model_name[8],*(UINT32*)&cpu_info.model_name[12],0x80000002UL,0);
+    CPUID(*(UINT32*)&cpu_info.model_name[16],*(UINT32*)&cpu_info.model_name[20],*(UINT32*)&cpu_info.model_name[24],*(UINT32*)&cpu_info.model_name[28],0x80000003UL,0);
+    CPUID(*(UINT32*)&cpu_info.model_name[32],*(UINT32*)&cpu_info.model_name[36],*(UINT32*)&cpu_info.model_name[40],*(UINT32*)&cpu_info.model_name[44],0x80000004UL,0);
 
     // 获取CPU频率
-    __asm__ __volatile__(
-            "movl    $0x16,%%eax \n\t"
-            "cpuid               \n\t"
-            :"=a"(cpu_info.fundamental_frequency), "=b"(cpu_info.maximum_frequency), "=c"(cpu_info.bus_frequency)::"%rdx","memory");
+    CPUID(cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,edx,0x16,0);
 
     // 获取CPU TSC频率
-    __asm__ __volatile__(
-            "movl    $0x15,%%eax  \n\t"
-            "cpuid                \n\t"
-            "testl   %%ecx,%%ecx  \n\t"
-            "jz      invalid      \n\t"            //如果ecx等于0则获取到的tsc频率无效
-            "xchgq   %%rax,%%rbx  \n\t"
-            "mulq    %%rcx        \n\t"
-            "divq    %%rbx        \n\t"
-            "invalid:             \n\t"
-            :"=a"(cpu_info.tsc_frequency)::"%rcx", "%rbx", "%rdx");
+    CPUID(eax,ebx,ecx,edx,0x15,0);
+    if(ecx!=0){
+       cpu_info.tsc_frequency=ebx*ecx/eax;
+    } else{
+        cpu_info.tsc_frequency=ebx*ecx/eax;
+    }
+
     return;
 }
 
 __attribute__((section(".init_text"))) void init_cpu_amode(void){
+    UINT32 eax,ebx,ecx,edx;
+    UINT64 tmp,value;
 
 //region IA32_APIC_BASE (MSR 0x1B)
 //X2APIC（bit 10）：作用：如果该位被设置为 1，处理器启用 X2APIC 模式。X2APIC 是 APIC 的扩展版本，提供了更多的功能，例如更大的中断目标地址空间。
@@ -114,12 +97,9 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
 //BSP（bit 9）：作用：标记该处理器是否是系统的启动处理器（BSP）。系统启动时，BSP 是首先执行初始化代码的 CPU，其它处理器是 AP（Application Processors，应用处理器）。
 //APIC Base Address（bit 12-31）：作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
 ////endregion
-    __asm__ __volatile__(
-            "movl       $0x1B,%%ecx  \n\t"      //IA32_APIC_BASE=0x1b 寄存器
-            "rdmsr                   \n\t"
-            "orl        $0xC00,%%eax \n\t"      //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
-            "wrmsr                   \n\t"
-            :::"%rax","%rcx","%rdx");
+    RDMSR(eax,edx,IA32_APIC_BASE);
+    eax |= 0xC00;                        //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
+    WRMSR(eax,edx,IA32_APIC_BASE);
 
 //region CR4 寄存器
 //VME（bit 0） 描述：启用虚拟 8086 模式的扩展功能，允许在虚拟 8086 模式中支持虚拟中断。用途：用于实现虚拟机监控或虚拟 8086 环境中的精细中断控制。
@@ -144,48 +124,31 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
 //SMAP（bit 21）描述：启用内核模式下禁止访问用户空间内存。内核模式试图访问用户空间内存会触发错误，除非显式禁用访问。用途：进一步增强内核的安全性，防止潜在的漏洞利用。
 //PKE（bit 22）描述：启用内存保护密钥功能。该功能允许程序在不修改页表的情况下控制内存的访问权限。用途：提供更灵活的内存保护机制，用于区分不同的内存访问权限。
 //endregion
-    __asm__ __volatile__(
-            "xorq       %%r8,%%r8          \n\t"
-            "movq       $7,%%rax           \n\t"
-            "xorq       %%rcx,%%rcx        \n\t"
-            "cpuid                         \n\t"
-            "test       $4,%%rcx           \n\t"
-            "jz         not_umip           \n\t"
-            "orq        $0x800,%%r8        \n\t"        //bit11 UMIP
-            "not_umip:                     \n\t"
+    tmp=0;
+    CPUID(eax,ebx,ecx,edx,0x7,0);
+    if(ecx & 4)
+        tmp |= 0x800;       //bit11 UMIP
 
-            "test       $0x80,%%rbx        \n\t"
-            "jz         not_smep           \n\t"
-            "orq        $0x100000,%%r8     \n\t"        //bit20 SMEP
-            "not_smep:                     \n\t"
+    if(ecx & 8)
+        tmp |= 0x400000;    //bit11 UMIP
 
-//            "test       $0x100000,%%rbx    \n\t"
-//            "jz         not_smap           \n\t"
-//            "orq        $0x200000,%%r8     \n\t"        //bit21 SMAP
-//            "not_smap:                     \n\t"
+    if(ebx & 0x80)
+        tmp |= 0x100000;    //bit20 SMEP
 
-            "test       $8,%%rcx           \n\t"
-            "jz         not_pke            \n\t"
-            "orq        $0x400000,%%r8     \n\t"        //bit22 PKE
-            "not_pke:                      \n\t"
+//    if(ebx & 0x100000)
+//        tmp |= 0x200000;    //bit21 SMAP
 
-            "movq       $1,%%rax           \n\t"
-            "cpuid                         \n\t"
-            "test       $0x20,%%rcx        \n\t"
-            "jz         not_vmxe           \n\t"
-            "orq        $0x2000,%%r8       \n\t"        //bit13 VMXE
-            "not_vmxe:                     \n\t"
+    CPUID(eax,ebx,ecx,edx,0x1,0);
+    if(ecx & 0x20)
+        tmp |= 0x2000;      //bit13 VMXE
 
-            "test       $0x20000,%%rcx     \n\t"
-            "jz         not_pcide          \n\t"
-            "orq        $0x20000,%%r8      \n\t"        //bit17 PCIDE
-            "not_pcide:                    \n\t"
+    if(ecx & 0x20000)
+        tmp |= 0x20000;     //bit17 PCIDE
 
-            "movq       %%cr4,%%rax        \n\t"
-            "orq        $0x507C8,%%rax     \n\t"
-            "orq        %%r8,%%rax         \n\t"
-            "movq       %%rax,%%cr4        \n\t"
-            :::"%rax","%r8");
+    tmp |= 0x507C8;
+    GET_CR4(value);
+    value |= tmp;
+    SET_CR4(value);
 
 //region XCR0 寄存器
 //x87（bit 0）：描述：控制 x87 浮点状态的保存与恢复。x87 是早期的浮点运算单元，负责处理浮点数运算。用途：如果该位被设置为 1，XSAVE 和 XRSTOR 指令将保存和恢复 x87 浮点状态。
@@ -196,28 +159,17 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
 //BNDCSR（bit 6）：描述：控制 MPX 的 BNDCSR 状态的保存与恢复。BNDCSR 用于管理 MPX 的边界检查寄存器。用途：启用该位后，处理器会保存和恢复 MPX 边界检查的控制状态。
 //PKRU（bit 8）：描述：控制 PKRU 状态的保存与恢复。PKRU（Protection Keys for Userspace）是内存保护的一种机制。用途：启用该位后，处理器会保存和恢复与 PKRU 相关的状态.
 //endregion
-    __asm__ __volatile__(
-            "movl       $0x7,%%r8d        \n\t"  //avx256
-            "xorl       %%ecx,%%ecx       \n\t"
-            "movl       $0x7,%%eax        \n\t"
-            "cpuid                        \n\t"
-            "testl      $0x10000,%%ebx    \n\t"  //bit16置位表示支持avx512指令集
-            "jz         not_avx512        \n\t"
-            "movl       $0xE7,%%r8d       \n\t" //avx512
-            "not_avx512:                  \n\t"
-
-            "movl       $0,%%ecx          \n\t"
-            "xgetbv                       \n\t"
-            "orl        %%r8d,%%eax       \n\t"
-            "xsetbv                       \n\t"
-            :::"%rax","%rbx","%rcx","%rdx","%r8");
+    CPUID(eax,ebx,ecx,edx,0x7,0x0);
+    tmp=(ebx & 0x10000) ? 0xE7 : 0x7;   //AVX512=0xE7 AVX256=0x7
+    XGETBV(eax,edx,0);
+    eax |= tmp;
+    XSETBV(eax,edx,0);
 
 //region IA32_EFER 寄存器（MSR 0xC0000080)
 //SCE（bit 0） 1:启用 SYSCALL 和 SYSRET 指令。
 //LME（bit 8） 1:启用 64 位长模式。当该位被设置为 1 时，处理器允许进入 64 位模式。在启用长模式时，CR0.PG（分页启用位）和 CR4.PAE（物理地址扩展启用位）也必须设置。
 //NXE（bit 11）1:sfdsfs启用 NX（No-eXecute） 位功能。NX 位用于控制某些内存页面的执行权限。如果该位被设置为 1，操作系统可以使用分页机制将特定的内存页面标记为不可执行，以防止执行非代码数据，如栈或堆内存，防止某些缓冲区溢出攻击。
 //endregion
-    UINT32 eax,edx;
     RDMSR(eax,edx,IA32_EFER);
     eax |= 0x801;
     WRMSR(eax,edx,IA32_EFER);
@@ -235,12 +187,11 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
 //CD（位 30）：1：禁用 CPU 缓存，所有内存访问直接访问主存。0：启用 CPU 缓存，提高性能。
 //PG（位 31）：1：启用分页机制，支持虚拟内存管理。0：禁用分页，CPU 只能使用物理内存地址。
 //endregion
-    __asm__ __volatile__(
-            "movq       %%cr0,%%rax                  \n\t"
-            "andq       $0xFFFFFFFF9FFFFFFF,%%rax    \n\t"
-            "orq        $0x10002,%%rax               \n\t"
-            "movq       %%rax,%%cr0                  \n\t"
-            :::"%rax","memory");
+    GET_CR0(value);
+    value &= 0xFFFFFFFF9FFFFFFFUL;
+    value |= 0x10002;
+    SET_CR0(value);
+
     return;
 }
 

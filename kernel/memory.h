@@ -58,10 +58,7 @@ typedef struct {
 
 extern global_memory_descriptor_t memory_management;
 
-#define INVLPG(vir_addr) __asm__ __volatile__("invlpg (%0)"::"r"(vir_addr):);
-#define SET_CR3(phy_addr) __asm__ __volatile__("mov %0,%%cr3"::"r"(phy_addr):);
-#define GET_CR3(phy_addr) __asm__ __volatile__("mov %%cr3,%0":"=r"(phy_addr)::);
-
+#define INVLPG(vir_addr) __asm__ __volatile__("invlpg (%0)"::"r"(vir_addr):"memory");
 
 #define PAGE_NX     1UL<<63
 #define PAGE_G      1UL<<8
