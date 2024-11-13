@@ -5,6 +5,10 @@
 void init_cpu(void);
 void init_cpu_amode(void);
 void get_cpu_info(void);
+void print_h(void);
+void user_program(void);
+extern  void syscall_entry(void);
+
 
 typedef struct {
     CHAR8 manufacturer_name[13];

@@ -13,6 +13,10 @@ typedef short INT16;
 typedef int INT32;
 typedef long long INT64;
 
+#define IA32_STAR   0xC0000081
+#define IA32_LSTAR  0xC0000082
+#define IA32_FMASK  0xC0000084
+
 #define BOCHS_DG()    __asm__ __volatile__ ("xchg %%bx,%%bx \n\t":: :);
 
 #define NULL 0
@@ -44,7 +48,6 @@ typedef long long INT64;
 #define MFENCE()    __asm__ __volatile__ ("mfence	\n\t":::"memory")
 #define SFENCE()    __asm__ __volatile__ ("sfence	\n\t":::"memory")
 #define LFENCE()    __asm__ __volatile__ ("lfence	\n\t":::"memory")
-
 
 struct List {
     struct List *prev;

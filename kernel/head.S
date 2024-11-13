@@ -149,6 +149,9 @@ interrupt_entry:
 	addq	$0x10,	%rsp;
 	iretq;
 
-//========================================正式内核数据=================================================
-.section    .data, "wa"
+    /*系统调用入口*/
+.globl  syscall_entry
+syscall_entry:
+    movq $0xFFFFEECC,%rax
+    jmp .
 
