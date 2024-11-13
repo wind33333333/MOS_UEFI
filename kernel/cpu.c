@@ -36,7 +36,7 @@ void init_cpu(void){
 
     __asm__ __volatile__(
             "wrmsr   \n\t"
-            ::"a"(0),"d"((0x10UL<<16)|0x8UL),"c"(IA32_STAR):"memory");
+            ::"a"(0),"d"((0x18UL<<16)|0x8UL),"c"(IA32_STAR):"memory");
 
     __asm__ __volatile__(
             "wrmsr  \n\t"
@@ -61,9 +61,9 @@ void init_cpu(void){
 }
 
 void user_program(void){
-    __asm__ __volatile__(
-            "syscall    \n\t"
-            :::);
+//    __asm__ __volatile__(
+//            "syscall    \n\t"
+//            :::);
     while(1);
     return;
 }

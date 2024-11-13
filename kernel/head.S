@@ -153,5 +153,6 @@ interrupt_entry:
 .globl  syscall_entry
 syscall_entry:
     movq $0xFFFFEECC,%rax
+    call    print_h
     jmp .
 
