@@ -35,9 +35,7 @@ void init_cpu(void){
             "pushfq         \n\t"
             "pop    %%rax   \n\t"
             :"=a"(rflags)::"memory");
-    WRMSR(0,((0x18UL<<16)|0x8UL),IA32_STAR);
-    WRMSR((UINT64)syscall_entry&0xFFFFFFFFUL,(UINT64)syscall_entry>>32,IA32_LSTAR);
-    WRMSR(0,0,IA32_FMASK);
+
     __asm__ __volatile__(
             "movq   %1,%%r11    \n\t"
             "movq   %2,%%rsp    \n\t"
