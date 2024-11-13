@@ -6,6 +6,7 @@
 #include "page.h"
 #include "ap.h"
 #include "acpi.h"
+#include "syscall.h"
 #include "printk.h"
 #include "memory.h"
 
@@ -22,6 +23,7 @@ void init_cpu(void){
     init_tss();                                //初始化TSS
     init_idt();                                //初始化IDT
     init_apic();                               //初始化apic
+    init_syscall();                            //初始化系统调用
 
     UINT64 *user_progarm_address = alloc_pages(1);
     map_pages((UINT64)user_progarm_address,0x6000,1,PAGE_USER_RWX);

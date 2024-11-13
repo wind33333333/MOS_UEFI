@@ -21,6 +21,7 @@ __attribute__((section(".init_text"))) void init_gdt(void) {
 //    *(gdt_ptr.base + 6) = DATA32_3;        /*6	USER	Data	32-bit	Segment	0x30*/
 //    *(gdt_ptr.base + 7) = 0;
 
-    LGDT(gdt_ptr,0x8UL,0x10UL);
+    LGDT(gdt_ptr,0x8UL,0x10UL);     //加载新gdt
+
     return;
 }
