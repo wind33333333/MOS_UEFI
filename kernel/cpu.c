@@ -33,19 +33,9 @@ void init_cpu(void){
             "pushfq         \n\t"
             "pop    %%rax   \n\t"
             :"=a"(rflags)::"memory");
-
-    __asm__ __volatile__(
-            "wrmsr   \n\t"
-            ::"a"(0),"d"((0x18UL<<16)|0x8UL),"c"(IA32_STAR):"memory");
-
-    __asm__ __volatile__(
-            "wrmsr  \n\t"
-            ::"a"((UINT64)syscall_entry&0xFFFFFFFFUL),"d"((UINT64)syscall_entry>>32),"c"(IA32_LSTAR):"memory");
-
-    __asm__ __volatile__(
-            "wrmsr  \n\t"
-            ::"a"(0),"d"(0),"c"(IA32_FMASK):"memory");
-
+    WRMSR(0,((0x18UL<<16)|0x8UL),IA32_STAR);
+    WRMSR((UINT64)syscall_entry&0xFFFFFFFFUL,(UINT64)syscall_entry>>32,IA32_LSTAR);
+    WRMSR(0,0,IA32_FMASK);
     __asm__ __volatile__(
             "movq   %1,%%r11    \n\t"
             "movq   %2,%%rsp    \n\t"
@@ -61,9 +51,9 @@ void init_cpu(void){
 }
 
 void user_program(void){
-//    __asm__ __volatile__(
-//            "syscall    \n\t"
-//            :::);
+    __asm__ __volatile__(
+            "syscall    \n\t"
+            :::);
     while(1);
     return;
 }
@@ -117,6 +107,7 @@ __attribute__((section(".init_text"))) void get_cpu_info(void) {
 }
 
 __attribute__((section(".init_text"))) void init_cpu_amode(void){
+
 //region IA32_APIC_BASE (MSR 0x1B)
 //X2APIC（bit 10）：作用：如果该位被设置为 1，处理器启用 X2APIC 模式。X2APIC 是 APIC 的扩展版本，提供了更多的功能，例如更大的中断目标地址空间。
 //EN（bit 11）：作用：控制是否启用本地 APIC。设置为 1 时启用本地 APIC；设置为 0 时禁用。
@@ -221,17 +212,15 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
             "xsetbv                       \n\t"
             :::"%rax","%rbx","%rcx","%rdx","%r8");
 
-//region EFER 寄存器（MSR 0xC0000080)
+//region IA32_EFER 寄存器（MSR 0xC0000080)
 //SCE（bit 0） 1:启用 SYSCALL 和 SYSRET 指令。
 //LME（bit 8） 1:启用 64 位长模式。当该位被设置为 1 时，处理器允许进入 64 位模式。在启用长模式时，CR0.PG（分页启用位）和 CR4.PAE（物理地址扩展启用位）也必须设置。
 //NXE（bit 11）1:sfdsfs启用 NX（No-eXecute） 位功能。NX 位用于控制某些内存页面的执行权限。如果该位被设置为 1，操作系统可以使用分页机制将特定的内存页面标记为不可执行，以防止执行非代码数据，如栈或堆内存，防止某些缓冲区溢出攻击。
 //endregion
-    __asm__ __volatile__(
-            "movl       $0xC0000080,%%ecx  \n\t"
-            "rdmsr                         \n\t"
-            "orl        $0x801,%%eax       \n\t"
-            "wrmsr                         \n\t"
-            :::"%rax","%rcx","%rdx");
+    UINT32 eax,edx;
+    RDMSR(eax,edx,IA32_EFER);
+    eax |= 0x801;
+    WRMSR(eax,edx,IA32_EFER);
 
 //region CR0寄存器
 //PE（位 0）：1：启用保护模式，使得 CPU 能使用分段和分页机制。0：CPU 处于实模式，仅支持基础的内存访问。
@@ -251,7 +240,7 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
             "andq       $0xFFFFFFFF9FFFFFFF,%%rax    \n\t"
             "orq        $0x10002,%%rax               \n\t"
             "movq       %%rax,%%cr0                  \n\t"
-            :::"%rax");
+            :::"%rax","memory");
     return;
 }
 

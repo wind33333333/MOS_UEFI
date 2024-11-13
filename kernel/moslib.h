@@ -13,10 +13,6 @@ typedef short INT16;
 typedef int INT32;
 typedef long long INT64;
 
-#define IA32_STAR   0xC0000081
-#define IA32_LSTAR  0xC0000082
-#define IA32_FMASK  0xC0000084
-
 #define BOCHS_DG()    __asm__ __volatile__ ("xchg %%bx,%%bx \n\t":: :);
 
 #define NULL 0
