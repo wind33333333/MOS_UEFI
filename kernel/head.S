@@ -152,7 +152,7 @@ interrupt_entry:
     /*系统调用入口*/
 .globl  syscall_entry
 syscall_entry:
-    movq $0xFFFFEECC,%rax
+
     call    print_h
     jmp .
-
+    sysretq
