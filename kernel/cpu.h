@@ -2,11 +2,11 @@
 #define _CPU_H
 #include "moslib.h"
 
-#define IA32_APIC_BASE  0x1B
-#define IA32_EFER       0xC0000080
-#define IA32_STAR       0xC0000081
-#define IA32_LSTAR      0xC0000082
-#define IA32_FMASK      0xC0000084
+#define IA32_APIC_BASE_MSR  0x1B
+#define IA32_EFER_MSR       0xC0000080
+#define IA32_STAR_MSR       0xC0000081
+#define IA32_LSTAR_MSR      0xC0000082
+#define IA32_FMASK_MSR      0xC0000084
 
 #define SET_CR0(VALUE) __asm__ __volatile__ ("movq   %0,%%cr0  \n\t" ::"r"(VALUE):"memory")
 #define GET_CR0(VALUE) __asm__ __volatile__ ("movq   %%cr0,%0  \n\t" :"=r"(VALUE)::"memory")

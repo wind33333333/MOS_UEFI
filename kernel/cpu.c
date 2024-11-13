@@ -25,24 +25,24 @@ void init_cpu(void){
     init_apic();                               //初始化apic
     init_syscall();                            //初始化系统调用
 
-    UINT64 *user_progarm_address = alloc_pages(1);
-    map_pages((UINT64)user_progarm_address,0x6000,1,PAGE_USER_RWX);
-    user_progarm_address = alloc_pages(1);
-    map_pages((UINT64)user_progarm_address,0x5000,1,PAGE_USER_RWX);
-    memcpy(user_program,(void *)0x5000,4096);
-    UINT64 rflags;
-    __asm__ __volatile__(
-            "pushfq         \n\t"
-            "pop    %%rax   \n\t"
-            :"=a"(rflags)::"memory");
-
-    __asm__ __volatile__(
-            "movq   %1,%%r11    \n\t"
-            "movq   %2,%%rsp    \n\t"
-            "sysretq            \n\t"
-            ::"c"(0x5000),"m"(rflags),"i"(0x7000):"memory");
-
-    while(1);
+//    UINT64 *user_progarm_address = alloc_pages(1);
+//    map_pages((UINT64)user_progarm_address,0x6000,1,PAGE_USER_RWX);
+//    user_progarm_address = alloc_pages(1);
+//    map_pages((UINT64)user_progarm_address,0x5000,1,PAGE_USER_RWX);
+//    memcpy(user_program,(void *)0x5000,4096);
+//    UINT64 rflags;
+//    __asm__ __volatile__(
+//            "pushfq         \n\t"
+//            "pop    %%rax   \n\t"
+//            :"=a"(rflags)::"memory");
+//
+//    __asm__ __volatile__(
+//            "movq   %1,%%r11    \n\t"
+//            "movq   %2,%%rsp    \n\t"
+//            "sysretq            \n\t"
+//            ::"c"(0x5000),"m"(rflags),"i"(0x7000):"memory");
+//
+//    while(1);
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
     init_ap();                                 //初始化ap核
@@ -87,15 +87,15 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
     UINT32 eax,ebx,ecx,edx;
     UINT64 tmp,value;
 
-//region IA32_APIC_BASE (MSR 0x1B)
+//region IA32_APIC_BASE_MSR (MSR 0x1B)
 //X2APIC（bit 10）：作用：如果该位被设置为 1，处理器启用 X2APIC 模式。X2APIC 是 APIC 的扩展版本，提供了更多的功能，例如更大的中断目标地址空间。
 //EN（bit 11）：作用：控制是否启用本地 APIC。设置为 1 时启用本地 APIC；设置为 0 时禁用。
 //BSP（bit 9）：作用：标记该处理器是否是系统的启动处理器（BSP）。系统启动时，BSP 是首先执行初始化代码的 CPU，其它处理器是 AP（Application Processors，应用处理器）。
 //APIC Base Address（bit 12-31）：作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
 ////endregion
-    RDMSR(eax,edx,IA32_APIC_BASE);
+    RDMSR(eax,edx,IA32_APIC_BASE_MSR);
     eax |= 0xC00;                        //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
-    WRMSR(eax,edx,IA32_APIC_BASE);
+    WRMSR(eax,edx,IA32_APIC_BASE_MSR);
 
 //region CR4 寄存器
 //VME（bit 0） 描述：启用虚拟 8086 模式的扩展功能，允许在虚拟 8086 模式中支持虚拟中断。用途：用于实现虚拟机监控或虚拟 8086 环境中的精细中断控制。
@@ -161,14 +161,14 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
     eax |= tmp;
     XSETBV(eax,edx,0);
 
-//region IA32_EFER 寄存器（MSR 0xC0000080)
+//region IA32_EFER_MSR 寄存器（MSR 0xC0000080)
 //SCE（bit 0） 1:启用 SYSCALL 和 SYSRET 指令。
 //LME（bit 8） 1:启用 64 位长模式。当该位被设置为 1 时，处理器允许进入 64 位模式。在启用长模式时，CR0.PG（分页启用位）和 CR4.PAE（物理地址扩展启用位）也必须设置。
 //NXE（bit 11）1:sfdsfs启用 NX（No-eXecute） 位功能。NX 位用于控制某些内存页面的执行权限。如果该位被设置为 1，操作系统可以使用分页机制将特定的内存页面标记为不可执行，以防止执行非代码数据，如栈或堆内存，防止某些缓冲区溢出攻击。
 //endregion
-    RDMSR(eax,edx,IA32_EFER);
+    RDMSR(eax,edx,IA32_EFER_MSR);
     eax |= 0x801;
-    WRMSR(eax,edx,IA32_EFER);
+    WRMSR(eax,edx,IA32_EFER_MSR);
 
 //region CR0寄存器
 //PE（位 0）：1：启用保护模式，使得 CPU 能使用分段和分页机制。0：CPU 处于实模式，仅支持基础的内存访问。

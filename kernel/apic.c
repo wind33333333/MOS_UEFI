@@ -2,13 +2,13 @@
 
 __attribute__((section(".init_text"))) void init_apic(void) {
     __asm__ __volatile__ (
-//region IA32_APIC_BASE (MSR 0x1B)
+//region IA32_APIC_BASE_MSR (MSR 0x1B)
 //X2APIC（bit 10）：作用：如果该位被设置为 1，处理器启用 X2APIC 模式。X2APIC 是 APIC 的扩展版本，提供了更多的功能，例如更大的中断目标地址空间。
 //EN（bit 11）：作用：控制是否启用本地 APIC。设置为 1 时启用本地 APIC；设置为 0 时禁用。
 //BSP（bit 9）：作用：标记该处理器是否是系统的启动处理器（BSP）。系统启动时，BSP 是首先执行初始化代码的 CPU，其它处理器是 AP（Application Processors，应用处理器）。
 //APIC Base Address（bit 12-31）：作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
 ////endregion
-            "movl     $0x1b,%%ecx  \n\t"         //IA32_APIC_BASE=0x1b 寄存器
+            "movl     $0x1b,%%ecx  \n\t"         //IA32_APIC_BASE_MSR=0x1b 寄存器
             "rdmsr                 \n\t"
             "orl      $0xc00,%%eax \n\t"         //bit10启用x2apic ,bit11启用xapic
             "wrmsr                 \n\t"
