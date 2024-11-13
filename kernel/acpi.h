@@ -8,54 +8,6 @@ UINT32 cpuid_to_apicid(UINT32 cpu_id);
 
 extern UINT32 *apic_id_table;
 
-#define APIC_ID_MSR                       0x802
-#define APIC_VERSION_MSR                  0x803
-#define APIC_TASK_PRIORITY_MSR            0x808
-#define APIC_ARBITRATION_PRIORITY_MSR     0x809
-#define APIC_PROCESSOR_PRIORITY_MSR       0x80A
-#define APIC_EOI_MSR                      0x80B
-#define APIC_REMOTE_READ_MSR              0x80C
-#define APIC_LOGICAL_DESTINATION_MSR      0x80D
-#define APIC_DESTINATION_FORMAT_MSR       0x80E
-#define APIC_SPURIOUS_VECTOR_MSR          0x80F
-#define APIC_ISR_31_0_MSR                 0x810
-#define APIC_ISR_63_32_MSR                0x811
-#define APIC_ISR_95_64_MSR                0x812
-#define APIC_ISR_127_96_MSR               0x813
-#define APIC_ISR_159_128_MSR              0x814
-#define APIC_ISR_191_160_MSR              0x815
-#define APIC_ISR_223_192_MSR              0x816
-#define APIC_ISR_255_224_MSR              0x817
-#define APIC_TMR_31_0_MSR                 0x818
-#define APIC_TMR_63_32_MSR                0x819
-#define APIC_TMR_95_64_MSR                0x81A
-#define APIC_TMR_127_96_MSR               0x81B
-#define APIC_TMR_159_128_MSR              0x81C
-#define APIC_TMR_191_160_MSR              0x81D
-#define APIC_TMR_223_192_MSR              0x81E
-#define APIC_TMR_255_224_MSR              0x81F
-#define APIC_IRR_31_0_MSR                 0x820
-#define APIC_IRR_63_32_MSR                0x821
-#define APIC_IRR_95_64_MSR                0x822
-#define APIC_IRR_127_96_MSR               0x823
-#define APIC_IRR_159_128_MSR              0x824
-#define APIC_IRR_191_160_MSR              0x825
-#define APIC_IRR_223_192_MSR              0x826
-#define APIC_IRR_255_224_MSR              0x827
-#define APIC_ERROR_STATUS_MSR             0x828
-#define APIC_LVT_CMCI_MSR                 0x82F
-#define APIC_LVT_INTERRUPT_CMD_MSR        0x830
-#define APIC_LVT_TIMER_MSR                0x832
-#define APIC_LVT_THERMAL_SENSOR_MSR       0x833
-#define APIC_LVT_PERF_COUNTER_MSR         0x834
-#define APIC_LVT_LINT0_MSR                0x835
-#define APIC_LVT_LINT1_MSR                0x836
-#define APIC_LVT_ERROR_MSR                0x837
-#define APIC_INITIAL_COUNT_MSR            0x838
-#define APIC_CURRENT_COUNT_MSR            0x839
-#define APIC_DIVIDE_CONFIG_MSR            0x83E
-#define APIC_SELF_IPI_MSR                 0x83F
-
 //region acpi通用头
 typedef struct {
     CHAR8 signature[4];        // 表的签名，例如 "XSDT" "ACPI" "HPET" "MCFG"

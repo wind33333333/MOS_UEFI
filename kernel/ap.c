@@ -21,7 +21,7 @@ __attribute__((section(".init_text"))) void init_ap(void) {
 
     UINT32 eax,tmp;
     //eax=bit8-10投递模式init101 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
-    WRMSR(0xC4500,0,APIC_LVT_INTERRUPT_CMD_MSR);
+    WRMSR(0xC4500,0,APIC_INTERRUPT_COMMAND_MSR);
 
     tmp=0x5000;
     while (tmp !=0 )  //延时
@@ -29,7 +29,7 @@ __attribute__((section(".init_text"))) void init_ap(void) {
 
     //Start-up IPI bit0-7处理器启动实模式物理地址VV000的高两位 ，bit8-10投递模式start-up110 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
     eax=(ap_boot_loader_address>>12)&0xFF|0xC4600;
-    WRMSR(eax,0,APIC_LVT_INTERRUPT_CMD_MSR);
+    WRMSR(eax,0,APIC_INTERRUPT_COMMAND_MSR);
 
     tmp=0x5000;
     while (tmp !=0 )  //延时
