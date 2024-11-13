@@ -19,7 +19,7 @@ __attribute__((section(".init_text"))) void init_ap(void) {
     ap_rsp = (UINT64)LADDR_TO_HADDR(alloc_pages((cpu_info.logical_processors_number-1)*4));            //每个ap核分配16K栈
     map_pages((UINT64)HADDR_TO_LADDR(ap_rsp),ap_rsp,(cpu_info.logical_processors_number-1)*4,PAGE_ROOT_RW);
 
-    UINT32 eax,ecx,tmp;
+    UINT32 eax,tmp;
     //eax=bit8-10投递模式init101 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
     WRMSR(0xC4500,0,APIC_LVT_INTERRUPT_CMD_MSR);
 
