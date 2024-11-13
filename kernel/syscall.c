@@ -1,4 +1,5 @@
 #include "syscall.h"
+#include "cpu.h"
 
 __attribute__((section(".init_text"))) void init_syscall(void){
     //执行syscall指令时 CS=IA32_STAR[bit32-bit47]&0xFFFC  SS=IA32_STAR[bit32-bit47]&0xFFFC+8

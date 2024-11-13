@@ -27,7 +27,7 @@ ${BUILD}/kernel.bin: ${BUILD}/system
 ${BUILD}/system: ${BUILD}/head.o ${BUILD}/main.o ${BUILD}/printk.o ${BUILD}/interrupt.o ${BUILD}/page.o \
  				 ${BUILD}/ap.o ${BUILD}/idt.o ${BUILD}/acpi.o ${BUILD}/apic.o ${BUILD}/ioapic.o \
 				 ${BUILD}/memory.o ${BUILD}/gdt.o ${BUILD}/tss.o ${BUILD}/page.o ${BUILD}/cpu.o \
-				 ${BUILD}/hpet.o ${BUILD}/apboot.o
+				 ${BUILD}/hpet.o ${BUILD}/apboot.o ${BUILD}/syscall.o
 	ld -b elf64-x86-64 -z muldefs -o $@ $^ -T $(KERNEL)/Kernel.lds
 
 $(BUILD)/%.o: $(BUILD)/%.s
@@ -38,12 +38,6 @@ $(BUILD)/%.s: $(KERNEL)/%.S
 
 $(BUILD)/%.o: $(KERNEL)/%.c
 	gcc ${CFLAGS} -c $< -o $@
-
-#$(BUILD)/apboot.bin: $(KERNEL)/apboot.asm
-#	nasm $< -o $@
-#
-#$(BUILD)/apboot.o: $(BUILD)/apboot.bin
-#	objcopy --input binary --output elf64-x86-64 --binary-architecture i386 --rename-section .data=.apboot $< $@
 
 debug-bootloader: clean
 	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b DEBUG"
