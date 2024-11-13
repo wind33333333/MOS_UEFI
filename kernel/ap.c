@@ -35,7 +35,7 @@ __attribute__((section(".init_text"))) void init_ap(void) {
     while (tmp !=0 )  //延时
         tmp--;
 
-    WRMSR(eax,0,APIC_LVT_INTERRUPT_CMD_MSR);      //Start-up IPI
+    WRMSR(eax,0,APIC_INTERRUPT_COMMAND_MSR);      //Start-up IPI
 
     return;
 }
