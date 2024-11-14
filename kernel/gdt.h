@@ -35,18 +35,20 @@ extern gdt_ptr_t gdt_ptr;
 #define G           (1UL << 55)
 
 #define LGDT(GDT_PTR,CODE64_SEL,DATA64_SEL) \
-            do{                                             \
-                __asm__ __volatile__(                       \
-                        "lgdt       (%0)                \n\t"    \
-                        "pushq      %1                  \n\t"    \
-                        "leaq       1f(%%rip),%%rax     \n\t"    \
-                        "pushq      %%rax               \n\t"    \
-                        "lretq                          \n\t"    \
-                        "1:                             \n\t"    \
-                        "mov        %2,%%ss             \n\t"    \
-                        "mov        %2,%%ds             \n\t"    \
-                        "mov        %2,%%es             \n\t"    \
+                do{                                               \
+                    __asm__ __volatile__(                         \
+                        "lgdtq       (%0)                \n\t"    \
+                        "pushq       %1                  \n\t"    \
+                        "leaq        1f(%%rip),%%rax     \n\t"    \
+                        "pushq       %%rax               \n\t"    \
+                        "lretq                           \n\t"    \
+                        "1:                              \n\t"    \
+                        "movq        %2,%%ss             \n\t"    \
+                        "movq        %2,%%ds             \n\t"    \
+                        "movq        %2,%%es             \n\t"    \
+                        "movq        %2,%%gs             \n\t"    \
+                        "movq        %2,%%fs             \n\t"    \
                         ::"r"(&GDT_PTR),"r"(CODE64_SEL),"r"(DATA64_SEL):"%rax");  \
-            }while(0)
+                }while(0)
 
 #endif
