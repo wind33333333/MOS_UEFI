@@ -55,10 +55,10 @@ ap_code32:
 .code64
 .balign 4
 ap_code64:
-    movw        $DATA64_SEL,%ax
-    movw        %ax,%ss
-    movw        %ax,%ds
-    movw        %ax,%es
+    movq        $DATA64_SEL,%rax
+    movq        %rax,%ss
+    movq        %rax,%ds
+    movq        %rax,%es
 
     movl       $0xB,%eax
     movl       $1,%ecx
