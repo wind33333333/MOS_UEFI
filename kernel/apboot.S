@@ -6,6 +6,7 @@ _apboot_start:
     wbinvd
 
     movw    %cs,%ax
+    movw    %ax,%ss
     movw    %ax,%ds
     movw    %ax,%es
 
@@ -31,9 +32,10 @@ _apboot_start:
 .code32
 .balign 4
 ap_code32:
-    movw    $DATA32_SEL,%ax
-    movw    %ax,%ds
-    movw    %ax,%es
+    movl    $DATA32_SEL,%eax
+    movl    %eax,%ss
+    movl    %eax,%ds
+    movl    %eax,%es
 
     movl    %cr4,%eax
     orl     $0x20,%eax              # 设置 PAE 位 (bit 5)
