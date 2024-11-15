@@ -39,7 +39,7 @@ void init_cpu(void){
     __asm__ __volatile__(
             "movq   %1,%%r11    \n\t"
             "movq   %2,%%rsp    \n\t"
-            "sysretq            \n\t"
+            "sysret             \n\t"
             ::"c"(0x5000),"m"(rflags),"i"(0x7000):"memory");
 
     while(1);
@@ -52,6 +52,11 @@ void init_cpu(void){
 
 void user_program(void){
     __asm__ __volatile__(
+            "jmp    .             \n\t"
+            "movl   $0x23,%%eax   \n\t"
+            "movl   %%eax,%%ss    \n\t"
+            "movl   %%eax,%%ds    \n\t"
+            "jmp    .             \n\t"
             "syscall    \n\t"
             :::);
     while(1);

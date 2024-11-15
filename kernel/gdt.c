@@ -18,7 +18,7 @@ __attribute__((section(".init_text"))) void init_gdt(void) {
     *(gdt_ptr.base + 3) = CODE32_3;        /*3	USER	Code	32-bit	Segment	0x18*/
     *(gdt_ptr.base + 4) = DATA32_3;        /*4	USER	Data	32-bit	Segment	0x20*/
     *(gdt_ptr.base + 5) = CODE64_3;        /*5	USER	Code	64-bit	Segment	0x28*/
-//    *(gdt_ptr.base + 6) = DATA64_3;        /*6	USER	Data	64-bit	Segment	0x30*/
+    *(gdt_ptr.base + 6) = DATA64_3;        /*6	USER	Data	64-bit	Segment	0x30*/
 
     LGDT(gdt_ptr,0x8UL,0x10UL);     //加载新gdt
 
