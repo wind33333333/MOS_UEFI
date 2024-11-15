@@ -7,11 +7,11 @@ __attribute__((section(".init_text"))) void init_syscall(void){
     //执行sysret执行返回32位代码段时 CS=IA32_STAR_MSR[bit48-bit63]&0xFFFC|3  SS=IA32_STAR_MSR[bit48-bit63]&0xFFFC+8|3
     WRMSR(0,((0x18UL<<16)|0x8UL),IA32_STAR_MSR);
 
-    //RIP=IA32_LSTAR_MSR  64用户程序系统调用入口地址
-    WRMSR((UINT64)syscall_entry&0xFFFFFFFFUL,(UINT64)syscall_entry>>32,IA32_LSTAR_MSR);
+    //RIP=IA32_LSTAR_MSR  长模式系统调用入口地址
+    WRMSR((UINT64)long_mode_syscall_entry&0xFFFFFFFFUL,(UINT64)long_mode_syscall_entry>>32,IA32_LSTAR_MSR);
 
-    //RIP=IA32_CSTAR_MSR  32用户程序系统调用入口地址
-    WRMSR((UINT64)syscall_entry&0xFFFFFFFFUL,(UINT64)syscall_entry>>32,IA32_CSTAR_MSR);
+    //RIP=IA32_CSTAR_MSR  兼容模式系统调用入口地址
+    WRMSR((UINT64)compatible_mode_syscall_entry&0xFFFFFFFFUL,(UINT64)compatible_mode_syscall_entry>>32,IA32_CSTAR_MSR);
 
     //内核RFLAGS=~IA32_FMASK_MSR&RFLAGS  置1进入内核后屏蔽对应的RFLAGS
     WRMSR(0,0,IA32_FMASK_MSR);

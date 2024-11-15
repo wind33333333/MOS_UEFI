@@ -149,12 +149,47 @@ interrupt_entry:
 	addq	$0x10,	%rsp;
 	iretq;
 
-    /*系统调用入口*/
-.globl  syscall_entry
-syscall_entry:
+    /*长模式系统调用入口*/
+.globl  long_mode_syscall_entry
+long_mode_syscall_entry:
     //手动保存用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
-
     call    print_h
     jmp .
     //手动恢复用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
     sysretq
+
+    /*兼用模式系统调用入口*/
+.globl  compatible_mode_syscall_entry
+compatible_mode_syscall_entry:
+        //手动保存用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
+        call    print_h
+        jmp .
+        //手动恢复用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
+        sysretl
+
+
+
+    .code32
+    .globl  user_program
+    user_program:
+                movl   $0x23,%eax
+                movl   %eax,%ss
+                movl   %eax,%ds
+                movl   %eax,%es
+                movl   $0x6000,%edi
+                movl   %eax,(%edi)
+               # jmp    .
+               .byte 0x66
+                syscall
+
+        .code64
+        .globl  user_program1
+        user_program1:
+                    movq   $0x23,%rax
+                    movq   %rax,%ss
+                    movq   %rax,%ds
+                    movq   %rax,%es
+                    movq   $0x6000,%rdi
+                    movq   %rax,(%rdi)
+                   # jmp    .
+                    syscall
