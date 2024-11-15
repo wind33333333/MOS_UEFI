@@ -32,24 +32,8 @@ void init_cpu(void){
     memcpy(user_program,(void *)0x5000,4096);
     UINT64 rflags;
     __asm__ __volatile__(
-            "movl   $0x10,%%eax    \n\t"
-            "movl   %%eax,%%gs     \n\t"
-            "movl   %%eax,%%fs     \n\t"
             "pushfq                     \n\t"
             "pop        %%rax           \n\t"
-            "rdgsbase   %%rax           \n\t"
-            "movq       $0x5000,%%rax   \n\t"
-            "wrgsbase   %%rax           \n\t"
-            "movq       %%gs:(0),%%rbx    \n\t"
-            "rdgsbase   %%rbx           \n\t"
-            "swapgs                     \n\t"
-            "movq       $0x6000,%%rax   \n\t"
-            "wrgsbase   %%rax           \n\t"
-            "swapgs                     \n\t"
-            "rdfsbase   %%rax           \n\t"
-            "movq       $0x5000,%%rax   \n\t"
-            "wrfsbase   %%rax           \n\t"
-            "movq       %%fs:(0),%%rbx    \n\t"
             :"=a"(rflags)::"memory");
 
     __asm__ __volatile__(
