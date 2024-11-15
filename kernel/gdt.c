@@ -12,7 +12,7 @@ __attribute__((section(".init_text"))) void init_gdt(void) {
     map_pages(HADDR_TO_LADDR((UINT64)gdt_ptr.base),(UINT64)gdt_ptr.base,(gdt_ptr.limit + 1) >> PAGE_4K_SHIFT,PAGE_ROOT_RW);
     mem_set((void*)gdt_ptr.base,0,PAGE_4K_ALIGN(cpu_info.logical_processors_number * 16 + TSS_DESCRIPTOR_START_INDEX* 8));
 
-    *(gdt_ptr.base + 0) = 0;               /*0	NULL descriptor		       	00*/
+    *(gdt_ptr.base + 0) = 0;               /*0	NULL descriptor		           	0x00*/
     *(gdt_ptr.base + 1) = CODE64_0;        /*1	KERNEL	Code	64-bit	Segment	0x08*/
     *(gdt_ptr.base + 2) = DATA64_0;        /*2	KERNEL	Data	64-bit	Segment	0x10*/
     *(gdt_ptr.base + 3) = CODE32_3;        /*3	USER	Code	32-bit	Segment	0x18*/

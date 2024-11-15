@@ -18,6 +18,8 @@ extern gdt_ptr_t gdt_ptr;
 #define DATA64_0 (TYPE_DATA64 | DPL_0 | S | P)                       //ring0 64位数据段
 #define CODE64_3 (TYPE_CODE64 | DPL_3 | S | P | L)                   //ring3 64位代码段
 #define DATA64_3 (TYPE_DATA64 | DPL_3 | S | P)                       //ring3 64位数据段
+#define CODE32_0 (TYPE_CODE32 | DPL_0 | S | P | LIMIT_4G | DB | G)   //ring0 32位代码段
+#define DATA32_0 (TYPE_DATA32 | DPL_0 | S | P | LIMIT_4G | DB | G)   //ring0 32位数据段
 #define CODE32_3 (TYPE_CODE32 | DPL_3 | S | P | LIMIT_4G | DB | G)   //ring0 32位代码段
 #define DATA32_3 (TYPE_DATA32 | DPL_3 | S | P | LIMIT_4G | DB | G)   //ring0 32位数据段
 
