@@ -159,13 +159,13 @@ long_mode_syscall_entry:
     sysretq
 
     /*兼用模式系统调用入口*/
-.globl  compatible_mode_syscall_entry
-compatible_mode_syscall_entry:
+//.globl  compatible_mode_syscall_entry
+//compatible_mode_syscall_entry:
         //手动保存用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
-        call    print_h
-        jmp .
+//        call    print_h
+//        jmp .
         //手动恢复用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
-        sysretl
+//        sysretl
 
 
 
@@ -178,8 +178,15 @@ compatible_mode_syscall_entry:
                 movl   %eax,%es
                 movl   $0x6000,%edi
                 movl   %eax,(%edi)
-               # jmp    .
-               .byte 0x66
+
+                movl   $(longx641-user_program+0x5000),%eax
+                leal   (longx64-user_program+0x5000),%esi
+                movl    %eax,(%esi)
+                ljmp    *(longx64-user_program+0x5000)
+        longx64:
+                .long  0
+                .word  0x2B
+        longx641:
                 syscall
 
         .code64

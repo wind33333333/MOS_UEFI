@@ -11,7 +11,7 @@ __attribute__((section(".init_text"))) void init_syscall(void){
     WRMSR((UINT64)long_mode_syscall_entry&0xFFFFFFFFUL,(UINT64)long_mode_syscall_entry>>32,IA32_LSTAR_MSR);
 
     //RIP=IA32_CSTAR_MSR  兼容模式系统调用入口地址
-    WRMSR((UINT64)compatible_mode_syscall_entry&0xFFFFFFFFUL,(UINT64)compatible_mode_syscall_entry>>32,IA32_CSTAR_MSR);
+    //WRMSR((UINT64)compatible_mode_syscall_entry&0xFFFFFFFFUL,(UINT64)compatible_mode_syscall_entry>>32,IA32_CSTAR_MSR);
 
     //内核RFLAGS=~IA32_FMASK_MSR&RFLAGS  置1进入内核后屏蔽对应的RFLAGS
     WRMSR(0,0,IA32_FMASK_MSR);

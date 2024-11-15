@@ -13,10 +13,10 @@ _apboot_start:
     #重定位设置32位 和 64位代码指针 /gdt指针
     movzxw  %ax,%esi
     shll    $4,%esi
-    leal    (ap_code32-_apboot_start)(%esi),%eax
+    leal    (protected_mode-_apboot_start)(%esi),%eax
     movl    %eax,code32_ptr-_apboot_start
 
-    leal    (ap_code64-_apboot_start)(%esi),%eax
+    leal    (long_mode-_apboot_start)(%esi),%eax
     movl    %eax,code64_ptr-_apboot_start
 
     leal    (ap_gdt-_apboot_start)(%esi),%eax
@@ -31,7 +31,7 @@ _apboot_start:
 
 .code32
 .balign 4
-ap_code32:
+protected_mode:
     movl    $DATA32_SEL,%eax
     movl    %eax,%ss
     movl    %eax,%ds
@@ -56,7 +56,7 @@ ap_code32:
 
 .code64
 .balign 4
-ap_code64:
+long_mode:
     movq        $DATA64_SEL,%rax
     movq        %rax,%ss
     movq        %rax,%ds
