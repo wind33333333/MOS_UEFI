@@ -5,6 +5,9 @@
 void init_apic(void);
 void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt);
 
+#define IA32_APIC_BASE_MSR  0x1B
+#define IA32_TSC_DEADLINE                 0x6E0  //TSC-Deadline时间戳计数器截止寄存器
+
 #define APIC_ID_MSR                       0x802  // 本地APIC ID寄存器
 #define APIC_VERSION_MSR                  0x803  // 本地APIC版本寄存器
 #define APIC_TASK_PRIORITY_MSR            0x808  // 任务优先级寄存器
@@ -60,6 +63,10 @@ void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt);
 #define APIC_DIVIDE_CONFIG_MSR            0x83E  // 分频配置寄存器
 #define APIC_SELF_IPI_MSR                 0x83F  // 自发送IPI寄存器
 
+#define APIC_ONESHOT 0              //一次性定时模式
+#define APIC_PERIODIC  0x20000      //周期性定时模式
+#define APIC_TSC_DEADLINE 0x40000   //TSC截止期限模式
+
 //中断结束发送EOI
 #define EOI() \
         do {  \
@@ -97,9 +104,5 @@ void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt);
         "wrmsr                            \n\t" \
         ::"m"(TIME):"%rax","%rcx","%rdx"); \
         } while(0)
-
-#define APIC_ONESHOT 0              //一次性定时模式
-#define APIC_PERIODIC  0x20000      //周期性定时模式
-#define APIC_TSC_DEADLINE 0x40000   //TSC截止期限模式
 
 #endif
