@@ -5,7 +5,7 @@
 void init_apic(void);
 void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt);
 
-#define IA32_APIC_BASE_MSR  0x1B
+#define IA32_APIC_BASE_MSR                0x1B   // 本地APIC基地址寄存器（Local APIC Base Address Register）
 #define IA32_TSC_DEADLINE                 0x6E0  //TSC-Deadline时间戳计数器截止寄存器
 
 #define APIC_ID_MSR                       0x802  // 本地APIC ID寄存器

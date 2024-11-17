@@ -2,11 +2,11 @@
 #define _CPU_H
 #include "moslib.h"
 
-#define IA32_EFER_MSR       0xC0000080
-#define IA32_STAR_MSR       0xC0000081
-#define IA32_LSTAR_MSR      0xC0000082
-#define IA32_CSTAR_MSR      0xC0000083
-#define IA32_FMASK_MSR      0xC0000084
+#define IA32_EFER_MSR       0xC0000080   // 扩展功能寄存器（Extended Feature Enable Register）
+#define IA32_STAR_MSR       0xC0000081   // 系统调用目标寄存器（Segment Target Address Register）
+#define IA32_LSTAR_MSR      0xC0000082   // 64位系统调用入口寄存器（Long Mode System Call Target Address Register）
+#define IA32_CSTAR_MSR      0xC0000083   // 兼容模式系统调用入口寄存器（Compatibility Mode System Call Target Address Register）
+#define IA32_FMASK_MSR      0xC0000084   // 系统调用掩码寄存器（System Call Flag Mask Register）
 
 #define SET_CR0(VALUE) __asm__ __volatile__ ("movq   %0,%%cr0  \n\t" ::"r"((UINT64)VALUE):"memory")
 #define GET_CR0(VALUE) __asm__ __volatile__ ("movq   %%cr0,%0  \n\t" :"=r"((UINT64)VALUE)::"memory")
