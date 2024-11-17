@@ -7,8 +7,7 @@ _start:
     cli
     movq     %rdi,boot_info(%rip)           #保存loader通过rdi传递过来的boot_info指针
 
-    #初始化临时页表1G巨页
-    movq     $tmp_pml4t-HBASE_ADDR,%r8      #pml4t起始地址
+    movq     $tmp_pml4t-HBASE_ADDR,%r8      #pml4t起始地址      #初始化临时页表1G巨页
     movq     $2,%r9                         #pml4e数量 (1=512G)
 
     movq     %r8,%rax                       #pml4t递归映射
@@ -36,15 +35,13 @@ init_tmp_pdptt:
     addq     $0x40000000,%rax
     loopq    init_tmp_pdptt
 
-    #设置临时页表
-    movq     %r8,%cr3
+    movq     %r8,%cr3                         #设置临时页表
 
     movq     kernel_stack_top(%rip),%rsp
     addq     $0x4000,%rsp                     #初始化bsp核心栈，内核结束处+16K
     movq     %rsp,kernel_stack_top(%rip)
 
-    #切换到0xFFFF800000000000内核空间，进入C语言init_kernel
-    movabs     $init_kernel,%rax
+    movabs     $init_kernel,%rax              #切换到0xFFFF800000000000内核空间，进入C语言init_kernel
     jmp        *%rax
 
 #===============================内核初始化数据===========================================
