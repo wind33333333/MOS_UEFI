@@ -19,7 +19,8 @@
 #define XGETBV(EAX,EDX,ECX) __asm__ __volatile__("xgetbv \n\t" :"=a"(EAX),"=d"(EDX):"c"(ECX):"memory")
 #define WRMSR(ADDRESS,VALUE) __asm__ __volatile__("wrmsr \n\t" ::"a"(((UINT64)VALUE)&0xFFFFFFFFUL),"d"(((UINT64)VALUE)>>32),"c"((UINT32)ADDRESS):"memory")
 #define RDMSR(ADDRESS,VALUE) __asm__ __volatile__("rdmsr \n\t" "shlq $32,%%rdx \n\t" "orq %%rdx,%%rax \n\t" :"=a"(((UINT64)VALUE)):"c"((UINT32)ADDRESS):"memory")
-#define CPUID(OUT_EAX,OUT_EBX,OUT_ECX,OUT_EDX,IN_EAX,IN_ECX) __asm__ __volatile__("cpuid \n\t" :"=a"(OUT_EAX),"=b"(OUT_EBX),"=c"(OUT_ECX),"=d"(OUT_EDX):"a"(IN_EAX),"c"(IN_ECX):"memory")
+#define CPUID(IN_EAX,IN_ECX,OUT_EAX,OUT_EBX,OUT_ECX,OUT_EDX) __asm__ __volatile__("cpuid \n\t" :"=a"(OUT_EAX),"=b"(OUT_EBX),"=c"(OUT_ECX),"=d"(OUT_EDX):"a"(IN_EAX),"c"(IN_ECX):"memory")
+//#define CPUID(OUT_EAX,OUT_EBX,OUT_ECX,OUT_EDX,IN_EAX,IN_ECX) __asm__ __volatile__("cpuid \n\t" :"=a"(OUT_EAX),"=b"(OUT_EBX),"=c"(OUT_ECX),"=d"(OUT_EDX):"a"(IN_EAX),"c"(IN_ECX):"memory")
 
 void init_cpu(void);
 void init_cpu_amode(void);

@@ -14,7 +14,7 @@ cpu_info_t cpu_info;
 
 void init_cpu(void){
     UINT32 apic_id,cpu_id,tmp;
-    CPUID(tmp,tmp,tmp,apic_id,0xB,0x1);        //获取apic_ia
+    CPUID(0xB,0x1,tmp,tmp,tmp,apic_id);        //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
     init_cpu_amode();                          //初始化cpu开启高级功能
     get_cpu_info();                            //获取cpu信息
@@ -25,7 +25,7 @@ void init_cpu(void){
     init_apic();                               //初始化apic
     init_syscall();                            //初始化系统调用
 
-    UINT64 *user_progarm_address = alloc_pages(1);
+/*    UINT64 *user_progarm_address = alloc_pages(1);
     map_pages((UINT64)user_progarm_address,0x6000,1,PAGE_USER_RWX);
     user_progarm_address = alloc_pages(1);
     map_pages((UINT64)user_progarm_address,0x5000,1,PAGE_USER_RWX);
@@ -43,7 +43,7 @@ void init_cpu(void){
             "sysretl             \n\t"
             ::"c"(0x5000),"m"(rflags),"i"(0x7000):"memory");
 
-    while(1);
+    while(1);*/
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
     init_ap();                                 //初始化ap核
@@ -77,18 +77,18 @@ void print_h(void){
 __attribute__((section(".init_text"))) void get_cpu_info(void) {
     UINT32 eax,ebx,ecx,edx;
     // 获取CPU厂商
-    CPUID(*(UINT32*)&cpu_info.manufacturer_name[8],*(UINT32*)&cpu_info.manufacturer_name[0],*(UINT32*)&cpu_info.manufacturer_name[8],*(UINT32*)&cpu_info.manufacturer_name[4],0,0);
+    CPUID(0,0,*(UINT32*)&cpu_info.manufacturer_name[8],*(UINT32*)&cpu_info.manufacturer_name[0],*(UINT32*)&cpu_info.manufacturer_name[8],*(UINT32*)&cpu_info.manufacturer_name[4]);
 
     // 获取CPU型号
-    CPUID(*(UINT32*)&cpu_info.model_name[0],*(UINT32*)&cpu_info.model_name[4],*(UINT32*)&cpu_info.model_name[8],*(UINT32*)&cpu_info.model_name[12],0x80000002UL,0);
-    CPUID(*(UINT32*)&cpu_info.model_name[16],*(UINT32*)&cpu_info.model_name[20],*(UINT32*)&cpu_info.model_name[24],*(UINT32*)&cpu_info.model_name[28],0x80000003UL,0);
-    CPUID(*(UINT32*)&cpu_info.model_name[32],*(UINT32*)&cpu_info.model_name[36],*(UINT32*)&cpu_info.model_name[40],*(UINT32*)&cpu_info.model_name[44],0x80000004UL,0);
+    CPUID(0x80000002,0,*(UINT32*)&cpu_info.model_name[0],*(UINT32*)&cpu_info.model_name[4],*(UINT32*)&cpu_info.model_name[8],*(UINT32*)&cpu_info.model_name[12]);
+    CPUID(0x80000003,0,*(UINT32*)&cpu_info.model_name[16],*(UINT32*)&cpu_info.model_name[20],*(UINT32*)&cpu_info.model_name[24],*(UINT32*)&cpu_info.model_name[28]);
+    CPUID(0x80000004,0,*(UINT32*)&cpu_info.model_name[32],*(UINT32*)&cpu_info.model_name[36],*(UINT32*)&cpu_info.model_name[40],*(UINT32*)&cpu_info.model_name[44]);
 
     // 获取CPU频率
-    CPUID(cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,edx,0x16,0);
+    CPUID(0x16,0,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,edx);
 
     // 获取CPU TSC频率
-    CPUID(eax,ebx,ecx,edx,0x15,0);
+    CPUID(0x15,0,eax,ebx,ecx,edx);
     cpu_info.tsc_frequency = (ecx != 0) ? ebx*ecx/eax : 0;
 
     return;
@@ -132,7 +132,7 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
 //PKE（bit 22）描述：启用内存保护密钥功能。该功能允许程序在不修改页表的情况下控制内存的访问权限。用途：提供更灵活的内存保护机制，用于区分不同的内存访问权限。
 //endregion
     tmp=0;
-    CPUID(eax,ebx,ecx,edx,0x7,0);
+    CPUID(0x7,0,eax,ebx,ecx,edx);
     if(ecx & 4)
         tmp |= 0x800;       //bit11 UMIP
 
@@ -145,7 +145,7 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
 //    if(ebx & 0x100000)
 //        tmp |= 0x200000;    //bit21 SMAP
 
-    CPUID(eax,ebx,ecx,edx,0x1,0);
+    CPUID(0x1,0,eax,ebx,ecx,edx);
     if(ecx & 0x20)
         tmp |= 0x2000;      //bit13 VMXE
 
@@ -166,7 +166,7 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
 //BNDCSR（bit 6）：描述：控制 MPX 的 BNDCSR 状态的保存与恢复。BNDCSR 用于管理 MPX 的边界检查寄存器。用途：启用该位后，处理器会保存和恢复 MPX 边界检查的控制状态。
 //PKRU（bit 8）：描述：控制 PKRU 状态的保存与恢复。PKRU（Protection Keys for Userspace）是内存保护的一种机制。用途：启用该位后，处理器会保存和恢复与 PKRU 相关的状态.
 //endregion
-    CPUID(eax,ebx,ecx,edx,0x7,0x0);
+    CPUID(0x7,0x0,eax,ebx,ecx,edx);
     tmp=(ebx & 0x10000) ? 0xE7 : 0x7;   //AVX512=0xE7 AVX256=0x7
     XGETBV(eax,edx,0);
     eax |= tmp;
