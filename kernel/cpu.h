@@ -24,8 +24,6 @@
 void init_cpu(void);
 void init_cpu_amode(void);
 void get_cpu_info(void);
-void print_h(void);
-void user_program(void);
 
 typedef struct {
     CHAR8 manufacturer_name[13];

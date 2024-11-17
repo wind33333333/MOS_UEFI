@@ -1,8 +1,7 @@
 .section .init_text,"ax"
-#实模式
 .code16
 .globl _apboot_start
-_apboot_start:
+_apboot_start:          #实模式
     cli
     wbinvd
 
@@ -11,8 +10,7 @@ _apboot_start:
     movw    %ax,%ds
     movw    %ax,%es
 
-    #重定位设置32位 和 64位代码指针 /gdt指针
-    movzxw  %ax,%esi
+    movzxw  %ax,%esi                #重定位设置32位 和 64位代码指针 /gdt指针
     shll    $4,%esi
     leal    (protected_mode-_apboot_start)(%esi),%eax
     movl    %eax,code32_ptr-_apboot_start
@@ -30,9 +28,8 @@ _apboot_start:
     movl    %eax,%cr0                        # 写回 CR0，开启保护模式
     ljmpl   *(code32_ptr - _apboot_start)    # 远跳转到保护模式
 
-#保护模式
 .code32
-protected_mode:
+protected_mode:         #保护模式
     movl    $DATA32_SEL,%eax
     movl    %eax,%ss
     movl    %eax,%ds
@@ -55,9 +52,8 @@ protected_mode:
     movl    %eax,%cr0
     ljmp   *(code64_ptr-_apboot_start)(%esi)    #跳入长模式
 
-#长模式
 .code64
-long_mode:
+long_mode:                  #长模式
     movq        $DATA64_SEL,%rax
     movq        %rax,%ss
     movq        %rax,%ds

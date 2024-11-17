@@ -24,53 +24,10 @@ void init_cpu(void){
     init_idt();                                //初始化IDT
     init_apic();                               //初始化apic
     init_syscall();                            //初始化系统调用
-
-    UINT64 *user_progarm_address = alloc_pages(1);
-    map_pages((UINT64)user_progarm_address,0x6000,1,PAGE_USER_RWX);
-    user_progarm_address = alloc_pages(1);
-    map_pages((UINT64)user_progarm_address,0x5000,1,PAGE_USER_RWX);
-    memcpy(user_program,(void *)0x5000,4096);
-    UINT64 rflags;
-    __asm__ __volatile__(
-            "pushfq                     \n\t"
-            "pop        %%rax           \n\t"
-            :"=a"(rflags)::"memory");
-
-    __asm__ __volatile__(
-            "movq   %1,%%r11    \n\t"
-            "movq   %2,%%rsp    \n\t"
-            //"sysretq             \n\t"
-            "sysretl             \n\t"
-            ::"c"(0x5000),"m"(rflags),"i"(0x7000):"memory");
-
-    while(1);
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
     init_ap();                                 //初始化ap核
     color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);
-    return;
-}
-
-//void user_program(void){
-//    __asm__ __volatile__(
-//            "jmp    .             \n\t"
-//            "movl   $0x23,%%eax   \n\t"
-//            "movl   %%eax,%%ss    \n\t"
-//            "movl   %%eax,%%ds    \n\t"
-//            "jmp    .             \n\t"
-//            "syscall    \n\t"
-//            :::);
-//    while(1);
-//    return;
-//}
-
-void print_h(void){
-        __asm__ __volatile__(
-            "movq   %%ss,%%rax    \n\t"
-            "movq   %%rax,%%es    \n\t"
-            "movq   %%rax,%%ds    \n\t"
-            :::);
-    color_printk(BLUE,BLACK,"hello word system call!");
     return;
 }
 
