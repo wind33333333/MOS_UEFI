@@ -168,9 +168,9 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
 //endregion
     CPUID(0x7,0x0,eax,ebx,ecx,edx);
     tmp=(ebx & 0x10000) ? 0xE7 : 0x7;   //AVX512=0xE7 AVX256=0x7
-    XGETBV(eax,edx,0);
-    eax |= tmp;
-    XSETBV(eax,edx,0);
+    XGETBV(0,value);
+    value |= tmp;
+    XSETBV(0,value);
 
 //region IA32_EFER_MSR 寄存器（MSR 0xC0000080)
 //SCE（bit 0） 1:启用 SYSCALL 和 SYSRET 指令。
