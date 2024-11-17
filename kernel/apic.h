@@ -67,6 +67,8 @@ void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt);
 #define APIC_PERIODIC  0x20000      //周期性定时模式
 #define APIC_TSC_DEADLINE 0x40000   //TSC截止期限模式
 
+#define RDTSCP(APIC_ID,TIMESTAMP) __asm__ __volatile__("rdtscp \n\t" "shlq $32,%%rdx \n\t" "orq %%rdx,%%rax \n\t" :"=a"((UINT64)TIMESTAMP),"=c"((UINT32)APIC_ID)::"memory")
+
 //中断结束发送EOI
 #define EOI() \
         do {  \

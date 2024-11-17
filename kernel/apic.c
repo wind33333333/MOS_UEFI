@@ -47,31 +47,17 @@ void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt){
     WRMSR(APIC_LVT_TIMER_MSR,model | ivt);
 
     if(model == APIC_TSC_DEADLINE){
-        __asm__ __volatile__(
-         "rdtscp                    \n\t"
-         "shl $32,%%rdx             \n\t"
-         "or %%rdx,%%rax            \n\t"
-         "add %0,%%rax              \n\t"
-         "mov %%rax,%%rdx           \n\t"
-         "mov $0xFFFFFFFF,%%rcx     \n\t"
-         "and %%rcx,%%rax           \n\t"
-         "shr $32,%%rdx             \n\t"
-         "mov $0x6E0,%%ecx          \n\t"   /*IA32_TSC_DEADLINE寄存器 TSC-Deadline定时模式 */
-         "wrmsr                     \n\t"
-          ::"m"(time):"%rax","%rcx","%rdx");
+        UINT32 tmp;
+        UINT64 timestamp;
+        RDTSCP(tmp,timestamp);
+        timestamp += time;
+        WRMSR(IA32_TSC_DEADLINE,timestamp);
+    } else {
+        //分频配置寄存器 bit0 bit1 bit3 0:2 1:4 2:8 3:16 8:32 9:64 0xA:128 0xB:1
+        WRMSR(APIC_DIVIDE_CONFIG_MSR, 0xA);
 
-    } else{
-        __asm__ __volatile__(
-         "xorl   %%edx,%%edx     \n\t"
-         "movl   $0xA,%%eax      \n\t"        /* bit0 bit1 bit3 0:2 1:4 2:8 3:16 8:32 9:64 0xA:128 0xB:1*/
-         "movl   $0x83E,%%ecx    \n\t"        /*分频器寄存器*/
-         "wrmsr                  \n\t"
-
-         "mov   %0,%%eax         \n\t"
-         "xor   %%rdx ,%%rdx     \n\t"
-         "mov   $0x838,%%ecx     \n\t"        /*定时器计数器寄存器*/
-         "wrmsr                  \n\t"
-         ::"m"(time):"%rax","%rcx","%rdx");
+        //初始计数寄存器
+        WRMSR(APIC_INITIAL_COUNT_MSR, time);
     }
 
     return;
