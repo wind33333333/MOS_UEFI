@@ -1,4 +1,5 @@
 .section .init_text,"ax"
+#实模式
 .code16
 .globl _apboot_start
 _apboot_start:
@@ -27,10 +28,10 @@ _apboot_start:
     movl    %cr0,%eax                        # 读取 CR0
     orl     $1,%eax                          # 设置 PE 位 (bit 0)
     movl    %eax,%cr0                        # 写回 CR0，开启保护模式
-    ljmpl   *(code32_ptr - _apboot_start)    # 远跳转到 32 位代码
+    ljmpl   *(code32_ptr - _apboot_start)    # 远跳转到保护模式
 
+#保护模式
 .code32
-.balign 4
 protected_mode:
     movl    $DATA32_SEL,%eax
     movl    %eax,%ss
@@ -52,10 +53,10 @@ protected_mode:
     movl    %cr0,%eax
     orl     $0x80000001,%eax        # 设置 PG (Paging) 和 PE (Protected Mode) 位
     movl    %eax,%cr0
-    ljmp   *(code64_ptr-_apboot_start)(%esi)
+    ljmp   *(code64_ptr-_apboot_start)(%esi)    #跳入长模式
 
+#长模式
 .code64
-.balign 4
 long_mode:
     movq        $DATA64_SEL,%rax
     movq        %rax,%ss
@@ -86,7 +87,7 @@ j_apic_id:
     movabs      $ap_main,%rax
     jmp         *%rax                           #ap_main
 
-.balign 4
+.balign 8
 ap_gdt:
                     .quad 0                        # 保留项
     code32_desc:    .quad 0x00CF9A000000FFFF
@@ -95,7 +96,7 @@ ap_gdt:
     data64_desc:    .quad 0x0000920000000000
 ap_gdt_end:
 
-.balign 4
+.balign 8
 ap_gdt_ptr:
     .word    ap_gdt_end - ap_gdt - 1
     .long    0
@@ -105,12 +106,12 @@ ap_gdt_ptr:
     .equ CODE64_SEL,code64_desc - ap_gdt
     .equ DATA64_SEL,data64_desc - ap_gdt
 
-.balign 4
+.balign 8
 code32_ptr:
     .long   0
     .word   CODE32_SEL
 
-.balign 4
+.balign 8
 code64_ptr:
     .long   0
     .word   CODE64_SEL

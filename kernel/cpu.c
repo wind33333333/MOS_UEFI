@@ -25,7 +25,7 @@ void init_cpu(void){
     init_apic();                               //初始化apic
     init_syscall();                            //初始化系统调用
 
-/*    UINT64 *user_progarm_address = alloc_pages(1);
+    UINT64 *user_progarm_address = alloc_pages(1);
     map_pages((UINT64)user_progarm_address,0x6000,1,PAGE_USER_RWX);
     user_progarm_address = alloc_pages(1);
     map_pages((UINT64)user_progarm_address,0x5000,1,PAGE_USER_RWX);
@@ -43,7 +43,7 @@ void init_cpu(void){
             "sysretl             \n\t"
             ::"c"(0x5000),"m"(rflags),"i"(0x7000):"memory");
 
-    while(1);*/
+    while(1);
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
     init_ap();                                 //初始化ap核
