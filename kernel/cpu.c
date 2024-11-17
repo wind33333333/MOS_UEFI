@@ -104,9 +104,9 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
 //BSP（bit 9）：作用：标记该处理器是否是系统的启动处理器（BSP）。系统启动时，BSP 是首先执行初始化代码的 CPU，其它处理器是 AP（Application Processors，应用处理器）。
 //APIC Base Address（bit 12-31）：作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
 ////endregion
-    RDMSR(eax,edx,IA32_APIC_BASE_MSR);
-    eax |= 0xC00;                        //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
-    WRMSR(eax,edx,IA32_APIC_BASE_MSR);
+    RDMSR(IA32_APIC_BASE_MSR,value);
+    value |= 0xC00;                        //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
+    WRMSR(IA32_APIC_BASE_MSR,value);
 
 //region CR4 寄存器
 //VME（bit 0） 描述：启用虚拟 8086 模式的扩展功能，允许在虚拟 8086 模式中支持虚拟中断。用途：用于实现虚拟机监控或虚拟 8086 环境中的精细中断控制。
@@ -177,9 +177,9 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
 //LME（bit 8） 1:启用 64 位长模式。当该位被设置为 1 时，处理器允许进入 64 位模式。在启用长模式时，CR0.PG（分页启用位）和 CR4.PAE（物理地址扩展启用位）也必须设置。
 //NXE（bit 11）1:sfdsfs启用 NX（No-eXecute） 位功能。NX 位用于控制某些内存页面的执行权限。如果该位被设置为 1，操作系统可以使用分页机制将特定的内存页面标记为不可执行，以防止执行非代码数据，如栈或堆内存，防止某些缓冲区溢出攻击。
 //endregion
-    RDMSR(eax,edx,IA32_EFER_MSR);
-    eax |= 0x801;
-    WRMSR(eax,edx,IA32_EFER_MSR);
+    RDMSR(IA32_EFER_MSR,value);
+    value |= 0x801;
+    WRMSR(IA32_EFER_MSR,value);
 
 //region CR0寄存器
 //PE（位 0）：1：启用保护模式，使得 CPU 能使用分段和分页机制。0：CPU 处于实模式，仅支持基础的内存访问。

@@ -19,23 +19,22 @@ __attribute__((section(".init_text"))) void init_ap(void) {
     ap_rsp = (UINT64)LADDR_TO_HADDR(alloc_pages((cpu_info.logical_processors_number-1)*4));            //每个ap核分配16K栈
     map_pages((UINT64)HADDR_TO_LADDR(ap_rsp),ap_rsp,(cpu_info.logical_processors_number-1)*4,PAGE_ROOT_RW);
 
-    UINT32 eax,tmp;
-    //eax=bit8-10投递模式init101 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
-    WRMSR(0xC4500,0,APIC_INTERRUPT_COMMAND_MSR);
+    UINT32 counter;
+    //bit8-10投递模式init101 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
+    WRMSR(APIC_INTERRUPT_COMMAND_MSR,0xC4500);
 
-    tmp=0x5000;
-    while (tmp !=0 )  //延时
-        tmp--;
+    counter=0x5000;
+    while (counter !=0 )  //延时
+        counter--;
 
     //Start-up IPI bit0-7处理器启动实模式物理地址VV000的高两位 ，bit8-10投递模式start-up110 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
-    eax=(ap_boot_loader_address>>12)&0xFF|0xC4600;
-    WRMSR(eax,0,APIC_INTERRUPT_COMMAND_MSR);
+    WRMSR(APIC_INTERRUPT_COMMAND_MSR,(ap_boot_loader_address>>12)&0xFF|0xC4600);
 
-    tmp=0x5000;
-    while (tmp !=0 )  //延时
-        tmp--;
+    counter=0x5000;
+    while (counter !=0 )  //延时
+        counter--;
 
-    WRMSR(eax,0,APIC_INTERRUPT_COMMAND_MSR);      //Start-up IPI
+    WRMSR(APIC_INTERRUPT_COMMAND_MSR,(ap_boot_loader_address>>12)&0xFF|0xC4600);      //Start-up IPI
 
     return;
 }
