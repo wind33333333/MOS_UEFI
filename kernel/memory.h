@@ -71,13 +71,13 @@ extern global_memory_descriptor_t memory_management;
 #define PAGE_RW     1UL<<1
 #define PAGE_P      1UL<<0
 
+#define PAGE_UC     (PAGE_PCD | PAGE_PWT)           //设备寄存器，要求严格顺序的内存映射 I/O
+#define PAGE_WC     (PAGE_PAT | PAGE_RW | PAGE_P)   //写组合，聚合写入操作，优化写入性能 适合视频内存等批量写入场景
 
-#define PAGE_ROOT_UC     (PAGE_NX | PAGE_G | PAGE_PAT | PAGE_PCD | PAGE_PWT | PAGE_RW | PAGE_P)       //可读可写 内存不可缓存，对设备内存IO映射非常有用
-#define PAGE_ROOT_WC     (PAGE_NX | PAGE_G | PAGE_PAT | PAGE_RW | PAGE_P)                             //写组合，聚合写入操作，优化写入性能 适合视频内存等批量写入场景
-#define PAGE_ROOT_R      (PAGE_NX | PAGE_G | PAGE_PAT | PAGE_P)                                       //只读
-#define PAGE_ROOT_RW     (PAGE_NX | PAGE_G | PAGE_PAT | PAGE_RW |PAGE_P)                              //可读可写 内存写回，对普通内存映射非常有用
-#define PAGE_ROOT_RX     (PAGE_G | PAGE_PAT | PAGE_P)                                                 //只读可执行
-#define PAGE_ROOT_RWX    (PAGE_G | PAGE_PAT | PAGE_RW |PAGE_P)                                        //可读可写可执行
+#define PAGE_ROOT_RWX    (PAGE_G | PAGE_RW |PAGE_P)             //可读-可写-可执行
+#define PAGE_ROOT_RX     (PAGE_G | PAGE_P)                      //可读-可执行
+#define PAGE_ROOT_RW     (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P)   //可读-可写
+#define PAGE_ROOT_R      (PAGE_NX | PAGE_G | PAGE_P)            //可读
 
 #define PAGE_USER_R      (PAGE_NX | PAGE_PAT | PAGE_US | PAGE_P)                      //只读
 #define PAGE_USER_RW     (PAGE_NX | PAGE_PAT | PAGE_US | PAGE_RW | PAGE_P)            //可读可写
