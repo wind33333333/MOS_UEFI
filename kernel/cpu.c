@@ -99,8 +99,8 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
     if(ebx & 0x80)
         tmp |= 0x100000;    //bit20 SMEP
 
-//    if(ebx & 0x100000)
-//        tmp |= 0x200000;    //bit21 SMAP
+    if(ebx & 0x100000)
+        tmp |= 0x200000;    //bit21 SMAP
 
     CPUID(0x1,0,eax,ebx,ecx,edx);
     if(ecx & 0x20)

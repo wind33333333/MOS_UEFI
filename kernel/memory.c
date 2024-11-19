@@ -206,8 +206,7 @@ void map_pages(UINT64 paddr, UINT64 vir_addr, UINT64 page_number, UINT64 attr) {
     for (UINT64 i = 0; i < 3; i++) {
         for (UINT64 j = 0; j < nums[i]; j++) {
             if (table_bases[i][(offset >> level_offsets[i]) + j] == 0) {
-                table_bases[i][(offset >> level_offsets[i]) + j] =
-                        (UINT64) alloc_pages(1) | (attr & 0x3F | PAGE_RW);
+                table_bases[i][(offset >> level_offsets[i]) + j] =(UINT64)alloc_pages(1) | (attr&(PAGE_US|PAGE_P|PAGE_RW)|PAGE_RW);
                 mem_set(&table_bases[i + 1][(offset >> level_offsets[i] << 9) + j * 512], 0x0, 4096);
             }
         }

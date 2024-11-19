@@ -29,6 +29,7 @@ __attribute__((section(".init_text"))) void init_page(void) {
         pml4t_vbase[i] = pml4_bak[i];           //还原PML4E
     }
     pml4t[511] = HADDR_TO_LADDR((UINT64)pml4t|0x3);     //递归映射
+    //pml4t[511] = HADDR_TO_LADDR((UINT64)pml4t|0x103);     //递归映射G
 
     SET_CR3(HADDR_TO_LADDR(pml4t));
 

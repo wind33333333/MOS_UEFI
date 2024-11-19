@@ -73,6 +73,7 @@ extern global_memory_descriptor_t memory_management;
 
 
 #define PAGE_ROOT_UC     (PAGE_NX | PAGE_G | PAGE_PAT | PAGE_PCD | PAGE_PWT | PAGE_RW | PAGE_P)       //可读可写 内存不可缓存，对设备内存IO映射非常有用
+#define PAGE_ROOT_WC     (PAGE_NX | PAGE_G | PAGE_PAT | PAGE_RW | PAGE_P)                             //写组合，聚合写入操作，优化写入性能 适合视频内存等批量写入场景
 #define PAGE_ROOT_R      (PAGE_NX | PAGE_G | PAGE_PAT | PAGE_P)                                       //只读
 #define PAGE_ROOT_RW     (PAGE_NX | PAGE_G | PAGE_PAT | PAGE_RW |PAGE_P)                              //可读可写 内存写回，对普通内存映射非常有用
 #define PAGE_ROOT_RX     (PAGE_G | PAGE_PAT | PAGE_P)                                                 //只读可执行
