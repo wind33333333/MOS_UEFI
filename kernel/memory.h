@@ -71,8 +71,12 @@ extern global_memory_descriptor_t memory_management;
 #define PAGE_RW     1UL<<1
 #define PAGE_P      1UL<<0
 
-#define PAGE_UC     (PAGE_PCD | PAGE_PWT)           //设备寄存器，要求严格顺序的内存映射 I/O
-#define PAGE_WC     (PAGE_PAT | PAGE_RW | PAGE_P)   //写组合，聚合写入操作，优化写入性能 适合视频内存等批量写入场景
+#define PAGE_WB     0                               //回写
+#define PAGE_WT     (PAGE_PWT)                      //写通
+#define PAGE_UC_    (PAGE_PCD)                      //部分不可缓存
+#define PAGE_UC     (PAGE_PCD | PAGE_PWT)           //不可缓存，要求严格顺序的内存映射 I/O
+#define PAGE_WC     (PAGE_PAT)                      //写合并，聚合写入操作，优化写入性能 适合视频内存等批量写入场景
+#define PAGE_WP     (PAGE_PAT|PAGE_PWT)             //读操作先访问缓存，写操作扩散到所有处理器
 
 #define PAGE_ROOT_RWX    (PAGE_G | PAGE_RW |PAGE_P)             //可读-可写-可执行
 #define PAGE_ROOT_RX     (PAGE_G | PAGE_P)                      //可读-可执行

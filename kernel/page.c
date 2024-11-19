@@ -29,13 +29,12 @@ __attribute__((section(".init_text"))) void init_page(void) {
         pml4t_vbase[i] = pml4_bak[i];           //还原PML4E
     }
     pml4t[511] = HADDR_TO_LADDR((UINT64)pml4t|0x3);     //递归映射
-    //pml4t[511] = HADDR_TO_LADDR((UINT64)pml4t|0x103);     //递归映射G
 
     SET_CR3(HADDR_TO_LADDR(pml4t));
 
     map_pages(HADDR_TO_LADDR(Pos.FB_addr), (UINT64)Pos.FB_addr, Pos.FB_length / 4096, PAGE_ROOT_RW);
-    map_pages(HADDR_TO_LADDR(ioapic_baseaddr), (UINT64) ioapic_baseaddr, 1,PAGE_ROOT_UC);
-    map_pages(HADDR_TO_LADDR(hpet.address), hpet.address, 1, PAGE_ROOT_UC);
+    map_pages(HADDR_TO_LADDR(ioapic_baseaddr), (UINT64) ioapic_baseaddr, 1,PAGE_ROOT_RW|PAGE_UC);
+    map_pages(HADDR_TO_LADDR(hpet.address), hpet.address, 1, PAGE_ROOT_RW|PAGE_UC);
     map_pages(HADDR_TO_LADDR(apic_id_table),(UINT64)apic_id_table,PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2)>>PAGE_4K_SHIFT,PAGE_ROOT_RW);
 
     return;
