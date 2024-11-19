@@ -17,12 +17,6 @@ void init_cpu(void){
     CPUID(0xB,0x1,tmp,tmp,tmp,apic_id);        //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
     init_cpu_amode();                          //初始化cpu开启高级功能
-
-    UINT64 i;
-    WRMSR(0x277,0x50100070406);
-    RDMSR(0x277,i);
-
-
     get_cpu_info();                            //获取cpu信息
     init_page();                               //初始化内核页表
     init_gdt();                                //初始化GDT
