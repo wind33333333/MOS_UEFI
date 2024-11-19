@@ -30,7 +30,7 @@ __attribute__((section(".init_text"))) void init_page(void) {
     }
     pml4t[511] = HADDR_TO_LADDR((UINT64)pml4t|0x3);     //递归映射
 
-    SET_CR3(HADDR_TO_LADDR(pml4t));   //老dell切换页表系统奔溃
+    SET_CR3(HADDR_TO_LADDR(pml4t));
 
     map_pages(HADDR_TO_LADDR(Pos.FB_addr), (UINT64)Pos.FB_addr, Pos.FB_length / 4096, PAGE_ROOT_RW);
     map_pages(HADDR_TO_LADDR(ioapic_baseaddr), (UINT64) ioapic_baseaddr, 1,PAGE_ROOT_UC);
