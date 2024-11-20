@@ -2,9 +2,8 @@
 
 EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* SystemTable){
 
-//    CpuBreakpoint();
+    //CpuBreakpoint();
     EFI_STATUS Status;
-
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
     SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE); //显示光标
 
@@ -168,11 +167,12 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
     gBS->AllocatePool(EfiLoaderData,MemMapSize,(VOID**)&MemMap);
     gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
+    gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
 /*    for(UINT32 i = 0; i< MemMapSize / DescriptorSize; i++){
         EFI_MEMORY_DESCRIPTOR* MMap = (EFI_MEMORY_DESCRIPTOR*) (((CHAR8*)MemMap) + i * DescriptorSize);
         Print(L"%3d Type:%2d   Addr:0X%016lx   Length:0X%016lx\n",i,MMap->Type,MMap->PhysicalStart,MMap->NumberOfPages << 12);
-    }*/
-    gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
+    }
+    gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);*/
     BootInfo->MemMap=MemMap;
     BootInfo->MemMapSize=MemMapSize;
     BootInfo->MemDescriptorSize=DescriptorSize;
