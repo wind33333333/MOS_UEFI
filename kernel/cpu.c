@@ -156,8 +156,19 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
     value |= 0x10002;
     SET_CR0(value);
 
-    //IA32_MTRR_MSR(0x277)   内存缓存模式配置寄存器
-    WRMSR(IA32_MTRR_MSR,0x50100070406);
+    //region IA32_PAT(0x277) 内存缓存模式配置寄存器
+    //IA32_PAT是一个64位寄存器，其中包含8个8位的字段，每个字段定义一种缓存类型。格式如下：
+    //PAT7[bit56-bit63] PAT6[bit48-bit55] PAT5[bit40-bit47]	PAT4[bit32-bit39]
+    //PAT3[bit24-bit31]	PAT2[bit16-bit23] PAT1[bit0-bit15] PAT0[bit0-bit7]
+    //每个字段的值定义以下缓存策略：
+    //0x0: UC（Uncacheable，不缓存）
+    //0x1: WC（Write Combining，写合并）
+    //0x4: WT（Write Through，直写）
+    //0x5: WP（读操作先访问缓存，写操作扩散到所有处理器）
+    //0x6: WB（Write Back，回写）
+    //0x7: UC-（Uncacheable，不缓存，弱UC）
+    //endregion
+    WRMSR(IA32_PAT,0x50100070406);
 
     return;
 }
