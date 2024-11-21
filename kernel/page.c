@@ -21,7 +21,7 @@ __attribute__((section(".init_text"))) void init_page(void) {
         pml4t_vbase[i] = 0x0UL;        //清除PML4E
     }
 
-    map_pages(0, 0, HADDR_TO_LADDR(memory_management.kernel_end_address) / 4096, PAGE_ROOT_RWX);
+    map_pages(0, 0, HADDR_TO_LADDR(memory_management.kernel_end_address) / 4096, PAGE_ROOT_RWX | PAGE_WB);
 
     for (UINT32 i = 0; i < pml4e_num; i++) {
         //pml4t[i] = pml4t_vbase[i];            //修改正式内核PML4T 低
