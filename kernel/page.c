@@ -21,7 +21,7 @@ __attribute__((section(".init_text"))) void init_page(void) {
         pml4t_vbase[i] = 0x0UL;        //清除PML4E
     }
 
-    map_pages(0, 0, HADDR_TO_LADDR(memory_management.kernel_end_address) / 4096, PAGE_ROOT_RWX | PAGE_WB);
+    map_pages(0, 0, HADDR_TO_LADDR(memory_management.kernel_end_address) / 4096, PAGE_ROOT_RWX);
 
     for (UINT32 i = 0; i < pml4e_num; i++) {
         //pml4t[i] = pml4t_vbase[i];            //修改正式内核PML4T 低
@@ -32,10 +32,10 @@ __attribute__((section(".init_text"))) void init_page(void) {
 
     SET_CR3(HADDR_TO_LADDR(pml4t));
 
-    map_pages(HADDR_TO_LADDR(Pos.FB_addr), (UINT64)Pos.FB_addr, Pos.FB_length / 4096, PAGE_ROOT_RW|PAGE_WB);
-    map_pages(HADDR_TO_LADDR(ioapic_baseaddr), (UINT64) ioapic_baseaddr, 1,PAGE_ROOT_RW|PAGE_UC);
-    map_pages(HADDR_TO_LADDR(hpet.address), hpet.address, 1, PAGE_ROOT_RW|PAGE_UC);
-    map_pages(HADDR_TO_LADDR(apic_id_table),(UINT64)apic_id_table,PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2)>>PAGE_4K_SHIFT,PAGE_ROOT_RW|PAGE_WB);
+    map_pages(HADDR_TO_LADDR(Pos.FB_addr), (UINT64)Pos.FB_addr, Pos.FB_length / 4096, PAGE_ROOT_RW_WC);
+    map_pages(HADDR_TO_LADDR(ioapic_baseaddr), (UINT64) ioapic_baseaddr, 1,PAGE_ROOT_RW_UC);
+    map_pages(HADDR_TO_LADDR(hpet.address), hpet.address, 1, PAGE_ROOT_RW_UC);
+    map_pages(HADDR_TO_LADDR(apic_id_table),(UINT64)apic_id_table,PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2)>>PAGE_4K_SHIFT,PAGE_ROOT_RW_UC);
 
     return;
 }
