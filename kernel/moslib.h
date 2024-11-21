@@ -37,11 +37,11 @@ typedef long long INT64;
     (type *)((UINT64)p - (UINT64)&(((type *)0)->member));        \
 })
 
-#define STI()        __asm__ __volatile__ ("sti	\n\t":::"memory")
-#define CLI()        __asm__ __volatile__ ("cli	\n\t":::"memory")
-#define STAC()        __asm__ __volatile__ ("stac	\n\t":::"memory")
-#define CLAC()        __asm__ __volatile__ ("clac	\n\t":::"memory")
-#define PAUSE()       __asm__ __volatile__ ("pause	\n\t":::"memory")
+#define STI()       __asm__ __volatile__ ("sti	\n\t":::"memory")
+#define CLI()       __asm__ __volatile__ ("cli	\n\t":::"memory")
+#define STAC()      __asm__ __volatile__ ("stac	\n\t":::"memory")
+#define CLAC()      __asm__ __volatile__ ("clac	\n\t":::"memory")
+#define PAUSE()     __asm__ __volatile__ ("pause	\n\t":::"memory")
 #define MFENCE()    __asm__ __volatile__ ("mfence	\n\t":::"memory")
 #define SFENCE()    __asm__ __volatile__ ("sfence	\n\t":::"memory")
 #define LFENCE()    __asm__ __volatile__ ("lfence	\n\t":::"memory")
