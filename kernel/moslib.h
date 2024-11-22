@@ -40,7 +40,7 @@ typedef long long INT64;
 #define SFENCE()    __asm__ __volatile__ ("sfence	\n\t":::"memory")
 #define LFENCE()    __asm__ __volatile__ ("lfence	\n\t":::"memory")
 
-void *memcpy(void *From, void *To, long Num) {
+static inline void *memcpy(void *From, void *To, long Num) {
     int d0, d1, d2;
     __asm__ __volatile__    (    "cld	\n\t"
                                  "rep	\n\t"
@@ -62,7 +62,7 @@ void *memcpy(void *From, void *To, long Num) {
     return To;
 }
 
-int memcmp(void *FirstPart, void *SecondPart, long Count) {
+static inline int memcmp(void *FirstPart, void *SecondPart, long Count) {
     register int __res;
 
     __asm__ __volatile__    (    "cld	\n\t"        //clean direct
@@ -80,7 +80,7 @@ int memcmp(void *FirstPart, void *SecondPart, long Count) {
     return __res;
 }
 
-void *mem_set(void *Address, UINT8 C, long Count) {
+static inline void *mem_set(void *Address, UINT8 C, long Count) {
     int d0, d1;
     UINT64 tmp = C * 0x0101010101010101UL;
     __asm__ __volatile__    (    "cld	\n\t"
@@ -103,7 +103,7 @@ void *mem_set(void *Address, UINT8 C, long Count) {
     return Address;
 }
 
-char *strcpy(char *Dest, char *Src) {
+static inline char *strcpy(char *Dest, char *Src) {
     __asm__ __volatile__    (    "cld	\n\t"
                                  "1:	\n\t"
                                  "lodsb	\n\t"
@@ -118,7 +118,7 @@ char *strcpy(char *Dest, char *Src) {
     return Dest;
 }
 
-char *strncpy(char *Dest, char *Src, long Count) {
+static inline char *strncpy(char *Dest, char *Src, long Count) {
     __asm__ __volatile__    (    "cld	\n\t"
                                  "1:	\n\t"
                                  "decq	%2	\n\t"
@@ -137,7 +137,7 @@ char *strncpy(char *Dest, char *Src, long Count) {
     return Dest;
 }
 
-char *strcat(char *Dest, char *Src) {
+static inline char *strcat(char *Dest, char *Src) {
     __asm__ __volatile__    (    "cld	\n\t"
                                  "repne	\n\t"
                                  "scasb	\n\t"
@@ -154,7 +154,7 @@ char *strcat(char *Dest, char *Src) {
     return Dest;
 }
 
-int strcmp(char *FirstPart, char *SecondPart) {
+static inline int strcmp(char *FirstPart, char *SecondPart) {
     register int __res;
     __asm__ __volatile__    (    "cld	\n\t"
                                  "1:	\n\t"
@@ -177,7 +177,7 @@ int strcmp(char *FirstPart, char *SecondPart) {
     return __res;
 }
 
-int strncmp(char *FirstPart, char *SecondPart, long Count) {
+static inline int strncmp(char *FirstPart, char *SecondPart, long Count) {
     register int __res;
     __asm__ __volatile__    (    "cld	\n\t"
                                  "1:	\n\t"
@@ -203,7 +203,7 @@ int strncmp(char *FirstPart, char *SecondPart, long Count) {
     return __res;
 }
 
-int strlen(char *String) {
+static inline int strlen(char *String) {
     register int __res;
     __asm__ __volatile__    (    "cld	\n\t"
                                  "repne	\n\t"
