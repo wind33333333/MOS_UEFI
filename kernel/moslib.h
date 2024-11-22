@@ -31,12 +31,6 @@ typedef long long INT64;
     } while(0)
 //endregion
 
-#define container_of(ptr, type, member)                            \
-({                                            \
-    typeof(((type *)0)->member) * p = (ptr);                    \
-    (type *)((UINT64)p - (UINT64)&(((type *)0)->member));        \
-})
-
 #define STI()       __asm__ __volatile__ ("sti	\n\t":::"memory")
 #define CLI()       __asm__ __volatile__ ("cli	\n\t":::"memory")
 #define STAC()      __asm__ __volatile__ ("stac	\n\t":::"memory")
@@ -45,62 +39,6 @@ typedef long long INT64;
 #define MFENCE()    __asm__ __volatile__ ("mfence	\n\t":::"memory")
 #define SFENCE()    __asm__ __volatile__ ("sfence	\n\t":::"memory")
 #define LFENCE()    __asm__ __volatile__ ("lfence	\n\t":::"memory")
-
-struct List {
-    struct List *prev;
-    struct List *next;
-};
-
-void list_init(struct List *list) {
-    list->prev = list;
-    list->next = list;
-}
-
-void list_add_to_behind(struct List *entry, struct List *new)    ////add to entry behind
-{
-    new->next = entry->next;
-    new->prev = entry;
-    new->next->prev = new;
-    entry->next = new;
-}
-
-void list_add_to_before(struct List *entry, struct List *new)    ////add to entry behind
-{
-    new->next = entry;
-    entry->prev->next = new;
-    new->prev = entry->prev;
-    entry->prev = new;
-}
-
-void list_del(struct List *entry) {
-    entry->next->prev = entry->prev;
-    entry->prev->next = entry->next;
-}
-
-long list_is_empty(struct List *entry) {
-    if (entry == entry->next && entry->prev == entry)
-        return 1;
-    else
-        return 0;
-}
-
-struct List *list_prev(struct List *entry) {
-    if (entry->prev != NULL)
-        return entry->prev;
-    else
-        return NULL;
-}
-
-struct List *list_next(struct List *entry) {
-    if (entry->next != NULL)
-        return entry->next;
-    else
-        return NULL;
-}
-
-/*
-		From => To memory copy Num bytes
-*/
 
 void *memcpy(void *From, void *To, long Num) {
     int d0, d1, d2;
@@ -124,12 +62,6 @@ void *memcpy(void *From, void *To, long Num) {
     return To;
 }
 
-/*
-		FirstPart = SecondPart		=>	 0
-		FirstPart > SecondPart		=>	 1
-		FirstPart < SecondPart		=>	-1
-*/
-
 int memcmp(void *FirstPart, void *SecondPart, long Count) {
     register int __res;
 
@@ -147,10 +79,6 @@ int memcmp(void *FirstPart, void *SecondPart, long Count) {
             );
     return __res;
 }
-
-/*
-		set memory at Address with C ,number is Count
-*/
 
 void *mem_set(void *Address, UINT8 C, long Count) {
     int d0, d1;
@@ -175,10 +103,6 @@ void *mem_set(void *Address, UINT8 C, long Count) {
     return Address;
 }
 
-/*
-		string copy
-*/
-
 char *strcpy(char *Dest, char *Src) {
     __asm__ __volatile__    (    "cld	\n\t"
                                  "1:	\n\t"
@@ -193,10 +117,6 @@ char *strcpy(char *Dest, char *Src) {
             );
     return Dest;
 }
-
-/*
-		string copy number bytes
-*/
 
 char *strncpy(char *Dest, char *Src, long Count) {
     __asm__ __volatile__    (    "cld	\n\t"
@@ -217,10 +137,6 @@ char *strncpy(char *Dest, char *Src, long Count) {
     return Dest;
 }
 
-/*
-		string cat Dest + Src
-*/
-
 char *strcat(char *Dest, char *Src) {
     __asm__ __volatile__    (    "cld	\n\t"
                                  "repne	\n\t"
@@ -237,13 +153,6 @@ char *strcat(char *Dest, char *Src) {
             );
     return Dest;
 }
-
-/*
-		string compare FirstPart and SecondPart
-		FirstPart = SecondPart =>  0
-		FirstPart > SecondPart =>  1
-		FirstPart < SecondPart => -1
-*/
 
 int strcmp(char *FirstPart, char *SecondPart) {
     register int __res;
@@ -267,13 +176,6 @@ int strcmp(char *FirstPart, char *SecondPart) {
             );
     return __res;
 }
-
-/*
-		string compare FirstPart and SecondPart with Count Bytes
-		FirstPart = SecondPart =>  0
-		FirstPart > SecondPart =>  1
-		FirstPart < SecondPart => -1
-*/
 
 int strncmp(char *FirstPart, char *SecondPart, long Count) {
     register int __res;
@@ -301,10 +203,6 @@ int strncmp(char *FirstPart, char *SecondPart, long Count) {
     return __res;
 }
 
-/*
-
-*/
-
 int strlen(char *String) {
     register int __res;
     __asm__ __volatile__    (    "cld	\n\t"
@@ -319,92 +217,32 @@ int strlen(char *String) {
     return __res;
 }
 
-/*
-
-*/
-
-UINT64 bit_set(UINT64 *addr, UINT64 nr) {
-    return *addr | (1UL << nr);
-}
-
-/*
-
-*/
-
-UINT64 bit_get(UINT64 *addr, UINT64 nr) {
-    return *addr & (1UL << nr);
-}
-
-/*
-
-*/
-
-UINT64 bit_clean(UINT64 *addr, UINT64 nr) {
-    return *addr & (~(1UL << nr));
-}
-
-/*
-
-*/
-
-UINT8 io_in8(UINT16 port) {
-    UINT8 ret = 0;
-    __asm__ __volatile__(    "inb	%%dx,	%0	\n\t"
-                             "mfence			\n\t"
-            :"=a"(ret)
+static inline void io_in8(UINT16 port, UINT8 *value) {
+    __asm__ __volatile__("inb %%dx,%%al \n\t"
+            :"=a"(*value)
             :"d"(port)
             :"memory");
-    return ret;
 }
 
-/*
-
-*/
-
-UINT32 io_in32(UINT16 port) {
-    UINT32 ret = 0;
-    __asm__ __volatile__(    "inl	%%dx,	%0	\n\t"
-                             "mfence			\n\t"
-            :"=a"(ret)
-            :"d"(port)
-            :"memory");
-    return ret;
-}
-
-/*
-
-*/
-
-void io_out8(UINT16 port, UINT8 value) {
-    __asm__ __volatile__(    "outb	%0,	%%dx	\n\t"
-                             "mfence			\n\t"
+static inline void io_out8(UINT16 port, UINT8 value) {
+    __asm__ __volatile__("outb %%al,%%dx \n\t"
             :
             :"a"(value), "d"(port)
             :"memory");
 }
 
-/*
+static inline void io_in32(UINT16 port, UINT32 *value) {
+    __asm__ __volatile__("inl %%dx,%%eax \n\t"
+            :"=a"(*value)
+            :"d"(port)
+            :"memory");
+}
 
-*/
-
-void io_out32(UINT16 port, UINT32 value) {
-    __asm__ __volatile__(    "outl	%0,	%%dx	\n\t"
-                             "mfence			\n\t"
+static inline void io_out32(UINT16 port, UINT32 value) {
+    __asm__ __volatile__("outl %%eax,%%dx \n\t"
             :
             :"a"(value), "d"(port)
             :"memory");
 }
-
-/*
-
-*/
-
-#define port_insw(port, buffer, nr)    \
-__asm__ __volatile__("cld;rep;insw;mfence;"::"d"(port),"D"(buffer),"c"(nr):"memory")
-
-#define port_outsw(port, buffer, nr)    \
-__asm__ __volatile__("cld;rep;outsw;mfence;"::"d"(port),"S"(buffer),"c"(nr):"memory")
-
-
 
 #endif

@@ -21,8 +21,6 @@
 #define RDMSR(ADDRESS,VALUE) __asm__ __volatile__("rdmsr \n\t" "shlq $32,%%rdx \n\t" "orq %%rdx,%%rax \n\t" :"=a"(((UINT64)VALUE)):"c"((UINT32)ADDRESS):"memory")
 #define CPUID(IN_EAX,IN_ECX,OUT_EAX,OUT_EBX,OUT_ECX,OUT_EDX) __asm__ __volatile__("cpuid \n\t" :"=a"((UINT32)OUT_EAX),"=b"((UINT32)OUT_EBX),"=c"((UINT32)OUT_ECX),"=d"((UINT32)OUT_EDX):"a"((UINT32)IN_EAX),"c"((UINT32)IN_ECX):"memory")
 
-
-
 void init_cpu(void);
 void init_cpu_amode(void);
 void get_cpu_info(void);
