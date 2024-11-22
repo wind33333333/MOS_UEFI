@@ -12,7 +12,7 @@ CFLAGS+= -mcmodel=large 		#大内存模型
 CFLAGS+= -fno-stack-protector	# 不需要栈保护
 CFLAGS+= -g						#开启调试符号
 #CFLAGS += -O3                  # 使用 -O3 优化选项
-CFLAGS+= -mavx2					#开启avx256指令集优化
+#CFLAGS+= -mavx2				#开启avx256指令集优化
 CFLAGS+= -mstackrealign			#堆栈自动对齐16字节
 CFLAGS:=$(strip ${CFLAGS})
 

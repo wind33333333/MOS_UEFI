@@ -4,16 +4,16 @@ UINT32 *ioapic_baseaddr;
 
 //初始化ioapic
 __attribute__((section(".init_text"))) void init_ioapic(void) {
-    /*初始化ioapic
-     * 索引寄存器0xFEC00000 32bit bit0-7
-     * 数据寄存器0xFEC00010 32bit
-     * EOI寄存器0xFEC00040 32bit bit0-7
-     * 索引0 ioapic id寄存器 读写 32bit bit24-27
-     * 索引1 ioapic版本寄存器 读 32bit bit0-7apic版本 bit16-23 +1可用rte寄存器数
-     * 索引0x10-0x11 中断投递寄存器0 读写 0x10低32bit 0x11高32bit bit0-7中断号 bit16中断屏蔽位 bit56-63 local apic id
-     * ...
-     * 索引0x3E-0x3F 中断投递寄存器23 读写
-    */
+        /*初始化ioapic
+         * 索引寄存器0xFEC00000 32bit bit0-7
+         * 数据寄存器0xFEC00010 32bit
+         * EOI寄存器0xFEC00040 32bit bit0-7
+         * 索引0 ioapic id寄存器 读写 32bit bit24-27
+         * 索引1 ioapic版本寄存器 读 32bit bit0-7apic版本 bit16-23 +1可用rte寄存器数
+         * 索引0x10-0x11 中断投递寄存器0 读写 0x10低32bit 0x11高32bit bit0-7中断号 bit16中断屏蔽位 bit56-63 local apic id
+         * ...
+         * 索引0x3E-0x3F 中断投递寄存器23 读写
+        */
         __asm__ __volatile__ (
                 "movb    $0xFF,%%al \n\t"
                 "outb    %%al,$0x21 \n\t"
