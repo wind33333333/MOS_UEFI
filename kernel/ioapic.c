@@ -30,15 +30,6 @@ __attribute__((section(".init_text"))) void init_ioapic(void) {
     io_out8(0x42,0);        //禁用8054计时器2
 
         __asm__ __volatile__(
-                /*
-                "movl   $0x0,(%%rdi)         \n\t"
-                "mfence                      \n\t"
-                "movl    $0x1000000,(%%rsi)  \n\t"
-                "mfence                      \n\t"
-                "movl    (%%rsi),%%eax        \n\t"           //设置ioapic id
-                "mfence                      \n\t"
-                */
-
                 "movq    $0x10030,%%rax       \n\t"
                 "movl    $0x10,(%%rdi)        \n\t"
                 "mfence                      \n\t"
