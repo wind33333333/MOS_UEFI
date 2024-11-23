@@ -49,8 +49,10 @@ __attribute__((section(".init_text"))) void init_acpi(void) {
                 break;
 
             case 1://ioapic
-                ioapic_baseaddr = (UINT32 *) LADDR_TO_HADDR(
+                ioapic_address.ioregsel = (UINT8*)LADDR_TO_HADDR(
                         ((ioapic_entry_t *) madt_entry)->ioapic_address);
+                ioapic_address.iowin = (UINT32*)((UINT64)ioapic_address.ioregsel + 0x10);
+                ioapic_address.eoi = (UINT32*)((UINT64)ioapic_address.ioregsel + 0x40);
                 color_printk(RED, BLACK, "IOAPIC Addr:%#lX\n",
                              ((ioapic_entry_t *) madt_entry)->ioapic_address);
                 break;
