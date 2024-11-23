@@ -17,6 +17,15 @@ typedef long long INT64;
 
 #define NULL 0
 
+#define STI()       __asm__ __volatile__ ("sti	\n\t":::"memory")
+#define CLI()       __asm__ __volatile__ ("cli	\n\t":::"memory")
+#define STAC()      __asm__ __volatile__ ("stac	\n\t":::"memory")
+#define CLAC()      __asm__ __volatile__ ("clac	\n\t":::"memory")
+#define PAUSE()     __asm__ __volatile__ ("pause	\n\t":::"memory")
+#define MFENCE()    __asm__ __volatile__ ("mfence	\n\t":::"memory")
+#define SFENCE()    __asm__ __volatile__ ("sfence	\n\t":::"memory")
+#define LFENCE()    __asm__ __volatile__ ("lfence	\n\t":::"memory")
+
 // 自旋锁的实现
 static inline void spin_lock(volatile UINT8 *lock_var) {
     __asm__ __volatile__ (
@@ -26,20 +35,18 @@ static inline void spin_lock(volatile UINT8 *lock_var) {
             "cmpxchg    %%bl,%0         \n\t"  // 比较 lock_var 和 AL，若相等，则将 BL 写入 lock_var
             "jnz        1b              \n\t"  // 如果未能成功锁定，则跳转到标签1重试
             "pause                      \n\t"  // 优化的CPU等待，减少功耗和资源占用
-            :                                  // 无输出操作数
-            : "m"(*lock_var)                   // 输入操作数：锁变量（内存地址）
-            : "%rax", "%rbx", "memory"         // 使用的寄存器与内存屏障
-            );
+            :: "m"(*lock_var): "%rax", "%rbx", "memory");
+    return;
 }
 
-#define STI()       __asm__ __volatile__ ("sti	\n\t":::"memory")
-#define CLI()       __asm__ __volatile__ ("cli	\n\t":::"memory")
-#define STAC()      __asm__ __volatile__ ("stac	\n\t":::"memory")
-#define CLAC()      __asm__ __volatile__ ("clac	\n\t":::"memory")
-#define PAUSE()     __asm__ __volatile__ ("pause	\n\t":::"memory")
-#define MFENCE()    __asm__ __volatile__ ("mfence	\n\t":::"memory")
-#define SFENCE()    __asm__ __volatile__ ("sfence	\n\t":::"memory")
-#define LFENCE()    __asm__ __volatile__ ("lfence	\n\t":::"memory")
+static inline void rdtscp(UINT32 *apic_id,UINT64 *timestamp) {
+    __asm__ __volatile__(
+            "rdtscp                 \n\t"  // 执行 rdtscp 指令
+            "shlq    $32, %%rdx     \n\t"  // 将高 32 位左移 32 位
+            "orq     %%rdx, %%rax   \n\t"  // 合并高低位到 RAX
+            : "=a" (*timestamp),"=c" (*apic_id):: "rdx","memory");
+    return;
+}
 
 static inline void *memcpy(void *From, void *To, long Num) {
     int d0, d1, d2;

@@ -30,85 +30,85 @@ __attribute__((section(".init_text"))) void init_ioapic(void) {
     //...
     //索引0x3E-0x3F 中断投递寄存器23 读写
     //endregion
-    ioapic_address.ioregsel=IO_APIC_TBL0_LOW32;
-    ioapic_address.iowin=0x10030;
-    ioapic_address.ioregsel=IO_APIC_TBL0_HIGH32;        //主8259A中断
-    ioapic_address.iowin=0;
+    *ioapic_address.ioregsel=IO_APIC_TBL0_LOW32;
+    *ioapic_address.iowin=0x10030;
+    *ioapic_address.ioregsel=IO_APIC_TBL0_HIGH32;        //主8259A中断
+    *ioapic_address.iowin=0;
 
-    ioapic_address.ioregsel=IO_APIC_TBL1_LOW32;
-    ioapic_address.iowin=0x31;
-    ioapic_address.ioregsel=IO_APIC_TBL1_HIGH32;        //ps2键盘中断
-    ioapic_address.iowin=0;
+    *ioapic_address.ioregsel=IO_APIC_TBL1_LOW32;
+    *ioapic_address.iowin=0x31;
+    *ioapic_address.ioregsel=IO_APIC_TBL1_HIGH32;        //ps2键盘中断
+    *ioapic_address.iowin=0;
 
-    ioapic_address.ioregsel=IO_APIC_TBL2_LOW32;
-    ioapic_address.iowin=0x10032;
-    ioapic_address.ioregsel=IO_APIC_TBL2_HIGH32;        //8254定时器0/HPTE定时器0
-    ioapic_address.iowin=0;
+    *ioapic_address.ioregsel=IO_APIC_TBL2_LOW32;
+    *ioapic_address.iowin=0x10032;
+    *ioapic_address.ioregsel=IO_APIC_TBL2_HIGH32;        //8254定时器0/HPTE定时器0
+    *ioapic_address.iowin=0;
 
-    ioapic_address.ioregsel=IO_APIC_TBL3_LOW32;
-    ioapic_address.iowin=0x10000;
-    ioapic_address.ioregsel=IO_APIC_TBL3_HIGH32;        //串口2中断
-    ioapic_address.iowin=0;
+    *ioapic_address.ioregsel=IO_APIC_TBL3_LOW32;
+    *ioapic_address.iowin=0x10000;
+    *ioapic_address.ioregsel=IO_APIC_TBL3_HIGH32;        //串口2中断
+    *ioapic_address.iowin=0;
 
-    ioapic_address.ioregsel=IO_APIC_TBL4_LOW32;
-    ioapic_address.iowin=0x10000;
-    ioapic_address.ioregsel=IO_APIC_TBL4_HIGH32;        //串口1中断
-    ioapic_address.iowin=0;
+    *ioapic_address.ioregsel=IO_APIC_TBL4_LOW32;
+    *ioapic_address.iowin=0x10000;
+    *ioapic_address.ioregsel=IO_APIC_TBL4_HIGH32;        //串口1中断
+    *ioapic_address.iowin=0;
 
-    ioapic_address.ioregsel=IO_APIC_TBL5_LOW32;
-    ioapic_address.iowin=0x10000;
-    ioapic_address.ioregsel=IO_APIC_TBL5_HIGH32;        //并口2中断
-    ioapic_address.iowin=0;
+    *ioapic_address.ioregsel=IO_APIC_TBL5_LOW32;
+    *ioapic_address.iowin=0x10000;
+    *ioapic_address.ioregsel=IO_APIC_TBL5_HIGH32;        //并口2中断
+    *ioapic_address.iowin=0;
 
-    ioapic_address.ioregsel=IO_APIC_TBL6_LOW32;
-    ioapic_address.iowin=0x10000;
-    ioapic_address.ioregsel=IO_APIC_TBL6_HIGH32;        //软驱中断
-    ioapic_address.iowin=0;
+    *ioapic_address.ioregsel=IO_APIC_TBL6_LOW32;
+    *ioapic_address.iowin=0x10000;
+    *ioapic_address.ioregsel=IO_APIC_TBL6_HIGH32;        //软驱中断
+    *ioapic_address.iowin=0;
 
-    ioapic_address.ioregsel=IO_APIC_TBL7_LOW32;
-    ioapic_address.iowin=0x10000;
-    ioapic_address.ioregsel=IO_APIC_TBL7_HIGH32;        //并口1中断
-    ioapic_address.iowin=0;
+    *ioapic_address.ioregsel=IO_APIC_TBL7_LOW32;
+    *ioapic_address.iowin=0x10000;
+    *ioapic_address.ioregsel=IO_APIC_TBL7_HIGH32;        //并口1中断
+    *ioapic_address.iowin=0;
 
-    ioapic_address.ioregsel=IO_APIC_TBL8_LOW32;
-    ioapic_address.iowin=0x10033;
-    ioapic_address.ioregsel=IO_APIC_TBL8_HIGH32;        //CMOS RTC中断/HPTE定时器1
-    ioapic_address.iowin=0;
+    *ioapic_address.ioregsel=IO_APIC_TBL8_LOW32;
+    *ioapic_address.iowin=0x10033;
+    *ioapic_address.ioregsel=IO_APIC_TBL8_HIGH32;        //CMOS RTC中断/HPTE定时器1
+    *ioapic_address.iowin=0;
 
-//    ioapic_address.ioregsel=IO_APIC_TBL9_LOW32;
-//    ioapic_address.iowin=0x10039;
-//    ioapic_address.ioregsel=IO_APIC_TBL9_HIGH32;        //无
-//    ioapic_address.iowin=0;
+//    *ioapic_address.ioregsel=IO_APIC_TBL9_LOW32;
+//    *ioapic_address.iowin=0x10039;
+//    *ioapic_address.ioregsel=IO_APIC_TBL9_HIGH32;        //无
+//    *ioapic_address.iowin=0;
 //
-//    ioapic_address.ioregsel=IO_APIC_TBL10_LOW32;
-//    ioapic_address.iowin=0x1003A;
-//    ioapic_address.ioregsel=IO_APIC_TBL10_HIGH32;       //无
-//    ioapic_address.iowin=0;
+//    *ioapic_address.ioregsel=IO_APIC_TBL10_LOW32;
+//    *ioapic_address.iowin=0x1003A;
+//    *ioapic_address.ioregsel=IO_APIC_TBL10_HIGH32;       //无
+//    *ioapic_address.iowin=0;
 
-    ioapic_address.ioregsel=IO_APIC_TBL11_LOW32;
-    ioapic_address.iowin=0x10034;
-    ioapic_address.ioregsel=IO_APIC_TBL11_HIGH32;        //HPTE 定时器2
-    ioapic_address.iowin=0;
+    *ioapic_address.ioregsel=IO_APIC_TBL11_LOW32;
+    *ioapic_address.iowin=0x10034;
+    *ioapic_address.ioregsel=IO_APIC_TBL11_HIGH32;        //HPTE 定时器2
+    *ioapic_address.iowin=0;
 
-    ioapic_address.ioregsel=IO_APIC_TBL12_LOW32;
-    ioapic_address.iowin=0x10035;
-    ioapic_address.ioregsel=IO_APIC_TBL12_HIGH32;        //ps2鼠标 /HPET定时器3
-    ioapic_address.iowin=0;
+    *ioapic_address.ioregsel=IO_APIC_TBL12_LOW32;
+    *ioapic_address.iowin=0x10035;
+    *ioapic_address.ioregsel=IO_APIC_TBL12_HIGH32;        //ps2鼠标 /HPET定时器3
+    *ioapic_address.iowin=0;
 
-    ioapic_address.ioregsel=IO_APIC_TBL13_LOW32;
-    ioapic_address.iowin=0x10036;
-    ioapic_address.ioregsel=IO_APIC_TBL13_HIGH32;        //FERR/DMA
-    ioapic_address.iowin=0;
+    *ioapic_address.ioregsel=IO_APIC_TBL13_LOW32;
+    *ioapic_address.iowin=0x10036;
+    *ioapic_address.ioregsel=IO_APIC_TBL13_HIGH32;        //FERR/DMA
+    *ioapic_address.iowin=0;
 
-    ioapic_address.ioregsel=IO_APIC_TBL14_LOW32;
-    ioapic_address.iowin=0x10037;
-    ioapic_address.ioregsel=IO_APIC_TBL14_HIGH32;        //主SATA中断
-    ioapic_address.iowin=0;
+    *ioapic_address.ioregsel=IO_APIC_TBL14_LOW32;
+    *ioapic_address.iowin=0x10037;
+    *ioapic_address.ioregsel=IO_APIC_TBL14_HIGH32;        //主SATA中断
+    *ioapic_address.iowin=0;
 
-    ioapic_address.ioregsel=IO_APIC_TBL15_LOW32;
-    ioapic_address.iowin=0x10038;
-    ioapic_address.ioregsel=IO_APIC_TBL15_HIGH32;        //从SATA中断
-    ioapic_address.iowin=0;
+    *ioapic_address.ioregsel=IO_APIC_TBL15_LOW32;
+    *ioapic_address.iowin=0x10038;
+    *ioapic_address.ioregsel=IO_APIC_TBL15_HIGH32;        //从SATA中断
+    *ioapic_address.iowin=0;
 
     return;
 }

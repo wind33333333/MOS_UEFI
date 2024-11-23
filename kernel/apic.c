@@ -49,7 +49,7 @@ void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt){
     if(model == APIC_TSC_DEADLINE){
         UINT32 tmp;
         UINT64 timestamp;
-        RDTSCP(tmp,timestamp);
+        rdtscp(&tmp,&timestamp);
         timestamp += time;
         WRMSR(IA32_TSC_DEADLINE,timestamp);
     } else {
