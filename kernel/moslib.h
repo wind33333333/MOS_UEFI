@@ -164,6 +164,16 @@ static inline void wrmsr(UINT32 register_number,UINT64 value) {
     return;
 }
 
+static inline void cpuid(UINT32 in_eax, UINT32 in_ecx,UINT32 *out_eax, UINT32 *out_ebx,UINT32 *out_ecx, UINT32 *out_edx) {
+    __asm__ __volatile__(
+            "cpuid \n\t"
+            : "=a"(*out_eax),"=b"(*out_ebx),"=c"(*out_ecx),"=d"(*out_edx)
+            : "a"(in_eax),"c"(in_ecx)
+            : "memory"
+            );
+    return;
+}
+
 static inline void *memcpy(void *From, void *To, long Num) {
     int d0, d1, d2;
     __asm__ __volatile__    (    "cld	\n\t"

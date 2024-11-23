@@ -9,8 +9,6 @@
 #define IA32_CSTAR_MSR      0xC0000083   // 兼容模式系统调用入口寄存器（Compatibility Mode System Call Target Address Register）
 #define IA32_FMASK_MSR      0xC0000084   // 系统调用掩码寄存器（System Call Flag Mask Register）
 
-#define CPUID(IN_EAX,IN_ECX,OUT_EAX,OUT_EBX,OUT_ECX,OUT_EDX) __asm__ __volatile__("cpuid \n\t" :"=a"((UINT32)OUT_EAX),"=b"((UINT32)OUT_EBX),"=c"((UINT32)OUT_ECX),"=d"((UINT32)OUT_EDX):"a"((UINT32)IN_EAX),"c"((UINT32)IN_ECX):"memory")
-
 void init_cpu(void);
 void init_cpu_amode(void);
 void get_cpu_info(void);
