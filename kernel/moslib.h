@@ -43,7 +43,7 @@ static inline void spin_lock(volatile UINT8 *lock_var) {
     return;
 }
 
-static inline void lgdt(const void *gdt_ptr, UINT64 code64_sel, UINT64 data64_sel) {
+static inline void lgdt(void *gdt_ptr, UINT64 code64_sel, UINT64 data64_sel) {
     __asm__ __volatile__(
             "lgdtq       (%0)                \n\t"  // 加载 GDT 描述符地址
             "pushq       %1                  \n\t"  // 压入代码段选择器
@@ -59,6 +59,16 @@ static inline void lgdt(const void *gdt_ptr, UINT64 code64_sel, UINT64 data64_se
             :
             : "r"(gdt_ptr), "r"(code64_sel), "r"(data64_sel)
             : "memory", "%rax"
+            );
+    return;
+}
+
+static inline void lidt(void *idt_ptr) {
+    __asm__ __volatile__(
+            "lidt (%0) \n\t"  // 加载 IDT 描述符地址
+            :
+            : "r"(idt_ptr)    // 输入：IDT 描述符的地址
+            : "memory"        // 防止编译器重排序内存操作
             );
     return;
 }

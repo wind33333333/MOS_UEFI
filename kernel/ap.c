@@ -47,7 +47,7 @@ __attribute__((section(".init_text"))) void ap_main(void){
     set_cr3(HADDR_TO_LADDR(pml4t));
     lgdt(&gdt_ptr,0x8,0x10);
     LTR(TSS_DESCRIPTOR_START_INDEX*8+cpu_id*16);
-    LIDT(idt_ptr);
+    lidt(&idt_ptr);
     init_apic();
     init_syscall();
     color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);

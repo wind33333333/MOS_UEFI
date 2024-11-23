@@ -2,15 +2,6 @@
 #define __IDT_H__
 #include "moslib.h"
 
-#define LIDT(IDT_PTR) __asm__ __volatile__("lidt       (%0)"::"r"(&idt_ptr):);
-#define SET_GATE_L(OFFSET,IST,TYPE) (IST | TYPE | SEL_CODE64 | DPL_0 | P | ((UINT64)(OFFSET) & 0x000000000000FFFF) | (((UINT64)(OFFSET) >> 16) << 48))
-#define SET_GATE_H(OFFSET) ((UINT64)(OFFSET) >> 32)
-#define SET_GATE(BASE,NUM,OFFSET,IST,TYPE) \
-                do{\
-                BASE[NUM*2] = SET_GATE_L(OFFSET,IST,TYPE);\
-                BASE[NUM*2+1] = SET_GATE_H(OFFSET);\
-                }while(0)
-
 #define TYPE_CALL       (0xCUL << 40)
 #define TYPE_INT        (0xEUL << 40)
 #define TYPE_TRAP       (0xFUL << 40)
@@ -32,6 +23,7 @@ typedef struct{
 extern idt_ptr_t idt_ptr;
 
 void init_idt(void);
+void set_gate(UINT64 *table_base, UINT32 number, UINT64 function_address, UINT64 ist, UINT64 type);
 
 
 #endif
