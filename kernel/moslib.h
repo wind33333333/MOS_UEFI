@@ -17,19 +17,20 @@ typedef long long INT64;
 
 #define NULL 0
 
-//region 自旋锁
-#define SPIN_LOCK(lock_var) \
-    do {                \
-    __asm__ __volatile__ ( \
-        "mov        $1,%%bl     \n\t" \
-        "1:\txor    %%al,%%al   \n\t" \
-        "lock                   \n\t" \
-        "cmpxchg    %%bl,%0     \n\t" \
-        "jnz        1b          \n\t" \
-        "pause                  \n\t" \
-        ::"m"(lock_var):"%rax","%rbx"); \
-    } while(0)
-//endregion
+// 自旋锁的实现
+static inline void spin_lock(volatile UINT8 *lock_var) {
+    __asm__ __volatile__ (
+            "mov        $1,%%bl         \n\t"  // 将值1加载到BL寄存器中
+            "1:\txor    %%al,%%al       \n\t"  // 清空AL寄存器（设置为0）
+            "lock                       \n\t"  // 确保后续的操作是原子的
+            "cmpxchg    %%bl,%0         \n\t"  // 比较 lock_var 和 AL，若相等，则将 BL 写入 lock_var
+            "jnz        1b              \n\t"  // 如果未能成功锁定，则跳转到标签1重试
+            "pause                      \n\t"  // 优化的CPU等待，减少功耗和资源占用
+            :                                  // 无输出操作数
+            : "m"(*lock_var)                   // 输入操作数：锁变量（内存地址）
+            : "%rax", "%rbx", "memory"         // 使用的寄存器与内存屏障
+            );
+}
 
 #define STI()       __asm__ __volatile__ ("sti	\n\t":::"memory")
 #define CLI()       __asm__ __volatile__ ("cli	\n\t":::"memory")

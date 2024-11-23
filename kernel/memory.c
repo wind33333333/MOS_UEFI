@@ -88,7 +88,7 @@ __attribute__((section(".init_text"))) void init_memory(void) {
 
 //物理页分配器
 void *alloc_pages(UINT64 page_number) {
-    SPIN_LOCK(memory_management.lock);
+    spin_lock(&memory_management.lock);
 
     if (memory_management.avl_pages < page_number || page_number == 0) {
         memory_management.lock = 0;
@@ -135,7 +135,7 @@ void *alloc_pages(UINT64 page_number) {
 
 //物理页释放器
 int free_pages(void *pages_addr, UINT64 page_number) {
-    SPIN_LOCK(memory_management.lock);
+    spin_lock(&memory_management.lock);
     if ((UINT64)(pages_addr + (page_number << PAGE_4K_SHIFT)) >
         (memory_management.mem_map[memory_management.mem_map_number - 1].address +
          memory_management.mem_map[memory_management.mem_map_number - 1].length)) {
