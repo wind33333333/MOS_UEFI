@@ -62,9 +62,9 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
     //BSP（bit 9）：作用：标记该处理器是否是系统的启动处理器（BSP）。系统启动时，BSP 是首先执行初始化代码的 CPU，其它处理器是 AP（Application Processors，应用处理器）。
     //APIC Base Address（bit 12-31）：作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
     ////endregion
-    RDMSR(IA32_APIC_BASE_MSR,value);
+    value=rdmsr(IA32_APIC_BASE_MSR);
     value |= 0xC00;                        //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
-    WRMSR(IA32_APIC_BASE_MSR,value);
+    wrmsr(IA32_APIC_BASE_MSR,value);
 
     //region CR4 寄存器
     //VME（bit 0） 描述：启用虚拟 8086 模式的扩展功能，允许在虚拟 8086 模式中支持虚拟中断。用途：用于实现虚拟机监控或虚拟 8086 环境中的精细中断控制。
@@ -111,9 +111,9 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
         tmp |= 0x20000;     //bit17 PCIDE
 
     tmp |= 0x507C8;
-    GET_CR4(value);
+    value = get_cr4();
     value |= tmp;
-    SET_CR4(value);
+    set_cr4(value);
 
     //region XCR0 寄存器
     //x87（bit 0）：描述：控制 x87 浮点状态的保存与恢复。x87 是早期的浮点运算单元，负责处理浮点数运算。用途：如果该位被设置为 1，XSAVE 和 XRSTOR 指令将保存和恢复 x87 浮点状态。
@@ -126,18 +126,18 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
     //endregion
     CPUID(0x7,0x0,eax,ebx,ecx,edx);
     tmp=(ebx & 0x10000) ? 0xE7 : 0x7;   //AVX512=0xE7 AVX256=0x7
-    XGETBV(0,value);
+    value = xgetbv(0);
     value |= tmp;
-    XSETBV(0,value);
+    xsetbv(0,value);
 
     //region IA32_EFER_MSR 寄存器（MSR 0xC0000080)
     //SCE（bit 0） 1:启用 SYSCALL 和 SYSRET 指令。
     //LME（bit 8） 1:启用 64 位长模式。当该位被设置为 1 时，处理器允许进入 64 位模式。在启用长模式时，CR0.PG（分页启用位）和 CR4.PAE（物理地址扩展启用位）也必须设置。
     //NXE（bit 11）1:sfdsfs启用 NX（No-eXecute） 位功能。NX 位用于控制某些内存页面的执行权限。如果该位被设置为 1，操作系统可以使用分页机制将特定的内存页面标记为不可执行，以防止执行非代码数据，如栈或堆内存，防止某些缓冲区溢出攻击。
     //endregion
-    RDMSR(IA32_EFER_MSR,value);
+    value=rdmsr(IA32_EFER_MSR);
     value |= 0x801;
-    WRMSR(IA32_EFER_MSR,value);
+    wrmsr(IA32_EFER_MSR,value);
 
     //region CR0寄存器
     //PE（位 0）：1：启用保护模式，使得 CPU 能使用分段和分页机制。0：CPU 处于实模式，仅支持基础的内存访问。
@@ -152,10 +152,10 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
     //CD（位 30）：1：禁用 CPU 缓存，所有内存访问直接访问主存。0：启用 CPU 缓存，提高性能。
     //PG（位 31）：1：启用分页机制，支持虚拟内存管理。0：禁用分页，CPU 只能使用物理内存地址。
     //endregion
-    GET_CR0(value);
+    value=get_cr0();
     value &= 0xFFFFFFFF9FFFFFFFUL;
     value |= 0x10002;
-    SET_CR0(value);
+    set_cr0(value);
 
     //region IA32_PAT_MSR(0x277) 内存缓存模式配置寄存器
     //IA32_PAT是一个64位寄存器，其中包含8个8位的字段，每个字段定义一种缓存类型。格式如下：
@@ -169,7 +169,7 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
     //0x6: WB（Write Back，回写）
     //0x7: UC-（Uncacheable，不缓存，弱UC）
     //endregion
-    WRMSR(IA32_PAT_MSR,0x50100070406);
+    wrmsr(IA32_PAT_MSR,0x50100070406);
 
     return;
 }

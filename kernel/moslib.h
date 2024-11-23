@@ -30,12 +30,16 @@ typedef long long INT64;
 static inline void spin_lock(volatile UINT8 *lock_var) {
     __asm__ __volatile__ (
             "mov        $1,%%bl         \n\t"  // 将值1加载到BL寄存器中
-            "1:\txor    %%al,%%al       \n\t"  // 清空AL寄存器（设置为0）
+            "1:                         \n\t"
+            "xor    %%al,%%al           \n\t"  // 清空AL寄存器（设置为0）
             "lock                       \n\t"  // 确保后续的操作是原子的
             "cmpxchg    %%bl,%0         \n\t"  // 比较 lock_var 和 AL，若相等，则将 BL 写入 lock_var
             "jnz        1b              \n\t"  // 如果未能成功锁定，则跳转到标签1重试
             "pause                      \n\t"  // 优化的CPU等待，减少功耗和资源占用
-            :: "m"(*lock_var): "%rax", "%rbx", "memory");
+            :
+            :"m"(*lock_var)
+            :"%rax","%rbx","memory"
+            );
     return;
 }
 
@@ -44,7 +48,119 @@ static inline void rdtscp(UINT32 *apic_id,UINT64 *timestamp) {
             "rdtscp                 \n\t"  // 执行 rdtscp 指令
             "shlq    $32, %%rdx     \n\t"  // 将高 32 位左移 32 位
             "orq     %%rdx, %%rax   \n\t"  // 合并高低位到 RAX
-            : "=a" (*timestamp),"=c" (*apic_id):: "rdx","memory");
+            : "=a" (*timestamp),"=c" (*apic_id)
+            :
+            : "rdx","memory"
+            );
+    return;
+}
+
+static inline UINT64 get_cr0(void) {
+    UINT64 cr0;
+    __asm__ __volatile__(
+            "movq   %%cr0,%%rax \n\t"
+            :"=a"(cr0)
+            :
+            : "memory"
+            );
+    return  cr0;
+}
+
+static inline void set_cr0(UINT64 value) {
+    __asm__ __volatile__(
+            "movq   %0,%%cr0 \n\t"
+            :
+            :"r"(value)
+            : "memory"
+            );
+    return;
+}
+
+static inline UINT64 get_cr3(void) {
+    UINT64 cr3;
+    __asm__ __volatile__(
+            "movq   %%cr3,%%rax \n\t"
+            : "=a"(cr3)         // 输出：将 CR3 的值存入 value
+            :                   // 无输入
+            : "memory"          // 通知编译器：此操作可能影响内存
+            );
+    return cr3;
+}
+
+static inline void set_cr3(UINT64 value) {
+    __asm__ __volatile__(
+            "movq   %0,%%cr3 \n\t"
+            :
+            :"r"(value)
+            : "memory"
+            );
+    return;
+}
+
+static inline UINT64 get_cr4(void) {
+    UINT64 cr4;
+    __asm__ __volatile__(
+            "movq   %%cr4,%%rax \n\t"
+            : "=a"(cr4)         // 输出：将 CR3 的值存入 value
+            :                   // 无输入
+            : "memory"          // 通知编译器：此操作可能影响内存
+            );
+    return cr4;
+}
+
+static inline void set_cr4(UINT64 value) {
+    __asm__ __volatile__(
+            "movq   %0,%%cr4 \n\t"
+            :
+            :"r"(value)
+            : "memory"
+            );
+    return;
+}
+
+static inline UINT64 xgetbv(UINT32 register_number) {
+    UINT64 xcr;
+    __asm__ __volatile__(
+            "xgetbv             \n\t"  // 执行 xgetbv 指令
+            "shlq   $32,%%rdx   \n\t"
+            "orq    %%rdx,%%rax \n\t"
+            : "=a"(xcr)
+            : "c"(register_number)                  // 输入 XCR 编号到 ECX
+            : "memory"
+            );
+    return xcr;
+}
+
+static inline void xsetbv(UINT32 register_number,UINT64 value) {
+    __asm__ __volatile__(
+            "xsetbv \n\t"
+            :
+            : "a"((UINT32)(value & 0xFFFFFFFFUL)),"d"((UINT32)(value >> 32)),"c"(register_number)
+            : "memory"
+            );
+    return;
+}
+
+static inline UINT64 rdmsr(UINT32 register_number) {
+    UINT64 msr;
+    __asm__ __volatile__(
+            "rdmsr              \n\t"
+            "shlq   $32,%%rdx   \n\t"
+            "orq    %%rdx,%%rax \n\t"
+            : "=a"(msr)
+            : "c"(register_number)
+            : "memory"
+            );
+    return msr;
+}
+
+static inline void wrmsr(UINT32 register_number,UINT64 value) {
+    __asm__ __volatile__(
+            "wrmsr \n\t"
+            :
+            : "a"((UINT32)(value & 0xFFFFFFFFUL)),"d"((UINT32)(value >> 32)),"c"(register_number)
+            : "memory"
+            );
     return;
 }
 

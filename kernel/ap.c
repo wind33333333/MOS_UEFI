@@ -21,20 +21,20 @@ __attribute__((section(".init_text"))) void init_ap(void) {
 
     UINT32 counter;
     //bit8-10投递模式init101 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
-    WRMSR(APIC_INTERRUPT_COMMAND_MSR,0xC4500);
+    wrmsr(APIC_INTERRUPT_COMMAND_MSR,0xC4500);
 
     counter=0x5000;
     while (counter !=0 )  //延时
         counter--;
 
     //Start-up IPI bit0-7处理器启动实模式物理地址VV000的高两位 ，bit8-10投递模式start-up110 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
-    WRMSR(APIC_INTERRUPT_COMMAND_MSR,(ap_boot_loader_address>>12)&0xFF|0xC4600);
+    wrmsr(APIC_INTERRUPT_COMMAND_MSR,(ap_boot_loader_address>>12)&0xFF|0xC4600);
 
     counter=0x5000;
     while (counter !=0 )  //延时
         counter--;
 
-    WRMSR(APIC_INTERRUPT_COMMAND_MSR,(ap_boot_loader_address>>12)&0xFF|0xC4600);      //Start-up IPI
+    wrmsr(APIC_INTERRUPT_COMMAND_MSR,(ap_boot_loader_address>>12)&0xFF|0xC4600);      //Start-up IPI
 
     return;
 }
@@ -44,7 +44,7 @@ __attribute__((section(".init_text"))) void ap_main(void){
     CPUID(0xB,0x1,tmp,tmp,tmp,apic_id);        //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);
     init_cpu_amode();
-    SET_CR3(HADDR_TO_LADDR(pml4t));
+    set_cr3(HADDR_TO_LADDR(pml4t));
     LGDT(gdt_ptr,0x8UL,0x10UL);
     LTR(TSS_DESCRIPTOR_START_INDEX*8+cpu_id*16);
     LIDT(idt_ptr);
