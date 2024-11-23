@@ -20,8 +20,8 @@ extern gdt_ptr_t gdt_ptr;
 #define DATA64_3 (TYPE_DATA64 | DPL_3 | S | P)                       //ring3 64位数据段
 #define CODE32_0 (TYPE_CODE32 | DPL_0 | S | P | LIMIT_4G | DB | G)   //ring0 32位代码段
 #define DATA32_0 (TYPE_DATA32 | DPL_0 | S | P | LIMIT_4G | DB | G)   //ring0 32位数据段
-#define CODE32_3 (TYPE_CODE32 | DPL_3 | S | P | LIMIT_4G | DB | G)   //ring0 32位代码段
-#define DATA32_3 (TYPE_DATA32 | DPL_3 | S | P | LIMIT_4G | DB | G)   //ring0 32位数据段
+#define CODE32_3 (TYPE_CODE32 | DPL_3 | S | P | LIMIT_4G | DB | G)   //ring3 32位代码段
+#define DATA32_3 (TYPE_DATA32 | DPL_3 | S | P | LIMIT_4G | DB | G)   //ring3 32位数据段
 
 #define TYPE_CODE64 (0x8UL <<40)
 #define TYPE_DATA64 (0x2UL <<40)
@@ -35,22 +35,5 @@ extern gdt_ptr_t gdt_ptr;
 #define L           (1UL << 53)
 #define DB          (1UL << 54)
 #define G           (1UL << 55)
-
-#define LGDT(GDT_PTR,CODE64_SEL,DATA64_SEL) \
-                do{                                               \
-                    __asm__ __volatile__(                         \
-                        "lgdtq       (%0)                \n\t"    \
-                        "pushq       %1                  \n\t"    \
-                        "leaq        1f(%%rip),%%rax     \n\t"    \
-                        "pushq       %%rax               \n\t"    \
-                        "lretq                           \n\t"    \
-                        "1:                              \n\t"    \
-                        "movq        %2,%%ss             \n\t"    \
-                        "movq        %2,%%ds             \n\t"    \
-                        "movq        %2,%%es             \n\t"    \
-                        "movq        %2,%%gs             \n\t"    \
-                        "movq        %2,%%fs             \n\t"    \
-                        ::"r"(&GDT_PTR),"r"(CODE64_SEL),"r"(DATA64_SEL):"%rax");  \
-                }while(0)
 
 #endif

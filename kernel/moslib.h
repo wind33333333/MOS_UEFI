@@ -43,6 +43,26 @@ static inline void spin_lock(volatile UINT8 *lock_var) {
     return;
 }
 
+static inline void lgdt(const void *gdt_ptr, UINT64 code64_sel, UINT64 data64_sel) {
+    __asm__ __volatile__(
+            "lgdtq       (%0)                \n\t"  // 加载 GDT 描述符地址
+            "pushq       %1                  \n\t"  // 压入代码段选择器
+            "leaq        1f(%%rip), %%rax    \n\t"  // 获取返回地址
+            "pushq       %%rax               \n\t"  // 压入返回地址
+            "lretq                           \n\t"  // 执行长返回，切换到新代码段选择子
+            "1:                              \n\t"  // 跳转目标标记
+            "movq        %2, %%ss            \n\t"  // 设置堆栈段选择器
+            "movq        %2, %%ds            \n\t"  // 设置数据段选择器
+            "movq        %2, %%es            \n\t"  // 设置额外段选择器
+            "movq        %2, %%gs            \n\t"  // 设置全局段选择器
+            "movq        %2, %%fs            \n\t"  // 设置额外段选择器
+            :
+            : "r"(gdt_ptr), "r"(code64_sel), "r"(data64_sel)
+            : "memory", "%rax"
+            );
+    return;
+}
+
 static inline void rdtscp(UINT32 *apic_id,UINT64 *timestamp) {
     __asm__ __volatile__(
             "rdtscp                 \n\t"  // 执行 rdtscp 指令

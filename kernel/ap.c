@@ -45,7 +45,7 @@ __attribute__((section(".init_text"))) void ap_main(void){
     cpu_id = apicid_to_cpuid(apic_id);
     init_cpu_amode();
     set_cr3(HADDR_TO_LADDR(pml4t));
-    LGDT(gdt_ptr,0x8UL,0x10UL);
+    lgdt(&gdt_ptr,0x8,0x10);
     LTR(TSS_DESCRIPTOR_START_INDEX*8+cpu_id*16);
     LIDT(idt_ptr);
     init_apic();
