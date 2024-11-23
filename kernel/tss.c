@@ -30,8 +30,20 @@ __attribute__((section(".init_text"))) void init_tss(void) {
         tss_ptr[i].iomap_base = 0;
 
         //设置gdt tss描述符
-        SET_TSS(gdt_ptr.base,TSS_DESCRIPTOR_START_INDEX+ i,tss_ptr + i);
+        set_tss((UINT64*)gdt_ptr.base,TSS_DESCRIPTOR_START_INDEX + i,(UINT64)tss_ptr+i);
     }
-    LTR(TSS_DESCRIPTOR_START_INDEX * 8);
+    LTR(TSS_DESCRIPTOR_START_INDEX * 16);
+    return;
+}
+
+// 设置 TSS 描述符
+void set_tss(UINT64 *gdt_address,UINT32 index,UINT64 tss_address) {
+    // 低 64 位的描述符
+    UINT64 tss_low = TSS_TYPE|P|TSS_LIMIT|DPL_0|((tss_address&0xFFFF)<<16)|(((tss_address>>16)&0xFF)<<32)|(((tss_address>>24)&0xFF)<<56);
+    // 高 64 位的描述符
+    UINT64 tss_high = tss_address >> 32;                   // BASE 的高 32 位
+    // 设置 GDT 描述符
+    gdt_address[index * 2] = tss_low;                      // 设置低 64 位
+    gdt_address[index * 2 + 1] = tss_high;                 // 设置高 64 位
     return;
 }

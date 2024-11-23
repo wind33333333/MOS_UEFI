@@ -2,27 +2,13 @@
 #define __TSS_INIT_H__
 #include "moslib.h"
 
-#define SET_TSS_L(BASE)  \
-    (TSS_TYPE | P | TSS_LIMIT | DPL_0 | \
-    (((UINT64)(BASE) & 0x000000000000FFFF) << 16) | \
-    (((UINT64)(BASE) >> 16) & 0x00000000000000FF) << 32 | \
-    (((UINT64)(BASE) >> 24) & 0x00000000000000FF) << 56)
-
-#define SET_TSS_H(BASE)  ((UINT64)(BASE) >> 32)
-
-#define SET_TSS(GDTBASE,NUM,BASE) \
-               do { \
-               GDTBASE[NUM*2] = SET_TSS_L(BASE); \
-               GDTBASE[NUM*2+1] = SET_TSS_H(BASE); \
-               }while(0)
-
-
 #define TSS_TYPE    (0x9UL << 40)
 #define TSS_LIMIT   (0x67UL & 0xFFFF) | ((0x67UL >> 16)<<48)
 
 #define LTR(TSS_SEL) __asm__ __volatile__("ltr    %w0" ::"r"(TSS_SEL):);
 
 void init_tss(void);
+void set_tss(UINT64 *gdt_address,UINT32 index,UINT64 tss_address);
 
 typedef struct {
     UINT32   reserved0;
