@@ -29,13 +29,4 @@ typedef struct {
     UINT16   iomap_base;
 } __attribute__((packed)) tss_t;
 
-static inline void ltr(UINT16 tss_sel) {
-    __asm__ __volatile__(
-            "ltr    %w0 \n\t"
-            :
-            : "r"(tss_sel)
-            :
-            );
-}
-
 #endif
