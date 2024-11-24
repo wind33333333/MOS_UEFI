@@ -28,11 +28,7 @@ void init_hpet(void) {
     hpet_registers.tim7_comp = (UINT64 *) LADDR_TO_HADDR(hpet.address + 0x1E8);
 
     *hpet_registers.gen_conf = 1; //启用hpet
-    SFENCE();
-
     *hpet_registers.main_cnt = 0;
-    SFENCE();
-
     hpet.time_number = (*hpet_registers.gcap_id >> 8 & 0x1F)+1;
     hpet.frequency = *hpet_registers.gcap_id >> 32;
     color_printk(YELLOW, BLACK, "HPET Clock Frequency: %dhz  TimerNum: %d \n",hpet.frequency,hpet.time_number);

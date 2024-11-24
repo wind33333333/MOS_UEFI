@@ -17,14 +17,45 @@ typedef long long INT64;
 
 #define NULL 0
 
-#define STI()       __asm__ __volatile__ ("sti	\n\t":::"memory")
-#define CLI()       __asm__ __volatile__ ("cli	\n\t":::"memory")
-#define STAC()      __asm__ __volatile__ ("stac	\n\t":::"memory")
-#define CLAC()      __asm__ __volatile__ ("clac	\n\t":::"memory")
-#define PAUSE()     __asm__ __volatile__ ("pause	\n\t":::"memory")
-#define MFENCE()    __asm__ __volatile__ ("mfence	\n\t":::"memory")
-#define SFENCE()    __asm__ __volatile__ ("sfence	\n\t":::"memory")
-#define LFENCE()    __asm__ __volatile__ ("lfence	\n\t":::"memory")
+// 开启中断 (STI)
+static inline void sti(void) {
+    __asm__ __volatile__("sti \n\t" ::: "memory");
+}
+
+// 关闭中断 (CLI)
+static inline void cli(void) {
+    __asm__ __volatile__("cli \n\t" ::: "memory");
+}
+
+// 开启对用户态访问的支持 (STAC)
+static inline void stac(void) {
+    __asm__ __volatile__("stac \n\t" ::: "memory");
+}
+
+// 关闭对用户态访问的支持 (CLAC)
+static inline void clac(void) {
+    __asm__ __volatile__("clac \n\t" ::: "memory");
+}
+
+// CPU等待指令 (PAUSE)
+static inline void pause(void) {
+    __asm__ __volatile__("pause \n\t" ::: "memory");
+}
+
+// 读写操作内存屏障 (MFENCE)
+static inline void mfence(void) {
+    __asm__ __volatile__("mfence \n\t" ::: "memory");
+}
+
+// 写操作单独内存屏障 (SFENCE)
+static inline void sfence(void) {
+    __asm__ __volatile__("sfence \n\t" ::: "memory");
+}
+
+// 读操作单独内存屏障 (LFENCE)
+static inline void lfence(void) {
+    __asm__ __volatile__("lfence \n\t" ::: "memory");
+}
 
 // 自旋锁的实现
 static inline void spin_lock(volatile UINT8 *lock_var) {
