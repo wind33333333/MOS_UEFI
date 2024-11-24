@@ -5,9 +5,9 @@
 
 __attribute__((section(".init_text"))) void init_tss(void) {
     //分配tss内存，每个cpu核心需要一个tss 对齐4k,每个tss占104字节
-    tss_t *tss_ptr = (tss_t *)LADDR_TO_HADDR(alloc_pages(PAGE_4K_ALIGN(cpu_info.logical_processors_number * 104) >> PAGE_4K_SHIFT));
-    map_pages(HADDR_TO_LADDR(tss_ptr),(UINT64)tss_ptr,PAGE_4K_ALIGN(cpu_info.logical_processors_number * 104) >> PAGE_4K_SHIFT,PAGE_ROOT_RW);
-    mem_set((void*)tss_ptr,0,PAGE_4K_ALIGN(cpu_info.logical_processors_number * 104));
+    tss_t *tss_ptr = (tss_t *)LADDR_TO_HADDR(alloc_pages(PAGE_4K_ALIGN(cpu_info.logical_processors_number * sizeof(tss_t)) >> PAGE_4K_SHIFT));
+    map_pages(HADDR_TO_LADDR(tss_ptr),(UINT64)tss_ptr,PAGE_4K_ALIGN(cpu_info.logical_processors_number * sizeof(tss_t)) >> PAGE_4K_SHIFT,PAGE_ROOT_RW);
+    mem_set((void*)tss_ptr,0,PAGE_4K_ALIGN(cpu_info.logical_processors_number * sizeof(tss_t)));
 
     //循环初始化tss,每个tss.rsp0和ist1分配16K栈空间
     for (int i = 0; i < cpu_info.logical_processors_number; i++) {
