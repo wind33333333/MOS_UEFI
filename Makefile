@@ -5,14 +5,14 @@ CFLAGS:= -m64 					# 64 位的程序
 #CFLAGS+= -masm=intel			#intel汇编编码
 CFLAGS+= -fno-builtin			# 不需要 gcc 内置函数
 #CFLAGS+= -nostdinc				# 不需要标准头文件
-CFLAGS+= -fno-pic				# 不需要位置无关的代码  position independent code
-CFLAGS+= -fno-pie				# 不需要位置无关的可执行程序 position independent executable
+#CFLAGS+= -fno-pic				# 不需要位置无关的代码  position independent code
+#CFLAGS+= -fno-pie				# 不需要位置无关的可执行程序 position independent executable
 CFLAGS+= -nostdlib				# 不需要标准库
 CFLAGS+= -mcmodel=large 		#大内存模型
 CFLAGS+= -fno-stack-protector	# 不需要栈保护
 CFLAGS+= -g						#开启调试符号
-#CFLAGS += -O3                  # 使用 -O3 优化选项
-#CFLAGS+= -mavx2				#开启avx256指令集优化
+#CFLAGS += -O3                   # 使用 -O3 优化选项
+#CFLAGS+= -mavx2					#开启avx256指令集优化
 CFLAGS+= -mstackrealign			#堆栈自动对齐16字节
 CFLAGS:=$(strip ${CFLAGS})
 
