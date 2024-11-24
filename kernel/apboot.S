@@ -1,7 +1,7 @@
 .section .init_text,"ax"
 .code16
 .globl _apboot_start
-_apboot_start:          #实模式
+_apboot_start:    #实模式
     cli
     wbinvd
 
@@ -29,11 +29,11 @@ _apboot_start:          #实模式
     ljmpl   *(code32_ptr - _apboot_start)    # 远跳转到保护模式
 
 .code32
-protected_mode:         #保护模式
-    movl    $DATA32_SEL,%eax
-    movl    %eax,%ss
-    movl    %eax,%ds
-    movl    %eax,%es
+protected_mode:    #保护模式
+    movw    $DATA32_SEL,%ax
+    movw    %ax,%ss
+    movw    %ax,%ds
+    movw    %ax,%es
 
     movl    %cr4,%eax
     orl     $0x20,%eax              # 设置 PAE 位 (bit 5)
@@ -50,38 +50,33 @@ protected_mode:         #保护模式
     movl    %cr0,%eax
     orl     $0x80000001,%eax        # 设置 PG (Paging) 和 PE (Protected Mode) 位
     movl    %eax,%cr0
-    ljmp   *(code64_ptr-_apboot_start)(%esi)    #跳入长模式
+    ljmp    *(code64_ptr-_apboot_start)(%esi)    #跳入长模式
 
 .code64
-long_mode:                  #长模式
-    movq        $DATA64_SEL,%rax
-    movq        %rax,%ss
-    movq        %rax,%ds
-    movq        %rax,%es
-
-    movl       $0xB,%eax
-    movl       $1,%ecx
+long_mode:    #长模式
+    movl    $0xB,%eax
+    movl    $1,%ecx
     cpuid
-    movl       %edx,%eax                        #apic_id
+    movl    %edx,%eax                        #apic_id
 
-    movq       $0xFFFFFFFFFFFFFFFF,%rcx
-    movabs     $apic_id_table,%rdi              #需要查找的数组
-    movq       (%rdi),%rdi
+    movq    $0xFFFFFFFFFFFFFFFF,%rcx
+    movabs  $apic_id_table,%rdi              #需要查找的数组
+    movq    (%rdi),%rdi
     cld
-    repne      scasl
-    je         j_apic_id
+    repne   scasl
+    je      j_apic_id
     hlt                                         #没找到停机
 
 j_apic_id:
-    notq        %rcx
-    decq        %rcx
-    shlq        $14,%rcx                        #每个核心16Kb栈空间
-    movabs      $ap_rsp,%rsp
-    movq        (%rsp),%rsp
-    addq        %rcx,%rsp
+    notq    %rcx
+    decq    %rcx
+    shlq    $14,%rcx                        #每个核心16Kb栈空间
+    movabs  $ap_rsp,%rsp
+    movq    (%rsp),%rsp
+    addq    %rcx,%rsp
 
-    movabs      $ap_main,%rax
-    jmp         *%rax                           #ap_main
+    movabs  $ap_main,%rax
+    jmp     *%rax                           #ap_main
 
 .balign 8
 ap_gdt:
@@ -89,7 +84,6 @@ ap_gdt:
     code32_desc:    .quad 0x00CF9A000000FFFF
     data32_desc:    .quad 0x00CF92000000FFFF
     code64_desc:    .quad 0x0020980000000000
-    data64_desc:    .quad 0x0000920000000000
 ap_gdt_end:
 
 .balign 8
@@ -100,7 +94,6 @@ ap_gdt_ptr:
     .equ CODE32_SEL,code32_desc - ap_gdt
     .equ DATA32_SEL,data32_desc - ap_gdt
     .equ CODE64_SEL,code64_desc - ap_gdt
-    .equ DATA64_SEL,data64_desc - ap_gdt
 
 .balign 8
 code32_ptr:
