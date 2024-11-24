@@ -2,13 +2,14 @@
 #define __TSS_INIT_H__
 #include "moslib.h"
 
+//TSS起始选择子
+#define TSS_DESCRIPTOR_START_INDEX 5
+
 #define TSS_TYPE    (0x9UL << 40)
 #define TSS_LIMIT   (0x67UL & 0xFFFF) | ((0x67UL >> 16)<<48)
 
-#define LTR(TSS_SEL) __asm__ __volatile__("ltr    %w0" ::"r"(TSS_SEL):);
-
 void init_tss(void);
-void set_tss(UINT64 *gdt_address,UINT32 index,UINT64 tss_address);
+void set_tss_descriptor(UINT32 index,UINT64 tss_address);
 
 typedef struct {
     UINT32   reserved0;
@@ -27,5 +28,14 @@ typedef struct {
     UINT16   reserved3;
     UINT16   iomap_base;
 } __attribute__((packed)) tss_t;
+
+static inline void ltr(UINT16 tss_sel) {
+    __asm__ __volatile__(
+            "ltr    %w0 \n\t"
+            :
+            : "r"(tss_sel)
+            :
+            );
+}
 
 #endif

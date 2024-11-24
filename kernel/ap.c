@@ -46,7 +46,7 @@ __attribute__((section(".init_text"))) void ap_main(void){
     init_cpu_amode();
     set_cr3(HADDR_TO_LADDR(pml4t));
     lgdt(&gdt_ptr,0x8,0x10);
-    LTR(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);
+    ltr(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);
     lidt(&idt_ptr);
     init_apic();
     init_syscall();

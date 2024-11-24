@@ -11,9 +11,6 @@ typedef struct{
 
 extern gdt_ptr_t gdt_ptr;
 
-//TSS起始选择子
-#define TSS_DESCRIPTOR_START_INDEX 5
-
 #define CODE64_0 (TYPE_CODE64 | DPL_0 | S | P | L)                   //ring0 64位代码段
 #define DATA64_0 (TYPE_DATA64 | DPL_0 | S | P)                       //ring0 64位数据段
 #define CODE64_3 (TYPE_CODE64 | DPL_3 | S | P | L)                   //ring3 64位代码段

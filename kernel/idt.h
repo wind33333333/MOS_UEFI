@@ -2,8 +2,7 @@
 #define __IDT_H__
 #include "moslib.h"
 
-#define TYPE_CALL       (0xCUL << 40)
-#define TYPE_INT        (0xEUL << 40)
+#define TYPE_INTRPT     (0xEUL << 40)
 #define TYPE_TRAP       (0xFUL << 40)
 #define IST_0           (0x0UL << 32)
 #define IST_1           (0x1UL << 32)
@@ -23,7 +22,6 @@ typedef struct{
 extern idt_ptr_t idt_ptr;
 
 void init_idt(void);
-void set_gate(UINT64 *table_base, UINT32 number, UINT64 function_address, UINT64 ist, UINT64 type);
-
+void set_idt_descriptor(UINT32 index, UINT64 function_address, UINT64 ist, UINT64 type);
 
 #endif
