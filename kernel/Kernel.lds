@@ -38,6 +38,7 @@ SECTIONS
     	_end_data = .;
     }
 
+    /*未初始化数据段*/
 	.bss :
 	{
 		_start_bss = .;
@@ -45,6 +46,7 @@ SECTIONS
 		_end_bss = .;
 	}
 
+    /*全局偏移表*/
 	/*    .got :
         {
             _got_start = .;
