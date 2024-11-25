@@ -13,6 +13,9 @@ typedef short INT16;
 typedef int INT32;
 typedef long long INT64;
 
+extern UINT64 _start_bss;
+extern UINT64 _end_bss;
+
 #define BOCHS_DG()    __asm__ __volatile__ ("xchg %%bx,%%bx \n\t":: :);
 
 #define NULL 0

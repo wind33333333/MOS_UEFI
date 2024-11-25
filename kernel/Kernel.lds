@@ -4,7 +4,7 @@ ENTRY(_start)
 SECTIONS
 {
     /*内核初始化代码段*/
-	. = 0xffff800000000000 + 0x100000;
+	/*. = 0xffff800000000000 + 0x100000;*/
     .init_text :
     {
 		_start_init_text = .;
@@ -44,6 +44,20 @@ SECTIONS
 		*(.bss)
 		_end_bss = .;
 	}
+
+	/*    .got :
+        {
+            _got_start = .;
+            *(.got)
+            _got_end = .;
+        }
+
+        .got.plt :
+        {
+            _got_plt_start = .;
+            *(.got.plt)
+            _got_plt_end = .;
+        }*/
 
     . = ALIGN(4096);
 	_end = .;
