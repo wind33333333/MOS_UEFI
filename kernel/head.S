@@ -38,8 +38,8 @@ init_tmp_pdptt:
     movq     %r8,%cr3                         #设置临时页表
 
     leaq     _end+0x4000(%rip),%rsp           #初始化bsp核心栈，内核结束处+16K
-    movabs   $HBASE_ADDR,%rax
-    orq      %rax,%rsp
+    movabs   $HBASE_ADDR,%rbx
+    orq      %rbx,%rsp
     movq     %rsp,kernel_stack_top(%rip)
 
     leaq     init_kernel(%rip),%rax
@@ -54,12 +54,12 @@ init_tmp_pdptt:
         .fill   0x3000,1,0
 
     .globl kernel_stack_top
-    kernel_stack_top:   .quad   _end
+    kernel_stack_top:   .quad   0
 
     .globl boot_info
     boot_info:     .quad   0
 
-    .equ    HBASE_ADDR,0xffff800000000000      #内核虛擬地址基址
+    .equ    HBASE_ADDR,0xffff800000000000      #内核虚拟地址基址
 
 
 #========================================正式内核代码=================================================

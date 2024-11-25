@@ -3,6 +3,7 @@
 #include "moslib.h"
 
 void init_ap(void);
+void ap_main(void);
 
 typedef struct {
     UINT64 rsp;
@@ -12,7 +13,12 @@ typedef struct {
 extern UINT8 _apboot_start[];
 extern UINT8 _apboot_end[];
 
-extern UINT64 ap_rsp;
+//extern UINT64 ap_rsp;
+extern UINT64 ap_rsp_ptr;
+extern void *ap_main_ptr;
+extern UINT64* ap_tmp_pml4t_ptr;
+extern UINT32 *apic_id_table_ptr;
+extern UINT64 tmp_pml4t;
 extern UINT64 ap_boot_loader_address;
 
 #endif

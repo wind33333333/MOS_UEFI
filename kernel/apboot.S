@@ -71,41 +71,52 @@ j_apic_id:
     notq    %rcx
     decq    %rcx
     shlq    $14,%rcx                        #每个核心16Kb栈空间
-    movabs  $ap_rsp,%rsp
+    #movabs  $ap_rsp,%rsp
     movq    (%rsp),%rsp
     addq    %rcx,%rsp
 
     movabs  $ap_main,%rax
     jmp     *%rax                           #ap_main
 
-.balign 8
-ap_gdt:
-                    .quad 0                        # 保留项
-    code32_desc:    .quad 0x00CF9A000000FFFF
-    data32_desc:    .quad 0x00CF92000000FFFF
-    code64_desc:    .quad 0x0020980000000000
-ap_gdt_end:
+##################数据###############
+    .balign 8
+    ap_gdt:
+                        .quad 0                        # 保留项
+        code32_desc:    .quad 0x00CF9A000000FFFF
+        data32_desc:    .quad 0x00CF92000000FFFF
+        code64_desc:    .quad 0x0020980000000000
+    ap_gdt_end:
 
-.balign 8
-ap_gdt_ptr:
-    .word    ap_gdt_end - ap_gdt - 1
-    .long    0
+    .balign 8
+    ap_gdt_ptr:
+        .word    ap_gdt_end - ap_gdt - 1
+        .long    0
 
-    .equ CODE32_SEL,code32_desc - ap_gdt
-    .equ DATA32_SEL,data32_desc - ap_gdt
-    .equ CODE64_SEL,code64_desc - ap_gdt
+        .equ CODE32_SEL,code32_desc - ap_gdt
+        .equ DATA32_SEL,data32_desc - ap_gdt
+        .equ CODE64_SEL,code64_desc - ap_gdt
 
-.balign 8
-code32_ptr:
-    .long   0
-    .word   CODE32_SEL
+    .balign 8
+    code32_ptr:
+        .long   0
+        .word   CODE32_SEL
 
-.balign 8
-code64_ptr:
-    .long   0
-    .word   CODE64_SEL
+    .balign 8
+    code64_ptr:
+        .long   0
+        .word   CODE64_SEL
 
-    .equ    HBASE_ADDR,0xffff800000000000      //内核虛擬地址基址
+    .globl  ap_tmp_pml4t_ptr
+    ap_tmp_pml4t_ptr:      .quad   0
+
+    .globl  ap_main_ptr
+    ap_main_ptr:        .quad   0
+
+    .globl  ap_rsp_ptr
+    ap_rsp_ptr:         .quad   0
+
+    .globl  apic_id_table_ptr
+    apic_id_table_ptr:  .quad   0
 
 .globl   _apboot_end
 _apboot_end:
