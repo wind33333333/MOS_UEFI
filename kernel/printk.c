@@ -26,11 +26,6 @@ void putchar(unsigned int *fb, int Xsize, int x, int y, unsigned int FRcolor, un
     }
 }
 
-
-/*
-
-*/
-
 int  skip_atoi(const char **s) {
     int i = 0;
 
@@ -38,10 +33,6 @@ int  skip_atoi(const char **s) {
         i = i * 10 + *((*s)++) - '0';
     return i;
 }
-
-/*
-
-*/
 
 static char *number(char *str, long num, int base, int size,int precision, int type) {
     char c, sign, tmp[50];
@@ -95,11 +86,6 @@ static char *number(char *str, long num, int base, int size,int precision, int t
         *str++ = ' ';
     return str;
 }
-
-
-/*
-
-*/
 
 int  vsprintf(char *buf, const char *fmt, va_list args) {
     char *str, *s;
@@ -282,9 +268,6 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
     return str - buf;
 }
 
-/*
-
-*/
 int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ...) {
     spin_lock(&Pos.lock);
     int i = 0;
@@ -349,7 +332,6 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
 char buf[4096];
 
 __attribute__((section(".init_text"))) void init_output(void) {
-        mem_set(&buf,0,4096);
 
         Pos.XResolution = boot_info->horizontal_resolution;
         Pos.YResolution = boot_info->vertical_resolution;

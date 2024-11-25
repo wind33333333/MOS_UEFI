@@ -14,8 +14,6 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     pdptt_vbase = (UINT64 *) 0xFFFFFFFFFFE00000;  //pdptt虚拟地址基址
     pdt_vbase = (UINT64 *) 0xFFFFFFFFC0000000;    //pdt虚拟地址基址
     ptt_vbase= (UINT64 *) 0xFFFFFF8000000000;    //ptt虚拟地址基址
-    //初始化全局变量memory_management
-    mem_set(&memory_management,0,sizeof(global_memory_descriptor_t));
     //查找memmap中可用物理内存并合并，统计总物理内存容量。
     UINT32 mem_map_index = 0;
     for(UINT32 i = 0;i < (boot_info->mem_map_size/boot_info->mem_descriptor_size);i++){
