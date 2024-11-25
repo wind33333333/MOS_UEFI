@@ -40,6 +40,7 @@ protected_mode:    #保护模式
     movl    %eax,%cr4
 
     #movl    $tmp_pml4t-HBASE_ADDR,%eax
+    movl    ap_tmp_pml4t_ptr-_apboot_start(%esi),%eax
     movl    %eax,%cr3               # 设置临时页表
 
     movl    $0xC0000080,%ecx        # EFER MSR 的地址
@@ -60,8 +61,9 @@ long_mode:    #长模式
     movl    %edx,%eax                        #apic_id
 
     movq    $0xFFFFFFFFFFFFFFFF,%rcx
-    movabs  $apic_id_table,%rdi              #需要查找的数组
-    movq    (%rdi),%rdi
+    #movabs  $apic_id_table,%rdi              #需要查找的数组
+    #movq    (%rdi),%rdi
+    movq   apic_id_table_ptr(%rip),%rdi
     cld
     repne   scasl
     je      j_apic_id
@@ -72,10 +74,12 @@ j_apic_id:
     decq    %rcx
     shlq    $14,%rcx                        #每个核心16Kb栈空间
     #movabs  $ap_rsp,%rsp
-    movq    (%rsp),%rsp
+    #movq    (%rsp),%rsp
+    movq    ap_rsp_ptr(%rip),%rsp
     addq    %rcx,%rsp
 
-    movabs  $ap_main,%rax
+    #movabs  $ap_main,%rax
+    movq    ap_main_ptr(%rip),%rax
     jmp     *%rax                           #ap_main
 
 ##################数据###############
@@ -107,7 +111,7 @@ j_apic_id:
         .word   CODE64_SEL
 
     .globl  ap_tmp_pml4t_ptr
-    ap_tmp_pml4t_ptr:      .quad   0
+    ap_tmp_pml4t_ptr:   .quad   0
 
     .globl  ap_main_ptr
     ap_main_ptr:        .quad   0
