@@ -39,7 +39,7 @@ protected_mode:    #保护模式
     orl     $0x20,%eax              # 设置 PAE 位 (bit 5)
     movl    %eax,%cr4
 
-    movl    ap_tmp_pml4t_ptr-_apboot_start(%esi),%eax
+    movl    (ap_tmp_pml4t_ptr-_apboot_start)(%esi),%eax
     movl    %eax,%cr3               # 设置临时页表
 
     movl    $0xC0000080,%ecx        # EFER MSR 的地址
