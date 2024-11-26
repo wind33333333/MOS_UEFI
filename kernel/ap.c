@@ -16,17 +16,11 @@ __attribute__((section(".init.data"))) UINT64 ap_boot_loader_address;
 //多核处理器初始化
 __attribute__((section(".init_text"))) void init_ap(void) {
     ap_main_ptr = &ap_main;
-
     ap_tmp_pml4t_ptr = HADDR_TO_LADDR(&tmp_pml4t);
-
     apic_id_table_ptr = apic_id_table;
-
     ap_rsp_ptr = (UINT64)LADDR_TO_HADDR(alloc_pages((cpu_info.logical_processors_number-1)*4));            //每个ap核分配16K栈
     map_pages((UINT64)HADDR_TO_LADDR(ap_rsp_ptr),ap_rsp_ptr,(cpu_info.logical_processors_number-1)*4,PAGE_ROOT_RW);
-
     memcpy(_apboot_start, (void*)ap_boot_loader_address,_apboot_end-_apboot_start);                 //把ap核初始化代码复制到过去
-    //ap_rsp = (UINT64)LADDR_TO_HADDR(alloc_pages((cpu_info.logical_processors_number-1)*4));            //每个ap核分配16K栈
-    //map_pages((UINT64)HADDR_TO_LADDR(ap_rsp),ap_rsp,(cpu_info.logical_processors_number-1)*4,PAGE_ROOT_RW);
 
     UINT32 counter;
     //bit8-10投递模式init101 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
