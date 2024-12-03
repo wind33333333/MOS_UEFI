@@ -4,14 +4,13 @@
 
 void init_memory(void);
 
-void *alloc_pages(UINT64 page_number);
+UINT64 alloc_pages(UINT64 page_number);
 
-int free_pages(void *pages_addr, UINT64 page_number);
+void free_pages(UINT64 pages_addr, UINT64 page_number);
 
-void
-map_pages(UINT64 phy_addr, UINT64 vir_addr, UINT64 page_number, UINT64 attr);
+void map_pages(UINT64 phy_addr, UINT64 vir_addr, UINT64 page_number, UINT64 attr);
 
-void unmap_pages(UINT64 phy_addr, UINT64 page_number);
+void unmap_pages(UINT64 vir_addr, UINT64 page_number);
 
 extern UINT64 *pml4t_vbase;  //pml4t虚拟地址基址
 extern UINT64 *pdptt_vbase;  //pdptt虚拟地址基址
@@ -25,11 +24,11 @@ extern CHAR8 _start_init_text[];
 #define PAGE_OFFSET    ((UINT64)0xffff800000000000)
 #define PAGE_4K_SHIFT    12
 #define PAGE_4K_SIZE    (1UL << PAGE_4K_SHIFT)
-#define PAGE_4K_MASK    (~ (PAGE_4K_SIZE - 1))
-#define PAGE_4K_ALIGN(addr)    (((UINT64)(addr) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
+#define PAGE_4K_MASK    (~(PAGE_4K_SIZE - 1))
+#define PAGE_4K_ALIGN(ADDR)    (((UINT64)(ADDR) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
 
-#define HADDR_TO_LADDR(addr)    ((UINT64)(addr) & (~PAGE_OFFSET))
-#define LADDR_TO_HADDR(addr)    ((UINT64 *)((UINT64)(addr) | PAGE_OFFSET))
+#define HADDR_TO_LADDR(ADDR)    ((UINT64)(ADDR) & (~PAGE_OFFSET))
+#define LADDR_TO_HADDR(ADDR)    ((UINT64)((UINT64)(ADDR) | PAGE_OFFSET))
 
 typedef struct{
     UINT64 address;
@@ -57,8 +56,6 @@ typedef struct {
 } global_memory_descriptor_t;
 
 extern global_memory_descriptor_t memory_management;
-
-#define INVLPG(vir_addr) __asm__ __volatile__("invlpg (%0)"::"r"(vir_addr):"memory");
 
 #define PAGE_NX     1UL<<63
 #define PAGE_G      1UL<<8

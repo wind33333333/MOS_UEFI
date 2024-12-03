@@ -77,6 +77,10 @@ static inline void spin_lock(volatile UINT8 *lock_var) {
     return;
 }
 
+static inline void invlpg(void *vir_addr) {
+    __asm__ __volatile__("invlpg (%0) \n\t" : : "r"(vir_addr) : "memory");
+}
+
 static inline void lgdt(void *gdt_ptr, UINT16 code64_sel, UINT16 data64_sel) {
     __asm__ __volatile__(
             "lgdtq       (%0)                \n\t"  // 加载 GDT 描述符地址
@@ -310,6 +314,20 @@ static inline void *mem_set(void *Address, UINT8 C, long Count) {
     return Address;
 }
 
+static inline BOOLEAN mem_scasq(void *address,UINT64 count,UINT64 value){
+    BOOLEAN result;
+    __asm__ __volatile__(
+            "cld                  \n\t"
+            "repz                 \n\t"
+            "scasq                \n\t"
+            "setz    %%al         \n\t"
+            :"=a"(result)
+            :"a"(value),"c"(count),"D"(address)
+            :"memory"
+            );
+    return result;
+}
+
 static inline char *strcpy(char *Dest, char *Src) {
     __asm__ __volatile__    (    "cld	\n\t"
                                  "1:	\n\t"
@@ -320,7 +338,6 @@ static inline char *strcpy(char *Dest, char *Src) {
             :
             :"S"(Src), "D"(Dest)
             :
-
             );
     return Dest;
 }

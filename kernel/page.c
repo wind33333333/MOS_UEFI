@@ -9,7 +9,7 @@
 __attribute__((section(".init_data"))) UINT64 *pml4t;          //正式内核页表
 
 __attribute__((section(".init_text"))) void init_page(void) {
-    pml4t = LADDR_TO_HADDR(alloc_pages(1));
+    pml4t = (UINT64*)LADDR_TO_HADDR(alloc_pages(1));
     mem_set((void*)pml4t,0,4096);
 
     UINT64 pml4_bak[256] = {0};
