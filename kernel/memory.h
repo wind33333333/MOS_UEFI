@@ -8,9 +8,9 @@ UINT64 alloc_pages(UINT64 page_number);
 
 void free_pages(UINT64 pages_addr, UINT64 page_number);
 
-void map_pages(UINT64 phy_addr, UINT64 vir_addr, UINT64 page_number, UINT64 attr);
+void map_pages(UINT64 phy_addr, UINT64 virt_addr, UINT64 page_number, UINT64 attr);
 
-void unmap_pages(UINT64 vir_addr, UINT64 page_number);
+void unmap_pages(UINT64 virt_addr, UINT64 page_number);
 
 extern UINT64 *pml4t_vbase;  //pml4t虚拟地址基址
 extern UINT64 *pdptt_vbase;  //pdptt虚拟地址基址
@@ -86,5 +86,34 @@ extern global_memory_descriptor_t memory_management;
 #define PAGE_USER_RW     (PAGE_NX | PAGE_US | PAGE_RW | PAGE_P | PAGE_WB)    //可读可写
 #define PAGE_USER_RX     (PAGE_US | PAGE_P | PAGE_WB)                        //可读可执行
 #define PAGE_USER_RWX    (PAGE_US | PAGE_RW | PAGE_P | PAGE_WB)              //可读可写可执行
+
+static inline UINT64 virt_addr_to_pte_virt_addr(UINT64 virt_addr){
+    return (~(~virt_addr<<16>>28)<<3);
+}
+
+static inline UINT64 virt_addr_to_pde_virt_addr(UINT64 virt_addr){
+    return (~(~virt_addr<<16>>37)<<3);
+}
+
+static inline UINT64 virt_addr_to_pdpte_virt_addr(UINT64 virt_addr){
+    return (~(~virt_addr<<16>>46)<<3);
+}
+
+static inline UINT64 virt_addr_to_pml4e_virt_addr(UINT64 virt_addr){
+    return (~(~virt_addr<<16>>55)<<3);
+}
+
+static inline UINT64 calculate_pde_count(UINT64 virt_addr, UINT64 page_number) {
+    return (page_number + ((virt_addr >> 12) & 0x1FF) + 0x1FF) >> 9;
+}
+
+static inline UINT64 calculate_pdpte_count(UINT64 virt_addr, UINT64 page_number) {
+    return (page_number + ((virt_addr >> 12) & 0x3FFFF) + 0x3FFFF) >> 18;
+}
+
+static inline UINT64 calculate_pml4e_count(UINT64 virt_addr, UINT64 page_number) {
+    return (page_number + ((virt_addr >> 12) & 0x7FFFFFF) + 0x7FFFFFF) >> 27;
+}
+
 
 #endif
