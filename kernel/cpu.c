@@ -24,12 +24,6 @@ void init_cpu(void){
     init_idt();                                //初始化IDT
     init_apic();                               //初始化apic
     init_syscall();                            //初始化系统调用
-
-    UINT64 vir_addr=0x0;
-    UINT64 *addr=(UINT64*)alloc_pages(1025);
-    map_pages((UINT64)addr,vir_addr,1025,PAGE_ROOT_RW);
-    unmap_pages(vir_addr,1025);
-
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
     init_ap();                                 //初始化ap核
