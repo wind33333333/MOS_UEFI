@@ -87,30 +87,37 @@ extern global_memory_descriptor_t memory_management;
 #define PAGE_USER_RX     (PAGE_US | PAGE_P | PAGE_WB)                        //可读可执行
 #define PAGE_USER_RWX    (PAGE_US | PAGE_RW | PAGE_P | PAGE_WB)              //可读可写可执行
 
+//虚拟地址转换pte虚拟地址
 static inline UINT64 virt_addr_to_pte_virt_addr(UINT64 virt_addr){
     return (~(~virt_addr<<16>>28)<<3);
 }
 
+//虚拟地址转换pde虚拟地址
 static inline UINT64 virt_addr_to_pde_virt_addr(UINT64 virt_addr){
     return (~(~virt_addr<<16>>37)<<3);
 }
 
+//虚拟地址转换pdpte虚拟地址
 static inline UINT64 virt_addr_to_pdpte_virt_addr(UINT64 virt_addr){
     return (~(~virt_addr<<16>>46)<<3);
 }
 
+//虚拟地址转换pml4e虚拟地址
 static inline UINT64 virt_addr_to_pml4e_virt_addr(UINT64 virt_addr){
     return (~(~virt_addr<<16>>55)<<3);
 }
 
+//虚拟地址和page数量计算pde数量
 static inline UINT64 calculate_pde_count(UINT64 virt_addr, UINT64 page_number) {
     return (page_number + ((virt_addr >> 12) & 0x1FF) + 0x1FF) >> 9;
 }
 
+//虚拟地址和page数量计算pdpte数量
 static inline UINT64 calculate_pdpte_count(UINT64 virt_addr, UINT64 page_number) {
     return (page_number + ((virt_addr >> 12) & 0x3FFFF) + 0x3FFFF) >> 18;
 }
 
+//虚拟地址和page数量计算pml4e数量
 static inline UINT64 calculate_pml4e_count(UINT64 virt_addr, UINT64 page_number) {
     return (page_number + ((virt_addr >> 12) & 0x7FFFFFF) + 0x7FFFFFF) >> 27;
 }
