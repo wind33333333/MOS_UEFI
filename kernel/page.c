@@ -13,8 +13,7 @@ __attribute__((section(".init_text"))) void init_page(void) {
     mem_set((void*)pml4t,0,4096);
 
     UINT64 pml4_bak[256] = {0};
-    UINT64 pml4e_num = (((memory_management.kernel_end_address >> 12) - ((memory_management.kernel_end_address >> 12) & ~(512UL * 512 * 512 - 1))) +
-                        (512UL * 512 * 512 - 1)) / (512UL * 512 * 512);
+    UINT64 pml4e_num = calculate_pml4e_count(memory_management.kernel_end_address,memory_management.kernel_end_address - H_BASE_ADDR);
 
     for (UINT32 i = 0; i < pml4e_num; i++) {
         pml4_bak[i] = pml4t_vbase[i];  //备份原PML4E

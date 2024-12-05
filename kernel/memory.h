@@ -21,14 +21,14 @@ extern UINT64 kernel_stack_top;
 extern CHAR8 _start_text[];
 extern CHAR8 _start_init_text[];
 
-#define PAGE_OFFSET    ((UINT64)0xffff800000000000)
 #define PAGE_4K_SHIFT    12
 #define PAGE_4K_SIZE    (1UL << PAGE_4K_SHIFT)
 #define PAGE_4K_MASK    (~(PAGE_4K_SIZE - 1))
 #define PAGE_4K_ALIGN(ADDR)    (((UINT64)(ADDR) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
 
-#define HADDR_TO_LADDR(ADDR)    ((UINT64)(ADDR) & (~PAGE_OFFSET))
-#define LADDR_TO_HADDR(ADDR)    ((UINT64)((UINT64)(ADDR) | PAGE_OFFSET))
+#define H_BASE_ADDR             ((UINT64)0xffff800000000000UL)
+#define HADDR_TO_LADDR(ADDR)    ((UINT64)(ADDR) & (~H_BASE_ADDR))
+#define LADDR_TO_HADDR(ADDR)    ((UINT64)((UINT64)(ADDR) | H_BASE_ADDR))
 
 typedef struct{
     UINT64 address;
