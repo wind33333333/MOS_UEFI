@@ -121,7 +121,7 @@ UINT64 alloc_pages(UINT64 page_number) {
                 memory_management.used_pages += page_number;
                 memory_management.avl_pages -= page_number;
                 memory_management.lock = 0;
-                return (start_idx << PAGE_4K_SHIFT); // 找到连续空闲块，返回起始索引
+                return (start_idx << PAGE_4K_SHIFT); // 找到连续空闲块，返回结果 物理页地址=起始索引*4096
             }
         }
     }
@@ -167,7 +167,7 @@ void unmap_pages(UINT64 virt_addr, UINT64 page_number) {
         invlpg((void*)((virt_addr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT)));
     }
 
-    //检查ptt是否为空,为空则释放页目录PDE
+    //PTT如果为空则释放PDE
     number = calculate_pde_count(virt_addr,page_number);
     for (INT32 i = 0; i < number; i++) {
         if(mem_scasq((void*)(((UINT64)pte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)){
@@ -176,8 +176,8 @@ void unmap_pages(UINT64 virt_addr, UINT64 page_number) {
         }
     }
 
-    //检查pdt是否为空,为空则释放页目录表 PDPTE
-    number = calculate_pdpte_count(virt_addr,page_number);;
+    //PDT如果为空则释放PDPTE
+    number = calculate_pdpte_count(virt_addr,page_number);
     for (INT32 i = 0; i < number; i++) {
         if(mem_scasq((void*)(((UINT64)pde_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)){
             free_pages(pdpte_vaddr[i] & 0x7FFFFFFFFFFFF000UL, 1);
@@ -185,8 +185,8 @@ void unmap_pages(UINT64 virt_addr, UINT64 page_number) {
         }
     }
 
-    //检查pdptt是否为空,为空则释放页目录表 PML4TE
-    number = calculate_pml4e_count(virt_addr,page_number);;
+    //PDPTT如果为空则释放PML4E
+    number = calculate_pml4e_count(virt_addr,page_number);
     for (INT32 i = 0; i < number; i++) {
         if(mem_scasq((void*)(((UINT64)pdpte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)){
             free_pages(pml4e_vaddr[i] & 0x7FFFFFFFFFFFF000UL, 1);

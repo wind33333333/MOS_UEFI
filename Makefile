@@ -2,20 +2,20 @@ BUILD:=./build
 KERNEL:=./kernel
 
 CFLAGS:= -m64 					# 64 位的程序
-#CFLAGS+= -masm=intel			#intel汇编编码
+#CFLAGS+= -masm=intel			 #intel汇编编码
 CFLAGS+= -fno-pic				#禁用要位置无关的代码
 CFLAGS+= -fno-pie				#禁用要位置无关的可执行程序
-#CFLAFS+= -fpie 					#启用位置无关的可执行程序
+#CFLAFS+= -fpie 				 #启用位置无关的可执行程序
 #CFLAFS+= -mcmodel=kernel		#内核内存模型
 CFLAGS+= -mcmodel=large 		#大内存模型
-#CFLAGS += -O3                  # 使用 -O3 优化选项
-#CFLAGS+= -mavx2				#开启avx256指令集优化
+#CFLAGS += -O3                   # 使用 -O3 优化选项
+#CFLAGS+= -mavx2				 #开启avx256指令集优化
 CFLAGS+= -fno-stack-protector	#不需要栈保护
 CFLAGS+= -mstackrealign			#堆栈自动对齐16字节
 CFLAGS+= -g						#开启调试符号
 CFLAGS+= -fno-builtin			# 不需要 gcc 内置函数
 CFLAGS+= -nostdlib				# 不需要标准库
-#CFLAGS+= -nostdinc				# 不需要标准头文件
+#CFLAGS+= -nostdinc				 # 不需要标准头文件
 CFLAGS:=$(strip ${CFLAGS})
 
 

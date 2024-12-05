@@ -320,8 +320,8 @@ static inline BOOLEAN mem_scasq(void *address,UINT64 count,UINT64 value){
             "cld                  \n\t"
             "repz                 \n\t"
             "scasq                \n\t"
-            "setz    %%al         \n\t"
-            :"=a"(result)
+            "setz    %0           \n\t"
+            :"=r"(result)
             :"a"(value),"c"(count),"D"(address)
             :"memory"
             );
