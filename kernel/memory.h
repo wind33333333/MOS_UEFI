@@ -3,13 +3,9 @@
 #include "moslib.h"
 
 void init_memory(void);
-
 UINT64 alloc_pages(UINT64 page_number);
-
 void free_pages(UINT64 phy_addr, UINT64 page_number);
-
 void map_pages(UINT64 phy_addr, UINT64 virt_addr, UINT64 page_number, UINT64 attr);
-
 void unmap_pages(UINT64 virt_addr, UINT64 page_number);
 
 extern UINT64 *pml4t_vbase;  //pml4t虚拟地址基址
