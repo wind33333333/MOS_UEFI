@@ -158,16 +158,13 @@ void unmap_pages(UINT64 virt_addr, UINT64 page_number) {
     UINT64 *pml4e_vaddr=(UINT64*) virt_addr_to_pml4e_virt_addr(virt_addr);
     UINT64 number;
 
-    //释放页表PTE
-    free_pages(*pte_vaddr & 0x7FFFFFFFFFFFF000UL, page_number);
-    mem_set(pte_vaddr, 0, page_number << 3);
-
-    // 刷新 TLB
+    //取消PTE映射的物理页,刷新 TLB
     for (UINT64 i = 0; i < page_number; i++) {
-        invlpg((void*)((virt_addr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT)));
+        pte_vaddr[i]=0;
+        invlpg((void*)(virt_addr + (i << PAGE_4K_SHIFT)));
     }
 
-    //PTT如果为空则释放PDE
+    //PTT为空则释放物理页
     number = calculate_pde_count(virt_addr,page_number);
     for (INT32 i = 0; i < number; i++) {
         if(mem_scasq((void*)(((UINT64)pte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)){
@@ -176,7 +173,7 @@ void unmap_pages(UINT64 virt_addr, UINT64 page_number) {
         }
     }
 
-    //PDT如果为空则释放PDPTE
+    //PDT为空则释放物理页
     number = calculate_pdpte_count(virt_addr,page_number);
     for (INT32 i = 0; i < number; i++) {
         if(mem_scasq((void*)(((UINT64)pde_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)){
@@ -185,7 +182,7 @@ void unmap_pages(UINT64 virt_addr, UINT64 page_number) {
         }
     }
 
-    //PDPTT如果为空则释放PML4E
+    //PDPTT为空则释放物理页
     number = calculate_pml4e_count(virt_addr,page_number);
     for (INT32 i = 0; i < number; i++) {
         if(mem_scasq((void*)(((UINT64)pdpte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)){
@@ -204,7 +201,7 @@ void map_pages(UINT64 paddr, UINT64 virt_addr, UINT64 page_number, UINT64 attr) 
     UINT64 *pml4e_vaddr=(UINT64*) virt_addr_to_pml4e_virt_addr(virt_addr);
     UINT64 number;
 
-    //PML4 映射四级页目录表
+    //pml4e为空则挂载物理页
     number = calculate_pml4e_count(virt_addr,page_number);
     for (UINT64 i = 0; i < number; i++) {
         if (pml4e_vaddr[i] == 0) {
@@ -213,7 +210,7 @@ void map_pages(UINT64 paddr, UINT64 virt_addr, UINT64 page_number, UINT64 attr) 
         }
     }
 
-    //PDPT 映射页目录指针表
+    //PDPE为空则挂载物理页
     number = calculate_pdpte_count(virt_addr,page_number);
     for (UINT64 i = 0; i < number; i++) {
         if (pdpte_vaddr[i] == 0) {
@@ -222,7 +219,7 @@ void map_pages(UINT64 paddr, UINT64 virt_addr, UINT64 page_number, UINT64 attr) 
         }
     }
 
-    //PD 映射页目录表
+    //PDE为空则挂载物理页
     number = calculate_pde_count(virt_addr,page_number);
     for (UINT64 i = 0; i < number; i++) {
         if (pde_vaddr[i] == 0) {
@@ -231,9 +228,9 @@ void map_pages(UINT64 paddr, UINT64 virt_addr, UINT64 page_number, UINT64 attr) 
         }
     }
 
-    //PT 映射页表
+    //PTE挂载物理页，刷新TLB
     for (UINT64 i = 0; i < page_number; i++) {
-        pte_vaddr[i] = (paddr & PAGE_4K_MASK) + (i<<PAGE_4K_SHIFT) | attr;
+        pte_vaddr[i] = paddr + (i<<PAGE_4K_SHIFT) | attr;
         invlpg((void*)(virt_addr & PAGE_4K_MASK) + (i<<PAGE_4K_SHIFT));
     }
     return;
