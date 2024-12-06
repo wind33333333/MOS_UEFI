@@ -39,6 +39,8 @@ __attribute__((section(".init_text"))) void init_page(void) {
     return;
 }
 
+//UINT64 create_page_table(UINT64 virt_addr,UINT64 cout)
+
 
 
 

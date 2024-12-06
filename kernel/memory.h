@@ -3,10 +3,10 @@
 #include "moslib.h"
 
 void init_memory(void);
-UINT64 alloc_pages(UINT64 page_number);
-void free_pages(UINT64 phy_addr, UINT64 page_number);
-void map_pages(UINT64 phy_addr, UINT64 virt_addr, UINT64 page_number, UINT64 attr);
-void unmap_pages(UINT64 virt_addr, UINT64 page_number);
+UINT64 alloc_pages(UINT64 page_count);
+void free_pages(UINT64 phy_addr, UINT64 page_count);
+void map_pages(UINT64 phy_addr, UINT64 virt_addr, UINT64 page_count, UINT64 attr);
+void unmap_pages(UINT64 virt_addr, UINT64 page_count);
 
 extern UINT64 *pml4t_vbase;  //pml4t虚拟地址基址
 extern UINT64 *pdptt_vbase;  //pdptt虚拟地址基址
@@ -34,7 +34,7 @@ typedef struct{
 
 typedef struct {
     mem_map_t mem_map[20];
-    UINT32 mem_map_number;
+    UINT32 mem_map_count;
     UINT64 avl_mem_size;
 
     UINT64 *bitmap;
@@ -104,18 +104,18 @@ static inline UINT64 virt_addr_to_pml4e_virt_addr(UINT64 virt_addr){
 }
 
 //虚拟地址和page数量计算pde数量
-static inline UINT64 calculate_pde_count(UINT64 virt_addr, UINT64 page_number) {
-    return (page_number + ((virt_addr >> 12) & 0x1FF) + 0x1FF) >> 9;
+static inline UINT64 calculate_pde_count(UINT64 virt_addr, UINT64 page_count) {
+    return (page_count + ((virt_addr >> 12) & 0x1FF) + 0x1FF) >> 9;
 }
 
 //虚拟地址和page数量计算pdpte数量
-static inline UINT64 calculate_pdpte_count(UINT64 virt_addr, UINT64 page_number) {
-    return (page_number + ((virt_addr >> 12) & 0x3FFFF) + 0x3FFFF) >> 18;
+static inline UINT64 calculate_pdpte_count(UINT64 virt_addr, UINT64 page_count) {
+    return (page_count + ((virt_addr >> 12) & 0x3FFFF) + 0x3FFFF) >> 18;
 }
 
 //虚拟地址和page数量计算pml4e数量
-static inline UINT64 calculate_pml4e_count(UINT64 virt_addr, UINT64 page_number) {
-    return (page_number + ((virt_addr >> 12) & 0x7FFFFFF) + 0x7FFFFFF) >> 27;
+static inline UINT64 calculate_pml4e_count(UINT64 virt_addr, UINT64 page_count) {
+    return (page_count + ((virt_addr >> 12) & 0x7FFFFFF) + 0x7FFFFFF) >> 27;
 }
 
 
