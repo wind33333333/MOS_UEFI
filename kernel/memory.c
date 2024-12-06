@@ -132,9 +132,9 @@ UINT64 alloc_pages(UINT64 page_number) {
 
 
 //物理页释放器
-void free_pages(UINT64 pages_addr, UINT64 page_number) {
+void free_pages(UINT64 phy_addr, UINT64 page_number) {
     spin_lock(&memory_management.lock);
-    if ((pages_addr + (page_number << PAGE_4K_SHIFT)) >
+    if ((phy_addr + (page_number << PAGE_4K_SHIFT)) >
         (memory_management.mem_map[memory_management.mem_map_number - 1].address +
          memory_management.mem_map[memory_management.mem_map_number - 1].length)) {
         memory_management.lock = 0;
@@ -142,7 +142,7 @@ void free_pages(UINT64 pages_addr, UINT64 page_number) {
     }
 
     for (UINT64 i = 0; i < page_number; i++) {
-        (memory_management.bitmap[((pages_addr >> PAGE_4K_SHIFT) + i) / 64] ^= (1UL<< ((pages_addr >> PAGE_4K_SHIFT) + i) % 64));
+        (memory_management.bitmap[((phy_addr >> PAGE_4K_SHIFT) + i) / 64] ^= (1UL<< ((phy_addr >> PAGE_4K_SHIFT) + i) % 64));
     }
     memory_management.used_pages -= page_number;
     memory_management.avl_pages += page_number;
@@ -194,7 +194,7 @@ void unmap_pages(UINT64 virt_addr, UINT64 page_number) {
 }
 
 //物理内存映射虚拟内存
-void map_pages(UINT64 paddr, UINT64 virt_addr, UINT64 page_number, UINT64 attr) {
+void map_pages(UINT64 phy_addr, UINT64 virt_addr, UINT64 page_number, UINT64 attr) {
     UINT64 *pte_vaddr=(UINT64*)virt_addr_to_pte_virt_addr(virt_addr);
     UINT64 *pde_vaddr=(UINT64*) virt_addr_to_pde_virt_addr(virt_addr);
     UINT64 *pdpte_vaddr=(UINT64*) virt_addr_to_pdpte_virt_addr(virt_addr);
@@ -230,7 +230,7 @@ void map_pages(UINT64 paddr, UINT64 virt_addr, UINT64 page_number, UINT64 attr) 
 
     //PTE挂载物理页，刷新TLB
     for (UINT64 i = 0; i < page_number; i++) {
-        pte_vaddr[i] = paddr + (i<<PAGE_4K_SHIFT) | attr;
+        pte_vaddr[i] = phy_addr + (i<<PAGE_4K_SHIFT) | attr;
         invlpg((void*)(virt_addr & PAGE_4K_MASK) + (i<<PAGE_4K_SHIFT));
     }
     return;
