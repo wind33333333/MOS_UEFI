@@ -118,13 +118,13 @@ static inline UINT64 calculate_pml4e_count(void *virt_addr, UINT64 page_count) {
     return (page_count + (((UINT64)virt_addr >> 12) & 0x7FFFFFF) + 0x7FFFFFF) >> 27;
 }
 
-//通过虚拟地址查找物理页
+//虚拟地址查找物理页
 static inline UINT64 find_pages(void *virt_addr){
     UINT64 *pte_addr= vaddr_to_pte_vaddr(virt_addr);
     return  *pte_addr;
 }
 
-//通过虚拟也修改物理页
+//虚拟地址修改物理页
 static inline void revise_pages(void *virt_addr,UINT64 value){
     UINT64 *pte_addr= vaddr_to_pte_vaddr(virt_addr);
     *pte_addr=value;
