@@ -24,26 +24,6 @@ void init_cpu(void){
     init_idt();                                //初始化IDT
     init_apic();                               //初始化apic
     init_syscall();                            //初始化系统调用
-
-    UINT64 x[5]={8,8,8,8,9};
-    UINT64 i=reverse_find_qword(x,5,8);
-
-    color_printk(RED,BLACK,"free pages:%d used pages:%d\n",memory_management.avl_pages,memory_management.used_pages);
-    UINT64 vir_addr=0x7FFFFFF000;
-    UINT64 vir_addr1=0x0;
-    UINT64 addr=alloc_pages(3);
-    UINT64 addr1=alloc_pages(5);
-    color_printk(RED,BLACK,"free pages:%d used pages:%d\n",memory_management.avl_pages,memory_management.used_pages);
-    vir_addr=map_pages(addr,vir_addr,3,PAGE_ROOT_RW);
-    color_printk(RED,BLACK,"free pages:%d used pages:%d\n",memory_management.avl_pages,memory_management.used_pages);
-    vir_addr1=map_pages(addr,vir_addr,5,PAGE_ROOT_RW);
-    color_printk(RED,BLACK,"free pages:%d used pages:%d\n",memory_management.avl_pages,memory_management.used_pages);
-    unmap_pages(vir_addr,3);
-    free_pages(addr,3);
-    unmap_pages(vir_addr1,5);
-    free_pages(addr1,5);
-    color_printk(RED,BLACK,"free pages:%d used pages:%d\n",memory_management.avl_pages,memory_management.used_pages);
-
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
     init_ap();                                 //初始化ap核

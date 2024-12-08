@@ -314,20 +314,6 @@ static inline void *mem_set(void *Address, UINT8 C, long Count) {
     return Address;
 }
 
-static inline BOOLEAN mem_scasq_always(void *address,UINT64 count,UINT64 value){
-    BOOLEAN result;
-    __asm__ __volatile__(
-            "cld                  \n\t"
-            "repz                 \n\t"
-            "scasq                \n\t"
-            "setz    %0           \n\t"
-            :"=r"(result)
-            :"a"(value),"c"(count),"D"(address)
-            :"memory"
-            );
-    return result;
-}
-
 static inline UINT64 reverse_find_qword(void *address,UINT64 count,UINT64 value){
     UINT64 result;
     __asm__ __volatile__(
