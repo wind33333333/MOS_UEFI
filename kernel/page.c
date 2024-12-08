@@ -30,6 +30,7 @@ __attribute__((section(".init_text"))) void init_page(void) {
     }
     kernel_pml4t_virt_addr[511] = kernel_pml4t_phy_addr|0x3;     //递归映射
 
+
     set_cr3(kernel_pml4t_phy_addr);
 
     map_pages(HADDR_TO_LADDR(Pos.FB_addr), (void*)(UINT64)Pos.FB_addr, Pos.FB_length / 4096, PAGE_ROOT_RW_WC);
