@@ -5,8 +5,8 @@
 void init_memory(void);
 UINT64 alloc_pages(UINT64 page_count);
 void free_pages(UINT64 phy_addr, UINT64 page_count);
-UINT64 map_pages(UINT64 phy_addr, UINT64 virt_addr, UINT64 page_count, UINT64 attr);
-void unmap_pages(UINT64 virt_addr, UINT64 page_count);
+void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr);
+void unmap_pages(void *virt_addr, UINT64 page_count);
 
 extern UINT64 *pml4t_vbase;  //pml4t虚拟地址基址
 extern UINT64 *pdptt_vbase;  //pdptt虚拟地址基址
@@ -84,38 +84,38 @@ extern global_memory_descriptor_t memory_management;
 #define PAGE_USER_RWX    (PAGE_US | PAGE_RW | PAGE_P | PAGE_WB)              //可读可写可执行
 
 //虚拟地址转换pte虚拟地址
-static inline UINT64 virt_addr_to_pte_virt_addr(UINT64 virt_addr){
-    return (~(~virt_addr<<16>>28)<<3);
+static inline void *virt_addr_to_pte_virt_addr(void *virt_addr){
+    return (void*)(~(~(UINT64)virt_addr<<16>>28)<<3);
 }
 
 //虚拟地址转换pde虚拟地址
-static inline UINT64 virt_addr_to_pde_virt_addr(UINT64 virt_addr){
-    return (~(~virt_addr<<16>>37)<<3);
+static inline void *virt_addr_to_pde_virt_addr(void *virt_addr){
+    return (void*)(~(~(UINT64)virt_addr<<16>>37)<<3);
 }
 
 //虚拟地址转换pdpte虚拟地址
-static inline UINT64 virt_addr_to_pdpte_virt_addr(UINT64 virt_addr){
-    return (~(~virt_addr<<16>>46)<<3);
+static inline void *virt_addr_to_pdpte_virt_addr(void *virt_addr){
+    return (void*)(~(~(UINT64)virt_addr<<16>>46)<<3);
 }
 
 //虚拟地址转换pml4e虚拟地址
-static inline UINT64 virt_addr_to_pml4e_virt_addr(UINT64 virt_addr){
-    return (~(~virt_addr<<16>>55)<<3);
+static inline void *virt_addr_to_pml4e_virt_addr(void *virt_addr){
+    return (void*)(~(~(UINT64)virt_addr<<16>>55)<<3);
 }
 
 //虚拟地址和page数量计算pde数量
-static inline UINT64 calculate_pde_count(UINT64 virt_addr, UINT64 page_count) {
-    return (page_count + ((virt_addr >> 12) & 0x1FF) + 0x1FF) >> 9;
+static inline UINT64 calculate_pde_count(void *virt_addr, UINT64 page_count) {
+    return (page_count + (((UINT64)virt_addr >> 12) & 0x1FF) + 0x1FF) >> 9;
 }
 
 //虚拟地址和page数量计算pdpte数量
-static inline UINT64 calculate_pdpte_count(UINT64 virt_addr, UINT64 page_count) {
-    return (page_count + ((virt_addr >> 12) & 0x3FFFF) + 0x3FFFF) >> 18;
+static inline UINT64 calculate_pdpte_count(void *virt_addr, UINT64 page_count) {
+    return (page_count + (((UINT64)virt_addr >> 12) & 0x3FFFF) + 0x3FFFF) >> 18;
 }
 
 //虚拟地址和page数量计算pml4e数量
-static inline UINT64 calculate_pml4e_count(UINT64 virt_addr, UINT64 page_count) {
-    return (page_count + ((virt_addr >> 12) & 0x7FFFFFF) + 0x7FFFFFF) >> 27;
+static inline UINT64 calculate_pml4e_count(void *virt_addr, UINT64 page_count) {
+    return (page_count + (((UINT64)virt_addr >> 12) & 0x7FFFFFF) + 0x7FFFFFF) >> 27;
 }
 
 

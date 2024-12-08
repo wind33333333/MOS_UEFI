@@ -150,17 +150,17 @@ void free_pages(UINT64 phy_addr, UINT64 page_count) {
 }
 
 //释放物理内存映射虚拟内存
-void unmap_pages(UINT64 virt_addr, UINT64 page_count) {
-    UINT64 *pte_vaddr=(UINT64*)virt_addr_to_pte_virt_addr(virt_addr);
-    UINT64 *pde_vaddr=(UINT64*) virt_addr_to_pde_virt_addr(virt_addr);
-    UINT64 *pdpte_vaddr=(UINT64*) virt_addr_to_pdpte_virt_addr(virt_addr);
-    UINT64 *pml4e_vaddr=(UINT64*) virt_addr_to_pml4e_virt_addr(virt_addr);
+void unmap_pages(void *virt_addr, UINT64 page_count) {
+    UINT64 *pte_vaddr=virt_addr_to_pte_virt_addr(virt_addr);
+    UINT64 *pde_vaddr=virt_addr_to_pde_virt_addr(virt_addr);
+    UINT64 *pdpte_vaddr=virt_addr_to_pdpte_virt_addr(virt_addr);
+    UINT64 *pml4e_vaddr=virt_addr_to_pml4e_virt_addr(virt_addr);
     UINT64 count;
 
     //取消PTE映射的物理页,刷新 TLB
     for (UINT64 i = 0; i < page_count; i++) {
         pte_vaddr[i]=0;
-        invlpg((void*)(virt_addr + (i << PAGE_4K_SHIFT)));
+        invlpg((void*)((UINT64)virt_addr + (i << PAGE_4K_SHIFT)));
     }
 
     //PTT为空则释放物理页
@@ -193,12 +193,12 @@ void unmap_pages(UINT64 virt_addr, UINT64 page_count) {
 }
 
 //物理内存映射虚拟内存,如果虚拟地址已被占用则从后面的虚拟内存中找一块可用空间挂载物理内存，并返回更新后的虚拟地址。
-UINT64 map_pages(UINT64 phy_addr, UINT64 virt_addr, UINT64 page_count, UINT64 attr) {
+void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr) {
     while(1){
-        UINT64 *pte_vaddr=(UINT64*)virt_addr_to_pte_virt_addr(virt_addr);
-        UINT64 *pde_vaddr=(UINT64*) virt_addr_to_pde_virt_addr(virt_addr);
-        UINT64 *pdpte_vaddr=(UINT64*) virt_addr_to_pdpte_virt_addr(virt_addr);
-        UINT64 *pml4e_vaddr=(UINT64*) virt_addr_to_pml4e_virt_addr(virt_addr);
+        UINT64 *pte_vaddr=virt_addr_to_pte_virt_addr(virt_addr);
+        UINT64 *pde_vaddr=virt_addr_to_pde_virt_addr(virt_addr);
+        UINT64 *pdpte_vaddr=virt_addr_to_pdpte_virt_addr(virt_addr);
+        UINT64 *pml4e_vaddr=virt_addr_to_pml4e_virt_addr(virt_addr);
         UINT64 count;
 
         //pml4e为空则挂载物理页
@@ -234,11 +234,11 @@ UINT64 map_pages(UINT64 phy_addr, UINT64 virt_addr, UINT64 page_count, UINT64 at
             //PTE挂载物理页，刷新TLB
             for (UINT64 i = 0; i < page_count; i++) {
                 pte_vaddr[i] = phy_addr + (i<<PAGE_4K_SHIFT) | attr;
-                invlpg((void*)(virt_addr & PAGE_4K_MASK) + (i<<PAGE_4K_SHIFT));
+                invlpg((void*)((UINT64)virt_addr & PAGE_4K_MASK) + (i<<PAGE_4K_SHIFT));
             }
             return virt_addr;
         } else{
-            virt_addr += (count<<PAGE_4K_SHIFT);
+            virt_addr = (void*)((UINT64)virt_addr+(count<<PAGE_4K_SHIFT));
         }
     }
 }

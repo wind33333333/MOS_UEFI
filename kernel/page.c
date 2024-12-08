@@ -13,7 +13,7 @@ __attribute__((section(".init_text"))) void init_page(void) {
     mem_set((void*)pml4t,0,4096);
 
     UINT64 pml4_bak[256] = {0};
-    UINT64 pml4e_num = calculate_pml4e_count(memory_management.kernel_end_address,memory_management.kernel_end_address - H_BASE_ADDR);
+    UINT64 pml4e_num = calculate_pml4e_count((void*)memory_management.kernel_end_address,memory_management.kernel_end_address - H_BASE_ADDR);
 
     for (UINT32 i = 0; i < pml4e_num; i++) {
         pml4_bak[i] = pml4t_vbase[i];  //备份原PML4E
@@ -31,10 +31,10 @@ __attribute__((section(".init_text"))) void init_page(void) {
 
     set_cr3(HADDR_TO_LADDR(pml4t));
 
-    map_pages(HADDR_TO_LADDR(Pos.FB_addr), (UINT64)Pos.FB_addr, Pos.FB_length / 4096, PAGE_ROOT_RW_WC);
-    map_pages(HADDR_TO_LADDR((UINT64)ioapic_address.ioregsel), (UINT64)ioapic_address.ioregsel, 1,PAGE_ROOT_RW_UC);
-    map_pages(HADDR_TO_LADDR(hpet.address), hpet.address, 1, PAGE_ROOT_RW_UC);
-    map_pages(HADDR_TO_LADDR(apic_id_table),(UINT64)apic_id_table,PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2)>>PAGE_4K_SHIFT,PAGE_ROOT_RW_UC);
+    map_pages(HADDR_TO_LADDR(Pos.FB_addr), (void*)(UINT64)Pos.FB_addr, Pos.FB_length / 4096, PAGE_ROOT_RW_WC);
+    map_pages(HADDR_TO_LADDR((UINT64)ioapic_address.ioregsel), ioapic_address.ioregsel, 1,PAGE_ROOT_RW_UC);
+    map_pages(HADDR_TO_LADDR(hpet.address), (void*)hpet.address, 1, PAGE_ROOT_RW_UC);
+    map_pages(HADDR_TO_LADDR(apic_id_table),apic_id_table,PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2)>>PAGE_4K_SHIFT,PAGE_ROOT_RW_UC);
 
     return;
 }

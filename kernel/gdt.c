@@ -10,7 +10,7 @@ __attribute__((section(".init_text"))) void init_gdt(void) {
     gdt_ptr.limit = PAGE_4K_ALIGN(cpu_info.logical_processors_number * 16 + TSS_DESCRIPTOR_START_INDEX*16) - 1;
     //alloc_pages分配的是物理页起始地址，gdt-base是虚拟地址需要通过LADDR_TO_HADDR宏把地址转换
     gdt_ptr.base = (UINT64*)LADDR_TO_HADDR(alloc_pages((gdt_ptr.limit + 1) >> PAGE_4K_SHIFT));
-    map_pages(HADDR_TO_LADDR((UINT64)gdt_ptr.base),(UINT64)gdt_ptr.base,(gdt_ptr.limit + 1) >> PAGE_4K_SHIFT,PAGE_ROOT_RW);
+    map_pages(HADDR_TO_LADDR((UINT64)gdt_ptr.base),gdt_ptr.base,(gdt_ptr.limit + 1) >> PAGE_4K_SHIFT,PAGE_ROOT_RW);
     mem_set((void*)gdt_ptr.base,0,PAGE_4K_ALIGN(cpu_info.logical_processors_number * 16 + TSS_DESCRIPTOR_START_INDEX* 8));
 
     *(gdt_ptr.base + 0) = 0;               /*0	NULL descriptor		           	0x00*/

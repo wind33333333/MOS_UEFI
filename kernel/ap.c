@@ -10,7 +10,6 @@
 #include "page.h"
 #include "syscall.h"
 
-//__attribute__((section(".init.data"))) UINT64 ap_rsp;
 __attribute__((section(".init.data"))) UINT64 ap_boot_loader_address;
 
 //多核处理器初始化
@@ -19,7 +18,7 @@ __attribute__((section(".init_text"))) void init_ap(void) {
     ap_tmp_pml4t_ptr = (UINT64*)HADDR_TO_LADDR(&tmp_pml4t);
     apic_id_table_ptr = apic_id_table;
     ap_rsp_ptr = (UINT64)LADDR_TO_HADDR(alloc_pages((cpu_info.logical_processors_number-1)*4));            //每个ap核分配16K栈
-    map_pages(HADDR_TO_LADDR(ap_rsp_ptr),ap_rsp_ptr,(cpu_info.logical_processors_number-1)*4,PAGE_ROOT_RW);
+    map_pages(HADDR_TO_LADDR(ap_rsp_ptr),(void*)ap_rsp_ptr,(cpu_info.logical_processors_number-1)*4,PAGE_ROOT_RW);
     memcpy(_apboot_start, (void*)ap_boot_loader_address,_apboot_end-_apboot_start);                 //把ap核初始化代码复制到过去
 
     UINT32 counter;
