@@ -15,21 +15,21 @@ __attribute__((section(".init_text"))) void init_page(void) {
 
     for (UINT32 i = 0; i < kernel_pml4e_count; i++) {
         pml4_backup[i] = current_pml4t_virt_addr[i];   //备份当前PML4E
-        current_pml4t_virt_addr[i] = 0x0UL;            //清除PML4E;'
+        current_pml4t_virt_addr[i] = 0x0UL;            //清除PML4E
     }
 
     map_pages(0, (void*)0, HADDR_TO_LADDR(memory_management.kernel_end_address) >> PAGE_4K_SHIFT, PAGE_ROOT_RWX);
 
     kernel_pml4t_phy_addr = alloc_pages(1);
-    UINT64 *kernel_pml4t_virt_addr=map_pages(kernel_pml4t_phy_addr,(void*) LADDR_TO_HADDR(0),1,PAGE_ROOT_RW);
+    UINT64 *kernel_pml4t_virt_addr=map_pages(kernel_pml4t_phy_addr,(void*)0x10000000000,1,PAGE_ROOT_RW);
     mem_set(kernel_pml4t_virt_addr,0,4096);
 
     for (UINT32 i = 0; i < kernel_pml4e_count; i++) {
         kernel_pml4t_virt_addr[i + 256] = current_pml4t_virt_addr[i];        //修改正式内核PML4T 高
-        current_pml4t_virt_addr[i] = pml4_backup[i];                            //还原PML4E
+        current_pml4t_virt_addr[i] = pml4_backup[i];                         //还原PML4E
     }
     kernel_pml4t_virt_addr[511] = kernel_pml4t_phy_addr|0x3;     //递归映射
-
+    unmap_pages(kernel_pml4t_virt_addr,1);
 
     set_cr3(kernel_pml4t_phy_addr);
 
