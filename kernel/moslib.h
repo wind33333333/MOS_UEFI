@@ -314,7 +314,7 @@ static inline void *mem_set(void *Address, UINT8 C, long Count) {
     return Address;
 }
 
-static inline BOOLEAN mem_scasq(void *address,UINT64 count,UINT64 value){
+static inline BOOLEAN mem_scasq_always(void *address,UINT64 count,UINT64 value){
     BOOLEAN result;
     __asm__ __volatile__(
             "cld                  \n\t"
@@ -323,6 +323,39 @@ static inline BOOLEAN mem_scasq(void *address,UINT64 count,UINT64 value){
             "setz    %0           \n\t"
             :"=r"(result)
             :"a"(value),"c"(count),"D"(address)
+            :"memory"
+            );
+    return result;
+}
+
+static inline UINT64 reverse_find_qword(void *address,UINT64 count,UINT64 value){
+    UINT64 result;
+    __asm__ __volatile__(
+            "std                  \n\t"
+            "repz                 \n\t"
+            "scasq                \n\t"
+            "je  1f               \n\t"
+            "inc   %%rcx          \n\t"
+            "1:                   \n\t"
+            :"=c"(result)
+            :"a"(value),"c"(count),"D"((UINT64)address+(count-1<<3))
+            :"memory"
+            );
+    return result;
+}
+
+static inline UINT64 forward_find_qword(void *address,UINT64 count,UINT64 value){
+    UINT64 result;
+    __asm__ __volatile__(
+            "cld                  \n\t"
+            "repz                 \n\t"
+            "scasq                \n\t"
+            "je  1f               \n\t"
+            "subq   %%rcx,%%rdx   \n\t"
+            "movq   %%rdx,%%rcx   \n\t"
+            "1:                   \n\t"
+            :"=c"(result)
+            :"a"(value),"c"(count),"d"(count),"D"(address)
             :"memory"
             );
     return result;
@@ -442,28 +475,32 @@ static inline int strlen(char *String) {
 }
 
 static inline void io_in8(UINT16 port, UINT8 *value) {
-    __asm__ __volatile__("inb %%dx,%%al \n\t"
+    __asm__ __volatile__(
+            "inb %%dx,%%al \n\t"
             :"=a"(*value)
             :"d"(port)
             :"memory");
 }
 
 static inline void io_out8(UINT16 port, UINT8 value) {
-    __asm__ __volatile__("outb %%al,%%dx \n\t"
+    __asm__ __volatile__(
+            "outb %%al,%%dx \n\t"
             :
             :"a"(value), "d"(port)
             :"memory");
 }
 
 static inline void io_in32(UINT16 port, UINT32 *value) {
-    __asm__ __volatile__("inl %%dx,%%eax \n\t"
+    __asm__ __volatile__(
+            "inl %%dx,%%eax \n\t"
             :"=a"(*value)
             :"d"(port)
             :"memory");
 }
 
 static inline void io_out32(UINT16 port, UINT32 value) {
-    __asm__ __volatile__("outl %%eax,%%dx \n\t"
+    __asm__ __volatile__(
+            "outl %%eax,%%dx \n\t"
             :
             :"a"(value), "d"(port)
             :"memory");

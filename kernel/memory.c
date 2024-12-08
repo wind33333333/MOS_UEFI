@@ -167,7 +167,7 @@ void unmap_pages(UINT64 virt_addr, UINT64 page_count) {
     //PTT为空则释放物理页
     count = calculate_pde_count(virt_addr,page_count);
     for (INT32 i = 0; i < count; i++) {
-        if(mem_scasq((void*)(((UINT64)pte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)){
+        if(forward_find_qword((void*)(((UINT64)pte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)==0){
             free_pages(pde_vaddr[i] & 0x7FFFFFFFFFFFF000UL, 1);
             pde_vaddr[i]=0;
         }
@@ -176,7 +176,7 @@ void unmap_pages(UINT64 virt_addr, UINT64 page_count) {
     //PDT为空则释放物理页
     count = calculate_pdpte_count(virt_addr,page_count);
     for (INT32 i = 0; i < count; i++) {
-        if(mem_scasq((void*)(((UINT64)pde_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)){
+        if(forward_find_qword((void*)(((UINT64)pde_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)==0){
             free_pages(pdpte_vaddr[i] & 0x7FFFFFFFFFFFF000UL, 1);
             pdpte_vaddr[i]=0;
         }
@@ -185,7 +185,7 @@ void unmap_pages(UINT64 virt_addr, UINT64 page_count) {
     //PDPTT为空则释放物理页
     count = calculate_pml4e_count(virt_addr,page_count);
     for (INT32 i = 0; i < count; i++) {
-        if(mem_scasq((void*)(((UINT64)pdpte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)){
+        if(forward_find_qword((void*)(((UINT64)pdpte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)==0){
             free_pages(pml4e_vaddr[i] & 0x7FFFFFFFFFFFF000UL, 1);
             pml4e_vaddr[i]=0;
         }
@@ -193,47 +193,55 @@ void unmap_pages(UINT64 virt_addr, UINT64 page_count) {
     return;
 }
 
-//物理内存映射虚拟内存
-void map_pages(UINT64 phy_addr, UINT64 virt_addr, UINT64 page_count, UINT64 attr) {
-    UINT64 *pte_vaddr=(UINT64*)virt_addr_to_pte_virt_addr(virt_addr);
-    UINT64 *pde_vaddr=(UINT64*) virt_addr_to_pde_virt_addr(virt_addr);
-    UINT64 *pdpte_vaddr=(UINT64*) virt_addr_to_pdpte_virt_addr(virt_addr);
-    UINT64 *pml4e_vaddr=(UINT64*) virt_addr_to_pml4e_virt_addr(virt_addr);
-    UINT64 count;
+//物理内存映射虚拟内存,如果虚拟地址已被占用则从后面的虚拟内存中找一块可用空间挂载物理内存，并返回更新后的虚拟地址。
+UINT64 map_pages(UINT64 phy_addr, UINT64 virt_addr, UINT64 page_count, UINT64 attr) {
+    while(1){
+        UINT64 *pte_vaddr=(UINT64*)virt_addr_to_pte_virt_addr(virt_addr);
+        UINT64 *pde_vaddr=(UINT64*) virt_addr_to_pde_virt_addr(virt_addr);
+        UINT64 *pdpte_vaddr=(UINT64*) virt_addr_to_pdpte_virt_addr(virt_addr);
+        UINT64 *pml4e_vaddr=(UINT64*) virt_addr_to_pml4e_virt_addr(virt_addr);
+        UINT64 count;
 
-    //pml4e为空则挂载物理页
-    count = calculate_pml4e_count(virt_addr,page_count);
-    for (UINT64 i = 0; i < count; i++) {
-        if (pml4e_vaddr[i] == 0) {
-            pml4e_vaddr[i] = alloc_pages(1) | (attr&(PAGE_US|PAGE_P|PAGE_RW)|PAGE_RW); //pml4e属性设置为可读可写，其余位保持默认。
-            mem_set((void*)((UINT64)pdpte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
+        //pml4e为空则挂载物理页
+        count = calculate_pml4e_count(virt_addr,page_count);
+        for (UINT64 i = 0; i < count; i++) {
+            if (pml4e_vaddr[i] == 0) {
+                pml4e_vaddr[i] = alloc_pages(1) | (attr&(PAGE_US|PAGE_P|PAGE_RW)|PAGE_RW); //pml4e属性设置为可读可写，其余位保持默认。
+                mem_set((void*)((UINT64)pdpte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
+            }
+        }
+
+        //PDPE为空则挂载物理页
+        count = calculate_pdpte_count(virt_addr,page_count);
+        for (UINT64 i = 0; i < count; i++) {
+            if (pdpte_vaddr[i] == 0) {
+                pdpte_vaddr[i] = alloc_pages(1) | (attr&(PAGE_US|PAGE_P|PAGE_RW)|PAGE_RW); //pdpte属性设置为可读可写，其余位保持默认。
+                mem_set((void*)((UINT64)pde_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
+            }
+        }
+
+        //PDE为空则挂载物理页
+        count = calculate_pde_count(virt_addr,page_count);
+        for (UINT64 i = 0; i < count; i++) {
+            if (pde_vaddr[i] == 0) {
+                pde_vaddr[i] = alloc_pages(1) | (attr&(PAGE_US|PAGE_P|PAGE_RW)|PAGE_RW); //pde属性设置为可读可写，其余位保持默认。
+                mem_set((void*)((UINT64)pte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
+            }
+        }
+
+        //如果虚拟地址被占用，则从后面找一块可用的虚拟地址挂载，并返回更新后的虚拟地址。
+        count = reverse_find_qword(pte_vaddr,page_count,0);
+        if (count == 0){
+            //PTE挂载物理页，刷新TLB
+            for (UINT64 i = 0; i < page_count; i++) {
+                pte_vaddr[i] = phy_addr + (i<<PAGE_4K_SHIFT) | attr;
+                invlpg((void*)(virt_addr & PAGE_4K_MASK) + (i<<PAGE_4K_SHIFT));
+            }
+            return virt_addr;
+        } else{
+            virt_addr += (count<<PAGE_4K_SHIFT);
         }
     }
-
-    //PDPE为空则挂载物理页
-    count = calculate_pdpte_count(virt_addr,page_count);
-    for (UINT64 i = 0; i < count; i++) {
-        if (pdpte_vaddr[i] == 0) {
-            pdpte_vaddr[i] = alloc_pages(1) | (attr&(PAGE_US|PAGE_P|PAGE_RW)|PAGE_RW); //pdpte属性设置为可读可写，其余位保持默认。
-            mem_set((void*)((UINT64)pde_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
-        }
-    }
-
-    //PDE为空则挂载物理页
-    count = calculate_pde_count(virt_addr,page_count);
-    for (UINT64 i = 0; i < count; i++) {
-        if (pde_vaddr[i] == 0) {
-            pde_vaddr[i] = alloc_pages(1) | (attr&(PAGE_US|PAGE_P|PAGE_RW)|PAGE_RW); //pde属性设置为可读可写，其余位保持默认。
-            mem_set((void*)((UINT64)pte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
-        }
-    }
-
-    //PTE挂载物理页，刷新TLB
-    for (UINT64 i = 0; i < page_count; i++) {
-        pte_vaddr[i] = phy_addr + (i<<PAGE_4K_SHIFT) | attr;
-        invlpg((void*)(virt_addr & PAGE_4K_MASK) + (i<<PAGE_4K_SHIFT));
-    }
-    return;
 }
 
 void *kmaollc(UINT64 size){
