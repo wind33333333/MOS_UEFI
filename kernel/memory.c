@@ -151,10 +151,10 @@ void free_pages(UINT64 phy_addr, UINT64 page_count) {
 
 //释放物理内存映射虚拟内存
 void unmap_pages(void *virt_addr, UINT64 page_count) {
-    UINT64 *pte_vaddr=virt_addr_to_pte_virt_addr(virt_addr);
-    UINT64 *pde_vaddr=virt_addr_to_pde_virt_addr(virt_addr);
-    UINT64 *pdpte_vaddr=virt_addr_to_pdpte_virt_addr(virt_addr);
-    UINT64 *pml4e_vaddr=virt_addr_to_pml4e_virt_addr(virt_addr);
+    UINT64 *pte_vaddr=vaddr_to_pte_vaddr(virt_addr);
+    UINT64 *pde_vaddr=vaddr_to_pde_vaddr(virt_addr);
+    UINT64 *pdpte_vaddr=vaddr_to_pdpte_vaddr(virt_addr);
+    UINT64 *pml4e_vaddr=vaddr_to_pml4e_vaddr(virt_addr);
     UINT64 count;
 
     //取消PTE映射的物理页,刷新 TLB
@@ -195,10 +195,10 @@ void unmap_pages(void *virt_addr, UINT64 page_count) {
 //物理内存映射虚拟内存,如果虚拟地址已被占用则从后面的虚拟内存中找一块可用空间挂载物理内存，并返回更新后的虚拟地址。
 void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr) {
     while(1){
-        UINT64 *pte_vaddr=virt_addr_to_pte_virt_addr(virt_addr);
-        UINT64 *pde_vaddr=virt_addr_to_pde_virt_addr(virt_addr);
-        UINT64 *pdpte_vaddr=virt_addr_to_pdpte_virt_addr(virt_addr);
-        UINT64 *pml4e_vaddr=virt_addr_to_pml4e_virt_addr(virt_addr);
+        UINT64 *pte_vaddr=vaddr_to_pte_vaddr(virt_addr);
+        UINT64 *pde_vaddr=vaddr_to_pde_vaddr(virt_addr);
+        UINT64 *pdpte_vaddr=vaddr_to_pdpte_vaddr(virt_addr);
+        UINT64 *pml4e_vaddr=vaddr_to_pml4e_vaddr(virt_addr);
         UINT64 count;
 
         //pml4e为空则挂载物理页

@@ -42,10 +42,10 @@ __attribute__((section(".init_text"))) void init_page(void) {
 //UINT64 create_page_table(UINT64 virt_addr,UINT64 page_count){
 //    UINT64 pml4t_backup[256] = {0};
 //    UINT64 pml4t_addr = alloc_pages(1);
-//    UINT64 *pte_vaddr = (UINT64*)virt_addr_to_pte_virt_addr(virt_addr&0x7FFFFFFFFFFFUL);
-//    UINT64 *pde_vaddr = (UINT64*) virt_addr_to_pde_virt_addr(virt_addr&0x7FFFFFFFFFFFUL);
-//    UINT64 *pdpte_vaddr = (UINT64*) virt_addr_to_pdpte_virt_addr(virt_addr&0x7FFFFFFFFFFFUL);
-//    UINT64 *pml4e_vaddr = (UINT64*) virt_addr_to_pml4e_virt_addr(virt_addr&0x7FFFFFFFFFFFUL);
+//    UINT64 *pte_vaddr = (UINT64*)vaddr_to_pte_vaddr(virt_addr&0x7FFFFFFFFFFFUL);
+//    UINT64 *pde_vaddr = (UINT64*) vaddr_to_pde_vaddr(virt_addr&0x7FFFFFFFFFFFUL);
+//    UINT64 *pdpte_vaddr = (UINT64*) vaddr_to_pdpte_vaddr(virt_addr&0x7FFFFFFFFFFFUL);
+//    UINT64 *pml4e_vaddr = (UINT64*) vaddr_to_pml4e_vaddr(virt_addr&0x7FFFFFFFFFFFUL);
 //    UINT64 pde_count = calculate_pde_count(virt_addr,page_count);
 //    UINT64 pdpte_count = calculate_pdpte_count(virt_addr,page_count);
 //    UINT64 pml4e_count = calculate_pml4e_count(virt_addr,page_count);
