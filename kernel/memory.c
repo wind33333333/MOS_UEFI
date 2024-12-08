@@ -130,7 +130,6 @@ UINT64 alloc_pages(UINT64 page_count) {
     return -1; // 没有找到足够大的连续内存块
 }
 
-
 //物理页释放器
 void free_pages(UINT64 phy_addr, UINT64 page_count) {
     spin_lock(&memory_management.lock);
