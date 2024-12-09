@@ -28,10 +28,10 @@ __attribute__((section(".init_text"))) void init_kernel_page(void) {
     mem_set(kernel_pml4t_virt_addr,0,4096);
 
     kernel_pml4t_virt_addr[256] = *current_pml4t_virt_addr;        //修改正式内核PML4T 高
-    kernel_pml4t_virt_addr[511] = kernel_pml4t_phy_addr|0x3;           //递归映射
+    kernel_pml4t_virt_addr[511] = kernel_pml4t_phy_addr|0x3;       //递归映射
     unmap_pages(kernel_pml4t_virt_addr,1);
 
-    *current_pml4t_virt_addr = pml4e_backup;                           //还原PML4E
+    *current_pml4t_virt_addr = pml4e_backup;                       //还原PML4E
 
     set_cr3(kernel_pml4t_phy_addr);     //设置加载正式内核页表
 
