@@ -4,16 +4,9 @@
 
 global_memory_descriptor_t memory_management;
 
-UINT64 *pml4t_vbase;  //pml4t虚拟地址基址
-UINT64 *pdptt_vbase;  //pdptt虚拟地址基址
-UINT64 *pdt_vbase;    //pdt虚拟地址基址
-UINT64 *ptt_vbase;    //ptt虚拟地址基址
+list_head_t *free_list[ORDER+1];
 
 __attribute__((section(".init_text"))) void init_memory(void) {
-    pml4t_vbase = (UINT64 *) 0xFFFFFFFFFFFFF000;  //pml4t虚拟地址基址
-    pdptt_vbase = (UINT64 *) 0xFFFFFFFFFFE00000;  //pdptt虚拟地址基址
-    pdt_vbase = (UINT64 *) 0xFFFFFFFFC0000000;    //pdt虚拟地址基址
-    ptt_vbase= (UINT64 *) 0xFFFFFF8000000000;     //ptt虚拟地址基址
     //查找memmap中可用物理内存并合并，统计总物理内存容量。
     UINT32 mem_map_index = 0;
     for(UINT32 i = 0;i < (boot_info->mem_map_size/boot_info->mem_descriptor_size);i++){
@@ -46,9 +39,9 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     color_printk(ORANGE, BLACK, "Available RAM:%#lX~%ldMB\n", memory_management.avl_mem_size,memory_management.avl_mem_size/1024/1024);
 
     // 全部置位 bitmap（置为1表示已使用，清除0表示未使用）
-    memory_management.bitmap = (UINT64 *) kernel_stack_top;  //bimap的起始地址是kernel结束地址+0x4000
-    memory_management.bitmap_size = (memory_management.mem_map[memory_management.mem_map_count - 1].address+memory_management.mem_map[memory_management.mem_map_count - 1].length) >> PAGE_4K_SHIFT;
-    memory_management.bitmap_length =memory_management.bitmap_size>>3;
+    memory_management.page_table = (page_t*)kernel_stack_top;  //bimap的起始地址是kernel结束地址+0x4000
+    memory_management.page_size = (memory_management.mem_map[memory_management.mem_map_count - 1].address+memory_management.mem_map[memory_management.mem_map_count - 1].length) >> PAGE_4K_SHIFT;
+    memory_management.page_length =memory_management.bitmap_size * sizeof(page_t);
     mem_set(memory_management.bitmap, 0xff, memory_management.bitmap_length);
 
     //初始化bitmap，i=1跳过1M,1M之前的内存需要用来存放ap核初始化代码暂时保持置位，把后面可用的内存全部初始化，等全部初始化后再释放前1M

@@ -2,16 +2,13 @@
 #define __MEMORY_H__
 #include "moslib.h"
 
+#define ORDER 10
+
 void init_memory(void);
 UINT64 alloc_pages(UINT64 page_count);
 void free_pages(UINT64 phy_addr, UINT64 page_count);
 void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr);
 void unmap_pages(void *virt_addr, UINT64 page_count);
-
-extern UINT64 *pml4t_vbase;  //pml4t虚拟地址基址
-extern UINT64 *pdptt_vbase;  //pdptt虚拟地址基址
-extern UINT64 *pdt_vbase;    //pdt虚拟地址基址
-extern UINT64 *ptt_vbase;    //ptt虚拟地址基址
 
 extern UINT64 kernel_stack_top;
 extern CHAR8 _start_text[];
@@ -27,6 +24,16 @@ extern CHAR8 _start_init_text[];
 #define LADDR_TO_HADDR(ADDR)    ((UINT64)((UINT64)(ADDR) | H_BASE_ADDR))
 
 typedef struct{
+   struct list_head_t *prev;
+   struct list_head_t *next;
+}list_head_t;
+
+typedef struct{
+    UINT64 falgs;
+    list_head_t block;
+}page_t;
+
+typedef struct{
     UINT64 address;
     UINT64 length;
     UINT32 type;
@@ -36,6 +43,10 @@ typedef struct {
     mem_map_t mem_map[20];
     UINT32 mem_map_count;
     UINT64 avl_mem_size;
+
+    page_t *page_table;
+    UINT64 page_size;
+    UINT64 page_length;
 
     UINT64 *bitmap;
     UINT64 bitmap_size;
