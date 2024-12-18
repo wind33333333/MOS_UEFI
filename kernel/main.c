@@ -21,4 +21,3 @@ __attribute__((section(".init_text"))) void init_kernel(void) {
 
     //STI();
     while (1);
-}
