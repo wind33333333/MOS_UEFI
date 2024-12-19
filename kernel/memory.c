@@ -38,7 +38,7 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     }
     color_printk(ORANGE, BLACK, "Available RAM:%#lX~%ldMB\n", memory_management.avl_mem_size,memory_management.avl_mem_size/1024/1024);
 
-    // 全部置位 bitmap（置为1表示已使用，清除0表示未使用）
+    // 全部置位 bitmap（置为1表示已使用，清除0表示未使用)
     memory_management.page_table = (page_t*)kernel_stack_top;  //bimap的起始地址是kernel结束地址+0x4000
     memory_management.page_size = (memory_management.mem_map[memory_management.mem_map_count - 1].address+memory_management.mem_map[memory_management.mem_map_count - 1].length) >> PAGE_4K_SHIFT;
     memory_management.page_length =memory_management.bitmap_size * sizeof(page_t);
