@@ -63,16 +63,15 @@ __attribute__((section(".init_text"))) void init_memory(void) {
         addr = memory_management.mem_map[i].address;
         length = memory_management.mem_map[i].length;
         order = ORDER;
-        while (length != 0) {
-            if (addr & ((PAGE_4K_SIZE << order) - 1) || length < (PAGE_4K_SIZE << order)) {
-                order--;
-                continue;
-            } else {
+        while (length >= PAGE_4K_SIZE) {
+            if ((addr & (PAGE_4K_SIZE << order) - 1) == 0 && length >= PAGE_4K_SIZE << order) {
                 addr += PAGE_4K_SIZE << order;
                 length -= PAGE_4K_SIZE << order;
                 order = ORDER;
+                continue;
                 //list_addr=(UINT64)(memory_management.page_table+(addr>>PAGE_4K_SHIFT));
             }
+            order--;
         }
     }
 
