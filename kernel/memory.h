@@ -142,5 +142,9 @@ static inline void revise_pages(void *virt_addr,UINT64 value){
     return;
 }
 
+static inline UINT32 calculate_order(UINT64 addr,UINT64 length) {
+
+}
+
 
 #endif
