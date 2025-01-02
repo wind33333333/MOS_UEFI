@@ -5,6 +5,7 @@
 global_memory_descriptor_t memory_management;
 
 list_head_t *free_list[ORDER + 1];
+UINT64 free_count[ORDER + 1];
 
 __attribute__((section(".init_text"))) void init_memory(void) {
     //查找memmap中可用物理内存并合并，统计总物理内存容量。
@@ -67,6 +68,7 @@ __attribute__((section(".init_text"))) void init_memory(void) {
             if ((addr & (PAGE_4K_SIZE << order) - 1) == 0 && length >= PAGE_4K_SIZE << order) {
                 addr += PAGE_4K_SIZE << order;
                 length -= PAGE_4K_SIZE << order;
+                free_count[order]++;
                 order = ORDER;
                 continue;
                 //list_addr=(UINT64)(memory_management.page_table+(addr>>PAGE_4K_SHIFT));
