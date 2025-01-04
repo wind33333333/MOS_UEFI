@@ -19,6 +19,8 @@ extern UINT64 _end_bss;
 #define BOCHS_DG()    __asm__ __volatile__ ("xchg %%bx,%%bx \n\t":: :);
 
 #define NULL 0
+#define FALSE 0
+#define TRUE 1
 
 // 开启中断 (STI)
 static inline void sti(void) {

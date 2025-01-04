@@ -103,9 +103,21 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     free_list[8].prev=NULL;
     free_list[9].next=NULL;
     free_list[9].prev=NULL;
+    free_count[0]=NULL;
+    free_count[1]=NULL;
+    free_count[2]=NULL;
+    free_count[3]=NULL;
+    free_count[4]=NULL;
+    free_count[5]=NULL;
+    free_count[6]=NULL;
+    free_count[7]=NULL;
+    free_count[8]=NULL;
+    free_count[9]=NULL;
 
-    page_t *page = buddy_alloc_pages(1);
+    page_t *page = buddy_alloc_pages(0);
     UINT64 addr = page_to_phyaddr(page);
+    page_t *page1 = buddy_alloc_pages(2);
+    UINT64 addr1 = page_to_phyaddr(page1);
 
     //kernel_end_address结束地址加上bit map对齐4K边界
     memory_management.kernel_start_address = (UINT64) _start_text;
@@ -145,9 +157,9 @@ page_t *buddy_alloc_pages(UINT32 order) {
     UINT32 current_order = order;
 
     //如果对应阶链表内有空闲块则直接分配
-    if (!list_empty(&free_list[order])) {
-        page = (page_t *) free_list[current_order].next;
-        list_del(free_list[current_order].next);
+    if (free_count[order] != NULL) {
+        page = (page_t *) free_list[order].next;
+        list_del(free_list[order].next);
         free_count[order]--;
         return page;
     }
@@ -155,7 +167,7 @@ page_t *buddy_alloc_pages(UINT32 order) {
     //阶链表没有空闲块则分裂
     while (current_order < ORDER) { //向上查找可用的阶块
         current_order++;
-        if (!list_empty(&free_list[current_order])) {
+        if (free_count[current_order] != NULL) {
             node = free_list[current_order].next;
             list_del(free_list[current_order].next);
             free_count[current_order]--;
