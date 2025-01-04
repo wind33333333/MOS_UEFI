@@ -4,7 +4,7 @@
 
 global_memory_descriptor_t memory_management;
 
-list_head_t *free_list[ORDER + 1];
+list_t *free_list[ORDER + 1];
 UINT64 free_count[ORDER + 1];
 
 __attribute__((section(".init_text"))) void init_memory(void) {
@@ -58,9 +58,15 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     //初始化page_table为0
     mem_set(memory_management.page_table, 0x0, memory_management.page_length);
 
+    list_t head,node1,node2,node3;
+    list_add_forward(&node1,&head);
+    list_add_forward(&node2,&head);
+    list_add_forward(&node3,&head);
+    list_del(&node2);
+
     //初始化伙伴系统数据结构
     for (UINT32 i = 0; i < memory_management.mem_map_count; i++) {
-        UINT64 addr, length, list_addr, order;
+        UINT64 addr, length, order;
         addr = memory_management.mem_map[i].address;
         length = memory_management.mem_map[i].length;
         order = ORDER;
@@ -71,7 +77,6 @@ __attribute__((section(".init_text"))) void init_memory(void) {
                 free_count[order]++;
                 order = ORDER;
                 continue;
-                //list_addr=(UINT64)(memory_management.page_table+(addr>>PAGE_4K_SHIFT));
             }
             order--;
         }

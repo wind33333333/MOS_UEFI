@@ -23,14 +23,14 @@ extern CHAR8 _start_init_text[];
 #define HADDR_TO_LADDR(ADDR)    ((UINT64)(ADDR) & (~H_BASE_ADDR))
 #define LADDR_TO_HADDR(ADDR)    ((UINT64)((UINT64)(ADDR) | H_BASE_ADDR))
 
-typedef struct{
-   struct list_head_t *prev;
-   struct list_head_t *next;
-}list_head_t;
+typedef struct list_t{
+   struct list_t *prev;
+   struct list_t *next;
+}list_t;
 
 typedef struct{
     UINT64 falgs;
-    list_head_t block;
+    list_t block;
 }page_t;
 
 typedef struct{
@@ -146,5 +146,25 @@ static inline UINT32 calculate_order(UINT64 addr,UINT64 length) {
 
 }
 
+static inline void list_add_forward(list_t *new,list_t *head) {
+    new->next=head->next;
+    new->prev=head;
+    head->next=new;
+    if(new->next != NULL)
+        new->next->prev=new;
+    return;
+}
+
+static inline void list_del(list_t *node) {
+    if (node == NULL)
+        return;
+    if (node->prev != NULL)
+        node->prev->next=node->next;
+    if (node->next != NULL)
+        node->next->prev=node->prev;
+    node->next=NULL;
+    node->prev=NULL;
+    return;
+}
 
 #endif
