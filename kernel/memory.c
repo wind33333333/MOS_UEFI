@@ -4,7 +4,7 @@
 
 global_memory_descriptor_t memory_management;
 
-list_t *free_list[ORDER + 1];
+list_t free_list[ORDER + 1];
 UINT64 free_count[ORDER + 1];
 
 __attribute__((section(".init_text"))) void init_memory(void) {
@@ -58,12 +58,6 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     //初始化page_table为0
     mem_set(memory_management.page_table, 0x0, memory_management.page_length);
 
-    list_t head,node1,node2,node3;
-    list_add_forward(&node1,&head);
-    list_add_forward(&node2,&head);
-    list_add_forward(&node3,&head);
-    list_del(&node2);
-
     //初始化伙伴系统数据结构
     for (UINT32 i = 0; i < memory_management.mem_map_count; i++) {
         UINT64 addr, length, order;
@@ -71,7 +65,14 @@ __attribute__((section(".init_text"))) void init_memory(void) {
         length = memory_management.mem_map[i].length;
         order = ORDER;
         while (length >= PAGE_4K_SIZE) {
+            //如果地址对齐order地址且长度大于等于order长度等于一个有效块
             if ((addr & (PAGE_4K_SIZE << order) - 1) == 0 && length >= PAGE_4K_SIZE << order) {
+                //addr除4096等于page索引，把page索引转成链表地址
+                list_t *new_node=(list_t*)(memory_management.page_table+(addr>>PAGE_4K_SHIFT));
+                //添加一个链表节点
+                list_add_forward(new_node,&free_list[order]);
+                //设置page的阶数
+                ((page_t*)new_node)->order = order;
                 addr += PAGE_4K_SIZE << order;
                 length -= PAGE_4K_SIZE << order;
                 free_count[order]++;

@@ -29,8 +29,9 @@ typedef struct list_t{
 }list_t;
 
 typedef struct{
-    UINT64 falgs;
     list_t block;
+    UINT32 falgs;
+    UINT32 order;
 }page_t;
 
 typedef struct{
