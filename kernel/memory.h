@@ -4,12 +4,6 @@
 
 #define ORDER 10
 
-void init_memory(void);
-UINT64 alloc_pages(UINT64 page_count);
-void free_pages(UINT64 phy_addr, UINT64 page_count);
-void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr);
-void unmap_pages(void *virt_addr, UINT64 page_count);
-
 extern UINT64 kernel_stack_top;
 extern CHAR8 _start_text[];
 extern CHAR8 _start_init_text[];
@@ -167,5 +161,22 @@ static inline void list_del(list_t *node) {
     node->prev=NULL;
     return;
 }
+
+static inline BOOLEAN list_empty(list_t *head) {
+    if (head->next == NULL && head->prev == NULL)
+        return 1;
+    return 0;
+}
+
+static inline UINT64 page_to_phyaddr(page_t *page) {
+    return (UINT64)(page-memory_management.page_table) << PAGE_4K_SHIFT;
+}
+
+void init_memory(void);
+page_t* buddy_alloc_pages(UINT32 order);
+UINT64 alloc_pages(UINT64 page_count);
+void free_pages(UINT64 phy_addr, UINT64 page_count);
+void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr);
+void unmap_pages(void *virt_addr, UINT64 page_count);
 
 #endif

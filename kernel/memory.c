@@ -68,11 +68,11 @@ __attribute__((section(".init_text"))) void init_memory(void) {
             //如果地址对齐order地址且长度大于等于order长度等于一个有效块
             if ((addr & (PAGE_4K_SIZE << order) - 1) == 0 && length >= PAGE_4K_SIZE << order) {
                 //addr除4096等于page索引，把page索引转成链表地址
-                list_t *new_node=(list_t*)(memory_management.page_table+(addr>>PAGE_4K_SHIFT));
+                list_t *new_node = (list_t *) (memory_management.page_table + (addr >> PAGE_4K_SHIFT));
                 //添加一个链表节点
-                list_add_forward(new_node,&free_list[order]);
+                list_add_forward(new_node, &free_list[order]);
                 //设置page的阶数
-                ((page_t*)new_node)->order = order;
+                ((page_t *) new_node)->order = order;
                 addr += PAGE_4K_SIZE << order;
                 length -= PAGE_4K_SIZE << order;
                 free_count[order]++;
@@ -82,6 +82,30 @@ __attribute__((section(".init_text"))) void init_memory(void) {
             order--;
         }
     }
+
+    free_list[0].next=NULL;
+    free_list[0].prev=NULL;
+    free_list[1].next=NULL;
+    free_list[1].prev=NULL;
+    free_list[2].next=NULL;
+    free_list[2].prev=NULL;
+    free_list[3].next=NULL;
+    free_list[3].prev=NULL;
+    free_list[4].next=NULL;
+    free_list[4].prev=NULL;
+    free_list[5].next=NULL;
+    free_list[5].prev=NULL;
+    free_list[6].next=NULL;
+    free_list[6].prev=NULL;
+    free_list[7].next=NULL;
+    free_list[7].prev=NULL;
+    free_list[8].next=NULL;
+    free_list[8].prev=NULL;
+    free_list[9].next=NULL;
+    free_list[9].prev=NULL;
+
+    page_t *page = buddy_alloc_pages(1);
+    UINT64 addr = page_to_phyaddr(page);
 
     //kernel_end_address结束地址加上bit map对齐4K边界
     memory_management.kernel_start_address = (UINT64) _start_text;
@@ -112,6 +136,43 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     color_printk(ORANGE, BLACK, "Init Kernel Start Addr:%#lX Official kernel Start Addr:%lX kernel end addr:%#lX\n",
                  _start_init_text, memory_management.kernel_start_address, memory_management.kernel_end_address);
     return;
+}
+
+page_t *buddy_alloc_pages(UINT32 order) {
+    page_t *page;
+    list_t *node;
+    UINT64 addr;
+    UINT32 current_order = order;
+
+    //如果对应阶链表内有空闲块则直接分配
+    if (!list_empty(&free_list[order])) {
+        page = (page_t *) free_list[current_order].next;
+        list_del(free_list[current_order].next);
+        free_count[order]--;
+        return page;
+    }
+
+    //阶链表没有空闲块则分裂
+    while (current_order < ORDER) { //向上查找可用的阶块
+        current_order++;
+        if (!list_empty(&free_list[current_order])) {
+            node = free_list[current_order].next;
+            list_del(free_list[current_order].next);
+            free_count[current_order]--;
+            break;
+        }
+    }
+
+    while (current_order > order) {//分裂得到的阶块
+        current_order--;
+        list_add_forward(node, &free_list[current_order]);
+        ((page_t*)node)->order = current_order;
+        free_count[current_order]++;
+        addr=page_to_phyaddr((page_t*)node);
+        addr += PAGE_4K_SIZE << current_order;
+        node=(list_t *)(memory_management.page_table + (addr >> PAGE_4K_SHIFT));
+    }
+    return (page_t *) node;
 }
 
 //物理页分配器
