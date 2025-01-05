@@ -162,6 +162,15 @@ static inline void list_del(list_t *node) {
     return;
 }
 
+static inline BOOLEAN list_find(list_t *head,list_t *node) {
+    while (head->next != NULL) {
+        if (head->next == node)
+            return TRUE;
+        head=head->next;
+    }
+    return FALSE;
+}
+
 static inline BOOLEAN list_empty(list_t *head) {
     if (head->next == NULL && head->prev == NULL)
         return 1;
@@ -175,6 +184,7 @@ static inline UINT64 page_to_phyaddr(page_t *page) {
 void init_memory(void);
 page_t* buddy_alloc_pages(UINT32 order);
 UINT64 alloc_pages(UINT64 page_count);
+void buddy_free_pages(page_t *page);
 void free_pages(UINT64 phy_addr, UINT64 page_count);
 void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr);
 void unmap_pages(void *virt_addr, UINT64 page_count);

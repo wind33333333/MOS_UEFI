@@ -115,9 +115,10 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     free_count[9]=NULL;
 
     page_t *page = buddy_alloc_pages(0);
+//    page_t *page1 = buddy_alloc_pages(0);
     UINT64 addr = page_to_phyaddr(page);
-    page_t *page1 = buddy_alloc_pages(2);
-    UINT64 addr1 = page_to_phyaddr(page1);
+    buddy_free_pages(page);
+
 
     //kernel_end_address结束地址加上bit map对齐4K边界
     memory_management.kernel_start_address = (UINT64) _start_text;
@@ -182,6 +183,35 @@ page_t *buddy_alloc_pages(UINT32 order) {
         page += 1<<current_order;
     }while (current_order > order);
     return page;
+}
+
+void buddy_free_pages(page_t *page) {
+    if (page == NULL)
+        return;
+
+    UINT32 current_order = page->order;
+    if (free_count[current_order] == 0) {
+        list_add_forward((list_t*)page, &free_list[current_order]);
+        free_count[current_order]++;
+        return;
+    }
+
+    while (current_order < ORDER) {
+        page_t* buddy_page = memory_management.page_table+(page-memory_management.page_table^(1<<current_order));
+        if (list_find(&free_list[current_order],buddy_page)) {
+            list_del((list_t*)buddy_page);
+            free_count[current_order]--;
+            if (buddy_page < page)
+                page = buddy_page;
+            current_order++;
+        }else {
+            break;
+        }
+    }
+    page->order = current_order;
+    list_add_forward((list_t*)page, &free_list[current_order]);
+    free_count[current_order]++;
+    return;
 }
 
 //物理页分配器
