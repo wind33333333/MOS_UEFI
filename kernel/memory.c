@@ -151,31 +151,32 @@ __attribute__((section(".init_text"))) void init_memory(void) {
 }
 
 page_t *buddy_alloc_pages(UINT32 order) {
-    page_t *page;
     list_t *node;
     UINT64 addr;
     UINT32 current_order = order;
 
     //如果对应阶链表内有空闲块则直接分配
     if (free_count[order] != NULL) {
-        page = (page_t *) free_list[order].next;
-        list_del(free_list[order].next);
+        node = free_list[order].next;
+        list_del(node);
         free_count[order]--;
-        return page;
+        return (page_t *)node;
     }
 
     //阶链表没有空闲块则分裂
-    while (current_order < ORDER) { //向上查找可用的阶块
+    do{ //向上查找可用的阶块
         current_order++;
-        if (free_count[current_order] != NULL) {
+        if (current_order > ORDER) {
+            return NULL;
+        }else if (free_count[current_order] != NULL) {
             node = free_list[current_order].next;
-            list_del(free_list[current_order].next);
+            list_del(node);
             free_count[current_order]--;
             break;
         }
-    }
+    }while (TRUE);
 
-    while (current_order > order) {//分裂得到的阶块
+    do{//分裂得到的阶块到合适大小
         current_order--;
         list_add_forward(node, &free_list[current_order]);
         ((page_t*)node)->order = current_order;
@@ -183,7 +184,7 @@ page_t *buddy_alloc_pages(UINT32 order) {
         addr=page_to_phyaddr((page_t*)node);
         addr += PAGE_4K_SIZE << current_order;
         node=(list_t *)(memory_management.page_table + (addr >> PAGE_4K_SHIFT));
-    }
+    }while (current_order > order);
     return (page_t *) node;
 }
 
