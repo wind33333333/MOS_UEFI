@@ -152,8 +152,6 @@ __attribute__((section(".init_text"))) void init_memory(void) {
 
 page_t *buddy_alloc_pages(UINT32 order) {
     page_t *page;
-    UINT32 current_order = order;
-
     //如果对应阶链表内有空闲块则直接分配
     if (free_count[order] != 0) {
         page = (page_t*)free_list[order].next;
@@ -163,6 +161,7 @@ page_t *buddy_alloc_pages(UINT32 order) {
     }
 
     //阶链表没有空闲块则分裂
+    UINT32 current_order = order;
     do{ //向上查找可用的阶块
         current_order++;
         if (current_order > ORDER) {
