@@ -151,16 +151,15 @@ __attribute__((section(".init_text"))) void init_memory(void) {
 }
 
 page_t *buddy_alloc_pages(UINT32 order) {
-    list_t *node;
-    UINT64 addr;
+    page_t *page;
     UINT32 current_order = order;
 
     //如果对应阶链表内有空闲块则直接分配
-    if (free_count[order] != NULL) {
-        node = free_list[order].next;
-        list_del(node);
+    if (free_count[order] != 0) {
+        page = (page_t*)free_list[order].next;
+        list_del((list_t*)page);
         free_count[order]--;
-        return (page_t *)node;
+        return page;
     }
 
     //阶链表没有空闲块则分裂
@@ -168,9 +167,9 @@ page_t *buddy_alloc_pages(UINT32 order) {
         current_order++;
         if (current_order > ORDER) {
             return NULL;
-        }else if (free_count[current_order] != NULL) {
-            node = free_list[current_order].next;
-            list_del(node);
+        }else if (free_count[current_order] != 0) {
+            page = (page_t*)free_list[current_order].next;
+            list_del((list_t*)page);
             free_count[current_order]--;
             break;
         }
@@ -178,14 +177,12 @@ page_t *buddy_alloc_pages(UINT32 order) {
 
     do{//分裂得到的阶块到合适大小
         current_order--;
-        list_add_forward(node, &free_list[current_order]);
-        ((page_t*)node)->order = current_order;
+        list_add_forward((list_t*)page, &free_list[current_order]);
+        page->order = current_order;
         free_count[current_order]++;
-        addr=page_to_phyaddr((page_t*)node);
-        addr += PAGE_4K_SIZE << current_order;
-        node=(list_t *)(memory_management.page_table + (addr >> PAGE_4K_SHIFT));
+        page += 1<<current_order;
     }while (current_order > order);
-    return (page_t *) node;
+    return page;
 }
 
 //物理页分配器
