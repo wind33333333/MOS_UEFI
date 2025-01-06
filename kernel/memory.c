@@ -155,23 +155,11 @@ __attribute__((section(".init_text"))) void init_memory(void) {
 }
 
 page_t *buddy_alloc_pages(UINT32 order) {
-    if (order > ORDER)     //order大于ORDER无效直接返回空指针
-        return NULL;
-
     page_t *page;
-    //如果对应阶链表内有空闲块则直接分配
-    if (memory_management.free_count[order] != 0) {
-        page = (page_t*)memory_management.free_list[order].next;
-        list_del((list_t*)page);
-        memory_management.free_count[order]--;
-        return page;
-    }
-
-    //阶链表没有空闲块则分裂
     UINT32 current_order = order;
-    do{ //向上查找可用的阶块
-        current_order++;
-        if (current_order > ORDER) {
+    //阶链表没有空闲块则分裂
+    while (TRUE){ //向上查找可用的阶块
+        if (current_order > ORDER) { //阶链表空直接返回空指针
             return NULL;
         }else if (memory_management.free_count[current_order] != 0) {
             page = (page_t*)memory_management.free_list[current_order].next;
@@ -179,15 +167,16 @@ page_t *buddy_alloc_pages(UINT32 order) {
             memory_management.free_count[current_order]--;
             break;
         }
-    }while (TRUE);
+        current_order++;
+    }
 
-    do{//分裂得到的阶块到合适大小
+    while (current_order > order){//分裂得到的阶块到合适大小
         current_order--;
         list_add_forward( &memory_management.free_list[current_order],(list_t*)page);
         page->order = current_order;
         memory_management.free_count[current_order]++;
         page += 1<<current_order;
-    }while (current_order > order);
+    }
     return page;
 }
 
@@ -195,22 +184,23 @@ void buddy_free_pages(page_t *page) {
     if (page == NULL)       //空指针直接返回
         return;
 
-    UINT32 current_order = page->order;
-    while (current_order < ORDER) {         //当前阶链表有其他page尝试合并伙伴
+    while (page->order < ORDER) {         //当前阶链表有其他page尝试合并伙伴
         //计算伙伴page
-        page_t* buddy_page = memory_management.page_table+(page-memory_management.page_table^(1<<current_order));
-        if (list_find(&memory_management.free_list[current_order],buddy_page) == FALSE)
+        page_t* buddy_page = memory_management.page_table+(page-memory_management.page_table^(1<<page->order));
+        if (list_find(&memory_management.free_list[page->order],buddy_page) == FALSE)
             break;
-        if (page > buddy_page)
+        if (page > buddy_page) {
+            page->order=0;
             page = buddy_page;
-        buddy_page->order = 0;
+        }else {
+            buddy_page->order = 0;
+        }
         list_del((list_t*)buddy_page);
-        memory_management.free_count[current_order]--;
-        current_order++;
+        memory_management.free_count[page->order]--;
+        page->order++;
     }
-    page->order = current_order;
-    list_add_forward(&memory_management.free_list[current_order],(list_t*)page);
-    memory_management.free_count[current_order]++;
+    list_add_forward(&memory_management.free_list[page->order],(list_t*)page);
+    memory_management.free_count[page->order]++;
     return;
 }
 
