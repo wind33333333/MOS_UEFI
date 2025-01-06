@@ -43,6 +43,9 @@ typedef struct {
     UINT64 page_size;
     UINT64 page_length;
 
+    list_t free_list[ORDER + 1];
+    UINT64 free_count[ORDER + 1];
+
     UINT64 *bitmap;
     UINT64 bitmap_size;
     UINT64 bitmap_length;
@@ -137,11 +140,7 @@ static inline void revise_pages(void *virt_addr,UINT64 value){
     return;
 }
 
-static inline UINT32 calculate_order(UINT64 addr,UINT64 length) {
-
-}
-
-static inline void list_add_forward(list_t *new,list_t *head) {
+static inline void list_add_forward(list_t *head,list_t *new) {
     new->next=head->next;
     new->prev=head;
     head->next=new;
