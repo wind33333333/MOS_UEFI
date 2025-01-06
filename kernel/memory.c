@@ -111,10 +111,14 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     memory_management.free_count[8]=NULL;
     memory_management.free_count[9]=NULL;
 
-    page_t *page = buddy_alloc_pages(0);
+    page_t *page0 = buddy_alloc_pages(0);
     page_t *page1 = buddy_alloc_pages(0);
+    page_t *page2 = buddy_alloc_pages(0);
+    page_t *page3 = buddy_alloc_pages(5);
+    buddy_free_pages(page0);
+    buddy_free_pages(page2);
     buddy_free_pages(page1);
-    buddy_free_pages(page);
+    buddy_free_pages(page3);
 
 
     //kernel_end_address结束地址加上bit map对齐4K边界
