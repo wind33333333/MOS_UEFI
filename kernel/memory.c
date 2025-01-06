@@ -115,10 +115,12 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     page_t *page1 = buddy_alloc_pages(0);
     page_t *page2 = buddy_alloc_pages(0);
     page_t *page3 = buddy_alloc_pages(5);
+    page_t *page4 = buddy_alloc_pages(10);
     buddy_free_pages(page0);
     buddy_free_pages(page2);
     buddy_free_pages(page1);
     buddy_free_pages(page3);
+    buddy_free_pages(page4);
 
 
     //kernel_end_address结束地址加上bit map对齐4K边界
@@ -153,6 +155,9 @@ __attribute__((section(".init_text"))) void init_memory(void) {
 }
 
 page_t *buddy_alloc_pages(UINT32 order) {
+    if (order > ORDER)     //order大于ORDER无效直接返回空指针
+        return NULL;
+
     page_t *page;
     //如果对应阶链表内有空闲块则直接分配
     if (memory_management.free_count[order] != 0) {
@@ -191,23 +196,17 @@ void buddy_free_pages(page_t *page) {
         return;
 
     UINT32 current_order = page->order;
-    if (memory_management.free_count[current_order] == 0) {   //当前阶链表空直接插入page
-        list_add_forward(&memory_management.free_list[current_order],(list_t*)page);
-        memory_management.free_count[current_order]++;
-        return;
-    }
-
     while (current_order < ORDER) {         //当前阶链表有其他page尝试合并伙伴
         //计算伙伴page
         page_t* buddy_page = memory_management.page_table+(page-memory_management.page_table^(1<<current_order));
-        if (list_find(&memory_management.free_list[current_order],buddy_page)==FALSE)
+        if (list_find(&memory_management.free_list[current_order],buddy_page) == FALSE)
             break;
+        if (page > buddy_page)
+            page = buddy_page;
         buddy_page->order = 0;
         list_del((list_t*)buddy_page);
         memory_management.free_count[current_order]--;
         current_order++;
-        if (page > buddy_page)
-            page = buddy_page;
     }
     page->order = current_order;
     list_add_forward(&memory_management.free_list[current_order],(list_t*)page);
