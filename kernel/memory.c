@@ -157,8 +157,7 @@ __attribute__((section(".init_text"))) void init_memory(void) {
 page_t *buddy_alloc_pages(UINT32 order) {
     page_t *page;
     UINT32 current_order = order;
-    //阶链表没有空闲块则分裂
-    while (TRUE){ //向上查找可用的阶块
+    while (TRUE){     //阶链表没有空闲块则分裂
         if (current_order > ORDER) { //阶链表空直接返回空指针
             return NULL;
         }else if (memory_management.free_count[current_order] != 0) {
