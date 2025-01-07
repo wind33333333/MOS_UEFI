@@ -116,6 +116,9 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     page_t *page2 = buddy_alloc_pages(0);
     page_t *page3 = buddy_alloc_pages(5);
     page_t *page4 = buddy_alloc_pages(10);
+    page0->count=2;
+    buddy_free_pages(page0);
+    buddy_free_pages(page0);
     buddy_free_pages(page0);
     buddy_free_pages(page2);
     buddy_free_pages(page1);
@@ -158,7 +161,7 @@ page_t *buddy_alloc_pages(UINT32 order) {
     page_t *page;
     UINT32 current_order = order;
     while (TRUE){     //阶链表没有空闲块则分裂
-        if (current_order > ORDER) { //阶链表空直接返回空指针
+        if (current_order > ORDER) { //如果阶无效直接返回空指针
             return NULL;
         }else if (memory_management.free_count[current_order] != 0) {
             page = (page_t*)memory_management.free_list[current_order].next;
@@ -180,10 +183,9 @@ page_t *buddy_alloc_pages(UINT32 order) {
 }
 
 void buddy_free_pages(page_t *page) {
-    if (page == NULL) {
-        //空指针直接返回
+    if (page == NULL) {        //空指针直接返回
         return;
-    }else if (page->count > 0) {
+    }else if (page->count > 0) {  //page引用不为空则计数减1
         page->count--;
         return;
     }
