@@ -2,7 +2,7 @@
 #define __MEMORY_H__
 #include "moslib.h"
 
-#define ORDER 10
+#define MAX_ORDER 10
 
 extern UINT64 kernel_stack_top;
 extern CHAR8 _start_text[];
@@ -39,8 +39,8 @@ typedef struct {
     UINT64 page_size;
     UINT64 page_length;
 
-    list_t free_list[ORDER + 1];
-    UINT64 free_count[ORDER + 1];
+    list_t free_list[MAX_ORDER + 1];
+    UINT64 free_count[MAX_ORDER + 1];
 
     UINT64 *bitmap;
     UINT64 bitmap_size;

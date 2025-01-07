@@ -60,7 +60,7 @@ __attribute__((section(".init_text"))) void init_memory(void) {
         UINT64 addr, length, order;
         addr = memory_management.mem_map[i].address;
         length = memory_management.mem_map[i].length;
-        order = ORDER;
+        order = MAX_ORDER;
         while (length >= PAGE_4K_SIZE) {
             //如果地址对齐order地址且长度大于等于order长度等于一个有效块
             if ((addr & (PAGE_4K_SIZE << order) - 1) == 0 && length >= PAGE_4K_SIZE << order) {
@@ -73,7 +73,7 @@ __attribute__((section(".init_text"))) void init_memory(void) {
                 addr += PAGE_4K_SIZE << order;
                 length -= PAGE_4K_SIZE << order;
                 memory_management.free_count[order]++;
-                order = ORDER;
+                order = MAX_ORDER;
                 continue;
             }
             order--;
@@ -161,7 +161,7 @@ page_t *buddy_alloc_pages(UINT32 order) {
     page_t *page;
     UINT32 current_order = order;
     while (TRUE){     //阶链表没有空闲块则分裂
-        if (current_order > ORDER) { //如果阶无效直接返回空指针
+        if (current_order > MAX_ORDER) { //如果阶无效直接返回空指针
             return NULL;
         }else if (memory_management.free_count[current_order] != 0) {
             page = (page_t*)memory_management.free_list[current_order].next;
@@ -190,7 +190,7 @@ void buddy_free_pages(page_t *page) {
         return;
     }
 
-    while (page->order < ORDER) {         //当前阶链表有其他page尝试合并伙伴
+    while (page->order < MAX_ORDER) {         //当前阶链表有其他page尝试合并伙伴
         //计算伙伴page
         page_t* buddy_page = memory_management.page_table+(page-memory_management.page_table^(1<<page->order));
         if (list_find(&memory_management.free_list[page->order],(list_t*)buddy_page) == FALSE)
