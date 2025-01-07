@@ -39,7 +39,7 @@ typedef struct {
     UINT64 page_size;
     UINT64 page_length;
 
-    list_t free_list[MAX_ORDER + 1];
+    list_t free_area[MAX_ORDER + 1];
     UINT64 free_count[MAX_ORDER + 1];
 
     UINT64 *bitmap;
