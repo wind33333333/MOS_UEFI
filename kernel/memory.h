@@ -26,6 +26,7 @@ typedef struct{
     list_t block;
     UINT32 falgs;
     UINT32 order;
+    UINT32 count;
 }page_t;
 
 typedef struct{

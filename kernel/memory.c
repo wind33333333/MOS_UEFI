@@ -180,8 +180,13 @@ page_t *buddy_alloc_pages(UINT32 order) {
 }
 
 void buddy_free_pages(page_t *page) {
-    if (page == NULL)       //空指针直接返回
+    if (page == NULL) {
+        //空指针直接返回
         return;
+    }else if (page->count > 0) {
+        page->count--;
+        return;
+    }
 
     while (page->order < ORDER) {         //当前阶链表有其他page尝试合并伙伴
         //计算伙伴page
