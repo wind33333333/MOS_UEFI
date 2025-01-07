@@ -17,11 +17,6 @@ extern CHAR8 _start_init_text[];
 #define HADDR_TO_LADDR(ADDR)    ((UINT64)(ADDR) & (~H_BASE_ADDR))
 #define LADDR_TO_HADDR(ADDR)    ((UINT64)((UINT64)(ADDR) | H_BASE_ADDR))
 
-typedef struct list_t{
-   struct list_t *prev;
-   struct list_t *next;
-}list_t;
-
 typedef struct{
     list_t block;
     UINT32 falgs;
@@ -139,42 +134,6 @@ static inline void revise_pages(void *virt_addr,UINT64 value){
     UINT64 *pte_addr= vaddr_to_pte_vaddr(virt_addr);
     *pte_addr=value;
     return;
-}
-
-static inline void list_add_forward(list_t *head,list_t *new) {
-    new->next=head->next;
-    new->prev=head;
-    head->next=new;
-    if(new->next != NULL)
-        new->next->prev=new;
-    return;
-}
-
-static inline void list_del(list_t *node) {
-    if (node == NULL)
-        return;
-    if (node->prev != NULL)
-        node->prev->next=node->next;
-    if (node->next != NULL)
-        node->next->prev=node->prev;
-    node->next=NULL;
-    node->prev=NULL;
-    return;
-}
-
-static inline BOOLEAN list_find(list_t *head,list_t *node) {
-    while (head->next != NULL) {
-        if (head->next == node)
-            return TRUE;
-        head=head->next;
-    }
-    return FALSE;
-}
-
-static inline BOOLEAN list_empty(list_t *head) {
-    if (head->next == NULL && head->prev == NULL)
-        return 1;
-    return 0;
 }
 
 static inline UINT64 page_to_phyaddr(page_t *page) {

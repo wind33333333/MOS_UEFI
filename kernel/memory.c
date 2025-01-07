@@ -193,7 +193,7 @@ void buddy_free_pages(page_t *page) {
     while (page->order < ORDER) {         //当前阶链表有其他page尝试合并伙伴
         //计算伙伴page
         page_t* buddy_page = memory_management.page_table+(page-memory_management.page_table^(1<<page->order));
-        if (list_find(&memory_management.free_list[page->order],buddy_page) == FALSE)
+        if (list_find(&memory_management.free_list[page->order],(list_t*)buddy_page) == FALSE)
             break;
         if (page > buddy_page) {
             page->order=0;
