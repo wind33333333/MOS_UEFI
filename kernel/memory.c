@@ -80,11 +80,30 @@ __attribute__((section(".init_text"))) void init_memory(void) {
         }
     }
 
+    for (UINT32 i = 0; i < 10; i++) {
+        memory_management.free_area[i].next=0;
+        memory_management.free_count[i] = 0;
+    }
+
     page_t *page0 = buddy_alloc_pages(0);
     page_t *page1 = buddy_alloc_pages(0);
     page_t *page2 = buddy_alloc_pages(0);
     page_t *page3 = buddy_alloc_pages(5);
     page_t *page4 = buddy_alloc_pages(10);
+    page0->count=2;
+    buddy_free_pages(page0);
+    buddy_free_pages(page0);
+    buddy_free_pages(page0);
+    buddy_free_pages(page2);
+    buddy_free_pages(page1);
+    buddy_free_pages(page3);
+    buddy_free_pages(page4);
+
+    page0 = buddy_alloc_pages(0);
+    page1 = buddy_alloc_pages(0);
+    page2 = buddy_alloc_pages(0);
+    page3 = buddy_alloc_pages(5);
+    page4 = buddy_alloc_pages(10);
     page0->count=2;
     buddy_free_pages(page0);
     buddy_free_pages(page0);
@@ -164,12 +183,8 @@ void buddy_free_pages(page_t *page) {
         page_t* buddy_page = memory_management.page_table+(page-memory_management.page_table^(1<<page->order));
         if (list_find(&memory_management.free_area[page->order],(list_t*)buddy_page) == FALSE)
             break;
-        if (page > buddy_page) {
-            page->order=0;
+        if (page > buddy_page)
             page = buddy_page;
-        }else {
-            buddy_page->order = 0;
-        }
         list_del((list_t*)buddy_page);
         memory_management.free_count[page->order]--;
         page->order++;
