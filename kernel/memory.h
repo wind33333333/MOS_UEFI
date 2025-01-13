@@ -17,8 +17,16 @@ extern CHAR8 _start_init_text[];
 #define HADDR_TO_LADDR(ADDR)    ((UINT64)(ADDR) & (~H_BASE_ADDR))
 #define LADDR_TO_HADDR(ADDR)    ((UINT64)((UINT64)(ADDR) | H_BASE_ADDR))
 
+typedef struct kmem_cache_node {
+
+}kmem_cache_node;
+
+typedef struct kmem_cache {
+
+}kmem_cache;
+
 typedef struct{
-    list_t block;
+    list_head_t block;
     UINT32 falgs;
     UINT32 order;
     UINT32 count;
@@ -39,7 +47,7 @@ typedef struct {
     UINT64 page_size;
     UINT64 page_length;
 
-    list_t free_area[MAX_ORDER + 1];
+    list_head_t free_area[MAX_ORDER + 1];
     UINT64 free_count[MAX_ORDER + 1];
 
     UINT64 *bitmap;

@@ -65,7 +65,7 @@ __attribute__((section(".init_text"))) void init_memory(void) {
             //如果地址对齐order地址且长度大于等于order长度等于一个有效块
             if ((addr & (PAGE_4K_SIZE << order) - 1) == 0 && length >= PAGE_4K_SIZE << order) {
                 //addr除4096等于page索引，把page索引转成链表地址
-                list_t *new_node = (list_t *) (memory_management.page_table + (addr >> PAGE_4K_SHIFT));
+                list_head_t *new_node = (list_head_t *) (memory_management.page_table + (addr >> PAGE_4K_SHIFT));
                 //添加一个链表节点
                 list_add_forward(&memory_management.free_area[order],new_node);
                 //设置page的阶数
@@ -153,7 +153,7 @@ page_t *buddy_alloc_pages(UINT32 order) {
             return NULL;
         }else if (memory_management.free_count[current_order] != 0) {
             page = (page_t*)memory_management.free_area[current_order].next;
-            list_del((list_t*)page);
+            list_del((list_head_t*)page);
             memory_management.free_count[current_order]--;
             break;
         }
@@ -162,7 +162,7 @@ page_t *buddy_alloc_pages(UINT32 order) {
 
     while (current_order > order){//分裂得到的阶块到合适大小
         current_order--;
-        list_add_forward( &memory_management.free_area[current_order],(list_t*)page);
+        list_add_forward( &memory_management.free_area[current_order],(list_head_t*)page);
         page->order = current_order;
         memory_management.free_count[current_order]++;
         page += 1<<current_order;
@@ -181,17 +181,25 @@ void buddy_free_pages(page_t *page) {
     while (page->order < MAX_ORDER) {         //当前阶链表有其他page尝试合并伙伴
         //计算伙伴page
         page_t* buddy_page = memory_management.page_table+(page-memory_management.page_table^(1<<page->order));
-        if (list_find(&memory_management.free_area[page->order],(list_t*)buddy_page) == FALSE)
+        if (list_find(&memory_management.free_area[page->order],(list_head_t*)buddy_page) == FALSE)
             break;
         if (page > buddy_page)
             page = buddy_page;
-        list_del((list_t*)buddy_page);
+        list_del((list_head_t*)buddy_page);
         memory_management.free_count[page->order]--;
         page->order++;
     }
-    list_add_forward(&memory_management.free_area[page->order],(list_t*)page);
+    list_add_forward(&memory_management.free_area[page->order],(list_head_t*)page);
     memory_management.free_count[page->order]++;
     return;
+}
+
+void *kmaollc(UINT64 size) {
+    return 0;
+}
+
+int kfree(void *virtual_address) {
+    return 0;
 }
 
 //物理页分配器
@@ -356,10 +364,3 @@ void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr
     }
 }
 
-void *kmaollc(UINT64 size) {
-    return 0;
-}
-
-int kfree(void *virtual_address) {
-    return 0;
-}

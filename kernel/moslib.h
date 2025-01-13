@@ -494,12 +494,12 @@ static inline void io_out32(UINT16 port, UINT32 value) {
             :"memory");
 }
 
-typedef struct list_t{
-    struct list_t *prev;
-    struct list_t *next;
-}list_t;
+typedef struct list_head_t{
+    struct list_head_t *prev;
+    struct list_head_t *next;
+}list_head_t;
 
-static inline void list_add_forward(list_t *head,list_t *new) {
+static inline void list_add_forward(list_head_t *head,list_head_t *new) {
     new->next=head->next;
     new->prev=head;
     head->next=new;
@@ -508,7 +508,7 @@ static inline void list_add_forward(list_t *head,list_t *new) {
     return;
 }
 
-static inline void list_del(list_t *node) {
+static inline void list_del(list_head_t *node) {
     if (node == NULL)
         return;
     if (node->prev != NULL)
@@ -520,7 +520,7 @@ static inline void list_del(list_t *node) {
     return;
 }
 
-static inline BOOLEAN list_find(list_t *head,list_t *node) {
+static inline BOOLEAN list_find(list_head_t *head,list_head_t *node) {
     while (head->next != NULL) {
         if (head->next == node)
             return TRUE;
@@ -529,7 +529,7 @@ static inline BOOLEAN list_find(list_t *head,list_t *node) {
     return FALSE;
 }
 
-static inline BOOLEAN list_empty(list_t *head) {
+static inline BOOLEAN list_empty(list_head_t *head) {
     if (head->next == NULL && head->prev == NULL)
         return 1;
     return 0;
