@@ -29,7 +29,7 @@ typedef struct{
     list_head_t block;
     UINT32 falgs;
     UINT32 order;
-    UINT32 count;
+    UINT32 refcount;
 }page_t;
 
 typedef struct{

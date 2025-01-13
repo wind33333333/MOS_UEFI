@@ -90,7 +90,7 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     page_t *page2 = buddy_alloc_pages(0);
     page_t *page3 = buddy_alloc_pages(5);
     page_t *page4 = buddy_alloc_pages(10);
-    page0->count=2;
+    page0->refcount=2;
     buddy_free_pages(page0);
     buddy_free_pages(page0);
     buddy_free_pages(page0);
@@ -104,7 +104,7 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     page2 = buddy_alloc_pages(0);
     page3 = buddy_alloc_pages(5);
     page4 = buddy_alloc_pages(10);
-    page0->count=2;
+    page0->refcount=2;
     buddy_free_pages(page0);
     buddy_free_pages(page0);
     buddy_free_pages(page0);
@@ -173,8 +173,8 @@ page_t *buddy_alloc_pages(UINT32 order) {
 void buddy_free_pages(page_t *page) {
     if (page == NULL) {        //空指针直接返回
         return;
-    }else if (page->count > 0) {  //page引用不为空则计数减1
-        page->count--;
+    }else if (page->refcount > 0) {  //page引用不为空则计数减1
+        page->refcount--;
         return;
     }
 
