@@ -80,38 +80,9 @@ __attribute__((section(".init_text"))) void init_memory(void) {
         }
     }
 
-    for (UINT32 i = 0; i < 10; i++) {
-        memory_management.free_area[i].next=0;
-        memory_management.free_count[i] = 0;
-    }
+    //初始化slub分配器
 
-    page_t *page0 = buddy_alloc_pages(0);
-    page_t *page1 = buddy_alloc_pages(0);
-    page_t *page2 = buddy_alloc_pages(0);
-    page_t *page3 = buddy_alloc_pages(5);
-    page_t *page4 = buddy_alloc_pages(10);
-    page0->refcount=2;
-    buddy_free_pages(page0);
-    buddy_free_pages(page0);
-    buddy_free_pages(page0);
-    buddy_free_pages(page2);
-    buddy_free_pages(page1);
-    buddy_free_pages(page3);
-    buddy_free_pages(page4);
 
-    page0 = buddy_alloc_pages(0);
-    page1 = buddy_alloc_pages(0);
-    page2 = buddy_alloc_pages(0);
-    page3 = buddy_alloc_pages(5);
-    page4 = buddy_alloc_pages(10);
-    page0->refcount=2;
-    buddy_free_pages(page0);
-    buddy_free_pages(page0);
-    buddy_free_pages(page0);
-    buddy_free_pages(page2);
-    buddy_free_pages(page1);
-    buddy_free_pages(page3);
-    buddy_free_pages(page4);
 
 
     //kernel_end_address结束地址加上bit map对齐4K边界
@@ -145,6 +116,7 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     return;
 }
 
+//伙伴系统物理页分配器
 page_t *buddy_alloc_pages(UINT32 order) {
     page_t *page;
     UINT32 current_order = order;
@@ -170,6 +142,7 @@ page_t *buddy_alloc_pages(UINT32 order) {
     return page;
 }
 
+//伙伴系统物理页释放器
 void buddy_free_pages(page_t *page) {
     if (page == NULL) {        //空指针直接返回
         return;
