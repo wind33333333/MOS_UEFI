@@ -4,6 +4,9 @@
 
 global_memory_descriptor_t memory_management;
 
+kmem_cache_t global_kmem_cache;
+kmem_cache_node_t global_kmem_cache_node;
+
 __attribute__((section(".init_text"))) void init_memory(void) {
     //查找memmap中可用物理内存并合并，统计总物理内存容量。
     UINT32 mem_map_index = 0;
@@ -44,16 +47,22 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     color_printk(ORANGE, BLACK, "Available RAM:%#lX~%ldMB\n", memory_management.avl_mem_size,
                  memory_management.avl_mem_size / 1024 / 1024);
 
+    //把内核结束地址保存后续使用
+    memory_management.kernel_end_address = kernel_stack_top;
+
     //初始化page_table起始地址
-    memory_management.page_table = (page_t *) kernel_stack_top;
+    memory_management.page_table = (page_t *)memory_management.kernel_end_address;
     //初始化page_size数量
     memory_management.page_size = (memory_management.mem_map[memory_management.mem_map_count - 1].address +
                                    memory_management.mem_map[memory_management.mem_map_count - 1].length) >>
                                   PAGE_4K_SHIFT;
-    //初始化page_length
+    //初始化page_length长度
     memory_management.page_length = memory_management.page_size * sizeof(page_t);
     //初始化page_table为0
     mem_set(memory_management.page_table, 0x0, memory_management.page_length);
+
+    //设置新的结束地址
+    memory_management.kernel_end_address += memory_management.page_length;
 
     //初始化伙伴系统数据结构
     for (UINT32 i = 0; i < memory_management.mem_map_count; i++) {
@@ -81,7 +90,17 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     }
 
     //初始化slub分配器
+    global_kmem_cache_node.free_list = map_pages(page_to_phyaddr(buddy_alloc_pages(0)),memory_management.kernel_end_address,1,PAGE_ROOT_RW);
+    global_kmem_cache_node.free_count = PAGE_4K_SIZE/sizeof(kmem_cache_node_t);
+    global_kmem_cache_node.using_count = 0;
+    global_kmem_cache_node.partial.next = NULL;
+    global_kmem_cache_node.partial.prev = &global_kmem_cache.partial;
 
+    global_kmem_cache.name[32]="kmem_cache";
+    global_kmem_cache.partial = &global_kmem_cache;
+    global_kmem_cache.size = sizeof(kmem_cache_node_t);
+    global_kmem_cache.total_free = PAGE_4K_SIZE/sizeof(kmem_cache_node_t);
+    global_kmem_cache.total_using = 0;
 
 
 
