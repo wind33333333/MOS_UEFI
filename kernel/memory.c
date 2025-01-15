@@ -4,8 +4,13 @@
 
 global_memory_descriptor_t memory_management;
 
-kmem_cache_t global_kmem_cache;
-kmem_cache_node_t global_kmem_cache_node;
+//kmem_cache对象专用缓存池
+kmem_cache_t cache_kmem_cache;
+kmem_cache_node_t cache_kmem_cache_node;
+
+//kmem_cache_node对象专用缓存池
+kmem_cache_t node_kmem_cache;
+kmem_cache_node_t node_kmem_cache_node;
 
 __attribute__((section(".init_text"))) void init_memory(void) {
     //查找memmap中可用物理内存并合并，统计总物理内存容量。
@@ -90,17 +95,43 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     }
 
     //初始化slub分配器
-    global_kmem_cache_node.free_list = map_pages(page_to_phyaddr(buddy_alloc_pages(0)),memory_management.kernel_end_address,1,PAGE_ROOT_RW);
-    global_kmem_cache_node.free_count = PAGE_4K_SIZE/sizeof(kmem_cache_node_t);
-    global_kmem_cache_node.using_count = 0;
-    global_kmem_cache_node.partial.next = NULL;
-    global_kmem_cache_node.partial.prev = &global_kmem_cache.partial;
+    //创建kmem_cache对象缓存池
 
-    global_kmem_cache.name[32]="kmem_cache";
-    global_kmem_cache.partial = &global_kmem_cache;
-    global_kmem_cache.size = sizeof(kmem_cache_node_t);
-    global_kmem_cache.total_free = PAGE_4K_SIZE/sizeof(kmem_cache_node_t);
-    global_kmem_cache.total_using = 0;
+    //创建kmem_cache对象缓存池
+    cache_kmem_cache.name[32]="kmem_cache";
+    cache_kmem_cache.partial = &cache_kmem_cache_node;
+    cache_kmem_cache.size = sizeof(kmem_cache_node_t);
+    cache_kmem_cache.total_free = PAGE_4K_SIZE/sizeof(kmem_cache_node_t);
+    cache_kmem_cache.total_using = 0;
+
+    cache_kmem_cache_node.free_list = map_pages(page_to_phyaddr(buddy_alloc_pages(0)),memory_management.kernel_end_address,1,PAGE_ROOT_RW);
+    cache_kmem_cache_node.free_count = PAGE_4K_SIZE/sizeof(kmem_cache_node_t);
+    cache_kmem_cache_node.using_count = 0;
+    cache_kmem_cache_node.partial.prev = &cache_kmem_cache.partial;
+    cache_kmem_cache_node.partial.next = NULL;
+
+    char *next = cache_kmem_cache_node.free_list;
+    for (UINT32 i = 0; i < cache_kmem_cache_node.free_count; i++) {
+        *next = next+cache_kmem_cache.size;
+    }
+
+    //创建kmem_cache_node对象缓存池
+    node_kmem_cache.name[32]="kmem_cache_node";
+    node_kmem_cache.partial = &node_kmem_cache_node;
+    node_kmem_cache.size = sizeof(kmem_cache_node_t);
+    node_kmem_cache.total_free = PAGE_4K_SIZE/sizeof(kmem_cache_node_t);
+    node_kmem_cache.total_using = 0;
+
+    node_kmem_cache_node.free_list = map_pages(page_to_phyaddr(buddy_alloc_pages(0)),memory_management.kernel_end_address,1,PAGE_ROOT_RW);
+    node_kmem_cache_node.free_count = PAGE_4K_SIZE/sizeof(kmem_cache_node_t);
+    node_kmem_cache_node.using_count = 0;
+    node_kmem_cache_node.partial.prev = &node_kmem_cache.partial;
+    node_kmem_cache_node.partial.next = NULL;
+
+    char *next = node_kmem_cache_node.free_list;
+    for (UINT32 i = 0; i < node_kmem_cache_node.free_count; i++) {
+        *next = next+node_kmem_cache.size;
+    }
 
 
 
