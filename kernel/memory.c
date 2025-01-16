@@ -94,12 +94,6 @@ __attribute__((section(".init_text"))) void init_memory(void) {
         }
     }
 
-    page_t *page = buddy_alloc_pages(10);
-    UINT64 addr = page_to_phyaddr(page);
-    void* p = 0xFFFF810000000000;
-    buddy_map_pages(page,p,PAGE_ROOT_RW);
-    buddy_unmap_pages(p);
-
     //初始化slub分配器
     //创建kmem_cache对象缓存池
     //cache_kmem_cache.name[32]="kmem_cache";
