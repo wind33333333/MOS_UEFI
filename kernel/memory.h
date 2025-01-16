@@ -151,14 +151,22 @@ static inline void revise_pages(void *virt_addr,UINT64 value){
     return;
 }
 
+//page转换物理地址
 static inline UINT64 page_to_phyaddr(page_t *page) {
     return (UINT64)(page-memory_management.page_table) << PAGE_4K_SHIFT;
 }
 
+//物理地址转换page
+static inline page_t* phyaddr_to_page(UINT64 phyaddr) {
+    return memory_management.page_table+(phyaddr >> PAGE_4K_SHIFT);
+}
+
 void init_memory(void);
 page_t* buddy_alloc_pages(UINT32 order);
-UINT64 alloc_pages(UINT64 page_count);
 void buddy_free_pages(page_t *page);
+void buddy_unmap_pages(void *virt_addr);
+void *buddy_map_pages(page_t *page, void *virt_addr, UINT64 attr);
+UINT64 alloc_pages(UINT64 page_count);
 void free_pages(UINT64 phy_addr, UINT64 page_count);
 void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr);
 void unmap_pages(void *virt_addr, UINT64 page_count);
