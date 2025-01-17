@@ -1,16 +1,10 @@
 #include "memory.h"
 #include "printk.h"
+#include "slub.h"
+#include "buddy_system.h"
 #include "uefi.h"
 
 global_memory_descriptor_t memory_management;
-
-//kmem_cache对象专用缓存池
-kmem_cache_t cache_kmem_cache;
-kmem_cache_node_t cache_kmem_cache_node;
-
-//kmem_cache_node对象专用缓存池
-kmem_cache_t node_kmem_cache;
-kmem_cache_node_t node_kmem_cache_node;
 
 __attribute__((section(".init_text"))) void init_memory(void) {
     //查找memmap中可用物理内存并合并，统计总物理内存容量。
@@ -69,73 +63,6 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     //设置新的结束地址
     memory_management.kernel_end_address += memory_management.page_length;
 
-    //初始化伙伴系统数据结构
-    for (UINT32 i = 0; i < memory_management.mem_map_count; i++) {
-        UINT64 addr, length, order;
-        addr = memory_management.mem_map[i].address;
-        length = memory_management.mem_map[i].length;
-        order = MAX_ORDER;
-        while (length >= PAGE_4K_SIZE) {
-            //如果地址对齐order地址且长度大于等于order长度等于一个有效块
-            if ((addr & (PAGE_4K_SIZE << order) - 1) == 0 && length >= PAGE_4K_SIZE << order) {
-                //addr除4096等于page索引，把page索引转成链表地址
-                list_head_t *new_node = (list_head_t *) (memory_management.page_table + (addr >> PAGE_4K_SHIFT));
-                //添加一个链表节点
-                list_add_forward(&memory_management.free_area[order],new_node);
-                //设置page的阶数
-                ((page_t *) new_node)->order = order;
-                addr += PAGE_4K_SIZE << order;
-                length -= PAGE_4K_SIZE << order;
-                memory_management.free_count[order]++;
-                order = MAX_ORDER;
-                continue;
-            }
-            order--;
-        }
-    }
-
-    //初始化slub分配器
-    //创建kmem_cache对象缓存池
-    //cache_kmem_cache.name[32]="kmem_cache";
-    cache_kmem_cache.partial = &cache_kmem_cache_node;
-    cache_kmem_cache.size = sizeof(kmem_cache_t);
-    cache_kmem_cache.total_free = PAGE_4K_SIZE/sizeof(kmem_cache_t);
-    cache_kmem_cache.total_using = 0;
-
-    cache_kmem_cache_node.free_list = buddy_map_pages(buddy_alloc_pages(0),(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
-    cache_kmem_cache_node.free_count = PAGE_4K_SIZE/sizeof(kmem_cache_t);
-    cache_kmem_cache_node.using_count = 0;
-    cache_kmem_cache_node.partial.prev = (list_head_t*)&cache_kmem_cache.partial;
-    cache_kmem_cache_node.partial.next = NULL;
-
-    UINT64 *current = cache_kmem_cache_node.free_list;  // 获取空闲链表头
-    for (UINT32 i = 0; i < cache_kmem_cache_node.free_count-1; i++) {
-        UINT64 *next = (UINT64 *)((UINT8 *)current + cache_kmem_cache.size);  // 计算下一个对象地址
-        *current = (UINT64)next;
-        current = next;           // 更新 current 指针
-    }
-    *current = NULL;  // 最后一个对象的 next 设置为 NULL
-
-    //创建kmem_cache_node对象缓存池
-    //node_kmem_cache.name[32]="kmem_cache_node";
-    node_kmem_cache.partial = &node_kmem_cache_node;
-    node_kmem_cache.size = sizeof(kmem_cache_node_t);
-    node_kmem_cache.total_free = PAGE_4K_SIZE/sizeof(kmem_cache_node_t);
-    node_kmem_cache.total_using = 0;
-
-    node_kmem_cache_node.free_list = buddy_map_pages(buddy_alloc_pages(0),(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
-    node_kmem_cache_node.free_count = PAGE_4K_SIZE/sizeof(kmem_cache_node_t);
-    node_kmem_cache_node.using_count = 0;
-    node_kmem_cache_node.partial.prev = (list_head_t*)&node_kmem_cache.partial;
-    node_kmem_cache_node.partial.next = NULL;
-
-    current = node_kmem_cache_node.free_list;  // 获取空闲链表头
-    for (UINT32 i = 0; i < cache_kmem_cache_node.free_count-1; i++) {
-        UINT64 *next = (UINT64 *)((UINT8 *)current + node_kmem_cache.size);  // 计算下一个对象地址
-        *current = (UINT64)next;
-        current = next;           // 更新 current 指针
-    }
-    *current = NULL;  // 最后一个对象的 next 设置为 NULL
 
 
 
@@ -170,56 +97,9 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     return;
 }
 
-//伙伴系统物理页分配器
-page_t *buddy_alloc_pages(UINT32 order) {
-    page_t *page;
-    UINT32 current_order = order;
-    while (TRUE){     //阶链表没有空闲块则分裂
-        if (current_order > MAX_ORDER) { //如果阶无效直接返回空指针
-            return NULL;
-        }else if (memory_management.free_count[current_order] != 0) {
-            page = (page_t*)memory_management.free_area[current_order].next;
-            list_del((list_head_t*)page);
-            memory_management.free_count[current_order]--;
-            break;
-        }
-        current_order++;
-    }
 
-    while (current_order > order){//分裂得到的阶块到合适大小
-        current_order--;
-        list_add_forward( &memory_management.free_area[current_order],(list_head_t*)page);
-        page->order = current_order;
-        memory_management.free_count[current_order]++;
-        page += 1<<current_order;
-    }
-    return page;
-}
 
-//伙伴系统物理页释放器
-void buddy_free_pages(page_t *page) {
-    if (page == NULL) {        //空指针直接返回
-        return;
-    }else if (page->refcount > 0) {  //page引用不为空则计数减1
-        page->refcount--;
-        return;
-    }
 
-    while (page->order < MAX_ORDER) {         //当前阶链表有其他page尝试合并伙伴
-        //计算伙伴page
-        page_t* buddy_page = memory_management.page_table+(page-memory_management.page_table^(1<<page->order));
-        if (list_find(&memory_management.free_area[page->order],(list_head_t*)buddy_page) == FALSE)
-            break;
-        if (page > buddy_page)
-            page = buddy_page;
-        list_del((list_head_t*)buddy_page);
-        memory_management.free_count[page->order]--;
-        page->order++;
-    }
-    list_add_forward(&memory_management.free_area[page->order],(list_head_t*)page);
-    memory_management.free_count[page->order]++;
-    return;
-}
 
 //释放物理内存映射虚拟内存
 void buddy_unmap_pages(void *virt_addr) {
@@ -322,14 +202,6 @@ void *buddy_map_pages(page_t *page, void *virt_addr, UINT64 attr) {
             virt_addr = (void *) ((UINT64) virt_addr + (count << PAGE_4K_SHIFT));
         }
     }
-}
-
-void *kmaollc(UINT64 size) {
-    return 0;
-}
-
-int kfree(void *virtual_address) {
-    return 0;
 }
 
 //物理页分配器
