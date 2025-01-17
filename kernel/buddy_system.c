@@ -71,20 +71,14 @@ page_t *buddy_alloc_pages(UINT32 order) {
 
 //伙伴系统物理页释放器
 void buddy_free_pages(page_t *page) {
-    if (page == NULL) {        //空指针直接返回
-        return;
-    }else if (page->refcount > 0) {  //page引用不为空则计数减1
-        page->refcount--;
-        return;
-    }
+    //空指针或者被引用了直接返回
+    if (page == NULL || page->refcount > 0) return;
 
     while (page->order < MAX_ORDER) {         //当前阶链表有其他page尝试合并伙伴
         //计算伙伴page
         page_t* buddy_page = buddy_system.page_table+(page-buddy_system.page_table^(1<<page->order));
-        if (list_find(&buddy_system.free_area[page->order],(list_head_t*)buddy_page) == FALSE)
-            break;
-        if (page > buddy_page)
-            page = buddy_page;
+        if (list_find(&buddy_system.free_area[page->order],(list_head_t*)buddy_page) == FALSE) break;
+        if (page > buddy_page) page = buddy_page;
         list_del((list_head_t*)buddy_page);
         buddy_system.free_count[page->order]--;
         page->order++;
