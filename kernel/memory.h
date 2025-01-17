@@ -2,8 +2,6 @@
 #define __MEMORY_H__
 #include "moslib.h"
 
-#define MAX_ORDER 10
-
 extern UINT64 kernel_stack_top;
 extern CHAR8 _start_text[];
 extern CHAR8 _start_init_text[];
@@ -34,13 +32,6 @@ typedef struct {
     mem_map_t mem_map[20];
     UINT32 mem_map_count;
     UINT64 avl_mem_size;
-
-    page_t *page_table;
-    UINT64 page_size;
-    UINT64 page_length;
-
-    list_head_t free_area[MAX_ORDER + 1];
-    UINT64 free_count[MAX_ORDER + 1];
 
     UINT64 *bitmap;
     UINT64 bitmap_size;
@@ -136,21 +127,7 @@ static inline void revise_pages(void *virt_addr,UINT64 value){
     return;
 }
 
-//page转换物理地址
-static inline UINT64 page_to_phyaddr(page_t *page) {
-    return (UINT64)(page-memory_management.page_table) << PAGE_4K_SHIFT;
-}
-
-//物理地址转换page
-static inline page_t* phyaddr_to_page(UINT64 phyaddr) {
-    return memory_management.page_table+(phyaddr >> PAGE_4K_SHIFT);
-}
-
 void init_memory(void);
-page_t* buddy_alloc_pages(UINT32 order);
-void buddy_free_pages(page_t *page);
-void buddy_unmap_pages(void *virt_addr);
-void *buddy_map_pages(page_t *page, void *virt_addr, UINT64 attr);
 UINT64 alloc_pages(UINT64 page_count);
 void free_pages(UINT64 phy_addr, UINT64 page_count);
 void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr);

@@ -49,22 +49,11 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     //把内核结束地址保存后续使用
     memory_management.kernel_end_address = kernel_stack_top;
 
-    //初始化page_table起始地址
-    memory_management.page_table = (page_t *)memory_management.kernel_end_address;
-    //初始化page_size数量
-    memory_management.page_size = (memory_management.mem_map[memory_management.mem_map_count - 1].address +
-                                   memory_management.mem_map[memory_management.mem_map_count - 1].length) >>
-                                  PAGE_4K_SHIFT;
-    //初始化page_length长度
-    memory_management.page_length = memory_management.page_size * sizeof(page_t);
-    //初始化page_table为0
-    mem_set(memory_management.page_table, 0x0, memory_management.page_length);
+    //初始化伙伴系统
+    buddy_system_init();
 
-    //设置新的结束地址
-    memory_management.kernel_end_address += memory_management.page_length;
-
-
-
+    //初始化slub分配器
+    slub_init();
 
     //kernel_end_address结束地址加上bit map对齐4K边界
     memory_management.kernel_start_address = (UINT64) _start_text;
@@ -95,113 +84,6 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     color_printk(ORANGE, BLACK, "Init Kernel Start Addr:%#lX Official kernel Start Addr:%lX kernel end addr:%#lX\n",
                  _start_init_text, memory_management.kernel_start_address, memory_management.kernel_end_address);
     return;
-}
-
-
-
-
-
-//释放物理内存映射虚拟内存
-void buddy_unmap_pages(void *virt_addr) {
-    UINT64 *pte_vaddr = vaddr_to_pte_vaddr(virt_addr);
-    UINT64 *pde_vaddr = vaddr_to_pde_vaddr(virt_addr);
-    UINT64 *pdpte_vaddr = vaddr_to_pdpte_vaddr(virt_addr);
-    UINT64 *pml4e_vaddr = vaddr_to_pml4e_vaddr(virt_addr);
-    page_t *page = phyaddr_to_page(*pte_vaddr & 0x7FFFFFFFFFFFF000UL);
-    UINT64 page_count = 1UL << page->order;
-    UINT64 count;
-
-    //释放物理页
-    buddy_free_pages(page);
-    //取消PTE映射的物理页,刷新 TLB
-    for (UINT64 i = 0; i < page_count; i++) {
-        pte_vaddr[i] = 0;
-        invlpg((void *) ((UINT64) virt_addr + (i << PAGE_4K_SHIFT)));
-    }
-
-    //PTT为空则释放物理页
-    count = calculate_pde_count(virt_addr, page_count);
-    for (INT32 i = 0; i < count; i++) {
-        if (forward_find_qword((void *) (((UINT64) pte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT)), 512, 0) == 0) {
-            page = phyaddr_to_page(pde_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
-            buddy_free_pages(page);
-            pde_vaddr[i] = 0;
-        }
-    }
-
-    //PDT为空则释放物理页
-    count = calculate_pdpte_count(virt_addr, page_count);
-    for (INT32 i = 0; i < count; i++) {
-        if (forward_find_qword((void *) (((UINT64) pde_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT)), 512, 0) == 0) {
-            page = phyaddr_to_page(pdpte_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
-            buddy_free_pages(page);
-            pdpte_vaddr[i] = 0;
-        }
-    }
-
-    //PDPTT为空则释放物理页
-    count = calculate_pml4e_count(virt_addr, page_count);
-    for (INT32 i = 0; i < count; i++) {
-        if (forward_find_qword((void *) (((UINT64) pdpte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT)), 512, 0) == 0) {
-            page = phyaddr_to_page(pml4e_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
-            buddy_free_pages(page);
-            pml4e_vaddr[i] = 0;
-        }
-    }
-    return;
-}
-
-//物理内存映射虚拟内存,如果虚拟地址已被占用则从后面的虚拟内存中找一块可用空间挂载物理内存，并返回更新后的虚拟地址。
-void *buddy_map_pages(page_t *page, void *virt_addr, UINT64 attr) {
-    UINT64 page_count = 1UL << page->order;
-    UINT64 phy_addr = page_to_phyaddr(page);
-    UINT64 count;
-    while (TRUE) {
-        UINT64 *pte_vaddr = vaddr_to_pte_vaddr(virt_addr);
-        UINT64 *pde_vaddr = vaddr_to_pde_vaddr(virt_addr);
-        UINT64 *pdpte_vaddr = vaddr_to_pdpte_vaddr(virt_addr);
-        UINT64 *pml4e_vaddr = vaddr_to_pml4e_vaddr(virt_addr);
-
-        //pml4e为空则挂载物理页
-        count = calculate_pml4e_count(virt_addr, page_count);
-        for (UINT64 i = 0; i < count; i++) {
-            if (pml4e_vaddr[i] == 0) {
-                pml4e_vaddr[i] = page_to_phyaddr(buddy_alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-                mem_set((void *) ((UINT64) pdpte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
-            }
-        }
-
-        //PDPE为空则挂载物理页
-        count = calculate_pdpte_count(virt_addr, page_count);
-        for (UINT64 i = 0; i < count; i++) {
-            if (pdpte_vaddr[i] == 0) {
-                pdpte_vaddr[i] = page_to_phyaddr(buddy_alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-                mem_set((void *) ((UINT64) pde_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
-            }
-        }
-
-        //PDE为空则挂载物理页
-        count = calculate_pde_count(virt_addr, page_count);
-        for (UINT64 i = 0; i < count; i++) {
-            if (pde_vaddr[i] == 0) {
-                pde_vaddr[i] = page_to_phyaddr(buddy_alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-                mem_set((void *) ((UINT64) pte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
-            }
-        }
-
-        //如果虚拟地址被占用，则从后面找一块可用的虚拟地址挂载，并返回更新后的虚拟地址。
-        count = reverse_find_qword(pte_vaddr, page_count, 0);
-        if (count == 0) {
-            //PTE挂载物理页，刷新TLB
-            for (UINT64 i = 0; i < page_count; i++) {
-                pte_vaddr[i] = phy_addr + (i << PAGE_4K_SHIFT) | attr;
-                invlpg((void *) ((UINT64) virt_addr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT));
-            }
-            return virt_addr;
-        } else {
-            virt_addr = (void *) ((UINT64) virt_addr + (count << PAGE_4K_SHIFT));
-        }
-    }
 }
 
 //物理页分配器
