@@ -12,6 +12,9 @@ kmem_cache_node_t node_kmem_cache_node;
 
 //初始化slub分配器
 void slub_init(void){
+
+    UINT64 x = object_size_align2(262145);
+
     //创建kmem_cache对象缓存池
     //cache_kmem_cache.name[32]="kmem_cache";
     cache_kmem_cache.partial = &cache_kmem_cache_node;
