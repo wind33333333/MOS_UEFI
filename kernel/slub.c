@@ -1,4 +1,5 @@
 #include "slub.h"
+#include "buddy_system.h"
 #include "memory.h"
 
 //kmem_cache对象专用缓存池
