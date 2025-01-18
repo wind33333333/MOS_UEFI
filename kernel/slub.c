@@ -3,10 +3,12 @@
 #include "memory.h"
 
 //kmem_cache对象专用缓存池
+char kmem_cache_name[16];
 kmem_cache_t cache_kmem_cache;
 kmem_cache_node_t cache_kmem_cache_node;
 
 //kmem_cache_node对象专用缓存池
+char kmem_cache_node_name[16];
 kmem_cache_t node_kmem_cache;
 kmem_cache_node_t node_kmem_cache_node;
 
@@ -16,12 +18,14 @@ void slub_init(void){
     page_t* page;
     UINT32 object_size;
 
-    object_size = object_size(sizeof(cache_kmem_cache));
+    char name[16]={"kmem_cache"};
+    object_size = object_size_align(sizeof(cache_kmem_cache));
     order = object_size_order(object_size);
     page = buddy_alloc_pages(order);
 
     //创建kmem_cache对象缓存池
-    cache_kmem_cache.name=NULL;
+    memcpy(&name,&kmem_cache_name,sizeof(name));
+    cache_kmem_cache.name=&kmem_cache_name;
     cache_kmem_cache.partial = &cache_kmem_cache_node;
     cache_kmem_cache.object_size = object_size;
     cache_kmem_cache.total_free = (PAGE_4K_SIZE<<order)/object_size;

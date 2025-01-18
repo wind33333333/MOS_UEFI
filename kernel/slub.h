@@ -20,13 +20,13 @@ typedef struct kmem_cache {
 //把对象真是size对齐到2^n字节，提高内存访问性能和每页刚好整数
 static inline UINT32 object_size_align(UINT32 objcet_size) {
     if (objcet_size <= 8) return 8; // 最小对齐值
-    objcet_size--;
+    --objcet_size;
     objcet_size |= objcet_size >> 1;
     objcet_size |= objcet_size >> 2;
     objcet_size |= objcet_size >> 4;
     objcet_size |= objcet_size >> 8;
     objcet_size |= objcet_size >> 16;
-    return objcet_size++;
+    return ++objcet_size;
 }
 
 //1K以内的分配1一个4K页，1K以上乘4。
