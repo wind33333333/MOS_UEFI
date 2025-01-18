@@ -14,12 +14,8 @@ kmem_cache_node_t node_kmem_cache_node;
 
 //初始化slub分配器
 void slub_init(void){
-    page_t* page;
-
-    char name[16]={"kmem_cache"};
-    page = buddy_alloc_pages(order);
-
     //创建kmem_cache对象缓存池
+    char name[16]={"kmem_cache"};
     memcpy(&name,&kmem_cache_name,sizeof(name));
     cache_kmem_cache.name=&kmem_cache_name;
     cache_kmem_cache.object_size = object_size_align(sizeof(cache_kmem_cache));
@@ -33,7 +29,7 @@ void slub_init(void){
     cache_kmem_cache_node.partial.next = NULL;
     cache_kmem_cache_node.using_count = 0;
     cache_kmem_cache_node.free_count = cache_kmem_cache.total_free;
-    cache_kmem_cache_node.free_list = buddy_map_pages(page,(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
+    cache_kmem_cache_node.free_list = buddy_map_pages(buddy_alloc_pages(cache_kmem_cache.order_per_slub),(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
 
     UINT64 *current = cache_kmem_cache_node.free_list;  // 获取空闲链表头
     for (UINT32 i = 0; i < cache_kmem_cache_node.free_count-1; i++) {
