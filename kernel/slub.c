@@ -15,8 +15,8 @@ kmem_cache_node_t node_kmem_cache_node;
 //初始化slub分配器
 void slub_init(void){
     //创建kmem_cache对象缓存池
-    char name[16]={"kmem_cache"};
-    memcpy(&name,&kmem_cache_name,sizeof(name));
+    char name[]={"kmem_cache"};
+    memcpy(name,kmem_cache_name,sizeof(name));
     cache_kmem_cache.name=kmem_cache_name;
     cache_kmem_cache.object_size = object_size_align(sizeof(cache_kmem_cache));
     cache_kmem_cache.order_per_slub = object_size_order(cache_kmem_cache.object_size);
@@ -34,6 +34,30 @@ void slub_init(void){
     UINT64 *next = cache_kmem_cache_node.free_list;  // 获取空闲链表头
     for (UINT32 i = 0; i < cache_kmem_cache.object_per_slub-1; i++) {
         *next = (UINT64)next + cache_kmem_cache.object_size; // 计算下一个对象地址
+        next = (UINT64*)*next;           // 更新 current 指针
+    }
+    *next = NULL;  // 最后一个对象的 next 设置为 NULL
+
+    //创建kmem_cache_node对象缓存池
+    char name1[]={"kmem_cache_node"};
+    memcpy(name1,kmem_cache_node_name,sizeof(name1));
+    node_kmem_cache.name=kmem_cache_node_name;
+    node_kmem_cache.object_size = object_size_align(sizeof(node_kmem_cache));
+    node_kmem_cache.order_per_slub = object_size_order(node_kmem_cache.object_size);
+    node_kmem_cache.object_per_slub = (PAGE_4K_SIZE<<node_kmem_cache.order_per_slub)/node_kmem_cache.object_size;
+    node_kmem_cache.total_using = 0;
+    node_kmem_cache.total_free = (PAGE_4K_SIZE<<node_kmem_cache.order_per_slub)/node_kmem_cache.object_size;
+    node_kmem_cache.partial = &node_kmem_cache_node;
+
+    node_kmem_cache_node.partial.prev = (list_head_t*)&node_kmem_cache.partial;
+    node_kmem_cache_node.partial.next = NULL;
+    node_kmem_cache_node.using_count = 0;
+    node_kmem_cache_node.free_count = node_kmem_cache.total_free;
+    node_kmem_cache_node.free_list = buddy_map_pages(buddy_alloc_pages(node_kmem_cache.order_per_slub),(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
+
+    next = node_kmem_cache_node.free_list;  // 获取空闲链表头
+    for (UINT32 i = 0; i < node_kmem_cache.object_per_slub-1; i++) {
+        *next = (UINT64)next + node_kmem_cache.object_size; // 计算下一个对象地址
         next = (UINT64*)*next;           // 更新 current 指针
     }
     *next = NULL;  // 最后一个对象的 next 设置为 NULL
