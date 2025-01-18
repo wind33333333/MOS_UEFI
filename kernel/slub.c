@@ -12,50 +12,35 @@ kmem_cache_node_t node_kmem_cache_node;
 
 //初始化slub分配器
 void slub_init(void){
+    UINT32 order;
+    page_t* page;
+    UINT32 object_size;
 
-    UINT64 x = object_size_align2(262145);
+    object_size = object_size(sizeof(cache_kmem_cache));
+    order = object_size_order(object_size);
+    page = buddy_alloc_pages(order);
 
     //创建kmem_cache对象缓存池
-    //cache_kmem_cache.name[32]="kmem_cache";
+    cache_kmem_cache.name=NULL;
     cache_kmem_cache.partial = &cache_kmem_cache_node;
-    cache_kmem_cache.size = sizeof(kmem_cache_t);
-    cache_kmem_cache.total_free = PAGE_4K_SIZE/sizeof(kmem_cache_t);
+    cache_kmem_cache.object_size = object_size;
+    cache_kmem_cache.total_free = (PAGE_4K_SIZE<<order)/object_size;
     cache_kmem_cache.total_using = 0;
 
-    cache_kmem_cache_node.free_list = buddy_map_pages(buddy_alloc_pages(0),(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
-    cache_kmem_cache_node.free_count = PAGE_4K_SIZE/sizeof(kmem_cache_t);
+    cache_kmem_cache_node.free_list = buddy_map_pages(page,(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
+    cache_kmem_cache_node.free_count = cache_kmem_cache.total_free;
     cache_kmem_cache_node.using_count = 0;
     cache_kmem_cache_node.partial.prev = (list_head_t*)&cache_kmem_cache.partial;
     cache_kmem_cache_node.partial.next = NULL;
 
     UINT64 *current = cache_kmem_cache_node.free_list;  // 获取空闲链表头
     for (UINT32 i = 0; i < cache_kmem_cache_node.free_count-1; i++) {
-        UINT64 *next = (UINT64 *)((UINT8 *)current + cache_kmem_cache.size);  // 计算下一个对象地址
+        UINT64 *next = (UINT64 *)((UINT8 *)current + cache_kmem_cache.object_size);  // 计算下一个对象地址
         *current = (UINT64)next;
         current = next;           // 更新 current 指针
     }
     *current = NULL;  // 最后一个对象的 next 设置为 NULL
 
-    //创建kmem_cache_node对象缓存池
-    //node_kmem_cache.name[32]="kmem_cache_node";
-    node_kmem_cache.partial = &node_kmem_cache_node;
-    node_kmem_cache.size = sizeof(kmem_cache_node_t);
-    node_kmem_cache.total_free = PAGE_4K_SIZE/sizeof(kmem_cache_node_t);
-    node_kmem_cache.total_using = 0;
-
-    node_kmem_cache_node.free_list = buddy_map_pages(buddy_alloc_pages(0),(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
-    node_kmem_cache_node.free_count = PAGE_4K_SIZE/sizeof(kmem_cache_node_t);
-    node_kmem_cache_node.using_count = 0;
-    node_kmem_cache_node.partial.prev = (list_head_t*)&node_kmem_cache.partial;
-    node_kmem_cache_node.partial.next = NULL;
-
-    current = node_kmem_cache_node.free_list;  // 获取空闲链表头
-    for (UINT32 i = 0; i < cache_kmem_cache_node.free_count-1; i++) {
-        UINT64 *next = (UINT64 *)((UINT8 *)current + node_kmem_cache.size);  // 计算下一个对象地址
-        *current = (UINT64)next;
-        current = next;           // 更新 current 指针
-    }
-    *current = NULL;  // 最后一个对象的 next 设置为 NULL
 
 }
 
