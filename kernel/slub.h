@@ -6,6 +6,7 @@ typedef struct kmem_cache_node {
     list_head_t partial;       // 部分使用 slub 的链表
     UINT64 using_count;        // 当前slab节点已用对象数量
     UINT64 free_count;         // 当前slab节点空闲对象数量
+    void *object_start_vaddr;  // 对象起始虚拟地址
     void *free_list;           // 下一个空闲对象指针
 }kmem_cache_node_t;
 
@@ -14,6 +15,7 @@ typedef struct kmem_cache {
     UINT32 object_size;           // 对象大小
     UINT32 order_per_slub;        // 每个slub页数量
     UINT32 object_per_slub;       // 每个slub对象数量
+    UINT32 slub_count;            // 缓存池slub数量
     UINT64 total_using;           // 总已使用对象数量
     UINT64 total_free;            // 总空闲对象数量
     kmem_cache_node_t *partial;   // 部分使用 slub 的链表头

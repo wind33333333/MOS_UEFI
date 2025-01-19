@@ -116,7 +116,7 @@ static inline UINT64 calculate_pml4e_count(void *virt_addr, UINT64 page_count) {
 
 //虚拟地址查找物理页
 static inline UINT64 find_pages(void *virt_addr){
-    UINT64 *pte_addr= vaddr_to_pte_vaddr(virt_addr);
+    UINT64 *pte_addr = vaddr_to_pte_vaddr(virt_addr);
     return  *pte_addr;
 }
 
