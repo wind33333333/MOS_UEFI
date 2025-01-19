@@ -27,14 +27,8 @@ void slub_init(void){
     cache_kmem_cache.slub_head.prev = NULL;
     cache_kmem_cache.slub_head.next = NULL;
 
-    cache_kmem_cache_node.slub_node.prev = NULL;
-    cache_kmem_cache_node.slub_node.next = NULL;
-    cache_kmem_cache_node.using_count = 0;
-    cache_kmem_cache_node.free_count = cache_kmem_cache.total_free;
-    cache_kmem_cache_node.free_list = buddy_map_pages(buddy_alloc_pages(cache_kmem_cache.order_per_slub),(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
-    cache_kmem_cache_node.object_start_vaddr = cache_kmem_cache_node.free_list;
-    free_list_init(cache_kmem_cache_node.free_list,cache_kmem_cache.object_size,cache_kmem_cache.object_per_slub-1);
-    list_add_forward(&cache_kmem_cache.slub_head,&cache_kmem_cache_node.slub_node);
+    //添加cache_kmem_cache_node节点
+    add_cache_node(&cache_kmem_cache,&cache_kmem_cache_node);
 
     //创建kmem_cache_node对象缓存池
     char name1[]={"kmem_cache_node"};
@@ -49,16 +43,8 @@ void slub_init(void){
     node_kmem_cache.slub_head.prev = NULL;
     node_kmem_cache.slub_head.prev = NULL;
 
-    node_kmem_cache_node.slub_node.prev = NULL;
-    node_kmem_cache_node.slub_node.next = NULL;
-    node_kmem_cache_node.using_count = 0;
-    node_kmem_cache_node.free_count = node_kmem_cache.total_free;
-    node_kmem_cache_node.free_list = buddy_map_pages(buddy_alloc_pages(node_kmem_cache.order_per_slub),(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
-    node_kmem_cache_node.object_start_vaddr = node_kmem_cache_node.free_list;
-    free_list_init(node_kmem_cache_node.free_list,node_kmem_cache.object_size,node_kmem_cache.object_per_slub-1);
-    list_add_forward(&node_kmem_cache.slub_head,&node_kmem_cache_node.slub_node);
-
-
+    //添加node_kmem_cache_node节点
+    add_cache_node(&node_kmem_cache,&node_kmem_cache_node);
 
     char name2[]={"kmalloc_1024"};
     kmem_cache_t *kmalloc_1024 = kmem_cache_create(name2,1023);
