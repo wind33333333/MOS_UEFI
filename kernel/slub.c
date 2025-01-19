@@ -58,8 +58,11 @@ void slub_init(void){
     free_list_init(node_kmem_cache_node.free_list,node_kmem_cache.object_size,node_kmem_cache.object_per_slub-1);
     list_add_forward(&node_kmem_cache.slub_head,&node_kmem_cache_node.slub_node);
 
+
+
     char name2[]={"kmalloc_1024"};
     kmem_cache_t *kmalloc_1024 = kmem_cache_create(name2,1023);
+    node_kmem_cache.total_free=1;
     UINT64 *ptr = kmem_cache_alloc(kmalloc_1024);
     ptr = kmem_cache_alloc(kmalloc_1024);
     ptr = kmem_cache_alloc(kmalloc_1024);
@@ -76,13 +79,6 @@ void slub_init(void){
 
 //创建kmem_cache缓存池
 kmem_cache_t* kmem_cache_create(char *name,UINT64 object_size) {
-    if (cache_kmem_cache.total_free == 1) {
-        //如果cache_kmem_cache只剩下最后一个对象了就扩容cache_kmem_cache的slub
-    }
-    if (node_kmem_cache.total_free == 1) {
-        //如果node_kmem_cache只剩下最后一个对象了就扩容node_kmem_cache的slub
-    }
-
     kmem_cache_t *cerate_cache = kmem_cache_alloc(&cache_kmem_cache);
     kmem_cache_node_t *cerate_node = kmem_cache_alloc(&node_kmem_cache);
 
@@ -124,39 +120,15 @@ void kmem_cache_destroy(kmem_cache_t *destroy_cache) {
 
 //从kmem_cache缓存池分配对象
 void* kmem_cache_alloc(kmem_cache_t *cache) {
-    //如果当前cache的总空闲对象为空着先进行slub扩容
-    if(cache->total_free == 0) {
-        //如果node_kmem_cache只剩下最后一个对象了就扩容node_kmem_cache的slub
-        if (node_kmem_cache.total_free == 1) {
-        }
-        kmem_cache_node_t* new_cache_node = kmem_cache_alloc(&node_kmem_cache);
-        new_cache_node->slub_node.prev = NULL;
-        new_cache_node->slub_node.next = NULL;
-        new_cache_node->using_count = 0;
-        new_cache_node->free_count = cache->object_per_slub;
-        new_cache_node->free_list = buddy_map_pages(buddy_alloc_pages(cache->order_per_slub),(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
-        new_cache_node->object_start_vaddr =  new_cache_node->free_list;
-        free_list_init(new_cache_node->free_list,cache->object_size,cache->object_per_slub-1);
-        list_add_forward(&cache->slub_head,&new_cache_node->slub_node);
-        cache->slub_count++;
-        cache->total_free = cache->object_per_slub;
-    }
+    //如果node_kmem_cache专用空闲对象只剩下1个则先进行slub扩容
+    if (node_kmem_cache.total_free == 1) add_cache_node(&node_kmem_cache,get_cache_node_object(&node_kmem_cache));
 
-    kmem_cache_node_t* cache_node =cache->slub_head.next;
-    for (UINT32 i = 0; i < cache->slub_count; i++) {
-        if (cache_node->free_list == NULL) {
-            cache_node = (kmem_cache_node_t*)cache_node->slub_node.next;
-            continue;
-        }
-        cache_node->free_count--;
-        cache_node->using_count++;
-        cache->total_free--;
-        cache->total_using++;
-        UINT64* ptr = cache_node->free_list;
-        cache_node->free_list = *ptr;
-        return ptr;
-    }
-    return NULL;
+    //如果当前cache的总空闲对象只剩下一个则先进行slub扩容
+    if(cache->total_free == 0) add_cache_node(cache,get_cache_node_object(&node_kmem_cache));
+
+    //返回缓存池对象
+    return get_cache_node_object(cache);
+
 }
 
 //释放对象到kmem_cache缓存池
@@ -187,6 +159,37 @@ void kmem_cache_free(kmem_cache_t *cache, void *ptr) {
         }
         return;
     }
+}
+
+void* get_cache_node_object(kmem_cache_t* cache) {
+    kmem_cache_node_t* cache_node = (kmem_cache_node_t*)cache->slub_head.next;
+    UINT64* object = NULL;
+    for (UINT32 i = 0; i < cache->slub_count; i++) {
+        if (cache_node->free_list != NULL) {
+            cache_node->free_count--;
+            cache_node->using_count++;
+            cache->total_free--;
+            cache->total_using++;
+            object = cache_node->free_list;
+            cache_node->free_list = (void*)*object;
+            break;
+        }
+        cache_node = (kmem_cache_node_t*)cache_node->slub_node.next;
+    }
+    return object;
+}
+
+void add_cache_node(kmem_cache_t* cache,kmem_cache_node_t* new_cache_node) {
+    new_cache_node->slub_node.prev = NULL;
+    new_cache_node->slub_node.next = NULL;
+    new_cache_node->using_count = 0;
+    new_cache_node->free_count = cache->object_per_slub;
+    new_cache_node->free_list = buddy_map_pages(buddy_alloc_pages(cache->order_per_slub),(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
+    new_cache_node->object_start_vaddr =  new_cache_node->free_list;
+    free_list_init(new_cache_node->free_list,cache->object_size,cache->object_per_slub-1);
+    list_add_forward(&cache->slub_head,&new_cache_node->slub_node);
+    cache->slub_count++;
+    cache->total_free = cache->object_per_slub;
 }
 
 //通用内存分配器
