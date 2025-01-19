@@ -38,5 +38,9 @@ static inline UINT32 object_size_order(UINT32 objcet_size) {
 }
 
 void slub_init(void);
+kmem_cache_t* kmem_cache_create(char *name,UINT64 object_size);
+void kmem_cache_destroy(kmem_cache_t *kmem_cache);
+void* kmem_cache_alloc(kmem_cache_t *kmem_cache);
+void kmem_cache_free(kmem_cache_t *kmem_cache, void *ptr);
 
 #endif

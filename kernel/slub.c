@@ -18,7 +18,7 @@ void slub_init(void){
     char name[]={"kmem_cache"};
     memcpy(name,kmem_cache_name,sizeof(name));
     cache_kmem_cache.name=kmem_cache_name;
-    cache_kmem_cache.object_size = object_size_align(sizeof(cache_kmem_cache));
+    cache_kmem_cache.object_size = object_size_align(sizeof(kmem_cache_t));
     cache_kmem_cache.order_per_slub = object_size_order(cache_kmem_cache.object_size);
     cache_kmem_cache.object_per_slub = (PAGE_4K_SIZE<<cache_kmem_cache.order_per_slub)/cache_kmem_cache.object_size;
     cache_kmem_cache.total_using = 0;
@@ -42,7 +42,7 @@ void slub_init(void){
     char name1[]={"kmem_cache_node"};
     memcpy(name1,kmem_cache_node_name,sizeof(name1));
     node_kmem_cache.name=kmem_cache_node_name;
-    node_kmem_cache.object_size = object_size_align(sizeof(node_kmem_cache));
+    node_kmem_cache.object_size = object_size_align(sizeof(kmem_cache_node_t));
     node_kmem_cache.order_per_slub = object_size_order(node_kmem_cache.object_size);
     node_kmem_cache.object_per_slub = (PAGE_4K_SIZE<<node_kmem_cache.order_per_slub)/node_kmem_cache.object_size;
     node_kmem_cache.total_using = 0;
@@ -65,8 +65,29 @@ void slub_init(void){
 }
 
 //创建kmem_cache缓存池
-kmem_cache_t* kmem_cache_create(char *name,UINT64 size) {
+kmem_cache_t* kmem_cache_create(char *name,UINT64 object_size) {
+    kmem_cache_t *kmem_cache = kmem_cache_alloc(&cache_kmem_cache);
+    kmem_cache->name=name;
+    kmem_cache->object_size = object_size_align(object_size);
+    kmem_cache->order_per_slub = object_size_order(kmem_cache->object_size);
+    kmem_cache->object_per_slub = (PAGE_4K_SIZE << kmem_cache->order_per_slub)/kmem_cache->object_size;
+    kmem_cache->total_using = 0;
+    kmem_cache->total_free = kmem_cache->object_per_slub;
+    kmem_cache->partial = kmem_cache_alloc(&node_kmem_cache);
 
+    kmem_cache->partial->partial.prev = (list_head_t*)&kmem_cache->partial;
+    kmem_cache->partial->partial.next = NULL;
+    kmem_cache->partial->using_count = 0;
+    kmem_cache->partial->free_count = kmem_cache->total_free;
+    kmem_cache->partial->free_list = buddy_map_pages(buddy_alloc_pages(kmem_cache->order_per_slub),(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
+
+    UINT64 *next = kmem_cache->partial->free_list;  // 获取空闲链表头
+    for (UINT32 i = 0; i < kmem_cache->object_per_slub-1; i++) {
+        *next = (UINT64)next + kmem_cache->object_size; // 计算下一个对象地址
+        next = (UINT64*)*next;           // 更新 current 指针
+    }
+    *next = NULL;  // 最后一个对象的 next 设置为 NULL
+    return kmem_cache;
 }
 
 //销毁kmem_cache缓存池
