@@ -100,13 +100,7 @@ kmem_cache_t* kmem_cache_create(char *name,UINT64 object_size) {
     cerate_cache->partial->free_count = cerate_cache->total_free;
     cerate_cache->partial->free_list = buddy_map_pages(buddy_alloc_pages(cerate_cache->order_per_slub),(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
     cerate_cache->partial->object_start_vaddr =  cerate_cache->partial->free_list;
-
-    UINT64 *next = cerate_cache->partial->free_list;  // 获取空闲链表头
-    for (UINT32 i = 0; i < cerate_cache->object_per_slub-1; i++) {
-        *next = (UINT64)next + cerate_cache->object_size; // 计算下一个对象地址
-        next = (UINT64*)*next;           // 更新 current 指针
-    }
-    *next = NULL;  // 最后一个对象的 next 设置为 NULL
+    free_list_init(cerate_cache->partial->free_list,cerate_cache->object_size,cerate_cache->object_per_slub-1);
     return cerate_cache;
 }
 

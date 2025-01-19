@@ -39,6 +39,15 @@ static inline UINT32 object_size_order(UINT32 objcet_size) {
     return objcet_size >>= 11;
 }
 
+//空闲链表初始化
+static inline void free_list_init(UINT64* next,UINT32 size,UINT32 count) {
+    while (count--) {
+        *next = (UINT64)next + size;
+        next = *next;
+    }
+    *next = 0;
+}
+
 void slub_init(void);
 kmem_cache_t* kmem_cache_create(char *name,UINT64 object_size);
 void kmem_cache_destroy(kmem_cache_t *kmem_cache);
