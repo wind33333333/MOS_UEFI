@@ -115,8 +115,9 @@ void kmem_cache_destroy(kmem_cache_t *destroy_cache) {
         UINT64 phy_addr = *vir_addr & 0x7FFFFFFFFFFFF000UL;
         page_t* page = phyaddr_to_page(phy_addr);
         buddy_free_pages(page);
-        kmem_cache_free(&node_kmem_cache,destroy_cache->slub_head.next);
-        list_del(destroy_cache->slub_head.next);
+        list_head_t *list_node = destroy_cache->slub_head.next;
+        list_del(list_node);
+        kmem_cache_free(&node_kmem_cache,list_node);
     }
     kmem_cache_free(&cache_kmem_cache,destroy_cache);
 }
