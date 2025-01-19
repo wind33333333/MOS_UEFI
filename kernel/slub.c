@@ -70,6 +70,8 @@ void slub_init(void){
     kmem_cache_t *kmalloc_16 = kmem_cache_create(name2,15);
     UINT16 *ptr = kmem_cache_alloc(kmalloc_16);
     *ptr=0x12346;
+    kmem_cache_free(kmalloc_16,ptr);
+    kmem_cache_destroy(kmalloc_16);
 
 
 }
@@ -112,7 +114,7 @@ kmem_cache_t* kmem_cache_create(char *name,UINT64 object_size) {
 void kmem_cache_destroy(kmem_cache_t *destroy_cache) {
     for (UINT32 i = 0; i < destroy_cache->slub_count; i++) {
         UINT64* vir_addr = vaddr_to_pte_vaddr(destroy_cache->partial);
-        UINT64 phy_addr = *vir_addr & PAGE_4K_MASK;
+        UINT64 phy_addr = *vir_addr & 0x7FFFFFFFFFFFF000UL;
         page_t* page = phyaddr_to_page(phy_addr);
         buddy_free_pages(page);
         list_del(destroy_cache->partial);
@@ -162,7 +164,7 @@ void kmem_cache_free(kmem_cache_t *cache, void *ptr) {
         //如果当前slub所有对象已经释放，且cache总空闲对象大于slub对象则释放当前的slub到伙伴系统
         if (cache_node->using_count == 0 && cache->total_free > cache->object_per_slub) {
             UINT64* vir_addr = vaddr_to_pte_vaddr(cache->partial->object_start_vaddr);
-            UINT64 phy_addr = *vir_addr & PAGE_4K_MASK;
+            UINT64 phy_addr = *vir_addr & 0x7FFFFFFFFFFFF000UL;
             page_t* page = phyaddr_to_page(phy_addr);
             buddy_free_pages(page);
             list_del(cache->partial);
