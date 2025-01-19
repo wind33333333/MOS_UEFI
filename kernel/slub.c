@@ -32,13 +32,7 @@ void slub_init(void){
     cache_kmem_cache_node.free_count = cache_kmem_cache.total_free;
     cache_kmem_cache_node.free_list = buddy_map_pages(buddy_alloc_pages(cache_kmem_cache.order_per_slub),(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
     cache_kmem_cache_node.object_start_vaddr = cache_kmem_cache_node.free_list;
-
-    UINT64 *next = cache_kmem_cache_node.free_list;  // 获取空闲链表头
-    for (UINT32 i = 0; i < cache_kmem_cache.object_per_slub-1; i++) {
-        *next = (UINT64)next + cache_kmem_cache.object_size; // 计算下一个对象地址
-        next = (UINT64*)*next;           // 更新 current 指针
-    }
-    *next = NULL;  // 最后一个对象的 next 设置为 NULL
+    free_list_init(cache_kmem_cache_node.free_list,cache_kmem_cache.object_size,cache_kmem_cache.object_per_slub-1);
 
     //创建kmem_cache_node对象缓存池
     char name1[]={"kmem_cache_node"};
@@ -58,13 +52,7 @@ void slub_init(void){
     node_kmem_cache_node.free_count = node_kmem_cache.total_free;
     node_kmem_cache_node.free_list = buddy_map_pages(buddy_alloc_pages(node_kmem_cache.order_per_slub),(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
     node_kmem_cache_node.object_start_vaddr = node_kmem_cache_node.free_list;
-
-    next = node_kmem_cache_node.free_list;  // 获取空闲链表头
-    for (UINT32 i = 0; i < node_kmem_cache.object_per_slub-1; i++) {
-        *next = (UINT64)next + node_kmem_cache.object_size; // 计算下一个对象地址
-        next = (UINT64*)*next;           // 更新 current 指针
-    }
-    *next = NULL;  // 最后一个对象的 next 设置为 NULL
+    free_list_init(node_kmem_cache_node.free_list,node_kmem_cache.object_size,node_kmem_cache.object_per_slub-1);
 
     char name2[]={"kmalloc_16"};
     kmem_cache_t *kmalloc_16 = kmem_cache_create(name2,15);
