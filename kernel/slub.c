@@ -165,6 +165,17 @@ void* get_cache_node_object(kmem_cache_t* cache) {
     return object;
 }
 
+void add_cache(char* name,kmem_cache_t* cache, UINT64 object_size) {
+    cache_kmem_cache.object_size = object_size_align(sizeof(kmem_cache_t));
+    cache_kmem_cache.order_per_slub = object_size_order(cache_kmem_cache.object_size);
+    cache_kmem_cache.object_per_slub = (PAGE_4K_SIZE<<cache_kmem_cache.order_per_slub)/cache_kmem_cache.object_size;
+    cache_kmem_cache.slub_count = 1;
+    cache_kmem_cache.total_using = 0;
+    cache_kmem_cache.total_free = (PAGE_4K_SIZE<<cache_kmem_cache.order_per_slub)/cache_kmem_cache.object_size;
+    cache_kmem_cache.slub_head.prev = NULL;
+    cache_kmem_cache.slub_head.next = NULL;
+}
+
 void add_cache_node(kmem_cache_t* cache,kmem_cache_node_t* new_cache_node) {
     new_cache_node->slub_node.prev = NULL;
     new_cache_node->slub_node.next = NULL;
