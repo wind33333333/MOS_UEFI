@@ -68,7 +68,10 @@ void kmem_cache_destroy(kmem_cache_t *destroy_cache) {
 
 //从kmem_cache缓存池分配对象
 void* kmem_cache_alloc(kmem_cache_t *cache) {
-    //如果node_kmem_cache专用空闲对象只剩下1个则先进行slub扩容
+    //如果kmem_cache专用空闲对象只剩下1个则先进行slub扩容
+    if (cache_kmem_cache.total_free == 1) add_cache_node(&cache_kmem_cache,get_cache_node_object(&cache_kmem_cache));
+
+    //如果kmem_cache_node专用空闲对象只剩下1个则先进行slub扩容
     if (node_kmem_cache.total_free == 1) add_cache_node(&node_kmem_cache,get_cache_node_object(&node_kmem_cache));
 
     //如果当前cache的总空闲对象只剩下一个则先进行slub扩容
