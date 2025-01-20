@@ -28,17 +28,25 @@ void slub_init(void){
 
     char name2[]={"kmalloc_1024"};
     kmem_cache_t *kmalloc_1024 = kmem_cache_create(name2,1023);
-    //node_kmem_cache.total_free=1;
-    UINT64 *ptr = kmem_cache_alloc(kmalloc_1024);
-    ptr = kmem_cache_alloc(kmalloc_1024);
-    ptr = kmem_cache_alloc(kmalloc_1024);
-    ptr = kmem_cache_alloc(kmalloc_1024);
-    ptr = kmem_cache_alloc(kmalloc_1024);
+    UINT64* ptr1,ptr2,ptr3,ptr4,ptr5,ptr6,ptr7,ptr8;
+    ptr1 = kmem_cache_alloc(kmalloc_1024);
+    ptr2 = kmem_cache_alloc(kmalloc_1024);
+    ptr3 = kmem_cache_alloc(kmalloc_1024);
+    ptr4 = kmem_cache_alloc(kmalloc_1024);
+    ptr5 = kmem_cache_alloc(kmalloc_1024);
+    ptr6 = kmem_cache_alloc(kmalloc_1024);
+    ptr7 = kmem_cache_alloc(kmalloc_1024);
+    ptr8 = kmem_cache_alloc(kmalloc_1024);
+    kmem_cache_free(kmalloc_1024, ptr1);
+    kmem_cache_free(kmalloc_1024, ptr2);
+    kmem_cache_free(kmalloc_1024, ptr3);
+    kmem_cache_free(kmalloc_1024, ptr4);
+    kmem_cache_free(kmalloc_1024, ptr5);
+    kmem_cache_free(kmalloc_1024, ptr6);
+    kmem_cache_free(kmalloc_1024, ptr7);
+    kmem_cache_free(kmalloc_1024, ptr8);
     kmem_cache_destroy(kmalloc_1024);
 
-    *ptr=0x12346;
-    kmem_cache_free(kmalloc_1024,ptr);
-    kmem_cache_destroy(kmalloc_1024);
 
 }
 
@@ -56,9 +64,9 @@ kmem_cache_t* kmem_cache_create(char *name,UINT32 object_size) {
 void kmem_cache_destroy(kmem_cache_t *destroy_cache) {
     kmem_cache_node_t *next_node = (kmem_cache_node_t*)destroy_cache->slub_head.next;
     for (UINT32 i = 0; i < destroy_cache->slub_count; i++) {
-        UINT64* node_vaddr = vaddr_to_pte_vaddr(next_node->object_start_vaddr);
-        UINT64 node_paddr = *node_vaddr & 0x7FFFFFFFFFFFF000UL;
-        page_t* page = phyaddr_to_page(node_paddr);
+        UINT64* slub_vaddr = vaddr_to_pte_vaddr(next_node->object_start_vaddr);
+        UINT64 slub_paddr = *slub_vaddr & 0x7FFFFFFFFFFFF000UL;
+        page_t* page = phyaddr_to_page(slub_paddr);
         buddy_free_pages(page);
         kmem_cache_free(&node_kmem_cache,next_node);
         next_node = (kmem_cache_node_t*)next_node->slub_node.next;
@@ -69,16 +77,16 @@ void kmem_cache_destroy(kmem_cache_t *destroy_cache) {
 //从kmem_cache缓存池分配对象
 void* kmem_cache_alloc(kmem_cache_t *cache) {
     //如果kmem_cache专用空闲对象只剩下1个则先进行slub扩容
-    if (cache_kmem_cache.total_free == 1) add_cache_node(&cache_kmem_cache,get_cache_node_object(&cache_kmem_cache));
+    if (cache_kmem_cache.total_free == 1) add_cache_node(&cache_kmem_cache,alloc_cache_object(&cache_kmem_cache));
 
     //如果kmem_cache_node专用空闲对象只剩下1个则先进行slub扩容
-    if (node_kmem_cache.total_free == 1) add_cache_node(&node_kmem_cache,get_cache_node_object(&node_kmem_cache));
+    if (node_kmem_cache.total_free == 1) add_cache_node(&node_kmem_cache,alloc_cache_object(&node_kmem_cache));
 
     //如果当前cache的总空闲对象只剩下一个则先进行slub扩容
-    if(cache->total_free == 0) add_cache_node(cache,get_cache_node_object(&node_kmem_cache));
+    if(cache->total_free == 0) add_cache_node(cache,alloc_cache_object(&node_kmem_cache));
 
     //返回缓存池对象
-    return get_cache_node_object(cache);
+    return alloc_cache_object(cache);
 
 }
 
@@ -102,8 +110,10 @@ void kmem_cache_free(kmem_cache_t *cache, void *object) {
                 UINT64 phy_addr = *vir_addr & 0x7FFFFFFFFFFFF000UL;
                 page_t* page = phyaddr_to_page(phy_addr);
                 buddy_free_pages(page);
-                kmem_cache_free(&node_kmem_cache,cache_node);
                 list_del((list_head_t*)cache_node);
+                kmem_cache_free(&node_kmem_cache,cache_node);
+                cache->slub_count--;
+                cache->total_free -= cache->object_per_slub;
             }
             return;
         }
@@ -111,7 +121,8 @@ void kmem_cache_free(kmem_cache_t *cache, void *object) {
     }
 }
 
-void* get_cache_node_object(kmem_cache_t* cache) {
+//分配对象
+void* alloc_cache_object(kmem_cache_t* cache) {
     kmem_cache_node_t* cache_node = (kmem_cache_node_t*)cache->slub_head.next;
     UINT64* object = NULL;
     for (UINT32 i = 0; i < cache->slub_count; i++) {
@@ -129,6 +140,26 @@ void* get_cache_node_object(kmem_cache_t* cache) {
     return object;
 }
 
+//释放对象
+void free_cache_object(kmem_cache_t* cache, void* object) {
+    kmem_cache_node_t* cache_node =(kmem_cache_node_t*)cache->slub_head.next;
+    void* align_addr = (void*)((UINT64)object & (PAGE_4K_MASK << cache->order_per_slub));
+
+    for (UINT32 i = 0; i < cache->slub_count; i++) {
+        if (align_addr == cache_node->object_start_vaddr) {
+            *(UINT64*)object = (UINT64)cache_node->free_list;
+            cache_node->free_list = object;
+            cache_node->free_count++;
+            cache_node->using_count--;
+            cache->total_free++;
+            cache->total_using--;
+            break;
+        }
+        cache_node = (kmem_cache_node_t*)cache_node->slub_node.next;
+    }
+}
+
+//添加一个cache
 void add_cache(char* name,kmem_cache_t* new_cache, UINT32 object_size) {
     new_cache->name = name;
     new_cache->object_size = object_size_align(object_size);
@@ -141,6 +172,7 @@ void add_cache(char* name,kmem_cache_t* new_cache, UINT32 object_size) {
     new_cache->slub_head.next = NULL;
 }
 
+//添加一个cache_node
 void add_cache_node(kmem_cache_t* cache,kmem_cache_node_t* new_cache_node) {
     new_cache_node->slub_node.prev = NULL;
     new_cache_node->slub_node.next = NULL;
