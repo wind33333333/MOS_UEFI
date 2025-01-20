@@ -49,11 +49,12 @@ static inline void free_list_init(UINT64* next,UINT32 size,UINT32 count) {
 }
 
 void slub_init(void);
-kmem_cache_t* kmem_cache_create(char *name,UINT64 object_size);
+kmem_cache_t* kmem_cache_create(char *name,UINT32 object_size);
 void kmem_cache_destroy(kmem_cache_t *kmem_cache);
 void* kmem_cache_alloc(kmem_cache_t *kmem_cache);
 void kmem_cache_free(kmem_cache_t *kmem_cache, void *ptr);
 void* get_cache_node_object(kmem_cache_t* cache);
 void add_cache_node(kmem_cache_t* cache,kmem_cache_node_t* new_cache_node);
+void add_cache(char* name,kmem_cache_t* new_cache, UINT32 object_size);
 
 #endif
