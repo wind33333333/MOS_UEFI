@@ -53,7 +53,8 @@ void slub_init(void){
 //创建kmem_cache缓存池
 kmem_cache_t* kmem_cache_create(char *name,UINT32 object_size) {
     //如果kmem_cache专用空闲对象只剩下1个则先进行slub扩容
-    if (cache_kmem_cache.total_free == 1) add_cache_node(&cache_kmem_cache,alloc_cache_object(&cache_kmem_cache));
+    if (cache_kmem_cache.total_free == 1)
+        add_cache_node(&cache_kmem_cache,alloc_cache_object(&cache_kmem_cache));
 
     kmem_cache_t *new_cache = kmem_cache_alloc(&cache_kmem_cache);
     kmem_cache_node_t *new_cache_node = kmem_cache_alloc(&node_kmem_cache);
@@ -80,10 +81,12 @@ void kmem_cache_destroy(kmem_cache_t *destroy_cache) {
 //从kmem_cache缓存池分配对象
 void* kmem_cache_alloc(kmem_cache_t *cache) {
     //如果kmem_cache_node专用空闲对象只剩下1个则先进行slub扩容
-    if (node_kmem_cache.total_free == 1) add_cache_node(&node_kmem_cache,alloc_cache_object(&node_kmem_cache));
+    if (node_kmem_cache.total_free == 1)
+        add_cache_node(&node_kmem_cache,alloc_cache_object(&node_kmem_cache));
 
     //如果当前cache的总空闲对象只剩下一个则先进行slub扩容
-    if(cache->total_free == 0) add_cache_node(cache,alloc_cache_object(&node_kmem_cache));
+    if(cache->total_free == 0)
+        add_cache_node(cache,alloc_cache_object(&node_kmem_cache));
 
     //返回缓存池对象
     return alloc_cache_object(cache);
