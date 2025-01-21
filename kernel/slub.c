@@ -108,7 +108,6 @@ void kmem_cache_free(kmem_cache_t *cache, void *object) {
             }
             cache_node = (kmem_cache_node_t*)cache_node->slub_node.next;
         }
-
         //如果当前slub所有对象已经释放，且cache总空闲对象大于一个slub对象数量，则释放当前的slub到伙伴系统
         if (cache_node->using_count == 0 && cache->total_free > cache->object_per_slub) {
             UINT64* vir_addr = vaddr_to_pte_vaddr(cache_node->object_start_vaddr);
@@ -116,12 +115,14 @@ void kmem_cache_free(kmem_cache_t *cache, void *object) {
             page_t* page = phyaddr_to_page(phy_addr);
             buddy_free_pages(page);
             list_del((list_head_t*)cache_node);
-
+            //kmem_cache_free(&node_kmem_cache,cache_node);
             cache->slub_count--;
             cache->total_free -= cache->object_per_slub;
 
             cache = &node_kmem_cache;
             object = cache_node;
+        }else {
+            break;
         }
     }
 }

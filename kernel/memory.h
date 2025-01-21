@@ -124,7 +124,6 @@ static inline UINT64 find_pages(void *virt_addr){
 static inline void revise_pages(void *virt_addr,UINT64 value){
     UINT64 *pte_addr= vaddr_to_pte_vaddr(virt_addr);
     *pte_addr=value;
-    return;
 }
 
 void init_memory(void);
