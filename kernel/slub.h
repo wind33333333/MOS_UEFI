@@ -19,6 +19,7 @@ typedef struct kmem_cache {
     UINT64 total_using;           // 总已使用对象数量
     UINT64 total_free;            // 总空闲对象数量
     list_head_t slub_head;        // slub链表头
+    UINT64 reserve[2];
 }kmem_cache_t;
 
 //把对象真是size对齐到2^n字节，提高内存访问性能和每页刚好整数
