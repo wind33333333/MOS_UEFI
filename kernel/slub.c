@@ -17,13 +17,13 @@ void slub_init(void){
     //创建kmem_cache对象缓存池
     char name[]={"kmem_cache"};
     memcpy(name,kmem_cache_name,sizeof(name));
-    add_cache(name,&cache_kmem_cache,sizeof(kmem_cache_t));
+    create_cache(name,&cache_kmem_cache,sizeof(kmem_cache_t));
     add_cache_node(&cache_kmem_cache,&cache_kmem_cache_node);
 
     //创建kmem_cache_node对象缓存池
     char name1[]={"kmem_cache_node"};
     memcpy(name1,kmem_cache_node_name,sizeof(name1));
-    add_cache(name1,&node_kmem_cache,sizeof(kmem_cache_node_t));
+    create_cache(name1,&node_kmem_cache,sizeof(kmem_cache_node_t));
     add_cache_node(&node_kmem_cache,&node_kmem_cache_node);
 
 ///////////////////////////////////////////////////////
@@ -91,7 +91,7 @@ kmem_cache_t* kmem_cache_create(char *name,UINT32 object_size) {
     kmem_cache_t *new_cache = kmem_cache_alloc(&cache_kmem_cache);
     kmem_cache_node_t *new_cache_node = kmem_cache_alloc(&node_kmem_cache);
 
-    add_cache(name,new_cache,object_size);
+    create_cache(name,new_cache,object_size);
     add_cache_node(new_cache,new_cache_node);
     return new_cache;
 }
