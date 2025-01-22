@@ -44,28 +44,17 @@ void slub_init(void){
     char* ptr03 =kmem_cache_create(name03,1024);
     char* ptr04 =kmem_cache_create(name04,1024);
     char* ptr05 =kmem_cache_create(name05,1024);
-    char* ptr06 =kmem_cache_create(name06,1024);
-    char* ptr07 =kmem_cache_create(name07,1024);
-    char* ptr08 =kmem_cache_create(name08,1024);
-    char* ptr09 =kmem_cache_create(name09,1024);
-    char* ptr10 =kmem_cache_create(name10,1024);
+    // char* ptr06 =kmem_cache_create(name06,1024);
+    // char* ptr07 =kmem_cache_create(name07,1024);
+    // char* ptr08 =kmem_cache_create(name08,1024);
+    // char* ptr09 =kmem_cache_create(name09,1024);
+    // char* ptr10 =kmem_cache_create(name10,1024);
 
-    kmem_cache_destroy(ptr01);
-    kmem_cache_destroy(ptr02);
-    kmem_cache_destroy(ptr03);
-    kmem_cache_destroy(ptr04);
-    kmem_cache_destroy(ptr05);
-    kmem_cache_destroy(ptr06);
-    kmem_cache_destroy(ptr07);
-    kmem_cache_destroy(ptr08);
-    kmem_cache_destroy(ptr09);
-    kmem_cache_destroy(ptr10);
-
-    kmem_cache_destroy(ptr10);
-    kmem_cache_destroy(ptr09);
-    kmem_cache_destroy(ptr08);
-    kmem_cache_destroy(ptr07);
-    kmem_cache_destroy(ptr06);
+    // kmem_cache_destroy(ptr10);
+    // kmem_cache_destroy(ptr09);
+    // kmem_cache_destroy(ptr08);
+    // kmem_cache_destroy(ptr07);
+    // kmem_cache_destroy(ptr06);
     kmem_cache_destroy(ptr05);
     kmem_cache_destroy(ptr04);
     kmem_cache_destroy(ptr03);
@@ -102,7 +91,7 @@ kmem_cache_t* kmem_cache_create(char *name,UINT32 object_size) {
     kmem_cache_t *new_cache = kmem_cache_alloc(&cache_kmem_cache);
     kmem_cache_node_t *new_cache_node = kmem_cache_alloc(&node_kmem_cache);
 
-    add_cache(name,new_cache,object_size_align(object_size));
+    add_cache(name,new_cache,object_size);
     add_cache_node(new_cache,new_cache_node);
     return new_cache;
 }
@@ -148,8 +137,9 @@ void kmem_cache_free(kmem_cache_t *cache, void *object) {
                 UINT64 slub_paddr = *slub_vaddr & 0x7FFFFFFFFFFFF000UL;
                 page_t* page = phyaddr_to_page(slub_paddr);
                 buddy_free_pages(page);
+                free_cache_object(&node_kmem_cache,next_node);
                 list_del((list_head_t*)next_node);
-                free_cache_object(&cache_kmem_cache,next_node);
+                break;
             }
             next_node = (kmem_cache_node_t*)next_node->slub_node.next;
         }
@@ -231,12 +221,12 @@ void* alloc_cache_object(kmem_cache_t* cache) {
     UINT64* object = NULL;
     for (UINT32 i = 0; i < cache->slub_count; i++) {
         if (cache_node->free_list != NULL) {
+            object = cache_node->free_list;
+            cache_node->free_list = (void*)*object;
             cache_node->free_count--;
             cache_node->using_count++;
             cache->total_free--;
             cache->total_using++;
-            object = cache_node->free_list;
-            cache_node->free_list = (void*)*object;
             break;
         }
         cache_node = (kmem_cache_node_t*)cache_node->slub_node.next;
