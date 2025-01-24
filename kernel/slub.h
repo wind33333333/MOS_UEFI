@@ -58,6 +58,7 @@ void kmem_cache_free(kmem_cache_t *cache, void *object);
 void* alloc_cache_object(kmem_cache_t* cache);
 void free_cache_object(kmem_cache_t* cache, void* object);
 void add_cache_node(kmem_cache_t* cache,kmem_cache_node_t* new_cache_node);
+void del_cache_node(kmem_cache_t* cache,kmem_cache_node_t* cache_node);
 void create_cache(char* name,kmem_cache_t* new_cache, UINT32 object_size);
 
 #endif
