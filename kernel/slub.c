@@ -44,17 +44,17 @@ void slub_init(void){
     char* ptr03 =kmem_cache_create(name03,1024);
     char* ptr04 =kmem_cache_create(name04,1024);
     char* ptr05 =kmem_cache_create(name05,1024);
-    // char* ptr06 =kmem_cache_create(name06,1024);
-    // char* ptr07 =kmem_cache_create(name07,1024);
-    // char* ptr08 =kmem_cache_create(name08,1024);
-    // char* ptr09 =kmem_cache_create(name09,1024);
-    // char* ptr10 =kmem_cache_create(name10,1024);
+    char* ptr06 =kmem_cache_create(name06,1024);
+    char* ptr07 =kmem_cache_create(name07,1024);
+    char* ptr08 =kmem_cache_create(name08,1024);
+    char* ptr09 =kmem_cache_create(name09,1024);
+    char* ptr10 =kmem_cache_create(name10,1024);
 
-    // kmem_cache_destroy(ptr10);
-    // kmem_cache_destroy(ptr09);
-    // kmem_cache_destroy(ptr08);
-    // kmem_cache_destroy(ptr07);
-    // kmem_cache_destroy(ptr06);
+    kmem_cache_destroy(ptr10);
+    kmem_cache_destroy(ptr09);
+    kmem_cache_destroy(ptr08);
+    kmem_cache_destroy(ptr07);
+    kmem_cache_destroy(ptr06);
     kmem_cache_destroy(ptr05);
     kmem_cache_destroy(ptr04);
     kmem_cache_destroy(ptr03);
@@ -130,15 +130,17 @@ void kmem_cache_free(kmem_cache_t *cache, void *object) {
 
     //遍历当前cache如果空闲对象大于一个slub对象数量则释放空闲node
     if (cache->total_free > cache->object_per_slub) {
-        kmem_cache_node_t *next_node = cache->slub_head.next;
+        kmem_cache_node_t *next_node = (kmem_cache_node_t*)cache->slub_head.next;
         for (UINT32 i = 0; i < cache->slub_count; i++) {
             if (next_node->using_count == 0) {
                 UINT64* slub_vaddr = vaddr_to_pte_vaddr(next_node->object_start_vaddr);
                 UINT64 slub_paddr = *slub_vaddr & 0x7FFFFFFFFFFFF000UL;
                 page_t* page = phyaddr_to_page(slub_paddr);
                 buddy_free_pages(page);
-                free_cache_object(&node_kmem_cache,next_node);
                 list_del((list_head_t*)next_node);
+                free_cache_object(&node_kmem_cache,next_node);
+                cache->total_free -= cache->object_per_slub;
+                cache->slub_count--;
                 break;
             }
             next_node = (kmem_cache_node_t*)next_node->slub_node.next;
