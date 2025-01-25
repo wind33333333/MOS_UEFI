@@ -52,6 +52,18 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     //初始化伙伴系统
     buddy_system_init();
 
+    page_t* pages[20];
+    UINT64* vaddr[20];
+    for (UINT32 i = 0; i < 20; i++) {
+        pages[i] = buddy_alloc_pages(0);
+        vaddr[i] = buddy_map_pages(pages[i],(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
+    }
+
+    for (UINT32 i = 0; i < 20; i++) {
+        //buddy_free_pages(pages[i]);
+        buddy_unmap_pages(vaddr[i]);
+    }
+
     //初始化slub分配器
     slub_init();
 

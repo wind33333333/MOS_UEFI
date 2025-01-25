@@ -85,7 +85,6 @@ void buddy_free_pages(page_t *page) {
     }
     list_add_forward(&buddy_system.free_area[page->order],(list_head_t*)page);
     buddy_system.free_count[page->order]++;
-    return;
 }
 
 //释放物理内存映射虚拟内存
@@ -135,7 +134,6 @@ void buddy_unmap_pages(void *virt_addr) {
             pml4e_vaddr[i] = 0;
         }
     }
-    return;
 }
 
 //物理内存映射虚拟内存,如果虚拟地址已被占用则从后面的虚拟内存中找一块可用空间挂载物理内存，并返回更新后的虚拟地址。

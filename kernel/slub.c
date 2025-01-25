@@ -200,11 +200,12 @@ void add_cache_node(kmem_cache_t *cache, kmem_cache_node_t *new_cache_node) {
     cache->total_free = cache->object_per_slub;
 }
 
-//从cache中删除一个cache_node
+//从cache中删除一个node
 void del_cache_node(kmem_cache_t *cache, kmem_cache_node_t *cache_node) {
     UINT64 *slub_vaddr = vaddr_to_pte_vaddr(cache_node->object_start_vaddr);
     UINT64 slub_paddr = *slub_vaddr & 0x7FFFFFFFFFFFF000UL;
     page_t *page = phyaddr_to_page(slub_paddr);
+    buddy_unmap_pages(cache_node->object_start_vaddr);
     buddy_free_pages(page);
     list_del((list_head_t *) cache_node);
     free_cache_object(&node_kmem_cache, cache_node);
