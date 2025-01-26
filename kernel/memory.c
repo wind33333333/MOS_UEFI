@@ -52,17 +52,17 @@ __attribute__((section(".init_text"))) void init_memory(void) {
     //初始化伙伴系统
     buddy_system_init();
 
-    page_t* pages[20];
-    UINT64* vaddr[20];
-    for (UINT32 i = 0; i < 20; i++) {
+    /*page_t* pages[100];
+    UINT64* vaddr[100];
+    for (UINT32 i = 0; i < 100; i++) {
         pages[i] = buddy_alloc_pages(0);
-        vaddr[i] = buddy_map_pages(pages[i],(void*)memory_management.kernel_end_address,PAGE_ROOT_RW);
+        vaddr[i] = buddy_map_pages(pages[i],(void*)0x10000000000,PAGE_ROOT_RW);
     }
 
-    for (UINT32 i = 0; i < 20; i++) {
+    for (UINT32 i = 0; i < 100; i++) {
         //buddy_free_pages(pages[i]);
         buddy_unmap_pages(vaddr[i]);
-    }
+    }*/
 
     //初始化slub分配器
     slub_init();
@@ -95,7 +95,6 @@ __attribute__((section(".init_text"))) void init_memory(void) {
                  memory_management.avl_pages);
     color_printk(ORANGE, BLACK, "Init Kernel Start Addr:%#lX Official kernel Start Addr:%lX kernel end addr:%#lX\n",
                  _start_init_text, memory_management.kernel_start_address, memory_management.kernel_end_address);
-    return;
 }
 
 //物理页分配器
