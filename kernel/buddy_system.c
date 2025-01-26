@@ -65,6 +65,7 @@ page_t *buddy_alloc_pages(UINT32 order) {
         page->order = current_order;
         buddy_system.free_count[current_order]++;
         page += 1<<current_order;
+        page->order = current_order;
     }
     return page;
 }
