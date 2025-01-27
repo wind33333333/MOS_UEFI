@@ -81,7 +81,7 @@ kmem_cache_t *kmem_cache_create(char *name, UINT32 object_size) {
 //销毁kmem_cache缓存池
 void kmem_cache_destroy(kmem_cache_t *destroy_cache) {
     kmem_cache_node_t *next_node = (kmem_cache_node_t *) destroy_cache->slub_head.next;
-    for (UINT32 i = 0; i < destroy_cache->slub_count; i++) {
+    while (next_node != NULL) {
         buddy_unmap_pages(next_node->object_start_vaddr);
         kmem_cache_free(&node_kmem_cache, next_node);
         next_node = (kmem_cache_node_t *) next_node->slub_node.next;
