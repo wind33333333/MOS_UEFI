@@ -3,30 +3,55 @@
 #include "memory.h"
 
 //kmem_cache对象专用缓存池
-char kmem_cache_name[16];
+UINT8 kmem_cache_name[16];
 kmem_cache_t kmem_cache;
 kmem_cache_node_t cache_kmem_cache_node;
 
 //kmem_cache_node对象专用缓存池
-char kmem_cache_node_name[16];
+UINT8 kmem_cache_node_name[16];
 kmem_cache_t kmem_cache_node;
 kmem_cache_node_t node_kmem_cache_node;
 
-
+UINT8 kmalloc_name[18][16];
+kmem_cache_t *kmalloc_cache[18];
 
 //初始化slub分配器
 void slub_init(void) {
     //创建kmem_cache对象缓存池
-    char kc_name[] = {"kmem_cache"};
-    memcpy(kc_name, kmem_cache_name, sizeof(kc_name));
-    create_cache(kc_name, &kmem_cache, sizeof(kmem_cache_t));
+    strcpy(kmem_cache_name, "kmem_cache");
+    create_cache(kmem_cache_name, &kmem_cache, sizeof(kmem_cache_t));
     add_cache_node(&kmem_cache, &cache_kmem_cache_node);
 
     //创建kmem_cache_node对象缓存池
-    char kcn_name[] = {"kmem_cache_node"};
-    memcpy(kcn_name, kmem_cache_node_name, sizeof(kcn_name));
-    create_cache(kcn_name, &kmem_cache_node, sizeof(kmem_cache_node_t));
+    strcpy(kmem_cache_node_name, "kmem_cache_node");
+    create_cache(kmem_cache_node_name, &kmem_cache_node, sizeof(kmem_cache_node_t));
     add_cache_node(&kmem_cache_node, &node_kmem_cache_node);
+
+    //创建kmalloc缓存池
+    strcpy(kmalloc_name[0], "kmalloc-8");
+    strcpy(kmalloc_name[1], "kmalloc-16");
+    strcpy(kmalloc_name[2], "kmalloc-32");
+    strcpy(kmalloc_name[3], "kmalloc-64");
+    strcpy(kmalloc_name[4], "kmalloc-128");
+    strcpy(kmalloc_name[5], "kmalloc-256");
+    strcpy(kmalloc_name[6], "kmalloc-512");
+    strcpy(kmalloc_name[7], "kmalloc-1k");
+    strcpy(kmalloc_name[8], "kmalloc-2k");
+    strcpy(kmalloc_name[9], "kmalloc-4k");
+    strcpy(kmalloc_name[10], "kmalloc-8k");
+    strcpy(kmalloc_name[11], "kmalloc-16k");
+    strcpy(kmalloc_name[12], "kmalloc-32k");
+    strcpy(kmalloc_name[13], "kmalloc-64k");
+    strcpy(kmalloc_name[14], "kmalloc-128k");
+    strcpy(kmalloc_name[15], "kmalloc-256k");
+    strcpy(kmalloc_name[16], "kmalloc-512k");
+    strcpy(kmalloc_name[17], "kmalloc-1m");
+
+    UINT32 object_size = 8;
+    for (UINT32 i=0;i<19;i++) {
+        kmalloc_cache[i]=kmem_cache_create(kmalloc_name[i],object_size);
+        object_size <<=1;
+    }
 
     ///////////////////////////////////////////////////////
 
