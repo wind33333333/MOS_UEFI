@@ -51,7 +51,7 @@ void slub_init(void) {
         object_size <<= 1;
     }
 
-    UINT64 *ptr = kmalloc(1024);
+    UINT64 *ptr = kmalloc(1*1024*1024-100);
     *ptr = 0x123456789F;
     kfree(ptr);
 
@@ -141,12 +141,10 @@ void *alloc_cache_object(kmem_cache_t *cache) {
 //释放一个对象到cache
 BOOLEAN free_cache_object(kmem_cache_t *cache, void *object) {
     kmem_cache_node_t *next_node = (kmem_cache_node_t *) cache->slub_head.next;
-    // void *align_addr = (void *) ((UINT64) object & (PAGE_4K_MASK << cache->order_per_slub));
 
     while (next_node != NULL) {
         void *object_end_vaddr = next_node->object_start_vaddr + (PAGE_4K_SIZE << cache->order_per_slub);
         if (object >= next_node->object_start_vaddr && object < object_end_vaddr) {
-            // if (align_addr == next_node->object_start_vaddr) {
             *(UINT64 *) object = (UINT64) next_node->free_list;
             next_node->free_list = object;
             next_node->free_count++;
