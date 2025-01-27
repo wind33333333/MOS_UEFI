@@ -3,6 +3,8 @@
 #include "memory.h"
 #include "moslib.h"
 
+#define MAX_OBJECT_SIZE (1*1024*1024)
+
 typedef struct kmem_cache_node_t {
     list_head_t slub_node;     // slub链表
     UINT64 using_count;        // 当前slab节点已用对象数量

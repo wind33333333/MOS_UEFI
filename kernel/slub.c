@@ -63,6 +63,8 @@ void slub_init(void) {
 
 //创建kmem_cache缓存池
 kmem_cache_t *kmem_cache_create(char *cache_name, UINT32 object_size) {
+    if (object_size > MAX_OBJECT_SIZE) return NULL;
+
     kmem_cache_t *new_cache = kmem_cache_alloc(&kmem_cache);
     kmem_cache_node_t *new_cache_node = kmem_cache_alloc(&kmem_cache_node);
 
@@ -182,6 +184,8 @@ void add_cache_node(kmem_cache_t *cache, kmem_cache_node_t *new_cache_node) {
 
 //通用内存分配器
 void *kmaollc(UINT64 size) {
+    if (size > MAX_OBJECT_SIZE) return NULL;
+
     UINT32 index=0;
     size=object_size_align(size) >> 4;
     while (size >= 1) {
