@@ -4,27 +4,27 @@
 
 //kmem_cache对象专用缓存池
 char kmem_cache_name[16];
-kmem_cache_t cache_kmem_cache;
+kmem_cache_t kmem_cache;
 kmem_cache_node_t cache_kmem_cache_node;
 
 //kmem_cache_node对象专用缓存池
 char kmem_cache_node_name[16];
-kmem_cache_t node_kmem_cache;
+kmem_cache_t kmem_cache_node;
 kmem_cache_node_t node_kmem_cache_node;
 
 //初始化slub分配器
 void slub_init(void) {
     //创建kmem_cache对象缓存池
-    char name[] = {"kmem_cache"};
-    memcpy(name, kmem_cache_name, sizeof(name));
-    create_cache(name, &cache_kmem_cache, sizeof(kmem_cache_t));
-    add_cache_node(&cache_kmem_cache, &cache_kmem_cache_node);
+    char kc_name[] = {"kmem_cache"};
+    memcpy(kc_name, kmem_cache_name, sizeof(kc_name));
+    create_cache(kc_name, &kmem_cache, sizeof(kmem_cache_t));
+    add_cache_node(&kmem_cache, &cache_kmem_cache_node);
 
     //创建kmem_cache_node对象缓存池
-    char name1[] = {"kmem_cache_node"};
-    memcpy(name1, kmem_cache_node_name, sizeof(name1));
-    create_cache(name1, &node_kmem_cache, sizeof(kmem_cache_node_t));
-    add_cache_node(&node_kmem_cache, &node_kmem_cache_node);
+    char kcn_name[] = {"kmem_cache_node"};
+    memcpy(kcn_name, kmem_cache_node_name, sizeof(kcn_name));
+    create_cache(kcn_name, &kmem_cache_node, sizeof(kmem_cache_node_t));
+    add_cache_node(&kmem_cache_node, &node_kmem_cache_node);
 
     ///////////////////////////////////////////////////////
 
@@ -70,8 +70,8 @@ void slub_init(void) {
 
 //创建kmem_cache缓存池
 kmem_cache_t *kmem_cache_create(char *name, UINT32 object_size) {
-    kmem_cache_t *new_cache = kmem_cache_alloc(&cache_kmem_cache);
-    kmem_cache_node_t *new_cache_node = kmem_cache_alloc(&node_kmem_cache);
+    kmem_cache_t *new_cache = kmem_cache_alloc(&kmem_cache);
+    kmem_cache_node_t *new_cache_node = kmem_cache_alloc(&kmem_cache_node);
 
     create_cache(name, new_cache, object_size);
     add_cache_node(new_cache, new_cache_node);
@@ -83,19 +83,19 @@ void kmem_cache_destroy(kmem_cache_t *destroy_cache) {
     kmem_cache_node_t *next_node = (kmem_cache_node_t *) destroy_cache->slub_head.next;
     while (next_node != NULL) {
         buddy_unmap_pages(next_node->object_start_vaddr);
-        kmem_cache_free(&node_kmem_cache, next_node);
+        kmem_cache_free(&kmem_cache_node, next_node);
         next_node = (kmem_cache_node_t *) next_node->slub_node.next;
     }
-    kmem_cache_free(&cache_kmem_cache, destroy_cache);
+    kmem_cache_free(&kmem_cache, destroy_cache);
 }
 
 //从kmem_cache缓存池分配对象
 void *kmem_cache_alloc(kmem_cache_t *cache) {
     //如果kmem_cache_node专用空闲对象只剩下1个则先进行slub扩容
-    if (node_kmem_cache.total_free == 1) add_cache_node(&node_kmem_cache, alloc_cache_object(&node_kmem_cache));
+    if (kmem_cache_node.total_free == 1) add_cache_node(&kmem_cache_node, alloc_cache_object(&kmem_cache_node));
 
     //如果当前cache的总空闲对象只剩下一个则先进行slub扩容
-    if (cache->total_free == 0) add_cache_node(cache, alloc_cache_object(&node_kmem_cache));
+    if (cache->total_free == 0) add_cache_node(cache, alloc_cache_object(&kmem_cache_node));
 
     //返回缓存池对象
     return alloc_cache_object(cache);
@@ -113,7 +113,7 @@ void kmem_cache_free(kmem_cache_t *cache, void *object) {
         if (next_node->using_count == 0) {
             buddy_unmap_pages(next_node->object_start_vaddr);
             list_del((list_head_t *) next_node);
-            free_cache_object(&node_kmem_cache, next_node);
+            free_cache_object(&kmem_cache_node, next_node);
             cache->total_free -= cache->object_per_slub;
             cache->slub_count--;
         }
