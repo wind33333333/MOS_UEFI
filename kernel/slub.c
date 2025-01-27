@@ -46,14 +46,14 @@ void slub_init(void) {
     strcpy(kmalloc_name[17], "kmalloc-1m");
 
     UINT32 object_size = 8;
-    for (UINT32 i=0;i<KMALLOC_CACHE_SIZE;i++) {
-        kmalloc_cache[i]=kmem_cache_create(kmalloc_name[i],object_size);
-        object_size <<=1;
+    for (UINT32 i = 0; i < KMALLOC_CACHE_SIZE; i++) {
+        kmalloc_cache[i] = kmem_cache_create(kmalloc_name[i], object_size);
+        object_size <<= 1;
     }
 
-    UINT64* ptr= kmalloc(1024);
-
-
+    UINT64 *ptr = kmalloc(1024);
+    *ptr = 0x123456789F;
+    kfree(ptr);
 
 
     while (TRUE);
@@ -62,6 +62,7 @@ void slub_init(void) {
 //创建kmem_cache缓存池
 kmem_cache_t *kmem_cache_create(char *cache_name, UINT32 object_size) {
     if (object_size > MAX_OBJECT_SIZE) return NULL;
+
     kmem_cache_t *new_cache = kmem_cache_alloc(&kmem_cache);
     create_cache(cache_name, new_cache, object_size);
     return new_cache;
@@ -69,6 +70,8 @@ kmem_cache_t *kmem_cache_create(char *cache_name, UINT32 object_size) {
 
 //销毁kmem_cache缓存池
 void kmem_cache_destroy(kmem_cache_t *destroy_cache) {
+    if (destroy_cache == NULL) return;
+
     kmem_cache_node_t *next_node = (kmem_cache_node_t *) destroy_cache->slub_head.next;
     while (next_node != NULL) {
         buddy_unmap_pages(next_node->object_start_vaddr);
@@ -80,6 +83,8 @@ void kmem_cache_destroy(kmem_cache_t *destroy_cache) {
 
 //从kmem_cache缓存池分配对象
 void *kmem_cache_alloc(kmem_cache_t *cache) {
+    if (cache == NULL) return NULL;
+
     //如果kmem_cache_node专用空闲对象只剩下1个则先进行slub扩容
     if (kmem_cache_node.total_free == 1) add_cache_node(&kmem_cache_node, alloc_cache_object(&kmem_cache_node));
 
@@ -91,9 +96,11 @@ void *kmem_cache_alloc(kmem_cache_t *cache) {
 }
 
 //释放对象到kmem_cache缓存池
-void kmem_cache_free(kmem_cache_t *cache, void *object) {
+BOOLEAN kmem_cache_free(kmem_cache_t *cache, void *object) {
+    if (cache == NULL || object == NULL) return FALSE;
+
     //释放object
-    free_cache_object(cache, object);
+    if (free_cache_object(cache, object) == FALSE) return FALSE;
 
     //遍历当前cache_node如果空闲对象大于一个slub对象数量则释放空闲node
     kmem_cache_node_t *next_node = (kmem_cache_node_t *) cache->slub_head.next;
@@ -108,6 +115,7 @@ void kmem_cache_free(kmem_cache_t *cache, void *object) {
         }
         next_node = (kmem_cache_node_t *) next_node->slub_node.next;
     }
+    return TRUE;
 }
 
 //从cache摘取一个对象
@@ -130,22 +138,25 @@ void *alloc_cache_object(kmem_cache_t *cache) {
 }
 
 //释放一个对象到cache
-void free_cache_object(kmem_cache_t *cache, void *object) {
+BOOLEAN free_cache_object(kmem_cache_t *cache, void *object) {
     kmem_cache_node_t *next_node = (kmem_cache_node_t *) cache->slub_head.next;
-    void *align_addr = (void *) ((UINT64) object & (PAGE_4K_MASK << cache->order_per_slub));
+    // void *align_addr = (void *) ((UINT64) object & (PAGE_4K_MASK << cache->order_per_slub));
 
     while (next_node != NULL) {
-        if (align_addr == next_node->object_start_vaddr) {
+        void *object_end_vaddr = next_node->object_start_vaddr + (PAGE_4K_SIZE << cache->order_per_slub);
+        if (object >= next_node->object_start_vaddr && object < object_end_vaddr) {
+            // if (align_addr == next_node->object_start_vaddr) {
             *(UINT64 *) object = (UINT64) next_node->free_list;
             next_node->free_list = object;
             next_node->free_count++;
             next_node->using_count--;
             cache->total_free++;
             cache->total_using--;
-            return;
+            return TRUE;
         }
         next_node = (kmem_cache_node_t *) next_node->slub_node.next;
     }
+    return FALSE;
 }
 
 //新建一个cache
@@ -180,17 +191,22 @@ void add_cache_node(kmem_cache_t *cache, kmem_cache_node_t *new_cache_node) {
 void *kmalloc(UINT64 size) {
     if (size > MAX_OBJECT_SIZE) return NULL;
 
-    UINT32 index=0;
-    size=object_size_align(size) >> 4;
+    UINT32 index = 0;
+    size = object_size_align(size) >> 4;
     while (size >= 1) {
         index++;
-        size >>=1;
+        size >>= 1;
     }
     return kmem_cache_alloc(kmalloc_cache[index]);
 }
 
 //通用内存释放器
-void kfree(void *virtual_address) {
-    if (virtual_address==NULL) return;
+BOOLEAN kfree(void *virtual_address) {
+    if (virtual_address == NULL) return FALSE;
 
+    for (UINT32 index = 0; index < KMALLOC_CACHE_SIZE; index++) {
+        if (kmem_cache_free(kmalloc_cache[index], virtual_address) == TRUE) return TRUE;
+    }
+
+    return FALSE;
 }

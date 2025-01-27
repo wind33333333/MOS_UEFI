@@ -62,12 +62,12 @@ void slub_init(void);
 kmem_cache_t* kmem_cache_create(char *cache_name,UINT32 object_size);
 void kmem_cache_destroy(kmem_cache_t *kmem_cache);
 void* kmem_cache_alloc(kmem_cache_t *kmem_cache);
-void kmem_cache_free(kmem_cache_t *cache, void *object);
+BOOLEAN kmem_cache_free(kmem_cache_t *cache, void *object);
 void* alloc_cache_object(kmem_cache_t* cache);
-void free_cache_object(kmem_cache_t* cache, void* object);
+BOOLEAN free_cache_object(kmem_cache_t* cache, void* object);
 void add_cache_node(kmem_cache_t* cache,kmem_cache_node_t* new_cache_node);
 void create_cache(char* cache_name,kmem_cache_t* new_cache, UINT32 object_size);
 void *kmalloc(UINT64 size);
-void kfree(void *virtual_address);
+BOOLEAN kfree(void *virtual_address);
 
 #endif
