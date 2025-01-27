@@ -48,7 +48,7 @@ void slub_init(void) {
     strcpy(kmalloc_name[17], "kmalloc-1m");
 
     UINT32 object_size = 8;
-    for (UINT32 i=0;i<19;i++) {
+    for (UINT32 i=0;i<KMALLOC_CACHE_SIZE;i++) {
         kmalloc_cache[i]=kmem_cache_create(kmalloc_name[i],object_size);
         object_size <<=1;
     }
@@ -197,5 +197,6 @@ void *kmaollc(UINT64 size) {
 
 //通用内存释放器
 void kfree(void *virtual_address) {
-    align_addr= virtual_address;
+    if (virtual_address==NULL) return;
+
 }
