@@ -66,5 +66,7 @@ void* alloc_cache_object(kmem_cache_t* cache);
 void free_cache_object(kmem_cache_t* cache, void* object);
 void add_cache_node(kmem_cache_t* cache,kmem_cache_node_t* new_cache_node);
 void create_cache(char* cache_name,kmem_cache_t* new_cache, UINT32 object_size);
+void *kmaollc(UINT64 size);
+void kfree(void *virtual_address);
 
 #endif

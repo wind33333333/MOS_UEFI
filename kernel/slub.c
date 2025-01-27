@@ -53,44 +53,10 @@ void slub_init(void) {
         object_size <<=1;
     }
 
-    ///////////////////////////////////////////////////////
 
-    char name01[] = {"1"};
-    char name02[] = {"2"};
-    char name03[] = {"3"};
-    char name04[] = {"4"};
-    char name05[] = {"5"};
-    char name06[] = {"6"};
-    char name07[] = {"7"};
-    char name08[] = {"8"};
-    char name09[] = {"9"};
-    char name10[] = {"10"};
 
-    kmem_cache_t *cache01 = kmem_cache_create(name01, 8191);
-    kmem_cache_t *cache02 = kmem_cache_create(name02, 8191);
-    kmem_cache_t *cache03 = kmem_cache_create(name03, 8191);
-    kmem_cache_t *cache04 = kmem_cache_create(name04, 8191);
-    kmem_cache_t *cache05 = kmem_cache_create(name05, 8191);
-    kmem_cache_t *cache06 = kmem_cache_create(name06, 8191);
-    kmem_cache_t *cache07 = kmem_cache_create(name07, 8191);
-    kmem_cache_t *cache08 = kmem_cache_create(name08, 8191);
-    kmem_cache_t *cache09 = kmem_cache_create(name09, 8191);
-    kmem_cache_t *cache10 = kmem_cache_create(name10, 8191);
 
-    for (UINT32 i = 0; i < 20; i++) {
-        UINT64 *ptr = kmem_cache_alloc(cache10);
-    }
 
-    kmem_cache_destroy(cache10);
-    kmem_cache_destroy(cache09);
-    kmem_cache_destroy(cache08);
-    kmem_cache_destroy(cache07);
-    kmem_cache_destroy(cache06);
-    kmem_cache_destroy(cache05);
-    kmem_cache_destroy(cache04);
-    kmem_cache_destroy(cache03);
-    kmem_cache_destroy(cache02);
-    kmem_cache_destroy(cache01);
 
     while (TRUE);
 }
@@ -216,10 +182,16 @@ void add_cache_node(kmem_cache_t *cache, kmem_cache_node_t *new_cache_node) {
 
 //通用内存分配器
 void *kmaollc(UINT64 size) {
-    return 0;
+    UINT32 index=0;
+    size=object_size_align(size) >> 4;
+    while (size >= 1) {
+        index++;
+        size >>=1;
+    }
+    return kmem_cache_alloc(kmalloc_cache[index]);
 }
 
 //通用内存释放器
-int kfree(void *virtual_address) {
-    return 0;
+void kfree(void *virtual_address) {
+    align_addr= virtual_address;
 }
