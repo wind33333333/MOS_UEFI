@@ -69,8 +69,8 @@ kmem_cache_t *kmem_cache_create(char *cache_name, UINT32 object_size) {
 }
 
 //销毁kmem_cache缓存池
-void kmem_cache_destroy(kmem_cache_t *destroy_cache) {
-    if (destroy_cache == NULL) return;
+BOOLEAN kmem_cache_destroy(kmem_cache_t *destroy_cache) {
+    if (destroy_cache == NULL) return FALSE;
 
     kmem_cache_node_t *next_node = (kmem_cache_node_t *) destroy_cache->slub_head.next;
     while (next_node != NULL) {
@@ -79,6 +79,7 @@ void kmem_cache_destroy(kmem_cache_t *destroy_cache) {
         next_node = (kmem_cache_node_t *) next_node->slub_node.next;
     }
     kmem_cache_free(&kmem_cache, destroy_cache);
+    return TRUE;
 }
 
 //从kmem_cache缓存池分配对象
