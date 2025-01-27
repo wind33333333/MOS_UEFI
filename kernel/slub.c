@@ -12,6 +12,8 @@ char kmem_cache_node_name[16];
 kmem_cache_t kmem_cache_node;
 kmem_cache_node_t node_kmem_cache_node;
 
+
+
 //初始化slub分配器
 void slub_init(void) {
     //创建kmem_cache对象缓存池
@@ -69,11 +71,11 @@ void slub_init(void) {
 }
 
 //创建kmem_cache缓存池
-kmem_cache_t *kmem_cache_create(char *name, UINT32 object_size) {
+kmem_cache_t *kmem_cache_create(char *cache_name, UINT32 object_size) {
     kmem_cache_t *new_cache = kmem_cache_alloc(&kmem_cache);
     kmem_cache_node_t *new_cache_node = kmem_cache_alloc(&kmem_cache_node);
 
-    create_cache(name, new_cache, object_size);
+    create_cache(cache_name, new_cache, object_size);
     add_cache_node(new_cache, new_cache_node);
     return new_cache;
 }
@@ -160,8 +162,8 @@ void free_cache_object(kmem_cache_t *cache, void *object) {
 }
 
 //新建一个cache
-void create_cache(char *name, kmem_cache_t *new_cache, UINT32 object_size) {
-    new_cache->name = name;
+void create_cache(char *cache_name, kmem_cache_t *new_cache, UINT32 object_size) {
+    new_cache->name = cache_name;
     new_cache->object_size = object_size_align(object_size);
     new_cache->order_per_slub = object_size_order(new_cache->object_size);
     new_cache->object_per_slub = (PAGE_4K_SIZE << new_cache->order_per_slub) / new_cache->object_size;
