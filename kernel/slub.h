@@ -1,5 +1,6 @@
 #ifndef SLUB_H
 #define SLUB_H
+#include "memory.h"
 #include "moslib.h"
 
 typedef struct kmem_cache_node {
@@ -38,7 +39,13 @@ static inline UINT32 object_size_align(UINT32 objcet_size) {
 //1K以内的分配1一个4K页，1K以上乘4。
 static inline UINT32 object_size_order(UINT32 objcet_size) {
     if (objcet_size <= 1024) return 0;
-    return objcet_size >>= 11;
+    objcet_size >>= 11;
+    UINT32 order = 0;
+    while (objcet_size >= 1) {
+        order++;
+        objcet_size >>= 1;
+    };
+    return order;
 }
 
 //空闲链表初始化
