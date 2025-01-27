@@ -2,30 +2,28 @@
 #include "buddy_system.h"
 #include "memory.h"
 
-//kmem_cache对象专用缓存池
-UINT8 kmem_cache_name[16];
-kmem_cache_t kmem_cache;
-kmem_cache_node_t cache_kmem_cache_node;
-
 //kmem_cache_node对象专用缓存池
 UINT8 kmem_cache_node_name[16];
 kmem_cache_t kmem_cache_node;
 kmem_cache_node_t node_kmem_cache_node;
+
+//kmem_cache对象专用缓存池
+UINT8 kmem_cache_name[16];
+kmem_cache_t kmem_cache;
 
 UINT8 kmalloc_name[18][16];
 kmem_cache_t *kmalloc_cache[18];
 
 //初始化slub分配器
 void slub_init(void) {
-    //创建kmem_cache对象缓存池
-    strcpy(kmem_cache_name, "kmem_cache");
-    create_cache(kmem_cache_name, &kmem_cache, sizeof(kmem_cache_t));
-    add_cache_node(&kmem_cache, &cache_kmem_cache_node);
-
     //创建kmem_cache_node对象缓存池
     strcpy(kmem_cache_node_name, "kmem_cache_node");
     create_cache(kmem_cache_node_name, &kmem_cache_node, sizeof(kmem_cache_node_t));
     add_cache_node(&kmem_cache_node, &node_kmem_cache_node);
+
+    //创建kmem_cache对象缓存池
+    strcpy(kmem_cache_name, "kmem_cache");
+    create_cache(kmem_cache_name, &kmem_cache, sizeof(kmem_cache_t));
 
     //创建kmalloc缓存池
     strcpy(kmalloc_name[0], "kmalloc-8");
@@ -53,7 +51,7 @@ void slub_init(void) {
         object_size <<=1;
     }
 
-
+    UINT64* ptr= kmalloc(1024);
 
 
 
@@ -64,12 +62,8 @@ void slub_init(void) {
 //创建kmem_cache缓存池
 kmem_cache_t *kmem_cache_create(char *cache_name, UINT32 object_size) {
     if (object_size > MAX_OBJECT_SIZE) return NULL;
-
     kmem_cache_t *new_cache = kmem_cache_alloc(&kmem_cache);
-    kmem_cache_node_t *new_cache_node = kmem_cache_alloc(&kmem_cache_node);
-
     create_cache(cache_name, new_cache, object_size);
-    add_cache_node(new_cache, new_cache_node);
     return new_cache;
 }
 
@@ -162,7 +156,7 @@ void create_cache(char *cache_name, kmem_cache_t *new_cache, UINT32 object_size)
     new_cache->object_per_slub = (PAGE_4K_SIZE << new_cache->order_per_slub) / new_cache->object_size;
     new_cache->slub_count = 0;
     new_cache->total_using = 0;
-    new_cache->total_free = (PAGE_4K_SIZE << new_cache->order_per_slub) / new_cache->object_size;
+    new_cache->total_free = 0;
     new_cache->slub_head.prev = NULL;
     new_cache->slub_head.next = NULL;
 }
@@ -179,11 +173,11 @@ void add_cache_node(kmem_cache_t *cache, kmem_cache_node_t *new_cache_node) {
     free_list_init(new_cache_node->free_list, cache->object_size, cache->object_per_slub - 1);
     list_add_forward(&cache->slub_head, &new_cache_node->slub_node);
     cache->slub_count++;
-    cache->total_free = cache->object_per_slub;
+    cache->total_free += cache->object_per_slub;
 }
 
 //通用内存分配器
-void *kmaollc(UINT64 size) {
+void *kmalloc(UINT64 size) {
     if (size > MAX_OBJECT_SIZE) return NULL;
 
     UINT32 index=0;
