@@ -3,7 +3,7 @@
 #include "memory.h"
 #include "moslib.h"
 
-typedef struct kmem_cache_node {
+typedef struct kmem_cache_node_t {
     list_head_t slub_node;     // slub链表
     UINT64 using_count;        // 当前slab节点已用对象数量
     UINT64 free_count;         // 当前slab节点空闲对象数量
@@ -12,7 +12,7 @@ typedef struct kmem_cache_node {
     char reserve[512];
 }kmem_cache_node_t;
 
-typedef struct kmem_cache {
+typedef struct kmem_cache_t {
     char* name;                   // 缓存池名称
     UINT32 object_size;           // 对象大小
     UINT32 order_per_slub;        // 每个slub页数量
@@ -52,7 +52,7 @@ static inline UINT32 object_size_order(UINT32 objcet_size) {
 static inline void free_list_init(UINT64* next,UINT32 size,UINT32 count) {
     while (count--) {
         *next = (UINT64)next + size;
-        next = *next;
+        next = (UINT64*)*next;
     }
     *next = 0;
 }
