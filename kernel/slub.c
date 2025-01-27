@@ -39,16 +39,20 @@ void slub_init(void) {
     char name09[] = {"9"};
     char name10[] = {"10"};
 
-    kmem_cache_t *cache01 = kmem_cache_create(name01, 1048576);
-    kmem_cache_t *cache02 = kmem_cache_create(name02, 1048576);
-    kmem_cache_t *cache03 = kmem_cache_create(name03, 1048576);
-    kmem_cache_t *cache04 = kmem_cache_create(name04, 1048576);
-    kmem_cache_t *cache05 = kmem_cache_create(name05, 1048576);
-    kmem_cache_t *cache06 = kmem_cache_create(name06, 1048576);
-    kmem_cache_t *cache07 = kmem_cache_create(name07, 1048576);
-    kmem_cache_t *cache08 = kmem_cache_create(name08, 1048576);
-    kmem_cache_t *cache09 = kmem_cache_create(name09, 1048576);
-    kmem_cache_t *cache10 = kmem_cache_create(name10, 1048576);
+    kmem_cache_t *cache01 = kmem_cache_create(name01, 8191);
+    kmem_cache_t *cache02 = kmem_cache_create(name02, 8191);
+    kmem_cache_t *cache03 = kmem_cache_create(name03, 8191);
+    kmem_cache_t *cache04 = kmem_cache_create(name04, 8191);
+    kmem_cache_t *cache05 = kmem_cache_create(name05, 8191);
+    kmem_cache_t *cache06 = kmem_cache_create(name06, 8191);
+    kmem_cache_t *cache07 = kmem_cache_create(name07, 8191);
+    kmem_cache_t *cache08 = kmem_cache_create(name08, 8191);
+    kmem_cache_t *cache09 = kmem_cache_create(name09, 8191);
+    kmem_cache_t *cache10 = kmem_cache_create(name10, 8191);
+
+    for (UINT32 i = 0; i < 20; i++) {
+        UINT64* ptr = kmem_cache_alloc(cache10);
+    }
 
     kmem_cache_destroy(cache10);
     kmem_cache_destroy(cache09);
