@@ -51,7 +51,7 @@ void slub_init(void) {
     kmem_cache_t *cache10 = kmem_cache_create(name10, 8191);
 
     for (UINT32 i = 0; i < 20; i++) {
-        UINT64* ptr = kmem_cache_alloc(cache10);
+        UINT64 *ptr = kmem_cache_alloc(cache10);
     }
 
     kmem_cache_destroy(cache10);
@@ -65,6 +65,7 @@ void slub_init(void) {
     kmem_cache_destroy(cache02);
     kmem_cache_destroy(cache01);
 
+    while (TRUE);
 }
 
 //创建kmem_cache缓存池
@@ -105,58 +106,56 @@ void kmem_cache_free(kmem_cache_t *cache, void *object) {
     //释放object
     free_cache_object(cache, object);
 
-    //遍历当前cache如果空闲对象大于一个slub对象数量则释放空闲node
-    if (cache->total_free > cache->object_per_slub) {
-        kmem_cache_node_t *next_node = (kmem_cache_node_t *) cache->slub_head.next;
-        for (UINT32 i = 0; i < cache->slub_count; i++) {
-            if (next_node->using_count == 0) {
-                buddy_unmap_pages(next_node->object_start_vaddr);
-                list_del((list_head_t *) next_node);
-                free_cache_object(&node_kmem_cache, next_node);
-                cache->total_free -= cache->object_per_slub;
-                cache->slub_count--;
-                break;
-            }
-            next_node = (kmem_cache_node_t *) next_node->slub_node.next;
+    //遍历当前cache_node如果空闲对象大于一个slub对象数量则释放空闲node
+    kmem_cache_node_t *next_node = (kmem_cache_node_t *) cache->slub_head.next;
+    while (next_node != NULL) {
+        if (cache->total_free <= cache->object_per_slub) break;
+        if (next_node->using_count == 0) {
+            buddy_unmap_pages(next_node->object_start_vaddr);
+            list_del((list_head_t *) next_node);
+            free_cache_object(&node_kmem_cache, next_node);
+            cache->total_free -= cache->object_per_slub;
+            cache->slub_count--;
         }
+        next_node = (kmem_cache_node_t *) next_node->slub_node.next;
     }
 }
 
 //从cache摘取一个对象
 void *alloc_cache_object(kmem_cache_t *cache) {
-    kmem_cache_node_t *cache_node = (kmem_cache_node_t *) cache->slub_head.next;
+    kmem_cache_node_t *next_node = (kmem_cache_node_t *) cache->slub_head.next;
     UINT64 *object = NULL;
-    for (UINT32 i = 0; i < cache->slub_count; i++) {
-        if (cache_node->free_list != NULL) {
-            object = cache_node->free_list;
-            cache_node->free_list = (void *) *object;
-            cache_node->free_count--;
-            cache_node->using_count++;
+    while (next_node != NULL) {
+        if (next_node->free_list != NULL) {
+            object = next_node->free_list;
+            next_node->free_list = (void *) *object;
+            next_node->free_count--;
+            next_node->using_count++;
             cache->total_free--;
             cache->total_using++;
-            break;
+            return object;
         }
-        cache_node = (kmem_cache_node_t *) cache_node->slub_node.next;
+        next_node = (kmem_cache_node_t *) next_node->slub_node.next;
     }
-    return object;
+    return NULL;
 }
 
 //释放一个对象到cache
 void free_cache_object(kmem_cache_t *cache, void *object) {
-    kmem_cache_node_t *cache_node = (kmem_cache_node_t *) cache->slub_head.next;
+    kmem_cache_node_t *next_node = (kmem_cache_node_t *) cache->slub_head.next;
     void *align_addr = (void *) ((UINT64) object & (PAGE_4K_MASK << cache->order_per_slub));
 
-    for (UINT32 i = 0; i < cache->slub_count; i++) {
-        if (align_addr == cache_node->object_start_vaddr) {
-            *(UINT64 *) object = (UINT64) cache_node->free_list;
-            cache_node->free_list = object;
-            cache_node->free_count++;
-            cache_node->using_count--;
+    while (next_node != NULL) {
+        if (align_addr == next_node->object_start_vaddr) {
+            *(UINT64 *) object = (UINT64) next_node->free_list;
+            next_node->free_list = object;
+            next_node->free_count++;
+            next_node->using_count--;
             cache->total_free++;
             cache->total_using--;
-            break;
+            return;
         }
-        cache_node = (kmem_cache_node_t *) cache_node->slub_node.next;
+        next_node = (kmem_cache_node_t *) next_node->slub_node.next;
     }
 }
 
@@ -180,7 +179,7 @@ void add_cache_node(kmem_cache_t *cache, kmem_cache_node_t *new_cache_node) {
     new_cache_node->using_count = 0;
     new_cache_node->free_count = cache->object_per_slub;
     new_cache_node->free_list = buddy_map_pages(buddy_alloc_pages(cache->order_per_slub),
-                                                (void *)memory_management.kernel_end_address,PAGE_ROOT_RW);
+                                                (void *) memory_management.kernel_end_address,PAGE_ROOT_RW);
     new_cache_node->object_start_vaddr = new_cache_node->free_list;
     free_list_init(new_cache_node->free_list, cache->object_size, cache->object_per_slub - 1);
     list_add_forward(&cache->slub_head, &new_cache_node->slub_node);
