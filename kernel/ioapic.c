@@ -2,7 +2,7 @@
 
 ioapic_address_t ioapic_address;
 
-__attribute__((section(".init_text"))) void init_ioapic(void) {
+INIT_TEXT void init_ioapic(void) {
 
     //禁用8259A
     io_out8(0x21,0xff);     //禁用主8259A
@@ -109,6 +109,4 @@ __attribute__((section(".init_text"))) void init_ioapic(void) {
     *ioapic_address.iowin=0x10038;
     *ioapic_address.ioregsel=IO_APIC_TBL15_HIGH32;        //从SATA中断
     *ioapic_address.iowin=0;
-
-    return;
 }

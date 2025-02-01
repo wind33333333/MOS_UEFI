@@ -3,7 +3,7 @@
 #include "gdt.h"
 #include "cpu.h"
 
-__attribute__((section(".init_text"))) void init_tss(void) {
+INIT_TEXT void init_tss(void) {
     //分配tss内存，每个cpu核心需要一个tss 对齐4k,每个tss占104字节
     tss_t *tss_ptr = (tss_t *)LADDR_TO_HADDR(alloc_pages(PAGE_4K_ALIGN(cpu_info.logical_processors_number * sizeof(tss_t)) >> PAGE_4K_SHIFT));
     map_pages(HADDR_TO_LADDR(tss_ptr),tss_ptr,PAGE_4K_ALIGN(cpu_info.logical_processors_number * sizeof(tss_t)) >> PAGE_4K_SHIFT,PAGE_ROOT_RW);
@@ -33,7 +33,6 @@ __attribute__((section(".init_text"))) void init_tss(void) {
         set_tss_descriptor(TSS_DESCRIPTOR_START_INDEX + i,(UINT64)tss_ptr+i);
     }
     ltr(TSS_DESCRIPTOR_START_INDEX * 16);
-    return;
 }
 
 // 设置 TSS 描述符
@@ -42,5 +41,4 @@ void set_tss_descriptor(UINT32 index,UINT64 tss_address) {
     gdt_ptr.base[index*2] = TSS_TYPE|P|TSS_LIMIT|DPL_0|((tss_address&0xFFFF)<<16)|(((tss_address>>16)&0xFF)<<32)|(((tss_address>>24)&0xFF)<<56);
     // 高 64 位的描述符
     gdt_ptr.base[index*2+1] = tss_address >> 32;                   // BASE 的高 32 位
-    return;
 }

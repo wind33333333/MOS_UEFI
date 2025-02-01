@@ -1,7 +1,7 @@
 #include "syscall.h"
 #include "cpu.h"
 
-__attribute__((section(".init_text"))) void init_syscall(void){
+INIT_TEXT void init_syscall(void){
     //执行syscall指令时 CS=IA32_STAR_MSR[bit32-bit47]&0xFFFC  SS=IA32_STAR_MSR[bit32-bit47]&0xFFFC+8
     //执行sysret执行返回64位代码段时 CS=IA32_STAR_MSR[bit48-bit63]&0xFFFC+16|3  SS=IA32_STAR_MSR[bit48-bit63]&0xFFFC+8|3
     //执行sysret执行返回32位代码段时 CS=IA32_STAR_MSR[bit48-bit63]&0xFFFC|3  SS=IA32_STAR_MSR[bit48-bit63]&0xFFFC+8|3
@@ -15,6 +15,4 @@ __attribute__((section(".init_text"))) void init_syscall(void){
 
     //内核RFLAGS=~IA32_FMASK_MSR&RFLAGS  置1进入内核后屏蔽对应的RFLAGS
     wrmsr(IA32_FMASK_MSR,0);
-
-    return;
 }

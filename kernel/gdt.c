@@ -3,9 +3,9 @@
 #include "memory.h"
 #include "cpu.h"
 
-__attribute__((section(".init_data"))) gdt_ptr_t gdt_ptr;
+INIT_DATA gdt_ptr_t gdt_ptr;
 
-__attribute__((section(".init_text"))) void init_gdt(void) {
+INIT_TEXT void init_gdt(void) {
     //gdt-limit限长=cpu核心数量*tss选择子字节数（tss选择子16字节每个）+ tss描述符起始索引号*16字节（tss起始描述符前是其他系统段描述符），limt对齐4K界限-1
     gdt_ptr.limit = PAGE_4K_ALIGN(cpu_info.logical_processors_number * 16 + TSS_DESCRIPTOR_START_INDEX*16) - 1;
     //alloc_pages分配的是物理页起始地址，gdt-base是虚拟地址需要通过LADDR_TO_HADDR宏把地址转换
@@ -22,6 +22,4 @@ __attribute__((section(".init_text"))) void init_gdt(void) {
     //*(gdt_ptr.base + 6) = DATA64_3;        /*6	USER	Data	64-bit	Segment	0x30*/
 
     lgdt(&gdt_ptr,0x8,0x10);     //加载新gdt
-
-    return;
 }

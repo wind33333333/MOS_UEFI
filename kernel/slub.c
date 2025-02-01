@@ -15,7 +15,7 @@ UINT8 kmalloc_name[18][16];
 kmem_cache_t *kmalloc_cache[18];
 
 //初始化slub分配器
-void slub_init(void) {
+INIT_TEXT void slub_init(void) {
     //创建kmem_cache_node对象缓存池
     strcpy(kmem_cache_node_name, "kmem_cache_node");
     create_cache(kmem_cache_node_name, &kmem_cache_node, sizeof(kmem_cache_node_t));
@@ -51,9 +51,26 @@ void slub_init(void) {
         object_size <<= 1;
     }
 
-    UINT64 *ptr = kmalloc(1*1024*1024-100);
-    *ptr = 0x123456789F;
-    kfree(ptr);
+    UINT64 *ptr1 = kmalloc(1*1024*1024-100);
+    *ptr1 = 0x123456789F;
+
+    UINT64 *ptr2 = kmalloc(1*1024*1024-100);
+    *ptr2 = 0x123456789F;
+
+    UINT64 *ptr3 = kmalloc(1*1024*1024-100);
+    *ptr3 = 0x123456789F;
+
+    UINT64 *ptr4 = kmalloc(1*1024*1024-100);
+    *ptr4 = 0x123456789F;
+
+    UINT64 *ptr5 = kmalloc(1*1024*1024-100);
+    *ptr5 = 0x123456789F;
+
+    kfree(ptr1);
+    kfree(ptr2);
+    kfree(ptr3);
+    kfree(ptr4);
+    kfree(ptr5);
 
 
     while (TRUE);

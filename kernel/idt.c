@@ -3,9 +3,9 @@
 #include "interrupt.h"
 #include "memory.h"
 
-__attribute__((section(".init_data"))) idt_ptr_t idt_ptr;
+INIT_DATA idt_ptr_t idt_ptr;
 
-__attribute__((section(".init_text"))) void init_idt(void) {
+INIT_TEXT void init_idt(void) {
     idt_ptr.limit= 0xFFF;
     idt_ptr.base = (UINT64*)LADDR_TO_HADDR(alloc_pages(1));     //分配IDT指针
     map_pages(HADDR_TO_LADDR((UINT64)idt_ptr.base),idt_ptr.base,1,PAGE_ROOT_RW);
@@ -44,7 +44,6 @@ __attribute__((section(".init_text"))) void init_idt(void) {
     set_idt_descriptor(0x32,(UINT64)hpet,IST_1,TYPE_INTRPT);
 
     lidt(&idt_ptr);
-    return;
 }
 
 // 设置中断门描述符
@@ -53,5 +52,4 @@ void set_idt_descriptor(UINT32 index, UINT64 function_address, UINT64 ist, UINT6
     idt_ptr.base[index*2] = ist|type|SEL_CODE64|DPL_0|P|(function_address&0xFFFF)|((function_address >> 16) << 48);
     // 高 64 位的描述符
     idt_ptr.base[index*2+1] = function_address >> 32;
-    return;
 }

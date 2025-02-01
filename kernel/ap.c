@@ -10,10 +10,10 @@
 #include "page.h"
 #include "syscall.h"
 
-__attribute__((section(".init.data"))) UINT64 ap_boot_loader_address;
+INIT_DATA UINT64 ap_boot_loader_address;
 
 //多核处理器初始化
-__attribute__((section(".init_text"))) void init_ap(void) {
+INIT_TEXT void init_ap(void) {
     ap_main_ptr = &ap_main;
     ap_tmp_pml4t_ptr = (UINT64*)HADDR_TO_LADDR(&tmp_pml4t);
     apic_id_table_ptr = apic_id_table;
@@ -41,7 +41,7 @@ __attribute__((section(".init_text"))) void init_ap(void) {
     return;
 }
 
-__attribute__((section(".init_text"))) void ap_main(void){
+INIT_TEXT void ap_main(void){
     UINT32 apic_id,cpu_id,tmp;
     cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);        //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);

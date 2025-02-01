@@ -1,6 +1,9 @@
 #ifndef __MOSLIB_H__
 #define __MOSLIB_H__
 
+#define INIT_TEXT __attribute__((__section__(".init_text")))
+#define INIT_DATA __attribute__((__section__(".init_data")))
+
 typedef unsigned char UINT8;
 typedef UINT8 BOOLEAN;
 typedef UINT8 CHAR8;

@@ -6,9 +6,9 @@
 #include "acpi.h"
 #include "cpu.h"
 
-__attribute__((section(".init_data"))) UINT64 kernel_pml4t_phy_addr;          //正式内核页表
+INIT_DATA UINT64 kernel_pml4t_phy_addr;          //正式内核页表
 
-__attribute__((section(".init_text"))) void init_kernel_page(void) {
+INIT_TEXT void init_kernel_page(void) {
     UINT64 pml4e_backup;     //缓存pml4e
 
     //计算虚拟地址0当前pml4t的虚拟地址
@@ -39,8 +39,6 @@ __attribute__((section(".init_text"))) void init_kernel_page(void) {
     map_pages(HADDR_TO_LADDR((UINT64)ioapic_address.ioregsel), ioapic_address.ioregsel, 1,PAGE_ROOT_RW_UC);
     map_pages(HADDR_TO_LADDR(hpet.address), (void*)hpet.address, 1, PAGE_ROOT_RW_UC);
     map_pages(HADDR_TO_LADDR(apic_id_table),apic_id_table,PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2)>>PAGE_4K_SHIFT,PAGE_ROOT_RW_UC);
-
-    return;
 }
 
 //UINT64 create_page_table(UINT64 virt_addr,UINT64 page_count){

@@ -1,6 +1,5 @@
 #include "printk.h"
 #include "memory.h"
-#include "cpu.h"
 #include "uefi.h"
 
 void putchar(unsigned int *fb, int Xsize, int x, int y, unsigned int FRcolor, unsigned int BKcolor,
@@ -331,7 +330,7 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
 //全局变量buf
 char buf[4096];
 
-__attribute__((section(".init_text"))) void init_output(void) {
+INIT_TEXT void init_output(void) {
 
         Pos.XResolution = boot_info->horizontal_resolution;
         Pos.YResolution = boot_info->vertical_resolution;
@@ -349,7 +348,6 @@ __attribute__((section(".init_text"))) void init_output(void) {
         Pos.lock = 0;
 
         clear_screen();
-    return;
 }
 
 void clear_screen(void){
@@ -358,5 +356,4 @@ void clear_screen(void){
     }
     Pos.XPosition=0;
     Pos.YPosition=0;
-    return;
 }

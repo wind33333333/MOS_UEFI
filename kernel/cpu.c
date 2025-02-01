@@ -12,7 +12,7 @@
 
 cpu_info_t cpu_info;
 
-void init_cpu(void){
+INIT_TEXT void init_cpu(void){
     UINT32 apic_id,cpu_id,tmp;
     cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
@@ -28,11 +28,9 @@ void init_cpu(void){
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
     init_ap();                                 //初始化ap核
     color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);
-
-    return;
 }
 
-__attribute__((section(".init_text"))) void get_cpu_info(void) {
+INIT_TEXT void get_cpu_info(void) {
     UINT32 eax,ebx,ecx,edx;
     // 获取CPU厂商
     cpuid(0,0,(UINT32*)&cpu_info.manufacturer_name[8],(UINT32*)&cpu_info.manufacturer_name[0],(UINT32*)&cpu_info.manufacturer_name[8],(UINT32*)&cpu_info.manufacturer_name[4]);
@@ -48,11 +46,9 @@ __attribute__((section(".init_text"))) void get_cpu_info(void) {
     // 获取CPU TSC频率
     cpuid(0x15,0,&eax,&ebx,&ecx,&edx);
     cpu_info.tsc_frequency = (ecx != 0) ? ebx*ecx/eax : 0;
-
-    return;
 }
 
-__attribute__((section(".init_text"))) void init_cpu_amode(void){
+INIT_TEXT void init_cpu_amode(void){
     UINT32 eax,ebx,ecx,edx;
     UINT64 tmp,value;
 
@@ -170,8 +166,6 @@ __attribute__((section(".init_text"))) void init_cpu_amode(void){
     //0x7: UC-（Uncacheable，不缓存，弱UC）
     //endregion
     wrmsr(IA32_PAT_MSR,0x50100070406);
-
-    return;
 }
 
 

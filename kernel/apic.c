@@ -1,7 +1,7 @@
 #include "apic.h"
 #include "cpu.h"
 
-__attribute__((section(".init_text"))) void init_apic(void) {
+INIT_TEXT void init_apic(void) {
     UINT64 value;
 
     //region IA32_APIC_BASE_MSR (MSR 0x1B)
@@ -36,8 +36,6 @@ __attribute__((section(".init_text"))) void init_apic(void) {
 
     //错误LVT寄存器 bit0-7中断号，bit16屏蔽标志 0未屏蔽 1屏蔽
     wrmsr(APIC_LVT_ERROR_MSR,0x10026);
-
-    return;
 }
 
 void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt){
@@ -60,5 +58,4 @@ void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt){
         wrmsr(APIC_INITIAL_COUNT_MSR, time);
     }
 
-    return;
 }

@@ -9,7 +9,7 @@ UINT64 *pdptt_vbase;  //pdptt虚拟地址基址
 UINT64 *pdt_vbase;    //pdt虚拟地址基址
 UINT64 *ptt_vbase;    //ptt虚拟地址基址
 
-__attribute__((section(".init_text"))) void init_memory(void) {
+INIT_TEXT void init_memory(void) {
     pml4t_vbase = (UINT64 *) 0xFFFFFFFFFFFFF000;  //pml4t虚拟地址基址
     pdptt_vbase = (UINT64 *) 0xFFFFFFFFFFE00000;  //pdptt虚拟地址基址
     pdt_vbase = (UINT64 *) 0xFFFFFFFFC0000000;    //pdt虚拟地址基址
@@ -243,12 +243,3 @@ void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr
     }
 }
 
-void *kmaollc(UINT64 size){
-
-    return 0;
-}
-
-int kfree(void* virtual_address){
-
-    return 0;
-}

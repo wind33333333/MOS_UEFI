@@ -7,7 +7,7 @@
 #include "hpet.h"
 #include "gdt.h"
 
-__attribute__((section(".init_text"))) void init_kernel(void) {
+INIT_TEXT void init_kernel(void) {
     mem_set(&_start_bss,0x0,(UINT64)&_end_bss-(UINT64)&_start_bss);    //初始化bss段
     init_output();                             //初始化输出控制台
     init_memory();                             //初始化内存管理器
