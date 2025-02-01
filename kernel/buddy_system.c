@@ -3,7 +3,7 @@
 buddy_system_t buddy_system;
 
 //初始化伙伴系统
-void buddy_system_init(void) {
+INIT_TEXT void buddy_system_init(void) {
     //初始化page_table起始地址
     buddy_system.page_table = (page_t *)memory_management.kernel_end_address;
     //初始化page_size数量
