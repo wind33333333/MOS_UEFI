@@ -3,16 +3,20 @@
 #include "slub.h"
 #include "buddy_system.h"
 #include "uefi.h"
+#include "memblock.h"
 
 global_memory_descriptor_t memory_management;
 
 INIT_TEXT void init_memory(void) {
+    init_memblock();
+
     //查找memmap中可用物理内存并合并，统计总物理内存容量。
     UINT32 mem_map_index = 0;
     for (UINT32 i = 0; i < (boot_info->mem_map_size / boot_info->mem_descriptor_size); i++) {
         // 使用逻辑或 (||) 来判断内存类型
         if (boot_info->mem_map[i].Type == EFI_LOADER_CODE || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_CODE ||
-            boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA || boot_info->mem_map[i].Type == EFI_CONVENTIONAL_MEMORY) {
+            boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA || boot_info->mem_map[i].Type ==
+            EFI_CONVENTIONAL_MEMORY) {
             if (boot_info->mem_map[i].PhysicalStart == (
                     memory_management.mem_map[mem_map_index].address + memory_management.mem_map[mem_map_index].
                     length)) {

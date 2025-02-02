@@ -47,12 +47,14 @@ extern UINT64 kernel_stack_top;
 extern CHAR8 _start_text[];
 extern CHAR8 _start_init_text[];
 
+/*
 typedef struct{
     list_head_t block;
     UINT32 falgs;
     UINT32 order;
     UINT32 refcount;
 }page_t;
+*/
 
 typedef struct memblock_region_t {
     UINT64 base;  /* 该区域的起始物理地址 */
@@ -69,6 +71,7 @@ typedef struct memblock_t {
     memblock_type_t reserved;       /* 保留内存区域 */
 }memblock_t;
 
-
+void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 size);
+void init_memblock(void);
 
 #endif
