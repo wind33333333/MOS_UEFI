@@ -10,6 +10,8 @@ global_memory_descriptor_t memory_management;
 INIT_TEXT void init_memory(void) {
     init_memblock();
 
+    UINT64 *p= memblock_alloc(8,16);
+
     //查找memmap中可用物理内存并合并，统计总物理内存容量。
     UINT32 mem_map_index = 0;
     for (UINT32 i = 0; i < (boot_info->mem_map_size / boot_info->mem_descriptor_size); i++) {

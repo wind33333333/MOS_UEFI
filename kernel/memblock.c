@@ -40,7 +40,15 @@ INIT_TEXT void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 
     }
 }
 
-//线性分配内存
+//线性分配物理内存
 INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
-
+for (UINT32 i=0;i<memblock.memory.count;i++) {
+    UINT64 align_base = align_up(memblock.memory.region[i].base,align);
+    if (align_base + size <= memblock.memory.region[i].base + memblock.memory.region[i].size) {
+        memblock.memory.region[i].size -= (align_base-memblock.memory.region[i].base+size);
+        memblock.memory.region[i].base = new_base;
+        return align_base;
+    }
+}
+    return NULL;
 }
