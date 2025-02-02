@@ -11,10 +11,9 @@ INIT_TEXT void init_memory(void) {
     UINT32 mem_map_index = 0;
     for (UINT32 i = 0; i < (boot_info->mem_map_size / boot_info->mem_descriptor_size); i++) {
         // 使用逻辑或 (||) 来判断内存类型
-        if (boot_info->mem_map[i].Type == EFI_LOADER_CODE || boot_info->mem_map[i].Type == EFI_LOADER_DATA || boot_info
-            ->mem_map[i].Type == EFI_BOOT_SERVICES_CODE || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA ||
-            boot_info->mem_map[i].Type == EFI_CONVENTIONAL_MEMORY || boot_info->mem_map[i].Type ==
-            EFI_ACPI_RECLAIM_MEMORY) {
+        if (boot_info->mem_map[i].Type == EFI_LOADER_CODE || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_CODE ||
+            boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA || boot_info->mem_map[i].Type ==
+            EFI_CONVENTIONAL_MEMORY) {
             if (boot_info->mem_map[i].PhysicalStart == (
                     memory_management.mem_map[mem_map_index].address + memory_management.mem_map[mem_map_index].
                     length)) {
@@ -258,4 +257,3 @@ void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr
         }
     }
 }
-
