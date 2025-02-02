@@ -177,7 +177,6 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     Status=gBS->ExitBootServices(ImageHandle,MapKey);
     if(EFI_ERROR(Status))
         Print(L"ERROR: %r. Failed to Boot/gBS->ExitBootService().\n",Status);
-    //while (1);
 
     //进入内核  rdi=传递BootInfo结构指针
     void (*KernelEntryPoint)(BootInfo_t* BootInfo) = (void *)KERNELSTARTADDR;
