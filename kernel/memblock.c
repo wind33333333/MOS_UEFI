@@ -24,7 +24,7 @@ INIT_TEXT void init_memblock(void) {
     }
 }
 
-//物理内存区域添加到 memblock 的“可用内存”列表中
+//物理内存区域添加到 memblock 的列表中
 INIT_TEXT void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 size) {
     if (memblock_type->count == 0) {
         memblock_type->region[0].base = base;
@@ -40,10 +40,7 @@ INIT_TEXT void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 
     }
 }
 
-//将指定区间标记为保留，
-INIT_TEXT void memblock_reserve(UINT64 base, UINT64 size) {
-}
-
 //线性分配内存
 INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
+
 }
