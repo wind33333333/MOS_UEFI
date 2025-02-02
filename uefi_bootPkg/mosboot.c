@@ -9,7 +9,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
 
     //region 开辟一块内存存放boot传递给kernel的参数
     BootInfo_t *BootInfo;
-    gBS->AllocatePool(EfiLoaderData,sizeof(BootInfo),(void*)&BootInfo);
+    gBS->AllocatePool(EfiLoaderData,sizeof(BootInfo_t),(void*)&BootInfo);
     //endregion
 
     //region 文本模式
