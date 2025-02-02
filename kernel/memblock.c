@@ -7,19 +7,18 @@ INIT_DATA memblock_t memblock;
 
 INIT_TEXT void init_memblock(void) {
     for (UINT32 i = 0; i < (boot_info->mem_map_size / boot_info->mem_descriptor_size); i++) {
-        if (boot_info->mem_map[i].PhysicalStart < 0x100000 && (boot_info->mem_map[i].Type == EFI_LOADER_CODE || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_CODE
+        //如果内存类型是1M内或是lode_data或是acpi则先放入保留区
+        if ((boot_info->mem_map[i].PhysicalStart < 0x100000 && (boot_info->mem_map[i].Type == EFI_LOADER_CODE || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_CODE
                    || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA || boot_info->mem_map[i].Type ==
-                   EFI_CONVENTIONAL_MEMORY)) {
+                   EFI_CONVENTIONAL_MEMORY)) || boot_info->mem_map[i].Type == EFI_LOADER_DATA || boot_info->mem_map[i].Type ==
+                   EFI_ACPI_RECLAIM_MEMORY) {
             memblock_add(&memblock.reserved, boot_info->mem_map[i].PhysicalStart,
                          boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
+        //其他可用类型合并放入可用类型保存
         } else if (boot_info->mem_map[i].Type == EFI_LOADER_CODE || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_CODE
                    || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA || boot_info->mem_map[i].Type ==
                    EFI_CONVENTIONAL_MEMORY) {
             memblock_add(&memblock.memory, boot_info->mem_map[i].PhysicalStart,
-                         boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
-        } else if (boot_info->mem_map[i].Type == EFI_LOADER_DATA || boot_info->mem_map[i].Type ==
-                   EFI_ACPI_RECLAIM_MEMORY) {
-            memblock_add(&memblock.reserved, boot_info->mem_map[i].PhysicalStart,
                          boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
         }
     }
