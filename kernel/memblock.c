@@ -2,7 +2,6 @@
 #include "uefi.h"
 #include "printk.h"
 
-
 INIT_DATA memblock_t memblock;
 
 INIT_TEXT void init_memblock(void) {
