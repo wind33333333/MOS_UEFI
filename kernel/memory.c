@@ -11,6 +11,9 @@ INIT_TEXT void init_memory(void) {
     init_memblock();
 
     UINT64 *p= memblock_alloc(8,16);
+    p = memblock_alloc(8,16);
+    UINT64 *p1 = memblock_alloc(4096,4096);
+
 
     //查找memmap中可用物理内存并合并，统计总物理内存容量。
     UINT32 mem_map_index = 0;

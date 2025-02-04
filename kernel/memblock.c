@@ -44,11 +44,26 @@ INIT_TEXT void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 
 INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
 for (UINT32 i=0;i<memblock.memory.count;i++) {
     UINT64 align_base = align_up(memblock.memory.region[i].base,align);
-    if (align_base + size <= memblock.memory.region[i].base + memblock.memory.region[i].size) {
-        memblock.memory.region[i].size -= (align_base-memblock.memory.region[i].base+size);
-        memblock.memory.region[i].base = new_base;
-        return align_base;
+    UINT64 align_size = align_base-memblock.memory.region[i].base+size;
+    if (align_size <= memblock.memory.region[i].size) {
+        //如果对齐后的地址和memblock地址相等这则直接分配
+        if (align_base == memblock.memory.region[i].base) {
+            memblock.memory.region[i].base += align_size;
+            memblock.memory.region[i].size -= align_size;
+            return (void*)align_base;
+        }
+        //不相等则把前面部分的块拆分出来
+        for (UINT32 j=memblock.memory.count;j>i;j--) {
+            memblock.memory.region[j].base = memblock.memory.region[j-1].base;
+            memblock.memory.region[j].size = memblock.memory.region[j-1].size;
+        }
+        memblock.memory.region[i+1].base += align_size;
+        memblock.memory.region[i+1].size -= align_size;
+        memblock.memory.region[i].size = align_base-memblock.memory.region[i].base;
+        memblock.memory.count++;
+        return (void*)align_base;
     }
 }
     return NULL;
 }
+
