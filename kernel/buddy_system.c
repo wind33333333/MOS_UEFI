@@ -1,22 +1,20 @@
 #include "buddy_system.h"
+#include "memblock.h"
 
 buddy_system_t buddy_system;
 
+extern memblock_t memblock;
+
 //初始化伙伴系统
 INIT_TEXT void buddy_system_init(void) {
-    //初始化page_table起始地址
-    buddy_system.page_table = (page_t *)memory_management.kernel_end_address;
     //初始化page_size数量
-    buddy_system.page_size = (memory_management.mem_map[memory_management.mem_map_count - 1].address +
-                                   memory_management.mem_map[memory_management.mem_map_count - 1].length) >>
-                                  PAGE_4K_SHIFT;
+    buddy_system.page_size = memblock.memory.region[memblock.memory.count-1].base+memblock.memory.region[memblock.memory.count-1].size>>PAGE_4K_SHIFT;
     //初始化page_length长度
     buddy_system.page_length = buddy_system.page_size * sizeof(page_t);
+    //分配内存
+    buddy_system.page_table = (page_t*)LADDR_TO_HADDR(memblock_alloc(buddy_system.page_length,8));
     //初始化page_table为0
     mem_set(buddy_system.page_table, 0x0, buddy_system.page_length);
-
-    //设置新的结束地址
-    memory_management.kernel_end_address += buddy_system.page_length;
 
     for (UINT32 i = 0; i < memory_management.mem_map_count; i++) {
         UINT64 addr, length, order;
