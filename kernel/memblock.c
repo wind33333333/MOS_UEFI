@@ -43,6 +43,7 @@ INIT_TEXT void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 
 
 //线性分配物理内存
 INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
+    if (size == 0) return NULL;
     for (UINT32 i = 0; i < memblock.memory.count; i++) {
         UINT64 align_base = align_up(memblock.memory.region[i].base, align);
         UINT64 align_size = align_base - memblock.memory.region[i].base + size;
@@ -50,27 +51,23 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
             //如果对齐后地址相等且长度小于这则修正当前的块起始地址和长度
             memblock.memory.region[i].base += align_size;
             memblock.memory.region[i].size -= align_size;
-            return (void *) align_base;
         }else if (align_base != memblock.memory.region[i].base && align_size < memblock.memory.region[i].size) {
             //如果对齐地址不相等但是长度小于先拆分块再分配，向后移动数组和数组加一
             for (UINT32 j = memblock.memory.count; j > i; j--) {
-                memblock.memory.region[j].base = memblock.memory.region[j - 1].base;
-                memblock.memory.region[j].size = memblock.memory.region[j - 1].size;
+                memblock.memory.region[j] = memblock.memory.region[j - 1];
             }
             memblock.memory.region[i + 1].base += align_size;
             memblock.memory.region[i + 1].size -= align_size;
             memblock.memory.region[i].size = align_base - memblock.memory.region[i].base;
             memblock.memory.count++;
-            return (void *) align_base;
         } else if (align_base == memblock.memory.region[i].base && align_size == memblock.memory.region[i].size) {
             //如果对齐地址和长度都相等则直接从中取出内存块，向前移动数组和数组数量减一
             for (UINT32 j = i; j < memblock.memory.count; j++) {
-                memblock.memory.region[j].base = memblock.memory.region[j + 1].base;
-                memblock.memory.region[j].size = memblock.memory.region[j + 1].size;
+                memblock.memory.region[j] = memblock.memory.region[j + 1];
             }
             memblock.memory.count--;
-            return (void*)align_base;
         }
+        return (void*)align_base;
     }
     return NULL;
 }
