@@ -35,12 +35,12 @@ init_tmp_pdptt:
     addq     $0x40000000,%rax
     loopq    init_tmp_pdptt
 
-    movq     %r8,%cr3                         #设置临时页表
+    movq     %r8,%cr3                       #设置临时页表
 
     call     init_memblock                  #初始化启动内存分配器
 
-    movq     $0x4000,%rdi                   #初始化bsp核心栈
-    movq     $0x1000,%rsi
+    movq     $0x4000,%rdi                   #初始化bsp核心栈,申请16K
+    movq     $0x1000,%rsi                   #地址对齐4K
     call     memblock_alloc
     addq     $0x4000,%rax
     movq     %rax,%rsp
