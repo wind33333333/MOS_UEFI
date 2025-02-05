@@ -8,7 +8,6 @@
 global_memory_descriptor_t memory_management;
 
 INIT_TEXT void init_memory(void) {
-    init_memblock();
 
     UINT64 *p= memblock_alloc(8,16);
     p = memblock_alloc(8,16);

@@ -37,10 +37,15 @@ init_tmp_pdptt:
 
     movq     %r8,%cr3                         #设置临时页表
 
-    leaq     _end+0x4000(%rip),%rsp           #初始化bsp核心栈，内核结束处+16K
-    movabs   $HBASE_ADDR,%rbx
-    orq      %rbx,%rsp
-    movq     %rsp,kernel_stack_top(%rip)
+    call     init_memblock                  #初始化启动内存分配器
+
+    movq     $0x4000,%rdi                   #初始化bsp核心栈
+    movq     $0x1000,%rsi
+    call     memblock_alloc
+    addq     $0x4000,%rax
+    movq     %rax,%rsp
+    movabs   $HBASE_ADDR,%rax
+    orq      %rax,%rsp
 
     leaq     init_kernel(%rip),%rax
     movabs   $HBASE_ADDR,%rbx
