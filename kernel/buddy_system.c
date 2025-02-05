@@ -11,16 +11,17 @@ INIT_TEXT void buddy_system_init(void) {
     buddy_system.page_size = memblock.memory.region[memblock.memory.count-1].base+memblock.memory.region[memblock.memory.count-1].size>>PAGE_4K_SHIFT;
     //初始化page_length长度
     buddy_system.page_length = buddy_system.page_size * sizeof(page_t);
-    //分配内存
+    //page_table分配内存
     buddy_system.page_table = (page_t*)LADDR_TO_HADDR(memblock_alloc(buddy_system.page_length,8));
     //初始化page_table为0
     mem_set(buddy_system.page_table, 0x0, buddy_system.page_length);
 
-    for (UINT32 i = 0; i < memory_management.mem_map_count; i++) {
-        UINT64 addr, length, order;
-        addr = memory_management.mem_map[i].address;
-        length = memory_management.mem_map[i].length;
-        order = MAX_ORDER;
+    //把memblock中的memory内存移交给伙伴系统管理，memblock_alloc内存分配器退出，由伙伴系统接管物理内存管理。
+    for (UINT32 i = 0; i < memblock.memory.count; i++) {
+        if (memblock.memory.region[i].size<PAGE_4K_SIZE) continue;
+        UINT64 addr = align_up(memblock.memory.region[i].base,PAGE_4K_SIZE);
+        UINT64 length = (memblock.memory.region[i].size-(addr-memblock.memory.region[i].base))&PAGE_4K_MASK;
+        UINT64 order = MAX_ORDER;
         while (length >= PAGE_4K_SIZE) {
             //如果地址对齐order地址且长度大于等于order长度等于一个有效块
             if ((addr & (PAGE_4K_SIZE << order) - 1) == 0 && length >= PAGE_4K_SIZE << order) {
