@@ -51,14 +51,6 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
             memblock.memory.region[i].base += align_size;
             memblock.memory.region[i].size -= align_size;
             return (void *) align_base;
-        } else if (align_base == memblock.memory.region[i].base && align_size == memblock.memory.region[i].size) {
-            //如果对齐地址和长度都相等则直接从中取出内存块，向前移动数组和数组数量减一
-            for (UINT32 j = i; j < memblock.memory.count; j++) {
-                memblock.memory.region[j].base = memblock.memory.region[j + 1].base;
-                memblock.memory.region[j].size = memblock.memory.region[j + 1].size;
-            }
-            memblock.memory.count--;
-            return (void*)align_base;
         }else if (align_base != memblock.memory.region[i].base && align_size < memblock.memory.region[i].size) {
             //如果对齐地址不相等但是长度小于先拆分块再分配，向后移动数组和数组加一
             for (UINT32 j = memblock.memory.count; j > i; j--) {
@@ -70,6 +62,14 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
             memblock.memory.region[i].size = align_base - memblock.memory.region[i].base;
             memblock.memory.count++;
             return (void *) align_base;
+        } else if (align_base == memblock.memory.region[i].base && align_size == memblock.memory.region[i].size) {
+            //如果对齐地址和长度都相等则直接从中取出内存块，向前移动数组和数组数量减一
+            for (UINT32 j = i; j < memblock.memory.count; j++) {
+                memblock.memory.region[j].base = memblock.memory.region[j + 1].base;
+                memblock.memory.region[j].size = memblock.memory.region[j + 1].size;
+            }
+            memblock.memory.count--;
+            return (void*)align_base;
         }
     }
     return NULL;
