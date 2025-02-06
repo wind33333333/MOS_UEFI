@@ -6,7 +6,7 @@ buddy_system_t buddy_system;
 extern memblock_t memblock;
 
 //初始化伙伴系统
-INIT_TEXT void buddy_system_init(void) {
+INIT_TEXT void init_buddy_system(void) {
     //初始化page_size数量
     buddy_system.page_size = memblock.memory.region[memblock.memory.count-1].base+memblock.memory.region[memblock.memory.count-1].size>>PAGE_4K_SHIFT;
     //初始化page_length长度

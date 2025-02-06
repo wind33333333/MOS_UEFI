@@ -26,7 +26,7 @@ static inline page_t* phyaddr_to_page(UINT64 phyaddr) {
     return buddy_system.page_table+(phyaddr >> PAGE_4K_SHIFT);
 }
 
-void buddy_system_init(void);
+void init_buddy_system(void);
 page_t* buddy_alloc_pages(UINT32 order);
 void buddy_free_pages(page_t *page);
 void buddy_unmap_pages(void *virt_addr);

@@ -15,7 +15,7 @@ UINT8 kmalloc_name[18][16];
 kmem_cache_t *kmalloc_cache[18];
 
 //初始化slub分配器
-INIT_TEXT void slub_init(void) {
+INIT_TEXT void init_slub(void) {
     //创建kmem_cache_node对象缓存池
     strcpy(kmem_cache_node_name, "kmem_cache_node");
     create_cache(kmem_cache_node_name, &kmem_cache_node, sizeof(kmem_cache_node_t));
