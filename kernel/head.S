@@ -36,13 +36,13 @@ init_tmp_pdptt:
     stosq
     addq     $0x40000000,%rax
     loopq    init_tmp_pdptt
-    movq     %r8,%cr3                       //设置临时页表
+    movq     %r8,%cr3            //启用临时页表
 /************************************************************/
 
-    call     init_memblock                  //初始化启动内存分配器
+    call     init_memblock       //初始化启动内存分配器
 
-    movq     $0x4000,%rdi                   //初始化bsp核心栈,申请16K
-    movq     $0x1000,%rsi                   //地址对齐4K
+    movq     $0x4000,%rdi        //初始化bsp核心栈,申请16K
+    movq     $0x1000,%rsi        //地址对齐4K
     call     memblock_alloc
     addq     $0x4000,%rax
     movq     %rax,%rsp
@@ -52,9 +52,9 @@ init_tmp_pdptt:
     leaq     init_kernel(%rip),%rax
     movabs   $HBASE_ADDR,%rbx
     orq      %rbx,%rax
-    jmp      *%rax                            //切换到0xFFFF800000000000内核空间，进入C语言init_kernel
+    jmp      *%rax           //切换到0xFFFF800000000000内核空间，进入C语言init_kernel
 
-//===============================内核初始化数据===========================================
+/**********************内核初始化数据**************************/
 .section    .init_data, "wa"
     .globl  tmp_pml4t
     tmp_pml4t:
@@ -69,7 +69,7 @@ init_tmp_pdptt:
     .equ    HBASE_ADDR,0xffff800000000000      //内核虚拟地址基址
 
 
-//========================================正式内核代码=================================================
+/*************************正式内核代码****************************/
 .section    .text, "ax"
     //0-20异常处理程序入口
     ENTRY(divide_error,do_divide_error,1)
