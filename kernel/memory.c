@@ -1,7 +1,5 @@
 #include "memory.h"
 #include "printk.h"
-#include "slub.h"
-#include "buddy_system.h"
 #include "uefi.h"
 #include "memblock.h"
 

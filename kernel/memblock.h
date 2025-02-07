@@ -43,10 +43,6 @@
 #define PAGE_USER_RX     (PAGE_US | PAGE_P | PAGE_WB)                        //可读可执行
 #define PAGE_USER_RWX    (PAGE_US | PAGE_RW | PAGE_P | PAGE_WB)              //可读可写可执行
 
-extern UINT64 kernel_stack_top;
-extern CHAR8 _start_text[];
-extern CHAR8 _start_init_text[];
-
 /*
 typedef struct{
     list_head_t block;

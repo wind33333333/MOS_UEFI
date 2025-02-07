@@ -3,8 +3,6 @@
 #include "moslib.h"
 
 extern UINT64 kernel_stack_top;
-extern CHAR8 _start_text[];
-extern CHAR8 _start_init_text[];
 
 #define PAGE_4K_SHIFT    12
 #define PAGE_4K_SIZE    (1UL << PAGE_4K_SHIFT)
