@@ -9,7 +9,7 @@
 INIT_DATA UINT64 kernel_pml4t_phy_addr;          //正式内核页表
 
 INIT_TEXT void init_kernel_page(void) {
-    UINT64 pml4e_backup;     //缓存pml4e
+    UINT64 pml4e_backup;     //备份pml4e
 
     //计算虚拟地址0当前pml4t的虚拟地址
     UINT64 *current_pml4t_virt_addr= vaddr_to_pml4e_vaddr((void*)0);
