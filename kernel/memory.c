@@ -56,24 +56,6 @@ INIT_TEXT void init_memory(void) {
     //把内核结束地址保存后续使用
     memory_management.kernel_end_address = kernel_stack_top;
 
-    //初始化伙伴系统
-    buddy_system_init();
-
-    /*page_t* pages[100];
-    UINT64* vaddr[100];
-    for (UINT32 i = 0; i < 100; i++) {
-        pages[i] = buddy_alloc_pages(0);
-        vaddr[i] = buddy_map_pages(pages[i],(void*)0x10000000000,PAGE_ROOT_RW);
-    }
-
-    for (UINT32 i = 0; i < 100; i++) {
-        //buddy_free_pages(pages[i]);
-        buddy_unmap_pages(vaddr[i]);
-    }*/
-
-    //初始化slub分配器
-    slub_init();
-
     //kernel_end_address结束地址加上bit map对齐4K边界
     memory_management.kernel_start_address = (UINT64) _start_text;
     memory_management.kernel_end_address = PAGE_4K_ALIGN(

@@ -7,7 +7,7 @@
 #include "idt.h"
 #include "apic.h"
 #include "tss.h"
-#include "page.h"
+#include "kpage.h"
 #include "syscall.h"
 
 INIT_DATA UINT64 ap_boot_loader_address;

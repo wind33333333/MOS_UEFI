@@ -1,4 +1,4 @@
-#include "page.h"
+#include "kpage.h"
 #include "printk.h"
 #include "memory.h"
 #include "hpet.h"

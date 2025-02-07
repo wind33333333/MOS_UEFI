@@ -2,16 +2,15 @@
 #include "printk.h"
 #include "acpi.h"
 #include "ioapic.h"
-#include "memory.h"
 #include "buddy_system.h"
 #include "slub.h"
 #include "cpu.h"
 #include "hpet.h"
-#include "gdt.h"
 
 INIT_TEXT void init_kernel(void) {
     mem_set(&_start_bss,0x0,(UINT64)&_end_bss-(UINT64)&_start_bss);    //初始化bss段
     init_output();                             //初始化输出控制台
+    //init_kernel_page();
     init_buddy_system();                       //初始化伙伴系统
     init_slub();                               //初始化slub内存分配器
     init_acpi();                               //初始化acpi
