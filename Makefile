@@ -8,6 +8,7 @@ CFLAGS+= -fno-pie				#禁用要位置无关的可执行程序
 #CFLAFS+= -fpie 				 #启用位置无关的可执行程序
 #CFLAFS+= -mcmodel=kernel		#内核内存模型
 CFLAGS+= -mcmodel=large 		#大内存模型
+CFLAGS += -O0
 #CFLAGS += -O3                   # 使用 -O3 优化选项
 #CFLAGS+= -mavx2				 #开启avx256指令集优化
 CFLAGS+= -fno-stack-protector	#不需要栈保护

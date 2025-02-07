@@ -1,22 +1,24 @@
 #include "linkage.h"
-#===============================内核初始化代码入口======================================
+/***************************内核初始化代码入口*******************************/
 .code64
 .section    .init_text, "ax"
 .globl _start
 _start:
     cli
-    movq     %rdi,boot_info(%rip)           #保存loader通过rdi传递过来的boot_info指针
+    movq     %rdi,boot_info(%rip)           //保存loader通过rdi传递过来的boot_info指针
 
-    leaq     tmp_pml4t(%rip),%r8            #pml4t起始地址      #初始化临时页表1G巨页
-    movq     $2,%r9                         #pml4e数量 (1=512G)
+/*初始化一个临时页表，把物理内存地址0x0-0xFFFFFFFFFF(1TB)对等映射
+ *到虚拟内存地址0x0-0xFFFFFFFFFF和0xFFFF800000000000-0xFFFF80FFFFFFFFFF*/
+    leaq     tmp_pml4t(%rip),%r8            //pml4t起始地址      //初始化临时页表1G巨页
+    movq     $2,%r9                         //pml4e数量 (1=512G)
 
-    movq     %r8,%rax                       #pml4t递归映射
+    movq     %r8,%rax                       //pml4t递归映射
     movq     %r8,%rdi
     orq      $0x3,%rax
     movq     %rax,0xFF8(%rdi)
 
     movq     %r8,%rax
-    orq      $0x3,%rax                      #pml4e属性
+    orq      $0x3,%rax                      //pml4e属性
     movq     %r9,%rcx
 init_tmp_pml4t:
     addq     $0x1000,%rax
@@ -26,21 +28,21 @@ init_tmp_pml4t:
     loopq    init_tmp_pml4t
 
     movq     %r8,%rdi
-    addq     $0x1000,%rdi        #pdptt起始地址
-    movq     $0x83,%rax          #物理地址0开始对等映射
+    addq     $0x1000,%rdi        //pdptt起始地址
+    movq     $0x83,%rax          //物理地址0开始对等映射
     movq     %r9,%rcx
-    shlq     $9,%rcx             #pml4e*512
+    shlq     $9,%rcx             //pml4e*512
 init_tmp_pdptt:
     stosq
     addq     $0x40000000,%rax
     loopq    init_tmp_pdptt
+    movq     %r8,%cr3                       //设置临时页表
+/************************************************************/
 
-    movq     %r8,%cr3                       #设置临时页表
+    call     init_memblock                  //初始化启动内存分配器
 
-    call     init_memblock                  #初始化启动内存分配器
-
-    movq     $0x4000,%rdi                   #初始化bsp核心栈,申请16K
-    movq     $0x1000,%rsi                   #地址对齐4K
+    movq     $0x4000,%rdi                   //初始化bsp核心栈,申请16K
+    movq     $0x1000,%rsi                   //地址对齐4K
     call     memblock_alloc
     addq     $0x4000,%rax
     movq     %rax,%rsp
@@ -50,9 +52,9 @@ init_tmp_pdptt:
     leaq     init_kernel(%rip),%rax
     movabs   $HBASE_ADDR,%rbx
     orq      %rbx,%rax
-    jmp      *%rax                            #切换到0xFFFF800000000000内核空间，进入C语言init_kernel
+    jmp      *%rax                            //切换到0xFFFF800000000000内核空间，进入C语言init_kernel
 
-#===============================内核初始化数据===========================================
+//===============================内核初始化数据===========================================
 .section    .init_data, "wa"
     .globl  tmp_pml4t
     tmp_pml4t:
@@ -64,12 +66,12 @@ init_tmp_pdptt:
     .globl boot_info
     boot_info:     .quad   0
 
-    .equ    HBASE_ADDR,0xffff800000000000      #内核虚拟地址基址
+    .equ    HBASE_ADDR,0xffff800000000000      //内核虚拟地址基址
 
 
-#========================================正式内核代码=================================================
+//========================================正式内核代码=================================================
 .section    .text, "ax"
-    #0-20异常处理程序入口
+    //0-20异常处理程序入口
     ENTRY(divide_error,do_divide_error,1)
     ENTRY(debug,do_debug,1)
     ENTRY(nmi,do_nmi,1)
@@ -91,13 +93,13 @@ init_tmp_pdptt:
     ENTRY(SIMD_exception,do_SIMD_exception,1)
     ENTRY(virtualization_exception,do_virtualization_exception,1)
 
-    #中断处理程序入口
+    //中断处理程序入口
     ENTRY(ignore,do_ignore,1)
     ENTRY(keyboard,do_keyboard,1)
     ENTRY(hpet,do_hpet,1)
     ENTRY(apic_timer,do_apic_timer,1)
 
-    #中断和异常复用处理程序
+    //中断和异常复用处理程序
 interrupt_entry:
 	pushq	%rax
 	movq	%es,	%rax
@@ -129,7 +131,7 @@ interrupt_entry:
 	movq	%rdi,	%es
 
 	movq	%rsp,	%rdi
-	##GET_CURRENT(%ebx)
+	//GET_CURRENT(%ebx)
 
 	callq 	*%rdx
 
@@ -155,19 +157,19 @@ interrupt_entry:
 	addq	$0x10,	%rsp
 	iretq
 
-    #长模式系统调用入口
+    //长模式系统调用入口
 .globl  long_mode_syscall_entry
 long_mode_syscall_entry:
-    #手动保存用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
-    #手动恢复用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
+    //手动保存用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
+    //手动恢复用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
     sysretq
 
-    #兼容模式系统调用入口
-#.globl  compatible_mode_syscall_entry
-#compatible_mode_syscall_entry:
-    #手动保存用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
-    #call    print_h
-    #jmp .
-    #手动恢复用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
-    #sysretl
+    //兼容模式系统调用入口
+//.globl  compatible_mode_syscall_entry
+//compatible_mode_syscall_entry:
+    //手动保存用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
+    //call    print_h
+    //jmp .
+    //手动恢复用户态rip(rcx)用户态rsp,rflags(r11),其他通用寄存器。
+    //sysretl
 
