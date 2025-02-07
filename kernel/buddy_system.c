@@ -3,8 +3,6 @@
 
 buddy_system_t buddy_system;
 
-extern memblock_t memblock;
-
 //初始化伙伴系统
 INIT_TEXT void init_buddy_system(void) {
     //初始化page_size数量
