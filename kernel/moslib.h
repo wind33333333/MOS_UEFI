@@ -16,8 +16,14 @@ typedef short INT16;
 typedef int INT32;
 typedef long long INT64;
 
-extern UINT64 _start_bss;
-extern UINT64 _end_bss;
+extern char _start_init_text[];
+extern char _end_init_text[];
+extern char _start_init_data[];
+extern char _end_init_data[];
+extern char _start_text[];
+extern char _end_text[];
+extern char _start_bss[];
+extern char _end_bss[];
 
 #define BOCHS_DG()    __asm__ __volatile__ ("xchg %%bx,%%bx \n\t":: :);
 
