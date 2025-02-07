@@ -6,6 +6,8 @@
 #include "printk.h"
 #include "cpu.h"
 #include "ap.h"
+#include "memblock.h"
+
 
 UINT32 *apic_id_table;   //apic_id_table
 
@@ -15,7 +17,7 @@ INIT_TEXT void init_acpi(void) {
     mcfg_t *mcfg;
 
     //初始化ap_boot_loader_adderss
-    ap_boot_loader_address = (UINT64)LADDR_TO_HADDR(memory_management.mem_map[0].address);
+    ap_boot_loader_address = (UINT64)LADDR_TO_HADDR(memblock.reserved.region[0].base);
 
     //region XSDT中找出各个ACPI表的指针
     xsdt_t *xsdt = boot_info->rsdp->xsdt_address;

@@ -72,6 +72,8 @@ static inline UINT64 align_up(UINT64 addr, UINT64 align) {
     return (addr + align - 1) & -align;
 }
 
+extern memblock_t memblock;
+
 void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 size);
 void *memblock_alloc(UINT64 size, UINT64 align);
 void init_memblock(void);
