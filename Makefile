@@ -23,11 +23,11 @@ CFLAGS:=$(strip ${CFLAGS})
 $(BUILD)/%.bin: $(BOOTLOADER)/%.asm
 	nasm $< -o $@
 
-${BUILD}/kernel.bin: ${BUILD}/system
+${BUILD}/kernel.bin: ${BUILD}/kernel.elf
 	objcopy -I elf64-x86-64 -S -R ".eh_frame" -R ".comment" -O binary $^ $@
-	nm ${BUILD}/system | sort > ${BUILD}/system.map
+	nm ${BUILD}/kernel.elf | sort > ${BUILD}/kernel.map
 
-${BUILD}/system: ${BUILD}/head.o ${BUILD}/main.o ${BUILD}/printk.o ${BUILD}/interrupt.o ${BUILD}/kpage.o \
+${BUILD}/kernel.elf: ${BUILD}/head.o ${BUILD}/main.o ${BUILD}/printk.o ${BUILD}/interrupt.o ${BUILD}/kpage.o \
  				 ${BUILD}/ap.o ${BUILD}/idt.o ${BUILD}/acpi.o ${BUILD}/apic.o ${BUILD}/ioapic.o \
 				 ${BUILD}/memory.o ${BUILD}/gdt.o ${BUILD}/tss.o ${BUILD}/cpu.o ${BUILD}/memblock.o \
 				 ${BUILD}/hpet.o ${BUILD}/apboot.o ${BUILD}/syscall.o ${BUILD}/buddy_system.o \
@@ -62,7 +62,7 @@ debug-bootloader: clean
                        -drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp &
 
 
-debug-kernel: clean ${BUILD}/system ${BUILD}/kernel.bin
+debug-kernel: clean ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b RELEASE"
 	cp build/RELEASE_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi
 	cp $(BUILD)/kernel.bin esp/kernel.bin

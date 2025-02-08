@@ -39,7 +39,7 @@ SECTIONS
     }
 
     /*未初始化数据段*/
-	.bss :
+	.bss : AT(ADDR(.data) + SIZEOF(.data))
 	{
 		_start_bss = .;
 		*(.bss)

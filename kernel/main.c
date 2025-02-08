@@ -9,7 +9,7 @@
 #include "kpage.h"
 
 INIT_TEXT void init_kernel(void) {
-    mem_set(&_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
+    mem_set(&_start_bss,0xB,_end_bss-_start_bss);    //初始化bss段
     init_output();                             //初始化输出控制台
     init_kernel_page();                        //初始化正式内核页表
     init_buddy_system();                       //初始化伙伴系统
