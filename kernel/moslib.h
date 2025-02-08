@@ -24,8 +24,12 @@ extern char _start_init_data[];
 extern char _end_init_data[];
 extern char _start_text[];
 extern char _end_text[];
+extern char _start_data[];
+extern char _end_data[];
 extern char _start_bss[];
 extern char _end_bss[];
+extern char _start_stack[];
+extern char _end_stack[];
 extern char _end[];
 extern UINT64 tmp_pml4t[];
 
