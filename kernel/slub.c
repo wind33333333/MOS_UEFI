@@ -195,7 +195,7 @@ void add_cache_node(kmem_cache_t *cache, kmem_cache_node_t *new_cache_node) {
     new_cache_node->using_count = 0;
     new_cache_node->free_count = cache->object_per_slub;
     new_cache_node->free_list = buddy_map_pages(buddy_alloc_pages(cache->order_per_slub),
-                                                (void *) memory_management.kernel_end_address,PAGE_ROOT_RW);
+                                                (void *)_end,PAGE_ROOT_RW);
     new_cache_node->object_start_vaddr = new_cache_node->free_list;
     free_list_init(new_cache_node->free_list, cache->object_size, cache->object_per_slub - 1);
     list_add_forward(&cache->slub_head, &new_cache_node->slub_node);
