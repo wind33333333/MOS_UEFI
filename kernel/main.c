@@ -7,9 +7,11 @@
 #include "cpu.h"
 #include "hpet.h"
 #include "kpage_table.h"
+#include "memblock.h"
 
 INIT_TEXT void init_kernel(void) {
     mem_set(&_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
+    init_memblock();                           //初始化启动内存分配器
     init_kpage_table();                        //初始化正式内核页表
     init_buddy_system();                       //初始化伙伴系统
     init_slub();                               //初始化slub内存分配器
