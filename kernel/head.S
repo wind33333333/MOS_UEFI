@@ -39,7 +39,7 @@ init_tmp_pdptt:
     movq     %r8,%cr3            //启用临时页表
 /************************************************************/
 
-    leaq    _end_stack(%rip),%rsp
+    leaq     _end_stack(%rip),%rsp
     movabs   $HBASE_ADDR,%rax
     orq      %rax,%rsp           //设置bsp核栈
 
