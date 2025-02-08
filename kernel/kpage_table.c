@@ -28,6 +28,7 @@ INIT_TEXT void init_kpage_table(void) {
     ((UINT64*)(LADDR_TO_HADDR(kplm4t_ptr)))[256]=tmp_pml4t[0];
     tmp_pml4t[0] = ((UINT64*)(LADDR_TO_HADDR(kplm4t_ptr)))[0];
 
+    //设置正式内核页表
     set_cr3(kplm4t_ptr);
 }
 
