@@ -323,7 +323,7 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
         }
 
     }
-    Pos.lock = 0;                                    //解锁
+    Pos.lock = 0;        //解锁
     return i;
 }
 
