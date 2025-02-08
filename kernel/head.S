@@ -38,6 +38,11 @@ init_tmp_pdptt:
     loopq    init_tmp_pdptt
     movq     %r8,%cr3            //启用临时页表
 /************************************************************/
+
+    movabs   $_end_stack,%rsp
+    movabs   $HBASE_ADDR,%rax
+    orq      %rax,%rsp           //设置bsp核呢内核栈
+
     leaq     hige(%rip),%rax
     movabs   $HBASE_ADDR,%rbx
     orq      %rbx,%rax
@@ -47,6 +52,8 @@ hige:
     orq      %rax,%rsp
 
     call     init_memblock       //初始化启动内存分配器
+
+    jmp .
 
     call     init_kernel_page
     movabs   $0x7FFFFFFFFFFF,%rax
