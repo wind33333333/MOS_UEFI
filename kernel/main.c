@@ -8,7 +8,8 @@
 #include "hpet.h"
 #include "kpage.h"
 
-STACK_SECTION char kernel_satck[16*1024];
+    //内核堆栈段
+    STACK_SECTION char kernel_satck[16*1024];
 
 INIT_TEXT void init_kernel(void) {
     mem_set(&_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
