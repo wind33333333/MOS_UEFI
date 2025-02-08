@@ -3,6 +3,7 @@
 
 #define INIT_TEXT __attribute__((__section__(".init_text")))
 #define INIT_DATA __attribute__((__section__(".init_data")))
+#define STACK_SECTION __attribute__((__section__(".stack")))
 
 typedef unsigned char UINT8;
 typedef UINT8 BOOLEAN;

@@ -38,12 +38,22 @@ SECTIONS
     	_end_data = .;
     }
 
-    /*未初始化数据段*/
+    /*全局变量*/
 	.bss :
 	{
 		_start_bss = .;
 		*(.bss)
 		_end_bss = .;
+	}
+
+    /* 内核堆栈段*/
+    . = ALIGN(4096);
+	.stack :
+	{
+	    _start_stack = .;
+	    /*. = . + 0x4000;*/  /* 为堆栈预留16K空间 */
+	    *(.stack)
+	    _end_stack = .;
 	}
 
     /*全局偏移表*/
