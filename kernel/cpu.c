@@ -3,7 +3,7 @@
 #include "apic.h"
 #include "gdt.h"
 #include "tss.h"
-#include "kpage.h"
+#include "kpage_table.h"
 #include "ap.h"
 #include "acpi.h"
 #include "syscall.h"
@@ -18,7 +18,7 @@ INIT_TEXT void init_cpu(void){
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
     init_cpu_amode();                          //初始化cpu开启高级功能
     get_cpu_info();                            //获取cpu信息
-    init_kernel_page();                        //初始化内核页表
+    init_kpage_table;                          //初始化内核页表
     init_gdt();                                //初始化GDT
     init_tss();                                //初始化TSS
     init_idt();                                //初始化IDT

@@ -6,17 +6,12 @@
 #include "slub.h"
 #include "cpu.h"
 #include "hpet.h"
-#include "kpage.h"
-
-    //内核堆栈段
-    //STACK_SECTION char kernel_satck[16*1024];
+#include "kpage_table.h"
 
 INIT_TEXT void init_kernel(void) {
     mem_set(&_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
-    UINT64 start = (UINT64)_start_data;
-    UINT64 end = (UINT64)_end_data;
     init_output();                             //初始化输出控制台
-    init_kernel_page();                        //初始化正式内核页表
+    init_kpage_table();                        //初始化正式内核页表
     init_buddy_system();                       //初始化伙伴系统
     init_slub();                               //初始化slub内存分配器
     init_acpi();                               //初始化acpi

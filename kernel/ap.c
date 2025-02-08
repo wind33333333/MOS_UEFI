@@ -7,7 +7,7 @@
 #include "idt.h"
 #include "apic.h"
 #include "tss.h"
-#include "kpage.h"
+#include "kpage_table.h"
 #include "syscall.h"
 
 INIT_DATA UINT64 ap_boot_loader_address;
@@ -46,7 +46,7 @@ INIT_TEXT void ap_main(void){
     cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);        //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);
     init_cpu_amode();
-    set_cr3(kernel_pml4t_phy_addr);
+    set_cr3(kplm4t_ptr);
     lgdt(&gdt_ptr,0x8,0x10);
     ltr(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);
     lidt(&idt_ptr);
