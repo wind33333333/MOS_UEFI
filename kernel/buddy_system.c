@@ -10,7 +10,7 @@ INIT_TEXT void init_buddy_system(void) {
     //初始化page_length长度
     buddy_system.page_length = buddy_system.page_size * sizeof(page_t);
     //page_table分配内存
-    buddy_system.page_table = (page_t*)LADDR_TO_HADDR(memblock_alloc(buddy_system.page_length,8));
+    buddy_system.page_table = (page_t*)memblock_mmap((UINT64)memblock_alloc(buddy_system.page_length,8),_end,buddy_system.page_length>>PAGE_4K_SHIFT,PAGE_ROOT_RW);;
     //初始化page_table为0
     mem_set(buddy_system.page_table, 0x0, buddy_system.page_length);
 
