@@ -38,16 +38,33 @@ init_tmp_pdptt:
     loopq    init_tmp_pdptt
     movq     %r8,%cr3            //启用临时页表
 /************************************************************/
+    leaq     hige(%rip),%rax
+    movabs   $HBASE_ADDR,%rbx
+    orq      %rbx,%rax
+    jmp      *%rax
+hige:
+    movabs   $HBASE_ADDR,%rax
+    orq      %rax,%rsp
 
     call     init_memblock       //初始化启动内存分配器
+
+    call     init_kernel_page
+    movabs   $0x7FFFFFFFFFFF,%rax
+    andq     %rax,%rsp
+    movq     kernel_pml4t_phy_addr(%rip),%rax
+    movq     %rax,%cr3
 
     movq     $0x4000,%rdi        //初始化bsp核心栈,申请16K
     movq     $0x1000,%rsi        //地址对齐4K
     call     memblock_alloc
+
+    movq     %rax,%rdi
+    movabs   $_start,%rsi
+    movq     $4,%rdx
+    movabs   $0x8000000000000103,%rcx
+    call     memblock_mmap
     addq     $0x4000,%rax
     movq     %rax,%rsp
-    movabs   $HBASE_ADDR,%rax
-    orq      %rax,%rsp
 
     leaq     init_kernel(%rip),%rax
     movabs   $HBASE_ADDR,%rbx

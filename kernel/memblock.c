@@ -1,6 +1,6 @@
 #include "memblock.h"
 #include "uefi.h"
-#include "printk.h"
+#include "memory.h"
 
 INIT_DATA memblock_t memblock;
 
@@ -73,4 +73,57 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
         }
     }
     return NULL;
+}
+
+//物理内存映射虚拟内存,如果虚拟地址已被占用则从后面的虚拟内存中找一块可用空间挂载物理内存，并返回更新后的虚拟地址。
+void *memblock_mmap(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr) {
+    while (TRUE) {
+        UINT64 *pte_vaddr = vaddr_to_pte_vaddr(virt_addr);
+        UINT64 *pde_vaddr = vaddr_to_pde_vaddr(virt_addr);
+        UINT64 *pdpte_vaddr = vaddr_to_pdpte_vaddr(virt_addr);
+        UINT64 *pml4e_vaddr = vaddr_to_pml4e_vaddr(virt_addr);
+        UINT64 count;
+
+        //pml4e为空则挂载物理页
+        count = calculate_pml4e_count(virt_addr, page_count);
+        for (UINT64 i = 0; i < count; i++) {
+            if (pml4e_vaddr[i] == 0) {
+                pml4e_vaddr[i] = (UINT64)memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+                //pml4e属性设置为可读可写，其余位保持默认。
+                mem_set((void *) ((UINT64) pdpte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
+            }
+        }
+
+        //PDPE为空则挂载物理页
+        count = calculate_pdpte_count(virt_addr, page_count);
+        for (UINT64 i = 0; i < count; i++) {
+            if (pdpte_vaddr[i] == 0) {
+                pdpte_vaddr[i] = (UINT64)memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+                //pdpte属性设置为可读可写，其余位保持默认。
+                mem_set((void *) ((UINT64) pde_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
+            }
+        }
+
+        //PDE为空则挂载物理页
+        count = calculate_pde_count(virt_addr, page_count);
+        for (UINT64 i = 0; i < count; i++) {
+            if (pde_vaddr[i] == 0) {
+                pde_vaddr[i] = (UINT64)memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW); //pde属性设置为可读可写，其余位保持默认。
+                mem_set((void *) ((UINT64) pte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
+            }
+        }
+
+        //如果虚拟地址被占用，则从后面找一块可用的虚拟地址挂载，并返回更新后的虚拟地址。
+        count = reverse_find_qword(pte_vaddr, page_count, 0);
+        if (count == 0) {
+            //PTE挂载物理页，刷新TLB
+            for (UINT64 i = 0; i < page_count; i++) {
+                pte_vaddr[i] = phy_addr + (i << PAGE_4K_SHIFT) | attr;
+                invlpg((void *) ((UINT64) virt_addr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT));
+            }
+            return virt_addr;
+        } else {
+            virt_addr = (void *) ((UINT64) virt_addr + (count << PAGE_4K_SHIFT));
+        }
+    }
 }

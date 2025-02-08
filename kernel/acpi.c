@@ -2,7 +2,6 @@
 #include "uefi.h"
 #include "ioapic.h"
 #include "hpet.h"
-#include "memory.h"
 #include "printk.h"
 #include "cpu.h"
 #include "ap.h"
@@ -113,8 +112,6 @@ INIT_TEXT void init_acpi(void) {
     for(UINT32 i=0;i<cpu_info.logical_processors_number;i++){
         apic_id_table[i]=((UINT32*)ap_boot_loader_address)[i];
     }
-
-    return;
 }
 
 INIT_TEXT UINT32 apicid_to_cpuid(UINT32 apic_id){

@@ -4,6 +4,6 @@
 
 void init_kernel_page(void);
 
-extern UINT64 kernel_pml4t_phy_addr;
+extern UINT64 *kernel_pml4t_phy_addr;
 
 #endif
