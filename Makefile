@@ -24,7 +24,7 @@ $(BUILD)/%.bin: $(BOOTLOADER)/%.asm
 	nasm $< -o $@
 
 ${BUILD}/kernel.bin: ${BUILD}/kernel.elf
-	objcopy -I elf64-x86-64 -S -R ".eh_frame" -R ".comment" -O binary $^ $@
+	objcopy --set-section-flags .bss=alloc,load,contents -I elf64-x86-64 -S -R ".eh_frame" -R ".comment" -O binary $^ $@
 	nm ${BUILD}/kernel.elf | sort > ${BUILD}/kernel.map
 
 ${BUILD}/kernel.elf: ${BUILD}/head.o ${BUILD}/main.o ${BUILD}/printk.o ${BUILD}/interrupt.o ${BUILD}/kpage.o \
