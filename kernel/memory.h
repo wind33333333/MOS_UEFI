@@ -67,7 +67,7 @@ extern global_memory_descriptor_t memory_management;
 
 #define PAGE_ROOT_RWX    (PAGE_G | PAGE_RW |PAGE_P | PAGE_WB)             //可读-可写-可执行
 #define PAGE_ROOT_RX     (PAGE_G | PAGE_P | PAGE_WB)                      //可读-可执行
-#define PAGE_ROOT_R      (PAGE_NX | PAGE_G | PAGE_P | PAGE_WB)            //可读
+#define PAGE_ROOT_R      (PAGE_NX | PAGE_G | PAGE_P | PAGE_WB)            //只读
 #define PAGE_ROOT_RW     (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P | PAGE_WB)   //可读-可写-普通内存
 #define PAGE_ROOT_RW_WC  (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P | PAGE_WC)   //可读-可写-显卡内存
 #define PAGE_ROOT_RW_UC  (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P | PAGE_UC)   //可读-可写-IO映射内存

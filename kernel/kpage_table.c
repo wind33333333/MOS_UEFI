@@ -14,12 +14,16 @@ INIT_TEXT void init_kpage_table(void) {
     mem_set(kplm4t_ptr, 0, PAGE_4K_SIZE);
     kplm4t_ptr[0]= tmp_pml4t[0];
     kplm4t_ptr[1]= tmp_pml4t[1];
-    kplm4t_ptr[511]= (UINT64)kplm4t_ptr|0x3;
+    kplm4t_ptr[511]= (UINT64)kplm4t_ptr|0x3;  //递归映射
 
     tmp_pml4t[0] = 0;
 
-    //同过memblock_mmap函数创建一个新页表，做为正式内核页表,把_start-_end物理页挂载到新页表
-    memblock_mmap(HADDR_TO_LADDR(_start), HADDR_TO_LADDR(_start), _end-_start >> PAGE_4K_SHIFT, PAGE_ROOT_RWX);
+    //.init_text-.init_data 可读写执行
+    memblock_mmap(HADDR_TO_LADDR(_start_init_text), (void*)HADDR_TO_LADDR(_start_init_text), _start_text-_start_init_text >> PAGE_4K_SHIFT, PAGE_ROOT_RWX);
+    //.text可读执行
+    memblock_mmap(HADDR_TO_LADDR(_start_text), (void*)HADDR_TO_LADDR(_start_text), _start_data-_start_text >> PAGE_4K_SHIFT, PAGE_ROOT_RX);
+    //.data-.stack可读写
+    memblock_mmap(HADDR_TO_LADDR(_start_data), (void*)HADDR_TO_LADDR(_start_data), _end_stack-_start_data >> PAGE_4K_SHIFT, PAGE_ROOT_RW);
 
     ((UINT64*)(LADDR_TO_HADDR(kplm4t_ptr)))[256]=tmp_pml4t[0];
     tmp_pml4t[0] = ((UINT64*)(LADDR_TO_HADDR(kplm4t_ptr)))[0];
