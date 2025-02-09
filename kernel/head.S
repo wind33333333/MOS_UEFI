@@ -50,7 +50,7 @@ init_tmp_pdptt:
 
 /**********************内核初始化数据**************************/
 .section    .init_data, "wa"
-    /*对齐4K分配12K内存：一个pmlt4t,两个pdpt */
+    /*页表需要对齐4K，分配12K内存：一个pmlt4t,两个pdpt */
     .balign 4096
     .globl  tmp_pml4t
     tmp_pml4t:  .fill   0x1000,1,0
