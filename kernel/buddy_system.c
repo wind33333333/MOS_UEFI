@@ -41,7 +41,7 @@ INIT_TEXT void init_buddy_system(void) {
 }
 
 //伙伴系统物理页分配器
-page_t *buddy_alloc_pages(UINT32 order) {
+page_t *alloc_pages(UINT32 order) {
     page_t *page;
     UINT32 current_order = order;
     while (TRUE){     //阶链表没有空闲块则分裂
@@ -68,7 +68,7 @@ page_t *buddy_alloc_pages(UINT32 order) {
 }
 
 //伙伴系统物理页释放器
-void buddy_free_pages(page_t *page) {
+void free_pages(page_t *page) {
     //空指针或者被引用了直接返回
     if (page == NULL || page->refcount > 0) return;
 
@@ -96,7 +96,7 @@ void buddy_unmap_pages(void *virt_addr) {
     UINT64 count;
 
     //释放物理页
-    buddy_free_pages(page);
+    free_pages(page);
     //取消PTE映射的物理页,刷新 TLB
     for (UINT64 i = 0; i < page_count; i++) {
         pte_vaddr[i] = 0;
@@ -108,7 +108,7 @@ void buddy_unmap_pages(void *virt_addr) {
     for (INT32 i = 0; i < count; i++) {
         if (forward_find_qword((void *) (((UINT64) pte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT)), 512, 0) == 0) {
             page = phyaddr_to_page(pde_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
-            buddy_free_pages(page);
+            free_pages(page);
             pde_vaddr[i] = 0;
         }
     }
@@ -118,7 +118,7 @@ void buddy_unmap_pages(void *virt_addr) {
     for (INT32 i = 0; i < count; i++) {
         if (forward_find_qword((void *) (((UINT64) pde_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT)), 512, 0) == 0) {
             page = phyaddr_to_page(pdpte_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
-            buddy_free_pages(page);
+            free_pages(page);
             pdpte_vaddr[i] = 0;
         }
     }
@@ -128,7 +128,7 @@ void buddy_unmap_pages(void *virt_addr) {
     for (INT32 i = 0; i < count; i++) {
         if (forward_find_qword((void *) (((UINT64) pdpte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT)), 512, 0) == 0) {
             page = phyaddr_to_page(pml4e_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
-            buddy_free_pages(page);
+            free_pages(page);
             pml4e_vaddr[i] = 0;
         }
     }
@@ -149,7 +149,7 @@ void *buddy_map_pages(page_t *page, void *virt_addr, UINT64 attr) {
         count = calculate_pml4e_count(virt_addr, page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pml4e_vaddr[i] == 0) {
-                pml4e_vaddr[i] = page_to_phyaddr(buddy_alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+                pml4e_vaddr[i] = page_to_phyaddr(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
                 mem_set((void *) ((UINT64) pdpte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
         }
@@ -158,7 +158,7 @@ void *buddy_map_pages(page_t *page, void *virt_addr, UINT64 attr) {
         count = calculate_pdpte_count(virt_addr, page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pdpte_vaddr[i] == 0) {
-                pdpte_vaddr[i] = page_to_phyaddr(buddy_alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+                pdpte_vaddr[i] = page_to_phyaddr(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
                 mem_set((void *) ((UINT64) pde_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
         }
@@ -167,7 +167,7 @@ void *buddy_map_pages(page_t *page, void *virt_addr, UINT64 attr) {
         count = calculate_pde_count(virt_addr, page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pde_vaddr[i] == 0) {
-                pde_vaddr[i] = page_to_phyaddr(buddy_alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+                pde_vaddr[i] = page_to_phyaddr(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
                 mem_set((void *) ((UINT64) pte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
         }
