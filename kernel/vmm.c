@@ -1,6 +1,5 @@
 #include "vmm.h"
 #include "printk.h"
-#include "memblock.h"
 
 global_memory_descriptor_t memory_management;
 
