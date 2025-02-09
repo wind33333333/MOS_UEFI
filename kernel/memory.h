@@ -118,8 +118,8 @@ static inline void revise_pages(void *virt_addr,UINT64 value){
 }
 
 void init_memory(void);
-UINT64 alloc_pages(UINT64 page_count);
-void free_pages(UINT64 phy_addr, UINT64 page_count);
+UINT64 bitmap_alloc_pages(UINT64 page_count);
+void bitmap_free_pages(UINT64 phy_addr, UINT64 page_count);
 void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr);
 void unmap_pages(void *virt_addr, UINT64 page_count);
 

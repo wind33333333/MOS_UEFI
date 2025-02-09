@@ -107,7 +107,7 @@ INIT_TEXT void init_acpi(void) {
     }
 
     //移动apic id到内核空间
-    apic_id_table = (UINT32*)LADDR_TO_HADDR(alloc_pages(PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2)>>PAGE_4K_SHIFT));
+    apic_id_table = (UINT32*)LADDR_TO_HADDR(bitmap_alloc_pages(PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2)>>PAGE_4K_SHIFT));
     mem_set((void*)apic_id_table,0x0,PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2));
     for(UINT32 i=0;i<cpu_info.logical_processors_number;i++){
         apic_id_table[i]=((UINT32*)ap_boot_loader_address)[i];

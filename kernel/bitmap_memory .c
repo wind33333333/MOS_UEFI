@@ -53,7 +53,7 @@ INIT_TEXT void init_memory(void) {
 
     //初始化bitmap，i=1跳过1M,1M之前的内存需要用来存放ap核初始化代码暂时保持置位，把后面可用的内存全部初始化，等全部初始化后再释放前1M
     for (UINT32 i = 1; i < memory_management.mem_map_count; i++) {
-        free_pages(memory_management.mem_map[i].address,
+        bitmap_free_pages(memory_management.mem_map[i].address,
                    memory_management.mem_map[i].length >> PAGE_4K_SHIFT);
     }
 
@@ -61,8 +61,8 @@ INIT_TEXT void init_memory(void) {
     memory_management.kernel_start_address = (UINT64)_start_text;
     memory_management.kernel_end_address = PAGE_4K_ALIGN((UINT64)memory_management.bitmap + memory_management.bitmap_length);
 
-    //通过free_pages函数的异或位操作实现把内核bitmap位图标记为已使用空间。
-    free_pages(HADDR_TO_LADDR(&_start_init_text), memory_management.kernel_end_address-(UINT64)_start_init_text>>PAGE_4K_SHIFT);
+    //通过bitmap_free_pages函数的异或位操作实现把内核bitmap位图标记为已使用空间。
+    bitmap_free_pages(HADDR_TO_LADDR(&_start_init_text), memory_management.kernel_end_address-(UINT64)_start_init_text>>PAGE_4K_SHIFT);
 
     //总物理页
     memory_management.total_pages=memory_management.avl_mem_size>>PAGE_4K_SHIFT;
@@ -85,7 +85,7 @@ INIT_TEXT void init_memory(void) {
 
 
 //物理页分配器
-UINT64 alloc_pages(UINT64 page_count) {
+UINT64 bitmap_alloc_pages(UINT64 page_count) {
     spin_lock(&memory_management.lock);
 
     if (memory_management.avl_pages < page_count || page_count == 0) {
@@ -131,7 +131,7 @@ UINT64 alloc_pages(UINT64 page_count) {
 }
 
 //物理页释放器
-void free_pages(UINT64 phy_addr, UINT64 page_count) {
+void bitmap_free_pages(UINT64 phy_addr, UINT64 page_count) {
     spin_lock(&memory_management.lock);
     if ((phy_addr + (page_count << PAGE_4K_SHIFT)) >
         (memory_management.mem_map[memory_management.mem_map_count - 1].address +
@@ -167,7 +167,7 @@ void unmap_pages(void *virt_addr, UINT64 page_count) {
     count = calculate_pde_count(virt_addr,page_count);
     for (INT32 i = 0; i < count; i++) {
         if(forward_find_qword((void*)(((UINT64)pte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)==0){
-            free_pages(pde_vaddr[i] & 0x7FFFFFFFFFFFF000UL, 1);
+            bitmap_free_pages(pde_vaddr[i] & 0x7FFFFFFFFFFFF000UL, 1);
             pde_vaddr[i]=0;
         }
     }
@@ -176,7 +176,7 @@ void unmap_pages(void *virt_addr, UINT64 page_count) {
     count = calculate_pdpte_count(virt_addr,page_count);
     for (INT32 i = 0; i < count; i++) {
         if(forward_find_qword((void*)(((UINT64)pde_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)==0){
-            free_pages(pdpte_vaddr[i] & 0x7FFFFFFFFFFFF000UL, 1);
+            bitmap_free_pages(pdpte_vaddr[i] & 0x7FFFFFFFFFFFF000UL, 1);
             pdpte_vaddr[i]=0;
         }
     }
@@ -185,7 +185,7 @@ void unmap_pages(void *virt_addr, UINT64 page_count) {
     count = calculate_pml4e_count(virt_addr,page_count);
     for (INT32 i = 0; i < count; i++) {
         if(forward_find_qword((void*)(((UINT64)pdpte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT)),512,0)==0){
-            free_pages(pml4e_vaddr[i] & 0x7FFFFFFFFFFFF000UL, 1);
+            bitmap_free_pages(pml4e_vaddr[i] & 0x7FFFFFFFFFFFF000UL, 1);
             pml4e_vaddr[i]=0;
         }
     }
@@ -205,7 +205,7 @@ void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr
         count = calculate_pml4e_count(virt_addr,page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pml4e_vaddr[i] == 0) {
-                pml4e_vaddr[i] = alloc_pages(1) | (attr&(PAGE_US|PAGE_P|PAGE_RW)|PAGE_RW); //pml4e属性设置为可读可写，其余位保持默认。
+                pml4e_vaddr[i] = bitmap_alloc_pages(1) | (attr&(PAGE_US|PAGE_P|PAGE_RW)|PAGE_RW); //pml4e属性设置为可读可写，其余位保持默认。
                 mem_set((void*)((UINT64)pdpte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
         }
@@ -214,7 +214,7 @@ void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr
         count = calculate_pdpte_count(virt_addr,page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pdpte_vaddr[i] == 0) {
-                pdpte_vaddr[i] = alloc_pages(1) | (attr&(PAGE_US|PAGE_P|PAGE_RW)|PAGE_RW); //pdpte属性设置为可读可写，其余位保持默认。
+                pdpte_vaddr[i] = bitmap_alloc_pages(1) | (attr&(PAGE_US|PAGE_P|PAGE_RW)|PAGE_RW); //pdpte属性设置为可读可写，其余位保持默认。
                 mem_set((void*)((UINT64)pde_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
         }
@@ -223,7 +223,7 @@ void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr
         count = calculate_pde_count(virt_addr,page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pde_vaddr[i] == 0) {
-                pde_vaddr[i] = alloc_pages(1) | (attr&(PAGE_US|PAGE_P|PAGE_RW)|PAGE_RW); //pde属性设置为可读可写，其余位保持默认。
+                pde_vaddr[i] = bitmap_alloc_pages(1) | (attr&(PAGE_US|PAGE_P|PAGE_RW)|PAGE_RW); //pde属性设置为可读可写，其余位保持默认。
                 mem_set((void*)((UINT64)pte_vaddr & PAGE_4K_MASK)+(i<<PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
         }

@@ -7,7 +7,7 @@ INIT_DATA idt_ptr_t idt_ptr;
 
 INIT_TEXT void init_idt(void) {
     idt_ptr.limit= 0xFFF;
-    idt_ptr.base = (UINT64*)LADDR_TO_HADDR(alloc_pages(1));     //分配IDT指针
+    idt_ptr.base = (UINT64*)LADDR_TO_HADDR(bitmap_alloc_pages(1));     //分配IDT指针
     map_pages(HADDR_TO_LADDR((UINT64)idt_ptr.base),idt_ptr.base,1,PAGE_ROOT_RW);
     mem_set((void*)idt_ptr.base,0,4096);                    //初始化IDT表为0
 
