@@ -40,4 +40,5 @@ void free_pages(page_t *page);
 void buddy_unmap_pages(void *virt_addr);
 void *buddy_map_pages(page_t *page, void *virt_addr, UINT64 attr);
 
+
 #endif
