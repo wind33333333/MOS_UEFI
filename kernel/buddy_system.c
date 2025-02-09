@@ -45,9 +45,9 @@ page_t *alloc_pages(UINT32 order) {
     page_t *page;
     UINT32 current_order = order;
     while (TRUE){     //阶链表没有空闲块则分裂
-        if (current_order > MAX_ORDER) { //如果阶无效直接返回空指针
-            return NULL;
-        }else if (buddy_system.free_count[current_order] != 0) {
+        //如果阶无效直接返回空指针
+        if (current_order > MAX_ORDER) return NULL;
+        if (buddy_system.free_count[current_order] != 0) {
             page = (page_t*)buddy_system.free_area[current_order].next;
             list_del((list_head_t*)page);
             buddy_system.free_count[current_order]--;
