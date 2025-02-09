@@ -2,8 +2,6 @@
 #define __MEMORY_H__
 #include "moslib.h"
 
-extern UINT64 kernel_stack_top;
-
 #define PAGE_4K_SHIFT    12
 #define PAGE_4K_SIZE    (1UL << PAGE_4K_SHIFT)
 #define PAGE_4K_MASK    (~(PAGE_4K_SIZE - 1))
