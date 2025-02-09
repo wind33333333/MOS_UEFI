@@ -50,10 +50,12 @@ init_tmp_pdptt:
 
 /**********************内核初始化数据**************************/
 .section    .init_data, "wa"
+    /*对齐4K分配12K内存：一个pmlt4t,两个pdpt */
     .balign 4096
     .globl  tmp_pml4t
-    tmp_pml4t:
-        .fill   0x3000,1,0
+    tmp_pml4t:  .fill   0x1000,1,0
+    tmp_pdpt0:  .fill   0x1000,1,0
+    tmp_pdpt1:  .fill   0x1000,1,0
 
     .globl kernel_stack_top
     kernel_stack_top:   .quad   0

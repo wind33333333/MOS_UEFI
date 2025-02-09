@@ -13,7 +13,6 @@ SECTIONS
     }
 
     /*内核初始化数据段*/
-    . = ALIGN(4096);
 	.init_data :
 	{
 		_start_init_data = .;
