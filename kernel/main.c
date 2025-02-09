@@ -11,7 +11,6 @@
 
 INIT_TEXT void init_kernel(void) {
     mem_set(&_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
-    init_cpu_amode();                          //初始化cpu开启高级功能
     init_memblock();                           //初始化启动内存分配器
     init_kpage_table();                        //初始化正式内核页表
     init_output();                             //初始化输出控制台
