@@ -7,8 +7,8 @@ _start:
     cli
     movq     %rdi,boot_info(%rip)           //保存loader通过rdi传递过来的boot_info指针
 
-/*初始化一个临时页表，把物理内存地址0x0-0xFFFFFFFFFF(1TB)对等映射
- *到虚拟内存地址0x0-0xFFFFFFFFFF和0xFFFF800000000000-0xFFFF80FFFFFFFFFF*/
+/*初始化一个临时内核页表，把物理内存地址[0x0 - 0xFFFFFFFFFF](1TB)对等映射到
+*虚拟内存地址[0x0 - 0xFFFFFFFFFF]和[0xFFFF800000000000 - 0xFFFF80FFFFFFFFFF]*/
     leaq     tmp_pml4t(%rip),%r8            //pml4t起始地址      //初始化临时页表1G巨页
     movq     $2,%r9                         //pml4e数量 (1=512G)
 
@@ -41,7 +41,7 @@ init_tmp_pdptt:
 
     leaq     _end_stack(%rip),%rsp
     movabs   $HBASE_ADDR,%rax
-    orq      %rax,%rsp           //设置bsp核栈
+    orq      %rax,%rsp       //设置bsp核栈
 
     leaq     init_kernel(%rip),%rax
     movabs   $HBASE_ADDR,%rbx
