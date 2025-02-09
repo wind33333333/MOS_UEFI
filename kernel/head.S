@@ -40,16 +40,18 @@ init_tmp_pdptt:
 /************************************************************/
 
     leaq     _end_stack(%rip),%rsp
-    movabs   $HBASE_ADDR,%rax
+    movabs   $HIGH_BASE,%rax
+    jmp .
     orq      %rax,%rsp       //设置bsp核栈
 
     leaq     init_kernel(%rip),%rax
-    movabs   $HBASE_ADDR,%rbx
+    movabs   $HIGH_BASE,%rbx
     orq      %rbx,%rax
     jmp      *%rax           //切换到0xFFFF800000000000内核空间，进入C语言init_kernel
 
 /**********************内核初始化数据**************************/
 .section    .init_data, "wa"
+    .balign 4096
     .globl  tmp_pml4t
     tmp_pml4t:
         .fill   0x3000,1,0
@@ -59,9 +61,6 @@ init_tmp_pdptt:
 
     .globl boot_info
     boot_info:     .quad   0
-
-    .equ    HBASE_ADDR,0xffff800000000000      //内核虚拟地址基址
-
 
 /*************************正式内核代码****************************/
 .section    .text, "ax"

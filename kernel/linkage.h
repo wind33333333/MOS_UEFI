@@ -1,6 +1,9 @@
 #ifndef _LINKAGE_H_
 #define _LINKAGE_H_
 
+//内核基地址
+#define HIGH_BASE 0xFFFF800000000000
+
 #define L1_CACHE_BYTES 32
 
 #define asmlinkage __attribute__((regparm(0)))	
