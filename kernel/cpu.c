@@ -16,7 +16,6 @@ INIT_TEXT void init_cpu(void){
     UINT32 apic_id,cpu_id,tmp;
     cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
-    init_cpu_amode();                          //初始化cpu开启高级功能
     get_cpu_info();                            //获取cpu信息
     init_gdt();                                //初始化GDT
     init_tss();                                //初始化TSS
