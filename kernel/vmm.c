@@ -1,88 +1,8 @@
 #include "vmm.h"
 #include "printk.h"
-#include "uefi.h"
 #include "memblock.h"
 
 global_memory_descriptor_t memory_management;
-
-INIT_TEXT void init_memory(void) {
-
-    UINT64 *p= memblock_alloc(8,16);
-    p = memblock_alloc(8,16);
-    UINT64 *p1 = memblock_alloc(4096,4096);
-    p = memblock_alloc(8,8);
-
-
-    //查找memmap中可用物理内存并合并，统计总物理内存容量。
-    UINT32 mem_map_index = 0;
-    for (UINT32 i = 0; i < (boot_info->mem_map_size / boot_info->mem_descriptor_size); i++) {
-        // 使用逻辑或 (||) 来判断内存类型
-        if (boot_info->mem_map[i].Type == EFI_LOADER_CODE || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_CODE ||
-            boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA || boot_info->mem_map[i].Type ==
-            EFI_CONVENTIONAL_MEMORY) {
-            if (boot_info->mem_map[i].PhysicalStart == (
-                    memory_management.mem_map[mem_map_index].address + memory_management.mem_map[mem_map_index].
-                    length)) {
-                // 合并相邻的内存块
-                memory_management.mem_map[mem_map_index].length += (boot_info->mem_map[i].NumberOfPages << 12);
-            } else if (memory_management.mem_map[mem_map_index].length != 0) {
-                // 开始记录新的内存块
-                mem_map_index++;
-                memory_management.mem_map[mem_map_index].address = boot_info->mem_map[i].PhysicalStart;
-                memory_management.mem_map[mem_map_index].length = boot_info->mem_map[i].NumberOfPages << 12;
-            } else {
-                // 初始化新的内存块
-                memory_management.mem_map[mem_map_index].address = boot_info->mem_map[i].PhysicalStart;
-                memory_management.mem_map[mem_map_index].length = boot_info->mem_map[i].NumberOfPages << 12;
-            }
-            // 更新可用内存大小
-            memory_management.avl_mem_size += (boot_info->mem_map[i].NumberOfPages << 12);
-            memory_management.mem_map[mem_map_index].type = 1;
-        }
-    }
-    // 最终更新 mem_map 的数量
-    memory_management.mem_map_count = mem_map_index + 1;
-    //打印可用物理内存和总物理内存
-    for (UINT32 i = 0; i < memory_management.mem_map_count; i++) {
-        color_printk(ORANGE, BLACK, "%d  Type:%d    Addr:%#018lX    Length:%#018lX\n", i,
-                     memory_management.mem_map[i].type, memory_management.mem_map[i].address,
-                     memory_management.mem_map[i].length);
-    }
-    color_printk(ORANGE, BLACK, "Available RAM:%#lX~%ldMB\n", memory_management.avl_mem_size,
-                 memory_management.avl_mem_size / 1024 / 1024);
-
-    //把内核结束地址保存后续使用
-    memory_management.kernel_end_address = kernel_stack_top;
-
-    //kernel_end_address结束地址加上bit map对齐4K边界
-    memory_management.kernel_start_address = (UINT64) _start_text;
-    memory_management.kernel_end_address = PAGE_4K_ALIGN(
-        (UINT64)memory_management.bitmap + memory_management.bitmap_length);
-
-    //通过bitmap_free_pages函数的异或位操作实现把内核bitmap位图标记为已使用空间。
-    bitmap_free_pages(
-        HADDR_TO_LADDR(&_start_init_text),
-        memory_management.kernel_end_address - (UINT64) _start_init_text >> PAGE_4K_SHIFT);
-
-    //总物理页
-    memory_management.total_pages = memory_management.avl_mem_size >> PAGE_4K_SHIFT;
-    //已分配物理页
-    memory_management.used_pages = (memory_management.mem_map[0].length + (
-                                        memory_management.kernel_end_address - (UINT64) _start_init_text) >>
-                                    PAGE_4K_SHIFT);
-    //空闲物理页
-    memory_management.avl_pages = memory_management.total_pages - memory_management.used_pages;
-
-    color_printk(ORANGE, BLACK,
-                 "Bitmap:%#lX \tBitmapSize:%#lX \tBitmapLength:%#lX\n",
-                 memory_management.bitmap, memory_management.bitmap_size,
-                 memory_management.bitmap_length);
-    color_printk(ORANGE, BLACK, "Total 4K PAGEs:%ld \tAlloc:%ld \tFree:%ld\n",
-                 memory_management.total_pages, memory_management.used_pages,
-                 memory_management.avl_pages);
-    color_printk(ORANGE, BLACK, "Init Kernel Start Addr:%#lX Official kernel Start Addr:%lX kernel end addr:%#lX\n",
-                 _start_init_text, memory_management.kernel_start_address, memory_management.kernel_end_address);
-}
 
 //物理页分配器
 UINT64 bitmap_alloc_pages(UINT64 page_count) {
