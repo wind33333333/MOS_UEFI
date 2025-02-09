@@ -10,7 +10,7 @@
 #include "memblock.h"
 
 INIT_TEXT void init_kernel(void) {
-    mem_set(&_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
+    mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
     init_memblock();                           //初始化启动内存分配器
     init_kpage_table();                        //初始化正式内核页表
     init_output();                             //初始化输出控制台
@@ -19,10 +19,10 @@ INIT_TEXT void init_kernel(void) {
 
     while (TRUE);
     //////////////////
-    init_acpi();                               //初始化acpi
-    init_ioapic();                             //初始化ioapic
-    init_hpet();                               //初始化hpet
-    init_cpu();                                //初始化CPU
+    // init_acpi();                               //初始化acpi
+    // init_ioapic();                             //初始化ioapic
+    // init_hpet();                               //初始化hpet
+    // init_cpu();                                //初始化CPU
 
     //ENABLE_HPET_TIMES(*hpetRegisters.tim0_conf,*hpetRegisters.tim0_comp,0x3000000,HPET_PERIODIC,0);
     //enable_apic_time(0xF000,APIC_TSC_DEADLINE,0x20);

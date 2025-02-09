@@ -45,7 +45,8 @@ $(BUILD)/%.s: $(KERNEL)/%.S
 $(BUILD)/%.o: $(KERNEL)/%.c
 	gcc ${CFLAGS} -c $< -o $@
 
-debug-bootloader: clean
+debug-uefi:
+	#编译正式版本把bash DEBUG改成RELEASE#
 	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b DEBUG"
 	cp build/DEBUG_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi
 	-mkfifo /tmp/serial.in /tmp/serial.out
@@ -64,9 +65,7 @@ debug-bootloader: clean
                        -drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp &
 
 
-debug-kernel: clean ${BUILD}/kernel.elf ${BUILD}/kernel.bin
-	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b RELEASE"
-	cp build/RELEASE_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi
+debug-kernel: ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	cp $(BUILD)/kernel.bin esp/kernel.bin
 	-pkill udk-gdb-server
 	-pkill qemu-system-x86
@@ -85,8 +84,8 @@ debug-kernel: clean ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 qemu-monitor:
 	telnet localhost 4444
 
-clean:
-	-rm -rf build esp/efi
+clean_all:
+	-rm -rf build esp/efi esp/kernel.*
 	-mkdir -p build esp/efi/boot
 
 #clion gdb uefi符号挂载
