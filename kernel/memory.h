@@ -14,13 +14,6 @@ extern UINT64 kernel_stack_top;
 #define LADDR_TO_HADDR(ADDR)    ((UINT64)((UINT64)(ADDR) | HIGH_BASE))
 
 typedef struct{
-    list_head_t block;
-    UINT32 falgs;
-    UINT32 order;
-    UINT32 refcount;
-}page_t;
-
-typedef struct{
     UINT64 address;
     UINT64 length;
     UINT32 type;

@@ -5,6 +5,13 @@
 
 #define MAX_ORDER 10
 
+typedef struct{
+    list_head_t block;
+    UINT32 falgs;
+    UINT32 order;
+    UINT32 refcount;
+}page_t;
+
 typedef struct buddy_system_t {
     page_t* page_table;
     UINT64 page_size;
