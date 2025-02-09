@@ -1,4 +1,6 @@
 #include "printk.h"
+
+#include "memblock.h"
 #include "memory.h"
 #include "uefi.h"
 
@@ -342,8 +344,7 @@ INIT_TEXT void init_output(void) {
         Pos.XCharSize = 8;
         Pos.YCharSize = 16;
 
-        //map_pages(boot_info->frame_buffer_base,LADDR_TO_HADDR(boot_info->frame_buffer_base), PAGE_4K_ALIGN(boot_info->frame_buffer_size)>>PAGE_4K_SHIFT,PAGE_ROOT_UC);
-        Pos.FB_addr = (UINT32*)(LADDR_TO_HADDR(boot_info->frame_buffer_base));
+        Pos.FB_addr = (UINT32*)memblock_mmap(boot_info->frame_buffer_base,LADDR_TO_HADDR(boot_info->frame_buffer_base), PAGE_4K_ALIGN(boot_info->frame_buffer_size)>>PAGE_4K_SHIFT,PAGE_ROOT_RW_WC);;
         Pos.FB_length = boot_info->frame_buffer_size;
         Pos.lock = 0;
 
