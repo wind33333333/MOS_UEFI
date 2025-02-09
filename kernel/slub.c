@@ -25,7 +25,7 @@ INIT_TEXT void init_slub(void) {
     strcpy(kmem_cache_name, "kmem_cache");
     create_cache(kmem_cache_name, &kmem_cache, sizeof(kmem_cache_t));
 
-    //创建kmalloc缓存池
+    //创建kmalloc缓存池 8字节到1M
     strcpy(kmalloc_name[0], "kmalloc-8");
     strcpy(kmalloc_name[1], "kmalloc-16");
     strcpy(kmalloc_name[2], "kmalloc-32");
@@ -50,30 +50,6 @@ INIT_TEXT void init_slub(void) {
         kmalloc_cache[i] = kmem_cache_create(kmalloc_name[i], object_size);
         object_size <<= 1;
     }
-
-    UINT64 *ptr1 = kmalloc(1*1024*1024-100);
-    *ptr1 = 0x123456789F;
-
-    UINT64 *ptr2 = kmalloc(1*1024*1024-100);
-    *ptr2 = 0x123456789F;
-
-    UINT64 *ptr3 = kmalloc(1*1024*1024-100);
-    *ptr3 = 0x123456789F;
-
-    UINT64 *ptr4 = kmalloc(1*1024*1024-100);
-    *ptr4 = 0x123456789F;
-
-    UINT64 *ptr5 = kmalloc(1*1024*1024-100);
-    *ptr5 = 0x123456789F;
-
-    kfree(ptr1);
-    kfree(ptr2);
-    kfree(ptr3);
-    kfree(ptr4);
-    kfree(ptr5);
-
-
-    while (TRUE);
 }
 
 //创建kmem_cache缓存池
