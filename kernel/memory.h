@@ -9,9 +9,9 @@ extern UINT64 kernel_stack_top;
 #define PAGE_4K_MASK    (~(PAGE_4K_SIZE - 1))
 #define PAGE_4K_ALIGN(ADDR)    (((UINT64)(ADDR) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
 
-#define H_BASE_ADDR             ((UINT64)0xffff800000000000UL)
-#define HADDR_TO_LADDR(ADDR)    ((UINT64)(ADDR) & (~H_BASE_ADDR))
-#define LADDR_TO_HADDR(ADDR)    ((UINT64)((UINT64)(ADDR) | H_BASE_ADDR))
+#define HIGH_BASE             ((UINT64)0xffff800000000000UL)
+#define HADDR_TO_LADDR(ADDR)    ((UINT64)(ADDR) & (~HIGH_BASE))
+#define LADDR_TO_HADDR(ADDR)    ((UINT64)((UINT64)(ADDR) | HIGH_BASE))
 
 typedef struct{
     list_head_t block;

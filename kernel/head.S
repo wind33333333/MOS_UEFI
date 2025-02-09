@@ -41,7 +41,6 @@ init_tmp_pdptt:
 
     leaq     _end_stack(%rip),%rsp
     movabs   $HIGH_BASE,%rax
-    jmp .
     orq      %rax,%rsp       //设置bsp核栈
 
     leaq     init_kernel(%rip),%rax
