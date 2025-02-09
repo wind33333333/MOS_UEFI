@@ -1,6 +1,6 @@
 #include "gdt.h"
 #include "tss.h"
-#include "memory.h"
+#include "vmm.h"
 #include "cpu.h"
 
 INIT_DATA gdt_ptr_t gdt_ptr;

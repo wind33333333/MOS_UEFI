@@ -1,5 +1,5 @@
 #include "tss.h"
-#include "memory.h"
+#include "vmm.h"
 #include "gdt.h"
 #include "cpu.h"
 

@@ -1,7 +1,7 @@
 #ifndef BUDDY_SYSTEM_H
 #define BUDDY_SYSTEM_H
 #include "moslib.h"
-#include "memory.h"
+#include "vmm.h"
 
 #define MAX_ORDER 10
 

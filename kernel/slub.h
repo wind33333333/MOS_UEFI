@@ -1,6 +1,5 @@
 #ifndef SLUB_H
 #define SLUB_H
-#include "memory.h"
 #include "moslib.h"
 
 #define MAX_OBJECT_SIZE (1*1024*1024)

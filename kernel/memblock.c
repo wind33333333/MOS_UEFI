@@ -1,6 +1,6 @@
 #include "memblock.h"
 #include "uefi.h"
-#include "memory.h"
+#include "vmm.h"
 
 INIT_DATA memblock_t memblock;
 

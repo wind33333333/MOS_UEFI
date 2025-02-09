@@ -1,6 +1,6 @@
 #include "slub.h"
 #include "buddy_system.h"
-#include "memory.h"
+#include "vmm.h"
 
 //kmem_cache_node对象专用缓存池
 UINT8 kmem_cache_node_name[16];

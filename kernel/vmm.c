@@ -1,4 +1,4 @@
-#include "memory.h"
+#include "vmm.h"
 #include "printk.h"
 #include "uefi.h"
 #include "memblock.h"

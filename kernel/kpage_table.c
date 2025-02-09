@@ -1,11 +1,7 @@
 #include "kpage_table.h"
 #include "printk.h"
 #include "memblock.h"
-#include "memory.h"
-#include "hpet.h"
-#include "ioapic.h"
-#include "acpi.h"
-#include "cpu.h"
+#include "vmm.h"
 
 INIT_DATA UINT64* kplm4t_ptr;          //正式内核页表
 

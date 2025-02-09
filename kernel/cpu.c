@@ -8,7 +8,7 @@
 #include "acpi.h"
 #include "syscall.h"
 #include "printk.h"
-#include "memory.h"
+#include "vmm.h"
 
 cpu_info_t cpu_info;
 

@@ -1,7 +1,7 @@
 #include "printk.h"
 
 #include "memblock.h"
-#include "memory.h"
+#include "vmm.h"
 #include "uefi.h"
 
 void putchar(unsigned int *fb, int Xsize, int x, int y, unsigned int FRcolor, unsigned int BKcolor,

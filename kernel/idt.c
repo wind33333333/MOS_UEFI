@@ -1,7 +1,7 @@
 #include "idt.h"
 #include "gdt.h"
 #include "interrupt.h"
-#include "memory.h"
+#include "vmm.h"
 
 INIT_DATA idt_ptr_t idt_ptr;
 

@@ -1,7 +1,7 @@
 #include "ap.h"
 #include "printk.h"
 #include "cpu.h"
-#include "memory.h"
+#include "vmm.h"
 #include "acpi.h"
 #include "gdt.h"
 #include "idt.h"
