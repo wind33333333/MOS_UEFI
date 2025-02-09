@@ -7,7 +7,7 @@
 
 typedef struct{
     list_head_t block;
-    UINT32 falgs;
+    UINT32 flags;
     UINT32 order;
     UINT32 refcount;
 }page_t;
@@ -36,6 +36,7 @@ static inline page_t* phyaddr_to_page(UINT64 phyaddr) {
 void init_buddy_system(void);
 page_t* alloc_pages(UINT32 order);
 void free_pages(page_t *page);
+
 void buddy_unmap_pages(void *virt_addr);
 void *buddy_map_pages(page_t *page, void *virt_addr, UINT64 attr);
 

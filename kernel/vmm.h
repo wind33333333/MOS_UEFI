@@ -1,13 +1,13 @@
 #ifndef __MEMORY_H__
 #define __MEMORY_H__
 #include "moslib.h"
+#include "linkage.h"
 
 #define PAGE_4K_SHIFT    12
 #define PAGE_4K_SIZE    (1UL << PAGE_4K_SHIFT)
 #define PAGE_4K_MASK    (~(PAGE_4K_SIZE - 1))
 #define PAGE_4K_ALIGN(ADDR)    (((UINT64)(ADDR) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
 
-#define HIGH_BASE             ((UINT64)0xffff800000000000UL)
 #define HADDR_TO_LADDR(ADDR)    ((UINT64)(ADDR) & (~HIGH_BASE))
 #define LADDR_TO_HADDR(ADDR)    ((UINT64)((UINT64)(ADDR) | HIGH_BASE))
 
@@ -119,5 +119,6 @@ UINT64 bitmap_alloc_pages(UINT64 page_count);
 void bitmap_free_pages(UINT64 phy_addr, UINT64 page_count);
 void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr);
 void unmap_pages(void *virt_addr, UINT64 page_count);
+
 
 #endif

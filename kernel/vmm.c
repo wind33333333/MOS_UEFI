@@ -1,5 +1,5 @@
 #include "vmm.h"
-#include "printk.h"
+#include "buddy_system.h"
 
 global_memory_descriptor_t memory_management;
 
@@ -164,3 +164,6 @@ void *map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr
         }
     }
 }
+
+/////////////////////////////////////////////////////////////////////////
+

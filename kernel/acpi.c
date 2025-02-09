@@ -6,6 +6,7 @@
 #include "cpu.h"
 #include "ap.h"
 #include "memblock.h"
+#include "vmm.h"
 
 
 UINT32 *apic_id_table;   //apic_id_table
