@@ -1,6 +1,8 @@
 #include "vmm.h"
 #include "buddy_system.h"
 
+
+//////////////////////////////////////////////////////
 global_memory_descriptor_t memory_management;
 
 //物理页分配器
