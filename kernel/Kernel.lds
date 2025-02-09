@@ -51,7 +51,7 @@ SECTIONS
 	.stack :
 	{
 	    _start_stack = .;
-	    . = . + 0x4000;  /* 为堆栈预留16K空间 */
+	    . = . + 0x4000;  /* 为bsp核堆栈预留16K空间 */
 	    *(.stack)
 	    _end_stack = .;
 	}
