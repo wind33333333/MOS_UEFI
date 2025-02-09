@@ -1,5 +1,6 @@
 .section .init_text,"ax"
 .code16
+.balign 4096
 .globl _apboot_start
 _apboot_start:    #实模式
     cli
