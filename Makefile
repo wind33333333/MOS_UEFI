@@ -45,9 +45,9 @@ $(BUILD)/%.s: $(KERNEL)/%.S
 $(BUILD)/%.o: $(KERNEL)/%.c
 	gcc ${CFLAGS} -c $< -o $@
 
-debug-uefi:
+debug-uefi: clean_uefi
 	#编译正式版本把bash DEBUG改成RELEASE#
-	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b DEBUG"
+	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b RELEASE"
 	cp build/DEBUG_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi
 	-mkfifo /tmp/serial.in /tmp/serial.out
 	-pkill udk-gdb-server
@@ -65,7 +65,7 @@ debug-uefi:
                        -drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp &
 
 
-debug-kernel: ${BUILD}/kernel.elf ${BUILD}/kernel.bin
+debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	cp $(BUILD)/kernel.bin esp/kernel.bin
 	-pkill udk-gdb-server
 	-pkill qemu-system-x86
@@ -87,6 +87,12 @@ qemu-monitor:
 clean_all:
 	-rm -rf build esp/efi esp/kernel.*
 	-mkdir -p build esp/efi/boot
+
+clean_kernel:
+	-rm -rf build/*.* esp/kernel.*
+
+clean_uefi:
+	-rm -rf build/DEBUG_GCC build/RELEASE_GCC  esp/efi/boot/bootx64.efi
 
 #clion gdb uefi符号挂载
 #source /opt/intel/udkdebugger/script/udk_gdb_script
