@@ -8,8 +8,8 @@
 #define PAGE_4K_MASK    (~(PAGE_4K_SIZE - 1))
 #define PAGE_4K_ALIGN(ADDR)    (((UINT64)(ADDR) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
 
-#define HADDR_TO_LADDR(ADDR)    ((UINT64)(ADDR) & (~HIGH_BASE))
-#define LADDR_TO_HADDR(ADDR)    ((UINT64)((UINT64)(ADDR) | HIGH_BASE))
+#define HADDR_TO_LADDR(ADDR)    ((UINT64)(ADDR) & (~KERNEL_OFFSET))
+#define LADDR_TO_HADDR(ADDR)    ((UINT64)((UINT64)(ADDR) | KERNEL_OFFSET))
 
 typedef struct{
     UINT64 address;

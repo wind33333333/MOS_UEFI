@@ -40,13 +40,14 @@ init_tmp_pdptt:
 /************************************************************/
 
     leaq     _end_stack(%rip),%rsp
-    movabs   $HIGH_BASE,%rax
+    movabs   $KERNEL_OFFSET,%rax
     orq      %rax,%rsp       //设置bsp核栈
 
     leaq     init_kernel(%rip),%rax
-    movabs   $HIGH_BASE,%rbx
+    movabs   $KERNEL_OFFSET,%rbx
     orq      %rbx,%rax
-    jmp      *%rax           //切换到0xFFFF800000000000内核空间，进入C语言init_kernel
+    jmp .
+    jmp      *%rax           //切换到0xFFFFFFFF80000000内核空间，进入C语言init_kernel
 
 /**********************内核初始化数据**************************/
 .section    .init_data, "wa"

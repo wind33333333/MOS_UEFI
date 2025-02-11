@@ -4,7 +4,7 @@ ENTRY(_start)
 SECTIONS
 {
     /*内核初始化代码段*/
-	. = 0xffff800000000000 + 0x100000;
+	. = 0xFFFFFFFF80000000 + 0x100000;
     .init_text :
     {
 		_start_init_text = .;
