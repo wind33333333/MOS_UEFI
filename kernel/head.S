@@ -15,19 +15,43 @@ _start:
 *[0xFFFF800000000000 - 0xFFFF808000000000]
 *[0xFFFFFF8000000000 - 0xFFFFFF8000000000]*/
     leaq     tmp_pml4t(%rip),%rdi    //初始化pml4t
-    leaq     tmp_pdpt(%rip),%rax
+    leaq     tmp_pdpt0(%rip),%rax
     orq      $0x3,%rax
-    movq     %rax,(%rdi)
-    movq     %rax,0x800(%rdi)
-    movq     %rax,0xFF8(%rdi)
+    movq     %rax,(%rdi)            //物理地址虚拟地址对等映射
 
-    leaq     tmp_pdpt(%rip),%rdi     //初始化pdpt
+    movq     $DIRECT_MAP_OFFSET,%rsi
+    shrq     $39,%rsi
+    andq     0x1ff,%rsi
+    shlq     $3,%rsi
+    movq     %rax,(%rdi,%rsi)       //直接映射区
+
+    leaq     tmp_pdpt1(%rip),%rax
+    orq      $0x3,%rax
+    movq     $KERNEL_OFFSET,%rsi
+    shrq     $39,%rsi
+    andq     0x1ff,%rsi
+    shlq     $3,%rsi
+    movq     %rax,(%rdi,%rsi)       //内核映射区
+
+    leaq     tmp_pdpt0(%rip),%rdi    //初始化pdpt0
     movq     $0x83,%rax              //物理地址0开始对等映射
     movq     $512,%rcx
-init_tmp_pdptt:
+init_tmp_pdptt0:
     stosq
     addq     $0x40000000,%rax
-    loopq    init_tmp_pdptt
+    loopq    init_tmp_pdptt0
+
+    leaq     tmp_pdpt1(%rip),%rdi   //初始化pdpt1
+    movq     $KERNEL_OFFSET,%rsi
+    shrq     $30,%rsi
+    andq     0x1ff,%rsi
+    shlq     $3,%rsi
+
+    leaq     _start(%rip),%rax
+    movq     %rax,(%rdi,%rsi)       //内核映射区
+
+
+
 
     leaq     tmp_pml4t(%rip),%rax
     movq     %rax,%cr3               //启用临时页表
@@ -48,7 +72,8 @@ init_tmp_pdptt:
     .balign 4096
     .globl  tmp_pml4t
     tmp_pml4t:  .fill   0x1000,1,0
-    tmp_pdpt:  .fill   0x1000,1,0
+    tmp_pdpt0:  .fill   0x1000,1,0
+    tmp_pdpt1:  .fill   0x1000,1,0
 
     .globl kernel_stack_top
     kernel_stack_top:   .quad   0

@@ -3,7 +3,6 @@
 #include "moslib.h"
 #include "linkage.h"
 
-#define DIRECT_MAP_OFFSET 0xFFFF800000000000UL
 #define PAGE_4K_SHIFT    12
 #define PAGE_4K_SIZE    (1UL << PAGE_4K_SHIFT)
 #define PAGE_4K_MASK    (~(PAGE_4K_SIZE - 1))
