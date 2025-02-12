@@ -14,7 +14,6 @@ _start:
 *[0x0 - 0x8000000000]
 *[0xFFFF800000000000 - 0xFFFF808000000000]
 *[0xFFFFFF8000000000 - 0xFFFFFF8000000000]*/
-
     leaq     tmp_pml4t(%rip),%rdi    //初始化pml4t
     leaq     tmp_pdpt0(%rip),%rax
     orq      $0x3,%rax
@@ -63,8 +62,6 @@ init_tmp_pdptt0:
     leaq     _end_stack(%rip),%rsp
     movabs   $KERNEL_OFFSET,%rax
     orq      %rax,%rsp       //设置bsp核栈
-
-    jmp .
 
     leaq     init_kernel(%rip),%rax
     movabs   $KERNEL_OFFSET,%rbx
