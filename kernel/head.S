@@ -14,6 +14,7 @@ _start:
 *[0x0 - 0x8000000000]
 *[0xFFFF800000000000 - 0xFFFF808000000000]
 *[0xFFFFFF8000000000 - 0xFFFFFF8000000000]*/
+
     leaq     tmp_pml4t(%rip),%rdi    //初始化pml4t
     leaq     tmp_pdpt0(%rip),%rax
     orq      $0x3,%rax
@@ -21,37 +22,39 @@ _start:
 
     movq     $DIRECT_MAP_OFFSET,%rsi
     shrq     $39,%rsi
-    andq     0x1ff,%rsi
+    andq     $0x1ff,%rsi
     shlq     $3,%rsi
-    movq     %rax,(%rdi,%rsi)       //直接映射区
+    movq     %rax,(%rdi,%rsi)       //直接映射区pml4e
 
     leaq     tmp_pdpt1(%rip),%rax
     orq      $0x3,%rax
     movq     $KERNEL_OFFSET,%rsi
     shrq     $39,%rsi
-    andq     0x1ff,%rsi
+    andq     $0x1ff,%rsi
     shlq     $3,%rsi
-    movq     %rax,(%rdi,%rsi)       //内核映射区
+    movq     %rax,(%rdi,%rsi)       //内核映射区pml4e
 
-    leaq     tmp_pdpt0(%rip),%rdi    //初始化pdpt0
-    movq     $0x83,%rax              //物理地址0开始对等映射
+    leaq     tmp_pdpt0(%rip),%rdi    //初始化直接映射区pdpt
+    movq     $0x83,%rax
     movq     $512,%rcx
 init_tmp_pdptt0:
     stosq
     addq     $0x40000000,%rax
     loopq    init_tmp_pdptt0
 
-    leaq     tmp_pdpt1(%rip),%rdi   //初始化pdpt1
+    leaq     tmp_pdpt1(%rip),%rdi   //初始化内核映射区pdpt
     movq     $KERNEL_OFFSET,%rsi
     shrq     $30,%rsi
-    andq     0x1ff,%rsi
+    andq     $0x1ff,%rsi
     shlq     $3,%rsi
 
     leaq     _start(%rip),%rax
-    movq     %rax,(%rdi,%rsi)       //内核映射区
-
-
-
+    movq     $0xFFFFFFFFC0000000,%rbx
+    andq     %rbx,%rax
+    orq      $0x83,%rax
+    movq     %rax,(%rdi,%rsi)
+    addq     $0x40000000,%rax
+    movq     %rax,8(%rdi,%rsi)
 
     leaq     tmp_pml4t(%rip),%rax
     movq     %rax,%cr3               //启用临时页表
@@ -60,6 +63,8 @@ init_tmp_pdptt0:
     leaq     _end_stack(%rip),%rsp
     movabs   $KERNEL_OFFSET,%rax
     orq      %rax,%rsp       //设置bsp核栈
+
+    jmp .
 
     leaq     init_kernel(%rip),%rax
     movabs   $KERNEL_OFFSET,%rbx
