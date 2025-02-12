@@ -7,36 +7,30 @@ _start:
     cli
     movq     %rdi,boot_info(%rip)           //保存loader通过rdi传递过来的boot_info指针
 
-/*初始化一个临时内核页表，把物理内存地址[0x0 - 0xFFFFFFFFFF](1TB)对等映射到
-*虚拟内存地址[0x0 - 0xFFFFFFFFFF]和[0xFFFF800000000000 - 0xFFFF80FFFFFFFFFF]*/
-    leaq     tmp_pml4t(%rip),%r8            //pml4t起始地址      //初始化临时页表1G巨页
-    movq     $2,%r9                         //pml4e数量 (1=512G)
-
-    movq     %r8,%rax                       //pml4t递归映射
-    movq     %r8,%rdi
+/*初始化一个临时内核页表
+*物理内存地址
+*[0x0 - 0x8000000000](512G)对等映射到
+*虚拟内存地址
+*[0x0 - 0x8000000000]
+*[0xFFFF800000000000 - 0xFFFF808000000000]
+*[0xFFFFFF8000000000 - 0xFFFFFF8000000000]*/
+    leaq     tmp_pml4t(%rip),%rdi    //初始化pml4t
+    leaq     tmp_pdpt(%rip),%rax
     orq      $0x3,%rax
-    movq     %rax,0xFF8(%rdi)
-
-    movq     %r8,%rax
-    orq      $0x3,%rax                      //pml4e属性
-    movq     %r9,%rcx
-init_tmp_pml4t:
-    addq     $0x1000,%rax
     movq     %rax,(%rdi)
     movq     %rax,0x800(%rdi)
-    addq     $8,%rdi
-    loopq    init_tmp_pml4t
+    movq     %rax,0xFF8(%rdi)
 
-    movq     %r8,%rdi
-    addq     $0x1000,%rdi        //pdptt起始地址
-    movq     $0x83,%rax          //物理地址0开始对等映射
-    movq     %r9,%rcx
-    shlq     $9,%rcx             //pml4e*512
+    leaq     tmp_pdpt(%rip),%rdi     //初始化pdpt
+    movq     $0x83,%rax              //物理地址0开始对等映射
+    movq     $512,%rcx
 init_tmp_pdptt:
     stosq
     addq     $0x40000000,%rax
     loopq    init_tmp_pdptt
-    movq     %r8,%cr3            //启用临时页表
+
+    leaq     tmp_pml4t(%rip),%rax
+    movq     %rax,%cr3               //启用临时页表
 /************************************************************/
 
     leaq     _end_stack(%rip),%rsp
@@ -46,7 +40,6 @@ init_tmp_pdptt:
     leaq     init_kernel(%rip),%rax
     movabs   $KERNEL_OFFSET,%rbx
     orq      %rbx,%rax
-    jmp .
     jmp      *%rax           //切换到0xFFFFFFFF80000000内核空间，进入C语言init_kernel
 
 /**********************内核初始化数据**************************/
@@ -55,8 +48,7 @@ init_tmp_pdptt:
     .balign 4096
     .globl  tmp_pml4t
     tmp_pml4t:  .fill   0x1000,1,0
-    tmp_pdpt0:  .fill   0x1000,1,0
-    tmp_pdpt1:  .fill   0x1000,1,0
+    tmp_pdpt:  .fill   0x1000,1,0
 
     .globl kernel_stack_top
     kernel_stack_top:   .quad   0
