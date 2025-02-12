@@ -3,13 +3,14 @@
 #include "moslib.h"
 #include "linkage.h"
 
+#define DIRECT_MAP_OFFSET 0xFFFF800000000000UL
 #define PAGE_4K_SHIFT    12
 #define PAGE_4K_SIZE    (1UL << PAGE_4K_SHIFT)
 #define PAGE_4K_MASK    (~(PAGE_4K_SIZE - 1))
 #define PAGE_4K_ALIGN(ADDR)    (((UINT64)(ADDR) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
 
-#define VA_TO_PA(ADDR)    ((UINT64)(ADDR) & (~KERNEL_OFFSET))
-#define PA_TO_VA(ADDR)    ((UINT64)((UINT64)(ADDR) | KERNEL_OFFSET))
+#define VA_TO_PA(ADDR)    ((UINT64)(ADDR) & (~DIRECT_MAP_OFFSET))
+#define PA_TO_VA(ADDR)    ((UINT64)((UINT64)(ADDR) | DIRECT_MAP_OFFSET))
 
 typedef struct{
     UINT64 address;
