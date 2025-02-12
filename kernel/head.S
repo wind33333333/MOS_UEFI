@@ -51,7 +51,7 @@ init_tmp_pdptt0:
     movq     $0xFFFFFFFFC0000000,%rbx
     andq     %rbx,%rax
     orq      $0x83,%rax
-    movq     %rax,(%rdi,%rsi)
+    movq     %rax,(%rdi,%rsi)       //内核占2G虚拟内存
     addq     $0x40000000,%rax
     movq     %rax,8(%rdi,%rsi)
 
