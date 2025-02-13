@@ -131,9 +131,10 @@ INIT_TEXT void *memblock_vmmap(UINT64 phy_addr, void *virt_addr, UINT64 page_cou
 }
 
 //物理内存映射虚拟内存,如果虚拟地址已被占用则从后面的虚拟内存中找一块可用空间挂载物理内存，并返回更新后的虚拟地址。
-INIT_TEXT void memblock_vmmap1(UINT64 phy_addr, void *virt_addr, UINT64 *pml4t, UINT64 length, UINT64 attr) {
+INIT_TEXT void memblock_vmmap1(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
+    pml4t = PA_TO_VA(pml4t);
     for (UINT64 i = PAGE_4K_ALIGN(length) >> PAGE_4K_SHIFT; i > 0; i--) {
         index = get_pml4e_index(virt_addr);
         if (pml4t[index] == 0) {
@@ -166,9 +167,10 @@ INIT_TEXT void memblock_vmmap1(UINT64 phy_addr, void *virt_addr, UINT64 *pml4t, 
     }
 }
 
-INIT_TEXT void memblock_vmmap_big(UINT64 phy_addr, void *virt_addr, UINT64 *pml4t, UINT64 length, UINT64 attr) {
+INIT_TEXT void memblock_vmmap_big(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr) {
     UINT64 *pdptt, *pdt;
     UINT32 index;
+    pml4t = PA_TO_VA(pml4t);
     for (UINT64 i = PAGE_2M_ALIGN(length) >> PAGE_4K_SHIFT; i > 0; i--) {
         index = get_pml4e_index(virt_addr);
         if (pml4t[index] == 0) {
@@ -194,9 +196,10 @@ INIT_TEXT void memblock_vmmap_big(UINT64 phy_addr, void *virt_addr, UINT64 *pml4
     }
 }
 
-INIT_TEXT void memblock_vmmap_huge(UINT64 phy_addr, void *virt_addr, UINT64 *pml4t, UINT64 length, UINT64 attr) {
+INIT_TEXT void memblock_vmmap_huge(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr) {
     UINT64 *pdptt;
     UINT32 index;
+    pml4t = PA_TO_VA(pml4t);
     for (UINT64 i = PAGE_1G_ALIGN(length) >> PAGE_1G_SHIFT; i > 0; i--) {
         index = get_pml4e_index(virt_addr);
         if (pml4t[index] == 0) {
