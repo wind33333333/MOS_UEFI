@@ -158,7 +158,7 @@ INIT_TEXT void memblock_vmmap1(UINT64 phy_addr, void *virt_addr, UINT64 *pml4t, 
 
         ptt = PA_TO_VA(pdt[pde_index]&0x7FFFFFFFF000);
         if (ptt[pte_index] == 0) {
-            ptt[pte_index] == phy_addr | attr;
+            ptt[pte_index] = phy_addr | attr;
         }
 
         phy_addr += PAGE_4K_SIZE;
