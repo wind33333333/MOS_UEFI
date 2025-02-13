@@ -14,7 +14,7 @@ INIT_TEXT void init_kpage_table(void) {
     //直接映射区
     memblock_vmmap_huge(kpml4t_ptr, 0,DIRECT_MAP_OFFSET,
                         memblock.memory.region[memblock.memory.count - 1].base + memblock.memory.region[
-                            memblock.memory.count - 1].size,PAGE_ROOT_RW);
+                            memblock.memory.count - 1].size,PAGE_ROOT_RW_2M1G);
     //.init_text-.init_data 可读写执行
     memblock_vmmap1(kpml4t_ptr,_start_init_text-KERNEL_OFFSET, _start_init_text, _start_text - _start_init_text,
                     PAGE_ROOT_RWX);
