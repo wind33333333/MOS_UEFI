@@ -188,7 +188,7 @@ INIT_TEXT void memblock_vmmap_big(UINT64 *pml4t, UINT64 phy_addr, void *virt_add
         pdt = PA_TO_VA(pdptt[index]&0x7FFFFFFFF000);
         index = get_pde_index(virt_addr);
         if (pdt[index] == 0) {
-            pdt[index] = phy_addr | attr;
+            pdt[index] = phy_addr | attr | 0x80;
         }
 
         phy_addr += PAGE_2M_SIZE;
@@ -210,7 +210,7 @@ INIT_TEXT void memblock_vmmap_huge(UINT64 *pml4t, UINT64 phy_addr, void *virt_ad
         pdptt = PA_TO_VA(pml4t[index]&0x7FFFFFFFF000);
         index = get_pdpte_index(virt_addr);
         if (pdptt[index] == 0) {
-            pdptt[index] = phy_addr | attr;
+            pdptt[index] = phy_addr | attr | 0x80;
         }
 
         phy_addr += PAGE_1G_SIZE;
