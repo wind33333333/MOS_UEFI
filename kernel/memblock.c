@@ -179,6 +179,7 @@ INIT_TEXT void memblock_vmmap_2m(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr
         if (pml4t[index] == 0) {
             pml4t[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                                      attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+            mem_set(PA_TO_VA(pml4t[index]&0x7FFFFFFFF000),0,PAGE_4K_SIZE);
         }
 
         pdptt = PA_TO_VA(pml4t[index]&0x7FFFFFFFF000);
@@ -186,6 +187,7 @@ INIT_TEXT void memblock_vmmap_2m(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr
         if (pdptt[index] == 0) {
             pdptt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                                      attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+            mem_set(PA_TO_VA(pdptt[index]&0x7FFFFFFFF000),0,PAGE_4K_SIZE);
         }
 
         pdt = PA_TO_VA(pdptt[index]&0x7FFFFFFFF000);
@@ -208,6 +210,7 @@ INIT_TEXT void memblock_vmmap_1g(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr
         if (pml4t[index] == 0) {
             pml4t[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                                      attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+            mem_set(PA_TO_VA(pml4t[index]&0x7FFFFFFFF000),0,PAGE_4K_SIZE);
         }
 
         pdptt = PA_TO_VA(pml4t[index]&0x7FFFFFFFF000);
