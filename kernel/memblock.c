@@ -54,11 +54,11 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
                     memblock.memory.region[j] = memblock.memory.region[j + 1];
                 }
                 memblock.memory.count--;
-            }else if (align_base == memblock.memory.region[i].base) {
+            } else if (align_base == memblock.memory.region[i].base) {
                 //如果对齐后地址相等且长度小于这则修正当前的块起始地址和长度
                 memblock.memory.region[i].base += align_size;
                 memblock.memory.region[i].size -= align_size;
-            }else if (align_base != memblock.memory.region[i].base) {
+            } else if (align_base != memblock.memory.region[i].base) {
                 //如果对齐地址不相等但是长度小于先拆分块再分配，向后移动数组和数组加一
                 for (UINT32 j = memblock.memory.count; j > i; j--) {
                     memblock.memory.region[j] = memblock.memory.region[j - 1];
@@ -67,9 +67,8 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
                 memblock.memory.region[i + 1].size -= align_size;
                 memblock.memory.region[i].size = align_base - memblock.memory.region[i].base;
                 memblock.memory.count++;
-
             }
-            return (void*)align_base;
+            return (void *) align_base;
         }
     }
     return NULL;
@@ -88,7 +87,8 @@ INIT_TEXT void *memblock_vmmap(UINT64 phy_addr, void *virt_addr, UINT64 page_cou
         count = calculate_pml4e_count(virt_addr, page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pml4e_vaddr[i] == 0) {
-                pml4e_vaddr[i] = (UINT64)memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+                pml4e_vaddr[i] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+                                     attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
                 //pml4e属性设置为可读可写，其余位保持默认。
                 mem_set((void *) ((UINT64) pdpte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
@@ -98,7 +98,8 @@ INIT_TEXT void *memblock_vmmap(UINT64 phy_addr, void *virt_addr, UINT64 page_cou
         count = calculate_pdpte_count(virt_addr, page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pdpte_vaddr[i] == 0) {
-                pdpte_vaddr[i] = (UINT64)memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+                pdpte_vaddr[i] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+                                     attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
                 //pdpte属性设置为可读可写，其余位保持默认。
                 mem_set((void *) ((UINT64) pde_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
@@ -108,7 +109,8 @@ INIT_TEXT void *memblock_vmmap(UINT64 phy_addr, void *virt_addr, UINT64 page_cou
         count = calculate_pde_count(virt_addr, page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pde_vaddr[i] == 0) {
-                pde_vaddr[i] = (UINT64)memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW); //pde属性设置为可读可写，其余位保持默认。
+                pde_vaddr[i] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+                                   attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW); //pde属性设置为可读可写，其余位保持默认。
                 mem_set((void *) ((UINT64) pte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
         }
@@ -125,5 +127,42 @@ INIT_TEXT void *memblock_vmmap(UINT64 phy_addr, void *virt_addr, UINT64 page_cou
         } else {
             virt_addr = (void *) ((UINT64) virt_addr + (count << PAGE_4K_SHIFT));
         }
+    }
+}
+
+//物理内存映射虚拟内存,如果虚拟地址已被占用则从后面的虚拟内存中找一块可用空间挂载物理内存，并返回更新后的虚拟地址。
+INIT_TEXT void memblock_vmmap1(UINT64 phy_addr, void *virt_addr, UINT64 *pml4t, UINT64 page_count, UINT64 attr) {
+    UINT64 *pdptt, *pdt, *ptt;
+    while (page_count > 0) {
+        UINT64 pml4e_index = (UINT64) virt_addr >> 39 & 0x1ff;
+        UINT64 pdpte_index = (UINT64) virt_addr >> 30 & 0x1ff;
+        UINT64 pde_index = (UINT64) virt_addr >> 21 & 0x1ff;
+        UINT64 pte_index = (UINT64) virt_addr >> 12 & 0x1ff;
+
+        if (pml4t[pml4e_index] == 0) {
+            pml4t[pml4e_index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+                                     attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+        }
+
+        pdptt = PA_TO_VA(pml4t[pml4e_index]&0x7FFFFFFFF000);
+        if (pdptt[pdpte_index] == 0) {
+            pdptt[pdpte_index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+                                     attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+        }
+
+        pdt = PA_TO_VA(pdptt[pdpte_index]&0x7FFFFFFFF000);
+        if (pdt[pde_index] == 0) {
+            pdt[pde_index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+                                 attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+        }
+
+        ptt = PA_TO_VA(pdt[pde_index]&0x7FFFFFFFF000);
+        if (ptt[pte_index] == 0) {
+            ptt[pte_index] == phy_addr | attr;
+        }
+
+        phy_addr += PAGE_4K_SIZE;
+        virt_addr += PAGE_4K_SIZE;
+        page_count--;
     }
 }
