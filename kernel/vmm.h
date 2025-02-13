@@ -50,6 +50,8 @@ extern global_memory_descriptor_t memory_management;
 
 #define PAGE_NX     1UL<<63
 #define PAGE_G      1UL<<8
+#define PAGE_PS     1UL<<7
+#define PAGE_PAT_2M1G   1UL<<12
 #define PAGE_PAT    1UL<<7
 #define PAGE_D      1UL<<6
 #define PAGE_A      1UL<<5
