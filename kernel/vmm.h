@@ -51,7 +51,6 @@ extern global_memory_descriptor_t memory_management;
 #define PAGE_NX     1UL<<63
 #define PAGE_G      1UL<<8
 #define PAGE_PS     1UL<<7
-#define PAGE_PAT_2M1G   1UL<<12
 #define PAGE_PAT    1UL<<7
 #define PAGE_D      1UL<<6
 #define PAGE_A      1UL<<5
@@ -61,12 +60,12 @@ extern global_memory_descriptor_t memory_management;
 #define PAGE_RW     1UL<<1
 #define PAGE_P      1UL<<0
 
-#define PAGE_WB     0                               //回写
-#define PAGE_WT     (PAGE_PWT)                      //写通
-#define PAGE_UC_    (PAGE_PCD)                      //部分不可缓存
-#define PAGE_UC     (PAGE_PCD | PAGE_PWT)           //不可缓存，要求严格顺序的内存映射 I/O
-#define PAGE_WC     (PAGE_PAT)                      //写合并，聚合写入操作，优化写入性能 适合视频内存等批量写入场景
-#define PAGE_WP     (PAGE_PAT|PAGE_PWT)             //读操作先访问缓存，写操作扩散到所有处理器
+#define PAGE_WB     0                         //回写普通内存
+#define PAGE_UC     PAGE_PWT                  //不可缓存，要求严格顺序的内存映射 I/O
+#define PAGE_WC     PAGE_PCD                  //写合并，聚合写入操作，优化写入性能 适合视频内存等批量写入场景
+#define PAGE_WT     (PAGE_PWT|PAGE_PCD)       //写通
+#define PAGE_WP     PAGE_PAT                  //读操作先访问缓存，写操作扩散到所有处理器
+#define PAGE_UC_    (PAGE_PWT|PAGE_PAT)       //部分不可缓存
 
 #define PAGE_ROOT_RWX    (PAGE_G | PAGE_RW |PAGE_P | PAGE_WB)             //可读-可写-可执行
 #define PAGE_ROOT_RX     (PAGE_G | PAGE_P | PAGE_WB)                      //可读-可执行

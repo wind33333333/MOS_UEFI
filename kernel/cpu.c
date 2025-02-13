@@ -164,7 +164,7 @@ INIT_TEXT void init_cpu_amode(void){
     //0x6: WB（Write Back，回写）
     //0x7: UC-（Uncacheable，不缓存，弱UC）
     //endregion
-    wrmsr(IA32_PAT_MSR,0x050100070406);0x070504010006
+    wrmsr(IA32_PAT_MSR,0x070504010006);
 }
 
 
