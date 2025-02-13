@@ -8,6 +8,16 @@
 #define PAGE_4K_MASK    (~(PAGE_4K_SIZE - 1))
 #define PAGE_4K_ALIGN(ADDR)    (((UINT64)(ADDR) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
 
+#define PAGE_2M_SHIFT    21
+#define PAGE_2M_SIZE    (1UL << PAGE_2M_SHIFT)
+#define PAGE_2M_MASK    (~(PAGE_2M_SIZE - 1))
+#define PAGE_2M_ALIGN(ADDR)     (((UINT64)(ADDR) + PAGE_2M_SIZE - 1) & PAGE_2M_MASK)
+
+#define PAGE_1G_SHIFT    30
+#define PAGE_1G_SIZE    (1UL << PAGE_1G_SHIFT)
+#define PAGE_1G_MASK    (~(PAGE_1G_SIZE - 1))
+#define PAGE_1G_ALIGN(ADDR)     (((UINT64)(ADDR) + PAGE_1G_SIZE - 1) & PAGE_1G_MASK)
+
 #define VA_TO_PA(ADDR)    ((UINT64)(ADDR) & (~DIRECT_MAP_OFFSET))
 #define PA_TO_VA(ADDR)    ((UINT64)((UINT64)(ADDR) | DIRECT_MAP_OFFSET))
 

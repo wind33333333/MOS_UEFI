@@ -134,7 +134,7 @@ INIT_TEXT void *memblock_vmmap(UINT64 phy_addr, void *virt_addr, UINT64 page_cou
 INIT_TEXT void memblock_vmmap1(UINT64 phy_addr, void *virt_addr, UINT64 *pml4t, UINT64 length, UINT64 attr) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
-    for (UINT64 i = length+(PAGE_4K_SIZE-1) >> PAGE_4K_SHIFT; i > 0; i--) {
+    for (UINT64 i = PAGE_4K_ALIGN(length) >> PAGE_4K_SHIFT; i > 0; i--) {
         index = get_pml4e_index(virt_addr);
         if (pml4t[index] == 0) {
             pml4t[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
@@ -163,5 +163,54 @@ INIT_TEXT void memblock_vmmap1(UINT64 phy_addr, void *virt_addr, UINT64 *pml4t, 
 
         phy_addr += PAGE_4K_SIZE;
         virt_addr += PAGE_4K_SIZE;
+    }
+}
+
+INIT_TEXT void memblock_vmmap_big(UINT64 phy_addr, void *virt_addr, UINT64 *pml4t, UINT64 length, UINT64 attr) {
+    UINT64 *pdptt, *pdt;
+    UINT32 index;
+    for (UINT64 i = PAGE_2M_ALIGN(length) >> PAGE_4K_SHIFT; i > 0; i--) {
+        index = get_pml4e_index(virt_addr);
+        if (pml4t[index] == 0) {
+            pml4t[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+                                     attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+        }
+
+        pdptt = PA_TO_VA(pml4t[index]&0x7FFFFFFFF000);
+        index = get_pdpte_index(virt_addr);
+        if (pdptt[index] == 0) {
+            pdptt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+                                     attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+        }
+
+        pdt = PA_TO_VA(pdptt[index]&0x7FFFFFFFF000);
+        index = get_pde_index(virt_addr);
+        if (pdt[index] == 0) {
+            pdt[index] = phy_addr | attr;
+        }
+
+        phy_addr += PAGE_2M_SIZE;
+        virt_addr += PAGE_2M_SIZE;
+    }
+}
+
+INIT_TEXT void memblock_vmmap_huge(UINT64 phy_addr, void *virt_addr, UINT64 *pml4t, UINT64 length, UINT64 attr) {
+    UINT64 *pdptt;
+    UINT32 index;
+    for (UINT64 i = PAGE_1G_ALIGN(length) >> PAGE_1G_SHIFT; i > 0; i--) {
+        index = get_pml4e_index(virt_addr);
+        if (pml4t[index] == 0) {
+            pml4t[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+                                     attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+        }
+
+        pdptt = PA_TO_VA(pml4t[index]&0x7FFFFFFFF000);
+        index = get_pdpte_index(virt_addr);
+        if (pdptt[index] == 0) {
+            pdptt[index] = phy_addr | attr;
+        }
+
+        phy_addr += PAGE_1G_SIZE;
+        virt_addr += PAGE_1G_SIZE;
     }
 }
