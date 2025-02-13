@@ -155,7 +155,7 @@ INIT_TEXT void init_cpu_amode(void){
     //region IA32_PAT_MSR(0x277) 内存缓存模式配置寄存器
     //IA32_PAT是一个64位寄存器，其中包含8个8位的字段，每个字段定义一种缓存类型。格式如下：
     //PAT7[bit56-bit63] PAT6[bit48-bit55] PAT5[bit40-bit47]	PAT4[bit32-bit39]
-    //PAT3[bit24-bit31]	PAT2[bit16-bit23] PAT1[bit0-bit15] PAT0[bit0-bit7]
+    //PAT3[bit24-bit31]	PAT2[bit16-bit23] PAT1[bit8-bit15] PAT0[bit0-bit7]
     //每个字段的值定义以下缓存策略：
     //0x0: UC（Uncacheable，不缓存）
     //0x1: WC（Write Combining，写合并）
@@ -164,7 +164,7 @@ INIT_TEXT void init_cpu_amode(void){
     //0x6: WB（Write Back，回写）
     //0x7: UC-（Uncacheable，不缓存，弱UC）
     //endregion
-    wrmsr(IA32_PAT_MSR,0x050100070406);
+    wrmsr(IA32_PAT_MSR,0x050100070406);0x070504010006
 }
 
 
