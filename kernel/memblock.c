@@ -133,7 +133,7 @@ INIT_TEXT void *memblock_vmmap(UINT64 phy_addr, void *virt_addr, UINT64 page_cou
 //物理内存映射虚拟内存,如果虚拟地址已被占用则从后面的虚拟内存中找一块可用空间挂载物理内存，并返回更新后的虚拟地址。
 INIT_TEXT void memblock_vmmap1(UINT64 phy_addr, void *virt_addr, UINT64 *pml4t, UINT64 length, UINT64 attr) {
     UINT64 *pdptt, *pdt, *ptt;
-    UINT64 count = length+(PAGE_4K_SIZE-1) >> PAGE_4K_SHIFT;
+    UINT64 count = length+(PAGE_4K_SIZE-1) >> PAGE_4K_SHIFT; //把长度向上对齐4K
     UINT32 index;
     while (count > 0) {
         index = get_pml4e_index(virt_addr);
@@ -164,6 +164,6 @@ INIT_TEXT void memblock_vmmap1(UINT64 phy_addr, void *virt_addr, UINT64 *pml4t, 
 
         phy_addr += PAGE_4K_SIZE;
         virt_addr += PAGE_4K_SIZE;
-        page_count--;
+        count--;
     }
 }
