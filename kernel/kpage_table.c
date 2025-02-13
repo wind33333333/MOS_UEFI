@@ -11,7 +11,7 @@ INIT_TEXT void init_kpage_table(void) {
     kpml4t_ptr = memblock_alloc(PAGE_4K_SIZE, PAGE_4K_SIZE);
     mem_set(kpml4t_ptr, 0, PAGE_4K_SIZE);
 
-    memblock_vmmap1(0,0xFFFF800000000000,PA_TO_VA(kpml4t_ptr),0x8000000000>>PAGE_4K_SHIFT,PAGE_ROOT_RWX);
+    memblock_vmmap1(0,0xFFFF807FFFFFF000,PA_TO_VA(kpml4t_ptr),2,PAGE_ROOT_RWX);
 
 
     //.init_text-.init_data 可读写执行

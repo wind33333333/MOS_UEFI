@@ -115,6 +115,37 @@ static inline void revise_pages(void *virt_addr,UINT64 value){
     *pte_addr=value;
 }
 
+////////////////////////////////////////////////////////////
+#define PML4E_SHIFT 39  // PML4E 索引的位移量
+#define PDPTE_SHIFT 30  // PDPTE 索引的位移量
+#define PDE_SHIFT 21    // PDE 索引的位移量
+#define PTE_SHIFT 12    // PTE 索引的位移量
+
+// 计算 PML4E 索引
+static inline UINT32 get_pml4e_index(void *virt_addr)
+{
+    return ((UINT64)virt_addr >> PML4E_SHIFT) & 0x1FF;
+}
+
+// 计算 PDPTE 索引
+static inline UINT32 get_pdpte_index(void *virt_addr)
+{
+    return ((UINT64)virt_addr >> PDPTE_SHIFT) & 0x1FF;
+}
+
+// 计算 PDE 索引
+static inline UINT32 get_pde_index(void *virt_addr)
+{
+    return ((UINT64)virt_addr >> PDE_SHIFT) & 0x1FF;
+}
+
+// 计算 PTE 索引
+static inline UINT32 get_pte_index(void *virt_addr)
+{
+    return ((UINT64)virt_addr >> PTE_SHIFT) & 0x1FF;
+}
+
+
 void *mmap(UINT64 phy_addr, void *virt_addr, UINT64 page_count,UINT64 attr);
 void munmap(void *virt_addr, UINT64 page_count);
 
