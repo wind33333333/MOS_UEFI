@@ -34,7 +34,7 @@ _start:
     movq     %rax,(%rdi,%rsi)       //内核映射区pml4e
 
     leaq     tmp_pdpt0(%rip),%rdi    //初始化直接映射区pdpt
-    movq     $0x83,%rax
+    movq     $0x183,%rax
     movq     $512,%rcx
 init_tmp_pdptt0:
     stosq
@@ -50,7 +50,7 @@ init_tmp_pdptt0:
     leaq     _start(%rip),%rax
     movq     $0xFFFFFFFFC0000000,%rbx
     andq     %rbx,%rax
-    orq      $0x83,%rax
+    orq      $0x183,%rax
     movq     %rax,(%rdi,%rsi)       //内核占2G虚拟内存
     addq     $0x40000000,%rax
     movq     %rax,8(%rdi,%rsi)
