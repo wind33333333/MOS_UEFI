@@ -131,34 +131,35 @@ INIT_TEXT void *memblock_vmmap(UINT64 phy_addr, void *virt_addr, UINT64 page_cou
 }
 
 //物理内存映射虚拟内存,如果虚拟地址已被占用则从后面的虚拟内存中找一块可用空间挂载物理内存，并返回更新后的虚拟地址。
-INIT_TEXT void memblock_vmmap1(UINT64 phy_addr, void *virt_addr, UINT64 *pml4t, UINT64 page_count, UINT64 attr) {
+INIT_TEXT void memblock_vmmap1(UINT64 phy_addr, void *virt_addr, UINT64 *pml4t, UINT64 length, UINT64 attr) {
     UINT64 *pdptt, *pdt, *ptt;
-    while (page_count > 0) {
-        UINT64 pml4e_index = (UINT64) virt_addr >> 39 & 0x1ff;
-        UINT64 pdpte_index = (UINT64) virt_addr >> 30 & 0x1ff;
-        UINT64 pde_index = (UINT64) virt_addr >> 21 & 0x1ff;
-        UINT64 pte_index = (UINT64) virt_addr >> 12 & 0x1ff;
-
-        if (pml4t[pml4e_index] == 0) {
-            pml4t[pml4e_index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+    UINT64 count = length+(PAGE_4K_SIZE-1) >> PAGE_4K_SHIFT;
+    UINT32 index;
+    while (count > 0) {
+        index = get_pml4e_index(virt_addr);
+        if (pml4t[index] == 0) {
+            pml4t[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                                      attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
         }
 
-        pdptt = PA_TO_VA(pml4t[pml4e_index]&0x7FFFFFFFF000);
-        if (pdptt[pdpte_index] == 0) {
-            pdptt[pdpte_index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+        pdptt = PA_TO_VA(pml4t[index]&0x7FFFFFFFF000);
+        index = get_pdpte_index(virt_addr);
+        if (pdptt[index] == 0) {
+            pdptt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                                      attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
         }
 
-        pdt = PA_TO_VA(pdptt[pdpte_index]&0x7FFFFFFFF000);
-        if (pdt[pde_index] == 0) {
-            pdt[pde_index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+        pdt = PA_TO_VA(pdptt[index]&0x7FFFFFFFF000);
+        index = get_pde_index(virt_addr);
+        if (pdt[index] == 0) {
+            pdt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                                  attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
         }
 
-        ptt = PA_TO_VA(pdt[pde_index]&0x7FFFFFFFF000);
-        if (ptt[pte_index] == 0) {
-            ptt[pte_index] = phy_addr | attr;
+        ptt = PA_TO_VA(pdt[index]&0x7FFFFFFFF000);
+        index = get_pte_index(virt_addr);
+        if (ptt[index] == 0) {
+            ptt[index] = phy_addr | attr;
         }
 
         phy_addr += PAGE_4K_SIZE;
