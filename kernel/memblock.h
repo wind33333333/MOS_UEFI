@@ -29,9 +29,9 @@ extern memblock_t memblock;
 void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 size);
 void *memblock_alloc(UINT64 size, UINT64 align);
 void *memblock_vmmap(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr);
-void memblock_vmmap1(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr);
-void memblock_vmmap_big(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr);
-void memblock_vmmap_huge(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr);
+void memblock_vmmap_4k(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr);
+void memblock_vmmap_2m(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr);
+void memblock_vmmap_1g(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr);
 void init_memblock(void);
 
 #endif
