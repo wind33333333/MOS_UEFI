@@ -94,7 +94,7 @@ extern global_memory_descriptor_t memory_management;
 #define PAGE_USER_RX     (PAGE_US | PAGE_P | PAGE_WB)                        //可读可执行
 #define PAGE_USER_RWX    (PAGE_US | PAGE_RW | PAGE_P | PAGE_WB)              //可读可写可执行
 
-
+/////////////////////////////////////////////////////////////////////
 //虚拟地址转换pte虚拟地址
 static inline void *vaddr_to_pte_vaddr(void *virt_addr){
     return (void*)(~(~(UINT64)virt_addr<<16>>28)<<3);
