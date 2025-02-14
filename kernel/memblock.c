@@ -174,7 +174,7 @@ INIT_TEXT void memblock_vmmap_2m(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr
     UINT64 *pdptt, *pdt;
     UINT32 index;
     pml4t = PA_TO_VA(pml4t);
-    for (UINT64 i = PAGE_2M_ALIGN(length) >> PAGE_4K_SHIFT; i > 0; i--) {
+    for (UINT64 i = PAGE_2M_ALIGN(length) >> PAGE_2M_SHIFT; i > 0; i--) {
         index = get_pml4e_index(virt_addr);
         if (pml4t[index] == 0) {
             pml4t[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
