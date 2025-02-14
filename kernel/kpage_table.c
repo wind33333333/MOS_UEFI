@@ -1,7 +1,4 @@
 #include "kpage_table.h"
-
-#include "apic.h"
-#include "printk.h"
 #include "memblock.h"
 #include "vmm.h"
 
