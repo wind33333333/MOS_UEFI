@@ -344,7 +344,7 @@ INIT_TEXT void init_output(void) {
         Pos.XCharSize = 8;
         Pos.YCharSize = 16;
 
-        Pos.FB_addr = (UINT32*)memblock_vmmap(boot_info->frame_buffer_base,PA_TO_VA(boot_info->frame_buffer_base), PAGE_4K_ALIGN(boot_info->frame_buffer_size)>>PAGE_4K_SHIFT,PAGE_ROOT_RW_WC);;
+        Pos.FB_addr = (UINT32*)memblock_vmmap_xx(boot_info->frame_buffer_base,PA_TO_VA(boot_info->frame_buffer_base), PAGE_4K_ALIGN(boot_info->frame_buffer_size)>>PAGE_4K_SHIFT,PAGE_ROOT_RW_WC);;
         Pos.FB_length = boot_info->frame_buffer_size;
         Pos.lock = 0;
 

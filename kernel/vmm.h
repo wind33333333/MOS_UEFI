@@ -49,8 +49,9 @@ typedef struct {
 extern global_memory_descriptor_t memory_management;
 
 #define PAGE_NX     1UL<<63
+#define PAGE_1G     1UL<<9      //该位置为表示1G
 #define PAGE_G      1UL<<8
-#define PAGE_PS     1UL<<7
+#define PAGE_PS     1UL<<7      //ps位置位表示2M页或者1G页
 #define PAGE_PAT    1UL<<7
 #define PAGE_D      1UL<<6
 #define PAGE_A      1UL<<5
@@ -85,6 +86,7 @@ extern global_memory_descriptor_t memory_management;
 #define PAGE_USER_RW     (PAGE_NX | PAGE_US | PAGE_RW | PAGE_P | PAGE_WB)    //可读可写
 #define PAGE_USER_RX     (PAGE_US | PAGE_P | PAGE_WB)                        //可读可执行
 #define PAGE_USER_RWX    (PAGE_US | PAGE_RW | PAGE_P | PAGE_WB)              //可读可写可执行
+
 
 //虚拟地址转换pte虚拟地址
 static inline void *vaddr_to_pte_vaddr(void *virt_addr){
