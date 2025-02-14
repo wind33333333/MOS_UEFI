@@ -332,6 +332,7 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
 char buf[4096];
 
 INIT_TEXT void init_output(void) {
+    boot_info=PA_TO_VA(boot_info);
     Pos.XResolution = boot_info->horizontal_resolution;
     Pos.YResolution = boot_info->vertical_resolution;
     Pos.PixelsPerScanLine = boot_info->pixels_per_scan_line;
@@ -343,7 +344,7 @@ INIT_TEXT void init_output(void) {
     Pos.YCharSize = 16;
 
     Pos.FB_addr = PA_TO_VA(boot_info->frame_buffer_base);
-    memblock_vmmap(kpml4t_ptr, boot_info->frame_buffer_base,PA_TO_VA(boot_info->frame_buffer_base),
+    memblock_vmmap(kpml4t_ptr, boot_info->frame_buffer_base,Pos.FB_addr,
                    PAGE_4K_ALIGN(boot_info->frame_buffer_size),PAGE_ROOT_RW_WC_4K);
     Pos.FB_length = boot_info->frame_buffer_size;
     Pos.lock = 0;
