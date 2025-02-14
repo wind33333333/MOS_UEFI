@@ -8,6 +8,7 @@
 #include "hpet.h"
 #include "kpage_table.h"
 #include "memblock.h"
+#include "vmm.h"
 
 INIT_TEXT void init_kernel(void) {
     mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
@@ -17,7 +18,7 @@ INIT_TEXT void init_kernel(void) {
     init_buddy_system();                       //初始化伙伴系统
     init_slub();                               //初始化slub内存分配器
 
-
+    __vmmap
 
 
     while (TRUE);

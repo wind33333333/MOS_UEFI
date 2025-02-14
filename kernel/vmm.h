@@ -186,5 +186,8 @@ void bitmap_free_pages(UINT64 phy_addr, UINT64 page_count);
 void *bitmap_map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr);
 void bitmap_unmap_pages(void *virt_addr, UINT64 page_count);
 
+void __vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 attr);
+void __vmunmap(UINT64 *pml4t, void *virt_addr);
+
 
 #endif

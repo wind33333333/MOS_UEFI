@@ -4,7 +4,7 @@
 
 #include "buddy_system.h"
 
-INIT_TEXT void __vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 attr) {
+void __vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 attr) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
     UINT64 page_size = attr >> 7 & 5; //取attr中的第7位和第9位 0=4K 1=2M 5=1G
