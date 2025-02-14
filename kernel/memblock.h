@@ -1,7 +1,6 @@
 #ifndef __MEMBLOCK_H__
 #define __MEMBLOCK_H__
 #include "moslib.h"
-#include "vmm.h"
 
 #define MAX_MEMBLOCK 128
 
