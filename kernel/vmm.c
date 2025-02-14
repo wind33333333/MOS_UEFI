@@ -1,56 +1,90 @@
 #include "vmm.h"
+
+#include <strings.h>
+
 #include "buddy_system.h"
 
-//物理内存映射虚拟内存,如果虚拟地址已被占用则从后面的虚拟内存中找一块可用空间挂载物理内存，并返回更新后的虚拟地址。
-void *mmap(UINT64 phy_addr, void *virt_addr, UINT64 page_count,UINT64 attr) {
-    while (TRUE) {
-        UINT64 *pte_vaddr = vaddr_to_pte_vaddr(virt_addr);
-        UINT64 *pde_vaddr = vaddr_to_pde_vaddr(virt_addr);
-        UINT64 *pdpte_vaddr = vaddr_to_pdpte_vaddr(virt_addr);
-        UINT64 *pml4e_vaddr = vaddr_to_pml4e_vaddr(virt_addr);
-        UINT64 count;
+INIT_TEXT void __vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 attr) {
+    UINT64 *pdptt, *pdt, *ptt;
+    UINT32 index;
+    UINT64 page_size = attr >> 7 & 5; //取attr中的第7位和第9位 0=4K 1=2M 5=1G
+    pml4t = pa_to_va(pml4t);
 
-        //pml4e为空则挂载物理页
-        count = calculate_pml4e_count(virt_addr, page_count);
-        for (UINT64 i = 0; i < count; i++) {
-            if (pml4e_vaddr[i] == 0) {
-                pml4e_vaddr[i] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-                mem_set((void *) ((UINT64) pdpte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
-            }
-        }
+    index = get_pml4e_index(virt_addr);
+    if (pml4t[index] == 0) {
+        pml4t[index] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+        mem_set(pa_to_va(pml4t[index]&0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
+    }
 
-        //PDPE为空则挂载物理页
-        count = calculate_pdpte_count(virt_addr, page_count);
-        for (UINT64 i = 0; i < count; i++) {
-            if (pdpte_vaddr[i] == 0) {
-                pdpte_vaddr[i] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-                mem_set((void *) ((UINT64) pde_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
-            }
-        }
+    pdptt = pa_to_va(pml4t[index]&0x7FFFFFFFF000);
+    index = get_pdpte_index(virt_addr);
+    if (pdptt[index] == 0 && page_size == 5) {  //1G页
+        pdptt[index] = phy_addr | attr;
+        return;
+    }
 
-        //PDE为空则挂载物理页
-        count = calculate_pde_count(virt_addr, page_count);
-        for (UINT64 i = 0; i < count; i++) {
-            if (pde_vaddr[i] == 0) {
-                pde_vaddr[i] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-                mem_set((void *) ((UINT64) pte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
-            }
-        }
+    if (pdptt[index] == 0) {
+        pdptt[index] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+        mem_set(pa_to_va(pdptt[index]&0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
+    }
 
-        //如果虚拟地址被占用，则从后面找一块可用的虚拟地址挂载，并返回更新后的虚拟地址。
-        count = reverse_find_qword(pte_vaddr, page_count, 0);
-        if (count == 0) {
-            //PTE挂载物理页，刷新TLB
-            for (UINT64 i = 0; i < page_count; i++) {
-                pte_vaddr[i] = phy_addr + (i << PAGE_4K_SHIFT) | attr;
-                invlpg((void *) ((UINT64) virt_addr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT));
-            }
-            return virt_addr;
-        } else {
-            virt_addr = (void *) ((UINT64) virt_addr + (count << PAGE_4K_SHIFT));
-        }
+    pdt = pa_to_va(pdptt[index]&0x7FFFFFFFF000);
+    index = get_pde_index(virt_addr);
+    if (pdt[index] == 0 && page_size == 1) {
+        pdt[index] = phy_addr | attr;
+        return;
+    }
+
+    if (pdt[index] == 0) {
+        pdt[index] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+        mem_set(pa_to_va(pdt[index]&0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
+    }
+
+    ptt = pa_to_va(pdt[index]&0x7FFFFFFFF000);
+    index = get_pte_index(virt_addr);
+    if (ptt[index] == 0) {
+        ptt[index] = phy_addr | attr;
     }
 }
+
+void __vmunmap(UINT64 *pml4t, void *virt_addr) {
+    UINT64 *pdptt, *pdt, *ptt;
+    UINT64 page_size;
+    UINT32 pml4e_index, pdpte_index, pde_index, pte_index;
+
+    pml4e_index = get_pml4e_index(virt_addr);
+    pdptt = (UINT64*)(pml4t[pml4e_index]&0x7FFFFFFFF000);
+
+    pdpte_index = get_pdpte_index(virt_addr);
+    pdt = (UINT64*)(pdptt[pdpte_index]&0x7FFFFFFFF0);
+
+    pde_index = get_pde_index(virt_addr);
+    ptt = (UINT64*)(pdt[pde_index]&0x7FFFFFFFF0);
+
+    pte_index = get_pte_index(virt_addr);
+    ptt[pte_index] = 0;
+
+    //ptt为空则释放pdte
+    if (forward_find_qword(ptt,512,0)==0) {
+        free_pages(pa_to_page(pdt[pde_index]&0x7FFFFFFFF0));
+        pdt[pde_index] = 0;
+    }
+
+    //pde为空则释放pdpte
+    if (forward_find_qword(pdt,512,0)==0) {
+        free_pages(pa_to_page(pdptt[pdpte_index]&0x7FFFFFFFF0));
+        pdptt[pdpte_index] = 0;
+    }
+    //pdpt为空则释放pmlte
+    if (forward_find_qword(pdptt,512,0)==0) {
+        free_pages(pa_to_page(pml4t[pml4e_index]&0x7FFFFFFFF0));
+        pml4t[pml4e_index] = 0;
+    }
+
+}
+
+
+
 
 //释放物理内存映射虚拟内存
 void munmap(void *virt_addr, UINT64 page_count) {

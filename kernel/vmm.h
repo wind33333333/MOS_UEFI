@@ -180,9 +180,6 @@ static inline UINT32 get_pte_index(void *virt_addr)
 }
 
 
-void *mmap(UINT64 phy_addr, void *virt_addr, UINT64 page_count,UINT64 attr);
-void munmap(void *virt_addr, UINT64 page_count);
-
 
 UINT64 bitmap_alloc_pages(UINT64 page_count);
 void bitmap_free_pages(UINT64 phy_addr, UINT64 page_count);
