@@ -10,7 +10,7 @@ INIT_TEXT void init_buddy_system(void) {
     //初始化page_length长度
     buddy_system.page_length = buddy_system.page_size * sizeof(page_t);
     //page_table分配内存
-    buddy_system.page_table = (page_t*)PA_TO_VA(memblock_alloc(buddy_system.page_length,8));
+    buddy_system.page_table = (page_t*)pa_to_va(memblock_alloc(buddy_system.page_length,8));
     //初始化page_table为0
     mem_set(buddy_system.page_table, 0x0, buddy_system.page_length);
 
@@ -91,7 +91,7 @@ void buddy_unmap_pages(void *virt_addr) {
     UINT64 *pde_vaddr = vaddr_to_pde_vaddr(virt_addr);
     UINT64 *pdpte_vaddr = vaddr_to_pdpte_vaddr(virt_addr);
     UINT64 *pml4e_vaddr = vaddr_to_pml4e_vaddr(virt_addr);
-    page_t *page = phyaddr_to_page(*pte_vaddr & 0x7FFFFFFFFFFFF000UL);
+    page_t *page = pa_to_page(*pte_vaddr & 0x7FFFFFFFFFFFF000UL);
     UINT64 page_count = 1UL << page->order;
     UINT64 count;
 
@@ -107,7 +107,7 @@ void buddy_unmap_pages(void *virt_addr) {
     count = calculate_pde_count(virt_addr, page_count);
     for (INT32 i = 0; i < count; i++) {
         if (forward_find_qword((void *) (((UINT64) pte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT)), 512, 0) == 0) {
-            page = phyaddr_to_page(pde_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
+            page = pa_to_page(pde_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
             free_pages(page);
             pde_vaddr[i] = 0;
         }
@@ -117,7 +117,7 @@ void buddy_unmap_pages(void *virt_addr) {
     count = calculate_pdpte_count(virt_addr, page_count);
     for (INT32 i = 0; i < count; i++) {
         if (forward_find_qword((void *) (((UINT64) pde_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT)), 512, 0) == 0) {
-            page = phyaddr_to_page(pdpte_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
+            page = pa_to_page(pdpte_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
             free_pages(page);
             pdpte_vaddr[i] = 0;
         }
@@ -127,7 +127,7 @@ void buddy_unmap_pages(void *virt_addr) {
     count = calculate_pml4e_count(virt_addr, page_count);
     for (INT32 i = 0; i < count; i++) {
         if (forward_find_qword((void *) (((UINT64) pdpte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT)), 512, 0) == 0) {
-            page = phyaddr_to_page(pml4e_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
+            page = pa_to_page(pml4e_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
             free_pages(page);
             pml4e_vaddr[i] = 0;
         }
@@ -137,7 +137,7 @@ void buddy_unmap_pages(void *virt_addr) {
 //物理内存映射虚拟内存,如果虚拟地址已被占用则从后面的虚拟内存中找一块可用空间挂载物理内存，并返回更新后的虚拟地址。
 void *buddy_map_pages(page_t *page, void *virt_addr, UINT64 attr) {
     UINT64 page_count = 1UL << page->order;
-    UINT64 phy_addr = page_to_phyaddr(page);
+    UINT64 phy_addr = page_to_pa(page);
     UINT64 count;
     while (TRUE) {
         UINT64 *pte_vaddr = vaddr_to_pte_vaddr(virt_addr);
@@ -149,7 +149,7 @@ void *buddy_map_pages(page_t *page, void *virt_addr, UINT64 attr) {
         count = calculate_pml4e_count(virt_addr, page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pml4e_vaddr[i] == 0) {
-                pml4e_vaddr[i] = page_to_phyaddr(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+                pml4e_vaddr[i] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
                 mem_set((void *) ((UINT64) pdpte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
         }
@@ -158,7 +158,7 @@ void *buddy_map_pages(page_t *page, void *virt_addr, UINT64 attr) {
         count = calculate_pdpte_count(virt_addr, page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pdpte_vaddr[i] == 0) {
-                pdpte_vaddr[i] = page_to_phyaddr(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+                pdpte_vaddr[i] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
                 mem_set((void *) ((UINT64) pde_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
         }
@@ -167,7 +167,7 @@ void *buddy_map_pages(page_t *page, void *virt_addr, UINT64 attr) {
         count = calculate_pde_count(virt_addr, page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pde_vaddr[i] == 0) {
-                pde_vaddr[i] = page_to_phyaddr(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+                pde_vaddr[i] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
                 mem_set((void *) ((UINT64) pte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
         }

@@ -24,14 +24,25 @@ typedef struct buddy_system_t {
 extern buddy_system_t buddy_system;
 
 //page转换物理地址
-static inline UINT64 page_to_phyaddr(page_t *page) {
+static inline UINT64 page_to_pa(page_t *page) {
     return (UINT64)(page - buddy_system.page_table) << PAGE_4K_SHIFT;
 }
 
 //物理地址转换page
-static inline page_t* phyaddr_to_page(UINT64 phyaddr) {
+static inline page_t* pa_to_page(UINT64 phyaddr) {
     return buddy_system.page_table+(phyaddr >> PAGE_4K_SHIFT);
 }
+
+//page转虚拟地址
+static inline void *page_to_va(page_t *page) {
+    return pa_to_va(page_to_pa(page));
+}
+
+//虚拟地址转page
+static inline page_t *va_to_page(void *virtaddr) {
+    return pa_to_page(va_to_pa(virtaddr));
+}
+
 
 void init_buddy_system(void);
 page_t* alloc_pages(UINT32 order);

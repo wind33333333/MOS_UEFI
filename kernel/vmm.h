@@ -18,8 +18,15 @@
 #define PAGE_1G_MASK    (~(PAGE_1G_SIZE - 1))
 #define PAGE_1G_ALIGN(ADDR)     (((UINT64)(ADDR) + PAGE_1G_SIZE - 1) & PAGE_1G_MASK)
 
-#define VA_TO_PA(ADDR)    ((UINT64)(ADDR) & (~DIRECT_MAP_OFFSET))
-#define PA_TO_VA(ADDR)    ((UINT64)((UINT64)(ADDR) | DIRECT_MAP_OFFSET))
+//虚拟地址转物理地址
+static inline UINT64 va_to_pa(void *va) {
+    return (UINT64)va & ~DIRECT_MAP_OFFSET;
+}
+
+//物理地址转虚拟地址
+static inline void *pa_to_va(UINT64 pa) {
+    return (void *)(pa | DIRECT_MAP_OFFSET);
+}
 
 typedef struct{
     UINT64 address;

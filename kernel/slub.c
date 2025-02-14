@@ -67,7 +67,7 @@ BOOLEAN kmem_cache_destroy(kmem_cache_t *destroy_cache) {
 
     kmem_cache_node_t *next_node = (kmem_cache_node_t *) destroy_cache->slub_head.next;
     while (next_node != NULL) {
-        buddy_unmap_pages(next_node->object_start_vaddr);
+        free_pages(va_to_page(next_node->object_start_vaddr));
         kmem_cache_free(&kmem_cache_node, next_node);
         next_node = (kmem_cache_node_t *) next_node->slub_node.next;
     }
@@ -101,7 +101,7 @@ BOOLEAN kmem_cache_free(kmem_cache_t *cache, void *object) {
     while (next_node != NULL) {
         if (cache->total_free <= cache->object_per_slub) break;
         if (next_node->using_count == 0) {
-            buddy_unmap_pages(next_node->object_start_vaddr);
+            free_pages(va_to_page(next_node->object_start_vaddr));
             list_del((list_head_t *) next_node);
             free_cache_object(&kmem_cache_node, next_node);
             cache->total_free -= cache->object_per_slub;
@@ -170,8 +170,7 @@ void add_cache_node(kmem_cache_t *cache, kmem_cache_node_t *new_cache_node) {
     new_cache_node->slub_node.next = NULL;
     new_cache_node->using_count = 0;
     new_cache_node->free_count = cache->object_per_slub;
-    new_cache_node->free_list = buddy_map_pages(alloc_pages(cache->order_per_slub),
-                                                (void *)_end,PAGE_ROOT_RW_4K);
+    new_cache_node->free_list = page_to_va(alloc_pages(cache->order_per_slub));
     new_cache_node->object_start_vaddr = new_cache_node->free_list;
     free_list_init(new_cache_node->free_list, cache->object_size, cache->object_per_slub - 1);
     list_add_forward(&cache->slub_head, &new_cache_node->slub_node);

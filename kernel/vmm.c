@@ -14,7 +14,7 @@ void *mmap(UINT64 phy_addr, void *virt_addr, UINT64 page_count,UINT64 attr) {
         count = calculate_pml4e_count(virt_addr, page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pml4e_vaddr[i] == 0) {
-                pml4e_vaddr[i] = page_to_phyaddr(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+                pml4e_vaddr[i] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
                 mem_set((void *) ((UINT64) pdpte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
         }
@@ -23,7 +23,7 @@ void *mmap(UINT64 phy_addr, void *virt_addr, UINT64 page_count,UINT64 attr) {
         count = calculate_pdpte_count(virt_addr, page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pdpte_vaddr[i] == 0) {
-                pdpte_vaddr[i] = page_to_phyaddr(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+                pdpte_vaddr[i] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
                 mem_set((void *) ((UINT64) pde_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
         }
@@ -32,7 +32,7 @@ void *mmap(UINT64 phy_addr, void *virt_addr, UINT64 page_count,UINT64 attr) {
         count = calculate_pde_count(virt_addr, page_count);
         for (UINT64 i = 0; i < count; i++) {
             if (pde_vaddr[i] == 0) {
-                pde_vaddr[i] = page_to_phyaddr(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+                pde_vaddr[i] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
                 mem_set((void *) ((UINT64) pte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT), 0x0, PAGE_4K_SIZE);
             }
         }
@@ -71,7 +71,7 @@ void munmap(void *virt_addr, UINT64 page_count) {
     count = calculate_pde_count(virt_addr, page_count);
     for (INT32 i = 0; i < count; i++) {
         if (forward_find_qword((void *) (((UINT64) pte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT)), 512, 0) == 0) {
-            page = phyaddr_to_page(pde_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
+            page = pa_to_page(pde_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
             free_pages(page);
             pde_vaddr[i] = 0;
         }
@@ -81,7 +81,7 @@ void munmap(void *virt_addr, UINT64 page_count) {
     count = calculate_pdpte_count(virt_addr, page_count);
     for (INT32 i = 0; i < count; i++) {
         if (forward_find_qword((void *) (((UINT64) pde_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT)), 512, 0) == 0) {
-            page = phyaddr_to_page(pdpte_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
+            page = pa_to_page(pdpte_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
             free_pages(page);
             pdpte_vaddr[i] = 0;
         }
@@ -91,7 +91,7 @@ void munmap(void *virt_addr, UINT64 page_count) {
     count = calculate_pml4e_count(virt_addr, page_count);
     for (INT32 i = 0; i < count; i++) {
         if (forward_find_qword((void *) (((UINT64) pdpte_vaddr & PAGE_4K_MASK) + (i << PAGE_4K_SHIFT)), 512, 0) == 0) {
-            page = phyaddr_to_page(pml4e_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
+            page = pa_to_page(pml4e_vaddr[i] & 0x7FFFFFFFFFFFF000UL);
             free_pages(page);
             pml4e_vaddr[i] = 0;
         }

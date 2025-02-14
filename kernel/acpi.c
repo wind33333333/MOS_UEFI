@@ -17,7 +17,7 @@ INIT_TEXT void init_acpi(void) {
     mcfg_t *mcfg;
 
     //初始化ap_boot_loader_adderss
-    ap_boot_loader_address = (UINT64)PA_TO_VA(memblock.reserved.region[0].base);
+    ap_boot_loader_address = (UINT64)pa_to_va(memblock.reserved.region[0].base);
 
     //region XSDT中找出各个ACPI表的指针
     xsdt_t *xsdt = boot_info->rsdp->xsdt_address;
@@ -51,7 +51,7 @@ INIT_TEXT void init_acpi(void) {
                 break;
 
             case 1://ioapic
-                ioapic_address.ioregsel = (UINT8*)PA_TO_VA(
+                ioapic_address.ioregsel = (UINT8*)pa_to_va(
                         ((ioapic_entry_t *) madt_entry)->ioapic_address);
                 ioapic_address.iowin = (UINT32*)((UINT64)ioapic_address.ioregsel + 0x10);
                 ioapic_address.eoi = (UINT32*)((UINT64)ioapic_address.ioregsel + 0x40);
@@ -98,7 +98,7 @@ INIT_TEXT void init_acpi(void) {
     //endregion
 
     //hpet初始化
-    hpet.address = (UINT64) PA_TO_VA(hpett->acpi_generic_adderss.address);
+    hpet.address = (UINT64) pa_to_va(hpett->acpi_generic_adderss.address);
     color_printk(RED,BLACK,"HPET MiniMumTick:%d Number:%d SpaceID:%d BitWidth:%d BiteOffset:%d AccessSize:%d Address:%#lX\n",hpett->minimum_tick,hpett->hpet_number,hpett->acpi_generic_adderss.space_id,hpett->acpi_generic_adderss.bit_width,hpett->acpi_generic_adderss.bit_offset,hpett->acpi_generic_adderss.access_size,hpett->acpi_generic_adderss.address);
 
     //mcfg初始化
@@ -108,7 +108,7 @@ INIT_TEXT void init_acpi(void) {
     }
 
     //移动apic id到内核空间
-    apic_id_table = (UINT32*)PA_TO_VA(bitmap_alloc_pages(PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2)>>PAGE_4K_SHIFT));
+    apic_id_table = (UINT32*)pa_to_va(bitmap_alloc_pages(PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2)>>PAGE_4K_SHIFT));
     mem_set((void*)apic_id_table,0x0,PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2));
     for(UINT32 i=0;i<cpu_info.logical_processors_number;i++){
         apic_id_table[i]=((UINT32*)ap_boot_loader_address)[i];
