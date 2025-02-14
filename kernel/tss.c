@@ -6,19 +6,19 @@
 INIT_TEXT void init_tss(void) {
     //分配tss内存，每个cpu核心需要一个tss 对齐4k,每个tss占104字节
     tss_t *tss_ptr = (tss_t *)PA_TO_VA(bitmap_alloc_pages(PAGE_4K_ALIGN(cpu_info.logical_processors_number * sizeof(tss_t)) >> PAGE_4K_SHIFT));
-    bitmap_map_pages(VA_TO_PA(tss_ptr),tss_ptr,PAGE_4K_ALIGN(cpu_info.logical_processors_number * sizeof(tss_t)) >> PAGE_4K_SHIFT,PAGE_ROOT_RW);
+    bitmap_map_pages(VA_TO_PA(tss_ptr),tss_ptr,PAGE_4K_ALIGN(cpu_info.logical_processors_number * sizeof(tss_t)) >> PAGE_4K_SHIFT,PAGE_ROOT_RW_4K);
     mem_set((void*)tss_ptr,0,PAGE_4K_ALIGN(cpu_info.logical_processors_number * sizeof(tss_t)));
 
     //循环初始化tss,每个tss.rsp0和ist1分配16K栈空间
     for (int i = 0; i < cpu_info.logical_processors_number; i++) {
         tss_ptr[i].reserved0 = 0;
         tss_ptr[i].rsp0 = (UINT64) PA_TO_VA(bitmap_alloc_pages(4) + PAGE_4K_SIZE * 4);
-        bitmap_map_pages(VA_TO_PA(tss_ptr[i].rsp0)-PAGE_4K_SIZE * 4,(void*)(tss_ptr[i].rsp0-PAGE_4K_SIZE * 4),4,PAGE_ROOT_RW);
+        bitmap_map_pages(VA_TO_PA(tss_ptr[i].rsp0)-PAGE_4K_SIZE * 4,(void*)(tss_ptr[i].rsp0-PAGE_4K_SIZE * 4),4,PAGE_ROOT_RW_4K);
         tss_ptr[i].rsp1 = 0;
         tss_ptr[i].rsp2 = 0;
         tss_ptr[i].reserved1 = 0;
         tss_ptr[i].ist1 = (UINT64) PA_TO_VA(bitmap_alloc_pages(4) + PAGE_4K_SIZE * 4);
-        bitmap_map_pages(VA_TO_PA(tss_ptr[i].ist1)-PAGE_4K_SIZE * 4,(void*)(tss_ptr[i].ist1-PAGE_4K_SIZE * 4),4,PAGE_ROOT_RW);
+        bitmap_map_pages(VA_TO_PA(tss_ptr[i].ist1)-PAGE_4K_SIZE * 4,(void*)(tss_ptr[i].ist1-PAGE_4K_SIZE * 4),4,PAGE_ROOT_RW_4K);
         tss_ptr[i].ist2 = 0;
         tss_ptr[i].ist3 = 0;
         tss_ptr[i].ist4 = 0;

@@ -18,7 +18,7 @@ INIT_TEXT void init_ap(void) {
     ap_tmp_pml4t_ptr = (UINT64*)VA_TO_PA(&tmp_pml4t);
     apic_id_table_ptr = apic_id_table;
     ap_rsp_ptr = (UINT64)PA_TO_VA(bitmap_alloc_pages((cpu_info.logical_processors_number-1)*4));            //每个ap核分配16K栈
-    bitmap_map_pages(VA_TO_PA(ap_rsp_ptr),(void*)ap_rsp_ptr,(cpu_info.logical_processors_number-1)*4,PAGE_ROOT_RW);
+    bitmap_map_pages(VA_TO_PA(ap_rsp_ptr),(void*)ap_rsp_ptr,(cpu_info.logical_processors_number-1)*4,PAGE_ROOT_RW_4K);
     memcpy(_apboot_start, (void*)ap_boot_loader_address,_apboot_end-_apboot_start);                 //把ap核初始化代码复制到过去
 
     UINT32 counter;

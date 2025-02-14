@@ -10,7 +10,7 @@ INIT_TEXT void init_gdt(void) {
     gdt_ptr.limit = PAGE_4K_ALIGN(cpu_info.logical_processors_number * 16 + TSS_DESCRIPTOR_START_INDEX*16) - 1;
     //alloc_pages分配的是物理页起始地址，gdt-base是虚拟地址需要通过PA_TO_VA宏把地址转换
     gdt_ptr.base = (UINT64*)PA_TO_VA(bitmap_alloc_pages((gdt_ptr.limit + 1) >> PAGE_4K_SHIFT));
-    bitmap_map_pages(VA_TO_PA((UINT64)gdt_ptr.base),gdt_ptr.base,(gdt_ptr.limit + 1) >> PAGE_4K_SHIFT,PAGE_ROOT_RW);
+    bitmap_map_pages(VA_TO_PA((UINT64)gdt_ptr.base),gdt_ptr.base,(gdt_ptr.limit + 1) >> PAGE_4K_SHIFT,PAGE_ROOT_RW_4K);
     mem_set((void*)gdt_ptr.base,0,PAGE_4K_ALIGN(cpu_info.logical_processors_number * 16 + TSS_DESCRIPTOR_START_INDEX* 8));
 
     *(gdt_ptr.base + 0) = 0;               /*0	NULL descriptor		           	0x00*/
