@@ -17,9 +17,6 @@ INIT_TEXT void init_kernel(void) {
     init_buddy_system();                       //初始化伙伴系统
     init_slub();                               //初始化slub内存分配器
 
-    UINT64 *p = kmalloc(512);
-    *p = 0xdeadbeef;
-    kfree(p);
 
     while (TRUE);
     //////////////////
