@@ -4,6 +4,8 @@
 #include "vmm.h"
 #include "uefi.h"
 
+extern UINT64 *kpml4t_ptr;
+
 void putchar(unsigned int *fb, int Xsize, int x, int y, unsigned int FRcolor, unsigned int BKcolor,
              unsigned char font) {
     int i = 0, j = 0;
@@ -27,7 +29,7 @@ void putchar(unsigned int *fb, int Xsize, int x, int y, unsigned int FRcolor, un
     }
 }
 
-int  skip_atoi(const char **s) {
+int skip_atoi(const char **s) {
     int i = 0;
 
     while (is_digit(**s))
@@ -35,7 +37,7 @@ int  skip_atoi(const char **s) {
     return i;
 }
 
-static char *number(char *str, long num, int base, int size,int precision, int type) {
+static char *number(char *str, long num, int base, int size, int precision, int type) {
     char c, sign, tmp[50];
     const char *digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     int i;
@@ -88,23 +90,22 @@ static char *number(char *str, long num, int base, int size,int precision, int t
     return str;
 }
 
-int  vsprintf(char *buf, const char *fmt, va_list args) {
+int vsprintf(char *buf, const char *fmt, va_list args) {
     char *str, *s;
     int flags;
     int field_width;
     int precision;
     int len, i;
 
-    int qualifier;        /* 'h', 'l', 'L' or 'Z' for integer fields */
+    int qualifier; /* 'h', 'l', 'L' or 'Z' for integer fields */
 
     for (str = buf; *fmt; fmt++) {
-
         if (*fmt != '%') {
             *str++ = *fmt;
             continue;
         }
         flags = 0;
-        repeat:
+    repeat:
         fmt++;
         switch (*fmt) {
             case '-':
@@ -194,9 +195,9 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
 
                 if (qualifier == 'l')
                     str = number(str, va_arg(args, unsigned long), 8, field_width, precision,
-                flags);
+                                 flags);
                 else
-                str = number(str, va_arg(args, unsigned int), 8, field_width, precision, flags);
+                    str = number(str, va_arg(args, unsigned int), 8, field_width, precision, flags);
                 break;
 
             case 'p':
@@ -207,7 +208,7 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
                 }
 
                 str = number(str, (unsigned long) va_arg(args, void *), 16, field_width, precision,
-                flags);
+                             flags);
                 break;
 
             case 'x':
@@ -218,10 +219,10 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
 
                 if (qualifier == 'l')
                     str = number(str, va_arg(args, unsigned long), 16, field_width, precision,
-                flags);
+                                 flags);
                 else
-                str = number(str, va_arg(args, unsigned int), 16, field_width, precision,
-                flags);
+                    str = number(str, va_arg(args, unsigned int), 16, field_width, precision,
+                                 flags);
                 break;
 
             case 'd':
@@ -232,10 +233,10 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
 
                 if (qualifier == 'l')
                     str = number(str, va_arg(args, unsigned long), 10, field_width, precision,
-                flags);
+                                 flags);
                 else
-                str = number(str, va_arg(args, unsigned int), 10, field_width, precision,
-                flags);
+                    str = number(str, va_arg(args, unsigned int), 10, field_width, precision,
+                                 flags);
                 break;
 
             case 'n':
@@ -263,7 +264,6 @@ int  vsprintf(char *buf, const char *fmt, va_list args) {
                     fmt--;
                 break;
         }
-
     }
     *str = '\0';
     return str - buf;
@@ -303,7 +303,7 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
         } else if ((unsigned char) *(buf + count) == '\t') {
             line = ((Pos.XPosition + 8) & ~(8 - 1)) - Pos.XPosition;
 
-            Label_tab:
+        Label_tab:
             line--;
             putchar(Pos.FB_addr, Pos.PixelsPerScanLine, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor, ' ');
@@ -323,9 +323,8 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
         if (Pos.YPosition >= (Pos.YResolution / Pos.YCharSize)) {
             Pos.YPosition = 0;
         }
-
     }
-    Pos.lock = 0;        //解锁
+    Pos.lock = 0; //解锁
     return i;
 }
 
@@ -333,28 +332,29 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
 char buf[4096];
 
 INIT_TEXT void init_output(void) {
+    Pos.XResolution = boot_info->horizontal_resolution;
+    Pos.YResolution = boot_info->vertical_resolution;
+    Pos.PixelsPerScanLine = boot_info->pixels_per_scan_line;
 
-        Pos.XResolution = boot_info->horizontal_resolution;
-        Pos.YResolution = boot_info->vertical_resolution;
-        Pos.PixelsPerScanLine = boot_info->pixels_per_scan_line;
+    Pos.XPosition = 0;
+    Pos.YPosition = 0;
 
-        Pos.XPosition = 0;
-        Pos.YPosition = 0;
+    Pos.XCharSize = 8;
+    Pos.YCharSize = 16;
 
-        Pos.XCharSize = 8;
-        Pos.YCharSize = 16;
+    Pos.FB_addr = PA_TO_VA(boot_info->frame_buffer_base);
+    memblock_vmmap(kpml4t_ptr, boot_info->frame_buffer_base,PA_TO_VA(boot_info->frame_buffer_base),
+                   PAGE_4K_ALIGN(boot_info->frame_buffer_size),PAGE_ROOT_RW_WC_4K);
+    Pos.FB_length = boot_info->frame_buffer_size;
+    Pos.lock = 0;
 
-        Pos.FB_addr = (UINT32*)memblock_vmmap_xx(boot_info->frame_buffer_base,PA_TO_VA(boot_info->frame_buffer_base), PAGE_4K_ALIGN(boot_info->frame_buffer_size)>>PAGE_4K_SHIFT,PAGE_ROOT_RW_WC_4K);;
-        Pos.FB_length = boot_info->frame_buffer_size;
-        Pos.lock = 0;
-
-        clear_screen();
+    clear_screen();
 }
 
-void clear_screen(void){
-    for(UINT64 i=0;i<(Pos.PixelsPerScanLine*Pos.YResolution);i++){
-        *((UINT32*)Pos.FB_addr+i)=BLACK;
+void clear_screen(void) {
+    for (UINT64 i = 0; i < (Pos.PixelsPerScanLine * Pos.YResolution); i++) {
+        *((UINT32 *) Pos.FB_addr + i) = BLACK;
     }
-    Pos.XPosition=0;
-    Pos.YPosition=0;
+    Pos.XPosition = 0;
+    Pos.YPosition = 0;
 }
