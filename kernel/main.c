@@ -15,9 +15,6 @@ INIT_TEXT void init_kernel(void) {
     init_kpage_table();                        //初始化正式内核页表
     init_output();                             //初始化输出控制台
     init_buddy_system();                       //初始化伙伴系统
-
-    page_t *p=alloc_pages(10);
-
     init_slub();                               //初始化slub内存分配器
 
 
