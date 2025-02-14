@@ -102,7 +102,7 @@ INIT_TEXT void __memblock_vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr,
 
     pdt = pa_to_va(pdptt[index]&0x7FFFFFFFF000);
     index = get_pde_index(virt_addr);
-    if (pdt[index] == 0 && page_size == 1) {
+    if (pdt[index] == 0 && page_size == 1) {   //2M页
         pdt[index] = phy_addr | attr;
         return;
     }
@@ -115,7 +115,7 @@ INIT_TEXT void __memblock_vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr,
 
     ptt = pa_to_va(pdt[index]&0x7FFFFFFFF000);
     index = get_pte_index(virt_addr);
-    if (ptt[index] == 0) {
+    if (ptt[index] == 0) {                   //4k页
         ptt[index] = phy_addr | attr;
     }
 
