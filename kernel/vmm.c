@@ -18,9 +18,9 @@ void __vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 attr) {
 
     pdptt = pa_to_va(pml4t[index] & 0x7FFFFFFFF000);
     index = get_pdpte_index(virt_addr);
-    if (pdptt[index] == 0 && page_size == 5) {
-        //1G页
+    if (pdptt[index] == 0 && page_size == 5) {//1G页
         pdptt[index] = phy_addr | attr;
+        invlpg(virt_addr);
         return;
     }
 
@@ -31,8 +31,9 @@ void __vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 attr) {
 
     pdt = pa_to_va(pdptt[index] & 0x7FFFFFFFF000);
     index = get_pde_index(virt_addr);
-    if (pdt[index] == 0 && page_size == 1) {
+    if (pdt[index] == 0 && page_size == 1) {//2M页
         pdt[index] = phy_addr | attr;
+        invlpg(virt_addr);
         return;
     }
 
