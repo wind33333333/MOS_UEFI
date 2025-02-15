@@ -5,10 +5,9 @@
 
 #include "buddy_system.h"
 
-INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
+INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
-    UINT64 page_size = attr >> 7 & 5; //取attr中的第7位和第9位 0=4K 1=2M 5=1G
     pml4t = pa_to_va(pml4t);
 
     index = get_pml4e_index(va);
@@ -19,13 +18,14 @@ INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
 
     pdptt = pa_to_va(pml4t[index] & 0x7FFFFFFFF000);
     index = get_pdpte_index(va);
-    if (page_size == 5) {//1G页
+    if (page_size == PAGE_1G_SIZE) {
+        //1G页
         if (pdptt[index] == 0) {
             pdptt[index] = pa | attr;
             invlpg(va);
-            return 0;    //1G页映射成功
+            return 0; //1G页映射成功
         }
-        return -1;   //已被占用
+        return -1; //已被占用
     }
 
     if (pdptt[index] == 0) {
@@ -35,13 +35,14 @@ INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
 
     pdt = pa_to_va(pdptt[index] & 0x7FFFFFFFF000);
     index = get_pde_index(va);
-    if (page_size == 1) {//2M页
+    if (page_size == PAGE_2M_SIZE) {
+        //2M页
         if (pdt[index] == 0) {
             pdt[index] = pa | attr;
             invlpg(va);
-            return 0;  //2M页映射成功
+            return 0; //2M页映射成功
         }
-        return -1;      //以占用
+        return -1; //以占用
     }
 
     if (pdt[index] == 0) {
@@ -54,23 +55,24 @@ INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
     if (ptt[index] == 0) {
         ptt[index] = pa | attr;
         invlpg(va);
-        return 0;           //4K页映射成功
+        return 0; //4K页映射成功
     }
-    return -1;                //失败
+    return -1; //失败
 }
 
-INT32 vmunmap(UINT64 *pml4t, void *va) {
+INT32 vmunmap(UINT64 *pml4t, void *va, UINT64 page_size) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 pml4e_index, pdpte_index, pde_index, pte_index;
 
     pml4t = pa_to_va(pml4t);
     pml4e_index = get_pml4e_index(va);
-    if (pml4t[pml4e_index] == 0) return -1;   //pml4e无效
+    if (pml4t[pml4e_index] == 0) return -1; //pml4e无效
 
     pdptt = pa_to_va(pml4t[pml4e_index] & 0x7FFFFFFFF000);
     pdpte_index = get_pdpte_index(va);
-    if (pdptt[pdpte_index] == 0) return -1;   //pdpte无效
-    if ((pdptt[pdpte_index] >> 7 & 5) == 5) {//如果等于5则表示该页为1G巨页，跳转到巨页释放
+    if (pdptt[pdpte_index] == 0) return -1; //pdpte无效
+    if (page_size == PAGE_1G_SIZE) {
+        //如果为1G巨页，跳转到巨页释放
         pdptt[pdpte_index] = 0;
         invlpg(va);
         goto huge_page;
@@ -78,14 +80,15 @@ INT32 vmunmap(UINT64 *pml4t, void *va) {
 
     pdt = pa_to_va(pdptt[pdpte_index] & 0x7FFFFFFFF000);
     pde_index = get_pde_index(va);
-    if (pdt[pde_index] == 0) return -1;   //pde无效
-    if ((pdt[pde_index] >> 7 & 5) == 1) {//如果等于1则表示该页为2M大页，跳转到大页释放
+    if (pdt[pde_index] == 0) return -1; //pde无效
+    if (page_size == PAGE_2M_SIZE) {
+        //如果等于1则表示该页为2M大页，跳转到大页释放
         pdt[pde_index] = 0;
         invlpg(va);
         goto big_page;
     }
 
-    ptt = pa_to_va(pdt[pde_index] & 0x7FFFFFFFF000);        //4K页
+    ptt = pa_to_va(pdt[pde_index] & 0x7FFFFFFFF000); //4K页
     pte_index = get_pte_index(va);
     ptt[pte_index] = 0;
     invlpg(va);
@@ -95,7 +98,7 @@ INT32 vmunmap(UINT64 *pml4t, void *va) {
     if (forward_find_qword(ptt, 512, 0) == 0) {
         free_pages(va_to_page(ptt));
         pdt[pde_index] = 0;
-    }else {
+    } else {
         return 0;
     }
 
@@ -104,7 +107,7 @@ big_page:
     if (forward_find_qword(pdt, 512, 0) == 0) {
         free_pages(va_to_page(pdt));
         pdptt[pdpte_index] = 0;
-    }else {
+    } else {
         return 0;
     }
 
@@ -117,34 +120,51 @@ huge_page:
     return 0;
 }
 
-INT32 vmmap_range(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr) {
-    UINT64 page_size, count;
-    page_size = attr >> 7 & 5; //取attr中的第7位和第9位 0=4K 1=2M 5=1G
+INT32 vmmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr, UINT64 page_size) {
+    UINT64 count;
     switch (page_size) {
         case 0:
-            page_size = PAGE_4K_SIZE;
-        count = PAGE_4K_ALIGN(length) >> PAGE_4K_SHIFT;
-        break;
+            count = PAGE_4K_ALIGN(length) >> PAGE_4K_SHIFT;
+            break;
         case 1:
-            page_size = PAGE_2M_SIZE;
-        count = PAGE_2M_ALIGN(length) >> PAGE_2M_SHIFT;
-        break;
+            count = PAGE_2M_ALIGN(length) >> PAGE_2M_SHIFT;
+            break;
         case 5:
-            page_size = PAGE_1G_SIZE;
-        count = PAGE_1G_ALIGN(length) >> PAGE_1G_SHIFT;
+            count = PAGE_1G_ALIGN(length) >> PAGE_1G_SHIFT;
+            break;
+        default:
+            return -1;
     }
 
     for (; count > 0; count--) {
-        if (vmmap(pml4t, phy_addr, virt_addr, attr) != 0) return -1;
-        phy_addr += page_size;
-        virt_addr += page_size;
+        if (vmmap(pml4t, pa, va, attr, page_size) != 0) return -1;
+        pa += page_size;
+        va += page_size;
     }
     return 0;
 }
 
-INT32 vmunmap_range(UINT64 *pml4t, UINT64 va,UINT64 length,UINT64 page_size) {
+INT32 vmunmap_range(UINT64 *pml4t, UINT64 *va, UINT64 length, UINT64 page_size) {
+    UINT64 count;
+    switch (page_size) {
+        case 0:
+            count = PAGE_4K_ALIGN(length) >> PAGE_4K_SHIFT;
+        break;
+        case 1:
+            count = PAGE_2M_ALIGN(length) >> PAGE_2M_SHIFT;
+        break;
+        case 5:
+            count = PAGE_1G_ALIGN(length) >> PAGE_1G_SHIFT;
+        break;
+        default:
+            return -1;
+    }
 
-
+    for (; count > 0; count--) {
+        if (vmunmap(pml4t, va, page_size) != 0) return -1;
+        va += page_size;
+    }
+    return 0;
 }
 
 
