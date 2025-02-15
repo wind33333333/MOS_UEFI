@@ -345,7 +345,7 @@ INIT_TEXT void init_output(void) {
 
     Pos.FB_addr = pa_to_va(boot_info->frame_buffer_base);
     memblock_vmmap_range(kpml4t_ptr, boot_info->frame_buffer_base,Pos.FB_addr,
-                   PAGE_4K_ALIGN(boot_info->frame_buffer_size),PAGE_ROOT_RW_WC_4K);
+                   PAGE_4K_ALIGN(boot_info->frame_buffer_size),PAGE_ROOT_RW_WC_4K,PAGE_4K_SIZE);
     Pos.FB_length = boot_info->frame_buffer_size;
     Pos.lock = 0;
 

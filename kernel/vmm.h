@@ -56,10 +56,9 @@ typedef struct {
 extern global_memory_descriptor_t memory_management;
 
 #define PAGE_NX     1UL<<63
-#define PAGE_1G     1UL<<9      //该位置为表示1G
 #define PAGE_G      1UL<<8
-#define PAGE_PS     1UL<<7      //ps位置位表示2M页或者1G页
-#define PAGE_PAT    1UL<<7
+#define PAGE_PS     1UL<<7      //pdpte第7位ps位置位表示1G巨页 pde第7位ps位置位2M大页
+#define PAGE_PAT    1UL<<7      //pte第7位
 #define PAGE_D      1UL<<6
 #define PAGE_A      1UL<<5
 #define PAGE_PCD    1UL<<4
@@ -82,19 +81,12 @@ extern global_memory_descriptor_t memory_management;
 #define PAGE_ROOT_RW_WC_4K  (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P | PAGE_WC)   //可读-可写-显卡内存
 #define PAGE_ROOT_RW_UC_4K  (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P | PAGE_UC)   //可读-可写-IO映射内存
 
-#define PAGE_ROOT_RWX_2M    (PAGE_G | PAGE_RW |PAGE_P | PAGE_WB | PAGE_PS)             //可读-可写-可执行
-#define PAGE_ROOT_RX_2M     (PAGE_G | PAGE_P | PAGE_WB | PAGE_PS)                      //可读-可执行
-#define PAGE_ROOT_R_2M      (PAGE_NX | PAGE_G | PAGE_P | PAGE_WB | PAGE_PS)            //只读
-#define PAGE_ROOT_RW_2M     (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P | PAGE_WB | PAGE_PS)   //可读-可写-普通内存
-#define PAGE_ROOT_RW_WC_2M  (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P | PAGE_WC | PAGE_PS)   //可读-可写-显卡内存
-#define PAGE_ROOT_RW_UC_2M  (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P | PAGE_UC | PAGE_PS)   //可读-可写-IO映射内存
-
-#define PAGE_ROOT_RWX_1G    (PAGE_G | PAGE_RW |PAGE_P | PAGE_WB | PAGE_PS | PAGE_1G)             //可读-可写-可执行
-#define PAGE_ROOT_RX_1G     (PAGE_G | PAGE_P | PAGE_WB | PAGE_PS | PAGE_1G)                      //可读-可执行
-#define PAGE_ROOT_R_1G      (PAGE_NX | PAGE_G | PAGE_P | PAGE_WB | PAGE_PS | PAGE_1G)            //只读
-#define PAGE_ROOT_RW_1G     (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P | PAGE_WB | PAGE_PS | PAGE_1G)   //可读-可写-普通内存
-#define PAGE_ROOT_RW_WC_1G  (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P | PAGE_WC | PAGE_PS | PAGE_1G)   //可读-可写-显卡内存
-#define PAGE_ROOT_RW_UC_1G  (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P | PAGE_UC | PAGE_PS | PAGE_1G)   //可读-可写-IO映射内存
+#define PAGE_ROOT_RWX_2M1G    (PAGE_G | PAGE_RW |PAGE_P | PAGE_WB | PAGE_PS)             //可读-可写-可执行
+#define PAGE_ROOT_RX_2M1G     (PAGE_G | PAGE_P | PAGE_WB | PAGE_PS)                      //可读-可执行
+#define PAGE_ROOT_R_2M1G      (PAGE_NX | PAGE_G | PAGE_P | PAGE_WB | PAGE_PS)            //只读
+#define PAGE_ROOT_RW_2M1G     (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P | PAGE_WB | PAGE_PS)   //可读-可写-普通内存
+#define PAGE_ROOT_RW_WC_2M1G  (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P | PAGE_WC | PAGE_PS)   //可读-可写-显卡内存
+#define PAGE_ROOT_RW_UC_2M1G  (PAGE_NX | PAGE_G | PAGE_RW |PAGE_P | PAGE_UC | PAGE_PS)   //可读-可写-IO映射内存
 
 #define PAGE_USER_R      (PAGE_NX | PAGE_US | PAGE_P | PAGE_WB)              //只读
 #define PAGE_USER_RW     (PAGE_NX | PAGE_US | PAGE_RW | PAGE_P | PAGE_WB)    //可读可写

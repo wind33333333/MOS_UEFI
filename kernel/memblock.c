@@ -74,10 +74,9 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
     return NULL;
 }
 
-INIT_TEXT INT32 memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
+INIT_TEXT INT32 memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr,UINT64 page_size) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
-    UINT64 page_size = attr >> 7 & 5; //取attr中的第7位和第9位 0=4K 1=2M 5=1G
     pml4t = pa_to_va(pml4t);
 
     index = get_pml4e_index(va);
@@ -89,7 +88,7 @@ INIT_TEXT INT32 memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) 
 
     pdptt = pa_to_va(pml4t[index] & 0x7FFFFFFFF000);
     index = get_pdpte_index(va);
-    if (page_size == 5) {
+    if (page_size == PAGE_1G_SIZE) {
         //1G页
         if (pdptt[index] == 0) {
             pdptt[index] = pa | attr;
@@ -107,7 +106,7 @@ INIT_TEXT INT32 memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) 
 
     pdt = pa_to_va(pdptt[index] & 0x7FFFFFFFF000);
     index = get_pde_index(va);
-    if (page_size == 1) {
+    if (page_size == PAGE_2M_SIZE) {
         //2M页
         if (pdt[index] == 0) {
             pdt[index] = pa | attr;
@@ -134,25 +133,21 @@ INIT_TEXT INT32 memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) 
 }
 
 
-INIT_TEXT INT32 memblock_vmmap_range(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr) {
-    UINT64 page_size, count;
-    page_size = attr >> 7 & 5; //取attr中的第7位和第9位 0=4K 1=2M 5=1G
+INIT_TEXT INT32 memblock_vmmap_range(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr,UINT64 page_size) {
+    UINT64 count;
     switch (page_size) {
-        case 0:
-            page_size = PAGE_4K_SIZE;
+        case PAGE_4K_SIZE:
             count = PAGE_4K_ALIGN(length) >> PAGE_4K_SHIFT;
             break;
-        case 1:
-            page_size = PAGE_2M_SIZE;
+        case PAGE_2M_SIZE:
             count = PAGE_2M_ALIGN(length) >> PAGE_2M_SHIFT;
             break;
-        case 5:
-            page_size = PAGE_1G_SIZE;
+        case PAGE_1G_SIZE:
             count = PAGE_1G_ALIGN(length) >> PAGE_1G_SHIFT;
     }
 
     for (; count > 0; count--) {
-        if (memblock_vmmap(pml4t, phy_addr, virt_addr, attr) != 0) return -1;
+        if (memblock_vmmap(pml4t, phy_addr, virt_addr, attr,page_size) != 0) return -1;
         phy_addr += page_size;
         virt_addr += page_size;
     }
