@@ -97,7 +97,7 @@ BOOLEAN vmunmap(UINT64 *pml4t, void *va) {
         free_pages(va_to_page(ptt));
         pdt[pde_index] = 0;
     }else {
-        return;
+        return FALSE;
     }
 
 big_page:
@@ -106,7 +106,7 @@ big_page:
         free_pages(va_to_page(pdt));
         pdptt[pdpte_index] = 0;
     }else {
-        return;
+        return FALSE;
     }
 
 huge_page:
