@@ -9,16 +9,16 @@ INIT_TEXT void init_kpage_table(void) {
     mem_set(kpml4t_ptr, 0, PAGE_4K_SIZE);
 
     //直接映射区
-    memblock_vmmap(kpml4t_ptr, 0,DIRECT_MAP_OFFSET,
+    memblock_vmmap_range(kpml4t_ptr, 0,DIRECT_MAP_OFFSET,
                         memblock.memory.region[memblock.memory.count - 1].base + memblock.memory.region[
                             memblock.memory.count - 1].size,PAGE_ROOT_RW_1G);
     //.init_text-.init_data 可读写执行
-    memblock_vmmap(kpml4t_ptr,_start_init_text-KERNEL_OFFSET, _start_init_text, _start_text - _start_init_text,
+    memblock_vmmap_range(kpml4t_ptr,_start_init_text-KERNEL_OFFSET, _start_init_text, _start_text - _start_init_text,
                     PAGE_ROOT_RWX_4K);
     //.text可读执行
-    memblock_vmmap(kpml4t_ptr,_start_text-KERNEL_OFFSET, _start_text, _start_data - _start_text, PAGE_ROOT_RX_4K);
+    memblock_vmmap_range(kpml4t_ptr,_start_text-KERNEL_OFFSET, _start_text, _start_data - _start_text, PAGE_ROOT_RX_4K);
     //.data-.stack可读写
-    memblock_vmmap(kpml4t_ptr,_start_data-KERNEL_OFFSET, _start_data, _end_stack - _start_data, PAGE_ROOT_RW_4K);
+    memblock_vmmap_range(kpml4t_ptr,_start_data-KERNEL_OFFSET, _start_data, _end_stack - _start_data, PAGE_ROOT_RW_4K);
 
     //设置正式内核页表
     set_cr3((UINT64)kpml4t_ptr);

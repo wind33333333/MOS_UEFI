@@ -74,54 +74,55 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
     return NULL;
 }
 
-INIT_TEXT void __memblock_vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 attr) {
+INIT_TEXT void memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
     UINT64 page_size = attr >> 7 & 5; //取attr中的第7位和第9位 0=4K 1=2M 5=1G
     pml4t = pa_to_va(pml4t);
 
-    index = get_pml4e_index(virt_addr);
+    index = get_pml4e_index(va);
     if (pml4t[index] == 0) {
-        pml4t[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
-                           attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-        mem_set(pa_to_va(pml4t[index]&0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
+        pml4t[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+        mem_set(pa_to_va(pml4t[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }
 
-    pdptt = pa_to_va(pml4t[index]&0x7FFFFFFFF000);
-    index = get_pdpte_index(virt_addr);
-    if (pdptt[index] == 0 && page_size == 5) {  //1G页
-        pdptt[index] = phy_addr | attr;
+    pdptt = pa_to_va(pml4t[index] & 0x7FFFFFFFF000);
+    index = get_pdpte_index(va);
+    if (pdptt[index] == 0 && page_size == 5) {//1G页
+        pdptt[index] = pa | attr;
+        invlpg(va);
         return;
     }
 
     if (pdptt[index] == 0) {
-        pdptt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
-                           attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-        mem_set(pa_to_va(pdptt[index]&0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
+        pdptt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+        mem_set(pa_to_va(pdptt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }
 
-    pdt = pa_to_va(pdptt[index]&0x7FFFFFFFF000);
-    index = get_pde_index(virt_addr);
-    if (pdt[index] == 0 && page_size == 1) {   //2M页
-        pdt[index] = phy_addr | attr;
+    pdt = pa_to_va(pdptt[index] & 0x7FFFFFFFF000);
+    index = get_pde_index(va);
+    if (pdt[index] == 0 && page_size == 1) {//2M页
+        pdt[index] = pa | attr;
+        invlpg(va);
         return;
     }
 
     if (pdt[index] == 0) {
-        pdt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
-                         attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-        mem_set(pa_to_va(pdt[index]&0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
+        pdt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
+        mem_set(pa_to_va(pdt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }
 
-    ptt = pa_to_va(pdt[index]&0x7FFFFFFFF000);
-    index = get_pte_index(virt_addr);
-    if (ptt[index] == 0) {                   //4k页
-        ptt[index] = phy_addr | attr;
+    ptt = pa_to_va(pdt[index] & 0x7FFFFFFFF000);
+    index = get_pte_index(va);
+    if (ptt[index] == 0) {
+        ptt[index] = pa | attr;
     }
 
+    invlpg(va);
 }
 
-void memblock_vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr,UINT64 length, UINT64 attr) {
+
+void memblock_vmmap_range(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr,UINT64 length, UINT64 attr) {
     UINT64 page_size,count;
     page_size = attr >> 7 & 5; //取attr中的第7位和第9位 0=4K 1=2M 5=1G
     if (page_size == 0) {
@@ -135,7 +136,7 @@ void memblock_vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr,UINT64 lengt
         count = PAGE_1G_ALIGN(length)>>PAGE_1G_SHIFT;
     }
     for (; count>0; count--) {
-        __memblock_vmmap(pml4t,phy_addr,virt_addr,attr);
+        memblock_vmmap(pml4t,phy_addr,virt_addr,attr);
         phy_addr += page_size;
         virt_addr += page_size;
     }

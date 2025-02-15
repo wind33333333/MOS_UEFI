@@ -103,49 +103,49 @@ extern global_memory_descriptor_t memory_management;
 
 /////////////////////////////////////////////////////////////////////
 //虚拟地址转换pte虚拟地址
-static inline void *vaddr_to_pte_vaddr(void *virt_addr){
-    return (void*)(~(~(UINT64)virt_addr<<16>>28)<<3);
+static inline void *vaddr_to_pte_vaddr(void *va){
+    return (void*)(~(~(UINT64)va<<16>>28)<<3);
 }
 
 //虚拟地址转换pde虚拟地址
-static inline void *vaddr_to_pde_vaddr(void *virt_addr){
-    return (void*)(~(~(UINT64)virt_addr<<16>>37)<<3);
+static inline void *vaddr_to_pde_vaddr(void *va){
+    return (void*)(~(~(UINT64)va<<16>>37)<<3);
 }
 
 //虚拟地址转换pdpte虚拟地址
-static inline void *vaddr_to_pdpte_vaddr(void *virt_addr){
-    return (void*)(~(~(UINT64)virt_addr<<16>>46)<<3);
+static inline void *vaddr_to_pdpte_vaddr(void *va){
+    return (void*)(~(~(UINT64)va<<16>>46)<<3);
 }
 
 //虚拟地址转换pml4e虚拟地址
-static inline void *vaddr_to_pml4e_vaddr(void *virt_addr){
-    return (void*)(~(~(UINT64)virt_addr<<16>>55)<<3);
+static inline void *vaddr_to_pml4e_vaddr(void *va){
+    return (void*)(~(~(UINT64)va<<16>>55)<<3);
 }
 
 //虚拟地址和page数量计算pde数量
-static inline UINT64 calculate_pde_count(void *virt_addr, UINT64 page_count) {
-    return (page_count + (((UINT64)virt_addr >> 12) & 0x1FF) + 0x1FF) >> 9;
+static inline UINT64 calculate_pde_count(void *va, UINT64 page_count) {
+    return (page_count + (((UINT64)va >> 12) & 0x1FF) + 0x1FF) >> 9;
 }
 
 //虚拟地址和page数量计算pdpte数量
-static inline UINT64 calculate_pdpte_count(void *virt_addr, UINT64 page_count) {
-    return (page_count + (((UINT64)virt_addr >> 12) & 0x3FFFF) + 0x3FFFF) >> 18;
+static inline UINT64 calculate_pdpte_count(void *va, UINT64 page_count) {
+    return (page_count + (((UINT64)va >> 12) & 0x3FFFF) + 0x3FFFF) >> 18;
 }
 
 //虚拟地址和page数量计算pml4e数量
-static inline UINT64 calculate_pml4e_count(void *virt_addr, UINT64 page_count) {
-    return (page_count + (((UINT64)virt_addr >> 12) & 0x7FFFFFF) + 0x7FFFFFF) >> 27;
+static inline UINT64 calculate_pml4e_count(void *va, UINT64 page_count) {
+    return (page_count + (((UINT64)va >> 12) & 0x7FFFFFF) + 0x7FFFFFF) >> 27;
 }
 
 //虚拟地址查找物理页
-static inline UINT64 find_pages(void *virt_addr){
-    UINT64 *pte_addr = vaddr_to_pte_vaddr(virt_addr);
+static inline UINT64 find_pages(void *va){
+    UINT64 *pte_addr = vaddr_to_pte_vaddr(va);
     return  *pte_addr;
 }
 
 //虚拟地址修改物理页
-static inline void revise_pages(void *virt_addr,UINT64 value){
-    UINT64 *pte_addr= vaddr_to_pte_vaddr(virt_addr);
+static inline void revise_pages(void *va,UINT64 value){
+    UINT64 *pte_addr= vaddr_to_pte_vaddr(va);
     *pte_addr=value;
 }
 
@@ -156,36 +156,36 @@ static inline void revise_pages(void *virt_addr,UINT64 value){
 #define PTE_SHIFT 12    // PTE 索引的位移量
 
 // 计算 PML4E 索引
-static inline UINT32 get_pml4e_index(void *virt_addr)
+static inline UINT32 get_pml4e_index(void *va)
 {
-    return ((UINT64)virt_addr >> PML4E_SHIFT) & 0x1FF;
+    return ((UINT64)va >> PML4E_SHIFT) & 0x1FF;
 }
 
 // 计算 PDPTE 索引
-static inline UINT32 get_pdpte_index(void *virt_addr)
+static inline UINT32 get_pdpte_index(void *va)
 {
-    return ((UINT64)virt_addr >> PDPTE_SHIFT) & 0x1FF;
+    return ((UINT64)va >> PDPTE_SHIFT) & 0x1FF;
 }
 
 // 计算 PDE 索引
-static inline UINT32 get_pde_index(void *virt_addr)
+static inline UINT32 get_pde_index(void *va)
 {
-    return ((UINT64)virt_addr >> PDE_SHIFT) & 0x1FF;
+    return ((UINT64)va >> PDE_SHIFT) & 0x1FF;
 }
 
 // 计算 PTE 索引
-static inline UINT32 get_pte_index(void *virt_addr)
+static inline UINT32 get_pte_index(void *va)
 {
-    return ((UINT64)virt_addr >> PTE_SHIFT) & 0x1FF;
+    return ((UINT64)va >> PTE_SHIFT) & 0x1FF;
 }
 
 UINT64 bitmap_alloc_pages(UINT64 page_count);
-void bitmap_free_pages(UINT64 phy_addr, UINT64 page_count);
-void *bitmap_map_pages(UINT64 phy_addr, void *virt_addr, UINT64 page_count, UINT64 attr);
-void bitmap_unmap_pages(void *virt_addr, UINT64 page_count);
+void bitmap_free_pages(UINT64 pa, UINT64 page_count);
+void *bitmap_map_pages(UINT64 pa, void *va, UINT64 page_count, UINT64 attr);
+void bitmap_unmap_pages(void *va, UINT64 page_count);
 
-void __vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 attr);
-void __vmunmap(UINT64 *pml4t, void *virt_addr);
+void vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr);
+void vmunmap(UINT64 *pml4t, void *va);
 
 
 #endif

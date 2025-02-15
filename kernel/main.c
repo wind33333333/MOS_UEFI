@@ -18,8 +18,8 @@ INIT_TEXT void init_kernel(void) {
     init_buddy_system();                       //初始化伙伴系统
     init_slub();                               //初始化slub内存分配器
 
-    __vmmap(kpml4t_ptr,0x1000,(void*)0xFFFF808000000000,PAGE_ROOT_RW_2M);
-    __vmunmap(kpml4t_ptr,(void*)0xFFFF808000000000);
+    vmmap(kpml4t_ptr,0x1000,(void*)0xFFFF808000000000,PAGE_ROOT_RW_2M);
+    vmunmap(kpml4t_ptr,(void*)0xFFFF808000000000);
 
 
     while (TRUE);
