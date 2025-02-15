@@ -74,7 +74,7 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
     return NULL;
 }
 
-INIT_TEXT BOOLEAN memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
+INIT_TEXT INT32 memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
     UINT64 page_size = attr >> 7 & 5; //取attr中的第7位和第9位 0=4K 1=2M 5=1G
@@ -94,9 +94,9 @@ INIT_TEXT BOOLEAN memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr
         if (pdptt[index] == 0) {
             pdptt[index] = pa | attr;
             invlpg(va);
-            return FALSE; //1G页映射成功
+            return 0; //1G页映射成功
         }
-        return TRUE; //已被占用
+        return -1; //已被占用
     }
 
     if (pdptt[index] == 0) {
@@ -112,9 +112,9 @@ INIT_TEXT BOOLEAN memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr
         if (pdt[index] == 0) {
             pdt[index] = pa | attr;
             invlpg(va);
-            return FALSE; //2M页映射成功
+            return 0; //2M页映射成功
         }
-        return TRUE; //以占用
+        return -1; //以占用
     }
 
     if (pdt[index] == 0) {
@@ -128,13 +128,13 @@ INIT_TEXT BOOLEAN memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr
     if (ptt[index] == 0) {
         ptt[index] = pa | attr;
         invlpg(va);
-        return FALSE; //4K页映射成功
+        return 0; //4K页映射成功
     }
-    return TRUE; //失败
+    return -1; //失败
 }
 
 
-INIT_TEXT BOOLEAN memblock_vmmap_range(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr) {
+INIT_TEXT INT32 memblock_vmmap_range(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr) {
     UINT64 page_size, count;
     page_size = attr >> 7 & 5; //取attr中的第7位和第9位 0=4K 1=2M 5=1G
     switch (page_size) {
@@ -152,9 +152,9 @@ INIT_TEXT BOOLEAN memblock_vmmap_range(UINT64 *pml4t, UINT64 phy_addr, void *vir
     }
 
     for (; count > 0; count--) {
-        if (memblock_vmmap(pml4t, phy_addr, virt_addr, attr)==TRUE) return TRUE;
+        if (memblock_vmmap(pml4t, phy_addr, virt_addr, attr)==TRUE) return -1;
         phy_addr += page_size;
         virt_addr += page_size;
     }
-    return FALSE;
+    return 0;
 }

@@ -28,8 +28,8 @@ extern memblock_t memblock;
 
 void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 size);
 void *memblock_alloc(UINT64 size, UINT64 align);
-BOOLEAN memblock_vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 attr);
-BOOLEAN memblock_vmmap_range(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr,UINT64 length, UINT64 attr);
+INT32 memblock_vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 attr);
+INT32 memblock_vmmap_range(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr,UINT64 length, UINT64 attr);
 void init_memblock(void);
 
 
