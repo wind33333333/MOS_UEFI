@@ -46,6 +46,8 @@ void __vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 attr) {
     if (ptt[index] == 0) {
         ptt[index] = phy_addr | attr;
     }
+
+    invlpg(virt_addr);
 }
 
 void __vmunmap(UINT64 *pml4t, void *virt_addr) {
@@ -59,6 +61,7 @@ void __vmunmap(UINT64 *pml4t, void *virt_addr) {
     pdpte_index = get_pdpte_index(virt_addr);
     if ((pdptt[pdpte_index] >> 7 & 5) == 5) {//如果等于5则表示该页为1G巨页，跳转到巨页释放
         pdptt[pdpte_index] = 0;
+        invlpg(virt_addr);
         goto huge_page;
     }
 
@@ -66,6 +69,7 @@ void __vmunmap(UINT64 *pml4t, void *virt_addr) {
     pde_index = get_pde_index(virt_addr);
     if ((pdt[pde_index] >> 7 & 5) == 1) {//如果等于1则表示该页为2M大页，跳转到大页释放
         pdt[pde_index] = 0;
+        invlpg(virt_addr);
         goto big_page;
     }
 
@@ -73,12 +77,15 @@ void __vmunmap(UINT64 *pml4t, void *virt_addr) {
     ptt = pa_to_va(pdt[pde_index] & 0x7FFFFFFFF000);
     pte_index = get_pte_index(virt_addr);
     ptt[pte_index] = 0;
+    invlpg(virt_addr);
 
 
     //ptt为空则释放
     if (forward_find_qword(ptt, 512, 0) == 0) {
         free_pages(va_to_page(ptt));
         pdt[pde_index] = 0;
+    }else {
+        return;
     }
 
 big_page:
@@ -86,6 +93,8 @@ big_page:
     if (forward_find_qword(pdt, 512, 0) == 0) {
         free_pages(va_to_page(pdt));
         pdptt[pdpte_index] = 0;
+    }else {
+        return;
     }
 
 huge_page:
