@@ -62,8 +62,8 @@ kmem_cache_t *kmem_cache_create(char *cache_name, UINT32 object_size) {
 }
 
 //销毁kmem_cache缓存池
-BOOLEAN kmem_cache_destroy(kmem_cache_t *destroy_cache) {
-    if (destroy_cache == NULL) return FALSE;
+INT32 kmem_cache_destroy(kmem_cache_t *destroy_cache) {
+    if (destroy_cache == NULL) return -1;
 
     kmem_cache_node_t *next_node = (kmem_cache_node_t *) destroy_cache->slub_head.next;
     while (next_node != NULL) {
@@ -72,7 +72,7 @@ BOOLEAN kmem_cache_destroy(kmem_cache_t *destroy_cache) {
         next_node = (kmem_cache_node_t *) next_node->slub_node.next;
     }
     kmem_cache_free(&kmem_cache, destroy_cache);
-    return TRUE;
+    return 0;
 }
 
 //从kmem_cache缓存池分配对象
@@ -90,11 +90,11 @@ void *kmem_cache_alloc(kmem_cache_t *cache) {
 }
 
 //释放对象到kmem_cache缓存池
-BOOLEAN kmem_cache_free(kmem_cache_t *cache, void *object) {
-    if (cache == NULL || object == NULL) return FALSE;
+INT32 kmem_cache_free(kmem_cache_t *cache, void *object) {
+    if (cache == NULL || object == NULL) return -1;
 
     //释放object
-    if (free_cache_object(cache, object) == FALSE) return FALSE;
+    if (free_cache_object(cache, object) != 0) return -1;
 
     //遍历当前cache_node如果空闲对象大于一个slub对象数量则释放空闲node
     kmem_cache_node_t *next_node = (kmem_cache_node_t *) cache->slub_head.next;
@@ -109,7 +109,7 @@ BOOLEAN kmem_cache_free(kmem_cache_t *cache, void *object) {
         }
         next_node = (kmem_cache_node_t *) next_node->slub_node.next;
     }
-    return TRUE;
+    return 0;
 }
 
 //从cache摘取一个对象
@@ -132,7 +132,7 @@ void *alloc_cache_object(kmem_cache_t *cache) {
 }
 
 //释放一个对象到cache
-BOOLEAN free_cache_object(kmem_cache_t *cache, void *object) {
+INT32 free_cache_object(kmem_cache_t *cache, void *object) {
     kmem_cache_node_t *next_node = (kmem_cache_node_t *) cache->slub_head.next;
 
     while (next_node != NULL) {
@@ -144,11 +144,11 @@ BOOLEAN free_cache_object(kmem_cache_t *cache, void *object) {
             next_node->using_count--;
             cache->total_free++;
             cache->total_using--;
-            return TRUE;
+            return 0;
         }
         next_node = (kmem_cache_node_t *) next_node->slub_node.next;
     }
-    return FALSE;
+    return -1;
 }
 
 //新建一个cache
@@ -192,12 +192,12 @@ void *kmalloc(UINT64 size) {
 }
 
 //通用内存释放器
-BOOLEAN kfree(void *virtual_address) {
-    if (virtual_address == NULL) return FALSE;
+INT32 kfree(void *virtual_address) {
+    if (virtual_address == NULL) return -1;
 
     for (UINT32 index = 0; index < KMALLOC_CACHE_SIZE; index++) {
-        if (kmem_cache_free(kmalloc_cache[index], virtual_address) == TRUE) return TRUE;
+        if (kmem_cache_free(kmalloc_cache[index], virtual_address) == 0) return 0;
     }
 
-    return FALSE;
+    return -1;
 }
