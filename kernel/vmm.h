@@ -179,7 +179,7 @@ void bitmap_unmap_pages(void *va, UINT64 page_count);
 INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr,UINT64 page_size);
 INT32 vmunmap(UINT64 *pml4t, void *va,UINT64 page_size);
 INT32 vmmap_range(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr,UINT64 page_size);
-INT32 vmunmap_range(UINT64 *pml4t, UINT64 va,UINT64 length,UINT64 page_size);
+INT32 vmunmap_range(UINT64 *pml4t, UINT64 *va, UINT64 length, UINT64 page_size);
 
 
 #endif
