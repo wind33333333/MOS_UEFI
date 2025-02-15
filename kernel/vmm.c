@@ -65,28 +65,27 @@ BOOLEAN vmunmap(UINT64 *pml4t, void *va) {
 
     pml4t = pa_to_va(pml4t);
     pml4e_index = get_pml4e_index(va);
-
     if (pml4t[pml4e_index] == 0) return TRUE;   //pml4e无效
+
     pdptt = pa_to_va(pml4t[pml4e_index] & 0x7FFFFFFFF000);
     pdpte_index = get_pdpte_index(va);
+    if (pdptt[pdpte_index] == 0) return TRUE;   //pdpte无效
     if ((pdptt[pdpte_index] >> 7 & 5) == 5) {//如果等于5则表示该页为1G巨页，跳转到巨页释放
         pdptt[pdpte_index] = 0;
         invlpg(va);
         goto huge_page;
     }
 
-    if (pdptt[pdpte_index] == 0) return TRUE;   //pdpte无效
     pdt = pa_to_va(pdptt[pdpte_index] & 0x7FFFFFFFF000);
     pde_index = get_pde_index(va);
+    if (pdt[pde_index] == 0) return TRUE;   //pde无效
     if ((pdt[pde_index] >> 7 & 5) == 1) {//如果等于1则表示该页为2M大页，跳转到大页释放
         pdt[pde_index] = 0;
         invlpg(va);
         goto big_page;
     }
 
-    //4K页
-    if (pdt[pde_index] == 0) return TRUE;   //pde无效
-    ptt = pa_to_va(pdt[pde_index] & 0x7FFFFFFFF000);
+    ptt = pa_to_va(pdt[pde_index] & 0x7FFFFFFFF000);        //4K页
     pte_index = get_pte_index(va);
     ptt[pte_index] = 0;
     invlpg(va);
