@@ -19,8 +19,8 @@ INIT_TEXT void init_kernel(void) {
     init_slub();                               //初始化slub内存分配器
 
 
-    vmmap(kpml4t_ptr,0x1000,(void*)0xFFFF808000000000,PAGE_ROOT_RW_2M1G,PAGE_2M_SIZE);
-    vmunmap(kpml4t_ptr,(void*)0xFFFF808000000000,PAGE_2M_SIZE);
+    INT32 a = vmmap_range(kpml4t_ptr,0x1000,(void*)0xFFFF808000000000,0x8040000000,PAGE_ROOT_RW_2M1G,PAGE_1G_SIZE);
+    a = vmunmap_range(kpml4t_ptr,(void*)0xFFFF808000000000,0x8040000000,PAGE_1G_SIZE);
 
 
     while (TRUE);

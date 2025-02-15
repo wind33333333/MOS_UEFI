@@ -123,13 +123,13 @@ huge_page:
 INT32 vmmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr, UINT64 page_size) {
     UINT64 count;
     switch (page_size) {
-        case 0:
+        case PAGE_4K_SIZE:
             count = PAGE_4K_ALIGN(length) >> PAGE_4K_SHIFT;
             break;
-        case 1:
+        case PAGE_2M_SIZE:
             count = PAGE_2M_ALIGN(length) >> PAGE_2M_SHIFT;
             break;
-        case 5:
+        case PAGE_1G_SIZE:
             count = PAGE_1G_ALIGN(length) >> PAGE_1G_SHIFT;
             break;
         default:
@@ -147,13 +147,13 @@ INT32 vmmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr
 INT32 vmunmap_range(UINT64 *pml4t, UINT64 *va, UINT64 length, UINT64 page_size) {
     UINT64 count;
     switch (page_size) {
-        case 0:
+        case PAGE_4K_SIZE:
             count = PAGE_4K_ALIGN(length) >> PAGE_4K_SHIFT;
         break;
-        case 1:
+        case PAGE_2M_SIZE:
             count = PAGE_2M_ALIGN(length) >> PAGE_2M_SHIFT;
         break;
-        case 5:
+        case PAGE_1G_SIZE:
             count = PAGE_1G_ALIGN(length) >> PAGE_1G_SHIFT;
         break;
         default:
