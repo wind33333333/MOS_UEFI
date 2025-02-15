@@ -117,6 +117,36 @@ huge_page:
     return 0;
 }
 
+INT32 vmmap_range(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr) {
+    UINT64 page_size, count;
+    page_size = attr >> 7 & 5; //取attr中的第7位和第9位 0=4K 1=2M 5=1G
+    switch (page_size) {
+        case 0:
+            page_size = PAGE_4K_SIZE;
+        count = PAGE_4K_ALIGN(length) >> PAGE_4K_SHIFT;
+        break;
+        case 1:
+            page_size = PAGE_2M_SIZE;
+        count = PAGE_2M_ALIGN(length) >> PAGE_2M_SHIFT;
+        break;
+        case 5:
+            page_size = PAGE_1G_SIZE;
+        count = PAGE_1G_ALIGN(length) >> PAGE_1G_SHIFT;
+    }
+
+    for (; count > 0; count--) {
+        if (vmmap(pml4t, phy_addr, virt_addr, attr) != 0) return -1;
+        phy_addr += page_size;
+        virt_addr += page_size;
+    }
+    return 0;
+}
+
+INT32 vmunmap_range(UINT64 *pml4t, UINT64 va,UINT64 length,UINT64 page_size) {
+
+
+}
+
 
 //释放物理内存映射虚拟内存
 void munmap(void *va, UINT64 page_count) {
