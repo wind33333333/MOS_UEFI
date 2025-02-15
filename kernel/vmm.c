@@ -115,6 +115,7 @@ huge_page:
         free_pages(va_to_page(pdptt));
         pml4t[pml4e_index] = 0;
     }
+    return FALSE;
 }
 
 
