@@ -152,7 +152,7 @@ INIT_TEXT INT32 memblock_vmmap_range(UINT64 *pml4t, UINT64 phy_addr, void *virt_
     }
 
     for (; count > 0; count--) {
-        if (memblock_vmmap(pml4t, phy_addr, virt_addr, attr)==TRUE) return -1;
+        if (memblock_vmmap(pml4t, phy_addr, virt_addr, attr) != 0) return -1;
         phy_addr += page_size;
         virt_addr += page_size;
     }
