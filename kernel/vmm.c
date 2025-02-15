@@ -54,22 +54,23 @@ void __vmunmap(UINT64 *pml4t, void *virt_addr) {
 
     pml4t = pa_to_va(pml4t);
     pml4e_index = get_pml4e_index(virt_addr);
-    pdptt = pa_to_va(pml4t[pml4e_index] & 0x7FFFFFFFF000);
 
+    pdptt = pa_to_va(pml4t[pml4e_index] & 0x7FFFFFFFF000);
     pdpte_index = get_pdpte_index(virt_addr);
-    if ((pdptt[pdpte_index] >> 7 & 5) == 5) {
+    if ((pdptt[pdpte_index] >> 7 & 5) == 5) {//如果等于5则表示该页为1G巨页，跳转到巨页释放
         pdptt[pdpte_index] = 0;
         goto huge_page;
     }
-    pdt = pa_to_va(pdptt[pdpte_index] & 0x7FFFFFFFF000);
 
+    pdt = pa_to_va(pdptt[pdpte_index] & 0x7FFFFFFFF000);
     pde_index = get_pde_index(virt_addr);
-    if ((pdt[pde_index] >> 7 & 5) == 1) {
+    if ((pdt[pde_index] >> 7 & 5) == 1) {//如果等于1则表示该页为2M大页，跳转到大页释放
         pdt[pde_index] = 0;
         goto big_page;
     }
-    ptt = pa_to_va(pdt[pde_index] & 0x7FFFFFFFF000);
 
+    //4K页
+    ptt = pa_to_va(pdt[pde_index] & 0x7FFFFFFFF000);
     pte_index = get_pte_index(virt_addr);
     ptt[pte_index] = 0;
 
