@@ -59,13 +59,14 @@ BOOLEAN vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
     return TRUE;                //失败
 }
 
-void vmunmap(UINT64 *pml4t, void *va) {
+BOOLEAN vmunmap(UINT64 *pml4t, void *va) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 pml4e_index, pdpte_index, pde_index, pte_index;
 
     pml4t = pa_to_va(pml4t);
     pml4e_index = get_pml4e_index(va);
 
+    if (pml4t[pml4e_index] == 0) return TRUE;   //pml4e无效
     pdptt = pa_to_va(pml4t[pml4e_index] & 0x7FFFFFFFF000);
     pdpte_index = get_pdpte_index(va);
     if ((pdptt[pdpte_index] >> 7 & 5) == 5) {//如果等于5则表示该页为1G巨页，跳转到巨页释放
@@ -74,6 +75,7 @@ void vmunmap(UINT64 *pml4t, void *va) {
         goto huge_page;
     }
 
+    if (pdptt[pdpte_index] == 0) return TRUE;   //pdpte无效
     pdt = pa_to_va(pdptt[pdpte_index] & 0x7FFFFFFFF000);
     pde_index = get_pde_index(va);
     if ((pdt[pde_index] >> 7 & 5) == 1) {//如果等于1则表示该页为2M大页，跳转到大页释放
