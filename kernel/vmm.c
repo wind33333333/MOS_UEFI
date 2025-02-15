@@ -85,6 +85,7 @@ BOOLEAN vmunmap(UINT64 *pml4t, void *va) {
     }
 
     //4K页
+    if (pdt[pde_index] == 0) return TRUE;   //pde无效
     ptt = pa_to_va(pdt[pde_index] & 0x7FFFFFFFF000);
     pte_index = get_pte_index(va);
     ptt[pte_index] = 0;
