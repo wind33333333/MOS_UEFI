@@ -133,7 +133,7 @@ INIT_TEXT INT32 memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, 
 }
 
 
-INIT_TEXT INT32 memblock_vmmap_range(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 length, UINT64 attr,
+INIT_TEXT INT32 memblock_vmmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr,
                                      UINT64 page_size) {
     UINT64 count;
     switch (page_size) {
@@ -151,9 +151,9 @@ INIT_TEXT INT32 memblock_vmmap_range(UINT64 *pml4t, UINT64 phy_addr, void *virt_
     }
 
     for (; count > 0; count--) {
-        if (memblock_vmmap(pml4t, phy_addr, virt_addr, attr, page_size) != 0) return -1;
-        phy_addr += page_size;
-        virt_addr += page_size;
+        if (memblock_vmmap(pml4t, pa, va, attr, page_size) != 0) return -1;
+        pa += page_size;
+        va += page_size;
     }
     return 0;
 }
