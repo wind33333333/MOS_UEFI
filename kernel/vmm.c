@@ -50,7 +50,6 @@ void __vmmap(UINT64 *pml4t, UINT64 phy_addr, void *virt_addr, UINT64 attr) {
 
 void __vmunmap(UINT64 *pml4t, void *virt_addr) {
     UINT64 *pdptt, *pdt, *ptt;
-    UINT64 page_size;
     UINT32 pml4e_index, pdpte_index, pde_index, pte_index;
 
     pml4t = pa_to_va(pml4t);
@@ -58,54 +57,41 @@ void __vmunmap(UINT64 *pml4t, void *virt_addr) {
     pdptt = pa_to_va(pml4t[pml4e_index] & 0x7FFFFFFFF000);
 
     pdpte_index = get_pdpte_index(virt_addr);
-    page_size = pdptt[pdpte_index] >> 7 & 5;
-    if (page_size == 0 || page_size == 1) {
-        pdt = pa_to_va(pdptt[pdpte_index] & 0x7FFFFFFFF000);
+    if ((pdptt[pdpte_index] >> 7 & 5) == 5) {
+        pdptt[pdpte_index] = 0;
+        goto huge_page;
+    }
+    pdt = pa_to_va(pdptt[pdpte_index] & 0x7FFFFFFFF000);
 
-        pde_index = get_pde_index(virt_addr);
-        page_size = pdt[pde_index] >> 7 & 5;
-        if (page_size == 0) {
-            ptt = pa_to_va(pdt[pde_index] & 0x7FFFFFFFF000);
+    pde_index = get_pde_index(virt_addr);
+    if ((pdt[pde_index] >> 7 & 5) == 1) {
+        pdt[pde_index] = 0;
+        goto big_page;
+    }
+    ptt = pa_to_va(pdt[pde_index] & 0x7FFFFFFFF000);
 
-            pte_index = get_pte_index(virt_addr);
-            ptt[pte_index] = 0;
-        } else {
-            pdt[pde_index] = 0;
-        }
-    }else {
+    pte_index = get_pte_index(virt_addr);
+    ptt[pte_index] = 0;
+
+
+    //ptt为空则释放
+    if (forward_find_qword(ptt, 512, 0) == 0) {
+        free_pages(va_to_page(ptt));
+        pdt[pde_index] = 0;
+    }
+
+big_page:
+    //pde为空则释放
+    if (forward_find_qword(pdt, 512, 0) == 0) {
+        free_pages(va_to_page(pdt));
         pdptt[pdpte_index] = 0;
     }
 
-
-    if (page_size == 0) {
-        //4K
-        //ptt为空则释放
-        if (forward_find_qword(ptt, 512, 0) == 0) {
-            free_pages(va_to_page(ptt));
-            pdt[pde_index] = 0;
-        } else {
-            return;
-        }
-    }
-
-    if (page_size == 0 || page_size == 1) {
-        //4K 2M
-        //pde为空则释放
-        if (forward_find_qword(pdt, 512, 0) == 0) {
-            free_pages(va_to_page(pdt));
-            pdptt[pdpte_index] = 0;
-        } else {
-            return;
-        }
-    }
-
-    if (page_size == 0 || page_size == 1 || page_size == 5) {
-        //4K 2M 1G
-        //pdpt为空则释放
-        if (forward_find_qword(pdptt, 512, 0) == 0) {
-            free_pages(va_to_page(pdptt));
-            pml4t[pml4e_index] = 0;
-        }
+huge_page:
+    //pdpt为空则释放
+    if (forward_find_qword(pdptt, 512, 0) == 0) {
+        free_pages(va_to_page(pdptt));
+        pml4t[pml4e_index] = 0;
     }
 }
 
