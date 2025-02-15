@@ -5,7 +5,7 @@
 
 #include "buddy_system.h"
 
-BOOLEAN vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
+INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
     UINT64 page_size = attr >> 7 & 5; //取attr中的第7位和第9位 0=4K 1=2M 5=1G
@@ -23,9 +23,9 @@ BOOLEAN vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
         if (pdptt[index] == 0) {
             pdptt[index] = pa | attr;
             invlpg(va);
-            return FALSE;    //1G页映射成功
+            return 0;    //1G页映射成功
         }
-        return TRUE;   //已被占用
+        return -1;   //已被占用
     }
 
     if (pdptt[index] == 0) {
@@ -39,9 +39,9 @@ BOOLEAN vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
         if (pdt[index] == 0) {
             pdt[index] = pa | attr;
             invlpg(va);
-            return FALSE;  //2M页映射成功
+            return 0;  //2M页映射成功
         }
-        return TRUE;      //以占用
+        return -1;      //以占用
     }
 
     if (pdt[index] == 0) {
@@ -54,22 +54,22 @@ BOOLEAN vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
     if (ptt[index] == 0) {
         ptt[index] = pa | attr;
         invlpg(va);
-        return FALSE;           //4K页映射成功
+        return 0;           //4K页映射成功
     }
-    return TRUE;                //失败
+    return -1;                //失败
 }
 
-BOOLEAN vmunmap(UINT64 *pml4t, void *va) {
+INT32 vmunmap(UINT64 *pml4t, void *va) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 pml4e_index, pdpte_index, pde_index, pte_index;
 
     pml4t = pa_to_va(pml4t);
     pml4e_index = get_pml4e_index(va);
-    if (pml4t[pml4e_index] == 0) return TRUE;   //pml4e无效
+    if (pml4t[pml4e_index] == 0) return -1;   //pml4e无效
 
     pdptt = pa_to_va(pml4t[pml4e_index] & 0x7FFFFFFFF000);
     pdpte_index = get_pdpte_index(va);
-    if (pdptt[pdpte_index] == 0) return TRUE;   //pdpte无效
+    if (pdptt[pdpte_index] == 0) return -1;   //pdpte无效
     if ((pdptt[pdpte_index] >> 7 & 5) == 5) {//如果等于5则表示该页为1G巨页，跳转到巨页释放
         pdptt[pdpte_index] = 0;
         invlpg(va);
@@ -78,7 +78,7 @@ BOOLEAN vmunmap(UINT64 *pml4t, void *va) {
 
     pdt = pa_to_va(pdptt[pdpte_index] & 0x7FFFFFFFF000);
     pde_index = get_pde_index(va);
-    if (pdt[pde_index] == 0) return TRUE;   //pde无效
+    if (pdt[pde_index] == 0) return -1;   //pde无效
     if ((pdt[pde_index] >> 7 & 5) == 1) {//如果等于1则表示该页为2M大页，跳转到大页释放
         pdt[pde_index] = 0;
         invlpg(va);
@@ -96,7 +96,7 @@ BOOLEAN vmunmap(UINT64 *pml4t, void *va) {
         free_pages(va_to_page(ptt));
         pdt[pde_index] = 0;
     }else {
-        return FALSE;
+        return 0;
     }
 
 big_page:
@@ -105,7 +105,7 @@ big_page:
         free_pages(va_to_page(pdt));
         pdptt[pdpte_index] = 0;
     }else {
-        return FALSE;
+        return 0;
     }
 
 huge_page:
@@ -114,7 +114,7 @@ huge_page:
         free_pages(va_to_page(pdptt));
         pml4t[pml4e_index] = 0;
     }
-    return FALSE;
+    return 0;
 }
 
 
@@ -279,7 +279,7 @@ void bitmap_unmap_pages(void *va, UINT64 page_count) {
 
 //物理内存映射虚拟内存,如果虚拟地址已被占用则从后面的虚拟内存中找一块可用空间挂载物理内存，并返回更新后的虚拟地址。
 void *bitmap_map_pages(UINT64 pa, void *va, UINT64 page_count, UINT64 attr) {
-    while (TRUE) {
+    while (-1) {
         UINT64 *pte_vaddr = vaddr_to_pte_vaddr(va);
         UINT64 *pde_vaddr = vaddr_to_pde_vaddr(va);
         UINT64 *pdpte_vaddr = vaddr_to_pdpte_vaddr(va);

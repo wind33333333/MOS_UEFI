@@ -184,8 +184,8 @@ void bitmap_free_pages(UINT64 pa, UINT64 page_count);
 void *bitmap_map_pages(UINT64 pa, void *va, UINT64 page_count, UINT64 attr);
 void bitmap_unmap_pages(void *va, UINT64 page_count);
 
-BOOLEAN vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr);
-BOOLEAN vmunmap(UINT64 *pml4t, void *va);
+INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr);
+INT32 vmunmap(UINT64 *pml4t, void *va);
 
 
 #endif
