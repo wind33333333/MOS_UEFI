@@ -74,7 +74,7 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
     return NULL;
 }
 
-INIT_TEXT void memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
+INIT_TEXT BOOLEAN memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
     UINT64 page_size = attr >> 7 & 5; //取attr中的第7位和第9位 0=4K 1=2M 5=1G
@@ -88,10 +88,13 @@ INIT_TEXT void memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
 
     pdptt = pa_to_va(pml4t[index] & 0x7FFFFFFFF000);
     index = get_pdpte_index(va);
-    if (pdptt[index] == 0 && page_size == 5) {//1G页
-        pdptt[index] = pa | attr;
-        invlpg(va);
-        return;
+    if (page_size == 5) {//1G页
+        if (pdptt[index] == 0) {
+            pdptt[index] = pa | attr;
+            invlpg(va);
+            return FALSE;    //1G页映射成功
+        }
+        return TRUE;   //已被占用
     }
 
     if (pdptt[index] == 0) {
@@ -101,10 +104,13 @@ INIT_TEXT void memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
 
     pdt = pa_to_va(pdptt[index] & 0x7FFFFFFFF000);
     index = get_pde_index(va);
-    if (pdt[index] == 0 && page_size == 1) {//2M页
-        pdt[index] = pa | attr;
-        invlpg(va);
-        return;
+    if (page_size == 1) {//2M页
+        if (pdt[index] == 0) {
+            pdt[index] = pa | attr;
+            invlpg(va);
+            return FALSE;  //2M页映射成功
+        }
+        return TRUE;      //以占用
     }
 
     if (pdt[index] == 0) {
@@ -116,9 +122,10 @@ INIT_TEXT void memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr) {
     index = get_pte_index(va);
     if (ptt[index] == 0) {
         ptt[index] = pa | attr;
+        invlpg(va);
+        return FALSE;           //4K页映射成功
     }
-
-    invlpg(va);
+    return TRUE;                //失败
 }
 
 
