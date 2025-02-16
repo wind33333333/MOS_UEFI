@@ -60,7 +60,7 @@ INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
     return -1; //失败
 }
 
-INT32 vmunmap(UINT64 *pml4t, void *va, UINT64 page_size, UINT32 unmap_flags) {
+INT32 vmunmap(UINT64 *pml4t, void *va, UINT64 page_size) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 pml4e_index, pdpte_index, pde_index, pte_index;
 
@@ -73,7 +73,6 @@ INT32 vmunmap(UINT64 *pml4t, void *va, UINT64 page_size, UINT32 unmap_flags) {
     if (pdptt[pdpte_index] == 0) return -1; //pdpte无效
     if (page_size == PAGE_1G_SIZE) {
         //如果为1G巨页，跳转到巨页释放
-        if (unmap_flags == MUNMAP_FREE_PAGES) free_pages(pa_to_page(pdptt[pdpte_index] & PAGE_PA_MASK));            //释放物理页
         pdptt[pdpte_index] = 0;
         invlpg(va);
         goto huge_page;
@@ -84,7 +83,6 @@ INT32 vmunmap(UINT64 *pml4t, void *va, UINT64 page_size, UINT32 unmap_flags) {
     if (pdt[pde_index] == 0) return -1; //pde无效
     if (page_size == PAGE_2M_SIZE) {
         //如果等于1则表示该页为2M大页，跳转到大页释放
-        if (unmap_flags == MUNMAP_FREE_PAGES) free_pages(pa_to_page(pdt[pde_index] & PAGE_PA_MASK));            //释放物理页
         pdt[pde_index] = 0;
         invlpg(va);
         goto big_page;
@@ -92,7 +90,6 @@ INT32 vmunmap(UINT64 *pml4t, void *va, UINT64 page_size, UINT32 unmap_flags) {
 
     ptt = pa_to_va(pdt[pde_index] & PAGE_PA_MASK); //4K页
     pte_index = get_pte_index(va);
-    if (unmap_flags == MUNMAP_FREE_PAGES) free_pages(pa_to_page(ptt[pte_index] & PAGE_PA_MASK));  //释放物理页
     ptt[pte_index] = 0;
     invlpg(va);
 
