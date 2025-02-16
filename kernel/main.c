@@ -18,19 +18,14 @@ INIT_TEXT void init_kernel(void) {
     init_buddy_system();                       //初始化伙伴系统
     init_slub();                               //初始化slub内存分配器
 
-    page_t *p=alloc_pages(0);
-    UINT64 x= page_to_pa(p);
 
     UINT64 *va = (UINT64*)0xFFFF808000000000;
-    INT32 a = mmap_range(kpml4t_ptr,0x1000,va,0x8040000000,PAGE_ROOT_RW_2M1G,PAGE_1G_SIZE);
+    UINT64 *va1 = (UINT64*)0xFFFF808080000000;
+    mmap_range(kpml4t_ptr,0x0,va,0x80000000,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
+    mmap_range(kpml4t_ptr,0x80000000,va1,0x80000000,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
 
-    UINT64 b = find_page_table_entry(kpml4t_ptr,va,PDPTE_LEVEL);
-
-    b=0;
-
-    update_page_table_entry(kpml4t_ptr,va,PDPTE_LEVEL,b);
-
-    a = munmap_range(kpml4t_ptr,va,0x8040000000,PAGE_1G_SIZE);
+    munmap_range(kpml4t_ptr,va,0x80000000,PAGE_4K_SIZE);
+    munmap_range(kpml4t_ptr,va1,0x80000000,PAGE_4K_SIZE);
 
 
 

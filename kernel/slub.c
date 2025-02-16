@@ -67,7 +67,7 @@ INT32 kmem_cache_destroy(kmem_cache_t *destroy_cache) {
 
     kmem_cache_node_t *next_node = (kmem_cache_node_t *) destroy_cache->slub_head.next;
     while (next_node != NULL) {
-        free_pages(va_to_page(next_node->object_start_vaddr));
+        free_pages(va_to_page(next_node->page_va));
         kmem_cache_free(&kmem_cache_node, next_node);
         next_node = (kmem_cache_node_t *) next_node->slub_node.next;
     }
@@ -101,7 +101,7 @@ INT32 kmem_cache_free(kmem_cache_t *cache, void *object) {
     while (next_node != NULL) {
         if (cache->total_free <= cache->object_per_slub) break;
         if (next_node->using_count == 0) {
-            free_pages(va_to_page(next_node->object_start_vaddr));
+            free_pages(va_to_page(next_node->page_va));
             list_del((list_head_t *) next_node);
             free_cache_object(&kmem_cache_node, next_node);
             cache->total_free -= cache->object_per_slub;
@@ -136,8 +136,8 @@ INT32 free_cache_object(kmem_cache_t *cache, void *object) {
     kmem_cache_node_t *next_node = (kmem_cache_node_t *) cache->slub_head.next;
 
     while (next_node != NULL) {
-        void *object_end_vaddr = next_node->object_start_vaddr + (PAGE_4K_SIZE << cache->order_per_slub);
-        if (object >= next_node->object_start_vaddr && object < object_end_vaddr) {
+        void *page_va_end = next_node->page_va + (PAGE_4K_SIZE << cache->order_per_slub);
+        if (object >= next_node->page_va && object < page_va_end) {
             *(UINT64 *) object = (UINT64) next_node->free_list;
             next_node->free_list = object;
             next_node->free_count++;
@@ -171,7 +171,7 @@ void add_cache_node(kmem_cache_t *cache, kmem_cache_node_t *new_cache_node) {
     new_cache_node->using_count = 0;
     new_cache_node->free_count = cache->object_per_slub;
     new_cache_node->free_list = page_to_va(alloc_pages(cache->order_per_slub));
-    new_cache_node->object_start_vaddr = new_cache_node->free_list;
+    new_cache_node->page_va = new_cache_node->free_list;
     free_list_init(new_cache_node->free_list, cache->object_size, cache->object_per_slub - 1);
     list_add_forward(&cache->slub_head, &new_cache_node->slub_node);
     cache->slub_count++;

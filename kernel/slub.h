@@ -9,7 +9,7 @@ typedef struct kmem_cache_node_t {
     list_head_t slub_node;     // slub链表
     UINT64 using_count;        // 当前slab节点已用对象数量
     UINT64 free_count;         // 当前slab节点空闲对象数量
-    void *object_start_vaddr;  // 对象起始虚拟地址
+    void *page_va;             // 伙伴系统分配的页面块起始虚拟地址
     void *free_list;           // 下一个空闲对象指针
 }kmem_cache_node_t;
 
