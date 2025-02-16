@@ -34,7 +34,7 @@ INIT_TEXT void init_kernel(void) {
     UINT64 b = get_page_table_entry(kpml4t_ptr,va,PTE_LEVEL);
 
     for (UINT32 i=0;i<0x1024;i++) {
-        vmunmap(kpml4t_ptr,va,PAGE_4K_SIZE,MUNMAP_FREE_PAGES);
+        vmunmap(kpml4t_ptr,va,PAGE_4K_SIZE);
         va += 512;
     }
 

@@ -3,10 +3,6 @@
 #include "moslib.h"
 #include "linkage.h"
 
-//用于表示munmap函数是否释放物理页
-#define MUNMAP_FREE_PAGES  1
-#define MUNMAP_KEEP_PAGES  0
-
 //页级别
 #define PML4E_LEVEL  4
 #define PDPTE_LEVEL  3
