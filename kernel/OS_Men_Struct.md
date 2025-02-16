@@ -1,7 +1,7 @@
-0x500       mem_map_t内存图
-0x600       显卡图
-0x7c00      boot.bin
-0x10000     tmpstack
-0x10000     loader.bin
-0x100000    kerner.bin
 
+
+0xFFFF_FFFF_8000_0000 - 0xFFFF_FFFF_FFFF_FFFF   内核空间
+
+0xFFFF_C000_0000_0000 - 0xFFFF_DFFF_FFFF_FFFF   32TB vmalloc虚拟地址空间
+0xFFFF_8000_0000_0000 - 0xFFFF_BFFF_FFFF_FFFF   64TB 物理地址直接映射区
+0x0000_0000_0000_0000 - 0x7FFF_FFFF_FFFF_FFFF   128TB 用户虚拟内存空间
