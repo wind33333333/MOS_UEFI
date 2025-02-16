@@ -74,7 +74,7 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
     return NULL;
 }
 
-INIT_TEXT INT32 memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
+INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
     pml4t = pa_to_va(pml4t);
@@ -133,7 +133,7 @@ INIT_TEXT INT32 memblock_vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, 
 }
 
 
-INIT_TEXT INT32 memblock_vmmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr,
+INIT_TEXT INT32 memblock_mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr,
                                      UINT64 page_size) {
     UINT64 count;
     switch (page_size) {
@@ -151,7 +151,7 @@ INIT_TEXT INT32 memblock_vmmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 
     }
 
     for (; count > 0; count--) {
-        if (memblock_vmmap(pml4t, pa, va, attr, page_size) != 0) return -1;
+        if (memblock_mmap(pml4t, pa, va, attr, page_size) != 0) return -1;
         pa += page_size;
         va += page_size;
     }
