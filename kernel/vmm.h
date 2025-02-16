@@ -9,6 +9,7 @@
 #define PDE_LEVEL    2
 #define PTE_LEVEL    1
 
+//页表项物理地址掩码
 #define PAGE_PA_MASK    0x7FFFFFFFF000UL
 
 #define PAGE_4K_SHIFT    12
@@ -25,43 +26,6 @@
 #define PAGE_1G_SIZE    (1UL << PAGE_1G_SHIFT)
 #define PAGE_1G_MASK    (~(PAGE_1G_SIZE - 1))
 #define PAGE_1G_ALIGN(ADDR)     (((UINT64)(ADDR) + PAGE_1G_SIZE - 1) & PAGE_1G_MASK)
-
-//虚拟地址转物理地址
-static inline UINT64 va_to_pa(void *va) {
-    return (UINT64)va & ~DIRECT_MAP_OFFSET;
-}
-
-//物理地址转虚拟地址
-static inline void *pa_to_va(UINT64 pa) {
-    return (void *)(pa | DIRECT_MAP_OFFSET);
-}
-
-typedef struct{
-    UINT64 address;
-    UINT64 length;
-    UINT32 type;
-}mem_map_t;
-
-typedef struct {
-    mem_map_t mem_map[20];
-    UINT32 mem_map_count;
-    UINT64 avl_mem_size;
-
-    UINT64 *bitmap;
-    UINT64 bitmap_size;
-    UINT64 bitmap_length;
-
-    UINT64 total_pages;
-    UINT64 used_pages;
-    UINT64 avl_pages;
-
-    UINT64 kernel_start_address;
-    UINT64 kernel_end_address;
-
-    UINT8 lock;
-} global_memory_descriptor_t;
-
-extern global_memory_descriptor_t memory_management;
 
 #define PAGE_NX     1UL<<63
 #define PAGE_G      1UL<<8
@@ -101,7 +65,82 @@ extern global_memory_descriptor_t memory_management;
 #define PAGE_USER_RX     (PAGE_US | PAGE_P | PAGE_WB)                        //可读可执行
 #define PAGE_USER_RWX    (PAGE_US | PAGE_RW | PAGE_P | PAGE_WB)              //可读可写可执行
 
+#define PML4E_SHIFT 39  // PML4E 索引的位移量
+#define PDPTE_SHIFT 30  // PDPTE 索引的位移量
+#define PDE_SHIFT 21    // PDE 索引的位移量
+#define PTE_SHIFT 12    // PTE 索引的位移量
+
+//虚拟地址转物理地址
+static inline UINT64 va_to_pa(void *va) {
+    return (UINT64)va & ~DIRECT_MAP_OFFSET;
+}
+
+//物理地址转虚拟地址
+static inline void *pa_to_va(UINT64 pa) {
+    return (void *)(pa | DIRECT_MAP_OFFSET);
+}
+
+// 计算 PML4E 索引
+static inline UINT32 get_pml4e_index(void *va)
+{
+    return ((UINT64)va >> PML4E_SHIFT) & 0x1FF;
+}
+
+// 计算 PDPTE 索引
+static inline UINT32 get_pdpte_index(void *va)
+{
+    return ((UINT64)va >> PDPTE_SHIFT) & 0x1FF;
+}
+
+// 计算 PDE 索引
+static inline UINT32 get_pde_index(void *va)
+{
+    return ((UINT64)va >> PDE_SHIFT) & 0x1FF;
+}
+
+// 计算 PTE 索引
+static inline UINT32 get_pte_index(void *va)
+{
+    return ((UINT64)va >> PTE_SHIFT) & 0x1FF;
+}
+
+INT32 mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr,UINT64 page_size);
+INT32 munmap(UINT64 *pml4t, void *va,UINT64 page_size);
+INT32 mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr,UINT64 page_size);
+INT32 munmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size);
+UINT64 find_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level);
+UINT32 update_page_table_entry(UINT64 *pml4t, void *va, UINT32 page_level,UINT64 entry);
+
+
 /////////////////////////////////////////////////////////////////////
+
+typedef struct{
+UINT64 address;
+UINT64 length;
+UINT32 type;
+}
+mem_map_t;
+
+typedef struct {
+    mem_map_t mem_map[20];
+    UINT32 mem_map_count;
+    UINT64 avl_mem_size;
+
+    UINT64 *bitmap;
+    UINT64 bitmap_size;
+    UINT64 bitmap_length;
+
+    UINT64 total_pages;
+    UINT64 used_pages;
+    UINT64 avl_pages;
+
+    UINT64 kernel_start_address;
+    UINT64 kernel_end_address;
+
+    UINT8 lock;
+} global_memory_descriptor_t;
+
+extern global_memory_descriptor_t memory_management;
 //虚拟地址转换pte虚拟地址
 static inline void *vaddr_to_pte_vaddr(void *va){
     return (void*)(~(~(UINT64)va<<16>>28)<<3);
@@ -148,47 +187,12 @@ static inline void revise_pages(void *va,UINT64 value){
     UINT64 *pte_addr= vaddr_to_pte_vaddr(va);
     *pte_addr=value;
 }
-
-////////////////////////////////////////////////////////////
-#define PML4E_SHIFT 39  // PML4E 索引的位移量
-#define PDPTE_SHIFT 30  // PDPTE 索引的位移量
-#define PDE_SHIFT 21    // PDE 索引的位移量
-#define PTE_SHIFT 12    // PTE 索引的位移量
-
-// 计算 PML4E 索引
-static inline UINT32 get_pml4e_index(void *va)
-{
-    return ((UINT64)va >> PML4E_SHIFT) & 0x1FF;
-}
-
-// 计算 PDPTE 索引
-static inline UINT32 get_pdpte_index(void *va)
-{
-    return ((UINT64)va >> PDPTE_SHIFT) & 0x1FF;
-}
-
-// 计算 PDE 索引
-static inline UINT32 get_pde_index(void *va)
-{
-    return ((UINT64)va >> PDE_SHIFT) & 0x1FF;
-}
-
-// 计算 PTE 索引
-static inline UINT32 get_pte_index(void *va)
-{
-    return ((UINT64)va >> PTE_SHIFT) & 0x1FF;
-}
-
 UINT64 bitmap_alloc_pages(UINT64 page_count);
 void bitmap_free_pages(UINT64 pa, UINT64 page_count);
 void *bitmap_map_pages(UINT64 pa, void *va, UINT64 page_count, UINT64 attr);
 void bitmap_unmap_pages(void *va, UINT64 page_count);
 
-INT32 mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr,UINT64 page_size);
-INT32 munmap(UINT64 *pml4t, void *va,UINT64 page_size);
-INT32 mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr,UINT64 page_size);
-INT32 munmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size);
-UINT64 find_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level);
-UINT32 update_page_table_entry(UINT64 *pml4t, void *va, UINT32 page_level,UINT64 entry);
+
+////////////////////////////////////////////////////////////
 
 #endif
