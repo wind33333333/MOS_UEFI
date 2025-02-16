@@ -5,6 +5,7 @@
 
 #include "buddy_system.h"
 
+//映射一个页表
 INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
@@ -60,6 +61,7 @@ INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
     return -1; //失败
 }
 
+//删除一个页表映射
 INT32 vmunmap(UINT64 *pml4t, void *va, UINT64 page_size) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 pml4e_index, pdpte_index, pde_index, pte_index;
@@ -120,6 +122,7 @@ huge_page:
     return 0;
 }
 
+//批量映射页表
 INT32 vmmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr, UINT64 page_size) {
     UINT64 count;
     switch (page_size) {
@@ -144,6 +147,7 @@ INT32 vmmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr
     return 0;
 }
 
+//批量删除页表映射
 INT32 vmunmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size) {
     UINT64 count;
     switch (page_size) {
@@ -189,6 +193,7 @@ UINT64 get_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level) {
     return ptt[index];
 }
 
+//修改页表项
 UINT32 update_page_table_entry(UINT64 *pml4t, void *va, UINT32 page_level,UINT64 entry) {
     UINT64 *pdptt,*pdt,*ptt;
     UINT32 index;
