@@ -171,8 +171,8 @@ INT32 vmunmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size) {
     return 0;
 }
 
-//获取页表项
-UINT64 get_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level) {
+//查找页表项
+UINT64 find_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level) {
     UINT64 *pdptt,*pdt,*ptt;
     UINT32 index;
     pml4t = pa_to_va(pml4t);

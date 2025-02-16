@@ -188,7 +188,7 @@ INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr,UINT64 page_size);
 INT32 vmunmap(UINT64 *pml4t, void *va,UINT64 page_size);
 INT32 vmmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr,UINT64 page_size);
 INT32 vmunmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size);
-UINT64 get_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level);
-
+UINT64 find_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level);
+UINT32 update_page_table_entry(UINT64 *pml4t, void *va, UINT32 page_level,UINT64 entry);
 
 #endif
