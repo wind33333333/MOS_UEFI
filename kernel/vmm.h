@@ -3,6 +3,10 @@
 #include "moslib.h"
 #include "linkage.h"
 
+//用于表示munmap函数是否释放物理页
+#define MUNMAP_FREE_PAGES  1
+#define MUNMAP_KEEP_PAGES  0
+
 #define PAGE_4K_SHIFT    12
 #define PAGE_4K_SIZE    (1UL << PAGE_4K_SHIFT)
 #define PAGE_4K_MASK    (~(PAGE_4K_SIZE - 1))
@@ -177,9 +181,9 @@ void *bitmap_map_pages(UINT64 pa, void *va, UINT64 page_count, UINT64 attr);
 void bitmap_unmap_pages(void *va, UINT64 page_count);
 
 INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr,UINT64 page_size);
-INT32 vmunmap(UINT64 *pml4t, void *va,UINT64 page_size);
+INT32 vmunmap(UINT64 *pml4t, void *va,UINT64 page_size,UINT32 unmap_flags);
 INT32 vmmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr,UINT64 page_size);
-INT32 vmunmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size);
+INT32 vmunmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size,UINT32 unmap_flags);
 
 
 #endif

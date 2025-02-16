@@ -20,7 +20,11 @@ INIT_TEXT void init_kernel(void) {
 
 
     INT32 a = vmmap_range(kpml4t_ptr,0x1000,(void*)0xFFFF808000000000,0x8040000000,PAGE_ROOT_RW_2M1G,PAGE_1G_SIZE);
-    a = vmunmap_range(kpml4t_ptr,(void*)0xFFFF808000000000,0x8040000000,PAGE_1G_SIZE);
+    a = vmunmap_range(kpml4t_ptr,(void*)0xFFFF808000000000,0x8040000000,PAGE_1G_SIZE,MUNMAP_KEEP_PAGES);
+
+    page_t *p=alloc_pages(10);
+    vmmap_range(kpml4t_ptr,page_to_pa(p),(void*)0xFFFF818000000000,0x400000,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
+    vmunmap_range(kpml4t_ptr,0xFFFF818000000000,0x400000,PAGE_4K_SIZE,MUNMAP_FREE_PAGES);
 
 
     while (TRUE);

@@ -29,8 +29,8 @@ static inline UINT64 page_to_pa(page_t *page) {
 }
 
 //物理地址转换page
-static inline page_t* pa_to_page(UINT64 phyaddr) {
-    return buddy_system.page_table+(phyaddr >> PAGE_4K_SHIFT);
+static inline page_t* pa_to_page(UINT64 pa) {
+    return buddy_system.page_table+(pa >> PAGE_4K_SHIFT);
 }
 
 //page转虚拟地址
@@ -39,8 +39,8 @@ static inline void *page_to_va(page_t *page) {
 }
 
 //虚拟地址转page
-static inline page_t *va_to_page(void *virtaddr) {
-    return pa_to_page(va_to_pa(virtaddr));
+static inline page_t *va_to_page(void *va) {
+    return pa_to_page(va_to_pa(va));
 }
 
 

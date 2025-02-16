@@ -60,7 +60,7 @@ INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
     return -1; //失败
 }
 
-INT32 vmunmap(UINT64 *pml4t, void *va, UINT64 page_size) {
+INT32 vmunmap(UINT64 *pml4t, void *va, UINT64 page_size, UINT32 unmap_flags) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 pml4e_index, pdpte_index, pde_index, pte_index;
 
@@ -73,6 +73,7 @@ INT32 vmunmap(UINT64 *pml4t, void *va, UINT64 page_size) {
     if (pdptt[pdpte_index] == 0) return -1; //pdpte无效
     if (page_size == PAGE_1G_SIZE) {
         //如果为1G巨页，跳转到巨页释放
+        if (unmap_flags == MUNMAP_FREE_PAGES) free_pages(pa_to_page(pdptt[pdpte_index] & 0x7FFFFFFFF000));            //释放物理页
         pdptt[pdpte_index] = 0;
         invlpg(va);
         goto huge_page;
@@ -83,6 +84,7 @@ INT32 vmunmap(UINT64 *pml4t, void *va, UINT64 page_size) {
     if (pdt[pde_index] == 0) return -1; //pde无效
     if (page_size == PAGE_2M_SIZE) {
         //如果等于1则表示该页为2M大页，跳转到大页释放
+        if (unmap_flags == MUNMAP_FREE_PAGES) free_pages(pa_to_page(pdt[pde_index] & 0x7FFFFFFFF000));            //释放物理页
         pdt[pde_index] = 0;
         invlpg(va);
         goto big_page;
@@ -90,6 +92,7 @@ INT32 vmunmap(UINT64 *pml4t, void *va, UINT64 page_size) {
 
     ptt = pa_to_va(pdt[pde_index] & 0x7FFFFFFFF000); //4K页
     pte_index = get_pte_index(va);
+    if (unmap_flags == MUNMAP_FREE_PAGES) free_pages(pa_to_page(ptt[pte_index] & 0x7FFFFFFFF000));  //释放物理页
     ptt[pte_index] = 0;
     invlpg(va);
 
@@ -144,24 +147,24 @@ INT32 vmmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr
     return 0;
 }
 
-INT32 vmunmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size) {
+INT32 vmunmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size,UINT32 unmap_flags) {
     UINT64 count;
     switch (page_size) {
         case PAGE_4K_SIZE:
             count = PAGE_4K_ALIGN(length) >> PAGE_4K_SHIFT;
-        break;
+            break;
         case PAGE_2M_SIZE:
             count = PAGE_2M_ALIGN(length) >> PAGE_2M_SHIFT;
-        break;
+            break;
         case PAGE_1G_SIZE:
             count = PAGE_1G_ALIGN(length) >> PAGE_1G_SHIFT;
-        break;
+            break;
         default:
             return -1;
     }
 
     for (; count > 0; count--) {
-        if (vmunmap(pml4t, va, page_size) != 0) return -1;
+        if (vmunmap(pml4t, va, page_size,unmap_flags) != 0) return -1;
         va += page_size;
     }
     return 0;
