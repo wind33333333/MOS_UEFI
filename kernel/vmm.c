@@ -9,7 +9,7 @@
 INT32 mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
-    pml4t = pa_to_va(pml4t);
+    pml4t = pa_to_va((UINT64)pml4t);
 
     index = get_pml4e_index(va);
     if (pml4t[index] == 0) {
@@ -66,7 +66,7 @@ INT32 munmap(UINT64 *pml4t, void *va, UINT64 page_size) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 pml4e_index, pdpte_index, pde_index, pte_index;
 
-    pml4t = pa_to_va(pml4t);
+    pml4t = pa_to_va((UINT64)pml4t);
     pml4e_index = get_pml4e_index(va);
     if (pml4t[pml4e_index] == 0) return -1; //pml4e无效
 
@@ -175,7 +175,7 @@ INT32 munmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size) {
 UINT64 find_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level) {
     UINT64 *pdptt,*pdt,*ptt;
     UINT32 index;
-    pml4t = pa_to_va(pml4t);
+    pml4t = pa_to_va((UINT64)pml4t);
     index = get_pml4e_index(va);
     if (page_level == PML4E_LEVEL) return pml4t[index];
 
@@ -197,7 +197,7 @@ UINT64 find_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level) {
 UINT32 update_page_table_entry(UINT64 *pml4t, void *va, UINT32 page_level,UINT64 entry) {
     UINT64 *pdptt,*pdt,*ptt;
     UINT32 index;
-    pml4t = pa_to_va(pml4t);
+    pml4t = pa_to_va((UINT64)pml4t);
     index = get_pml4e_index(va);
     if (page_level == PML4E_LEVEL) {
         pml4t[index] = entry;
