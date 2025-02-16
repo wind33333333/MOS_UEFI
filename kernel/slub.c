@@ -192,11 +192,11 @@ void *kmalloc(UINT64 size) {
 }
 
 //通用内存释放器
-INT32 kfree(void *virtual_address) {
-    if (virtual_address == NULL) return -1;
+INT32 kfree(void *va) {
+    if (va == NULL) return -1;
 
     for (UINT32 index = 0; index < KMALLOC_CACHE_SIZE; index++) {
-        if (kmem_cache_free(kmalloc_cache[index], virtual_address) == 0) return 0;
+        if (kmem_cache_free(kmalloc_cache[index], va) == 0) return 0;
     }
 
     return -1;

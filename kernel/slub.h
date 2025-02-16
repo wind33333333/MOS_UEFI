@@ -67,6 +67,6 @@ INT32 free_cache_object(kmem_cache_t* cache, void* object);
 void add_cache_node(kmem_cache_t* cache,kmem_cache_node_t* new_cache_node);
 void create_cache(char* cache_name,kmem_cache_t* new_cache, UINT32 object_size);
 void *kmalloc(UINT64 size);
-INT32 kfree(void *virtual_address);
+INT32 kfree(void *va);
 
 #endif
