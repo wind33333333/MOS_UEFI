@@ -189,6 +189,36 @@ UINT64 get_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level) {
     return ptt[index];
 }
 
+UINT32 update_page_table_entry(UINT64 *pml4t, void *va, UINT32 page_level,UINT64 entry) {
+    UINT64 *pdptt,*pdt,*ptt;
+    UINT32 index;
+    pml4t = pa_to_va(pml4t);
+    index = get_pml4e_index(va);
+    if (page_level == PML4E_LEVEL) {
+        pml4t[index] = entry;
+        return 0;
+    };
+
+    pdptt = pa_to_va(pml4t[index] & PAGE_PA_MASK);
+    index = get_pdpte_index(va);
+    if (page_level == PDPTE_LEVEL) {
+        pdptt[index]= entry;
+        return 0;
+    }
+
+    pdt = pa_to_va(pdptt[index] & PAGE_PA_MASK);
+    index = get_pde_index(va);
+    if (page_level == PDE_LEVEL) {
+        pdt[index]= entry;
+        return 0;
+    }
+
+    ptt= pa_to_va(pdt[index] & PAGE_PA_MASK);
+    index=get_pte_index(va);
+    ptt[index]=entry;
+    return 0;
+}
+
 
 //释放物理内存映射虚拟内存
 void munmap(void *va, UINT64 page_count) {
