@@ -13,7 +13,7 @@
 #define PDE_LEVEL    2
 #define PTE_LEVEL    1
 
-#define PAGE_PA_MASK    0x7FFFFFFFF000;
+#define PAGE_PA_MASK    0x7FFFFFFFF000UL
 
 #define PAGE_4K_SHIFT    12
 #define PAGE_4K_SIZE    (1UL << PAGE_4K_SHIFT)

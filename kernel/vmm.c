@@ -13,10 +13,10 @@ INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
     index = get_pml4e_index(va);
     if (pml4t[index] == 0) {
         pml4t[index] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-        mem_set(pa_to_va(pml4t[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
+        mem_set(pa_to_va(pml4t[index] & PAGE_PA_MASK), 0,PAGE_4K_SIZE);
     }
 
-    pdptt = pa_to_va(pml4t[index] & 0x7FFFFFFFF000);
+    pdptt = pa_to_va(pml4t[index] & PAGE_PA_MASK);
     index = get_pdpte_index(va);
     if (page_size == PAGE_1G_SIZE) {
         //1G页
@@ -30,10 +30,10 @@ INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
 
     if (pdptt[index] == 0) {
         pdptt[index] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-        mem_set(pa_to_va(pdptt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
+        mem_set(pa_to_va(pdptt[index] & PAGE_PA_MASK), 0,PAGE_4K_SIZE);
     }
 
-    pdt = pa_to_va(pdptt[index] & 0x7FFFFFFFF000);
+    pdt = pa_to_va(pdptt[index] & PAGE_PA_MASK);
     index = get_pde_index(va);
     if (page_size == PAGE_2M_SIZE) {
         //2M页
@@ -47,10 +47,10 @@ INT32 vmmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
 
     if (pdt[index] == 0) {
         pdt[index] = page_to_pa(alloc_pages(0)) | (attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-        mem_set(pa_to_va(pdt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
+        mem_set(pa_to_va(pdt[index] & PAGE_PA_MASK), 0,PAGE_4K_SIZE);
     }
 
-    ptt = pa_to_va(pdt[index] & 0x7FFFFFFFF000);
+    ptt = pa_to_va(pdt[index] & PAGE_PA_MASK);
     index = get_pte_index(va);
     if (ptt[index] == 0) {
         ptt[index] = pa | attr;
@@ -68,31 +68,31 @@ INT32 vmunmap(UINT64 *pml4t, void *va, UINT64 page_size, UINT32 unmap_flags) {
     pml4e_index = get_pml4e_index(va);
     if (pml4t[pml4e_index] == 0) return -1; //pml4e无效
 
-    pdptt = pa_to_va(pml4t[pml4e_index] & 0x7FFFFFFFF000);
+    pdptt = pa_to_va(pml4t[pml4e_index] & PAGE_PA_MASK);
     pdpte_index = get_pdpte_index(va);
     if (pdptt[pdpte_index] == 0) return -1; //pdpte无效
     if (page_size == PAGE_1G_SIZE) {
         //如果为1G巨页，跳转到巨页释放
-        if (unmap_flags == MUNMAP_FREE_PAGES) free_pages(pa_to_page(pdptt[pdpte_index] & 0x7FFFFFFFF000));            //释放物理页
+        if (unmap_flags == MUNMAP_FREE_PAGES) free_pages(pa_to_page(pdptt[pdpte_index] & PAGE_PA_MASK));            //释放物理页
         pdptt[pdpte_index] = 0;
         invlpg(va);
         goto huge_page;
     }
 
-    pdt = pa_to_va(pdptt[pdpte_index] & 0x7FFFFFFFF000);
+    pdt = pa_to_va(pdptt[pdpte_index] & PAGE_PA_MASK);
     pde_index = get_pde_index(va);
     if (pdt[pde_index] == 0) return -1; //pde无效
     if (page_size == PAGE_2M_SIZE) {
         //如果等于1则表示该页为2M大页，跳转到大页释放
-        if (unmap_flags == MUNMAP_FREE_PAGES) free_pages(pa_to_page(pdt[pde_index] & 0x7FFFFFFFF000));            //释放物理页
+        if (unmap_flags == MUNMAP_FREE_PAGES) free_pages(pa_to_page(pdt[pde_index] & PAGE_PA_MASK));            //释放物理页
         pdt[pde_index] = 0;
         invlpg(va);
         goto big_page;
     }
 
-    ptt = pa_to_va(pdt[pde_index] & 0x7FFFFFFFF000); //4K页
+    ptt = pa_to_va(pdt[pde_index] & PAGE_PA_MASK); //4K页
     pte_index = get_pte_index(va);
-    if (unmap_flags == MUNMAP_FREE_PAGES) free_pages(pa_to_page(ptt[pte_index] & 0x7FFFFFFFF000));  //释放物理页
+    if (unmap_flags == MUNMAP_FREE_PAGES) free_pages(pa_to_page(ptt[pte_index] & PAGE_PA_MASK));  //释放物理页
     ptt[pte_index] = 0;
     invlpg(va);
 
@@ -170,6 +170,7 @@ INT32 vmunmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size) {
     return 0;
 }
 
+//获取页表项
 UINT64 get_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level) {
     UINT64 *pdptt,*pdt,*ptt;
     UINT32 index;
@@ -177,16 +178,16 @@ UINT64 get_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level) {
     index = get_pml4e_index(va);
     if (page_level == PML4E_LEVEL) return pml4t[index];
 
-    pdptt = pa_to_va(pml4t[index] & 0x7FFFFFFFF000);
+    pdptt = pa_to_va(pml4t[index] & PAGE_PA_MASK);
     index = get_pdpte_index(va);
     if (page_level == PDPTE_LEVEL) return pdptt[index];
 
-    pdt = pa_to_va(pdptt[index] & 0x7FFFFFFFF000);
+    pdt = pa_to_va(pdptt[index] & PAGE_PA_MASK);
     index = get_pde_index(va);
     if (page_level == PDE_LEVEL) return pdt[index];
 
 
-    ptt= pa_to_va(pdt[index] & 0x7FFFFFFFF000);
+    ptt= pa_to_va(pdt[index] & PAGE_PA_MASK);
     index=get_pte_index(va);
     return ptt[index];
 }
