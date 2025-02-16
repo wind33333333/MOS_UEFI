@@ -18,13 +18,22 @@ INIT_TEXT void init_kernel(void) {
     init_buddy_system();                       //初始化伙伴系统
     init_slub();                               //初始化slub内存分配器
 
+    UINT64 *va = (UINT64*)0xFFFF808000000000;
+    INT32 a = vmmap_range(kpml4t_ptr,0x1000,va,0x8040000000,PAGE_ROOT_RW_2M1G,PAGE_1G_SIZE);
+    a = vmunmap_range(kpml4t_ptr,va,0x8040000000,PAGE_1G_SIZE,MUNMAP_KEEP_PAGES);
 
-    INT32 a = vmmap_range(kpml4t_ptr,0x1000,(void*)0xFFFF808000000000,0x8040000000,PAGE_ROOT_RW_2M1G,PAGE_1G_SIZE);
-    a = vmunmap_range(kpml4t_ptr,(void*)0xFFFF808000000000,0x8040000000,PAGE_1G_SIZE,MUNMAP_KEEP_PAGES);
+    for (UINT32 i=0;i<0x1024;i++) {
+        page_t *p=alloc_pages(0);
+        vmmap(kpml4t_ptr,page_to_pa(p),va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
+        va += 512;
+    }
 
-    page_t *p=alloc_pages(10);
-    vmmap_range(kpml4t_ptr,page_to_pa(p),(void*)0xFFFF818000000000,0x400000,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
-    vmunmap_range(kpml4t_ptr,0xFFFF818000000000,0x400000,PAGE_4K_SIZE,MUNMAP_FREE_PAGES);
+    va = (UINT64*)0xFFFF808000000000;
+    for (UINT32 i=0;i<0x1024;i++) {
+        vmunmap(kpml4t_ptr,va,PAGE_4K_SIZE,MUNMAP_FREE_PAGES);
+        va += 512;
+    }
+
 
 
     while (TRUE);

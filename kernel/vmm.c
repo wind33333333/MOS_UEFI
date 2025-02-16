@@ -147,7 +147,7 @@ INT32 vmmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr
     return 0;
 }
 
-INT32 vmunmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size,UINT32 unmap_flags) {
+INT32 vmunmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size) {
     UINT64 count;
     switch (page_size) {
         case PAGE_4K_SIZE:
@@ -164,7 +164,7 @@ INT32 vmunmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size,UIN
     }
 
     for (; count > 0; count--) {
-        if (vmunmap(pml4t, va, page_size,unmap_flags) != 0) return -1;
+        if (vmunmap(pml4t, va, page_size,MUNMAP_KEEP_PAGES) != 0) return -1;
         va += page_size;
     }
     return 0;
