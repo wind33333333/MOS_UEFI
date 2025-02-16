@@ -42,4 +42,3 @@ void set_tss_descriptor(UINT32 index,UINT64 tss_address) {
     // 高 64 位的描述符
     gdt_ptr.base[index*2+1] = tss_address >> 32;                   // BASE 的高 32 位
 }
-fsdf

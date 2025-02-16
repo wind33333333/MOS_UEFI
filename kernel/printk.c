@@ -332,7 +332,7 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
 char buf[4096];
 
 INIT_TEXT void init_output(void) {
-    boot_info=pa_to_va(boot_info);
+    boot_info=pa_to_va((UINT64)boot_info);
     Pos.XResolution = boot_info->horizontal_resolution;
     Pos.YResolution = boot_info->vertical_resolution;
     Pos.PixelsPerScanLine = boot_info->pixels_per_scan_line;
