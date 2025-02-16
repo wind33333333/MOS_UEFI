@@ -12,21 +12,25 @@
 //页表项物理地址掩码
 #define PAGE_PA_MASK    0x7FFFFFFFF000UL
 
+//4K页表
 #define PAGE_4K_SHIFT    12
 #define PAGE_4K_SIZE    (1UL << PAGE_4K_SHIFT)
 #define PAGE_4K_MASK    (~(PAGE_4K_SIZE - 1))
 #define PAGE_4K_ALIGN(ADDR)    (((UINT64)(ADDR) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
 
+//2M页表
 #define PAGE_2M_SHIFT    21
 #define PAGE_2M_SIZE    (1UL << PAGE_2M_SHIFT)
 #define PAGE_2M_MASK    (~(PAGE_2M_SIZE - 1))
 #define PAGE_2M_ALIGN(ADDR)     (((UINT64)(ADDR) + PAGE_2M_SIZE - 1) & PAGE_2M_MASK)
 
+//1G页表
 #define PAGE_1G_SHIFT    30
 #define PAGE_1G_SIZE    (1UL << PAGE_1G_SHIFT)
 #define PAGE_1G_MASK    (~(PAGE_1G_SIZE - 1))
 #define PAGE_1G_ALIGN(ADDR)     (((UINT64)(ADDR) + PAGE_1G_SIZE - 1) & PAGE_1G_MASK)
 
+//页属性
 #define PAGE_NX     1UL<<63
 #define PAGE_G      1UL<<8
 #define PAGE_PS     1UL<<7      //pdpte第7位ps位置位表示1G巨页 pde第7位ps位置位2M大页
