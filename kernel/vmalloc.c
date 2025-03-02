@@ -162,6 +162,7 @@ void rb_test(void) {
     rbtree_t *rbtree = kmalloc(sizeof(rbtree_t));
     rbtree->nil = kmalloc(sizeof(rbtree_node_t));
     rbtree->nil->color = black;
+    rbtree->nil->key = 0;
     rbtree->root = rbtree->nil;
     rbtree_node_t *node = rbtree->nil;
 
