@@ -35,18 +35,23 @@ void left_rotate(rbtree_t *rbtree, rbtree_node_t *root) {
     rbtree_node_t *new_root = root->right;        //原根的右孩变新根
     rbtree_node_t *left_child = new_root->left;
     root->right = left_child;                     //新根的左孩变原根的右孩
-    if (left_child != rbtree->nil) {
-        left_child->parent = root;                //原根变左孩的父亲
-    }
-    if (root->parent == rbtree->nil) {
-        rbtree->root = new_root;                  //原根的父亲为nil时表示是树根，修正树根为new_root
-    }else if (root->parent->left=root){
-        root->parent->left = new_root;            //原根的父亲左孩变成新根
-    }else if (root->parent->right=root) {
-        root->parent->right = new_root;           //原根的父亲右孩变成新根
-    }
     new_root->left = root;                        //原根变新根左孩
     new_root->parent = root->parent;              //原根的父亲变新根父亲
     root->parent = new_root;                      //新根变成原根的父亲
+
+    if (left_child != rbtree->nil) {
+        left_child->parent = root;                //原根变左孩的父亲
+    }
+
+    if (new_root->parent == rbtree->nil) {
+        rbtree->root = new_root;                  //新根变成树根
+    }else if (new_root->parent->left=root){
+        new_root->parent->left = new_root;        //父亲左孩变成新根
+    }else if (new_root->parent->right=root) {
+        new_root->parent->right = new_root;       //父亲右孩变成新根
+    }
+
 }
+
+
 
