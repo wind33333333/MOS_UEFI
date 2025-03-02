@@ -1,9 +1,10 @@
 #include "vmalloc.h"
 #include "slub.h"
+#include "printk.h"
 
 typedef enum {
-    RED,        //红色0
-    BLACK       //黑色1
+    red,        //红色0
+    black       //黑色1
 } color_e;
 
 typedef struct rbtree_node_t {
@@ -25,7 +26,7 @@ rbtree_node_t *create_rbtree_node(rbtree_t *rbtree, UINT64 key) {
     new_node->left = rbtree->nil;
     new_node->right = rbtree->nil;
     new_node->parent = rbtree->nil;
-    new_node->color = RED;
+    new_node->color = red;
     new_node->key = key;
     return new_node;
 }
@@ -79,42 +80,42 @@ void right_rotate(rbtree_t *rbtree, rbtree_node_t *root) {
 //修正红黑树插入失衡情况
 void rbtree_insert_fixup(rbtree_t *rbtree, rbtree_node_t *cur) {
     rbtree_node_t *uncle;
-    while (cur->parent->color == RED) {
+    while (cur->parent->color == red) {
         if (cur->parent == cur->parent->parent->left) {//LXX
             uncle = cur->parent->parent->right;
-            if (uncle->color == RED) {     //LXR
-                cur->parent->color = BLACK;
-                uncle->color = BLACK;
-                cur->parent->parent->color = RED;
+            if (uncle->color == red) {     //LXR
+                cur->parent->color = black;
+                uncle->color = black;
+                cur->parent->parent->color = red;
                 cur = cur->parent->parent;
-            } else if (uncle->color == BLACK) { //LXB
+            } else if (uncle->color == black) { //LXB
                 if (cur == cur->parent->right) { //LRB
                     cur = cur->parent;
                     left_rotate(rbtree, cur);
                 }
-                cur->parent->color = BLACK;     //LLB
-                cur->parent->parent->color = RED;
+                cur->parent->color = black;     //LLB
+                cur->parent->parent->color = red;
                 right_rotate(rbtree, cur->parent->parent);
             }
         }else if (cur->parent == cur->parent->parent->right) {//RXX
             uncle = cur->parent->parent->left;
-            if (uncle->color == RED) {     //RXR
-                cur->parent->color = BLACK;
-                uncle->color = BLACK;
-                cur->parent->parent->color = RED;
+            if (uncle->color == red) {     //RXR
+                cur->parent->color = black;
+                uncle->color = black;
+                cur->parent->parent->color = red;
                 cur = cur->parent->parent;
-            } else if (uncle->color == BLACK) { //RXB
+            } else if (uncle->color == black) { //RXB
                 if (cur == cur->parent->left) { //RLB
                     cur = cur->parent;
                     right_rotate(rbtree, cur);
                 }
-                cur->parent->color = BLACK;     //RRB
-                cur->parent->parent->color = RED;
+                cur->parent->color = black;     //RRB
+                cur->parent->parent->color = red;
                 left_rotate(rbtree, cur->parent->parent);
             }
         }
     }
-    rbtree->root->color = BLACK;
+    rbtree->root->color = black;
 }
 
 //插入节点到红黑树
@@ -144,9 +145,31 @@ void rbtree_insert(rbtree_t *rbtree, rbtree_node_t *insert_node) {
         prev_node->right = insert_node;
     }
 
-
-
+    rbtree_insert_fixup(rbtree, insert_node);
 }
 
+void mid_traversal(rbtree_t *rbtree, rbtree_node_t *node) {
+    if (node == rbtree->nil) return;
+    mid_traversal(rbtree, node->left);
+    color_printk(GREEN,BLACK,"key:%d   color:%d\n",node->key,node->color);
+    mid_traversal(rbtree, node->right);
+    
+}
 
+void rb_test(void) {
+    //红黑树测试
+    UINT64 keyare [10] = {1,2,3,4,5,6,7,8,9,10};
+    rbtree_t *rbtree = kmalloc(sizeof(rbtree_t));
+    rbtree->nil = kmalloc(sizeof(rbtree_node_t));
+    rbtree->nil->color = black;
+    rbtree->root = rbtree->nil;
+    rbtree_node_t *node = rbtree->nil;
+
+    for (int i = 0; i < 10; i++) {
+        node = create_rbtree_node(rbtree,keyare[i]);
+        rbtree_insert(rbtree,node);
+    }
+
+    mid_traversal(rbtree,rbtree->nil);
+}
 
