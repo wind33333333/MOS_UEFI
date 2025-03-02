@@ -76,5 +76,77 @@ void right_rotate(rbtree_t *rbtree, rbtree_node_t *root) {
 
 }
 
+//修正红黑树插入失衡情况
+void rbtree_insert_fixup(rbtree_t *rbtree, rbtree_node_t *cur) {
+    rbtree_node_t *uncle;
+    while (cur->parent->color == RED) {
+        if (cur->parent == cur->parent->parent->left) {//LXX
+            uncle = cur->parent->parent->right;
+            if (uncle->color == RED) {     //LXR
+                cur->parent->color = BLACK;
+                uncle->color = BLACK;
+                cur->parent->parent->color = RED;
+                cur = cur->parent->parent;
+            } else if (uncle->color == BLACK) { //LXB
+                if (cur == cur->parent->right) { //LRB
+                    cur = cur->parent;
+                    left_rotate(rbtree, cur);
+                }
+                cur->parent->color = BLACK;     //LLB
+                cur->parent->parent->color = RED;
+                right_rotate(rbtree, cur->parent->parent);
+            }
+        }else if (cur->parent == cur->parent->parent->right) {//RXX
+            uncle = cur->parent->parent->left;
+            if (uncle->color == RED) {     //RXR
+                cur->parent->color = BLACK;
+                uncle->color = BLACK;
+                cur->parent->parent->color = RED;
+                cur = cur->parent->parent;
+            } else if (uncle->color == BLACK) { //RXB
+                if (cur == cur->parent->left) { //RLB
+                    cur = cur->parent;
+                    right_rotate(rbtree, cur);
+                }
+                cur->parent->color = BLACK;     //RRB
+                cur->parent->parent->color = RED;
+                left_rotate(rbtree, cur->parent->parent);
+            }
+        }
+    }
+    rbtree->root->color = BLACK;
+}
+
+//插入节点到红黑树
+void rbtree_insert(rbtree_t *rbtree, rbtree_node_t *insert_node) {
+    rbtree_node_t *cur_node=rbtree->root;
+    rbtree_node_t *prev_node=rbtree->nil;
+
+    //查找红黑树大小合适的节点
+    while (cur_node != rbtree->nil) {
+        prev_node = cur_node;
+        if (insert_node->key < cur_node->key) {
+            cur_node = cur_node->left;
+        }else if (insert_node->key > cur_node->key) {
+            cur_node = cur_node->right;
+        }else {
+            return;
+        }
+    }
+
+    insert_node->parent = prev_node;
+    // prev_node等于nil时说明当前是树根直接把node插入根，否则根据key大小插入左右孩子
+    if (prev_node == rbtree->nil) {
+        rbtree->root = insert_node;
+    }else if (insert_node->key < prev_node->key) {
+        prev_node->left = insert_node;
+    }else if (insert_node->key > prev_node->key) {
+        prev_node->right = insert_node;
+    }
+
+
+
+}
+
 
 
