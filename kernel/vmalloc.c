@@ -161,6 +161,9 @@ void rb_test(void) {
     UINT64 keyare [10] = {1,2,3,4,5,6,7,8,9,10};
     rbtree_t *rbtree = kmalloc(sizeof(rbtree_t));
     rbtree->nil = kmalloc(sizeof(rbtree_node_t));
+    rbtree->nil->left = rbtree->nil;
+    rbtree->nil->right = rbtree->nil;
+    rbtree->nil->parent = rbtree->nil;
     rbtree->nil->color = black;
     rbtree->nil->key = 0;
     rbtree->root = rbtree->nil;
@@ -171,6 +174,6 @@ void rb_test(void) {
         rbtree_insert(rbtree,node);
     }
 
-    mid_traversal(rbtree,rbtree->nil);
+    mid_traversal(rbtree,rbtree->root);
 }
 
