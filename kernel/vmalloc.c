@@ -46,9 +46,9 @@ void left_rotate(rbtree_t *rbtree, rbtree_node_t *root) {
 
     if (new_root->parent == rbtree->nil) {
         rbtree->root = new_root;                  //新根变成树根
-    }else if (new_root->parent->left=root){
+    }else if (new_root->parent->left==root){
         new_root->parent->left = new_root;        //父亲左孩变成新根
-    }else if (new_root->parent->right=root) {
+    }else if (new_root->parent->right==root) {
         new_root->parent->right = new_root;       //父亲右孩变成新根
     }
 
@@ -69,9 +69,9 @@ void right_rotate(rbtree_t *rbtree, rbtree_node_t *root) {
 
     if (new_root->parent == rbtree->nil) {
         rbtree->root = new_root;                  //新根变成树根
-    }else if (new_root->parent->left=root){
+    }else if (new_root->parent->left==root){
         new_root->parent->left = new_root;        //父亲左孩变成新根
-    }else if (new_root->parent->right=root) {
+    }else if (new_root->parent->right==root) {
         new_root->parent->right = new_root;       //父亲右孩变成新根
     }
 
