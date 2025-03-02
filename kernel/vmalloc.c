@@ -3,15 +3,15 @@
 #include "printk.h"
 
 typedef enum {
-    red,        //红色0
-    black       //黑色1
-} color_e;
+    red_node,        //红色0
+    black_node       //黑色1
+} rbtree_color_e;
 
 typedef struct rbtree_node_t {
     struct rbtree_node_t *left;     //左子节点
     struct rbtree_node_t *right;    //右子节点
     struct rbtree_node_t *parent;   //父节点
-    color_e color;                  //颜色
+    rbtree_color_e color;           //颜色
     UINT64 key;                     //数据
 }rbtree_node_t;
 
@@ -26,7 +26,7 @@ rbtree_node_t *create_rbtree_node(rbtree_t *rbtree, UINT64 key) {
     new_node->left = rbtree->nil;
     new_node->right = rbtree->nil;
     new_node->parent = rbtree->nil;
-    new_node->color = red;
+    new_node->color = red_node;
     new_node->key = key;
     return new_node;
 }
@@ -80,42 +80,42 @@ void right_rotate(rbtree_t *rbtree, rbtree_node_t *root) {
 //修正红黑树插入失衡情况
 void rbtree_insert_fixup(rbtree_t *rbtree, rbtree_node_t *cur) {
     rbtree_node_t *uncle;
-    while (cur->parent->color == red) {
+    while (cur->parent->color == red_node) {
         if (cur->parent == cur->parent->parent->left) {//LXX
             uncle = cur->parent->parent->right;
-            if (uncle->color == red) {     //LXR
-                cur->parent->color = black;
-                uncle->color = black;
-                cur->parent->parent->color = red;
+            if (uncle->color == red_node) {     //LXR
+                cur->parent->color = black_node;
+                uncle->color = black_node;
+                cur->parent->parent->color = red_node;
                 cur = cur->parent->parent;
-            } else if (uncle->color == black) { //LXB
+            } else if (uncle->color == black_node) { //LXB
                 if (cur == cur->parent->right) { //LRB
                     cur = cur->parent;
                     left_rotate(rbtree, cur);
                 }
-                cur->parent->color = black;     //LLB
-                cur->parent->parent->color = red;
+                cur->parent->color = black_node;     //LLB
+                cur->parent->parent->color = red_node;
                 right_rotate(rbtree, cur->parent->parent);
             }
         }else if (cur->parent == cur->parent->parent->right) {//RXX
             uncle = cur->parent->parent->left;
-            if (uncle->color == red) {     //RXR
-                cur->parent->color = black;
-                uncle->color = black;
-                cur->parent->parent->color = red;
+            if (uncle->color == red_node) {     //RXR
+                cur->parent->color = black_node;
+                uncle->color = black_node;
+                cur->parent->parent->color = red_node;
                 cur = cur->parent->parent;
-            } else if (uncle->color == black) { //RXB
+            } else if (uncle->color == black_node) { //RXB
                 if (cur == cur->parent->left) { //RLB
                     cur = cur->parent;
                     right_rotate(rbtree, cur);
                 }
-                cur->parent->color = black;     //RRB
-                cur->parent->parent->color = red;
+                cur->parent->color = black_node;     //RRB
+                cur->parent->parent->color = red_node;
                 left_rotate(rbtree, cur->parent->parent);
             }
         }
     }
-    rbtree->root->color = black;
+    rbtree->root->color = black_node;
 }
 
 //插入节点到红黑树
@@ -151,7 +151,7 @@ void rbtree_insert(rbtree_t *rbtree, rbtree_node_t *insert_node) {
 void mid_traversal(rbtree_t *rbtree, rbtree_node_t *node) {
     if (node == rbtree->nil) return;
     mid_traversal(rbtree, node->left);
-    color_printk(GREEN,BLACK,"key:%d   color:%d\n",node->key,node->color);
+    color_printk(GREEN,black_node,"key:%d   color:%d\n",node->key,node->color);
     mid_traversal(rbtree, node->right);
     
 }
@@ -164,7 +164,7 @@ void rb_test(void) {
     rbtree->nil->left = rbtree->nil;
     rbtree->nil->right = rbtree->nil;
     rbtree->nil->parent = rbtree->nil;
-    rbtree->nil->color = black;
+    rbtree->nil->color = black_node;
     rbtree->nil->key = 0;
     rbtree->root = rbtree->nil;
     rbtree_node_t *node = rbtree->nil;
