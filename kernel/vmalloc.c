@@ -148,6 +148,7 @@ void rbtree_insert(rbtree_t *rbtree, rbtree_node_t *insert_node) {
     rbtree_insert_fixup(rbtree, insert_node);
 }
 
+//递归中序遍历
 void mid_traversal(rbtree_t *rbtree, rbtree_node_t *node) {
     if (node == rbtree->nil) return;
     mid_traversal(rbtree, node->left);
@@ -156,6 +157,7 @@ void mid_traversal(rbtree_t *rbtree, rbtree_node_t *node) {
     
 }
 
+//中序遍历
 void mid_traversal1(rbtree_t *rbtree) {
     rbtree_node_t *cur_node=rbtree->root;
     while (cur_node->left != rbtree->nil) {
