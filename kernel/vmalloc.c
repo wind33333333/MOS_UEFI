@@ -156,9 +156,32 @@ void mid_traversal(rbtree_t *rbtree, rbtree_node_t *node) {
     
 }
 
+void mid_traversal1(rbtree_t *rbtree) {
+    rbtree_node_t *cur_node=rbtree->root;
+    while (cur_node->left != rbtree->nil) {
+        cur_node = cur_node->left;
+    }
+
+    while (cur_node != rbtree->nil) {
+        color_printk(GREEN,BLACK,"key:%d   color:%d\n",cur_node->key,cur_node->color);
+        if (cur_node->right != rbtree->nil) {
+            cur_node = cur_node->right;
+            while (cur_node->left != rbtree->nil) {
+                cur_node = cur_node->left;
+            }
+        }else {
+            while (cur_node->parent != NULL && cur_node->parent->right == cur_node) {
+                cur_node = cur_node->parent;
+            }
+            cur_node = cur_node->parent;
+        }
+    }
+
+}
+
 void rb_test(void) {
     //红黑树测试
-    UINT64 keyare [10] = {1,2,3,4,5,6,7,8,9,10};
+    UINT64 keyare [10] = {3523,9906,3065,1136,8233,1781,313,6046,6954,3051};
     rbtree_t *rbtree = kmalloc(sizeof(rbtree_t));
     rbtree->nil = kmalloc(sizeof(rbtree_node_t));
     rbtree->nil->left = rbtree->nil;
@@ -174,6 +197,6 @@ void rb_test(void) {
         rbtree_insert(rbtree,node);
     }
 
-    mid_traversal(rbtree,rbtree->root);
+    mid_traversal1(rbtree);
 }
 
