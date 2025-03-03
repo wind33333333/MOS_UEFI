@@ -151,27 +151,27 @@ void rbtree_insert(rbtree_t *rbtree, rbtree_node_t *insert_node) {
 //递归中序遍历
 void mid_traversal(rbtree_t *rbtree, rbtree_node_t *node) {
     if (node == rbtree->nil) return;
-    mid_traversal(rbtree, node->left);
+    mid_traversal(rbtree, node->left);  //处理左子树
     color_printk(GREEN,black_node,"key:%d   color:%d\n",node->key,node->color);
-    mid_traversal(rbtree, node->right);
+    mid_traversal(rbtree, node->right); //处理右子树
     
 }
 
 //中序遍历
 void mid_traversal1(rbtree_t *rbtree) {
     rbtree_node_t *cur_node=rbtree->root;
-    while (cur_node->left != rbtree->nil) {
+    while (cur_node->left != rbtree->nil) {     //找到最左边的节点
         cur_node = cur_node->left;
     }
 
     while (cur_node != rbtree->nil) {
         color_printk(GREEN,BLACK,"key:%d   color:%d\n",cur_node->key,cur_node->color);
-        if (cur_node->right != rbtree->nil) {
+        if (cur_node->right != rbtree->nil) {   // 有右子树，转向右子树的最左节点
             cur_node = cur_node->right;
             while (cur_node->left != rbtree->nil) {
                 cur_node = cur_node->left;
             }
-        }else {
+        }else {// 没有右子树，回溯到父节点
             while (cur_node->parent != NULL && cur_node->parent->right == cur_node) {
                 cur_node = cur_node->parent;
             }
