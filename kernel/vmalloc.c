@@ -148,6 +148,24 @@ void rbtree_insert(rbtree_t *rbtree, rbtree_node_t *insert_node) {
     rbtree_insert_fixup(rbtree, insert_node);
 }
 
+//删除红黑树节点
+void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
+    rbtree_node_t *cur_node=rbtree->root;
+    while (TRUE) {   //搜索key对应的节点
+        if (cur_node == rbtree->nil) return;
+        if (cur_node->key < key) {
+            cur_node = cur_node->left;
+        }else if (cur_node->key > key) {
+            cur_node = cur_node->right;
+        }else if (cur_node->key == key) {
+            break;
+        }
+
+
+    }
+
+}
+
 //递归中序遍历
 void mid_traversal(rbtree_t *rbtree, rbtree_node_t *node) {
     if (node == rbtree->nil) return;
@@ -183,7 +201,7 @@ void mid_traversal1(rbtree_t *rbtree) {
 
 void rb_test(void) {
     //红黑树测试
-    UINT64 keyare [10] = {3523,9906,3065,1136,8233,1781,313,6046,6954,3051};
+    UINT64 keyare [34] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34};
     rbtree_t *rbtree = kmalloc(sizeof(rbtree_t));
     rbtree->nil = kmalloc(sizeof(rbtree_node_t));
     rbtree->nil->left = rbtree->nil;
@@ -194,7 +212,7 @@ void rb_test(void) {
     rbtree->root = rbtree->nil;
     rbtree_node_t *node = rbtree->nil;
 
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 34; i++) {
         node = create_rbtree_node(rbtree,keyare[i]);
         rbtree_insert(rbtree,node);
     }
