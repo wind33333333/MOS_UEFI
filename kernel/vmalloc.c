@@ -153,11 +153,7 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
     rbtree_node_t *cur_node=rbtree->root;
     while (cur_node->key != key) {   //搜索key对应的节点
         if (cur_node == rbtree->nil) return;  //没有找到
-        if (cur_node->key < key) {
-            cur_node = cur_node->left;
-        }else if (cur_node->key > key) {
-            cur_node = cur_node->right;
-        }
+        cur_node = key < cur_node->key ? cur_node->left : cur_node->right;
     }
 
     //被删除的节点只有左孩或者只有右孩（这种被删除节点为黑色，孩子节点为红色，不然会违反黑路同或不红红）
@@ -183,6 +179,22 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
         cur_node->right->color = BLACK;
         kfree(cur_node);
         return;
+    }
+
+    //没有左右孩子
+    if (cur_node->left == rbtree->nil && cur_node->right == rbtree->nil) {
+        //红色节点直接删除
+        if (cur_node->color == red_node) {
+            if (cur_node == cur_node->parent->left) {
+                cur_node->parent->left = rbtree->nil;
+            }else if (cur_node == cur_node->parent->right) {
+                cur_node->parent->right = rbtree->nil;
+            }
+            kfree(cur_node);
+        }
+
+        //黑色节点
+
     }
 
 
