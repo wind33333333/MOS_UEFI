@@ -151,18 +151,40 @@ void rbtree_insert(rbtree_t *rbtree, rbtree_node_t *insert_node) {
 //删除红黑树节点
 void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
     rbtree_node_t *cur_node=rbtree->root;
-    while (TRUE) {   //搜索key对应的节点
-        if (cur_node == rbtree->nil) return;
+    while (cur_node->key != key) {   //搜索key对应的节点
+        if (cur_node == rbtree->nil) return;  //没有找到
         if (cur_node->key < key) {
             cur_node = cur_node->left;
         }else if (cur_node->key > key) {
             cur_node = cur_node->right;
-        }else if (cur_node->key == key) {
-            break;
         }
-
-
     }
+
+    //被删除的节点只有左孩或者只有右孩（这种被删除节点为黑色，孩子节点为红色，不然会违反黑路同或不红红）
+    if (cur_node->left != rbtree->nil && cur_node->right == rbtree->nil) {
+        //只有左孩
+        if (cur_node == cur_node->parent->left) {
+            cur_node->parent->left = cur_node->left;
+        }else if (cur_node == cur_node->parent->right) {
+            cur_node->parent->right = cur_node->left;
+        }
+        cur_node->left->parent = cur_node->parent;
+        cur_node->left->color = BLACK;
+        kfree(cur_node);
+        return;
+    }else if (cur_node->right != rbtree->nil && cur_node->left == rbtree->nil) {
+        //只有右孩
+        if (cur_node == cur_node->parent->left) {
+            cur_node->parent->left = cur_node->right;
+        }else if (cur_node == cur_node->parent->right) {
+            cur_node->parent->right = cur_node->right;
+        }
+        cur_node->right->parent = cur_node->parent;
+        cur_node->right->color = BLACK;
+        kfree(cur_node);
+        return;
+    }
+
 
 }
 
