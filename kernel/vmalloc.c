@@ -148,6 +148,15 @@ void rbtree_insert(rbtree_t *rbtree, rbtree_node_t *insert_node) {
     rbtree_insert_fixup(rbtree, insert_node);
 }
 
+//查找后继节点
+rbtree_node_t *rbtree_minimum(rbtree_t *rbtree,rbtree_node_t *root) {
+    rbtree_node_t *cur_node=root->right;
+    while (cur_node != rbtree->nil) {
+        cur_node = cur_node->left;
+    }
+    return cur_node;
+}
+
 //删除红黑树节点
 void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
     rbtree_node_t *cur_node=rbtree->root;
