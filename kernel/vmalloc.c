@@ -256,7 +256,7 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
         swap_node(rbtree, cur_node, successor);
     }
 
-    //情况2：删除节点只有一个子树，必定父黑子红
+    //情况2：删除节点只有一个子树，必定父黑子红。
     if (cur_node->left != rbtree->nil || cur_node->right != rbtree->nil || cur_node->color == red_node) {
         delete_node(rbtree, cur_node);
     }
