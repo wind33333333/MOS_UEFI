@@ -160,11 +160,13 @@ rbtree_node_t *find_successor(rbtree_t *rbtree,rbtree_node_t *root) {
 
 //交换节点位置
 void swap_node (rbtree_t *rbtree, rbtree_node_t *a, rbtree_node_t *b) {
-    rbtree_node_t *tmp_left = b->left;
-    rbtree_node_t *tmp_right=b->right;
-    rbtree_node_t *tmp_parent=b->parent;
-    rbtree_color_e color = b->color;
+    rbtree_node_t b_back = *b;
+    // rbtree_node_t *b_left = b->left;
+    // rbtree_node_t *b_right = b->right;
+    // rbtree_node_t *b_parent = b->parent;
+    // rbtree_color_e b_color = b->color;
 
+    //b节点替换a节点
     if (a == a->parent->left) { //a为父节点左孩
         a->parent->left = b;
     }else if (a == a->parent->right) { //a为父节点右孩
@@ -173,24 +175,28 @@ void swap_node (rbtree_t *rbtree, rbtree_node_t *a, rbtree_node_t *b) {
         rbtree->root = b;
     }
 
-    b->left = a->left;
-    b->right = a->right;
+    b->left = b == a->left ? a : a->left;
+    b->right = b == a->right ? a : a->right;
     b->parent = a->parent;
     b->color = a->color;
 
-    a->left->parent = b;
-    a->right->parent = b;
+    if (b->left != rbtree->nil) b->left->parent = b;
+    if (b->right != rbtree->nil) b->right->parent = b;
 
-    if (b == tmp_parent->left) {
-        tmp_parent->left = a;
-    }else if (b == tmp_parent->right) {
-        tmp_parent->right = a;
+    //a节点替换b节点
+    if (b == b_back.parent->left) {
+        b_back.parent->left = a;
+    }else if (b == b_back.parent->right) {
+        b_back.parent->right = a;
     }
 
-    a->left = tmp_left;
-    a->right = tmp_right;
-    a->parent = tmp_parent;
-    a->color = color;
+    a->left = b_back.left;
+    a->right = b_back.right;
+    if (b_back.parent != a) a->parent = b_back.parent;
+    a->color = b_back.color;
+
+    if (a->left != rbtree->nil) a->left->parent = a;
+    if (a->right != rbtree->nil) a->right->parent = a;
 
 }
 
@@ -286,14 +292,14 @@ void mid_traversal(rbtree_t *rbtree, rbtree_node_t *node) {
     mid_traversal(rbtree, node->left);  //处理左子树
     color_printk(GREEN,black_node,"key:%d   color:%d\n",node->key,node->color);
     mid_traversal(rbtree, node->right); //处理右子树
-    
+
 }
 
 
 
 void rb_test(void) {
     //红黑树测试
-    UINT64 keyare [34] = {83,22,99,35,95,78,75,92,40,76};
+    UINT64 keyare [34] = {83,22,99,35,95,78,75,92,40,76,93,91};
     rbtree_t *rbtree = kmalloc(sizeof(rbtree_t));
     rbtree->nil = kmalloc(sizeof(rbtree_node_t));
     rbtree->nil->left = rbtree->nil;
@@ -304,12 +310,11 @@ void rb_test(void) {
     rbtree->root = rbtree->nil;
     rbtree_node_t *node = rbtree->nil;
 
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 12; i++) {
         node = create_rbtree_node(rbtree,keyare[i]);
         rbtree_insert(rbtree,node);
     }
 
     mid_traversal1(rbtree);
-    rbtree_delete(rbtree,83);
+    rbtree_delete(rbtree,75);
 }
-
