@@ -232,12 +232,31 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
     }
 
     //情况1：删除节点左右子树都有
-    rbtree_node_t *successor;
-    if (cur_node != rbtree->nil && cur_node->right != rbtree->nil) {
-        successor = find_successor(rbtree, cur_node); //找后继节点
+    if (cur_node->left != rbtree->nil && cur_node->right != rbtree->nil) {
+        rbtree_node_t *successor = find_successor(rbtree, cur_node); //找后继节点
         swap_node(rbtree, cur_node, successor); //交换需要删除的结点位置和后继节点位置，删除问题到后面进一步处理
     }
+
     mid_traversal1(rbtree);
+
+    //情况2：只有一个子树的
+    if (cur_node->left != rbtree->nil) {
+        swap_node(rbtree, cur_node, cur_node->left);
+    }else if (cur_node->right != rbtree->nil) {
+        swap_node(rbtree, cur_node, cur_node->right);
+    }
+
+    mid_traversal1(rbtree);
+
+    //情况3：节点为叶子节点
+    if (cur_node->color == red_node) {
+
+    }else if (cur_node->color == black_node) {
+
+    }
+
+
+
 
 
     //被删除的节点只有左孩或者只有右孩（这种被删除节点为黑色，孩子节点为红色，不然会违反黑路同或不红红）
@@ -297,7 +316,7 @@ void mid_traversal(rbtree_t *rbtree, rbtree_node_t *node) {
 
 void rb_test(void) {
     //红黑树测试
-    UINT64 keyare [34] = {83,22,99,35,95,78,75,92,40,76,93,91};
+    UINT64 keyare [34] = {83,22,99,35,95,78,75,92,40,76,93};
     rbtree_t *rbtree = kmalloc(sizeof(rbtree_t));
     rbtree->nil = kmalloc(sizeof(rbtree_node_t));
     rbtree->nil->left = rbtree->nil;
@@ -308,11 +327,11 @@ void rb_test(void) {
     rbtree->root = rbtree->nil;
     rbtree_node_t *node = rbtree->nil;
 
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < 11; i++) {
         node = create_rbtree_node(rbtree,keyare[i]);
         rbtree_insert(rbtree,node);
     }
 
     mid_traversal1(rbtree);
-    rbtree_delete(rbtree,75);
+    rbtree_delete(rbtree,83);
 }
