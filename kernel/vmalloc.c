@@ -181,10 +181,40 @@ void swap_node (rbtree_t *rbtree, rbtree_node_t *a, rbtree_node_t *b) {
     a->left->parent = b;
     a->right->parent = b;
 
+    if (b == tmp_parent->left) {
+        tmp_parent->left = a;
+    }else if (b == tmp_parent->right) {
+        tmp_parent->right = a;
+    }
+
     a->left = tmp_left;
     a->right = tmp_right;
     a->parent = tmp_parent;
     a->color = color;
+
+}
+
+//中序遍历
+void mid_traversal1(rbtree_t *rbtree) {
+    rbtree_node_t *cur_node=rbtree->root;
+    while (cur_node->left != rbtree->nil) {     //找到最左边的节点
+        cur_node = cur_node->left;
+    }
+
+    while (cur_node != rbtree->nil) {
+        color_printk(GREEN,BLACK,"key:%d   color:%d\n",cur_node->key,cur_node->color);
+        if (cur_node->right != rbtree->nil) {   // 有右子树，转向右子树的最左节点
+            cur_node = cur_node->right;
+            while (cur_node->left != rbtree->nil) {
+                cur_node = cur_node->left;
+            }
+        }else {// 没有右子树，回溯到父节点
+            while (cur_node->parent != NULL && cur_node->parent->right == cur_node) {
+                cur_node = cur_node->parent;
+            }
+            cur_node = cur_node->parent;
+        }
+    }
 
 }
 
@@ -198,10 +228,13 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
     }
 
     //情况1：删除节点左右子树都有
+    rbtree_node_t *successor;
     if (cur_node != rbtree->nil && cur_node->right != rbtree->nil) {
-        rbtree_node_t *successor = find_successor(rbtree, cur_node); //找后继节点
+        successor = find_successor(rbtree, cur_node); //找后继节点
         swap_node(rbtree, cur_node, successor); //交换需要删除的结点位置和后继节点位置，删除问题到后面进一步处理
     }
+    mid_traversal1(rbtree);
+
 
     //被删除的节点只有左孩或者只有右孩（这种被删除节点为黑色，孩子节点为红色，不然会违反黑路同或不红红）
     if (cur_node->left != rbtree->nil && cur_node->right == rbtree->nil) {
@@ -256,29 +289,7 @@ void mid_traversal(rbtree_t *rbtree, rbtree_node_t *node) {
     
 }
 
-//中序遍历
-void mid_traversal1(rbtree_t *rbtree) {
-    rbtree_node_t *cur_node=rbtree->root;
-    while (cur_node->left != rbtree->nil) {     //找到最左边的节点
-        cur_node = cur_node->left;
-    }
 
-    while (cur_node != rbtree->nil) {
-        color_printk(GREEN,BLACK,"key:%d   color:%d\n",cur_node->key,cur_node->color);
-        if (cur_node->right != rbtree->nil) {   // 有右子树，转向右子树的最左节点
-            cur_node = cur_node->right;
-            while (cur_node->left != rbtree->nil) {
-                cur_node = cur_node->left;
-            }
-        }else {// 没有右子树，回溯到父节点
-            while (cur_node->parent != NULL && cur_node->parent->right == cur_node) {
-                cur_node = cur_node->parent;
-            }
-            cur_node = cur_node->parent;
-        }
-    }
-
-}
 
 void rb_test(void) {
     //红黑树测试
@@ -299,5 +310,6 @@ void rb_test(void) {
     }
 
     mid_traversal1(rbtree);
+    rbtree_delete(rbtree,83);
 }
 
