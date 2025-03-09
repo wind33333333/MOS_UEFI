@@ -173,7 +173,7 @@ void swap_node (rbtree_t *rbtree, rbtree_node_t *a, rbtree_node_t *b) {
 
     b->left = b == a->left ? a : a->left;
     b->right = b == a->right ? a : a->right;
-    b->parent = a->parent;
+    if (a->parent != b) b->parent = a->parent;
     b->color = a->color;
 
     if (b->left != rbtree->nil) b->left->parent = b;
@@ -184,10 +184,12 @@ void swap_node (rbtree_t *rbtree, rbtree_node_t *a, rbtree_node_t *b) {
         b_back.parent->left = a;
     }else if (b == b_back.parent->right) {
         b_back.parent->right = a;
+    }else if (b == rbtree->root) {
+        rbtree->root = a;
     }
 
-    a->left = b_back.left;
-    a->right = b_back.right;
+    a->left = a == b_back.left ? b : b_back.left;
+    a->right = a == b_back.right ? b : b_back.right;
     if (b_back.parent != a) a->parent = b_back.parent;
     a->color = b_back.color;
 
