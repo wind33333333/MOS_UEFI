@@ -149,20 +149,58 @@ void rbtree_insert(rbtree_t *rbtree, rbtree_node_t *insert_node) {
 }
 
 //查找后继节点
-rbtree_node_t *rbtree_minimum(rbtree_t *rbtree,rbtree_node_t *root) {
-    rbtree_node_t *cur_node=root->right;
-    while (cur_node != rbtree->nil) {
+rbtree_node_t *find_successor(rbtree_t *rbtree,rbtree_node_t *root) {
+    rbtree_node_t *cur_node = root->right;
+    if (cur_node == rbtree->nil) return cur_node;
+    while (cur_node->left != rbtree->nil) {
         cur_node = cur_node->left;
     }
     return cur_node;
 }
 
+//交换节点位置
+void swap_node (rbtree_t *rbtree, rbtree_node_t *a, rbtree_node_t *b) {
+    rbtree_node_t *tmp_left = b->left;
+    rbtree_node_t *tmp_right=b->right;
+    rbtree_node_t *tmp_parent=b->parent;
+    rbtree_color_e color = b->color;
+
+    if (a == a->parent->left) { //a为父节点左孩
+        a->parent->left = b;
+    }else if (a == a->parent->right) { //a为父节点右孩
+        a->parent->right = b;
+    }else if (a == rbtree->root) {  //a为树根
+        rbtree->root = b;
+    }
+
+    b->left = a->left;
+    b->right = a->right;
+    b->parent = a->parent;
+    b->color = a->color;
+
+    a->left->parent = b;
+    a->right->parent = b;
+
+    a->left = tmp_left;
+    a->right = tmp_right;
+    a->parent = tmp_parent;
+    a->color = color;
+
+}
+
 //删除红黑树节点
 void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
+    //通过key查找node
     rbtree_node_t *cur_node=rbtree->root;
     while (cur_node->key != key) {   //搜索key对应的节点
         if (cur_node == rbtree->nil) return;  //没有找到
         cur_node = key < cur_node->key ? cur_node->left : cur_node->right;
+    }
+
+    //情况1：删除节点左右子树都有
+    if (cur_node != rbtree->nil && cur_node->right != rbtree->nil) {
+        rbtree_node_t *successor = find_successor(rbtree, cur_node); //找后继节点
+        swap_node(rbtree, cur_node, successor); //交换需要删除的结点位置和后继节点位置，删除问题到后面进一步处理
     }
 
     //被删除的节点只有左孩或者只有右孩（这种被删除节点为黑色，孩子节点为红色，不然会违反黑路同或不红红）
@@ -244,7 +282,7 @@ void mid_traversal1(rbtree_t *rbtree) {
 
 void rb_test(void) {
     //红黑树测试
-    UINT64 keyare [34] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34};
+    UINT64 keyare [34] = {83,22,99,35,95,78,75,92,40,76};
     rbtree_t *rbtree = kmalloc(sizeof(rbtree_t));
     rbtree->nil = kmalloc(sizeof(rbtree_node_t));
     rbtree->nil->left = rbtree->nil;
@@ -255,7 +293,7 @@ void rb_test(void) {
     rbtree->root = rbtree->nil;
     rbtree_node_t *node = rbtree->nil;
 
-    for (int i = 0; i < 34; i++) {
+    for (int i = 0; i < 10; i++) {
         node = create_rbtree_node(rbtree,keyare[i]);
         rbtree_insert(rbtree,node);
     }
