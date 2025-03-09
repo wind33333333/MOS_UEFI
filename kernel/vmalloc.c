@@ -161,10 +161,6 @@ rbtree_node_t *find_successor(rbtree_t *rbtree,rbtree_node_t *root) {
 //交换节点位置
 void swap_node (rbtree_t *rbtree, rbtree_node_t *a, rbtree_node_t *b) {
     rbtree_node_t b_back = *b;
-    // rbtree_node_t *b_left = b->left;
-    // rbtree_node_t *b_right = b->right;
-    // rbtree_node_t *b_parent = b->parent;
-    // rbtree_color_e b_color = b->color;
 
     //b节点替换a节点
     if (a == a->parent->left) { //a为父节点左孩
