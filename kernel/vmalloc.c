@@ -240,11 +240,11 @@ void mid_traversal1(rbtree_t *rbtree) {
 void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
     //通过key查找node
     rbtree_node_t *cur_node = rbtree->root;
-    while (cur_node->key != key) {
-        //搜索key对应的节点
-        if (!cur_node) return; //没有找到
+    while (cur_node) {
+        if (cur_node->key == key) break; //搜索key对应的节点
         cur_node = key < cur_node->key ? cur_node->left : cur_node->right;
     }
+    if (!cur_node) return; //没有找到
 
     //情况1：删除节点左右子树都有，把要删除的节点和后继节点位置交换颜色不换
     if (cur_node->left && cur_node->right) {
@@ -296,5 +296,5 @@ void rb_test(void) {
     }
 
     mid_traversal1(rbtree);
-    rbtree_delete(rbtree, 83);
+    rbtree_delete(rbtree, 100);
 }
