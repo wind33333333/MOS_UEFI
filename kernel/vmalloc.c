@@ -17,15 +17,15 @@ typedef struct rbtree_node_t {
 
 typedef struct rbtree_t {
     rbtree_node_t *root; //树根
-    rbtree_node_t *nil; //哨兵节点
+    //rbtree_node_t *nil; //哨兵节点
 } rbtree_t;
 
 //创建新红黑树节点
 rbtree_node_t *create_rbtree_node(rbtree_t *rbtree, UINT64 key) {
     rbtree_node_t *new_node = (rbtree_node_t *) kmalloc(sizeof(rbtree_node_t));
-    new_node->left = rbtree->nil;
-    new_node->right = rbtree->nil;
-    new_node->parent = rbtree->nil;
+    new_node->left = NULL;
+    new_node->right = NULL;
+    new_node->parent = NULL;
     new_node->color = red_node;
     new_node->key = key;
     return new_node;
@@ -40,11 +40,11 @@ void left_rotate(rbtree_t *rbtree, rbtree_node_t *root) {
     new_root->parent = root->parent; //原根的父亲变新根父亲
     root->parent = new_root; //新根变成原根的父亲
 
-    if (left_child != rbtree->nil) {
+    if (left_child) {
         left_child->parent = root; //原根变左孩的父亲
     }
 
-    if (new_root->parent == rbtree->nil) {
+    if (!new_root->parent) {
         rbtree->root = new_root; //新根变成树根
     } else if (new_root->parent->left == root) {
         new_root->parent->left = new_root; //父亲左孩变成新根
@@ -62,11 +62,11 @@ void right_rotate(rbtree_t *rbtree, rbtree_node_t *root) {
     new_root->parent = root->parent; //原根的父亲变新根父亲
     root->parent = new_root; //新根变成原根的父亲
 
-    if (right_child != rbtree->nil) {
+    if (right_child) {
         right_child->parent = root; //原根变右孩的父亲
     }
 
-    if (new_root->parent == rbtree->nil) {
+    if (!new_root->parent) {
         rbtree->root = new_root; //新根变成树根
     } else if (new_root->parent->left == root) {
         new_root->parent->left = new_root; //父亲左孩变成新根
@@ -76,19 +76,19 @@ void right_rotate(rbtree_t *rbtree, rbtree_node_t *root) {
 }
 
 //修正红黑树插入失衡情况
-void rbtree_insert_fixup(rbtree_t *rbtree, rbtree_node_t *cur) {
+void rb_insert_color(rbtree_t *rbtree, rbtree_node_t *cur) {
     rbtree_node_t *uncle;
-    while (cur->parent->color == red_node) {
+    while (cur->parent && cur->parent->color == red_node) {
         if (cur->parent == cur->parent->parent->left) {
             //LXX
             uncle = cur->parent->parent->right;
-            if (uncle->color == red_node) {
+            if (uncle && uncle->color == red_node) {
                 //LXR
                 cur->parent->color = black_node;
                 uncle->color = black_node;
                 cur->parent->parent->color = red_node;
                 cur = cur->parent->parent;
-            } else if (uncle->color == black_node) {
+            } else if (!uncle || uncle->color == black_node) {
                 //LXB
                 if (cur == cur->parent->right) {
                     //LRB
@@ -102,13 +102,13 @@ void rbtree_insert_fixup(rbtree_t *rbtree, rbtree_node_t *cur) {
         } else if (cur->parent == cur->parent->parent->right) {
             //RXX
             uncle = cur->parent->parent->left;
-            if (uncle->color == red_node) {
+            if (uncle && uncle->color == red_node) {
                 //RXR
                 cur->parent->color = black_node;
                 uncle->color = black_node;
                 cur->parent->parent->color = red_node;
                 cur = cur->parent->parent;
-            } else if (uncle->color == black_node) {
+            } else if (!uncle || uncle->color == black_node) {
                 //RXB
                 if (cur == cur->parent->left) {
                     //RLB
@@ -127,10 +127,10 @@ void rbtree_insert_fixup(rbtree_t *rbtree, rbtree_node_t *cur) {
 //插入节点到红黑树
 void rbtree_insert(rbtree_t *rbtree, rbtree_node_t *insert_node) {
     rbtree_node_t *cur_node = rbtree->root;
-    rbtree_node_t *prev_node = rbtree->nil;
+    rbtree_node_t *prev_node = NULL;
 
     //查找红黑树大小合适的节点
-    while (cur_node != rbtree->nil) {
+    while (cur_node) {
         prev_node = cur_node;
         if (insert_node->key < cur_node->key) {
             cur_node = cur_node->left;
@@ -143,7 +143,7 @@ void rbtree_insert(rbtree_t *rbtree, rbtree_node_t *insert_node) {
 
     insert_node->parent = prev_node;
     // prev_node等于nil时说明当前是树根直接把node插入根，否则根据key大小插入左右孩子
-    if (prev_node == rbtree->nil) {
+    if (!prev_node) {
         rbtree->root = insert_node;
     } else if (insert_node->key < prev_node->key) {
         prev_node->left = insert_node;
@@ -151,14 +151,14 @@ void rbtree_insert(rbtree_t *rbtree, rbtree_node_t *insert_node) {
         prev_node->right = insert_node;
     }
 
-    rbtree_insert_fixup(rbtree, insert_node);
+    rb_insert_color(rbtree, insert_node);
 }
 
 //查找后继节点
 rbtree_node_t *find_successor(rbtree_t *rbtree, rbtree_node_t *root) {
     rbtree_node_t *cur_node = root->right;
-    if (cur_node == rbtree->nil) return cur_node;
-    while (cur_node->left != rbtree->nil) {
+    if (!cur_node) return cur_node;
+    while (cur_node->left) {
         cur_node = cur_node->left;
     }
     return cur_node;
@@ -185,8 +185,8 @@ void swap_node(rbtree_t *rbtree, rbtree_node_t *a, rbtree_node_t *b) {
     if (a->parent != b) b->parent = a->parent;
     b->color = a->color;
 
-    if (b->left != rbtree->nil) b->left->parent = b;
-    if (b->right != rbtree->nil) b->right->parent = b;
+    if (b->left) b->left->parent = b;
+    if (b->right) b->right->parent = b;
 
     //a节点替换b节点
     if (b == b_back.parent->left) {
@@ -202,8 +202,8 @@ void swap_node(rbtree_t *rbtree, rbtree_node_t *a, rbtree_node_t *b) {
     if (b_back.parent != a) a->parent = b_back.parent;
     a->color = b_back.color;
 
-    if (a->left != rbtree->nil) a->left->parent = a;
-    if (a->right != rbtree->nil) a->right->parent = a;
+    if (a->left) a->left->parent = a;
+    if (a->right) a->right->parent = a;
 }
 
 //删除节点
@@ -217,17 +217,17 @@ void delete_node(rbtree_t *rbtree, rbtree_node_t *node) {
 //中序遍历
 void mid_traversal1(rbtree_t *rbtree) {
     rbtree_node_t *cur_node = rbtree->root;
-    while (cur_node->left != rbtree->nil) {
+    while (cur_node->left) {
         //找到最左边的节点
         cur_node = cur_node->left;
     }
 
-    while (cur_node != rbtree->nil) {
+    while (cur_node) {
         color_printk(GREEN,BLACK, "key:%d   color:%d\n", cur_node->key, cur_node->color);
-        if (cur_node->right != rbtree->nil) {
+        if (cur_node->right) {
             // 有右子树，转向右子树的最左节点
             cur_node = cur_node->right;
-            while (cur_node->left != rbtree->nil) {
+            while (cur_node->left) {
                 cur_node = cur_node->left;
             }
         } else {
@@ -246,24 +246,24 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
     rbtree_node_t *cur_node = rbtree->root;
     while (cur_node->key != key) {
         //搜索key对应的节点
-        if (cur_node == rbtree->nil) return; //没有找到
+        if (!cur_node) return; //没有找到
         cur_node = key < cur_node->key ? cur_node->left : cur_node->right;
     }
 
     //情况1：删除节点左右子树都有，把要删除的节点和后继节点位置交换颜色不换
-    if (cur_node->left != rbtree->nil && cur_node->right != rbtree->nil) {
+    if (cur_node->left && cur_node->right) {
         rbtree_node_t *successor = find_successor(rbtree, cur_node);
         swap_node(rbtree, cur_node, successor);
     }
 
     //情况2：删除节点只有一个子树，必定父黑子红。
-    if (cur_node->left != rbtree->nil || cur_node->right != rbtree->nil || cur_node->color == red_node) {
+    if (cur_node->left || cur_node->right) {
         delete_node(rbtree, cur_node);
     }
 
-    if (cur_node->left != rbtree->nil) {
+    if (cur_node->left) {
         swap_node(rbtree, cur_node, cur_node->left);
-    } else if (cur_node->right != rbtree->nil) {
+    } else if (cur_node->right) {
         swap_node(rbtree, cur_node, cur_node->right);
     }
 
@@ -277,7 +277,7 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
 
 //递归中序遍历
 void mid_traversal(rbtree_t *rbtree, rbtree_node_t *node) {
-    if (node == rbtree->nil) return;
+    if (!node) return;
     mid_traversal(rbtree, node->left); //处理左子树
     color_printk(GREEN, black_node, "key:%d   color:%d\n", node->key, node->color);
     mid_traversal(rbtree, node->right); //处理右子树
@@ -288,14 +288,8 @@ void rb_test(void) {
     //红黑树测试
     UINT64 keyare[34] = {83, 22, 99, 35, 95, 78, 75, 92, 40, 76, 93};
     rbtree_t *rbtree = kmalloc(sizeof(rbtree_t));
-    rbtree->nil = kmalloc(sizeof(rbtree_node_t));
-    rbtree->nil->left = rbtree->nil;
-    rbtree->nil->right = rbtree->nil;
-    rbtree->nil->parent = rbtree->nil;
-    rbtree->nil->color = black_node;
-    rbtree->nil->key = 0;
-    rbtree->root = rbtree->nil;
-    rbtree_node_t *node = rbtree->nil;
+    rbtree->root = NULL;
+    rbtree_node_t *node = NULL;
 
     for (int i = 0; i < 11; i++) {
         node = create_rbtree_node(rbtree, keyare[i]);
