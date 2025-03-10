@@ -79,17 +79,14 @@ void right_rotate(rbtree_t *rbtree, rbtree_node_t *root) {
 void rb_insert_color(rbtree_t *rbtree, rbtree_node_t *cur) {
     rbtree_node_t *uncle;
     while (cur->parent && cur->parent->color == red_node) {
-        if (cur->parent == cur->parent->parent->left) {
-            //LXX
+        if (cur->parent == cur->parent->parent->left) {//LXX
             uncle = cur->parent->parent->right;
-            if (uncle && uncle->color == red_node) {
-                //LXR
+            if (uncle && uncle->color == red_node) {//LXR
                 cur->parent->color = black_node;
                 uncle->color = black_node;
                 cur->parent->parent->color = red_node;
                 cur = cur->parent->parent;
-            } else if (!uncle || uncle->color == black_node) {
-                //LXB
+            } else if (!uncle || uncle->color == black_node) {//LXB
                 if (cur == cur->parent->right) {
                     //LRB
                     cur = cur->parent;
@@ -99,17 +96,14 @@ void rb_insert_color(rbtree_t *rbtree, rbtree_node_t *cur) {
                 cur->parent->parent->color = red_node;
                 right_rotate(rbtree, cur->parent->parent);
             }
-        } else if (cur->parent == cur->parent->parent->right) {
-            //RXX
+        } else if (cur->parent == cur->parent->parent->right) {//RXX
             uncle = cur->parent->parent->left;
-            if (uncle && uncle->color == red_node) {
-                //RXR
+            if (uncle && uncle->color == red_node) {//RXR
                 cur->parent->color = black_node;
                 uncle->color = black_node;
                 cur->parent->parent->color = red_node;
                 cur = cur->parent->parent;
-            } else if (!uncle || uncle->color == black_node) {
-                //RXB
+            } else if (!uncle || uncle->color == black_node) {//RXB
                 if (cur == cur->parent->left) {
                     //RLB
                     cur = cur->parent;
@@ -126,6 +120,8 @@ void rb_insert_color(rbtree_t *rbtree, rbtree_node_t *cur) {
 
 //插入节点到红黑树
 void rbtree_insert(rbtree_t *rbtree, rbtree_node_t *insert_node) {
+    if (insert_node == NULL) return;
+
     rbtree_node_t *cur_node = rbtree->root;
     rbtree_node_t *prev_node = NULL;
 
