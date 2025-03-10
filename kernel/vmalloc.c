@@ -256,10 +256,13 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
         swap_node(rbtree, cur_node, successor);
     }
 
+
     //情况2：删除节点只有一个子树，必定父黑子红。
     if (cur_node->left || cur_node->right) {
         delete_node(rbtree, cur_node);
     }
+
+    mid_traversal1(rbtree);
 
     if (cur_node->left) {
         swap_node(rbtree, cur_node, cur_node->left);
