@@ -236,37 +236,48 @@ void mid_traversal1(rbtree_t *rbtree) {
     }
 }
 
-//删除红黑树节点
+/*
+ * 红黑树删除主逻辑
+ * 注意：被删除节点必须已存在于树中
+ */
 void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
     //通过key查找node
-    rbtree_node_t *cur_node = rbtree->root;
-    while (cur_node) {
-        if (cur_node->key == key) break; //搜索key对应的节点
-        cur_node = key < cur_node->key ? cur_node->left : cur_node->right;
+    rbtree_node_t *del_node = rbtree->root;
+    while (del_node ) {
+        if (del_node ->key == key) break; //搜索key对应的节点
+        del_node  = key < del_node ->key ? del_node ->left : del_node ->right;
     }
-    if (!cur_node) return; //没有找到
+    if (!del_node) return; //没有找到
 
-    //情况1：删除节点左右子树都有，把要删除的节点和后继节点位置交换颜色不换
-    if (cur_node->left && cur_node->right) {
-        rbtree_node_t *successor = find_successor(rbtree, cur_node);
-        swap_node(rbtree, cur_node, successor);
-    }
+    rbtree_node_t *rebalance = NULL; // 重平衡起始节点
+    rbtree_node_t *child;            // 被删除节点的子节点
+    rbtree_node_t *parent;           // 被删除节点的父节点
+    int color;                        // 被删除节点的原始颜色
+
+    //情况1：删除节点左右子树都有，找后继节点
+    if (del_node ->left && del_node->right) {
+        rbtree_node_t *successor = del_node ->right;     // 保存原始节点指针
+        while (successor->left) successor = successor->left;     //找后继
+
+        child = successor->right;       // 后继节点的右子节点（可能为空）
+        parent = successor->parent;     // 后继节点的父节点
+        color = successor->color;       // 后继节点的颜色
+
+        if (child) child->parent=successor->parent;        // 如果后继节点有右子节点,更新右子节点的父指针
+
+        if (parent == del_node) {          // 后继节点是原始节点的直接右子节点
+            parent->right = child;
+            parent = node;            // 调整parent指向后继节点
+        } else {
+            parent->rb_left = child;  // 将后继节点的右子树挂到父节点左子树
+        }
 
 
-    //情况2：删除节点只有一个子树，必定父黑子红。
-    if (cur_node->left || cur_node->right) {
+        //情况2：删除节点只有一个子树，必定父黑子红。
+    }else (cur_node->left || cur_node->right) {
         delete_node(rbtree, cur_node);
     }
 
-    mid_traversal1(rbtree);
-
-    if (cur_node->left) {
-        swap_node(rbtree, cur_node, cur_node->left);
-    } else if (cur_node->right) {
-        swap_node(rbtree, cur_node, cur_node->right);
-    }
-
-    //情况3：删除节点没有子树且是黑色节点
 
 
     mid_traversal1(rbtree);

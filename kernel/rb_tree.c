@@ -1,4 +1,95 @@
 /*
+ * 红黑树删除后重平衡核心逻辑
+ * node:    当前需要调整的节点（可能为NULL）
+ * parent:  node的父节点
+ * root:    树的根节点
+ */
+static void __rb_erase_color(struct rb_node *node, struct rb_node *parent, struct rb_root *root)
+{
+    struct rb_node *sibling;
+
+    // 循环处理，直到node是根节点或node变为红色
+    while (node != root->rb_node && rb_is_black(node)) {
+        if (node == parent->rb_left) { // 当前节点是父节点的左子节点
+            sibling = parent->rb_right; // 兄弟节点为父节点的右子节点
+
+            /* ------------- Case 1: 兄弟节点为红色 ------------- */
+            if (rb_is_red(sibling)) {
+                // 将兄弟节点染黑，父节点染红
+                rb_set_black(sibling);
+                rb_set_red(parent);
+                // 对父节点进行左旋，使兄弟节点成为新的父节点
+                __rb_rotate_left(parent, root);
+                sibling = parent->rb_right; // 更新兄弟节点为原兄弟的左子节点
+            }
+
+            /* ---- Case 2: 兄弟节点为黑，且其子节点均为黑 ---- */
+            if (rb_is_black(sibling->rb_left) && rb_is_black(sibling->rb_right)) {
+                rb_set_red(sibling); // 兄弟节点染红
+                node = parent;       // 问题上移至父节点
+                parent = rb_parent(node); // 更新父指针
+            } else {
+                /* ---- Case 3: 兄弟节点为黑，且远侄子为红 ---- */
+                if (rb_is_black(sibling->rb_right)) {
+                    // 将兄弟节点的左子节点染黑，兄弟节点染红
+                    rb_set_black(sibling->rb_left);
+                    rb_set_red(sibling);
+                    // 对兄弟节点进行右旋，转换为Case 4
+                    __rb_rotate_right(sibling, root);
+                    sibling = parent->rb_right; // 更新兄弟节点
+                }
+
+                // 此时兄弟的右子节点为红（Case 4）
+                rb_set_color(sibling, rb_color(parent)); // 继承父节点颜色
+                rb_set_black(parent);                   // 父节点染黑
+                rb_set_black(sibling->rb_right);        // 兄弟右子染黑
+                __rb_rotate_left(parent, root);         // 左旋父节点
+                node = root->rb_node; // 调整完成，退出循环
+                break;
+            }
+        } else { // 对称情况：当前节点是父节点的右子节点
+            sibling = parent->rb_left;
+
+            // Case 1镜像：兄弟节点为红
+            if (rb_is_red(sibling)) {
+                rb_set_black(sibling);
+                rb_set_red(parent);
+                __rb_rotate_right(parent, root);
+                sibling = parent->rb_left;
+            }
+
+            // Case 2镜像：兄弟子节点均为黑
+            if (rb_is_black(sibling->rb_left) && rb_is_black(sibling->rb_right)) {
+                rb_set_red(sibling);
+                node = parent;
+                parent = rb_parent(node);
+            } else {
+                // Case 3镜像：近侄子为红
+                if (rb_is_black(sibling->rb_left)) {
+                    rb_set_black(sibling->rb_right);
+                    rb_set_red(sibling);
+                    __rb_rotate_left(sibling, root);
+                    sibling = parent->rb_left;
+                }
+
+                // Case 4镜像：远侄子为红
+                rb_set_color(sibling, rb_color(parent));
+                rb_set_black(parent);
+                rb_set_black(sibling->rb_left);
+                __rb_rotate_right(parent, root);
+                node = root->rb_node;
+                break;
+            }
+        }
+    }
+
+    // 最终确保根节点为黑（性质2）
+    if (node)
+        rb_set_black(node);
+}
+
+
+/*
  * 红黑树删除主逻辑
  * 注意：被删除节点必须已存在于树中
  */
