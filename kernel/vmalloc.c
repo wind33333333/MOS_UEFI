@@ -249,9 +249,7 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
     }
     if (!del_node) return; //没有找到
 
-    rbtree_node_t *rebalance = NULL; // 重平衡起始节点
-    rbtree_node_t *child;            // 被删除节点的子节点
-    rbtree_node_t *parent;           // 被删除节点的父节点
+
     int color;                        // 被删除节点的原始颜色
 
     //情况1：删除节点左右子树都有，找后继节点
@@ -259,18 +257,22 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
         rbtree_node_t *successor = del_node ->right;     // 保存原始节点指针
         while (successor->left) successor = successor->left;     //找后继
 
-        child = successor->right;       // 后继节点的右子节点（可能为空）
-        parent = successor->parent;     // 后继节点的父节点
         color = successor->color;       // 后继节点的颜色
 
-        if (child) child->parent=successor->parent;        // 如果后继节点有右子节点,更新右子节点的父指针
-
-        if (parent == del_node) {          // 后继节点是原始节点的直接右子节点
-            parent->right = child;
-            parent = node;            // 调整parent指向后继节点
-        } else {
-            parent->rb_left = child;  // 将后继节点的右子树挂到父节点左子树
+        if (successor->parent != del_node) {       // 后继节点不是原始节点的直接右子节点
+            if (successor->right) successor->right->parent=successor->parent;  // 如果后继节点有右子节点,更新右子节点的父指针
+            successor->parent->left = successor->right;                        // 后继节点父亲的左子节点，更新为后继节点的右子节点
+            successor->right = del_node->right;                // 后继节点的右子节点，更新为原始节点右孩
         }
+        successor->left = del_node->left;                      // 后继节点的左子节点，更新为原始节点的左孩
+        successor->parent = del_node->parent;                  // 后继节点的父节点，更新为原始节点的父节点
+        successor->color = del_node->color;                    // 后继节点继承原始节点颜色
+        if (del_node->parent==del_node->parent->left) {
+            del_node->parent->left=successor;                  // 原始节点为父节点左孩，更新为后节点
+        } else {
+            del_node->parent->right=successor;                 // 原始节点为父节点右孩，更新为后节点
+        }
+
 
 
         //情况2：删除节点只有一个子树，必定父黑子红。
@@ -296,16 +298,16 @@ void mid_traversal(rbtree_t *rbtree, rbtree_node_t *node) {
 
 void rb_test(void) {
     //红黑树测试
-    UINT64 keyare[34] = {83, 22, 99, 35, 95, 78, 75, 92, 40, 76, 93};
+    UINT64 keyare[34] = {83, 22, 99, 35, 95, 78, 75, 92, 40, 76, 93,41};
     rbtree_t *rbtree = kmalloc(sizeof(rbtree_t));
     rbtree->root = NULL;
     rbtree_node_t *node = NULL;
 
-    for (int i = 0; i < 11; i++) {
+    for (int i = 0; i < 12; i++) {
         node = create_rbtree_node(rbtree, keyare[i]);
         rbtree_insert(rbtree, node);
     }
 
     mid_traversal1(rbtree);
-    rbtree_delete(rbtree, 100);
+    rbtree_delete(rbtree, 35);
 }
