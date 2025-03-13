@@ -276,8 +276,8 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
 
 
         //情况2：删除节点只有一个子树，必定父黑子红。
-    }else (cur_node->left || cur_node->right) {
-        delete_node(rbtree, cur_node);
+    }else (del_node->left || del->right) {
+
     }
 
 
