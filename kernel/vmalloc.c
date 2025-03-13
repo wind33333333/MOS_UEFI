@@ -313,5 +313,5 @@ void rb_test(void) {
     }
 
     mid_traversal1(rbtree);
-    rbtree_delete(rbtree, 83);
+    rbtree_delete(rbtree, 35);
 }
