@@ -259,24 +259,26 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
 
         color = successor->color;       // 后继节点的颜色
 
-        if (successor->parent != del_node) {       // 后继节点不是原始节点的直接右子节点
+        if (successor != del_node->right) {       // 后继节点不是原始节点的直接右子节点
             if (successor->right) successor->right->parent=successor->parent;  // 如果后继节点有右子节点,更新右子节点的父指针
             successor->parent->left = successor->right;                        // 后继节点父亲的左子节点，更新为后继节点的右子节点
             successor->right = del_node->right;                // 后继节点的右子节点，更新为原始节点右孩
+            del_node->right->parent = successor;               // 原色节点的右子节点父指针更新为后继节点
         }
         successor->left = del_node->left;                      // 后继节点的左子节点，更新为原始节点的左孩
         successor->parent = del_node->parent;                  // 后继节点的父节点，更新为原始节点的父节点
         successor->color = del_node->color;                    // 后继节点继承原始节点颜色
-        if (del_node->parent==del_node->parent->left) {
-            del_node->parent->left=successor;                  // 原始节点为父节点左孩，更新为后节点
+        if (del_node == del_node->parent->left) {
+            del_node->parent->left=successor;                  // 原始节点为父节点左孩，更新为后继节点
         } else {
-            del_node->parent->right=successor;                 // 原始节点为父节点右孩，更新为后节点
+            del_node->parent->right=successor;                 // 原始节点为父节点右孩，更新为后继节点
         }
+        del_node->left->parent = successor;                    // 原始节点左子节点的父亲，更新为后继节点
 
-
+        mid_traversal1(rbtree);
 
         //情况2：删除节点只有一个子树，必定父黑子红。
-    }else (del_node->left || del->right) {
+    }else if(del_node->left || del_node->right) {
 
     }
 
@@ -309,5 +311,5 @@ void rb_test(void) {
     }
 
     mid_traversal1(rbtree);
-    rbtree_delete(rbtree, 35);
+    rbtree_delete(rbtree, 83);
 }
