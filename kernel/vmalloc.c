@@ -270,8 +270,10 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
         successor->color = del_node->color;                    // 后继节点继承原始节点颜色
         if (del_node == del_node->parent->left) {
             del_node->parent->left=successor;                  // 原始节点为父节点左孩，更新为后继节点
-        } else {
+        } else if (del_node == del_node->parent->right) {
             del_node->parent->right=successor;                 // 原始节点为父节点右孩，更新为后继节点
+        }else {
+            rbtree->root = successor;                          // 更新根节点
         }
         del_node->left->parent = successor;                    // 原始节点左子节点的父亲，更新为后继节点
 
