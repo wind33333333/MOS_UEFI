@@ -188,26 +188,30 @@ static void rb_erase_color(rbtree_t *rbtree,rbtree_node_t *node, rbtree_node_t *
 
     // 循环处理，直到node是根节点或node变为红色
     while (node != rbtree->root && (node==NULL || node->color == black_node)) {
-        if (node == parent->right) {  // 当前节点是父节点的右子节点
-            sibling = parent->left;   // 兄弟节点为父节点的左子节点
-            if (sibling->color == black_node) {  //兄弟是黑色
-                //孩子的颜色是红色
-                if ((sibling->left==NULL || sibling->left->color == black_node) && sibling->right->color == red_node) {
-                    //左兄的右孩是红色 LRR型
-                    left_rotate(rbtree, sibling);   //左旋兄弟
-                    sibling = parent->left;
-
-                     //左兄的左孩是红色  LLR型
-                    sibling->color = parent->color; //兄弟继承父亲颜色，父亲和左孩变黑
-                    parent->color = black_node;
-                    sibling->left->color = black_node;
-                    right_rotate(rbtree, parent);  //右旋父亲
-                    break;
-                }else {//孩子是黑色,兄弟染红，双黑上移
+        if (node == parent->right) {
+            // 当前节点是父节点的右子节点，兄弟节点为父节点的左子节点
+            sibling = parent->left;
+            if (sibling->color == black_node) {
+                //兄弟是黑色
+                if ((sibling->left==NULL || sibling->left->color == black_node) && (sibling->right->color == black_node || sibling->right==NULL)) {
+                    //孩子是黑色,兄弟染红，双黑上移
                     sibling->color = red_node;
                     node = parent;
                     parent = parent->parent;
                     if (parent->color == red_node)parent->color = black_node;
+                    break;
+                }else {
+                    //孩子的颜色是红色
+                    if (sibling->left == NULL && sibling->right->color == red_node) {
+                        //左兄的右孩是红色 LRR型
+                        left_rotate(rbtree, sibling);   //左旋兄弟
+                        sibling = parent->left;
+                    }
+                    //左兄的左孩是红色  LLR型
+                    sibling->color = parent->color; //兄弟继承父亲颜色，父亲和左孩变黑
+                    parent->color = black_node;
+                    sibling->left->color = black_node;
+                    right_rotate(rbtree, parent);  //右旋父亲
                     break;
                 }
             }else {
