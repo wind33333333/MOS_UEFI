@@ -228,23 +228,21 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
 
     }else { //情况2：只有1个子树或0个子树
         child = del_node->left ? del_node->left : del_node->right;
-        parent = del_node->parent;
-        color = del_node->color;
+        parent = del_node->parent;          //被删除节点的父亲
+        color = del_node->color;            //被删除节点颜色
 
-        if (child) child->parent = parent;
-
-        if (parent) {
-            if (del_node == parent->left) {
-                parent->left = child;
+        if (child) child->parent = parent;  //有孩子则更新孩子的父亲指针为删除节点的父亲
+        if (parent) {                       //被删除节点有父亲
+            if (del_node == parent->left) { //被删除节点为父亲的左孩
+                parent->left = child;       //把孩子更新为父亲的左孩
             }else {
-                parent->right = child;
+                parent->right = child;      //把孩子更新为父亲的右孩
             }
-        }else {
-            rbtree->root = child;
+        }else {                             //被删除节点无父亲则是根节点
+            rbtree->root = child;           //把孩子更新为新的根节点
         }
     }
 
-color_corrected:
     mid_traversal1(rbtree);
 
 }
