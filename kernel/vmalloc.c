@@ -196,11 +196,7 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
     rbtree_node_t *child;            // 被删除节点的孩子节点
     int color;                       // 被删除节点的原始颜色
 
-    if (!del_node->left) {           //情况1：左子节点为空
-        child = del_node->right;
-    } else if (!del_node->right) {   //情况2：右子节点为空
-        child = del_node->left;
-    } else {                         //情况3：删除节点左右子树都有，找后继节点
+    if (del_node->left && del_node->right) { //情况1：删除节点左右子树都有，找后继节点
         rbtree_node_t *successor = del_node->right;
         while (successor->left) successor = successor->left;     //找后继
 
@@ -220,7 +216,6 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
         successor->parent = del_node->parent;                  // 后继节点的父节点，更新为原始节点的父节点
         successor->color = del_node->color;                    // 后继节点继承原始节点颜色
 
-
         if (del_node->parent) {
             if (del_node == del_node->parent->left) {
                 del_node->parent->left=successor;                  // 原始节点为父节点左孩，更新为后继节点
@@ -231,22 +226,22 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
             rbtree->root = successor;                          // 更新根节点
         }
 
-        goto color_corrected;         // 跳转到颜色修正阶段
+    }else { //情况2：只有1个子树或0个子树
+        child = del_node->left ? del_node->left : del_node->right;
+        parent = del_node->parent;
+        color = del_node->color;
 
-    }
+        if (child) child->parent = parent;
 
-    parent = del_node->parent;
-    color = del_node->color;
-    if (child) child->parent = parent;
-
-    if (parent) {
-        if (del_node == parent->left) {
-            parent->left = child;
+        if (parent) {
+            if (del_node == parent->left) {
+                parent->left = child;
+            }else {
+                parent->right = child;
+            }
         }else {
-            parent->right = child;
+            rbtree->root = child;
         }
-    }else {
-        rbtree->root = child;
     }
 
 color_corrected:
@@ -276,5 +271,5 @@ void rb_test(void) {
     }
 
     mid_traversal1(rbtree);
-    rbtree_delete(rbtree, 75);
+    rbtree_delete(rbtree, 41);
 }
