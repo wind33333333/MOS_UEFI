@@ -192,27 +192,26 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
 
     /**********************************************/
 
-    rbtree_node_t *successor=NULL;   // 后继节点
     rbtree_node_t *parent;           // 父亲节点
     rbtree_node_t *child;            // 被删除节点的孩子节点
-    int color;              // 被删除节点的原始颜色
+    int color;                       // 被删除节点的原始颜色
 
     if (!del_node->left) {           //情况1：左子节点为空
         child = del_node->right;
     } else if (!del_node->right) {   //情况2：右子节点为空
         child = del_node->left;
     } else {                         //情况3：删除节点左右子树都有，找后继节点
-        successor = del_node->right;
+        rbtree_node_t *successor = del_node->right;
         while (successor->left) successor = successor->left;     //找后继
 
         parent = successor;
-        child = successor->right;                // 后继节点的右子节点（可能为空）
+        child = successor->right;       // 后继节点的右子节点（可能为空）
         color = successor->color;       // 后继节点的颜色
 
         if (successor != del_node->right) {       // 后继节点不是原始节点的直接右子节点
             parent = successor->parent;
-            if (successor->right) successor->right->parent=parent;  // 如果后继节点有右子节点,更新右子节点的父指针
-            successor->parent->left = successor->right;             // 后继节点父亲的左子节点，更新为后继节点的右子节点
+            if (child) child->parent=parent;      // 如果后继节点有右子节点,更新右子节点的父指针
+            parent->left = child;                 // 后继节点父亲的左子节点，更新为后继节点的右子节点
             successor->right = del_node->right;                     // 后继节点的右子节点，更新为原始节点右孩
             del_node->right->parent = successor;                    // 原色节点的右子节点父指针更新为后继节点
         }
@@ -220,7 +219,9 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
         del_node->left->parent = successor;                    // 原始节点左子节点的父亲，更新为后继节点
         successor->parent = del_node->parent;                  // 后继节点的父节点，更新为原始节点的父节点
         successor->color = del_node->color;                    // 后继节点继承原始节点颜色
-        if (del_node->parent ) {
+
+
+        if (del_node->parent) {
             if (del_node == del_node->parent->left) {
                 del_node->parent->left=successor;                  // 原始节点为父节点左孩，更新为后继节点
             }else {

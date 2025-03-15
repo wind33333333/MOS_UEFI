@@ -114,7 +114,6 @@ void rb_erase(struct rb_node *node, struct rb_root *root)
             node = left;              // 找到右子树的最小节点（后继节点）
 
         child = node->rb_right;       // 后继节点的右子节点（可能为空）
-
         parent = rb_parent(node);     // 后继节点的父节点
         color = rb_color(node);       // 后继节点的颜色
 
