@@ -150,65 +150,6 @@ void rbtree_insert(rbtree_t *rbtree, rbtree_node_t *insert_node) {
     rb_insert_color(rbtree, insert_node);
 }
 
-//查找后继节点
-rbtree_node_t *find_successor(rbtree_t *rbtree, rbtree_node_t *root) {
-    rbtree_node_t *cur_node = root->right;
-    if (!cur_node) return cur_node;
-    while (cur_node->left) {
-        cur_node = cur_node->left;
-    }
-    return cur_node;
-}
-
-//交换节点位置
-void swap_node(rbtree_t *rbtree, rbtree_node_t *a, rbtree_node_t *b) {
-    rbtree_node_t b_back = *b;
-
-    //b节点替换a节点
-    if (a == a->parent->left) {
-        //a为父节点左孩
-        a->parent->left = b;
-    } else if (a == a->parent->right) {
-        //a为父节点右孩
-        a->parent->right = b;
-    } else if (a == rbtree->root) {
-        //a为树根
-        rbtree->root = b;
-    }
-
-    b->left = b == a->left ? a : a->left;
-    b->right = b == a->right ? a : a->right;
-    if (a->parent != b) b->parent = a->parent;
-    b->color = a->color;
-
-    if (b->left) b->left->parent = b;
-    if (b->right) b->right->parent = b;
-
-    //a节点替换b节点
-    if (b == b_back.parent->left) {
-        b_back.parent->left = a;
-    } else if (b == b_back.parent->right) {
-        b_back.parent->right = a;
-    } else if (b == rbtree->root) {
-        rbtree->root = a;
-    }
-
-    a->left = a == b_back.left ? b : b_back.left;
-    a->right = a == b_back.right ? b : b_back.right;
-    if (b_back.parent != a) a->parent = b_back.parent;
-    a->color = b_back.color;
-
-    if (a->left) a->left->parent = a;
-    if (a->right) a->right->parent = a;
-}
-
-//删除节点
-void delete_node(rbtree_t *rbtree, rbtree_node_t *node) {
-    if (node == node->parent->left) {
-        node->parent->left = node->left;
-    } else if (node == node->parent->right) {
-    }
-}
 
 //中序遍历
 void mid_traversal1(rbtree_t *rbtree) {
@@ -254,7 +195,7 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
     rbtree_node_t *successor=NULL;   // 后继节点
     rbtree_node_t *parent;           // 父亲节点
     rbtree_node_t *child;            // 被删除节点的孩子节点
-    int del_node_color;              // 被删除节点的原始颜色
+    int color;              // 被删除节点的原始颜色
 
     if (!del_node->left) {           //情况1：左子节点为空
         child = del_node->right;
@@ -266,7 +207,7 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
 
         parent = successor;
         child = successor->right;                // 后继节点的右子节点（可能为空）
-        del_node_color = successor->color;       // 后继节点的颜色
+        color = successor->color;       // 后继节点的颜色
 
         if (successor != del_node->right) {       // 后继节点不是原始节点的直接右子节点
             parent = successor->parent;
@@ -294,7 +235,7 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
     }
 
     parent = del_node->parent;
-    del_node_color = del_node->color;
+    color = del_node->color;
     if (child) child->parent = parent;
 
     if (parent) {
