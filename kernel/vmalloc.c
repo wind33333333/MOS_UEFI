@@ -270,10 +270,10 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
 
         if (successor != del_node->right) {       // 后继节点不是原始节点的直接右子节点
             parent = successor->parent;
-            if (successor->right) successor->right->parent=successor->parent;  // 如果后继节点有右子节点,更新右子节点的父指针
-            successor->parent->left = successor->right;                        // 后继节点父亲的左子节点，更新为后继节点的右子节点
-            successor->right = del_node->right;                // 后继节点的右子节点，更新为原始节点右孩
-            del_node->right->parent = successor;               // 原色节点的右子节点父指针更新为后继节点
+            if (successor->right) successor->right->parent=parent;  // 如果后继节点有右子节点,更新右子节点的父指针
+            successor->parent->left = successor->right;             // 后继节点父亲的左子节点，更新为后继节点的右子节点
+            successor->right = del_node->right;                     // 后继节点的右子节点，更新为原始节点右孩
+            del_node->right->parent = successor;                    // 原色节点的右子节点父指针更新为后继节点
         }
         successor->left = del_node->left;                      // 后继节点的左子节点，更新为原始节点的左孩
         del_node->left->parent = successor;                    // 原始节点左子节点的父亲，更新为后继节点
