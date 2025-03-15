@@ -341,7 +341,6 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
         }
     }
 
-    mid_traversal1(rbtree);
     if (color == black_node) rb_erase_color(rbtree, child, parent);
 
 }
