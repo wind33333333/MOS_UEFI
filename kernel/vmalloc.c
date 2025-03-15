@@ -268,7 +268,6 @@ static void rb_erase_color(rbtree_t *rbtree, rbtree_node_t *node, rbtree_node_t 
 
     // 最终确保根节点为黑
     if (node) node->color = black_node;
-    mid_traversal1(rbtree);
 }
 
 /*
@@ -369,5 +368,5 @@ void rb_test(void) {
     }
 
     mid_traversal1(rbtree);
-    rbtree_delete(rbtree, 40);
+    rbtree_delete(rbtree, 78);
 }
