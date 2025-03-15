@@ -249,17 +249,27 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
     }
     if (!del_node) return; //没有找到
 
+    /**********************************************/
 
-    int color;                        // 被删除节点的原始颜色
+    rbtree_node_t *successor=NULL;   // 后继节点
+    rbtree_node_t *parent;           // 父亲节点
+    rbtree_node_t *child;            // 被删除节点的孩子节点
+    int del_node_color;              // 被删除节点的原始颜色
 
-    //情况1：删除节点左右子树都有，找后继节点
-    if (del_node ->left && del_node->right) {
-        rbtree_node_t *successor = del_node ->right;     // 保存原始节点指针
+    if (!del_node->left) {           //情况1：左子节点为空
+        child = del_node->right;
+    } else if (!del_node->right) {   //情况2：右子节点为空
+        child = del_node->left;
+    } else {                         //情况3：删除节点左右子树都有，找后继节点
+        successor = del_node->right;
         while (successor->left) successor = successor->left;     //找后继
 
-        color = successor->color;       // 后继节点的颜色
+        parent = successor;
+        child = successor->right;                // 后继节点的右子节点（可能为空）
+        del_node_color = successor->color;       // 后继节点的颜色
 
         if (successor != del_node->right) {       // 后继节点不是原始节点的直接右子节点
+            parent = successor->parent;
             if (successor->right) successor->right->parent=successor->parent;  // 如果后继节点有右子节点,更新右子节点的父指针
             successor->parent->left = successor->right;                        // 后继节点父亲的左子节点，更新为后继节点的右子节点
             successor->right = del_node->right;                // 后继节点的右子节点，更新为原始节点右孩
@@ -279,17 +289,26 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
             rbtree->root = successor;                          // 更新根节点
         }
 
-        mid_traversal1(rbtree);
-
-        //情况2：删除节点只有一个子树，必定父黑子红。
-    }else if(del_node->left || del_node->right) {
+        goto color_corrected;         // 跳转到颜色修正阶段
 
     }
 
+    parent = del_node->parent;
+    del_node_color = del_node->color;
+    if (child) child->parent = parent;
 
+    if (parent) {
+        if (del_node == parent->left) {
+            parent->left = child;
+        }else {
+            parent->right = child;
+        }
+    }else {
+        rbtree->root = child;
+    }
 
+color_corrected:
     mid_traversal1(rbtree);
-
 
 }
 
@@ -315,5 +334,5 @@ void rb_test(void) {
     }
 
     mid_traversal1(rbtree);
-    rbtree_delete(rbtree, 35);
+    rbtree_delete(rbtree, 75);
 }
