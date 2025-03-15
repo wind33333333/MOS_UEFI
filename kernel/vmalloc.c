@@ -203,14 +203,22 @@ static void rb_erase_color(rbtree_t *rbtree,rbtree_node_t *node, rbtree_node_t *
                     sibling->left->color = black_node;
                     right_rotate(rbtree, parent);  //右旋父亲
                     break;
+                }else {//孩子是黑色,兄弟染红，双黑上移
+                    sibling->color = red_node;
+                    node = parent;
+                    parent = parent->parent;
+                    if (parent->color == red_node)parent->color = black_node;
+                    break;
                 }
+            }else {
+                //兄弟为红色,兄变黑父变红，父亲右旋
+                sibling->color = black_node;
+                parent->color = red_node;
+                right_rotate(rbtree, parent);
             }
-
-
-
-
         }
     }
+    mid_traversal1(rbtree);
 
 }
 
@@ -307,5 +315,5 @@ void rb_test(void) {
     }
 
     mid_traversal1(rbtree);
-    rbtree_delete(rbtree, 41);
+    rbtree_delete(rbtree, 99);
 }
