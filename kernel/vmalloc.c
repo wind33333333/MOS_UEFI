@@ -259,7 +259,7 @@ static void rb_erase_color(rbtree_t *rbtree, rbtree_node_t *node, rbtree_node_t 
                     sibling->color = parent->color; //兄弟继承父亲颜色，父亲和左孩变黑
                     parent->color = black_node;
                     sibling->right->color = black_node;
-                    right_rotate(rbtree, parent); //右旋父亲
+                    left_rotate(rbtree, parent); //右旋父亲
                     break;
                 }
             }
