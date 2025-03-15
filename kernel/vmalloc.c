@@ -210,7 +210,7 @@ static void rb_erase_color(rbtree_t *rbtree, rbtree_node_t *node, rbtree_node_t 
             /* ---- Case 2: 兄弟节点为黑---- */
             if (sibling->color == black_node) {
                 //case2.1 兄弟的两个孩子也是黑色
-                if ((sibling->left == NULL && sibling->right == NULL) {
+                if (sibling->left == NULL && sibling->right == NULL) {
                     //兄弟染红，双黑上移
                     sibling->color = red_node;
                     node = parent;
@@ -326,11 +326,11 @@ void rb_test(void) {
     rbtree->root = NULL;
     rbtree_node_t *node = NULL;
 
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < 11; i++) {
         node = create_rbtree_node(rbtree, keyare[i]);
         rbtree_insert(rbtree, node);
     }
 
     mid_traversal1(rbtree);
-    rbtree_delete(rbtree, 99);
+    rbtree_delete(rbtree, 40);
 }
