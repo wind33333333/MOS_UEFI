@@ -197,10 +197,9 @@ static void rb_erase_color(rbtree_t *rbtree, rbtree_node_t *node, rbtree_node_t 
         // 当前节点是父节点的右子节点，兄弟节点为父节点的左子节点
         if (node == parent->right) {
             sibling = parent->left;
-
-            /* ------------- Case 1: 兄弟节点为红色 ------------- */
+            /* ---- Case 1: 兄弟节点为红色 ----- */
             if (sibling->color == red_node) {
-                //兄变黑父变红，父亲右旋,兄弟节点变成原兄弟的右孩
+                //兄变黑父变红，父亲右旋
                 sibling->color = black_node;
                 parent->color = red_node;
                 right_rotate(rbtree, parent);
@@ -230,8 +229,45 @@ static void rb_erase_color(rbtree_t *rbtree, rbtree_node_t *node, rbtree_node_t 
                     break;
                 }
             }
+        }else {// 当前节点是父节点的左子节点，兄弟节点为父节点的右子节点
+            sibling = parent->right;
+            /* ----- Case 1: 兄弟节点为红色 ----- */
+            if (sibling->color == red_node) {
+                //兄变黑父变红，父亲左旋
+                sibling->color = black_node;
+                parent->color = red_node;
+                left_rotate(rbtree, parent);
+                sibling = parent->right;
+            }
+
+            /* ---- Case 2: 兄弟节点为黑---- */
+            if (sibling->color == black_node) {
+                //case2.1 兄弟的两个孩子也是黑色
+                if (sibling->left == NULL && sibling->right == NULL) {
+                    //兄弟染红，双黑上移
+                    sibling->color = red_node;
+                    node = parent;
+                    parent = parent->parent;
+
+                }else{//case2.2 兄弟节的孩子是红色
+                    //右兄的左孩是红色 RLR型
+                    if (sibling->right == NULL && sibling->left->color == red_node) {
+                        right_rotate(rbtree, sibling); //右旋兄弟
+                        sibling = parent->left;
+                    }
+                    //右兄的右孩是红色  RRR型
+                    sibling->color = parent->color; //兄弟继承父亲颜色，父亲和左孩变黑
+                    parent->color = black_node;
+                    sibling->right->color = black_node;
+                    right_rotate(rbtree, parent); //右旋父亲
+                    break;
+                }
+            }
         }
     }
+
+    // 最终确保根节点为黑
+    if (node) node->color = black_node;
     mid_traversal1(rbtree);
 }
 
@@ -308,6 +344,7 @@ void rbtree_delete(rbtree_t *rbtree, UINT64 key) {
 
     mid_traversal1(rbtree);
     if (color == black_node) rb_erase_color(rbtree, child, parent);
+
 }
 
 //递归中序遍历
