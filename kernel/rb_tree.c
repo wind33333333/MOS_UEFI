@@ -172,3 +172,108 @@ color_corrected:
     if (rebalance)
         __rb_erase_color(rebalance, parent, root); // 调用内部平衡函数
 }
+
+#include <stddef.h> // 用于 NULL 定义
+
+/* 红黑树节点结构（仿 Linux 内核设计） */
+struct rb_node {
+    unsigned long  __rb_parent_color; // 父指针 + 颜色（低2位）
+    struct rb_node *rb_right;
+    struct rb_node *rb_left;
+} __attribute__((aligned(sizeof(long)))); // 确保对齐到 long 类型大小
+
+/* 颜色常量定义 */
+#define RB_RED   0
+#define RB_BLACK 1
+
+/*------------ 基础操作函数 ------------*/
+// 获取父节点（清除颜色位）
+static inline struct rb_node *rb_parent(const struct rb_node *node) {
+    return (struct rb_node *)(node->__rb_parent_color & ~3UL);
+}
+
+// 设置父节点（保留原有颜色）
+static inline void rb_set_parent(struct rb_node *node, struct rb_node *parent) {
+    node->__rb_parent_color = (unsigned long)parent | (node->__rb_parent_color & 3UL);
+}
+
+/*------------ 颜色操作函数 ------------*/
+// 判断是否为红色（颜色位为 0）
+static inline int rb_is_red(const struct rb_node *node) {
+    return (node->__rb_parent_color & 1) == RB_RED;
+}
+
+// 判断是否为黑色（颜色位为 1）
+static inline int rb_is_black(const struct rb_node *node) {
+    return (node->__rb_parent_color & 1) == RB_BLACK;
+}
+
+// 设置为红色（清除颜色位后设为 0）
+static inline void rb_set_red(struct rb_node *node) {
+    node->__rb_parent_color &= ~1UL; // ~1UL = 0xFFFF...FE，清除最低位
+}
+
+// 设置为黑色（保留父指针，设置颜色位为 1）
+static inline void rb_set_black(struct rb_node *node) {
+    node->__rb_parent_color |= 1UL;
+}
+
+// 通用颜色设置函数（color 需为 RB_RED 或 RB_BLACK）
+static inline void rb_set_color(struct rb_node *node, int color) {
+    node->__rb_parent_color = (node->__rb_parent_color & ~1UL) | (color & 1);
+}
+
+/*------------ 高级组合操作 ------------*/
+// 同时设置父节点和颜色（初始化或重链接时使用）
+static inline void rb_set_parent_and_color(struct rb_node *node,
+                                          struct rb_node *parent,
+                                          int color) {
+    node->__rb_parent_color = (unsigned long)parent | (color & 1);
+}
+
+// 全局定义红黑树根（初始为空树）
+// RB_ROOT 宏初始化根节点指针为NULL
+struct rb_root my_tree_root = RB_ROOT;
+
+// 插入业务数据到红黑树
+// 参数: new_data - 要插入的新数据节点（包含嵌入的红黑树节点）
+// 返回: 0成功，-EEXIST表示ID冲突
+int insert_my_data(struct my_data *new_data) {
+    // 定义双指针用于遍历树（link总指向当前节点的左/右子节点指针的地址）
+    struct rb_node ​**link = &my_tree_root.rb_node; // 从根节点开始查找
+    struct rb_node *parent = NULL;        // 记录父节点位置
+    struct my_data *entry;                // 用于暂存当前节点的业务数据
+
+    /* 阶段1：二叉搜索树插入定位 */
+    // 循环查找合适的插入位置（平均时间复杂度O(log n)）
+    while (*link) { // 当当前节点不为空时继续查找
+        parent = *link; // 记录父节点指针
+        // 通过rb_entry宏从rb_node指针获取外层业务数据结构
+        // 参数分解：parent - rb_node指针, struct my_data - 外层类型, node - 嵌入的成员名
+        entry = rb_entry(parent, struct my_data, node);
+
+        // 比较键值决定遍历方向（根据业务数据ID字段）
+        if (new_data->id < entry->id)         // 新ID较小，向左子树查找
+            link = &parent->rb_left;         // 更新link为左子节点指针的地址
+        else if (new_data->id > entry->id)   // 新ID较大，向右子树查找
+            link = &parent->rb_right;        // 更新link为右子节点指针的地址
+        else                                  // ID已存在，返回冲突错误
+            return -EEXIST; // 返回错误码（典型错误号，如-17表示已存在）
+    }
+
+    /* 阶段2：节点链接与红黑树平衡 */
+    // 将新节点连接到找到的位置（此时*link为NULL，表示父节点的空子节点位置）
+    // 参数分解：
+    // 1. &new_data->node - 新节点的rb_node指针
+    // 2. parent - 找到的父节点
+    // 3. link - 指向父节点左/右子节点指针的地址
+    rb_link_node(&new_data->node, parent, link);
+
+    // 执行红黑树再平衡操作（修正颜色和旋转，保持红黑树性质）
+    // 参数分解：
+    // 1. &new_data->node - 新插入的节点
+    // 2. &my_tree_root - 树根指针地址（可能需要更新根节点）
+    rb_insert_color(&new_data->node, &my_tree_root);
+
+    return 0; // 插入成功
+}
