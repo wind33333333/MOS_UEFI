@@ -77,37 +77,55 @@ static inline void rb_link_node(rb_node_t *node, rb_node_t *father, rb_node_t **
 
 //左旋
 void rb_left_rotate(rb_root_t *root, rb_node_t *node) {
-    rb_node_t *new_father = node->right; //获取右子节点（旋转后的新父节点)
-    node->right = new_father->left; //右子节点的左子节点挂到旋转节点的右子节点
-    if (node->right) rb_set_father(node->right, node); //更新右子节点的父指针（如果存在）
-    new_father->left = node; //旋转节点挂到右子节点的左子节点
-    rb_set_father(new_father, rb_father(node)); //右子节点的父亲更新为旋转节点的父亲
-    rb_set_father(node, new_father); //旋转节点的父亲更新为右子节点
+    //获取右子节点（旋转后的新父节点)
+    rb_node_t *new_father = node->right;
+    //右子节点的左子节点挂到旋转节点的右子节点
+    node->right = new_father->left;
+    //更新右子节点的父指针（如果存在）
+    if (node->right) rb_set_father(node->right, node);
+    //旋转节点挂到右子节点的左子节点
+    new_father->left = node;
+    //右子节点的父亲更新为旋转节点的父亲
+    rb_set_father(new_father, rb_father(node));
+    //旋转节点的父亲更新为右子节点
+    rb_set_father(node, new_father);
 
     if (!rb_father(new_father)) {
-        root->rb_node = new_father; //如果父节点是空则当天节点是根节点，更新根指针
+        //如果父节点是空则当天节点是根节点，更新根指针
+        root->rb_node = new_father;
     } else if (node == rb_father(new_father)->left) {
-        rb_father(new_father)->left = new_father; //更新父节点的左指针
+        //更新父节点的左指针
+        rb_father(new_father)->left = new_father;
     } else if (node == rb_father(new_father)->right) {
-        rb_father(new_father)->right = new_father; //更新父节点的右指针
+        //更新父节点的右指针
+        rb_father(new_father)->right = new_father;
     }
 }
 
 /**右旋把旋转节点的左子变成新的父亲节点，旋转节点变成新父节点的左子**/
 void right_rotate(rb_root_t *root, rb_node_t *node) {
-    rb_node_t *new_father = node->left; //旋转节点的左子变新父节点
-    node->left = new_father->right; //新父的右子变选转点的左子
-    if (node->left) rb_set_father(node->left, node); //更新左子节点的父指针
-    new_father->right = node; //旋转节点变新父的右子
-    rb_set_father(new_father, rb_father(node)); //更新新父节点的父指针
-    rb_set_father(node, new_father); //更新旋转节点的父指针
+    //旋转节点的左子变新父节点
+    rb_node_t *new_father = node->left;
+    //新父的右子变选转点的左子
+    node->left = new_father->right;
+    //更新左子节点的父指针
+    if (node->left) rb_set_father(node->left, node);
+    //旋转节点变新父的右子
+    new_father->right = node;
+    //更新新父节点的父指针
+    rb_set_father(new_father, rb_father(node));
+    //更新旋转节点的父指针
+    rb_set_father(node, new_father);
 
     if (!rb_father(new_father)) {
-        root->rb_node = new_father; //更新根节点
+        //更新根节点
+        root->rb_node = new_father;
     } else if (node == rb_father(new_father)->left) {
-        rb_father(new_father)->left = new_father; //更新新父节点的左子指针
+        //更新新父节点的左子指针
+        rb_father(new_father)->left = new_father;
     } else if (node == rb_father(new_father)->right) {
-        rb_father(new_father)->right = new_father; //更新新父节点的右子指针
+        //更新新父节点的右子指针
+        rb_father(new_father)->right = new_father;
     }
 }
 
@@ -134,7 +152,8 @@ void rb_insert_color(rb_root_t *root, rb_node_t *node) {
                     node = father;
                     father = rb_father(node);
                 }
-                right_rotate(root, gfather); //LLB型 左旋祖父，父亲变黑，祖父便红
+                //LLB型 左旋祖父，父亲变黑，祖父便红
+                right_rotate(root, gfather);
                 rb_set_black(father);
                 rb_set_red(gfather);
             }
@@ -155,13 +174,15 @@ void rb_insert_color(rb_root_t *root, rb_node_t *node) {
                     node = father;
                     father = rb_father(node);
                 }
-                rb_left_rotate(root, gfather); //RRB型 左旋祖父，父变黑，祖父变红
+                //RRB型 左旋祖父，父变黑，祖父变红
+                rb_left_rotate(root, gfather);
                 rb_set_black(father);
                 rb_set_red(gfather);
             }
         }
     }
-    rb_set_black(root->rb_node); //保持根节点黑色
+    //保持根节点黑色
+    rb_set_black(root->rb_node);
 }
 
 /*
@@ -245,58 +266,72 @@ static void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *father) 
  * 注意：被删除节点必须已存在于树中
  */
 void rb_erase(rb_root_t *root, rb_node_t *node) {
-    rb_node_t *father; // 父亲节点
-    rb_node_t *child; // 被删除节点的孩子节点
-    rb_color_e color; // 被删除节点的原始颜色
+    rb_node_t *father;
+    rb_node_t *child;
+    rb_color_e color;
 
     if (node->left && node->right) {
         //情况1：删除节点左右子树都有，找后继节点
         rb_node_t *successor = node->right;
-        while (successor->left) successor = successor->left; //找后继
+        while (successor->left) successor = successor->left;
 
         father = successor;
-        child = successor->right; // 后继节点的右子节点（可能为空）
-        color = rb_color(successor); // 后继节点的颜色
+        // 后继节点的右子节点（可能为空）
+        child = successor->right;
+        // 后继节点的颜色
+        color = rb_color(successor);
 
+        // 后继节点不是原始节点的直接右子节点
         if (successor != node->right) {
-            // 后继节点不是原始节点的直接右子节点
             father = rb_father(successor);
-            if (child) rb_set_father(child, father); // 如果后继节点有右子节点,更新右子节点的父指针
-            father->left = child; // 后继节点父亲的左子节点，更新为后继节点的右子节点
-            successor->right = node->right; // 后继节点的右子节点，更新为原始节点右孩
-            rb_set_father(successor->right, successor); // 右子节点父指针更新为后继节点
+            // 如果后继节点有右子节点,更新右子节点的父指针
+            if (child) rb_set_father(child, father);
+            // 后继节点父亲的左子节点，更新为后继节点的右子节点
+            father->left = child;
+            // 后继节点的右子节点，更新为原始节点右孩
+            successor->right = node->right;
+            // 右子节点父指针更新为后继节点
+            rb_set_father(successor->right, successor);
         }
-        successor->left = node->left; // 后继节点的左子节点，更新为原始节点的左孩
-        rb_set_father(node->left, successor); // 原始节点左子节点的父亲，更新为后继节点
-        rb_set_father_and_color(successor, rb_father(node), rb_color(node)); // 后继节点的父节点，更新为原始节点的父节点,后继节点继承原始节点颜色
+        // 后继节点的左子节点，更新为原始节点的左孩
+        successor->left = node->left;
+        // 原始节点左子节点的父亲，更新为后继节点
+        rb_set_father(node->left, successor);
+        // 后继节点的父节点，更新为原始节点的父节点,后继节点继承原始节点颜色
+        rb_set_father_and_color(successor, rb_father(node), rb_color(node));
 
         if (rb_father(node)) {
+            // 原始节点为父节点左孩，更新为后继节点
             if (node == rb_father(node)->left) {
-                rb_father(node)->left = successor; // 原始节点为父节点左孩，更新为后继节点
+                rb_father(node)->left = successor;
             } else {
-                rb_father(node)->right = successor; // 原始节点为父节点右孩，更新为后继节点
+                // 原始节点为父节点右孩，更新为后继节点
+                rb_father(node)->right = successor;
             }
         } else {
-            root->rb_node = successor; // 更新根节点
+            // 更新根节点
+            root->rb_node = successor;
         }
     } else {
         //情况2：只有1个子树或0个子树
         child = node->left ? node->left : node->right;
-        father = rb_father(node); //被删除节点的父亲
-        color = rb_color(node); //被删除节点颜色
-
+        //被删除节点的父亲
+        father = rb_father(node);
+        //被删除节点颜色
+        color = rb_color(node);
         if (child) rb_set_father(child, father); //有孩子则更新孩子的父亲指针为删除节点的父亲
+        //被删除节点有父亲
         if (father) {
-            //被删除节点有父亲
+            //被删除节点为父亲的左孩,把孩子更新为父亲的左孩
             if (node == father->left) {
-                //被删除节点为父亲的左孩
-                father->left = child; //把孩子更新为父亲的左孩
+                father->left = child;
             } else {
-                father->right = child; //把孩子更新为父亲的右孩
+                //被删除节点为父亲的左孩,把孩子更新为父亲的右孩
+                father->right = child;
             }
         } else {
-            //被删除节点无父亲则是根节点
-            root->rb_node = child; //把孩子更新为新的根节点
+            //被删除节点无父亲则是根节点,把孩子更新为新的根节点
+            root->rb_node = child;
         }
     }
 
