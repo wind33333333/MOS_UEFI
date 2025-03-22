@@ -219,7 +219,7 @@ void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *father) {
                     rb_left_rotate(root, brother);
                     brother = father->left;
                 }
-                //LLR型：兄弟的左孩是红色，右旋父亲，兄弟继承父亲颜色，父亲和左孩变黑，黑高修复完成
+                //情况4：LLR型：兄弟的左孩是红色，右旋父亲，兄弟继承父亲颜色，父亲和左孩变黑，黑高修复完成
                 rb_right_rotate(root, father);
                 rb_set_color(brother, rb_color(father));
                 rb_set_black(father);
