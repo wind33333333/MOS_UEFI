@@ -31,7 +31,7 @@ static inline rb_node_t *rb_father(const rb_node_t *node) {
 
 // 设置父节点（保留原有颜色）
 static inline void rb_set_father(rb_node_t *node, rb_node_t *father) {
-    node->father_color = (UINT64) father | rb_color(node->father_color);
+    node->father_color = (UINT64) father | rb_color(node);
 }
 
 // 判断是否为红色（颜色位为 0）
@@ -151,7 +151,7 @@ void rb_insert_color(rb_root_t *root, rb_node_t *node) {
                     node = father;
                     father = rb_father(node);
                 }
-                //LLB型 左旋祖父，父亲变黑，祖父便红
+                //LLB型 左旋祖父，父亲变黑，祖父变红
                 rb_right_rotate(root, gfather);
                 rb_set_black(father);
                 rb_set_red(gfather);
@@ -197,7 +197,7 @@ void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *father) {
         // 当前节点是父节点的右子节点，兄弟节点为父节点的左子节点
         if (node == father->right) {
             brother = father->left;
-            //情况1: 兄弟节点为红色，兄变黑父变红，父亲右旋
+            //情况1: 兄弟节点为红色，父亲右旋,兄变黑,父变红
             if (rb_is_red(brother)) {
                 rb_right_rotate(root, father);
                 rb_set_black(brother);
@@ -205,6 +205,30 @@ void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *father) {
                 brother = father->left;
             }
             //兄弟节点为黑
+            if (rb_is_black(brother)) {
+                //左孩黑
+                if (!brother->left || rb_is_black(brother->left)) {
+                    //情况2：兄弟和左右孩子都是黑色, 兄弟染红，双黑上移，继续修正
+                    if (!brother->right || rb_is_black(brother->right)) {
+                        rb_set_red(brother);
+                        node = father;
+                        father = rb_father(father);
+                        continue;
+                    }
+                    //情况3：LRR型->LLR型：兄弟的左孩是黑色，右孩是红色，左旋兄弟
+                    rb_left_rotate(root, brother);
+                    brother = father->left;
+                }
+                //LLR型：兄弟的左孩是红色，右旋父亲，兄弟继承父亲颜色，父亲和左孩变黑，黑高修复完成
+                rb_right_rotate(root, father);
+                rb_set_color(brother, rb_color(father));
+                rb_set_black(father);
+                rb_set_black(brother->left);
+                break;
+            }
+
+
+            /*//兄弟节点为黑
             if (rb_is_black(brother)) {
                 if ((brother->left && rb_is_red(brother->left)) || (brother->right && rb_is_red(brother->right))) {
                     //情况2： 兄弟黑色,孩子是红色  ,LRR型：左兄的右孩是红色，左旋兄弟转为LLR型
@@ -223,11 +247,12 @@ void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *father) {
                 rb_set_red(brother);
                 node = father;
                 father = rb_father(father);
-            }
+            }*/
+
         } else {
             // 当前节点是父节点的左子节点，兄弟节点为父节点的右子节点
             brother = father->right;
-            //情况1: 兄弟节点为红色，兄变黑父变红，父亲左旋
+            //情况1: 兄弟节点为红色，父亲左旋,兄变黑,父变红
             if (rb_is_red(brother)) {
                 rb_left_rotate(root, father);
                 rb_set_black(brother);
@@ -236,9 +261,31 @@ void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *father) {
             }
             //兄弟节点为黑
             if (rb_is_black(brother)) {
+                //右孩黑
+                if (!brother->right || rb_is_black(brother->right)) {
+                    //情况2：兄弟和左右孩子都是黑色, 兄弟染红，双黑上移，继续修正
+                    if (!brother->left || rb_is_black(brother->left)) {
+                        rb_set_red(brother);
+                        node = father;
+                        father = rb_father(father);
+                        continue;
+                    }
+                    //情况3：RLR型->RRR型：兄弟的右孩是黑色，左孩是红色，右旋兄弟
+                    rb_right_rotate(root, brother);
+                    brother = father->left;
+                }
+                //情况4：RRR型：兄弟的右孩是红色，左旋父亲，兄弟继承父亲颜色，父亲和左孩变黑，黑高修复完成
+                rb_left_rotate(root, father);
+                rb_set_color(brother, rb_color(father));
+                rb_set_black(father);
+                rb_set_black(brother->right);
+                break;
+            }
+
+            /*if (rb_is_black(brother)) {
                 if ((brother->left && rb_is_red(brother->left)) || (brother->right && rb_is_red(brother->right))) {
                     //情况2： 兄弟节的孩子是红色  RLR型：右兄的左孩是红色，右旋兄弟
-                    if (!brother->right && rb_is_black(brother->right)) {
+                    if (!brother->right || rb_is_black(brother->right)) {
                         rb_right_rotate(root, brother);
                         brother = father->left;
                     }
@@ -253,12 +300,13 @@ void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *father) {
                 rb_set_red(brother);
                 node = father;
                 father = rb_father(father);
-            }
+            }*/
         }
     }
     // 最终确保根节点为黑
     if (node) rb_set_black(node);
 }
+
 
 /*
  * 红黑树删除主逻辑
