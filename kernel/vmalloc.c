@@ -18,31 +18,30 @@ typedef struct rb_root_t {
     rb_node_t *rb_node; //树根
 } rb_root_t;
 
-/*------------ 基础操作函数 ------------*/
-// 获取父节点（清除颜色位）
-static inline rb_node_t *rb_father(const rb_node_t *node) {
-    return (rb_node_t *) (node->father_color & ~3UL);
-}
 
-// 设置父节点（保留原有颜色）
-static inline void rb_set_father(rb_node_t *node, rb_node_t *father) {
-    node->father_color = (UINT64) father | (node->father_color & 3UL);
-}
-
-/*------------ 颜色操作函数 ------------*/
 // 获取节点颜色（0为红，1为黑）
 static inline UINT32 rb_color(const rb_node_t *node) {
     return node->father_color & 1;
 }
 
+// 获取父节点（清除颜色位）
+static inline rb_node_t *rb_father(const rb_node_t *node) {
+    return (rb_node_t *) (node->father_color & ~1UL);
+}
+
+// 设置父节点（保留原有颜色）
+static inline void rb_set_father(rb_node_t *node, rb_node_t *father) {
+    node->father_color = (UINT64) father | rb_color(node->father_color);
+}
+
 // 判断是否为红色（颜色位为 0）
 static inline BOOLEAN rb_is_red(const rb_node_t *node) {
-    return !(node->father_color & 1);
+    return !rb_color(node);
 }
 
 // 判断是否为黑色（颜色位为 1）
 static inline BOOLEAN rb_is_black(const rb_node_t *node) {
-    return (node->father_color & 1);
+    return rb_color(node);
 }
 
 // 设置为红色（清除颜色位后设为 0）
