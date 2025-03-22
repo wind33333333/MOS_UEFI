@@ -131,14 +131,14 @@ void rb_right_rotate(rb_root_t *root, rb_node_t *node) {
 //修正红黑树插入失衡情况
 void rb_insert_color(rb_root_t *root, rb_node_t *node) {
     rb_node_t *uncle, *father, *gfather;
+    //当前节点为红色需修正
     while ((father = rb_father(node)) && rb_is_red(father)) {
-        //当前节点为红色需修正
         gfather = rb_father(father);
         if (father == gfather->left) {
             //父为左则叔为右
             uncle = gfather->right;
             if (uncle && rb_is_red(uncle)) {
-                //LXR型 叔叔为红色则把父叔变黑祖父变红，把当天节点设置为祖父继续修正
+                //情况1：LXR型 叔叔为红色，则把父叔变黑，祖父变红，把当前节点设置为祖父继续修正
                 rb_set_black(father);
                 rb_set_black(uncle);
                 rb_set_red(gfather);
@@ -146,12 +146,12 @@ void rb_insert_color(rb_root_t *root, rb_node_t *node) {
             } else {
                 //LXB型 叔叔为黑
                 if (node == father->right) {
-                    //LRB型 左旋父亲把形态调整为LLB型
+                    //情况2：LXB型->LLB 左旋父亲把形态调整
                     rb_left_rotate(root, father);
                     node = father;
                     father = rb_father(node);
                 }
-                //LLB型 左旋祖父，父亲变黑，祖父变红
+                //情况3：LLB型 左旋祖父，父亲变黑，祖父变红
                 rb_right_rotate(root, gfather);
                 rb_set_black(father);
                 rb_set_red(gfather);
@@ -160,7 +160,7 @@ void rb_insert_color(rb_root_t *root, rb_node_t *node) {
             //父为右则叔为左（镜像）
             uncle = gfather->left;
             if (uncle && rb_is_red(uncle)) {
-                //RXR型 叔叔为红色则把父叔变黑祖父变红，把当天节点设置为祖父继续修正
+                //情况1：RXR型 叔叔为红色，则把父叔变黑，祖父变红，把当前节点设置为祖父继续修正
                 rb_set_black(father);
                 rb_set_black(uncle);
                 rb_set_red(gfather);
@@ -168,12 +168,12 @@ void rb_insert_color(rb_root_t *root, rb_node_t *node) {
             } else {
                 //RXB型 叔叔为黑
                 if (node == father->left) {
-                    //RLB型 右旋父亲把形态调整为RRB型
+                    //情况2：RLB型->RRB型 右旋父亲把形态调整为RRB型
                     rb_right_rotate(root, father);
                     node = father;
                     father = rb_father(node);
                 }
-                //RRB型 左旋祖父，父变黑，祖父变红
+                //情况3：RRB型 左旋祖父，父变黑，祖父变红
                 rb_left_rotate(root, gfather);
                 rb_set_black(father);
                 rb_set_red(gfather);
