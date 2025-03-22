@@ -201,7 +201,7 @@ void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *father) {
             if (rb_is_red(brother)) {
                 rb_right_rotate(root, father);
                 rb_set_black(brother);
-                rb_is_red(father);
+                rb_set_red(father);
                 brother = father->left;
             }
             //兄弟节点为黑
@@ -419,12 +419,12 @@ void mid_traversal(rb_root_t *root, rb_node_t *node) {
 
 void rb_test(void) {
     //红黑树测试
-    UINT64 keyare[34] = {83, 22, 99, 35, 95, 78, 75, 92, 40, 76, 93, 41};
+    UINT64 keyare[34] = {6,5,4,3,2,1};
     rb_root_t *root = kmalloc(sizeof(rb_root_t));
     root->rb_node = NULL;
     my_data_t *new_data;
 
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < 6; i++) {
         new_data = kmalloc(sizeof(my_data_t));
         new_data->key = keyare[i];
         insert_my_data(root, new_data);
@@ -434,8 +434,8 @@ void rb_test(void) {
     color_printk(GREEN,BLACK, "\n");
 
     rb_node_t *node;
-    UINT64 keyare1[34] = {78, 35, 95, 22, 83, 75, 92, 40, 76, 93, 41, 99};
-    for (int i = 0; i < 12; i++) {
+    UINT64 keyare1[34] = {6,5,4,3,2,1};
+    for (int i = 0; i < 6; i++) {
         node = rb_find(root, keyare1[i]);
         rb_erase(root, node);
         mid_traversal(root, root->rb_node);
