@@ -226,29 +226,6 @@ void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *father) {
                 rb_set_black(brother->left);
                 break;
             }
-
-
-            /*//兄弟节点为黑
-            if (rb_is_black(brother)) {
-                if ((brother->left && rb_is_red(brother->left)) || (brother->right && rb_is_red(brother->right))) {
-                    //情况2： 兄弟黑色,孩子是红色  ,LRR型：左兄的右孩是红色，左旋兄弟转为LLR型
-                    if (!brother->left || rb_is_black(brother->left)) {
-                        rb_left_rotate(root, brother);
-                        brother = father->left;
-                    }
-                    //LLR型：左兄的左孩是红色，右旋父亲，兄弟继承父亲颜色，父亲和左孩变黑
-                    rb_right_rotate(root, father);
-                    rb_set_color(brother, rb_color(father));
-                    rb_set_black(father);
-                    rb_set_black(brother->left);
-                    break;
-                }
-                //情况3：兄弟黑的两个孩子也是黑色，兄弟染红，双黑上移
-                rb_set_red(brother);
-                node = father;
-                father = rb_father(father);
-            }*/
-
         } else {
             // 当前节点是父节点的左子节点，兄弟节点为父节点的右子节点
             brother = father->right;
@@ -281,26 +258,6 @@ void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *father) {
                 rb_set_black(brother->right);
                 break;
             }
-
-            /*if (rb_is_black(brother)) {
-                if ((brother->left && rb_is_red(brother->left)) || (brother->right && rb_is_red(brother->right))) {
-                    //情况2： 兄弟节的孩子是红色  RLR型：右兄的左孩是红色，右旋兄弟
-                    if (!brother->right || rb_is_black(brother->right)) {
-                        rb_right_rotate(root, brother);
-                        brother = father->left;
-                    }
-                    //RRR型：右兄的右孩是红色，左旋父亲，兄弟继承父亲颜色，父亲和左孩变黑
-                    rb_left_rotate(root, father);
-                    rb_set_color(brother, rb_color(father));
-                    rb_set_black(father);
-                    rb_set_black(brother->right);
-                    break;
-                }
-                //情况3：兄弟黑色两个孩子也是黑色, 兄弟染红，双黑上移
-                rb_set_red(brother);
-                node = father;
-                father = rb_father(father);
-            }*/
         }
     }
     // 最终确保根节点为黑
