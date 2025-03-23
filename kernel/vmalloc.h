@@ -14,4 +14,9 @@ typedef struct {
     // list_head         list;      // 链表节点，连接所有 vmap_area
 }vmap_area_t;
 
+// 分配内存
+void *vmalloc(UINT64 size);
+// 释放内存
+void vfree(const void *addr);
+
 #endif
