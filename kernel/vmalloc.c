@@ -6,8 +6,9 @@
 
 
 typedef struct my_data_t {
-    rb_node_t rb_node;
     UINT64 key;
+    UINT64 key1;
+    rb_node_t rb_node;
 } my_data_t;
 
 
@@ -79,12 +80,20 @@ void mid_traversal(rb_root_t *root, rb_node_t *node) {
 }
 
 
+
 void rb_test(void) {
     //红黑树测试
     UINT64 keyare[34] = {10,9,8,7,6,5,4,3,2,1};
     rb_root_t *root = kmalloc(sizeof(rb_root_t));
     root->rb_node = NULL;
     my_data_t *new_data;
+
+    my_data_t x;
+    rb_node_t *x1= &x.rb_node;
+    int i = offsetof(my_data_t, rb_node);
+    my_data_t *y= container_of(x1,my_data_t,rb_node);
+
+    while (1);
 
     for (int i = 0; i < 10; i++) {
         new_data = kmalloc(sizeof(my_data_t));
