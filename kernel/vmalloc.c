@@ -1,14 +1,16 @@
 #include "vmalloc.h"
 #include "slub.h"
 #include "printk.h"
-#include "rbtree.h"
 
 
 
 typedef struct my_data_t {
+    rb_node_t rb_node;
     UINT64 key;
     UINT64 key1;
-    rb_node_t rb_node;
+    UINT64 key2;
+    UINT64 key3;
+    UINT64 key4;
 } my_data_t;
 
 
