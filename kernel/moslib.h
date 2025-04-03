@@ -40,9 +40,9 @@ extern UINT64 tmp_pml4t[];
 #define TRUE 1
 
 //取通过结构成员偏移量
-#define offsetof(type, member) ((UINT8*)&((type*)0)->member)
+#define OFFSETOF(type, member) ((UINT8*)&((type*)0)->member)
 //通过成员计算结构起始地址
-#define container_of(ptr,type,member) (type*)((UINT8*)ptr-offsetof(type,member))
+#define CONTAINER_OF(ptr,type,member) (type*)((UINT8*)ptr-OFFSETOF(type,member))
 
 // 开启中断 (STI)
 static inline void sti(void) {

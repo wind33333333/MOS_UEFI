@@ -1,49 +1,74 @@
 #include "vmalloc.h"
 #include "slub.h"
 #include "printk.h"
+#include "vmm.h"
+
+//忙碌树
+rb_root_t used_vmap_area_root;
+//空闲树
+rb_root_t free_vmap_area_root;
+//全局虚拟地址链表
+list_head_t *vmap_area_list;
+
+//初始化vmalloc
+void vmalloc_init(void) {
+    //初始化vmalloc空间并插入空闲树
+    vmap_area_t *new=new_vmap_area(VMALLOC_START,VMALLOC_END);
+    insert_vmap_area(&free_vmap_area_root,new);
+};
+
+void *vmalloc (UINT64 size) {
+    if (!size) return NULL;
+    //4k对齐
+    size = PAGE_4K_ALIGN(size);
 
 
 
-typedef struct my_data_t {
-    rb_node_t rb_node;
-    UINT64 key;
-    UINT64 key1;
-    UINT64 key2;
-    UINT64 key3;
-    UINT64 key4;
-} my_data_t;
+}
 
-
-UINT32 insert_my_data(rb_root_t *root, my_data_t *new_data) {
+UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *new_vmap_area) {
     rb_node_t **link = &root->rb_node;
     rb_node_t *father = NULL;
-    my_data_t *entry;
+    vmap_area_t *entry;
 
     while (*link) {
         father = *link;
-        entry = (my_data_t *) father;
-        if (new_data->key < entry->key) {
+        entry = CONTAINER_OF(father,vmap_area_t,rb_node);
+        if (new_vmap_area->va_start < entry->va_start) {
             link = &father->left;
-        } else if (new_data->key > entry->key) {
+        } else if (new_vmap_area->va_start > entry->va_start) {
             link = &father->right;
         } else {
             return 1;
         }
     }
 
-    rb_link_node(&new_data->rb_node, father, link);
-    rb_insert_color(root, &new_data->rb_node);
+    rb_link_node(&new_vmap_area->rb_node, father, link);
+    rb_insert_color(root, &new_vmap_area->rb_node);
+}
+
+vmap_area_t *new_vmap_area(UINT64 va_start,UINT64 va_end) {
+    vmap_area_t *new=kmalloc(sizeof(vmap_area_t));
+    new->va_start = va_start;
+    new->va_end   = va_end;
+    new->rb_node.father_color = 0;
+    new->rb_node.left   = NULL;
+    new->rb_node.right  = NULL;
+    new->list.prev = NULL;
+    new->list.next = NULL;
+    new->subtree_max_size = va_end - va_start;
+    return new;
 }
 
 /* 传入key查找node */
-rb_node_t *rb_find(rb_root_t *root, UINT64 key) {
+/*rb_node_t *rb_find(rb_root_t *root, UINT64 key) {
     rb_node_t *node = root->rb_node;
     while (node) {
         if (((my_data_t *) node)->key == key) return node; //搜索key对应的节点
         node = key < ((my_data_t *) node)->key ? node->left : node->right;
     }
     return NULL; //没有找到
-}
+}*/
 
 
 /*//中序遍历
@@ -74,44 +99,13 @@ void mid_traversal1(rb_root_t *rbtree) {
 
 
 //递归中序遍历
+/*
 void mid_traversal(rb_root_t *root, rb_node_t *node) {
     if (!node) return;
     mid_traversal(root, node->left); //处理左子树
     color_printk(GREEN, BLACK, "key:%d   color:%d\n", ((my_data_t *) node)->key, rb_color(node));
     mid_traversal(root, node->right); //处理右子树
 }
+*/
 
 
-
-void rb_test(void) {
-    //红黑树测试
-    UINT64 keyare[34] = {10,9,8,7,6,5,4,3,2,1};
-    rb_root_t *root = kmalloc(sizeof(rb_root_t));
-    root->rb_node = NULL;
-    my_data_t *new_data;
-
-    my_data_t x;
-    rb_node_t *x1= &x.rb_node;
-    int i = offsetof(my_data_t, rb_node);
-    my_data_t *y= container_of(x1,my_data_t,rb_node);
-
-    while (1);
-
-    for (int i = 0; i < 10; i++) {
-        new_data = kmalloc(sizeof(my_data_t));
-        new_data->key = keyare[i];
-        insert_my_data(root, new_data);
-    }
-
-    mid_traversal(root, root->rb_node);
-    color_printk(GREEN,BLACK, "\n");
-
-    rb_node_t *node;
-    UINT64 keyare1[34] = {4};
-    for (int i = 0; i < 6; i++) {
-        node = rb_find(root, keyare1[i]);
-        rb_erase(root, node);
-        mid_traversal(root, root->rb_node);
-        color_printk(GREEN,BLACK, "                        \n");
-    }
-}
