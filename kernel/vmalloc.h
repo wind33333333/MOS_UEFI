@@ -30,7 +30,7 @@ void vfree(const void *addr);
 UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *new_data);
 
 //新建一个vmap_area
-vmap_area_t *new_vmap_area(UINT64 va_start,UINT64 va_end);
+vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end);
 
 //找一个最佳空闲节点
 vmap_area_t *find_vmap_lowest_match(UINT64 size,UINT64 va_start);

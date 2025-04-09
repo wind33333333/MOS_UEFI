@@ -13,8 +13,8 @@ list_head_t *vmap_area_list;
 //初始化vmalloc
 void vmalloc_init(void) {
     //初始化vmalloc空间并插入空闲树
-    vmap_area_t *new=new_vmap_area(VMALLOC_START,VMALLOC_END);
-    insert_vmap_area(&free_vmap_area_root,new);
+    vmap_area_t *vmap_area=create_vmap_area(VMALLOC_START,VMALLOC_END);
+    insert_vmap_area(&free_vmap_area_root,vmap_area);
 };
 
 void *vmalloc (UINT64 size) {
@@ -50,22 +50,20 @@ void update_subtree_max_size(vmap_area_t *vmap_area) {
             if (vmap_area->subtree_max_size < child->subtree_max_size)
                 vmap_area->subtree_max_size = child->subtree_max_size;
         }
-
         // 比较右子树的取最大值
         if (node->right) {
             child= CONTAINER_OF(node->right,vmap_area_t,rb_node);
             if (vmap_area->subtree_max_size < child->subtree_max_size)
                 vmap_area->subtree_max_size = child->subtree_max_size;
         }
-
-        node = rb_parent(node->parent_color);
+        node = rb_parent(node);
         vmap_area = CONTAINER_OF(node,vmap_area_t,rb_node);
     }while (node);
 }
 
 //分割空闲节点
 vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size) {
-    vmap_area_t *new = new_vmap_area(vmap_area->va_start,vmap_area->va_start+size);
+    vmap_area_t *new = create_vmap_area(vmap_area->va_start,vmap_area->va_start+size);
     vmap_area->va_start += size;
     vmap_area->va_end -= size;
     update_subtree_max_size(vmap_area);
@@ -73,39 +71,39 @@ vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size) {
 }
 
 //插入vmap
-UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *new_vmap_area) {
-    rb_node_t **link = &root->rb_node;
-    rb_node_t *parent = NULL;
-    vmap_area_t *entry;
+UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area) {
+    rb_node_t *parent,**link = &root->rb_node;
+    vmap_area_t *cur_vmap_area;
 
-    while (*link) {
-        parent = *link;
-        entry = CONTAINER_OF(parent,vmap_area_t,rb_node);
-        if (new_vmap_area->va_start < entry->va_start) {
+    while ((parent = *link)) {
+        cur_vmap_area = CONTAINER_OF(parent,vmap_area_t,rb_node);
+        if (vmap_area->va_start < cur_vmap_area->va_start) {
             link = &parent->left;
-        } else if (new_vmap_area->va_start > entry->va_start) {
+        } else if (vmap_area->va_start > cur_vmap_area->va_start) {
             link = &parent->right;
         } else {
             return 1;
         }
     }
 
-    rb_link_node(&new_vmap_area->rb_node, parent, link);
-    rb_insert_color(root, &new_vmap_area->rb_node);
+    rb_link_node(&vmap_area->rb_node, parent, link);
+    rb_insert_color(root, &vmap_area->rb_node);
+    if (root == &free_vmap_area_root) update_subtree_max_size(vmap_area);
+    return 0;
 }
 
 //新建一个vmap
-vmap_area_t *new_vmap_area(UINT64 va_start,UINT64 va_end) {
-    vmap_area_t *new=kmalloc(sizeof(vmap_area_t));
-    new->va_start = va_start;
-    new->va_end   = va_end;
-    new->rb_node.parent_color = 0;
-    new->rb_node.left   = NULL;
-    new->rb_node.right  = NULL;
-    new->list.prev = NULL;
-    new->list.next = NULL;
-    new->subtree_max_size = va_end - va_start;
-    return new;
+vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end) {
+    vmap_area_t *vmap_area=kmalloc(sizeof(vmap_area_t));
+    vmap_area->va_start = va_start;
+    vmap_area->va_end   = va_end;
+    vmap_area->rb_node.parent_color = 0;
+    vmap_area->rb_node.left   = NULL;
+    vmap_area->rb_node.right  = NULL;
+    vmap_area->list.prev = NULL;
+    vmap_area->list.next = NULL;
+    vmap_area->subtree_max_size = 0;
+    return vmap_area;
 }
 
 //搜索最佳空闲vmap
