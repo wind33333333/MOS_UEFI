@@ -22,8 +22,45 @@ void *vmalloc (UINT64 size) {
     //4k对齐
     size = PAGE_4K_ALIGN(size);
 
+    //找到最佳可用空闲节点
+    vmap_area_t *vmap_area=find_vmap_lowest_match(size,VMALLOC_START);
+    if (!vmap_area)return NULL;
+
+    if (vmap_area->va_end-vmap_area->va_start > size) {
+        split_vmap_area(vmap_area,size);
+    }
 
 
+
+
+}
+
+// 更新当前节点的 subtree_max_size
+void update_subtree_max_size(vmap_area_t *vmap_area) {
+    UINT64 max_size = vmap_area->va_end - vmap_area->va_start; // 当前节点自身大小
+    vmap_area_t *child = NULL;
+
+    // 比较左子树的最大值
+    if (vmap_area->rb_node.left) {
+        child= CONTAINER_OF(vmap_area->rb_node.left,vmap_area_t,rb_node);
+        if (max_size < child->subtree_max_size) max_size = child->subtree_max_size;
+    }
+
+    // 比较右子树的最大值
+    if (vmap_area->rb_node.right) {
+        child= CONTAINER_OF(vmap_area->rb_node.right,vmap_area_t,rb_node);
+        if (max_size < child->subtree_max_size) max_size = child->subtree_max_size;
+    }
+
+    vmap_area->subtree_max_size = max_size; // 更新当前节点的子树最大值
+}
+
+//分割空闲节点
+vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size) {
+    vmap_area_t *new = new_vmap_area(vmap_area->va_start,vmap_area->va_start+size);
+    vmap_area->va_start += size;
+    vmap_area->va_end -= size;
+    return new;
 }
 
 UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *new_vmap_area) {
@@ -59,6 +96,22 @@ vmap_area_t *new_vmap_area(UINT64 va_start,UINT64 va_end) {
     new->subtree_max_size = va_end - va_start;
     return new;
 }
+
+vmap_area_t *find_vmap_lowest_match(UINT64 size,UINT64 va_start) {
+    rb_node_t *node = free_vmap_area_root.rb_node;
+    vmap_area_t *vmap_area = NULL;
+    while (node) {
+        vmap_area = CONTAINER_OF(node,vmap_area_t,rb_node);
+        if (size <= get_subtree_max_size(node->left) && va_start <= vmap_area->va_start) {
+            node=node->left;
+        }else {
+            if (size <= (vmap_area->va_end-va_start)) return vmap_area;
+            node=node->right;
+        }
+    }
+    return NULL;
+}
+
 
 /* 传入key查找node */
 /*rb_node_t *rb_find(rb_root_t *root, UINT64 key) {
