@@ -38,6 +38,9 @@ vmap_area_t *find_vmap_lowest_match(UINT64 size,UINT64 va_start);
 //分割节点
 vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size);
 
+// 更新当前节点的 subtree_max_size
+void update_subtree_max_size(vmap_area_t *vmap_area);
+
 //获取节点subtree_max_size
 static inline UINT64 get_subtree_max_size(rb_node_t *node) {
     if (!node)return 0;

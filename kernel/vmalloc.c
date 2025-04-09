@@ -26,7 +26,10 @@ void *vmalloc (UINT64 size) {
     vmap_area_t *vmap_area=find_vmap_lowest_match(size,VMALLOC_START);
     if (!vmap_area)return NULL;
 
-    if (vmap_area->va_end-vmap_area->va_start > size) {
+    UINT64 vmap_area_size = vmap_area->va_end-vmap_area->va_start;
+    if (vmap_area_size == size) {
+
+    }else if (vmap_area_size > size) {
         split_vmap_area(vmap_area,size);
     }
 
@@ -35,24 +38,29 @@ void *vmalloc (UINT64 size) {
 
 }
 
-// 更新当前节点的 subtree_max_size
+// 更新的subtree_max_size
 void update_subtree_max_size(vmap_area_t *vmap_area) {
-    UINT64 max_size = vmap_area->va_end - vmap_area->va_start; // 当前节点自身大小
-    vmap_area_t *child = NULL;
+    vmap_area_t *child;
+    rb_node_t *node = &vmap_area->rb_node;
+     do{
+        vmap_area->subtree_max_size = vmap_area->va_end - vmap_area->va_start; // 当前节点自身大小
+        // 比较左子树的取最大值
+        if (node->left) {
+            child= CONTAINER_OF(node->left,vmap_area_t,rb_node);
+            if (vmap_area->subtree_max_size < child->subtree_max_size)
+                vmap_area->subtree_max_size = child->subtree_max_size;
+        }
 
-    // 比较左子树的最大值
-    if (vmap_area->rb_node.left) {
-        child= CONTAINER_OF(vmap_area->rb_node.left,vmap_area_t,rb_node);
-        if (max_size < child->subtree_max_size) max_size = child->subtree_max_size;
-    }
+        // 比较右子树的取最大值
+        if (node->right) {
+            child= CONTAINER_OF(node->right,vmap_area_t,rb_node);
+            if (vmap_area->subtree_max_size < child->subtree_max_size)
+                vmap_area->subtree_max_size = child->subtree_max_size;
+        }
 
-    // 比较右子树的最大值
-    if (vmap_area->rb_node.right) {
-        child= CONTAINER_OF(vmap_area->rb_node.right,vmap_area_t,rb_node);
-        if (max_size < child->subtree_max_size) max_size = child->subtree_max_size;
-    }
-
-    vmap_area->subtree_max_size = max_size; // 更新当前节点的子树最大值
+        node = rb_parent(node->parent_color);
+        vmap_area = CONTAINER_OF(node,vmap_area_t,rb_node);
+    }while (node);
 }
 
 //分割空闲节点
@@ -60,35 +68,38 @@ vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size) {
     vmap_area_t *new = new_vmap_area(vmap_area->va_start,vmap_area->va_start+size);
     vmap_area->va_start += size;
     vmap_area->va_end -= size;
+    update_subtree_max_size(vmap_area);
     return new;
 }
 
+//插入vmap
 UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *new_vmap_area) {
     rb_node_t **link = &root->rb_node;
-    rb_node_t *father = NULL;
+    rb_node_t *parent = NULL;
     vmap_area_t *entry;
 
     while (*link) {
-        father = *link;
-        entry = CONTAINER_OF(father,vmap_area_t,rb_node);
+        parent = *link;
+        entry = CONTAINER_OF(parent,vmap_area_t,rb_node);
         if (new_vmap_area->va_start < entry->va_start) {
-            link = &father->left;
+            link = &parent->left;
         } else if (new_vmap_area->va_start > entry->va_start) {
-            link = &father->right;
+            link = &parent->right;
         } else {
             return 1;
         }
     }
 
-    rb_link_node(&new_vmap_area->rb_node, father, link);
+    rb_link_node(&new_vmap_area->rb_node, parent, link);
     rb_insert_color(root, &new_vmap_area->rb_node);
 }
 
+//新建一个vmap
 vmap_area_t *new_vmap_area(UINT64 va_start,UINT64 va_end) {
     vmap_area_t *new=kmalloc(sizeof(vmap_area_t));
     new->va_start = va_start;
     new->va_end   = va_end;
-    new->rb_node.father_color = 0;
+    new->rb_node.parent_color = 0;
     new->rb_node.left   = NULL;
     new->rb_node.right  = NULL;
     new->list.prev = NULL;
@@ -97,6 +108,7 @@ vmap_area_t *new_vmap_area(UINT64 va_start,UINT64 va_end) {
     return new;
 }
 
+//搜索最佳空闲vmap
 vmap_area_t *find_vmap_lowest_match(UINT64 size,UINT64 va_start) {
     rb_node_t *node = free_vmap_area_root.rb_node;
     vmap_area_t *vmap_area = NULL;
@@ -142,10 +154,10 @@ void mid_traversal1(rb_root_t *rbtree) {
             }
         } else {
             // 没有右子树，回溯到父节点
-            while (cur_node->father != NULL && cur_node->father->right == cur_node) {
-                cur_node = cur_node->father;
+            while (cur_node->parent != NULL && cur_node->parent->right == cur_node) {
+                cur_node = cur_node->parent;
             }
-            cur_node = cur_node->father;
+            cur_node = cur_node->parent;
         }
     }
 }*/
