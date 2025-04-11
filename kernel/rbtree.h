@@ -62,12 +62,12 @@ static inline void rb_set_color(rb_node_t *node, UINT32 color) {
 /*------------ 高级组合操作 ------------*/
 // 同时设置父节点和颜色（初始化或重链接时使用）
 static inline void rb_set_parent_and_color(rb_node_t *node, rb_node_t *parent, UINT32 color) {
-    node->parent_color = (unsigned long) parent | color;
+    node->parent_color = (UINT64) parent | color;
 }
 
 //节点连接红黑树
 static inline void rb_link_node(rb_node_t *node, rb_node_t *parent, rb_node_t **link) {
-    node->parent_color = parent;
+    node->parent_color = (UINT64)parent;
     node->left = NULL;
     node->right = NULL;
     *link = node;

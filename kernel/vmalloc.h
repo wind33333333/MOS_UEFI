@@ -29,6 +29,9 @@ void vfree(const void *addr);
 //把vmap_area插入红黑树
 UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *new_data);
 
+//删除一个vmap_area
+void erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area);
+
 //新建一个vmap_area
 vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end);
 

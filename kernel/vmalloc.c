@@ -28,14 +28,42 @@ void *vmalloc (UINT64 size) {
 
     UINT64 vmap_area_size = vmap_area->va_end-vmap_area->va_start;
     if (vmap_area_size == size) {
-
+        erase_vmap_area(&free_vmap_area_root,vmap_area);
     }else if (vmap_area_size > size) {
-        split_vmap_area(vmap_area,size);
+        vmap_area=split_vmap_area(vmap_area,size);
     }
 
 
 
 
+}
+
+//插入一个vmap_area
+UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area) {
+    rb_node_t *parent,**link = &root->rb_node;
+    vmap_area_t *cur_vmap_area;
+
+    while ((parent = *link)) {
+        cur_vmap_area = CONTAINER_OF(parent,vmap_area_t,rb_node);
+        if (vmap_area->va_start < cur_vmap_area->va_start) {
+            link = &parent->left;
+        } else if (vmap_area->va_start > cur_vmap_area->va_start) {
+            link = &parent->right;
+        } else {
+            return 1;
+        }
+    }
+
+    rb_link_node(&vmap_area->rb_node, parent, link);
+    rb_insert_color(root, &vmap_area->rb_node);
+    if (root == &free_vmap_area_root) update_subtree_max_size(vmap_area);
+    return 0;
+}
+
+//删除一个vmap_area
+void erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area) {
+    rb_erase(root,&vmap_area->rb_node);
+    if (root == &free_vmap_area_root) update_subtree_max_size(vmap_area);
 }
 
 // 更新的subtree_max_size
@@ -68,28 +96,6 @@ vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size) {
     vmap_area->va_end -= size;
     update_subtree_max_size(vmap_area);
     return new;
-}
-
-//插入vmap
-UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area) {
-    rb_node_t *parent,**link = &root->rb_node;
-    vmap_area_t *cur_vmap_area;
-
-    while ((parent = *link)) {
-        cur_vmap_area = CONTAINER_OF(parent,vmap_area_t,rb_node);
-        if (vmap_area->va_start < cur_vmap_area->va_start) {
-            link = &parent->left;
-        } else if (vmap_area->va_start > cur_vmap_area->va_start) {
-            link = &parent->right;
-        } else {
-            return 1;
-        }
-    }
-
-    rb_link_node(&vmap_area->rb_node, parent, link);
-    rb_insert_color(root, &vmap_area->rb_node);
-    if (root == &free_vmap_area_root) update_subtree_max_size(vmap_area);
-    return 0;
 }
 
 //新建一个vmap
