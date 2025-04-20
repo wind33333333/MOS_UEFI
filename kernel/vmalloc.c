@@ -149,7 +149,6 @@ static BOOLEAN compute_max(vmap_area_t *vmap_area,BOOLEAN exit) {
     if (exit && vmap_area->subtree_max_size == max) return TRUE;
     vmap_area->subtree_max_size = max;
     return FALSE;
-
 }
 
 static void vmap_area_augment_rotate(rb_node_t *old_node, rb_node_t *new_node) {
@@ -187,29 +186,12 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area=create_vmap_area(100,200);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
-    vmap_area=create_vmap_area(200,400);
+    vmap_area=create_vmap_area(500,700);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
-    vmap_area=create_vmap_area(400,700);
+    vmap_area=create_vmap_area(200,500);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
-    vmap_area=create_vmap_area(700,1100);
-    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
-
-    vmap_area=create_vmap_area(1100,1600);
-    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
-
-    vmap_area=create_vmap_area(1600,2200);
-    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
-
-    vmap_area=create_vmap_area(2200,2900);
-    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
-
-    vmap_area=create_vmap_area(2900,3700);
-    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
-
-    vmap_area=create_vmap_area(3700,3800);
-    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
 
     //初始化vmalloc空间并插入空闲树

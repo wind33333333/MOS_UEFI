@@ -77,9 +77,9 @@ static void rb_right_rotate(rb_root_t *root, rb_node_t *node, augment_rotate_f a
  * augment_callbacks:增强回调函数集合
  */
 void rb_insert_fixup(rb_root_t *root, rb_node_t *node, rb_augment_callbacks_f *augment_callbacks) {
-    rb_node_t *uncle, *parent, *gparent;
+    rb_node_t *uncle, *parent, *gparent,*curr_node=node;
     //当前节点为红色需修正
-    while ((parent = rb_parent(node)) && rb_is_red(parent)) {
+    while ((parent = rb_parent(curr_node)) && rb_is_red(parent)) {
         gparent = rb_parent(parent);
         if (parent == gparent->left) {
             //父为左则叔为右
@@ -89,14 +89,14 @@ void rb_insert_fixup(rb_root_t *root, rb_node_t *node, rb_augment_callbacks_f *a
                 rb_set_black(parent);
                 rb_set_black(uncle);
                 rb_set_red(gparent);
-                node = gparent;
+                curr_node = gparent;
             } else {
                 //LXB型 叔叔为黑
-                if (node == parent->right) {
+                if (curr_node == parent->right) {
                     //情况2：LXB型->LLB 左旋父亲把形态调整
                     rb_left_rotate(root, parent, augment_callbacks->rotate);
-                    node = parent;
-                    parent = rb_parent(node);
+                    curr_node = parent;
+                    parent = rb_parent(curr_node);
                 }
                 //情况3：LLB型 左旋祖父，父亲变黑，祖父变红
                 rb_right_rotate(root, gparent, augment_callbacks->rotate);
@@ -111,14 +111,14 @@ void rb_insert_fixup(rb_root_t *root, rb_node_t *node, rb_augment_callbacks_f *a
                 rb_set_black(parent);
                 rb_set_black(uncle);
                 rb_set_red(gparent);
-                node = gparent;
+                curr_node = gparent;
             } else {
                 //RXB型 叔叔为黑
-                if (node == parent->left) {
+                if (curr_node == parent->left) {
                     //情况2：RLB型->RRB型 右旋父亲把形态调整为RRB型
                     rb_right_rotate(root, parent, augment_callbacks->rotate);
-                    node = parent;
-                    parent = rb_parent(node);
+                    curr_node = parent;
+                    parent = rb_parent(curr_node);
                 }
                 //情况3：RRB型 左旋祖父，父变黑，祖父变红
                 rb_left_rotate(root, gparent, augment_callbacks->rotate);
