@@ -42,6 +42,10 @@ static UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augmen
     return 0;
 }
 
+static UINT32 erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augment_callbacks_f *augment_callbacks) {
+    rb_erase(root, &vmap_area->rb_node,augment_callbacks);
+}
+
 /*释放一个vmap_area
  * 把vmap_area从used_vmap_area_root树
  * 移动到free_vmap_area_root树
@@ -128,7 +132,9 @@ static vmap_area_t *find_vmap_lowest_match(UINT64 size,UINT64 va_start) {
 
 
 
-/*计算最大值*/
+/*
+ *计算最大值，当前节点和左右子树取最大值
+ */
 static BOOLEAN compute_max(vmap_area_t *vmap_area,BOOLEAN exit) {
     vmap_area_t *child;
     rb_node_t *node = &vmap_area->rb_node;
@@ -206,6 +212,8 @@ void INIT_TEXT init_vmalloc(void) {
 
     vmap_area=create_vmap_area(200,500);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
+
+    erase_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
 
 

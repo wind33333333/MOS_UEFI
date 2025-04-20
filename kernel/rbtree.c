@@ -213,8 +213,6 @@ static inline void rb_erase_fixup(rb_root_t *root, rb_node_t *node, rb_node_t *p
     }
     // 最终确保根节点为黑
     if (node) rb_set_black(node);
-    //用户自定义回调函数处理向上修复
-    augment_callbacks->propagate(node,NULL);
 }
 
 
@@ -297,6 +295,8 @@ void rb_erase(rb_root_t *root, rb_node_t *node, rb_augment_callbacks_f *augment_
     }
 
     if (color == rb_black) rb_erase_fixup(root, child, parent, augment_callbacks);
+    //用户自定义回调函数处理向上修复
+    augment_callbacks->propagate(parent,NULL);
 }
 
 /*
