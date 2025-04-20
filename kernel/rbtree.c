@@ -1,7 +1,12 @@
 #include "rbtree.h"
 
-//左旋
-void rb_left_rotate(rb_root_t *root, rb_node_t *node) {
+/*
+ * 左旋把node的右子节点变成新的父节点，node点变成新父节点的左子节点
+ * root:根节点
+ * node:旋转点
+ * augment_rotate:增强旋转回调函数
+ */
+static void rb_left_rotate(rb_root_t *root, rb_node_t *node, augment_rotate_f augment_rotate) {
     //获取右子节点（旋转后的新父节点)
     rb_node_t *new_parent = node->right;
     //右子节点的左子节点挂到旋转节点的右子节点
@@ -16,7 +21,7 @@ void rb_left_rotate(rb_root_t *root, rb_node_t *node) {
     rb_set_parent(node, new_parent);
 
     if (!rb_parent(new_parent)) {
-        //如果父节点是空则当天节点是根节点，更新根指针
+        //如果父节点是空则当前节点是根节点，更新根指针
         root->rb_node = new_parent;
     } else if (node == rb_parent(new_parent)->left) {
         //更新父节点的左指针
@@ -25,10 +30,18 @@ void rb_left_rotate(rb_root_t *root, rb_node_t *node) {
         //更新父节点的右指针
         rb_parent(new_parent)->right = new_parent;
     }
+
+    //用户自定义回调函数处理旋转
+    augment_rotate(node, new_parent);
 }
 
-/**右旋把旋转节点的左子变成新的父亲节点，旋转节点变成新父节点的左子**/
-void rb_right_rotate(rb_root_t *root, rb_node_t *node) {
+/*
+ * 右旋把node的左子变成新的父亲节点，node变成新父节点的右子节点
+ * root:根节点
+ * node:旋转点
+ * augment_rotate:增强旋转回调函数
+ */
+static void rb_right_rotate(rb_root_t *root, rb_node_t *node, augment_rotate_f augment_rotate) {
     //旋转节点的左子变新父节点
     rb_node_t *new_parent = node->left;
     //新父的右子变选转点的左子
@@ -52,10 +65,18 @@ void rb_right_rotate(rb_root_t *root, rb_node_t *node) {
         //更新新父节点的右子指针
         rb_parent(new_parent)->right = new_parent;
     }
+
+    //用户自定义回调函数处理旋转
+    augment_rotate(node, new_parent);
 }
 
-//修正红黑树插入失衡情况
-void rb_insert_color(rb_root_t *root, rb_node_t *node) {
+/*
+ * 修复红黑树插入失衡
+ * root:根节点
+ * node:当前需要调整的节点（可能为NULL）
+ * augment_callbacks:增强回调函数集合
+ */
+void rb_insert_fixup(rb_root_t *root, rb_node_t *node, rb_augment_callbacks_f *augment_callbacks) {
     rb_node_t *uncle, *parent, *gparent;
     //当前节点为红色需修正
     while ((parent = rb_parent(node)) && rb_is_red(parent)) {
@@ -73,12 +94,12 @@ void rb_insert_color(rb_root_t *root, rb_node_t *node) {
                 //LXB型 叔叔为黑
                 if (node == parent->right) {
                     //情况2：LXB型->LLB 左旋父亲把形态调整
-                    rb_left_rotate(root, parent);
+                    rb_left_rotate(root, parent, augment_callbacks->rotate);
                     node = parent;
                     parent = rb_parent(node);
                 }
                 //情况3：LLB型 左旋祖父，父亲变黑，祖父变红
-                rb_right_rotate(root, gparent);
+                rb_right_rotate(root, gparent, augment_callbacks->rotate);
                 rb_set_black(parent);
                 rb_set_red(gparent);
             }
@@ -95,12 +116,12 @@ void rb_insert_color(rb_root_t *root, rb_node_t *node) {
                 //RXB型 叔叔为黑
                 if (node == parent->left) {
                     //情况2：RLB型->RRB型 右旋父亲把形态调整为RRB型
-                    rb_right_rotate(root, parent);
+                    rb_right_rotate(root, parent, augment_callbacks->rotate);
                     node = parent;
                     parent = rb_parent(node);
                 }
                 //情况3：RRB型 左旋祖父，父变黑，祖父变红
-                rb_left_rotate(root, gparent);
+                rb_left_rotate(root, gparent, augment_callbacks->rotate);
                 rb_set_black(parent);
                 rb_set_red(gparent);
             }
@@ -108,15 +129,19 @@ void rb_insert_color(rb_root_t *root, rb_node_t *node) {
     }
     //保持根节点黑色
     rb_set_black(root->rb_node);
+    //用户自定义回调函数处理向上修复
+    augment_callbacks->propagate(node,NULL);
 }
 
 /*
- * 红黑树删除后重平衡核心逻辑
- * node:    当前需要调整的节点（可能为NULL）
- * parent:  node的父节点
- * root:    树的根节点
+ * 修复红黑树删除失衡
+ * root:树的根节点
+ * node:当前需要调整的节点（可能为NULL）
+ * parent:node的父节点
+ * augment_callbacks:增强回调函数集合
  */
-static inline void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *parent) {
+static inline void rb_erase_fixup(rb_root_t *root, rb_node_t *node, rb_node_t *parent,
+                                  rb_augment_callbacks_f *augment_callbacks) {
     rb_node_t *sibling;
     // 循环处理，直到node是根节点或node变为红色
     while (node != root->rb_node && (!node || rb_is_black(node))) {
@@ -125,7 +150,7 @@ static inline void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *p
             sibling = parent->left;
             //情况1: 兄弟节点为红色，父亲右旋,兄变黑,父变红
             if (rb_is_red(sibling)) {
-                rb_right_rotate(root, parent);
+                rb_right_rotate(root, parent, augment_callbacks->rotate);
                 rb_set_black(sibling);
                 rb_set_red(parent);
                 sibling = parent->left;
@@ -142,11 +167,11 @@ static inline void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *p
                         continue;
                     }
                     //情况3：LRR型->LLR型：兄弟的左孩是黑色，右孩是红色，左旋兄弟
-                    rb_left_rotate(root, sibling);
+                    rb_left_rotate(root, sibling, augment_callbacks->rotate);
                     sibling = parent->left;
                 }
                 //情况4：LLR型：兄弟的左孩是红色，右旋父亲，兄弟继承父亲颜色，父亲和左孩变黑，黑高修复完成
-                rb_right_rotate(root, parent);
+                rb_right_rotate(root, parent, augment_callbacks->rotate);
                 rb_set_color(sibling, rb_color(parent));
                 rb_set_black(parent);
                 rb_set_black(sibling->left);
@@ -157,7 +182,7 @@ static inline void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *p
             sibling = parent->right;
             //情况1: 兄弟节点为红色，父亲左旋,兄变黑,父变红
             if (rb_is_red(sibling)) {
-                rb_left_rotate(root, parent);
+                rb_left_rotate(root, parent, augment_callbacks->rotate);
                 rb_set_black(sibling);
                 rb_set_red(parent);
                 sibling = parent->right;
@@ -174,11 +199,11 @@ static inline void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *p
                         continue;
                     }
                     //情况3：RLR型->RRR型：兄弟的右孩是黑色，左孩是红色，右旋兄弟
-                    rb_right_rotate(root, sibling);
+                    rb_right_rotate(root, sibling, augment_callbacks->rotate);
                     sibling = parent->left;
                 }
                 //情况4：RRR型：兄弟的右孩是红色，左旋父亲，兄弟继承父亲颜色，父亲和左孩变黑，黑高修复完成
-                rb_left_rotate(root, parent);
+                rb_left_rotate(root, parent, augment_callbacks->rotate);
                 rb_set_color(sibling, rb_color(parent));
                 rb_set_black(parent);
                 rb_set_black(sibling->right);
@@ -188,21 +213,28 @@ static inline void rb_erase_color(rb_root_t *root, rb_node_t *node, rb_node_t *p
     }
     // 最终确保根节点为黑
     if (node) rb_set_black(node);
+    //用户自定义回调函数处理向上修复
+    augment_callbacks->propagate(node,NULL);
 }
 
 
 /*
- * 红黑树删除主逻辑
- * 注意：被删除节点必须已存在于树中
+ * 红黑树删除
+ * root:根节点
+ * node:需要删除的节点
+ * augment_callbacks:增强回调函数
  */
-void rb_erase(rb_root_t *root, rb_node_t *node) {
-    rb_node_t *parent,*child;
+void rb_erase(rb_root_t *root, rb_node_t *node, rb_augment_callbacks_f *augment_callbacks) {
+    rb_node_t *parent, *child;
     rb_color_e color;
 
     if (node->left && node->right) {
         //情况1：删除节点左右子树都有，找后继节点
         rb_node_t *successor = node->right;
         while (successor->left) successor = successor->left;
+
+        //用户自定义回调函数处理后继节点
+        augment_callbacks->copy(node, successor);
 
         parent = successor;
         // 后继节点的右子节点（可能为空）
@@ -264,5 +296,37 @@ void rb_erase(rb_root_t *root, rb_node_t *node) {
         }
     }
 
-    if (color == rb_black) rb_erase_color(root, child, parent);
+    if (color == rb_black) rb_erase_fixup(root, child, parent, augment_callbacks);
+}
+
+/*
+ * 空的加强旋转函数
+ */
+static void empty_augment_rotate(rb_node_t *old_node, rb_node_t *new_node) {
+}
+
+/*
+ * 空的加强复制函数
+ */
+static void empty_augment_copy(rb_node_t *old_node, rb_node_t *new_node) {
+}
+
+/*
+ * 空的加强向上修复函数
+ */
+static void empty_augment_propagate(rb_node_t *start_node, rb_node_t *stop_node) {
+}
+
+/*
+ * 全局红黑树加强操作空函数集合
+ */
+rb_augment_callbacks_f empty_augment_callbacks;
+
+/*
+ * 全局红黑树加强操作空函数集合初始化
+ */
+void INIT_TEXT init_rbtree(void) {
+    empty_augment_callbacks.rotate = empty_augment_rotate;
+    empty_augment_callbacks.copy = empty_augment_copy;
+    empty_augment_callbacks.propagate = empty_augment_propagate;
 }

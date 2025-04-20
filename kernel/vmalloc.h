@@ -18,31 +18,13 @@ typedef struct {
 }vmap_area_t;
 
 //初始化vmalloc
-void vmalloc_init(void);
+void init_vmalloc(void);
 
 // 分配内存
 void *vmalloc(UINT64 size);
 
 // 释放内存
 void vfree(const void *addr);
-
-//把vmap_area插入红黑树
-UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *new_data);
-
-//删除一个vmap_area
-void erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area);
-
-//新建一个vmap_area
-vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end);
-
-//找一个最佳空闲节点
-vmap_area_t *find_vmap_lowest_match(UINT64 size,UINT64 va_start);
-
-//分割节点
-vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size);
-
-// 更新当前节点的 subtree_max_size
-void update_subtree_max_size(vmap_area_t *vmap_area);
 
 //获取节点subtree_max_size
 static inline UINT64 get_subtree_max_size(rb_node_t *node) {

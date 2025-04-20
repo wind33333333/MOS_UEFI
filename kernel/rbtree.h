@@ -18,6 +18,20 @@ typedef struct rb_root_t {
     rb_node_t *rb_node; //树根
 } rb_root_t;
 
+// 增强数据旋转回调函数类型
+typedef void (*augment_rotate_f) (rb_node_t *old_node, rb_node_t *new_node);
+
+// 增强数据复制回调函数类型
+typedef void (*augment_copy_f) (rb_node_t *old_node, rb_node_t *new_node);
+
+// 曾将数据向上更新回调函数类型
+typedef void (*augment_propagate_f) (rb_node_t *start_node, rb_node_t *stop_node);
+
+typedef struct {
+    augment_propagate_f propagate;
+    augment_copy_f copy;
+    augment_rotate_f rotate;
+}rb_augment_callbacks_f;
 
 // 获取节点颜色（0为红，1为黑）
 static inline UINT32 rb_color(const rb_node_t *node) {
@@ -73,7 +87,10 @@ static inline void rb_link_node(rb_node_t *node, rb_node_t *parent, rb_node_t **
     *link = node;
 }
 
-void rb_erase(rb_root_t *root, rb_node_t *node);
-void rb_insert_color(rb_root_t *root, rb_node_t *node);
+extern rb_augment_callbacks_f empty_augment_callbacks;
+
+void rb_erase(rb_root_t *root, rb_node_t *node,rb_augment_callbacks_f *augment_callbacks);
+void rb_insert_fixup(rb_root_t *root, rb_node_t *node,rb_augment_callbacks_f *augment_callbacks);
+void init_rbtree(void);
 
 #endif
