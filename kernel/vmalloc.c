@@ -13,7 +13,12 @@ list_head_t *vmap_area_list;
 //vmpa_area增强回调函数集
 rb_augment_callbacks_f vmap_area_augment_callbacks;
 
-//插入一个vmap_area
+/*
+ *把一个vmap_area插入红黑树
+ * root：树根
+ * vmap_area:需要插入的节点
+ * augment_callbacks:红黑树回调增强函数
+ */
 static UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augment_callbacks_f *augment_callbacks) {
     rb_node_t *parent=NULL,**link = &root->rb_node;
     vmap_area_t *curr_vmap_area;
@@ -34,6 +39,23 @@ static UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augmen
     rb_insert_fixup(root, &vmap_area->rb_node,augment_callbacks);
 
     return 0;
+}
+
+/*释放一个vmap_area
+ * 把vmap_area从used_vmap_area_root树
+ * 移动到free_vmap_area_root树
+ * 检查前后虚拟地址空闲则合并
+ */
+static void free_vmap_area(vmap_area_t *vmap_area) {
+
+}
+
+void *vmalloc (UINT64 size) {
+    if (!size) return NULL;
+    //4k对齐
+    size = PAGE_4K_ALIGN(size);
+
+
 }
 
 
@@ -103,22 +125,7 @@ static vmap_area_t *find_vmap_lowest_match(UINT64 size,UINT64 va_start) {
 
 }*/
 
-/*释放一个vmap_area
- * 把vmap_area从used_vmap_area_root树
- * 移动到free_vmap_area_root树
- * 检查前后虚拟地址空闲则合并
- */
-static void free_vmap_area(vmap_area_t *vmap_area) {
 
-}
-
-void *vmalloc (UINT64 size) {
-    if (!size) return NULL;
-    //4k对齐
-    size = PAGE_4K_ALIGN(size);
-
-
-}
 
 /*计算最大值*/
 static BOOLEAN compute_max(vmap_area_t *vmap_area,BOOLEAN exit) {
