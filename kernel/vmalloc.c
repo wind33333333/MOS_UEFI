@@ -23,6 +23,7 @@ static UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augmen
     rb_node_t *parent=NULL,**link = &root->rb_node;
     vmap_area_t *curr_vmap_area;
 
+    //从红黑树找个合适的位置
     while (*link) {
         parent = *link;
         curr_vmap_area = CONTAINER_OF(parent,vmap_area_t,rb_node);
@@ -34,10 +35,10 @@ static UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augmen
             return 1;
         }
     }
-
+    //把vmap_area连接到红黑树
     rb_link_node(&vmap_area->rb_node, parent, link);
+    //修复红黑树插入平衡
     rb_insert_fixup(root, &vmap_area->rb_node,augment_callbacks);
-
     return 0;
 }
 
