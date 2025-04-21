@@ -369,7 +369,7 @@ rb_augment_callbacks_f empty_augment_callbacks;
 /*
  * 全局红黑树加强操作空函数集合初始化
  */
-void INIT_TEXT init_rbtree(void) {
+void INIT_TEXT init_rbtree_empty_augment_callbacks(void) {
     empty_augment_callbacks.rotate = empty_augment_rotate;
     empty_augment_callbacks.copy = empty_augment_copy;
     empty_augment_callbacks.propagate = empty_augment_propagate;

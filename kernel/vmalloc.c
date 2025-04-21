@@ -212,16 +212,16 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area=create_vmap_area(400,700);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
-    vmap_area700=create_vmap_area(700,1100);
+    vmap_area700=create_vmap_area(700,1700);
     insert_vmap_area(&free_vmap_area_root,vmap_area700,&vmap_area_augment_callbacks);
 
-    vmap_area=create_vmap_area(1100,2000);
+    vmap_area=create_vmap_area(1700,2100);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
-    vmap_area=create_vmap_area(2000,2500);
+    vmap_area=create_vmap_area(2100,2600);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
-    vmap_area=create_vmap_area(2500,3100);
+    vmap_area=create_vmap_area(2600,3200);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
     erase_vmap_area(&free_vmap_area_root,vmap_area700,&vmap_area_augment_callbacks);
