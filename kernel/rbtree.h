@@ -18,6 +18,7 @@ typedef struct rb_root_t {
     rb_node_t *rb_node; //树根
 } rb_root_t;
 
+
 // 增强数据旋转回调函数类型
 typedef void (*augment_rotate_f) (rb_node_t *old_node, rb_node_t *new_node);
 
@@ -80,9 +81,9 @@ static inline void rb_set_parent_and_color(rb_node_t *node, rb_node_t *parent, U
 }
 
 extern rb_augment_callbacks_f empty_augment_callbacks;
-
+void init_rbtree(void);
 void rb_erase(rb_root_t *root, rb_node_t *node,rb_augment_callbacks_f *augment_callbacks);
 void rb_insert(rb_root_t *root, rb_node_t *node, rb_node_t *parent, rb_node_t **link, rb_augment_callbacks_f *augment_callbacks);
-void init_rbtree(void);
+
 
 #endif
