@@ -338,7 +338,7 @@ void rb_erase(rb_root_t *root, rb_node_t *node, rb_augment_callbacks_f *augment_
     //替换和删除一个红黑树节点
     rb_replace_erase(root, node, augment_callbacks->copy,&parent,&child,&color);
     //删除的节点是黑色则修复红黑树
-    if (color) rb_erase_fixup(root, child, parent, augment_callbacks);
+    if (color) rb_erase_fixup(root, child, parent, augment_callbacks->rotate);
     //用户自定义回调函数处理向上修复
     augment_callbacks->propagate(parent,NULL);
 }
