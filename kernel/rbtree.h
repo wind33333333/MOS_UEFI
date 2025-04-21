@@ -79,18 +79,10 @@ static inline void rb_set_parent_and_color(rb_node_t *node, rb_node_t *parent, U
     node->parent_color = (UINT64) parent | color;
 }
 
-//节点连接红黑树
-static inline void rb_link_node(rb_node_t *node, rb_node_t *parent, rb_node_t **link) {
-    node->parent_color = (UINT64)parent;
-    node->left = NULL;
-    node->right = NULL;
-    *link = node;
-}
-
 extern rb_augment_callbacks_f empty_augment_callbacks;
 
 void rb_erase(rb_root_t *root, rb_node_t *node,rb_augment_callbacks_f *augment_callbacks);
-void rb_insert_fixup(rb_root_t *root, rb_node_t *node,rb_augment_callbacks_f *augment_callbacks);
+void rb_insert(rb_root_t *root, rb_node_t *node, rb_node_t *parent, rb_node_t **link, rb_augment_callbacks_f *augment_callbacks);
 void init_rbtree(void);
 
 #endif

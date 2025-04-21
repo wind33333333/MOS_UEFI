@@ -71,15 +71,28 @@ static void rb_right_rotate(rb_root_t *root, rb_node_t *node, augment_rotate_f a
 }
 
 /*
+ * 节点连接到红黑树
+ * node：插入节点
+ * parent: 父节点
+ * link: 左右子树
+ */
+static inline void rb_link_node(rb_node_t *node, rb_node_t *parent, rb_node_t **link) {
+    node->parent_color = (UINT64)parent;
+    node->left = NULL;
+    node->right = NULL;
+    *link = node;
+}
+
+/*
  * 修复红黑树插入失衡
  * root:根节点
  * node:当前需要调整的节点（可能为NULL）
  * augment_callbacks:增强回调函数集合
  */
-void rb_insert_fixup(rb_root_t *root, rb_node_t *node, rb_augment_callbacks_f *augment_callbacks) {
-    rb_node_t *uncle, *parent, *gparent,*curr_node=node;
+static inline void rb_insert_fixup(rb_root_t *root, rb_node_t *node, augment_rotate_f augment_rotate) {
+    rb_node_t *uncle, *parent, *gparent;
     //当前节点为红色需修正
-    while ((parent = rb_parent(curr_node)) && rb_is_red(parent)) {
+    while ((parent = rb_parent(node)) && rb_is_red(parent)) {
         gparent = rb_parent(parent);
         if (parent == gparent->left) {
             //父为左则叔为右
@@ -89,17 +102,17 @@ void rb_insert_fixup(rb_root_t *root, rb_node_t *node, rb_augment_callbacks_f *a
                 rb_set_black(parent);
                 rb_set_black(uncle);
                 rb_set_red(gparent);
-                curr_node = gparent;
+                node = gparent;
             } else {
                 //LXB型 叔叔为黑
-                if (curr_node == parent->right) {
+                if (node == parent->right) {
                     //情况2：LXB型->LLB 左旋父亲把形态调整
-                    rb_left_rotate(root, parent, augment_callbacks->rotate);
-                    curr_node = parent;
-                    parent = rb_parent(curr_node);
+                    rb_left_rotate(root, parent, augment_rotate);
+                    node = parent;
+                    parent = rb_parent(node);
                 }
                 //情况3：LLB型 左旋祖父，父亲变黑，祖父变红
-                rb_right_rotate(root, gparent, augment_callbacks->rotate);
+                rb_right_rotate(root, gparent, augment_rotate);
                 rb_set_black(parent);
                 rb_set_red(gparent);
             }
@@ -111,17 +124,17 @@ void rb_insert_fixup(rb_root_t *root, rb_node_t *node, rb_augment_callbacks_f *a
                 rb_set_black(parent);
                 rb_set_black(uncle);
                 rb_set_red(gparent);
-                curr_node = gparent;
+                node = gparent;
             } else {
                 //RXB型 叔叔为黑
-                if (curr_node == parent->left) {
+                if (node == parent->left) {
                     //情况2：RLB型->RRB型 右旋父亲把形态调整为RRB型
-                    rb_right_rotate(root, parent, augment_callbacks->rotate);
-                    curr_node = parent;
-                    parent = rb_parent(curr_node);
+                    rb_right_rotate(root, parent, augment_rotate);
+                    node = parent;
+                    parent = rb_parent(node);
                 }
                 //情况3：RRB型 左旋祖父，父变黑，祖父变红
-                rb_left_rotate(root, gparent, augment_callbacks->rotate);
+                rb_left_rotate(root, gparent, augment_rotate);
                 rb_set_black(parent);
                 rb_set_red(gparent);
             }
@@ -129,7 +142,19 @@ void rb_insert_fixup(rb_root_t *root, rb_node_t *node, rb_augment_callbacks_f *a
     }
     //保持根节点黑色
     rb_set_black(root->rb_node);
-    //用户自定义回调函数处理向上修复
+}
+
+/*
+ * 红黑树插入
+ * root:树根
+ * node:插入节点
+ * parent:插入节点的父节点
+ * link:父节点左右子树
+ * augment_callbacks：回调增强函数
+ */
+void rb_insert(rb_root_t *root, rb_node_t *node, rb_node_t *parent, rb_node_t **link, rb_augment_callbacks_f *augment_callbacks) {
+    rb_link_node(node, parent, link);
+    rb_insert_fixup(root, node, augment_callbacks->rotate);
     augment_callbacks->propagate(node,NULL);
 }
 

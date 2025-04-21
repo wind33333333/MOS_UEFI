@@ -35,10 +35,8 @@ static UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augmen
             return 1;
         }
     }
-    //把vmap_area连接到红黑树
-    rb_link_node(&vmap_area->rb_node, parent, link);
-    //修复红黑树插入平衡
-    rb_insert_fixup(root, &vmap_area->rb_node,augment_callbacks);
+
+    rb_insert(root, &vmap_area->rb_node, parent, link, augment_callbacks);
     return 0;
 }
 
