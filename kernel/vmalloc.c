@@ -15,7 +15,10 @@ rb_augment_callbacks_f vmap_area_augment_callbacks;
 
 /*
  * 二叉查找何时的插入位置
- *
+ * root:树根
+ * vmap_area:待插入的节点
+ * out_parent:返回插入位置节点
+ * out_link:返回插入位置的左右子
  */
 static inline UINT32 find_vmap_area_insert_pos(rb_root_t *root, vmap_area_t *vmap_area,rb_node_t **out_parent,rb_node_t **out_link) {
     rb_node_t *parent=NULL,**link = &root->rb_node;
@@ -44,29 +47,27 @@ static inline UINT32 find_vmap_area_insert_pos(rb_root_t *root, vmap_area_t *vma
  * vmap_area:需要插入的节点
  * augment_callbacks:红黑树回调增强函数
  */
-static UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augment_callbacks_f *augment_callbacks) {
+static inline UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augment_callbacks_f *augment_callbacks) {
     rb_node_t *parent,*link;
-    // vmap_area_t *curr_vmap_area;
-
-    // //从红黑树找个合适的位置
-    // while (*link) {
-    //     parent = *link;
-    //     curr_vmap_area = CONTAINER_OF(parent,vmap_area_t,rb_node);
-    //     if (vmap_area->va_start < curr_vmap_area->va_start) {
-    //         link = &parent->left;
-    //     } else if (vmap_area->va_start > curr_vmap_area->va_start) {
-    //         link = &parent->right;
-    //     } else {
-    //         return 1;
-    //     }
-    // }
     find_vmap_area_insert_pos(root,vmap_area,&parent,&link);
     rb_insert(root, &vmap_area->rb_node, parent, link, augment_callbacks);
     return 0;
 }
 
-static UINT32 erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augment_callbacks_f *augment_callbacks) {
+/*
+ * 从红黑树删除一个vmap_area
+ */
+static inline UINT32 erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augment_callbacks_f *augment_callbacks) {
     rb_erase(root, &vmap_area->rb_node,augment_callbacks);
+}
+
+/*
+ * 分配一个vmap_area
+ * size:需要分配的大小4K对齐
+ * va_start:最低其实地址
+ */
+static void alloc_vmap_area(UINT64 size,UINT64 va_start) {
+
 }
 
 /*释放一个vmap_area
