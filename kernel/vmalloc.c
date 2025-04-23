@@ -61,14 +61,74 @@ static inline UINT32 erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_
     rb_erase(root, &vmap_area->rb_node,augment_callbacks);
 }
 
+//新建一个vmap_area
+static vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end) {
+    vmap_area_t *vmap_area=kmalloc(sizeof(vmap_area_t));
+    vmap_area->va_start = va_start;
+    vmap_area->va_end   = va_end;
+    vmap_area->rb_node.parent_color = 0;
+    vmap_area->rb_node.left   = NULL;
+    vmap_area->rb_node.right  = NULL;
+    vmap_area->list.prev = NULL;
+    vmap_area->list.next = NULL;
+    vmap_area->subtree_max_size = 0;
+    return vmap_area;
+}
+
+//分割vmap_area
+static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UINT64 va_start) {
+    //情况1:vmap_area
+    if ((vmap_area->va_end-vmap_area->va_start) == size) {
+        //把vmap_area从空闲树摘除
+        erase_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
+    }
+
+
+    vmap_area_t *new_vmap_area = create_vmap_area(vmap_area->va_start,vmap_area->va_start+size);
+    vmap_area->va_start+=size;
+    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
+    return new_vmap_area;
+}
+
+//获取节点subtree_max_size
+static inline UINT64 get_subtree_max_size(rb_node_t *node) {
+    if (!node)return 0;
+    // 通过 rb_entry 获取 vmap_area，返回其 subtree_max_size
+    return (CONTAINER_OF(node,vmap_area_t, rb_node))->subtree_max_size;
+}
+
+/*低地址优先搜索最佳适应空闲vmap_area*/
+static inline vmap_area_t *find_vmap_lowest_match(UINT64 size,UINT64 va_start) {
+    rb_node_t *node = free_vmap_area_root.rb_node;
+    vmap_area_t *vmap_area;
+    while (node) {
+        vmap_area = CONTAINER_OF(node,vmap_area_t,rb_node);
+        if (get_subtree_max_size(node->left) >= size && vmap_area->va_start >= va_start) {
+            node=node->left;
+        }else {
+            if ((vmap_area->va_end-va_start) >= size) return vmap_area;
+            node=node->right;
+        }
+    }
+    return NULL;
+}
+
 /*
  * 分配一个vmap_area
  * size:需要分配的大小4K对齐
  * va_start:最低其实地址
  */
-static void alloc_vmap_area(UINT64 size,UINT64 va_start) {
+static vmap_area_t *alloc_vmap_area(UINT64 size,UINT64 va_start) {
+    //空闲树找可是的节点
+    vmap_area_t *vmap_area=find_vmap_lowest_match(size,va_start);
+    if (!vmap_area)return NULL;
 
+    //如果找到的vmap_area 大于需要的尺寸则先进行分割
+    vmap_area = split_vmap_area(vmap_area,size,va_start);
+
+    return vmap_area;
 }
+
 
 /*释放一个vmap_area
  * 把vmap_area从used_vmap_area_root树
@@ -95,66 +155,6 @@ static void del_vmap_area(rb_root_t *root, vmap_area_t *vmap_area) {
     if (root == &free_vmap_area_root) update_subtree_max_size(vmap_area);
 }
 */
-
-//新建一个vmap_area
-static vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end) {
-    vmap_area_t *vmap_area=kmalloc(sizeof(vmap_area_t));
-    vmap_area->va_start = va_start;
-    vmap_area->va_end   = va_end;
-    vmap_area->rb_node.parent_color = 0;
-    vmap_area->rb_node.left   = NULL;
-    vmap_area->rb_node.right  = NULL;
-    vmap_area->list.prev = NULL;
-    vmap_area->list.next = NULL;
-    vmap_area->subtree_max_size = 0;
-    return vmap_area;
-}
-
-/*//分割vmap_area
-static vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size) {
-    vmap_area_t *new = create_vmap_area(vmap_area->va_start,vmap_area->va_start+size);
-    vmap_area->va_start += size;
-    vmap_area->va_end -= size;
-    update_subtree_max_size(vmap_area);
-    return new;
-}*/
-
-/*低地址优先搜索最佳适应空闲vmap_area*/
-static vmap_area_t *find_vmap_lowest_match(UINT64 size,UINT64 va_start) {
-    rb_node_t *node = free_vmap_area_root.rb_node;
-    vmap_area_t *vmap_area = NULL;
-    while (node) {
-        vmap_area = CONTAINER_OF(node,vmap_area_t,rb_node);
-        if (size <= get_subtree_max_size(node->left) && va_start <= vmap_area->va_start) {
-            node=node->left;
-        }else {
-            if (size <= (vmap_area->va_end-va_start)) return vmap_area;
-            node=node->right;
-        }
-    }
-    return NULL;
-}
-
-/*分配一个vmap_area
- * 从free_vmap_area_root树上找一个最佳适应vmap_area
- * 节点大于size需要先分割，在把新的vmap_area插入used_vmap_area_root
- */
-/*static vmap_area_t *alloc_vmap_area(UINT64 size,UINT64 va_start) {
-    //找到最佳适应空闲节点
-    vmap_area_t *vmap_area=find_vmap_lowest_match(size,va_start);
-    if (!vmap_area)return NULL;
-
-    UINT64 vmap_area_size = vmap_area->va_end-vmap_area->va_start;
-    if (vmap_area_size == size) {
-        del_vmap_area(&free_vmap_area_root,vmap_area);
-    }else if (vmap_area_size > size) {
-        vmap_area=split_vmap_area(vmap_area,size);
-    }
-
-
-}*/
-
-
 
 /*
  *计算最大值，当前节点和左右子树取最大值
