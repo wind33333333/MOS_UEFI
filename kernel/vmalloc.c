@@ -77,16 +77,33 @@ static vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end) {
 
 //分割vmap_area
 static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UINT64 va_start) {
-    //情况1:vmap_area
-    if ((vmap_area->va_end-vmap_area->va_start) == size) {
-        //把vmap_area从空闲树摘除
+    vmap_area_t *new_vmap_area;
+    if ((vmap_area->va_end-vmap_area->va_start) == size) { //情况1:占用整个
+        //把vmap_area从空闲树摘除,插入到忙碌树
         erase_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
+        insert_vmap_area(&used_vmap_area_root,vmap_area,&empty_augment_callbacks);
+        new_vmap_area = vmap_area;
+    }else if (vmap_area->va_start == va_start) {
+        //情况2：从头切割
+        new_vmap_area = create_vmap_area(vmap_area->va_start,vmap_area->va_start+size);
+        insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
+        vmap_area->va_start += size;
+        vmap_area_augment_callbacks.propagate(&vmap_area->rb_node,NULL);
+    }else if (vmap_area->va_end == (va_start+size)) {
+        //情况3：从尾切割
+        new_vmap_area = create_vmap_area(va_start,va_start+size);
+        insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
+        vmap_area->va_end -= size;
+        vmap_area_augment_callbacks.propagate(&vmap_area->rb_node,NULL);
+    }else {
+        //情况4：从中间切割
+        new_vmap_area = create_vmap_area(va_start,va_start+size);
+        insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
+        vmap_area_t *back_vmap_area = create_vmap_area(va_start+size,vmap_area->va_end);
+        vmap_area->va_end = va_start;
+        vmap_area_augment_callbacks.propagate(&vmap_area->rb_node,NULL);
+        insert_vmap_area(&free_vmap_area_root,back_vmap_area,&vmap_area_augment_callbacks);
     }
-
-
-    vmap_area_t *new_vmap_area = create_vmap_area(vmap_area->va_start,vmap_area->va_start+size);
-    vmap_area->va_start+=size;
-    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
     return new_vmap_area;
 }
 
@@ -125,7 +142,6 @@ static vmap_area_t *alloc_vmap_area(UINT64 size,UINT64 va_start) {
 
     //如果找到的vmap_area 大于需要的尺寸则先进行分割
     vmap_area = split_vmap_area(vmap_area,size,va_start);
-
     return vmap_area;
 }
 
@@ -227,36 +243,11 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area_augment_callbacks.copy=vmap_area_augment_copy;
     vmap_area_augment_callbacks.propagate=vmap_area_augment_propagate;
 
-    vmap_area_t *vmap_area;
-    vmap_area_t *vmap_area700;
-    vmap_area=create_vmap_area(100,200);
-    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
-
-    vmap_area=create_vmap_area(200,400);
-    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
-
-    vmap_area=create_vmap_area(400,700);
-    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
-
-    vmap_area700=create_vmap_area(700,1700);
-    insert_vmap_area(&free_vmap_area_root,vmap_area700,&vmap_area_augment_callbacks);
-
-    vmap_area=create_vmap_area(1700,2100);
-    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
-
-    vmap_area=create_vmap_area(2100,2600);
-    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
-
-    vmap_area=create_vmap_area(2600,3200);
-    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
-
-    erase_vmap_area(&free_vmap_area_root,vmap_area700,&vmap_area_augment_callbacks);
-
-
-
     //初始化vmalloc空间并插入空闲树
-    // vmap_area_t *vmap_area=create_vmap_area(VMALLOC_START,VMALLOC_END);
-    // insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
+    vmap_area_t *vmap_area=create_vmap_area(VMALLOC_START,VMALLOC_END);
+    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
+
+    vmap_area = alloc_vmap_area(0x1000,VMALLOC_START);
 };
 
 
