@@ -14,31 +14,6 @@ list_head_t *vmap_area_list;
 rb_augment_callbacks_f vmap_area_augment_callbacks;
 
 /*
- *计算最大值，当前节点和左右子树取最大值
- */
-static BOOLEAN compute_max(vmap_area_t *vmap_area,BOOLEAN exit) {
-    vmap_area_t *child;
-    rb_node_t *node = &vmap_area->rb_node;
-    // 当前节点自身大小
-    UINT64 max = vmap_area->va_end - vmap_area->va_start;
-    // 比较左子树的取最大值
-    if (node->left) {
-        child= CONTAINER_OF(node->left,vmap_area_t,rb_node);
-        if (child->subtree_max_size > max)
-            max = child->subtree_max_size;
-    }
-    // 比较右子树的取最大值
-    if (node->right) {
-        child= CONTAINER_OF(node->right,vmap_area_t,rb_node);
-        if (child->subtree_max_size > max)
-            max = child->subtree_max_size;
-    }
-    if (exit && vmap_area->subtree_max_size == max) return TRUE;
-    vmap_area->subtree_max_size = max;
-    return FALSE;
-}
-
-/*
  * 二叉查找何时的插入位置
  * root:树根
  * vmap_area:待插入的节点
@@ -101,6 +76,31 @@ static vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end) {
 }
 
 /*
+ *计算最大值，当前节点和左右子树取最大值
+ */
+static BOOLEAN compute_max(vmap_area_t *vmap_area,BOOLEAN exit) {
+    vmap_area_t *child;
+    rb_node_t *node = &vmap_area->rb_node;
+    // 当前节点自身大小
+    UINT64 max = vmap_area->va_end - vmap_area->va_start;
+    // 比较左子树的取最大值
+    if (node->left) {
+        child= CONTAINER_OF(node->left,vmap_area_t,rb_node);
+        if (child->subtree_max_size > max)
+            max = child->subtree_max_size;
+    }
+    // 比较右子树的取最大值
+    if (node->right) {
+        child= CONTAINER_OF(node->right,vmap_area_t,rb_node);
+        if (child->subtree_max_size > max)
+            max = child->subtree_max_size;
+    }
+    if (exit && vmap_area->subtree_max_size == max) return TRUE;
+    vmap_area->subtree_max_size = max;
+    return FALSE;
+}
+
+/*
  * 加强旋转
  * old_node:老父节点
  * new_node:新父节点
@@ -153,20 +153,20 @@ static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UI
         new_vmap_area = create_vmap_area(vmap_area->va_start,vmap_area->va_start+size);
         insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
         vmap_area->va_start += size;
-        vmap_area_augment_callbacks.propagate(&vmap_area->rb_node,NULL);
+        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
     }else if (vmap_area->va_end == (va_start+size)) {
         //情况3：从尾切割
         new_vmap_area = create_vmap_area(va_start,va_start+size);
         insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
         vmap_area->va_end -= size;
-        vmap_area_augment_callbacks.propagate(&vmap_area->rb_node,NULL);
+        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
     }else {
         //情况4：从中间切割
         new_vmap_area = create_vmap_area(va_start,va_start+size);
         insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
         vmap_area_t *back_vmap_area = create_vmap_area(va_start+size,vmap_area->va_end);
         vmap_area->va_end = va_start;
-        vmap_area_augment_callbacks.propagate(&vmap_area->rb_node,NULL);
+        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
         insert_vmap_area(&free_vmap_area_root,back_vmap_area,&vmap_area_augment_callbacks);
     }
     return new_vmap_area;
