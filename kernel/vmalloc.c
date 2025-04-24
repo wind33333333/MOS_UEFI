@@ -14,6 +14,31 @@ list_head_t *vmap_area_list;
 rb_augment_callbacks_f vmap_area_augment_callbacks;
 
 /*
+ *计算最大值，当前节点和左右子树取最大值
+ */
+static BOOLEAN compute_max(vmap_area_t *vmap_area,BOOLEAN exit) {
+    vmap_area_t *child;
+    rb_node_t *node = &vmap_area->rb_node;
+    // 当前节点自身大小
+    UINT64 max = vmap_area->va_end - vmap_area->va_start;
+    // 比较左子树的取最大值
+    if (node->left) {
+        child= CONTAINER_OF(node->left,vmap_area_t,rb_node);
+        if (child->subtree_max_size > max)
+            max = child->subtree_max_size;
+    }
+    // 比较右子树的取最大值
+    if (node->right) {
+        child= CONTAINER_OF(node->right,vmap_area_t,rb_node);
+        if (child->subtree_max_size > max)
+            max = child->subtree_max_size;
+    }
+    if (exit && vmap_area->subtree_max_size == max) return TRUE;
+    vmap_area->subtree_max_size = max;
+    return FALSE;
+}
+
+/*
  * 二叉查找何时的插入位置
  * root:树根
  * vmap_area:待插入的节点
@@ -73,6 +98,46 @@ static vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end) {
     vmap_area->list.next = NULL;
     vmap_area->subtree_max_size = 0;
     return vmap_area;
+}
+
+/*
+ * 加强旋转
+ * old_node:老父节点
+ * new_node:新父节点
+ */
+static void vmap_area_augment_rotate(rb_node_t *old_node, rb_node_t *new_node) {
+    vmap_area_t *old_vmap_area=CONTAINER_OF(old_node,vmap_area_t,rb_node);
+    vmap_area_t *new_vmap_area=CONTAINER_OF(new_node,vmap_area_t,rb_node);
+    //修正新节点的subtree_max_size
+    new_vmap_area->subtree_max_size = old_vmap_area->subtree_max_size;
+    //修正老节点的subtree_max_size
+    compute_max(old_vmap_area,FALSE);
+}
+
+/*
+ * 加强复制
+ * old_node:需要删除的节点
+ * new_node:后继节点
+ */
+static void vmap_area_augment_copy(rb_node_t *old_node, rb_node_t *new_node) {
+    vmap_area_t *old_vmap_area=CONTAINER_OF(old_node,vmap_area_t,rb_node);
+    vmap_area_t *new_vmap_area=CONTAINER_OF(new_node,vmap_area_t,rb_node);
+    //修正后继节点的subtree_max_size
+    new_vmap_area->subtree_max_size = old_vmap_area->subtree_max_size;
+}
+
+/*
+ * 向上修正subtree_max_size
+ * start_node:起始节点
+ * stop_node:结束节点
+ */
+static void vmap_area_augment_propagate(rb_node_t *start_node, rb_node_t *stop_node) {
+    //向上修正subtree_max_size,当start_node=stop_node推出或者当前节点的subtree_max_size子树subtree_max_size一致时提前退出。
+    while (start_node != stop_node) {
+        vmap_area_t *vmap_area=CONTAINER_OF(start_node,vmap_area_t,rb_node);
+        if (compute_max(vmap_area, TRUE)) break;
+        start_node = rb_parent(start_node);
+    }
 }
 
 //分割vmap_area
@@ -164,79 +229,6 @@ void *vmalloc (UINT64 size) {
 }
 
 
-/*
-//删除一个vmap_area
-static void del_vmap_area(rb_root_t *root, vmap_area_t *vmap_area) {
-    rb_erase(root,&vmap_area->rb_node,&empty_augment_callbacks);
-    if (root == &free_vmap_area_root) update_subtree_max_size(vmap_area);
-}
-*/
-
-/*
- *计算最大值，当前节点和左右子树取最大值
- */
-static BOOLEAN compute_max(vmap_area_t *vmap_area,BOOLEAN exit) {
-    vmap_area_t *child;
-    rb_node_t *node = &vmap_area->rb_node;
-    // 当前节点自身大小
-    UINT64 max = vmap_area->va_end - vmap_area->va_start;
-    // 比较左子树的取最大值
-    if (node->left) {
-        child= CONTAINER_OF(node->left,vmap_area_t,rb_node);
-        if (child->subtree_max_size > max)
-            max = child->subtree_max_size;
-    }
-    // 比较右子树的取最大值
-    if (node->right) {
-        child= CONTAINER_OF(node->right,vmap_area_t,rb_node);
-        if (child->subtree_max_size > max)
-            max = child->subtree_max_size;
-    }
-    if (exit && vmap_area->subtree_max_size == max) return TRUE;
-    vmap_area->subtree_max_size = max;
-    return FALSE;
-}
-
-/*
- * 加强旋转
- * old_node:老父节点
- * new_node:新父节点
- */
-static void vmap_area_augment_rotate(rb_node_t *old_node, rb_node_t *new_node) {
-    vmap_area_t *old_vmap_area=CONTAINER_OF(old_node,vmap_area_t,rb_node);
-    vmap_area_t *new_vmap_area=CONTAINER_OF(new_node,vmap_area_t,rb_node);
-    //修正新节点的subtree_max_size
-    new_vmap_area->subtree_max_size = old_vmap_area->subtree_max_size;
-    //修正老节点的subtree_max_size
-    compute_max(old_vmap_area,FALSE);
-}
-
-/*
- * 加强复制
- * old_node:需要删除的节点
- * new_node:后继节点
- */
-static void vmap_area_augment_copy(rb_node_t *old_node, rb_node_t *new_node) {
-    vmap_area_t *old_vmap_area=CONTAINER_OF(old_node,vmap_area_t,rb_node);
-    vmap_area_t *new_vmap_area=CONTAINER_OF(new_node,vmap_area_t,rb_node);
-    //修正后继节点的subtree_max_size
-    new_vmap_area->subtree_max_size = old_vmap_area->subtree_max_size;
-}
-
-/*
- * 向上修正subtree_max_size
- * start_node:起始节点
- * stop_node:结束节点
- */
-static void vmap_area_augment_propagate(rb_node_t *start_node, rb_node_t *stop_node) {
-    //向上修正subtree_max_size,当start_node=stop_node推出或者当前节点的subtree_max_size子树subtree_max_size一致时提前退出。
-    while (start_node != stop_node) {
-        vmap_area_t *vmap_area=CONTAINER_OF(start_node,vmap_area_t,rb_node);
-        if (compute_max(vmap_area, TRUE)) break;
-        start_node = rb_parent(start_node);
-    }
-}
-
 //初始化vmalloc
 void INIT_TEXT init_vmalloc(void) {
     vmap_area_augment_callbacks.rotate=vmap_area_augment_rotate;
@@ -247,7 +239,7 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area_t *vmap_area=create_vmap_area(VMALLOC_START,VMALLOC_END);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
-    vmap_area = alloc_vmap_area(0x1000,VMALLOC_START);
+    vmap_area = alloc_vmap_area(0x3000,VMALLOC_END-0x3000);
 };
 
 
