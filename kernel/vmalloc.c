@@ -220,8 +220,8 @@ static inline void merge_vmap_area(vmap_area_t *vmap_area) {
     vmap_area_t *tmp_vmap_area;
     //先检查左边是否能合并
     tmp_vmap_area = CONTAINER_OF(vmap_area->list.prev,vmap_area_t,list);
-    if (!tmp_vmap_area->flags && vmap_area->va_end == tmp_vmap_area->va_start) {
-        vmap_area->va_end = tmp_vmap_area->va_end;
+    if (!tmp_vmap_area->flags && vmap_area->va_start == tmp_vmap_area->va_end) {
+        vmap_area->va_start= tmp_vmap_area->va_start;
         list_del_s(&tmp_vmap_area->list);
         erase_vmap_area(&free_vmap_area_root,tmp_vmap_area,&vmap_area_augment_callbacks);
         kfree(tmp_vmap_area);
@@ -229,7 +229,7 @@ static inline void merge_vmap_area(vmap_area_t *vmap_area) {
     //检查右边是否能合并
     tmp_vmap_area = CONTAINER_OF(vmap_area->list.next,vmap_area_t,list);
     if (!tmp_vmap_area->flags && vmap_area->va_end == tmp_vmap_area->va_start) {
-        vmap_area->va_start = tmp_vmap_area->va_start;
+        vmap_area->va_end = tmp_vmap_area->va_end;
         list_del_s(&tmp_vmap_area->list);
         erase_vmap_area(&free_vmap_area_root,tmp_vmap_area,&vmap_area_augment_callbacks);
         kfree(tmp_vmap_area);
