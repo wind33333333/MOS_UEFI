@@ -205,6 +205,7 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 size,UINT64 va_start) {
  * va_start:最低其实地址
  */
 static vmap_area_t *alloc_vmap_area(UINT64 size,UINT64 va_start,UINT64 flags) {
+    if (va_start<VMALLOC_START || (va_start+size)>VMALLOC_END) return NULL;
     //空闲树找可是的节点
     vmap_area_t *vmap_area=find_vmap_lowest_match(size,va_start);
     if (!vmap_area)return NULL;
@@ -230,7 +231,9 @@ void *vmalloc (UINT64 size) {
     //4k对齐
     size = PAGE_4K_ALIGN(size);
 
+    vmap_area_t *vmap_area = alloc_vmap_area(size,VMALLOC_START,VM_ALLOC);
 
+    return (void*)vmap_area->va_start;
 }
 
 
