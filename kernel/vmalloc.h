@@ -39,7 +39,7 @@ void init_vmalloc(void);
 void *vmalloc(UINT64 size);
 
 // 释放内存
-void vfree(const void *addr);
+void vfree(void *ptr);
 
 
 #endif

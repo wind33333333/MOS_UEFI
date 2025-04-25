@@ -216,6 +216,28 @@ static vmap_area_t *alloc_vmap_area(UINT64 size,UINT64 va_start,UINT64 flags) {
     return vmap_area;
 }
 
+static inline void merge_vmap_area(vmap_area_t *vmap_area) {
+    vmap_area_t *tmp_vmap_area;
+    //先检查左边是否能合并
+    tmp_vmap_area = CONTAINER_OF(vmap_area->list.prev,vmap_area_t,list);
+    if (!tmp_vmap_area->flags && vmap_area->va_end == tmp_vmap_area->va_start) {
+        vmap_area->va_end = tmp_vmap_area->va_end;
+        list_del_s(&tmp_vmap_area->list);
+        erase_vmap_area(&free_vmap_area_root,tmp_vmap_area,&vmap_area_augment_callbacks);
+        kfree(tmp_vmap_area);
+    }
+    //检查右边是否能合并
+    tmp_vmap_area = CONTAINER_OF(vmap_area->list.next,vmap_area_t,list);
+    if (!tmp_vmap_area->flags && vmap_area->va_end == tmp_vmap_area->va_start) {
+        vmap_area->va_start = tmp_vmap_area->va_start;
+        list_del_s(&tmp_vmap_area->list);
+        erase_vmap_area(&free_vmap_area_root,tmp_vmap_area,&vmap_area_augment_callbacks);
+        kfree(tmp_vmap_area);
+    }
+    vmap_area->flags = 0;
+    erase_vmap_area(&used_vmap_area_root,vmap_area,&empty_augment_callbacks);
+    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
+}
 
 /*释放一个vmap_area
  * 把vmap_area从used_vmap_area_root树
@@ -223,7 +245,7 @@ static vmap_area_t *alloc_vmap_area(UINT64 size,UINT64 va_start,UINT64 flags) {
  * 检查前后虚拟地址空闲则合并
  */
 static void free_vmap_area(vmap_area_t *vmap_area) {
-
+    merge_vmap_area(vmap_area);
 }
 
 void *vmalloc (UINT64 size) {
@@ -234,6 +256,10 @@ void *vmalloc (UINT64 size) {
     vmap_area_t *vmap_area = alloc_vmap_area(size,VMALLOC_START,VM_ALLOC);
 
     return (void*)vmap_area->va_start;
+}
+
+void vfree (void *ptr) {
+    free_vmap_area((vmap_area_t*)ptr);
 }
 
 
@@ -250,6 +276,7 @@ void INIT_TEXT init_vmalloc(void) {
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
     vmap_area = alloc_vmap_area(0x3000,VMALLOC_START,VM_ALLOC);
+    free_vmap_area(vmap_area);
 };
 
 

@@ -538,6 +538,13 @@ static inline void list_add_tail(list_head_t *head,list_head_t *new) {
     head->prev = new;        // 头节点的前驱指向新节点
 }
 
+static inline void list_del_s(list_head_t * node)
+{
+    node->next->prev = node->prev;
+    node->prev->next = node->next;
+}
+
+
 static inline void list_add_forward(list_head_t *head,list_head_t *new) {
     new->next=head->next;
     new->prev=head;
