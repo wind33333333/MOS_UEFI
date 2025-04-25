@@ -29,7 +29,7 @@ typedef struct {
     union {
         UINT64 subtree_max_size; //子树最大size
     };
-    UINT32           flags;               //状态
+    UINT64           flags;               //状态
 }vmap_area_t;
 
 //初始化vmalloc

@@ -516,6 +516,9 @@ static inline void io_out32(UINT16 port, UINT32 value) {
             :"memory");
 }
 
+/*
+ * 链表操作函数
+ */
 typedef struct list_head_t{
     struct list_head_t *prev;
     struct list_head_t *next;
@@ -527,7 +530,6 @@ static inline void list_add_forward(list_head_t *head,list_head_t *new) {
     head->next=new;
     if(new->next != NULL)
         new->next->prev=new;
-    return;
 }
 
 static inline void list_del(list_head_t *node) {
@@ -539,7 +541,6 @@ static inline void list_del(list_head_t *node) {
         node->next->prev=node->prev;
     node->next=NULL;
     node->prev=NULL;
-    return;
 }
 
 static inline BOOLEAN list_find(list_head_t *head,list_head_t *node) {

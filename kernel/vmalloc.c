@@ -139,6 +139,20 @@ static void vmap_area_augment_propagate(rb_node_t *start_node, rb_node_t *stop_n
         start_node = rb_parent(start_node);
     }
 }
+static inline void list_add_head(list_head_t *head,list_head_t *new) {
+    new->next = head->next;  // 新节点指向原头节点
+    new->prev = head;        // 新节点前驱指向头节点
+    head->next->prev = new;  // 原头节点的前驱指向新节点
+    head->next = new;        // 头节点指向新节点
+}
+
+static inline void list_add_tail(list_head_t *head,list_head_t *new) {
+    new->next = head;        // 新节点指向头节点（循环）
+    new->prev = head->prev;  // 新节点前驱指向原尾节点
+    head->prev->next = new;  // 原尾节点的后继指向新节点
+    head->prev = new;        // 头节点的前驱指向新节点
+}
+
 
 //分割vmap_area
 static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UINT64 va_start) {
@@ -154,12 +168,14 @@ static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UI
         insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
         vmap_area->va_start += size;
         vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
+        list_add_tail(&vmap_area->list,&new_vmap_area->list);
     }else if (vmap_area->va_end == (va_start+size)) {
         //情况3：从尾切割
         new_vmap_area = create_vmap_area(va_start,va_start+size);
         insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
         vmap_area->va_end -= size;
         vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
+        list_add_head(&vmap_area->list,&new_vmap_area->list);
     }else {
         //情况4：从中间切割
         new_vmap_area = create_vmap_area(va_start,va_start+size);
@@ -168,6 +184,8 @@ static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UI
         vmap_area->va_end = va_start;
         vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
         insert_vmap_area(&free_vmap_area_root,back_vmap_area,&vmap_area_augment_callbacks);
+        list_add_head(&vmap_area->list,&back_vmap_area->list);
+        list_add_head(&vmap_area->list,&new_vmap_area->list);
     }
     return new_vmap_area;
 }
@@ -200,13 +218,14 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 size,UINT64 va_start) {
  * size:需要分配的大小4K对齐
  * va_start:最低其实地址
  */
-static vmap_area_t *alloc_vmap_area(UINT64 size,UINT64 va_start) {
+static vmap_area_t *alloc_vmap_area(UINT64 size,UINT64 va_start,UINT64 flags) {
     //空闲树找可是的节点
     vmap_area_t *vmap_area=find_vmap_lowest_match(size,va_start);
     if (!vmap_area)return NULL;
 
     //如果找到的vmap_area 大于需要的尺寸则先进行分割
     vmap_area = split_vmap_area(vmap_area,size,va_start);
+    vmap_area->flags=flags;
     return vmap_area;
 }
 
@@ -237,9 +256,11 @@ void INIT_TEXT init_vmalloc(void) {
 
     //初始化vmalloc空间并插入空闲树
     vmap_area_t *vmap_area=create_vmap_area(VMALLOC_START,VMALLOC_END);
+    vmap_area->list.next=&vmap_area->list;
+    vmap_area->list.prev=&vmap_area->list;
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
-    vmap_area = alloc_vmap_area(0x3000,VMALLOC_END-0x3000);
+    vmap_area = alloc_vmap_area(0x3000,VMALLOC_START,VM_ALLOC);
 };
 
 
