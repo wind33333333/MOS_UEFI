@@ -139,20 +139,6 @@ static void vmap_area_augment_propagate(rb_node_t *start_node, rb_node_t *stop_n
         start_node = rb_parent(start_node);
     }
 }
-static inline void list_add_head(list_head_t *head,list_head_t *new) {
-    new->next = head->next;  // 新节点指向原头节点
-    new->prev = head;        // 新节点前驱指向头节点
-    head->next->prev = new;  // 原头节点的前驱指向新节点
-    head->next = new;        // 头节点指向新节点
-}
-
-static inline void list_add_tail(list_head_t *head,list_head_t *new) {
-    new->next = head;        // 新节点指向头节点（循环）
-    new->prev = head->prev;  // 新节点前驱指向原尾节点
-    head->prev->next = new;  // 原尾节点的后继指向新节点
-    head->prev = new;        // 头节点的前驱指向新节点
-}
-
 
 //分割vmap_area
 static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UINT64 va_start) {
