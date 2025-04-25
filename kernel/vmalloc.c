@@ -72,6 +72,7 @@ static vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end) {
     vmap_area->list.prev = NULL;
     vmap_area->list.next = NULL;
     vmap_area->subtree_max_size = 0;
+    vmap_area->flags = 0;
     return vmap_area;
 }
 
@@ -275,7 +276,7 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area->list.prev=&vmap_area->list;
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
-    vmap_area = alloc_vmap_area(0x3000,VMALLOC_START,VM_ALLOC);
+    vmap_area = alloc_vmap_area(0x3000,VMALLOC_START+0x3000,VM_ALLOC);
     free_vmap_area(vmap_area);
 };
 
