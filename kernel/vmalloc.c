@@ -272,8 +272,7 @@ void INIT_TEXT init_vmalloc(void) {
 
     //初始化vmalloc空间并插入空闲树
     vmap_area_t *vmap_area=create_vmap_area(VMALLOC_START,VMALLOC_END);
-    vmap_area->list.next=&vmap_area->list;
-    vmap_area->list.prev=&vmap_area->list;
+    list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
     vmap_area = alloc_vmap_area(0x1000,VMALLOC_START+0x1000,VM_ALLOC);

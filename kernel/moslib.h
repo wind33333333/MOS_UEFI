@@ -544,6 +544,11 @@ static inline void list_del_s(list_head_t * node)
     node->prev->next = node->next;
 }
 
+static inline void list_head_init(list_head_t *head) {
+    head->prev = head;
+    head->next = head;
+}
+
 
 static inline void list_add_forward(list_head_t *head,list_head_t *new) {
     new->next=head->next;
