@@ -153,28 +153,29 @@ static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UI
         //情况2：从头切割
         new_vmap_area = create_vmap_area(vmap_area->va_start,vmap_area->va_start+size);
         insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
+        list_add_tail(&vmap_area->list,&new_vmap_area->list);
         vmap_area->va_start += size;
         vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
-        list_add_tail(&vmap_area->list,&new_vmap_area->list);
     }else if ((va_start+size) == vmap_area->va_end) {
         //情况3：从尾切割
         new_vmap_area = create_vmap_area(va_start,va_start+size);
         insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
+        list_add_head(&vmap_area->list,&new_vmap_area->list);
         vmap_area->va_end -= size;
         vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
-        list_add_head(&vmap_area->list,&new_vmap_area->list);
     }else{
         //情况4：从中间切割
-        new_vmap_area = create_vmap_area(va_start,va_start+size);
-        insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
-        vmap_area_t *back_vmap_area = create_vmap_area(va_start+size,vmap_area->va_end);
+        new_vmap_area = create_vmap_area(va_start+size,vmap_area->va_end);
         vmap_area->va_end = va_start;
         vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
-        insert_vmap_area(&free_vmap_area_root,back_vmap_area,&vmap_area_augment_callbacks);
-        list_add_head(&vmap_area->list,&back_vmap_area->list);
+        insert_vmap_area(&free_vmap_area_root,new_vmap_area,&vmap_area_augment_callbacks);
+        list_add_head(&vmap_area->list,&new_vmap_area->list);
+        //把分割出的中间部分插入忙碌树和链表
+        new_vmap_area = create_vmap_area(va_start,va_start+size);
+        insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
         list_add_head(&vmap_area->list,&new_vmap_area->list);
     }
-    vmap_area->flags=flags;
+    new_vmap_area->flags=flags;
     return new_vmap_area;
 }
 
