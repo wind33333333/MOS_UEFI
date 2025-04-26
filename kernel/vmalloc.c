@@ -144,26 +144,26 @@ static void vmap_area_augment_propagate(rb_node_t *start_node, rb_node_t *stop_n
 //分割vmap_area
 static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UINT64 va_start) {
     vmap_area_t *new_vmap_area;
-    if ((vmap_area->va_end-vmap_area->va_start) == size) { //情况1:占用整个
+    if (size == (vmap_area->va_end-vmap_area->va_start)) { //情况1:占用整个
         //把vmap_area从空闲树摘除,插入到忙碌树
         erase_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
         insert_vmap_area(&used_vmap_area_root,vmap_area,&empty_augment_callbacks);
         new_vmap_area = vmap_area;
-    }else if (vmap_area->va_start == va_start) {
+    }else if (va_start <= vmap_area->va_start) {
         //情况2：从头切割
         new_vmap_area = create_vmap_area(vmap_area->va_start,vmap_area->va_start+size);
         insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
         vmap_area->va_start += size;
         vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
         list_add_tail(&vmap_area->list,&new_vmap_area->list);
-    }else if (vmap_area->va_end == (va_start+size)) {
+    }else if ((va_start+size) == vmap_area->va_end) {
         //情况3：从尾切割
         new_vmap_area = create_vmap_area(va_start,va_start+size);
         insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
         vmap_area->va_end -= size;
         vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
         list_add_head(&vmap_area->list,&new_vmap_area->list);
-    }else {
+    }else{
         //情况4：从中间切割
         new_vmap_area = create_vmap_area(va_start,va_start+size);
         insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
@@ -193,7 +193,7 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 size,UINT64 va_start) {
         if (get_subtree_max_size(node->left) >= size && vmap_area->va_start >= va_start) {
             node=node->left;
         }else {
-            if ((vmap_area->va_end-va_start) >= size) return vmap_area;
+            if ((vmap_area->va_end - vmap_area->va_start) >= size && vmap_area->va_end >= (va_start+size)) return vmap_area;
             node=node->right;
         }
     }
@@ -276,7 +276,18 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area->list.prev=&vmap_area->list;
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
-    vmap_area = alloc_vmap_area(0x3000,VMALLOC_START+0x3000,VM_ALLOC);
+    vmap_area = alloc_vmap_area(0x1000,VMALLOC_START+0x1000,VM_ALLOC);
+    vmap_area_t *vmap_area1 = alloc_vmap_area(0x1000,VMALLOC_END-0x1000,VM_ALLOC);
+    vmap_area_t *vmap_area2 = alloc_vmap_area(0x2000,VMALLOC_START,VM_ALLOC);
+    vmap_area_t *vmap_area3 = alloc_vmap_area(0x3000,VMALLOC_START,VM_ALLOC);
+    vmap_area_t *vmap_area4 = alloc_vmap_area(0x4000,VMALLOC_START,VM_ALLOC);
+    vmap_area_t *vmap_area5 = alloc_vmap_area(0x5000,VMALLOC_START,VM_ALLOC);
+
+    free_vmap_area(vmap_area1);
+    free_vmap_area(vmap_area4);
+    free_vmap_area(vmap_area2);
+    free_vmap_area(vmap_area5);
+    free_vmap_area(vmap_area3);
     free_vmap_area(vmap_area);
 };
 
