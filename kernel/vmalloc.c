@@ -144,8 +144,8 @@ static void vmap_area_augment_propagate(rb_node_t *start_node, rb_node_t *stop_n
 //分割vmap_area
 static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UINT64 va_start,UINT64 flags) {
     vmap_area_t *new_vmap_area;
-    if (size == (vmap_area->va_end-vmap_area->va_start)) { //情况1:占用整个
-        //把vmap_area从空闲树摘除,插入到忙碌树
+    if (size == (vmap_area->va_end-vmap_area->va_start)) {
+        //情况1:占用整个
         erase_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
         insert_vmap_area(&used_vmap_area_root,vmap_area,&empty_augment_callbacks);
         new_vmap_area = vmap_area;
