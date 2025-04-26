@@ -142,7 +142,7 @@ static void vmap_area_augment_propagate(rb_node_t *start_node, rb_node_t *stop_n
 }
 
 //分割vmap_area
-static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UINT64 va_start) {
+static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UINT64 va_start,UINT64 flags) {
     vmap_area_t *new_vmap_area;
     if (size == (vmap_area->va_end-vmap_area->va_start)) { //情况1:占用整个
         //把vmap_area从空闲树摘除,插入到忙碌树
@@ -174,6 +174,7 @@ static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UI
         list_add_head(&vmap_area->list,&back_vmap_area->list);
         list_add_head(&vmap_area->list,&new_vmap_area->list);
     }
+    vmap_area->flags=flags;
     return new_vmap_area;
 }
 
@@ -212,8 +213,7 @@ static vmap_area_t *alloc_vmap_area(UINT64 size,UINT64 va_start,UINT64 flags) {
     if (!vmap_area)return NULL;
 
     //如果找到的vmap_area 大于需要的尺寸则先进行分割
-    vmap_area = split_vmap_area(vmap_area,size,va_start);
-    vmap_area->flags=flags;
+    vmap_area = split_vmap_area(vmap_area,size,va_start,flags);
     return vmap_area;
 }
 
