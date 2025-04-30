@@ -7,74 +7,9 @@
 rb_root_t used_vmap_area_root;
 //空闲树
 rb_root_t free_vmap_area_root;
-//全局虚拟地址链表
-list_head_t *vmap_area_list;
 
 //vmpa_area增强回调函数集
 rb_augment_callbacks_f vmap_area_augment_callbacks;
-
-/*
- * 二叉查找何时的插入位置
- * root:树根
- * vmap_area:待插入的节点
- * out_parent:返回插入位置节点
- * out_link:返回插入位置的左右子
- */
-static inline UINT32 find_vmap_area_insert_pos(rb_root_t *root, vmap_area_t *vmap_area,rb_node_t **out_parent,rb_node_t **out_link) {
-    rb_node_t *parent=NULL,**link = &root->rb_node;
-    vmap_area_t *curr_vmap_area;
-    //从红黑树找个合适的位置
-    while (*link) {
-        parent = *link;
-        curr_vmap_area = CONTAINER_OF(parent,vmap_area_t,rb_node);
-        if (vmap_area->va_start < curr_vmap_area->va_start) {
-            link = &parent->left;
-        } else if (vmap_area->va_start > curr_vmap_area->va_start) {
-            link = &parent->right;
-        } else {
-            return 1;
-        }
-    }
-    *out_parent = parent;
-    *out_link = link;
-    return 0;
-}
-
-
-/*
- *把一个vmap_area插入红黑树
- * root：树根
- * vmap_area:需要插入的节点
- * augment_callbacks:红黑树回调增强函数
- */
-static inline UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augment_callbacks_f *augment_callbacks) {
-    rb_node_t *parent,*link;
-    find_vmap_area_insert_pos(root,vmap_area,&parent,&link);
-    rb_insert(root, &vmap_area->rb_node, parent, link, augment_callbacks);
-    return 0;
-}
-
-/*
- * 从红黑树删除一个vmap_area
- */
-static inline UINT32 erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augment_callbacks_f *augment_callbacks) {
-    rb_erase(root, &vmap_area->rb_node,augment_callbacks);
-}
-
-//新建一个vmap_area
-static vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end) {
-    vmap_area_t *vmap_area=kmalloc(sizeof(vmap_area_t));
-    vmap_area->va_start = va_start;
-    vmap_area->va_end   = va_end;
-    vmap_area->rb_node.parent_color = 0;
-    vmap_area->rb_node.left   = NULL;
-    vmap_area->rb_node.right  = NULL;
-    vmap_area->list.prev = NULL;
-    vmap_area->list.next = NULL;
-    vmap_area->subtree_max_size = 0;
-    vmap_area->flags = 0;
-    return vmap_area;
-}
 
 /*
  *计算最大值，当前节点和左右子树取最大值
@@ -141,42 +76,66 @@ static void vmap_area_augment_propagate(rb_node_t *start_node, rb_node_t *stop_n
     }
 }
 
-//分割vmap_area
-static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UINT64 va_start,UINT64 flags) {
-    vmap_area_t *new_vmap_area;
-    if (size == (vmap_area->va_end-vmap_area->va_start)) {
-        //情况1:占用整个
-        erase_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
-        insert_vmap_area(&used_vmap_area_root,vmap_area,&empty_augment_callbacks);
-        new_vmap_area = vmap_area;
-    }else if (va_start <= vmap_area->va_start) {
-        //情况2：从头切割
-        new_vmap_area = create_vmap_area(vmap_area->va_start,vmap_area->va_start+size);
-        insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
-        list_add_tail(&vmap_area->list,&new_vmap_area->list);
-        vmap_area->va_start += size;
-        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
-    }else if ((va_start+size) == vmap_area->va_end) {
-        //情况3：从尾切割
-        new_vmap_area = create_vmap_area(va_start,va_start+size);
-        insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
-        list_add_head(&vmap_area->list,&new_vmap_area->list);
-        vmap_area->va_end -= size;
-        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
-    }else{
-        //情况4：从中间切割
-        new_vmap_area = create_vmap_area(va_start+size,vmap_area->va_end);
-        vmap_area->va_end = va_start;
-        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
-        insert_vmap_area(&free_vmap_area_root,new_vmap_area,&vmap_area_augment_callbacks);
-        list_add_head(&vmap_area->list,&new_vmap_area->list);
-        //把分割出的中间部分插入忙碌树和链表
-        new_vmap_area = create_vmap_area(va_start,va_start+size);
-        insert_vmap_area(&used_vmap_area_root,new_vmap_area,&empty_augment_callbacks);
-        list_add_head(&vmap_area->list,&new_vmap_area->list);
+/*
+ * 二叉查找何时的插入位置
+ * root:树根
+ * vmap_area:待插入的节点
+ * out_parent:返回插入位置节点
+ * out_link:返回插入位置的左右子
+ */
+static inline UINT32 find_vmap_area_insert_pos(rb_root_t *root, vmap_area_t *vmap_area,rb_node_t **out_parent,rb_node_t **out_link) {
+    rb_node_t *parent=NULL,**link = &root->rb_node;
+    vmap_area_t *curr_vmap_area;
+    //从红黑树找个合适的位置
+    while (*link) {
+        parent = *link;
+        curr_vmap_area = CONTAINER_OF(parent,vmap_area_t,rb_node);
+        if (vmap_area->va_start < curr_vmap_area->va_start) {
+            link = &parent->left;
+        } else if (vmap_area->va_start > curr_vmap_area->va_start) {
+            link = &parent->right;
+        } else {
+            return 1;
+        }
     }
-    new_vmap_area->flags=flags;
-    return new_vmap_area;
+    *out_parent = parent;
+    *out_link = link;
+    return 0;
+}
+
+/*
+ *把一个vmap_area插入红黑树
+ * root：树根
+ * vmap_area:需要插入的节点
+ * augment_callbacks:红黑树回调增强函数
+ */
+static inline UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augment_callbacks_f *augment_callbacks) {
+    rb_node_t *parent,*link;
+    find_vmap_area_insert_pos(root,vmap_area,&parent,&link);
+    rb_insert(root, &vmap_area->rb_node, parent, link, augment_callbacks);
+    return 0;
+}
+
+/*
+ * 从红黑树删除一个vmap_area
+ */
+static inline UINT32 erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_augment_callbacks_f *augment_callbacks) {
+    rb_erase(root, &vmap_area->rb_node,augment_callbacks);
+}
+
+//新建一个vmap_area
+static vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end) {
+    vmap_area_t *vmap_area=kmalloc(sizeof(vmap_area_t));
+    vmap_area->va_start = va_start;
+    vmap_area->va_end   = va_end;
+    vmap_area->rb_node.parent_color = 0;
+    vmap_area->rb_node.left   = NULL;
+    vmap_area->rb_node.right  = NULL;
+    vmap_area->list.prev = NULL;
+    vmap_area->list.next = NULL;
+    vmap_area->subtree_max_size = 0;
+    vmap_area->flags = 0;
+    return vmap_area;
 }
 
 //获取节点subtree_max_size
@@ -203,6 +162,41 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 size,UINT64 va_start) {
 }
 
 /*
+ * 尝试把vmap_area分割到合适大小
+ */
+static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UINT64 va_start) {
+    vmap_area_t *new_vmap_area;
+    if (size == (vmap_area->va_end-vmap_area->va_start)) {
+        //情况1:占用整个
+        erase_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
+        new_vmap_area = vmap_area;
+    }else if (va_start <= vmap_area->va_start) {
+        //情况2：从头切割
+        new_vmap_area = create_vmap_area(vmap_area->va_start,vmap_area->va_start+size);
+        list_add_tail(&vmap_area->list,&new_vmap_area->list);
+        vmap_area->va_start += size;
+        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
+    }else if ((va_start+size) == vmap_area->va_end) {
+        //情况3：从尾切割
+        new_vmap_area = create_vmap_area(va_start,va_start+size);
+        list_add_head(&vmap_area->list,&new_vmap_area->list);
+        vmap_area->va_end -= size;
+        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
+    }else{
+        //情况4：从中间切割
+        new_vmap_area = create_vmap_area(va_start+size,vmap_area->va_end);
+        vmap_area->va_end = va_start;
+        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
+        insert_vmap_area(&free_vmap_area_root,new_vmap_area,&vmap_area_augment_callbacks);
+        list_add_head(&vmap_area->list,&new_vmap_area->list);
+        //把分割出的中间部分插入忙碌树和链表
+        new_vmap_area = create_vmap_area(va_start,va_start+size);
+        list_add_head(&vmap_area->list,&new_vmap_area->list);
+    }
+    return new_vmap_area;
+}
+
+/*
  * 分配一个vmap_area
  * size:需要分配的大小4K对齐
  * va_start:最低其实地址
@@ -212,13 +206,18 @@ static vmap_area_t *alloc_vmap_area(UINT64 size,UINT64 va_start,UINT64 flags) {
     //空闲树找可是的节点
     vmap_area_t *vmap_area=find_vmap_lowest_match(size,va_start);
     if (!vmap_area)return NULL;
-
-    //如果找到的vmap_area 大于需要的尺寸则先进行分割
-    vmap_area = split_vmap_area(vmap_area,size,va_start,flags);
+    //尝试分割Vmap_area
+    vmap_area = split_vmap_area(vmap_area,size,va_start);
+    //把vmap_area插入忙碌树，设置状态
+    insert_vmap_area(&used_vmap_area_root,vmap_area,&empty_augment_callbacks);
+    vmap_area->flags=flags;
     return vmap_area;
 }
 
-static inline void merge_vmap_area(vmap_area_t *vmap_area) {
+/*
+ * 尝试合并左右空闲vmap_area
+ */
+static inline void merge_free_vmap_area(vmap_area_t *vmap_area) {
     vmap_area_t *tmp_vmap_area;
     //先检查左边是否能合并
     tmp_vmap_area = CONTAINER_OF(vmap_area->list.prev,vmap_area_t,list);
@@ -237,8 +236,6 @@ static inline void merge_vmap_area(vmap_area_t *vmap_area) {
         kfree(tmp_vmap_area);
     }
     vmap_area->flags = 0;
-    erase_vmap_area(&used_vmap_area_root,vmap_area,&empty_augment_callbacks);
-    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 }
 
 /*释放一个vmap_area
@@ -247,7 +244,12 @@ static inline void merge_vmap_area(vmap_area_t *vmap_area) {
  * 检查前后虚拟地址空闲则合并
  */
 static void free_vmap_area(vmap_area_t *vmap_area) {
-    merge_vmap_area(vmap_area);
+    //从忙碌树释放vmpa_area
+    erase_vmap_area(&used_vmap_area_root,vmap_area,&empty_augment_callbacks);
+    //尝试合并空闲树相邻vmap_area
+    merge_free_vmap_area(vmap_area);
+    //插入空闲树
+    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 }
 
 void *vmalloc (UINT64 size) {
