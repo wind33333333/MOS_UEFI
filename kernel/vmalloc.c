@@ -1,7 +1,10 @@
 #include "vmalloc.h"
+#include "buddy_system.h"
 #include "slub.h"
 #include "printk.h"
 #include "vmm.h"
+#include "buddy_system.h"
+#include "kpage_table.h"
 
 //忙碌树
 rb_root_t used_vmap_area_root;
@@ -251,18 +254,55 @@ static void free_vmap_area(vmap_area_t *vmap_area) {
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 }
 
+/*
+ * 分配内存
+ */
 void *vmalloc (UINT64 size) {
     if (!size) return NULL;
     //4k对齐
     size = PAGE_4K_ALIGN(size);
-
+    //分配虚拟地址空间
     vmap_area_t *vmap_area = alloc_vmap_area(size,VMALLOC_START,VM_ALLOC);
-
+    //分配物理页，映射物理页
+    UINT64 va = vmap_area->va_start;
+    for (UINT64 i=0;i<(size>>PAGE_4K_SHIFT);i++) {
+        page_t* page = alloc_pages(0);
+        if (!page) return NULL;
+        mmap(kpml4t_ptr,page_to_pa(page),(UINT64*)va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
+        va+=PAGE_4K_SIZE;
+    }
     return (void*)vmap_area->va_start;
 }
 
+/*
+ * 查找vmap_area
+ */
+vmap_area_t *find_vmap_area(UINT64 va_start) {
+    rb_node_t *node=used_vmap_area_root.rb_node;
+    while (node) {
+        vmap_area_t *vmap_area = CONTAINER_OF(node,vmap_area_t,rb_node);
+        if (vmap_area->va_start == va_start) return vmap_area;
+        node = va_start > vmap_area->va_start ? node->right : node->left;
+    }
+    return NULL;
+}
+
+/*
+ * 释放内存
+ */
 void vfree (void *ptr) {
-    free_vmap_area((vmap_area_t*)ptr);
+    //通过虚拟地址找Vmap_area
+    vmap_area_t* vmap_area=find_vmap_area((UINT64)ptr);
+    //卸载虚拟地址和物理页映射，释放物理页
+    UINT64 va = vmap_area->va_start;
+    for (UINT64 i=0;i<(vmap_area->va_end-vmap_area->va_start>>PAGE_4K_SHIFT);i++) {
+        page_t* page = pa_to_page(find_page_table_entry(kpml4t_ptr,(void*)va,PTE_LEVEL)&PAGE_PA_MASK);
+        munmap(kpml4t_ptr,(void*)va,PAGE_4K_SIZE);
+        free_pages(page);
+        va+=PAGE_4K_SIZE;
+    }
+    //释放虚拟地址
+    free_vmap_area(vmap_area);
 }
 
 
@@ -283,6 +323,10 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area_t *vmap_area3 = alloc_vmap_area(0x3000,VMALLOC_START,VM_ALLOC);
     vmap_area_t *vmap_area4 = alloc_vmap_area(0x4000,VMALLOC_START,VM_ALLOC);
     vmap_area_t *vmap_area5 = alloc_vmap_area(0x5000,VMALLOC_START,VM_ALLOC);
+
+    UINT64* ptr=vmalloc(0x2000);
+    *ptr=0xFFFF8888;
+    vfree(ptr);
 
     free_vmap_area(vmap_area1);
     free_vmap_area(vmap_area4);

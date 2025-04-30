@@ -2,7 +2,7 @@
 #include "memblock.h"
 #include "vmm.h"
 
-INIT_DATA UINT64 *kpml4t_ptr; //正式内核页表
+UINT64 *kpml4t_ptr; //正式内核页表
 
 INIT_TEXT void init_kpage_table(void) {
     kpml4t_ptr = memblock_alloc(PAGE_4K_SIZE, PAGE_4K_SIZE);

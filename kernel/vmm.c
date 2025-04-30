@@ -187,7 +187,6 @@ UINT64 find_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level) {
     index = get_pde_index(va);
     if (page_level == PDE_LEVEL) return pdt[index];
 
-
     ptt= pa_to_va(pdt[index] & PAGE_PA_MASK);
     index=get_pte_index(va);
     return ptt[index];
