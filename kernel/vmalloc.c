@@ -305,6 +305,11 @@ void vfree (void *ptr) {
     free_vmap_area(vmap_area);
 }
 
+/*
+ * 设备地址虚拟地址分配和映射
+ * 起始虚拟地址：
+ */
+
 
 //初始化vmalloc
 void INIT_TEXT init_vmalloc(void) {
