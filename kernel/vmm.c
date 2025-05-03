@@ -62,7 +62,7 @@ INT32 mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
 }
 
 //删除一个页表映射
-INT32 munmap(UINT64 *pml4t, void *va, UINT64 page_size) {
+INT32 unmmap(UINT64 *pml4t, void *va, UINT64 page_size) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 pml4e_index, pdpte_index, pde_index, pte_index;
 
@@ -148,7 +148,7 @@ INT32 mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr,
 }
 
 //批量删除页表映射
-INT32 munmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size) {
+INT32 unmmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size) {
     UINT64 count;
     switch (page_size) {
         case PAGE_4K_SIZE:
@@ -165,7 +165,7 @@ INT32 munmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size) {
     }
 
     for (; count > 0; count--) {
-        if (munmap(pml4t, va, page_size) != 0) return -1;
+        if (unmmap(pml4t, va, page_size) != 0) return -1;
         va += page_size;
     }
     return 0;
@@ -227,7 +227,7 @@ UINT32 update_page_table_entry(UINT64 *pml4t, void *va, UINT32 page_level,UINT64
 
 //////////////////////////////////////////////////////////
 //释放物理内存映射虚拟内存
-void munmapxxx(void *va, UINT64 page_count) {
+void unmmapxxx(void *va, UINT64 page_count) {
     UINT64 *pte_vaddr = vaddr_to_pte_vaddr(va);
     UINT64 *pde_vaddr = vaddr_to_pde_vaddr(va);
     UINT64 *pdpte_vaddr = vaddr_to_pdpte_vaddr(va);

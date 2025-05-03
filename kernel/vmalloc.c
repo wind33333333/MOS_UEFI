@@ -322,7 +322,7 @@ void vfree (void *ptr) {
     UINT64 va = vmap_area->va_start;
     for (UINT64 i=0;i<(vmap_area->va_end-vmap_area->va_start>>PAGE_4K_SHIFT);i++) {
         page_t* page = pa_to_page(find_page_table_entry(kpml4t_ptr,(void*)va,PTE_LEVEL)&PAGE_PA_MASK);
-        munmap(kpml4t_ptr,(void*)va,PAGE_4K_SIZE);
+        unmmap(kpml4t_ptr,(void*)va,PAGE_4K_SIZE);
         free_pages(page);
         va+=PAGE_4K_SIZE;
     }
@@ -332,9 +332,39 @@ void vfree (void *ptr) {
 
 /*
  * 设备地址虚拟地址分配和映射
- * 起始虚拟地址：
+ * pa:物理起始地址
+ * attr:属性
  */
+void *iomap (UINT64 pa,UINT64 size,UINT64 attr) {
+    if (!pa || !size) return NULL;
+    //4k对齐
+    size = PAGE_4K_ALIGN(size);
+    //分配虚拟地址空间
+    vmap_area_t *vmap_area = alloc_vmap_area(size,VMALLOC_START,VMALLOC_END);
+    //分配物理页，映射物理页
+    UINT64 va = vmap_area->va_start;
+    for (UINT64 i=0;i<(size>>PAGE_4K_SHIFT);i++) {
+        mmap(kpml4t_ptr,pa,(UINT64*)va,attr,PAGE_4K_SIZE);
+        va+=PAGE_4K_SIZE;
+    }
+    return (void*)vmap_area->va_start;
+}
 
+/*
+ *
+ */
+void iounmap (void *ptr) {
+    //通过虚拟地址找Vmap_area
+    vmap_area_t* vmap_area=find_vmap_area((UINT64)ptr);
+    //卸载虚拟地址和物理页映射，释放物理页
+    UINT64 va = vmap_area->va_start;
+    for (UINT64 i=0;i<(vmap_area->va_end-vmap_area->va_start>>PAGE_4K_SHIFT);i++) {
+        unmmap(kpml4t_ptr,(void*)va,PAGE_4K_SIZE);
+        va+=PAGE_4K_SIZE;
+    }
+    //释放虚拟地址
+    free_vmap_area(vmap_area);
+}
 
 //初始化vmalloc
 void INIT_TEXT init_vmalloc(void) {
