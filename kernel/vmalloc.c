@@ -342,33 +342,22 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area_augment_callbacks.copy=vmap_area_augment_copy;
     vmap_area_augment_callbacks.propagate=vmap_area_augment_propagate;
 
-    //初始化vmalloc空间并插入空闲树
+    //初始化vmlloc分配空间 62TB
     vmap_area_t *vmap_area=create_vmap_area(VMALLOC_START,VMALLOC_END,VM_ALLOC);
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
-    //初始化动态模块空间并插入空闲树
+    //初始化IO/UEFI/ACPI/APIC等映射区 2046GB
+    vmap_area=create_vmap_area(IOREMAP_START,IOREMAP_END,VM_IOREMAP);
+    list_head_init(&vmap_area->list);
+    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
+
+    //初始化动态模块空间 1536MB
     vmap_area=create_vmap_area(MODULES_START,MODULES_END,VM_MODULES);
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
-    vmap_area = alloc_vmap_area(0x1000,VMALLOC_START+0x1000,VMALLOC_END);
-    vmap_area_t *vmap_area1 = alloc_vmap_area(0x1000,VMALLOC_END-0x1000,VMALLOC_END);
-    vmap_area_t *vmap_area2 = alloc_vmap_area(0x2000,VMALLOC_START,VMALLOC_END);
-    vmap_area_t *vmap_area3 = alloc_vmap_area(0x3000,VMALLOC_START,VMALLOC_END);
-    vmap_area_t *vmap_area4 = alloc_vmap_area(0x4000,VMALLOC_START,VMALLOC_END);
-    vmap_area_t *vmap_area5 = alloc_vmap_area(0x5000,VMALLOC_START,VMALLOC_END);
 
-    UINT64* ptr=vmalloc(0x2000);
-    *ptr=0xFFFF8888;
-    vfree(ptr);
-
-    free_vmap_area(vmap_area1);
-    free_vmap_area(vmap_area4);
-    free_vmap_area(vmap_area2);
-    free_vmap_area(vmap_area5);
-    free_vmap_area(vmap_area3);
-    free_vmap_area(vmap_area);
 };
 
 
