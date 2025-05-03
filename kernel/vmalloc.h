@@ -3,9 +3,13 @@
 #include "moslib.h"
 #include "rbtree.h"
 
-//vmlloc分配空间0xFFFFC80000000000-0xFFFFE80000000000 32TB
-#define VMALLOC_START 0xFFFFC80000000000UL
-#define VMALLOC_END   0xFFFFE80000000000UL
+//vmlloc分配空间63TB+1022GB
+#define VMALLOC_START 0xFFFFC00000000000UL
+#define VMALLOC_END   0xFFFFFFFF7FFFFFFFUL
+
+//动态模块空间1536MB
+#define MODULES_START 0xFFFFFFFFA0000000UL
+#define MODULES_END   0xFFFFFFFFFFFFFFFFUL
 
 /* bits in flags of vmalloc's vm_struct below */
 #define VM_IOREMAP		        0x00000001	/* ioremap() and friends */
