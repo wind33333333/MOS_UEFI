@@ -38,12 +38,10 @@ typedef struct {
 
 //初始化vmalloc
 void init_vmalloc(void);
-
-// 分配内存
 void *vmalloc(UINT64 size);
-
-// 释放内存
 void vfree(void *ptr);
+void *iomap;
+void iounmap (void *ptr);
 
 
 #endif
