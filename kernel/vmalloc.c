@@ -331,7 +331,7 @@ void vfree (void *ptr) {
 }
 
 /*
- * 设备地址虚拟地址分配和映射
+ * 设备虚拟地址分配和映射
  * pa:物理起始地址
  * attr:属性
  */
@@ -351,7 +351,7 @@ void *iomap (UINT64 pa,UINT64 size,UINT64 attr) {
 }
 
 /*
- *
+ *设备虚拟地址释放和卸载映射
  */
 void iounmap (void *ptr) {
     //通过虚拟地址找Vmap_area
