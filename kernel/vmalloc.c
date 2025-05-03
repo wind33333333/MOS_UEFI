@@ -126,8 +126,18 @@ static inline UINT32 erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,rb_
     rb_erase(root, &vmap_area->rb_node,augment_callbacks);
 }
 
+//设置空闲状态
+static inline set_free(vmap_area_t *vmap_area) {
+    vmap_area->flags &=0xFFFFFFFFFFFFFFFEUL;
+}
+
+//设置忙碌状态
+static inline set_used(vmap_area_t *vmap_area) {
+    vmap_area->flags |=1;
+}
+
 //新建一个vmap_area
-static vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end) {
+static vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end,UINT64 flags) {
     vmap_area_t *vmap_area=kmalloc(sizeof(vmap_area_t));
     vmap_area->va_start = va_start;
     vmap_area->va_end   = va_end;
@@ -137,7 +147,7 @@ static vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end) {
     vmap_area->list.prev = NULL;
     vmap_area->list.next = NULL;
     vmap_area->subtree_max_size = 0;
-    vmap_area->flags = 0;
+    vmap_area->flags = flags;
     return vmap_area;
 }
 
@@ -175,24 +185,24 @@ static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UI
         new_vmap_area = vmap_area;
     }else if (va_start <= vmap_area->va_start) {
         //情况2：从头切割
-        new_vmap_area = create_vmap_area(vmap_area->va_start,vmap_area->va_start+size);
+        new_vmap_area = create_vmap_area(vmap_area->va_start,vmap_area->va_start+size,vmap_area->flags);
         vmap_area->va_start += size;
         vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
         list_add_tail(&vmap_area->list,&new_vmap_area->list);
     }else if ((va_start+size) == vmap_area->va_end) {
         //情况3：从尾切割
-        new_vmap_area = create_vmap_area(va_start,va_start+size);
+        new_vmap_area = create_vmap_area(va_start,va_start+size,vmap_area->flags);
         vmap_area->va_end -= size;
         vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
         list_add_head(&vmap_area->list,&new_vmap_area->list);
     }else{
         //情况4：从中间切割
-        new_vmap_area = create_vmap_area(va_start+size,vmap_area->va_end);
+        new_vmap_area = create_vmap_area(va_start+size,vmap_area->va_end,vmap_area->flags);
         vmap_area->va_end = va_start;
         vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
         insert_vmap_area(&free_vmap_area_root,new_vmap_area,&vmap_area_augment_callbacks);
         list_add_head(&vmap_area->list,&new_vmap_area->list);
-        new_vmap_area = create_vmap_area(va_start,va_start+size);
+        new_vmap_area = create_vmap_area(va_start,va_start+size,vmap_area->flags);
         list_add_head(&vmap_area->list,&new_vmap_area->list);
     }
     return new_vmap_area;
@@ -201,18 +211,39 @@ static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UI
 /*
  * 分配一个vmap_area
  * size:需要分配的大小4K对齐
- * va_start:最低其实地址
+ * va_start:分配的起始地址
+ * va_end:结束地址
  */
-static vmap_area_t *alloc_vmap_area(UINT64 size,UINT64 va_start,UINT64 flags) {
+static vmap_area_t *alloc_vmap_area(UINT64 size,UINT64 va_start,UINT64 va_end) {
     //空闲树找可是的节点
     vmap_area_t *vmap_area=find_vmap_lowest_match(size,va_start);
-    if (!vmap_area)return NULL;
+    if (!vmap_area && vmap_area->va_end < va_end)return NULL;
     //尝试分割Vmap_area
     vmap_area = split_vmap_area(vmap_area,size,va_start);
     //把vmap_area插入忙碌树，设置状态
+    set_used(vmap_area);
     insert_vmap_area(&used_vmap_area_root,vmap_area,&empty_augment_callbacks);
-    vmap_area->flags=flags;
     return vmap_area;
+}
+
+/*
+ * 分配内存
+ */
+void *vmalloc (UINT64 size) {
+    if (!size) return NULL;
+    //4k对齐
+    size = PAGE_4K_ALIGN(size);
+    //分配虚拟地址空间
+    vmap_area_t *vmap_area = alloc_vmap_area(size,VMALLOC_START,VMALLOC_END);
+    //分配物理页，映射物理页
+    UINT64 va = vmap_area->va_start;
+    for (UINT64 i=0;i<(size>>PAGE_4K_SHIFT);i++) {
+        page_t* page = alloc_pages(0);
+        if (!page) return NULL;
+        mmap(kpml4t_ptr,page_to_pa(page),(UINT64*)va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
+        va+=PAGE_4K_SIZE;
+    }
+    return (void*)vmap_area->va_start;
 }
 
 /*
@@ -222,7 +253,7 @@ static inline void merge_free_vmap_area(vmap_area_t *vmap_area) {
     vmap_area_t *tmp_vmap_area;
     //先检查左边是否能合并
     tmp_vmap_area = CONTAINER_OF(vmap_area->list.prev,vmap_area_t,list);
-    if (!tmp_vmap_area->flags && vmap_area->va_start == tmp_vmap_area->va_end) {
+    if (vmap_area->flags == tmp_vmap_area->flags && vmap_area->va_start == tmp_vmap_area->va_end) {
         vmap_area->va_start= tmp_vmap_area->va_start;
         list_del_s(&tmp_vmap_area->list);
         erase_vmap_area(&free_vmap_area_root,tmp_vmap_area,&vmap_area_augment_callbacks);
@@ -230,13 +261,12 @@ static inline void merge_free_vmap_area(vmap_area_t *vmap_area) {
     }
     //检查右边是否能合并
     tmp_vmap_area = CONTAINER_OF(vmap_area->list.next,vmap_area_t,list);
-    if (!tmp_vmap_area->flags && vmap_area->va_end == tmp_vmap_area->va_start) {
+    if (vmap_area->flags == tmp_vmap_area->flags && vmap_area->va_end == tmp_vmap_area->va_start) {
         vmap_area->va_end = tmp_vmap_area->va_end;
         list_del_s(&tmp_vmap_area->list);
         erase_vmap_area(&free_vmap_area_root,tmp_vmap_area,&vmap_area_augment_callbacks);
         kfree(tmp_vmap_area);
     }
-    vmap_area->flags = 0;
 }
 
 /*释放一个vmap_area
@@ -248,29 +278,10 @@ static void free_vmap_area(vmap_area_t *vmap_area) {
     //从忙碌树释放vmpa_area
     erase_vmap_area(&used_vmap_area_root,vmap_area,&empty_augment_callbacks);
     //尝试合并空闲树相邻vmap_area
+    set_free(vmap_area);
     merge_free_vmap_area(vmap_area);
     //插入空闲树
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
-}
-
-/*
- * 分配内存
- */
-void *vmalloc (UINT64 size) {
-    if (!size) return NULL;
-    //4k对齐
-    size = PAGE_4K_ALIGN(size);
-    //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area(size,VMALLOC_START,VM_ALLOC);
-    //分配物理页，映射物理页
-    UINT64 va = vmap_area->va_start;
-    for (UINT64 i=0;i<(size>>PAGE_4K_SHIFT);i++) {
-        page_t* page = alloc_pages(0);
-        if (!page) return NULL;
-        mmap(kpml4t_ptr,page_to_pa(page),(UINT64*)va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
-        va+=PAGE_4K_SIZE;
-    }
-    return (void*)vmap_area->va_start;
 }
 
 /*

@@ -12,9 +12,9 @@
 #define MODULES_END   0xFFFFFFFFFFFFFFFFUL
 
 /* bits in flags of vmalloc's vm_struct below */
-#define VM_IOREMAP		        0x00000001	/* ioremap() and friends */
 #define VM_ALLOC		        0x00000002	/* vmalloc() */
 #define VM_MAP			        0x00000004	/* vmap()ed pages */
+#define VM_IOREMAP		        0x00000006	/* ioremap() and friends */
 #define VM_USERMAP		        0x00000008	/* suitable for remap_vmalloc_range */
 #define VM_DMA_COHERENT		    0x00000010	/* dma_alloc_coherent */
 #define VM_UNINITIALIZED	    0x00000020	/* vm_struct is not fully initialized */
@@ -33,7 +33,7 @@ typedef struct {
     union {
         UINT64 subtree_max_size; //子树最大size
     };
-    UINT64           flags;               //状态
+    UINT64           flags;               //状态bit0 0为空闲，1为忙碌
 }vmap_area_t;
 
 //初始化vmalloc
