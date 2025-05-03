@@ -322,6 +322,11 @@ void INIT_TEXT init_vmalloc(void) {
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
+    //初始化动态模块空间并插入空闲树
+    vmap_area=create_vmap_area(MODULES_START,MODULES_END);
+    list_head_init(&vmap_area->list);
+    insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
+
     vmap_area = alloc_vmap_area(0x1000,VMALLOC_START+0x1000,VM_ALLOC);
     vmap_area_t *vmap_area1 = alloc_vmap_area(0x1000,VMALLOC_END-0x1000,VM_ALLOC);
     vmap_area_t *vmap_area2 = alloc_vmap_area(0x2000,VMALLOC_START,VM_ALLOC);
