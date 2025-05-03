@@ -3,7 +3,6 @@
 #include "slub.h"
 #include "printk.h"
 #include "vmm.h"
-#include "buddy_system.h"
 #include "kpage_table.h"
 
 //忙碌树
@@ -136,6 +135,16 @@ static inline set_used(vmap_area_t *vmap_area) {
     vmap_area->flags |=1;
 }
 
+//判断空闲
+static inline BOOLEAN is_free(vmap_area_t *vmap_area) {
+    return !(vmap_area->flags&1);
+}
+
+//判断忙碌
+static inline BOOLEAN is_used(vmap_area_t *vmap_area) {
+    return vmap_area->flags&1;
+}
+
 //新建一个vmap_area
 static vmap_area_t *create_vmap_area(UINT64 va_start,UINT64 va_end,UINT64 flags) {
     vmap_area_t *vmap_area=kmalloc(sizeof(vmap_area_t));
@@ -158,15 +167,21 @@ static inline UINT64 get_subtree_max_size(rb_node_t *node) {
     return (CONTAINER_OF(node,vmap_area_t, rb_node))->subtree_max_size;
 }
 
+//获取节点va_start
+static inline UINT64 get_va_start(rb_node_t *node) {
+    if (!node)return 0;
+    return (CONTAINER_OF(node,vmap_area_t,rb_node))->va_start;
+}
+
 /*低地址优先搜索最佳适应空闲vmap_area*/
 static inline vmap_area_t *find_vmap_lowest_match(UINT64 size,UINT64 va_start) {
     rb_node_t *node = free_vmap_area_root.rb_node;
     vmap_area_t *vmap_area;
     while (node) {
-        vmap_area = CONTAINER_OF(node,vmap_area_t,rb_node);
-        if (get_subtree_max_size(node->left) >= size && vmap_area->va_start >= va_start) {
+        if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) >= va_start) {
             node=node->left;
         }else {
+            vmap_area = CONTAINER_OF(node,vmap_area_t,rb_node);
             if ((vmap_area->va_end - vmap_area->va_start) >= size && vmap_area->va_end >= (va_start+size)) return vmap_area;
             node=node->right;
         }
@@ -217,7 +232,7 @@ static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UI
 static vmap_area_t *alloc_vmap_area(UINT64 size,UINT64 va_start,UINT64 va_end) {
     //空闲树找可是的节点
     vmap_area_t *vmap_area=find_vmap_lowest_match(size,va_start);
-    if (!vmap_area && vmap_area->va_end < va_end)return NULL;
+    if (!vmap_area || vmap_area->va_end > va_end)return NULL;
     //尝试分割Vmap_area
     vmap_area = split_vmap_area(vmap_area,size,va_start);
     //把vmap_area插入忙碌树，设置状态
@@ -253,7 +268,7 @@ static inline void merge_free_vmap_area(vmap_area_t *vmap_area) {
     vmap_area_t *tmp_vmap_area;
     //先检查左边是否能合并
     tmp_vmap_area = CONTAINER_OF(vmap_area->list.prev,vmap_area_t,list);
-    if (vmap_area->flags == tmp_vmap_area->flags && vmap_area->va_start == tmp_vmap_area->va_end) {
+    if (is_free(tmp_vmap_area) && vmap_area->va_start == tmp_vmap_area->va_end) {
         vmap_area->va_start= tmp_vmap_area->va_start;
         list_del_s(&tmp_vmap_area->list);
         erase_vmap_area(&free_vmap_area_root,tmp_vmap_area,&vmap_area_augment_callbacks);
@@ -261,7 +276,7 @@ static inline void merge_free_vmap_area(vmap_area_t *vmap_area) {
     }
     //检查右边是否能合并
     tmp_vmap_area = CONTAINER_OF(vmap_area->list.next,vmap_area_t,list);
-    if (vmap_area->flags == tmp_vmap_area->flags && vmap_area->va_end == tmp_vmap_area->va_start) {
+    if (is_free(tmp_vmap_area) && vmap_area->va_end == tmp_vmap_area->va_start) {
         vmap_area->va_end = tmp_vmap_area->va_end;
         list_del_s(&tmp_vmap_area->list);
         erase_vmap_area(&free_vmap_area_root,tmp_vmap_area,&vmap_area_augment_callbacks);
@@ -278,9 +293,9 @@ static void free_vmap_area(vmap_area_t *vmap_area) {
     //从忙碌树释放vmpa_area
     erase_vmap_area(&used_vmap_area_root,vmap_area,&empty_augment_callbacks);
     //尝试合并空闲树相邻vmap_area
-    set_free(vmap_area);
     merge_free_vmap_area(vmap_area);
-    //插入空闲树
+    //插入空闲树,设置转状态空闲
+    set_free(vmap_area);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 }
 
@@ -337,12 +352,12 @@ void INIT_TEXT init_vmalloc(void) {
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
-    vmap_area = alloc_vmap_area(0x1000,VMALLOC_START+0x1000,VM_ALLOC);
-    vmap_area_t *vmap_area1 = alloc_vmap_area(0x1000,VMALLOC_END-0x1000,VM_ALLOC);
-    vmap_area_t *vmap_area2 = alloc_vmap_area(0x2000,VMALLOC_START,VM_ALLOC);
-    vmap_area_t *vmap_area3 = alloc_vmap_area(0x3000,VMALLOC_START,VM_ALLOC);
-    vmap_area_t *vmap_area4 = alloc_vmap_area(0x4000,VMALLOC_START,VM_ALLOC);
-    vmap_area_t *vmap_area5 = alloc_vmap_area(0x5000,VMALLOC_START,VM_ALLOC);
+    vmap_area = alloc_vmap_area(0x1000,VMALLOC_START+0x1000,VMALLOC_END);
+    vmap_area_t *vmap_area1 = alloc_vmap_area(0x1000,VMALLOC_END-0x1000,VMALLOC_END);
+    vmap_area_t *vmap_area2 = alloc_vmap_area(0x2000,VMALLOC_START,VMALLOC_END);
+    vmap_area_t *vmap_area3 = alloc_vmap_area(0x3000,VMALLOC_START,VMALLOC_END);
+    vmap_area_t *vmap_area4 = alloc_vmap_area(0x4000,VMALLOC_START,VMALLOC_END);
+    vmap_area_t *vmap_area5 = alloc_vmap_area(0x5000,VMALLOC_START,VMALLOC_END);
 
     UINT64* ptr=vmalloc(0x2000);
     *ptr=0xFFFF8888;
