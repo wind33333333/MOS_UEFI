@@ -328,12 +328,12 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area_augment_callbacks.propagate=vmap_area_augment_propagate;
 
     //初始化vmalloc空间并插入空闲树
-    vmap_area_t *vmap_area=create_vmap_area(VMALLOC_START,VMALLOC_END);
+    vmap_area_t *vmap_area=create_vmap_area(VMALLOC_START,VMALLOC_END,VM_ALLOC);
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
     //初始化动态模块空间并插入空闲树
-    vmap_area=create_vmap_area(MODULES_START,MODULES_END);
+    vmap_area=create_vmap_area(MODULES_START,MODULES_END,VM_MODULES);
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 

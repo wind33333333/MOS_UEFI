@@ -13,7 +13,7 @@
 
 /* bits in flags of vmalloc's vm_struct below */
 #define VM_ALLOC		        0x00000002	/* vmalloc() */
-#define VM_MAP			        0x00000004	/* vmap()ed pages */
+#define VM_MODULES	            0x00000004	/* vmap()ed pages */
 #define VM_IOREMAP		        0x00000006	/* ioremap() and friends */
 #define VM_USERMAP		        0x00000008	/* suitable for remap_vmalloc_range */
 #define VM_DMA_COHERENT		    0x00000010	/* dma_alloc_coherent */
