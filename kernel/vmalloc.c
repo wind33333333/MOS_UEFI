@@ -270,7 +270,7 @@ static inline void merge_free_vmap_area(vmap_area_t *vmap_area) {
     tmp_vmap_area = CONTAINER_OF(vmap_area->list.prev,vmap_area_t,list);
     if (is_free(tmp_vmap_area) && vmap_area->va_start == tmp_vmap_area->va_end) {
         vmap_area->va_start= tmp_vmap_area->va_start;
-        list_del_s(&tmp_vmap_area->list);
+        list_del(&tmp_vmap_area->list);
         erase_vmap_area(&free_vmap_area_root,tmp_vmap_area,&vmap_area_augment_callbacks);
         kfree(tmp_vmap_area);
     }
@@ -278,7 +278,7 @@ static inline void merge_free_vmap_area(vmap_area_t *vmap_area) {
     tmp_vmap_area = CONTAINER_OF(vmap_area->list.next,vmap_area_t,list);
     if (is_free(tmp_vmap_area) && vmap_area->va_end == tmp_vmap_area->va_start) {
         vmap_area->va_end = tmp_vmap_area->va_end;
-        list_del_s(&tmp_vmap_area->list);
+        list_del(&tmp_vmap_area->list);
         erase_vmap_area(&free_vmap_area_root,tmp_vmap_area,&vmap_area_augment_callbacks);
         kfree(tmp_vmap_area);
     }

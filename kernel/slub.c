@@ -106,7 +106,7 @@ INT32 kmem_cache_free(kmem_cache_t *cache, void *object) {
         if (cache->total_free <= cache->object_per_slub) break;
         if (next_node->using_count == 0) {
             free_pages(va_to_page(next_node->page_va));
-            list_del_s(&next_node->slub_node);
+            list_del(&next_node->slub_node);
             free_cache_object(&kmem_cache_node, next_node);
             cache->total_free -= cache->object_per_slub;
             cache->slub_count--;

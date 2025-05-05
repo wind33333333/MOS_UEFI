@@ -53,7 +53,7 @@ page_t *alloc_pages(UINT32 order) {
         if (current_order > MAX_ORDER) return NULL;
         if (buddy_system.free_count[current_order] != 0) {
             page = CONTAINER_OF(buddy_system.free_area[current_order].next,page_t,block);
-            list_del_s(buddy_system.free_area[current_order].next);
+            list_del(buddy_system.free_area[current_order].next);
             buddy_system.free_count[current_order]--;
             break;
         }
@@ -81,7 +81,7 @@ void free_pages(page_t *page) {
         page_t* buddy_page = buddy_system.page_table+(page-buddy_system.page_table^(1<<page->order));
         if (list_find(&buddy_system.free_area[page->order],&buddy_page->block) == FALSE) break;
         if (page > buddy_page) page = buddy_page;
-        list_del_s(&buddy_page->block);
+        list_del(&buddy_page->block);
         buddy_system.free_count[page->order]--;
         page->order++;
     }
