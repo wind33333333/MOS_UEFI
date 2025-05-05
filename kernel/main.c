@@ -19,9 +19,8 @@ INIT_TEXT void init_kernel(void) {
     init_output();                             //初始化输出控制台
     init_buddy_system();                       //初始化伙伴系统
     init_slub();                               //初始化slub内存分配器
-
-    init_rbtree_empty_augment_callbacks();
-    init_vmalloc();
+    init_rbtree_empty_augment_callbacks();     //红黑树空回掉函数
+    init_vmalloc();                            //初始化vmalloc
 
     while (TRUE);
     //////////////////
