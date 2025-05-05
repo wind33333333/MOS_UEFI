@@ -550,10 +550,11 @@ static inline void list_head_init(list_head_t *head) {
 }
 
 static inline BOOLEAN list_find(list_head_t *head,list_head_t *node) {
-    while (head->next != NULL) {
-        if (head->next == node)
+    list_head_t *next = head;
+    while (next->next != head) {
+        if (next->next == node)
             return TRUE;
-        head=head->next;
+        next=next->next;
     }
     return FALSE;
 }
