@@ -372,6 +372,8 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area_augment_callbacks.copy=vmap_area_augment_copy;
     vmap_area_augment_callbacks.propagate=vmap_area_augment_propagate;
 
+    buddy_system.free_count[0] = 0;
+
     //60TB vmalloc映射区
     vmap_area_t *vmap_area=create_vmap_area(VMALLOC_START,VMALLOC_END,VM_ALLOC);
     list_head_init(&vmap_area->list);
@@ -386,6 +388,8 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area=create_vmap_area(MODULES_START,MODULES_END,VM_MODULES);
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
+
+
 
 
 };

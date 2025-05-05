@@ -6,11 +6,12 @@
 #define MAX_ORDER 10
 
 typedef struct{
-    list_head_t block;
     UINT32 flags;
     UINT32 order;
     UINT32 refcount;
-}page_t;
+    UINT32 registers[8];
+    list_head_t block;
+}__attribute__((aligned(64))) page_t;
 
 typedef struct buddy_system_t {
     page_t* page_table;
