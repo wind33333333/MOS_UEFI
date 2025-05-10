@@ -13,8 +13,7 @@ INIT_TEXT void init_memblock(void) {
                          boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
             //其他可用类型合并放入可用类型保存
         } else if (boot_info->mem_map[i].Type == EFI_LOADER_CODE || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_CODE
-                   || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA || boot_info->mem_map[i].Type ==
-                   EFI_CONVENTIONAL_MEMORY) {
+                   || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA || boot_info->mem_map[i].Type == EFI_CONVENTIONAL_MEMORY) {
             memblock_add(&memblock.memory, boot_info->mem_map[i].PhysicalStart,
                          boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
         }
