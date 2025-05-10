@@ -5,8 +5,8 @@
 #define MAX_MEMBLOCK 128
 
 typedef struct memblock_region_t {
-    UINT64 base;  /* 该区域的起始物理地址 */
-    UINT64 size;       /* 该区域的大小 */
+    UINT64 base;      /* 该区域的起始物理地址 */
+    UINT64 size;      /* 该区域的大小 */
 }memblock_region_t;
 
 typedef struct memblock_type_t {
