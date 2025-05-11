@@ -14,6 +14,39 @@ kmem_cache_t kmem_cache;
 UINT8 kmalloc_name[18][16];
 kmem_cache_t *kmalloc_cache[18];
 
+//把对象真是size对齐到2^n字节，提高内存访问性能和每页刚好整数
+static inline UINT32 object_size_align(UINT32 objcet_size) {
+    if (objcet_size <= 8) return 8; // 最小对齐值
+    --objcet_size;
+    objcet_size |= objcet_size >> 1;
+    objcet_size |= objcet_size >> 2;
+    objcet_size |= objcet_size >> 4;
+    objcet_size |= objcet_size >> 8;
+    objcet_size |= objcet_size >> 16;
+    return ++objcet_size;
+}
+
+//1K以内的分配1一个4K页，1K以上乘4。
+static inline UINT32 object_size_order(UINT32 objcet_size) {
+    if (objcet_size <= 1024) return 0;
+    objcet_size >>= 11;
+    UINT32 order = 0;
+    while (objcet_size >= 1) {
+        order++;
+        objcet_size >>= 1;
+    };
+    return order;
+}
+
+//空闲链表初始化
+static inline void free_list_init(UINT64* next,UINT32 size,UINT32 count) {
+    while (count--) {
+        *next = (UINT64)next + size;
+        next = (UINT64*)*next;
+    }
+    *next = 0;
+}
+
 //新建一个cache
 void create_cache(char *cache_name, kmem_cache_t *new_cache, UINT32 object_size) {
     new_cache->name = cache_name;
