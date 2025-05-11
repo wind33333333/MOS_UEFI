@@ -177,15 +177,15 @@ UINT64 find_page_table_entry(UINT64 *pml4t,void *va,page_level_e page_level) {
     UINT32 index;
     pml4t = pa_to_va((UINT64)pml4t);
     index = get_pml4e_index(va);
-    if (page_level == pml4e_level) return pml4t[index];
+    if (page_level == pml4e_level || pml4t[index] == 0) return pml4t[index];
 
     pdptt = pa_to_va(pml4t[index] & PAGE_PA_MASK);
     index = get_pdpte_index(va);
-    if (page_level == pdpte_level) return pdptt[index];
+    if (page_level == pdpte_level || pdptt[index] == 0) return pdptt[index];
 
     pdt = pa_to_va(pdptt[index] & PAGE_PA_MASK);
     index = get_pde_index(va);
-    if (page_level == pde_level) return pdt[index];
+    if (page_level == pde_level || pdt[index] == 0) return pdt[index];
 
     ptt= pa_to_va(pdt[index] & PAGE_PA_MASK);
     index=get_pte_index(va);

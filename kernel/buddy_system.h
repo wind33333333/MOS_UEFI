@@ -11,15 +11,12 @@ typedef struct{
     UINT32 flags;
     UINT32 order;
     UINT32 refcount;
-    UINT32 registers[8];
+    UINT32 registers;
     list_head_t block;
-}__attribute__((aligned(64))) page_t;
+}__attribute__((aligned(32))) page_t;
 
 typedef struct buddy_system_t {
     page_t* page_table;
-    UINT64 page_size;
-    UINT64 page_length;
-
     list_head_t free_area[MAX_ORDER + 1];
     UINT64 free_count[MAX_ORDER + 1];
 }buddy_system_t;
@@ -34,10 +31,6 @@ static inline UINT64 page_to_pa(page_t *page) {
 //物理地址转换page地址
 static inline page_t* pa_to_page(UINT64 pa) {
     return buddy_system.page_table+(pa >> PAGE_4K_SHIFT);
-}
-
-static inline page_t* _pa_to_page(UINT64 pa) {
-    return (page_t*)(VMEMMAP_START+(pa >> PAGE_4K_SHIFT)*sizeof(page_t));
 }
 
 //page地址转虚拟地址

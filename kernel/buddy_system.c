@@ -1,51 +1,52 @@
 #include "buddy_system.h"
+
+#include "kpage_table.h"
 #include "memblock.h"
 
 buddy_system_t buddy_system;
 
 //初始化伙伴系统
 INIT_TEXT void init_buddy_system(void) {
-    //初始化vmemmap区为2M页表
-    for (UINT32 i = 0; i < memblock.memory.count; i++) {
-        UINT64 pa = memblock.memory.region[i].base;
-        UINT64 size = memblock.memory.region[i].size;
-        UINT64 vmemmap_va = (UINT64)_pa_to_page(pa)&PAGE_2M_MASK;
-        UINT64 page_count = PAGE_2M_ALIGN((size >> PAGE_4K_SHIFT)*sizeof(page_t))>>PAGE_2M_SHIFT;
-        for (UINT64 i = 0; i < page_count; i++) {
-
-        }
-    }
-    //////////////////////////////////
-    //初始化page_size数量
-    buddy_system.page_size = memblock.memory.region[memblock.memory.count-1].base+memblock.memory.region[memblock.memory.count-1].size>>PAGE_4K_SHIFT;
-    //初始化page_length长度
-    buddy_system.page_length = buddy_system.page_size * sizeof(page_t);
-    //page_table分配内存
-    buddy_system.page_table = (page_t*)pa_to_va((UINT64)memblock_alloc(buddy_system.page_length,8));
-    //初始化page_table为0
-    mem_set(buddy_system.page_table, 0x0, buddy_system.page_length);
+    buddy_system.page_table = (page_t*)VMEMMAP_START;
     //初始化空闲链表
     for (UINT64 i = 0; i<=MAX_ORDER; i++) {
         list_head_init(&buddy_system.free_area[i]);
     }
 
+    //初始化vmemmap区为2M页表
+    for (UINT32 i = 0; i < memblock.memory.count; i++) {
+        UINT64 pa = memblock.memory.region[i].base;
+        UINT64 size = memblock.memory.region[i].size;
+        UINT64 vmemmap_va = (UINT64)pa_to_page(pa)&PAGE_2M_MASK;
+        UINT64 page_count = PAGE_2M_ALIGN((size >> PAGE_4K_SHIFT)*sizeof(page_t))>>PAGE_2M_SHIFT;
+        for (UINT64 i = 0; i < page_count; i++) {
+            if (find_page_table_entry(kpml4t_ptr, vmemmap_va, pde_level)) {
+                vmemmap_va += PAGE_2M_SIZE;
+                continue;
+            }
+            UINT64 pa = (UINT64)memblock_alloc(PAGE_2M_SIZE,PAGE_2M_SIZE);
+            memblock_mmap(kpml4t_ptr, pa, vmemmap_va,PAGE_ROOT_RW_2M1G, PAGE_2M_SIZE);
+            mem_set((void*)vmemmap_va, 0, PAGE_2M_SIZE);
+            vmemmap_va += PAGE_2M_SIZE;
+        }
+    }
+
     //把memblock中的memory内存移交给伙伴系统管理，memblock_alloc内存分配器退出，由伙伴系统接管物理内存管理。
     for (UINT32 i = 0; i < memblock.memory.count; i++) {
-        if (memblock.memory.region[i].size<PAGE_4K_SIZE) continue;
-        UINT64 addr = align_up(memblock.memory.region[i].base,PAGE_4K_SIZE);
-        UINT64 length = (memblock.memory.region[i].size-(addr-memblock.memory.region[i].base))&PAGE_4K_MASK;
+        UINT64 pa = memblock.memory.region[i].base;
+        UINT64 size = memblock.memory.region[i].size;
         UINT64 order = MAX_ORDER;
-        while (length >= PAGE_4K_SIZE) {
+        while (size >= PAGE_4K_SIZE) {
             //如果地址对齐order地址且长度大于等于order长度等于一个有效块
-            if ((addr & (PAGE_4K_SIZE << order) - 1) == 0 && length >= PAGE_4K_SIZE << order) {
+            if ((pa & (PAGE_4K_SIZE << order) - 1) == 0 && size >= PAGE_4K_SIZE << order) {
                 //addr除4096等于page索引，把page索引转成链表地址
-                page_t *page = &buddy_system.page_table[addr>>PAGE_4K_SHIFT];
+                page_t *page = &buddy_system.page_table[pa>>PAGE_4K_SHIFT];
                 //添加一个链表节点
                 list_add_head(&buddy_system.free_area[order],&page->block);
                 //设置page的阶数
                 page->order = order;
-                addr += PAGE_4K_SIZE << order;
-                length -= PAGE_4K_SIZE << order;
+                pa += PAGE_4K_SIZE << order;
+                size -= PAGE_4K_SIZE << order;
                 buddy_system.free_count[order]++;
                 order = MAX_ORDER;
                 continue;
