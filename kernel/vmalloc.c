@@ -242,26 +242,6 @@ static vmap_area_t *alloc_vmap_area(UINT64 size,UINT64 va_start,UINT64 va_end) {
 }
 
 /*
- * 分配内存
- */
-void *vmalloc (UINT64 size) {
-    if (!size) return NULL;
-    //4k对齐
-    size = PAGE_4K_ALIGN(size);
-    //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area(size,VMALLOC_START,VMALLOC_END);
-    //分配物理页，映射物理页
-    UINT64 va = vmap_area->va_start;
-    for (UINT64 i=0;i<(size>>PAGE_4K_SHIFT);i++) {
-        page_t* page = alloc_pages(0);
-        if (!page) return NULL;
-        mmap(kpml4t_ptr,page_to_pa(page),(UINT64*)va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
-        va+=PAGE_4K_SIZE;
-    }
-    return (void*)vmap_area->va_start;
-}
-
-/*
  * 尝试合并左右空闲vmap_area
  */
 static inline void merge_free_vmap_area(vmap_area_t *vmap_area) {
@@ -310,6 +290,26 @@ vmap_area_t *find_vmap_area(UINT64 va_start) {
         node = va_start > vmap_area->va_start ? node->right : node->left;
     }
     return NULL;
+}
+
+/*
+ * 分配内存
+ */
+void *vmalloc (UINT64 size) {
+    if (!size) return NULL;
+    //4k对齐
+    size = PAGE_4K_ALIGN(size);
+    //分配虚拟地址空间
+    vmap_area_t *vmap_area = alloc_vmap_area(size,VMALLOC_START,VMALLOC_END);
+    //分配物理页，映射物理页
+    UINT64 va = vmap_area->va_start;
+    for (UINT64 i=0;i<(size>>PAGE_4K_SHIFT);i++) {
+        page_t* page = alloc_pages(0);
+        if (!page) return NULL;
+        mmap(kpml4t_ptr,page_to_pa(page),(UINT64*)va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
+        va+=PAGE_4K_SIZE;
+    }
+    return (void*)vmap_area->va_start;
 }
 
 /*
