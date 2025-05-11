@@ -38,7 +38,7 @@ INIT_TEXT void init_buddy_system(void) {
         UINT64 pa = memblock.memory.region[i].base;
         UINT64 size = memblock.memory.region[i].size;
         UINT64 order = MAX_ORDER;
-        while (size >= PAGE_4K_SIZE) {
+        while (size) {
             //如果地址对齐order地址且长度大于等于order长度等于一个有效块
             if ((pa & (PAGE_4K_SIZE << order) - 1) == 0 && size >= PAGE_4K_SIZE << order) {
                 //addr除4096等于page索引，把page索引转成链表地址
