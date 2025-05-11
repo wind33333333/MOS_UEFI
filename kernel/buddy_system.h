@@ -12,7 +12,7 @@ typedef struct{
     UINT32 order;
     UINT32 refcount;
     UINT32 registers;
-    list_head_t block;
+    list_head_t list;
 }__attribute__((aligned(32))) page_t;
 
 typedef struct {
