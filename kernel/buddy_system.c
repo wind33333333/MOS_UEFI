@@ -20,8 +20,8 @@ INIT_TEXT void init_buddy_system(void) {
         UINT64 pa = memblock.memory.region[i].base;
         UINT64 size = memblock.memory.region[i].size;
         UINT64 vmemmap_va = (UINT64)pa_to_page(pa)&PAGE_2M_MASK;
-        UINT64 page_count = PAGE_2M_ALIGN((size >> PAGE_4K_SHIFT)*sizeof(page_t))>>PAGE_2M_SHIFT;
-        for (UINT64 i = 0; i < page_count; i++) {
+        UINT64 pdte_count = PAGE_2M_ALIGN((size >> PAGE_4K_SHIFT)*sizeof(page_t))>>PAGE_2M_SHIFT;
+        for (UINT64 i = 0; i < pdte_count; i++) {
             if (find_page_table_entry(kpml4t_ptr, vmemmap_va, pde_level)) {
                 vmemmap_va += PAGE_2M_SIZE;
                 continue;
