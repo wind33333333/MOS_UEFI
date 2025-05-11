@@ -7,7 +7,9 @@ buddy_system_t buddy_system;
 
 //初始化伙伴系统
 INIT_TEXT void init_buddy_system(void) {
+    //初始化page_table指针
     buddy_system.page_table = (page_t*)VMEMMAP_START;
+
     //初始化空闲链表
     for (UINT64 i = 0; i<=MAX_ORDER; i++) {
         list_head_init(&buddy_system.free_area[i]);
