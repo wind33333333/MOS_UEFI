@@ -75,8 +75,9 @@ void add_cache_node(kmem_cache_t *cache, kmem_cache_node_t *new_cache_node) {
 
 //从cache摘取一个对象
 void *alloc_cache_object(kmem_cache_t *cache) {
-    kmem_cache_node_t *next_node = CONTAINER_OF(cache->slub_head.next,kmem_cache_node_t,slub_node);
-    while (next_node) {
+    list_head_t *pos = cache->slub_head.next;
+    while (pos != &cache->slub_head) {
+        kmem_cache_node_t *next_node = CONTAINER_OF(pos,kmem_cache_node_t,slub_node);
         if (next_node->free_list != NULL) {
             UINT64 *object = next_node->free_list;
             next_node->free_list = (void *)*object;
@@ -86,18 +87,19 @@ void *alloc_cache_object(kmem_cache_t *cache) {
             cache->total_using++;
             return object;
         }
-        next_node = CONTAINER_OF(next_node->slub_node.next,kmem_cache_node_t,slub_node);
+        pos = pos->next;
     }
     return NULL;
 }
 
 //释放一个对象到cache
 INT32 free_cache_object(kmem_cache_t *cache, void *object) {
-    kmem_cache_node_t *next_node = CONTAINER_OF(cache->slub_head.next,kmem_cache_node_t,slub_node);
-    while (next_node) {
+    list_head_t *pos = cache->slub_head.next;
+    while (pos != &cache->slub_head) {
+        kmem_cache_node_t *next_node = CONTAINER_OF(pos,kmem_cache_node_t,slub_node);
         void *page_va_end = next_node->page_va + (PAGE_4K_SIZE << cache->order_per_slub);
         if (object >= next_node->page_va && object < page_va_end) {
-            *(UINT64 *) object = (UINT64) next_node->free_list;
+            *(UINT64 *)object = (UINT64) next_node->free_list;
             next_node->free_list = object;
             next_node->free_count++;
             next_node->using_count--;
@@ -105,7 +107,7 @@ INT32 free_cache_object(kmem_cache_t *cache, void *object) {
             cache->total_using--;
             return 0;
         }
-        next_node = CONTAINER_OF(next_node->slub_node.next,kmem_cache_node_t,slub_node);
+        pos = pos->next;
     }
     return -1;
 }
