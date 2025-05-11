@@ -372,7 +372,6 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area_augment_callbacks.copy=vmap_area_augment_copy;
     vmap_area_augment_callbacks.propagate=vmap_area_augment_propagate;
 
-    buddy_system.free_count[0] = 0;
     page_t *page=alloc_pages(0);
     free_pages(page);
 

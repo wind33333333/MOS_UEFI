@@ -12,7 +12,7 @@ INIT_TEXT void init_buddy_system(void) {
 
     //初始化空闲链表
     for (UINT64 i = 0; i<=MAX_ORDER; i++) {
-        list_head_init(&buddy_system.free_area[i]);
+        list_head_init(&buddy_system.free_area[i].list);
     }
 
     //初始化vmemmap区为2M页表
@@ -44,12 +44,12 @@ INIT_TEXT void init_buddy_system(void) {
                 //addr除4096等于page索引，把page索引转成链表地址
                 page_t *page = &buddy_system.page_table[pa>>PAGE_4K_SHIFT];
                 //添加一个链表节点
-                list_add_head(&buddy_system.free_area[order],&page->block);
+                list_add_head(&buddy_system.free_area[order].list,&page->block);
                 //设置page的阶数
                 page->order = order;
                 pa += PAGE_4K_SIZE << order;
                 size -= PAGE_4K_SIZE << order;
-                buddy_system.free_count[order]++;
+                buddy_system.free_area[order].count++;
                 order = MAX_ORDER;
                 continue;
             }
@@ -65,10 +65,10 @@ page_t *alloc_pages(UINT32 order) {
     while (TRUE){     //阶链表没有空闲块则分裂
         //如果阶无效直接返回空指针
         if (current_order > MAX_ORDER) return NULL;
-        if (buddy_system.free_count[current_order] != 0) {
-            page = CONTAINER_OF(buddy_system.free_area[current_order].next,page_t,block);
-            list_del(buddy_system.free_area[current_order].next);
-            buddy_system.free_count[current_order]--;
+        if (buddy_system.free_area[current_order].count != 0) {
+            page = CONTAINER_OF(buddy_system.free_area[current_order].list.next,page_t,block);
+            list_del(buddy_system.free_area[current_order].list.next);
+            buddy_system.free_area[current_order].count--;
             break;
         }
         current_order++;
@@ -76,9 +76,9 @@ page_t *alloc_pages(UINT32 order) {
 
     while (current_order > order){//分裂得到的阶块到合适大小
         current_order--;
-        list_add_head(&buddy_system.free_area[current_order],&page->block);
+        list_add_head(&buddy_system.free_area[current_order].list,&page->block);
         page->order = current_order;
-        buddy_system.free_count[current_order]++;
+        buddy_system.free_area[current_order].count++;
         page += 1<<current_order;
         page->order = current_order;
     }
@@ -93,12 +93,12 @@ void free_pages(page_t *page) {
     while (page->order < MAX_ORDER) {         //当前阶链表有其他page尝试合并伙伴
         //计算伙伴page
         page_t* buddy_page = buddy_system.page_table+(page-buddy_system.page_table^(1<<page->order));
-        if (list_find(&buddy_system.free_area[page->order],&buddy_page->block) == FALSE) break;
+        if (list_find(&buddy_system.free_area[page->order].list,&buddy_page->block) == FALSE) break;
         if (page > buddy_page) page = buddy_page;
         list_del(&buddy_page->block);
-        buddy_system.free_count[page->order]--;
+        buddy_system.free_area[page->order].count--;
         page->order++;
     }
-    list_add_head(&buddy_system.free_area[page->order],&page->block);
-    buddy_system.free_count[page->order]++;
+    list_add_head(&buddy_system.free_area[page->order].list,&page->block);
+    buddy_system.free_area[page->order].count++;
 }

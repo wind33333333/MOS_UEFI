@@ -15,10 +15,14 @@ typedef struct{
     list_head_t block;
 }__attribute__((aligned(32))) page_t;
 
+typedef struct {
+    UINT64 count;
+    list_head_t list;
+}free_area_t;
+
 typedef struct buddy_system_t {
     page_t* page_table;
-    list_head_t free_area[MAX_ORDER + 1];
-    UINT64 free_count[MAX_ORDER + 1];
+    free_area_t free_area[MAX_ORDER + 1];
 }buddy_system_t;
 
 extern buddy_system_t buddy_system;
