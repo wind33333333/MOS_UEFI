@@ -4,10 +4,12 @@
 #include "linkage.h"
 
 //页级别
-#define PML4E_LEVEL  4
-#define PDPTE_LEVEL  3
-#define PDE_LEVEL    2
-#define PTE_LEVEL    1
+typedef enum {
+    pml4e_level=4,
+    pdpte_level=3,
+    pde_level=2,
+    pte_level=1
+}page_level_e;
 
 //页表项物理地址掩码
 #define PAGE_PA_MASK    0x7FFFFFFFF000UL

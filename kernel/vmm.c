@@ -172,20 +172,20 @@ INT32 unmmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size) {
 }
 
 //查找页表项
-UINT64 find_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level) {
+UINT64 find_page_table_entry(UINT64 *pml4t,void *va,page_level_e page_level) {
     UINT64 *pdptt,*pdt,*ptt;
     UINT32 index;
     pml4t = pa_to_va((UINT64)pml4t);
     index = get_pml4e_index(va);
-    if (page_level == PML4E_LEVEL) return pml4t[index];
+    if (page_level == pml4e_level) return pml4t[index];
 
     pdptt = pa_to_va(pml4t[index] & PAGE_PA_MASK);
     index = get_pdpte_index(va);
-    if (page_level == PDPTE_LEVEL) return pdptt[index];
+    if (page_level == pdpte_level) return pdptt[index];
 
     pdt = pa_to_va(pdptt[index] & PAGE_PA_MASK);
     index = get_pde_index(va);
-    if (page_level == PDE_LEVEL) return pdt[index];
+    if (page_level == pde_level) return pdt[index];
 
     ptt= pa_to_va(pdt[index] & PAGE_PA_MASK);
     index=get_pte_index(va);
@@ -193,26 +193,26 @@ UINT64 find_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level) {
 }
 
 //修改页表项
-UINT32 update_page_table_entry(UINT64 *pml4t, void *va, UINT32 page_level,UINT64 entry) {
+UINT32 update_page_table_entry(UINT64 *pml4t, void *va, page_level_e page_level,UINT64 entry) {
     UINT64 *pdptt,*pdt,*ptt;
     UINT32 index;
     pml4t = pa_to_va((UINT64)pml4t);
     index = get_pml4e_index(va);
-    if (page_level == PML4E_LEVEL) {
+    if (page_level == pml4e_level) {
         pml4t[index] = entry;
         return 0;
     };
 
     pdptt = pa_to_va(pml4t[index] & PAGE_PA_MASK);
     index = get_pdpte_index(va);
-    if (page_level == PDPTE_LEVEL) {
+    if (page_level == pdpte_level) {
         pdptt[index]= entry;
         return 0;
     }
 
     pdt = pa_to_va(pdptt[index] & PAGE_PA_MASK);
     index = get_pde_index(va);
-    if (page_level == PDE_LEVEL) {
+    if (page_level == pde_level) {
         pdt[index]= entry;
         return 0;
     }

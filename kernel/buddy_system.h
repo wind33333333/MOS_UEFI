@@ -5,6 +5,8 @@
 
 #define MAX_ORDER 10
 
+#define VMEMMAP_START 0xFFFFFC0000000000UL
+
 typedef struct{
     UINT32 flags;
     UINT32 order;
@@ -32,6 +34,10 @@ static inline UINT64 page_to_pa(page_t *page) {
 //物理地址转换page地址
 static inline page_t* pa_to_page(UINT64 pa) {
     return buddy_system.page_table+(pa >> PAGE_4K_SHIFT);
+}
+
+static inline page_t* _pa_to_page(UINT64 pa) {
+    return (page_t*)(VMEMMAP_START+(pa >> PAGE_4K_SHIFT)*sizeof(page_t));
 }
 
 //page地址转虚拟地址

@@ -5,6 +5,17 @@ buddy_system_t buddy_system;
 
 //初始化伙伴系统
 INIT_TEXT void init_buddy_system(void) {
+    //初始化vmemmap区为2M页表
+    for (UINT32 i = 0; i < memblock.memory.count; i++) {
+        UINT64 pa = memblock.memory.region[i].base;
+        UINT64 size = memblock.memory.region[i].size;
+        UINT64 vmemmap_va = (UINT64)_pa_to_page(pa)&PAGE_2M_MASK;
+        UINT64 page_count = PAGE_2M_ALIGN((size >> PAGE_4K_SHIFT)*sizeof(page_t))>>PAGE_2M_SHIFT;
+        for (UINT64 i = 0; i < page_count; i++) {
+
+        }
+    }
+    //////////////////////////////////
     //初始化page_size数量
     buddy_system.page_size = memblock.memory.region[memblock.memory.count-1].base+memblock.memory.region[memblock.memory.count-1].size>>PAGE_4K_SHIFT;
     //初始化page_length长度

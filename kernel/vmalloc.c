@@ -321,7 +321,7 @@ void vfree (void *ptr) {
     //卸载虚拟地址和物理页映射，释放物理页
     UINT64 va = vmap_area->va_start;
     for (UINT64 i=0;i<(vmap_area->va_end-vmap_area->va_start>>PAGE_4K_SHIFT);i++) {
-        page_t* page = pa_to_page(find_page_table_entry(kpml4t_ptr,(void*)va,PTE_LEVEL)&PAGE_PA_MASK);
+        page_t* page = pa_to_page(find_page_table_entry(kpml4t_ptr,(void*)va,pte_level)&PAGE_PA_MASK);
         unmmap(kpml4t_ptr,(void*)va,PAGE_4K_SIZE);
         free_pages(page);
         va+=PAGE_4K_SIZE;
