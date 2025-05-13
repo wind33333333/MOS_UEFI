@@ -1,19 +1,34 @@
 #ifndef BUDDY_SYSTEM_H
 #define BUDDY_SYSTEM_H
 #include "moslib.h"
+#include "slub.h"
 #include "vmm.h"
 
 #define MAX_ORDER 10
 
 #define VMEMMAP_START 0xFFFFFC0000000000UL
 
-typedef struct{
+/*typedef struct{
     UINT32 flags;
     UINT32 order;
     UINT32 refcount;
     UINT32 registers;
     list_head_t list;
-}__attribute__((aligned(32))) page_t;
+}__attribute__((aligned(32))) page_t;*/
+
+typedef struct{
+    UINT32       flags;
+    UINT32       order;
+    UINT32       refcount;
+    UINT32       using_count;          // 当前slab节点已用对象数量
+    UINT32       free_count;           // 当前slab节点空闲对象数量
+    void         *page_va;             // 伙伴系统分配的页面块起始虚拟地址
+    void         *free_list;           // 下一个空闲对象指针
+    kmem_cache_t *slub_cache;          // 指向所属kmem_cache
+    list_head_t  list;
+    UINT32       registers;
+}__attribute__((aligned(64))) page_t;
+
 
 typedef struct {
     UINT64 count;

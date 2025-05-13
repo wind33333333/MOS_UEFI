@@ -3,9 +3,9 @@
 #include "vmm.h"
 
 //kmem_cache_node对象专用缓存池
-UINT8 kmem_cache_node_name[16];
-kmem_cache_t kmem_cache_node;
-kmem_cache_node_t node_kmem_cache_node;
+//UINT8 kmem_cache_node_name[16];
+//kmem_cache_t kmem_cache_node;
+//kmem_cache_node_t node_kmem_cache_node;
 
 //kmem_cache对象专用缓存池
 UINT8 kmem_cache_name[16];
@@ -14,7 +14,7 @@ kmem_cache_t kmem_cache;
 UINT8 kmalloc_name[18][16];
 kmem_cache_t *kmalloc_cache[18];
 
-//把对象真是size对齐到2^n字节，提高内存访问性能和每页刚好整数
+//把对象size对齐到2^n字节，提高内存访问性能和每页刚好整数
 static inline UINT32 object_size_align(UINT32 objcet_size) {
     if (objcet_size <= 8) return 8; // 最小对齐值
     --objcet_size;
@@ -59,25 +59,43 @@ void create_cache(char *cache_name, kmem_cache_t *new_cache, UINT32 object_size)
     list_head_init(&new_cache->slub_head);
 }
 
-//cache中添加一个cache_node
-void add_cache_node(kmem_cache_t *cache, kmem_cache_node_t *new_cache_node) {
-    new_cache_node->slub_node.prev = NULL;
-    new_cache_node->slub_node.next = NULL;
-    new_cache_node->using_count = 0;
-    new_cache_node->free_count = cache->object_per_slub;
-    new_cache_node->free_list = page_to_va(alloc_pages(cache->order_per_slub));
-    new_cache_node->page_va = new_cache_node->free_list;
-    free_list_init(new_cache_node->free_list, cache->object_size, cache->object_per_slub - 1);
-    list_add_head(&cache->slub_head, &new_cache_node->slub_node);
+//cache中添加一个slub
+void add_slub(kmem_cache_t *cache) {
+    page_t *new_slub = alloc_pages(cache->order_per_slub);
+    new_slub->list.prev = NULL;
+    new_slub->list.next = NULL;
+    new_slub->using_count = 0;
+    new_slub->free_count = cache->object_per_slub;
+    new_slub->free_list = page_to_va(new_slub);
+    new_slub->page_va = new_slub->free_list;
+    free_list_init(new_slub->free_list, cache->object_size, cache->object_per_slub - 1);
+    list_add_head(&cache->slub_head, &new_slub->list);
     cache->slub_count++;
     cache->total_free += cache->object_per_slub;
+}
+
+//cache中删除一个slub
+void del_slub(kmem_cache_t *cache) {
+    //遍历当前cache如果空闲对象大于一个slub对象数量则释放空闲node
+    list_head_t *pos = cache->slub_head.next;
+    while (pos != &cache->slub_head) {
+        page_t *next_slub = CONTAINER_OF(pos,page_t,list);
+        if (cache->total_free <= cache->object_per_slub) break;
+        if (next_slub->using_count == 0) {
+            list_del(&next_slub->list);
+            free_pages(next_slub);
+            cache->total_free -= cache->object_per_slub;
+            cache->slub_count--;
+        }
+        pos = pos->next;
+    }
 }
 
 //从cache摘取一个对象
 void *alloc_cache_object(kmem_cache_t *cache) {
     list_head_t *pos = cache->slub_head.next;
     while (pos != &cache->slub_head) {
-        kmem_cache_node_t *next_node = CONTAINER_OF(pos,kmem_cache_node_t,slub_node);
+        page_t *next_node = CONTAINER_OF(pos,page_t,list);
         if (next_node->free_list != NULL) {
             UINT64 *object = next_node->free_list;
             next_node->free_list = (void *)*object;
@@ -96,7 +114,7 @@ void *alloc_cache_object(kmem_cache_t *cache) {
 INT32 free_cache_object(kmem_cache_t *cache, void *object) {
     list_head_t *pos = cache->slub_head.next;
     while (pos != &cache->slub_head) {
-        kmem_cache_node_t *next_node = CONTAINER_OF(pos,kmem_cache_node_t,slub_node);
+        page_t *next_node = CONTAINER_OF(pos,page_t,list);
         void *page_va_end = next_node->page_va + (PAGE_4K_SIZE << cache->order_per_slub);
         if (object >= next_node->page_va && object < page_va_end) {
             *(UINT64 *)object = (UINT64) next_node->free_list;
@@ -116,11 +134,8 @@ INT32 free_cache_object(kmem_cache_t *cache, void *object) {
 void *kmem_cache_alloc(kmem_cache_t *cache) {
     if (cache == NULL) return NULL;
 
-    //如果kmem_cache_node专用空闲对象只剩下1个则先进行slub扩容
-    if (kmem_cache_node.total_free == 1) add_cache_node(&kmem_cache_node, alloc_cache_object(&kmem_cache_node));
-
-    //如果当前cache的总空闲对象只剩下一个则先进行slub扩容
-    if (cache->total_free == 0) add_cache_node(cache, alloc_cache_object(&kmem_cache_node));
+    //如果当前cache的总空闲对象为空则先进行slub扩容
+    if (cache->total_free == 0) add_slub(cache);
 
     //返回缓存池对象
     return alloc_cache_object(cache);
@@ -131,21 +146,11 @@ INT32 kmem_cache_free(kmem_cache_t *cache, void *object) {
     if (cache == NULL || object == NULL) return -1;
 
     //释放object
-    if (free_cache_object(cache, object) != 0) return -1;
+    if (free_cache_object(cache, object)) return -1;
 
-    //遍历当前cache_node如果空闲对象大于一个slub对象数量则释放空闲node
-    kmem_cache_node_t *next_node = CONTAINER_OF(cache->slub_head.next,kmem_cache_node_t,slub_node);
-    while (next_node != NULL) {
-        if (cache->total_free <= cache->object_per_slub) break;
-        if (next_node->using_count == 0) {
-            free_pages(va_to_page(next_node->page_va));
-            list_del(&next_node->slub_node);
-            free_cache_object(&kmem_cache_node, next_node);
-            cache->total_free -= cache->object_per_slub;
-            cache->slub_count--;
-        }
-        next_node = CONTAINER_OF(next_node->slub_node.next,kmem_cache_node_t,slub_node);
-    }
+    //检查cache是否如果空闲slub大于1个则释放部分空闲slub
+    del_slub(cache);
+
     return 0;
 }
 
@@ -159,16 +164,16 @@ kmem_cache_t *kmem_cache_create(char *cache_name, UINT32 object_size) {
 }
 
 //销毁kmem_cache缓存池
-INT32 kmem_cache_destroy(kmem_cache_t *destroy_cache) {
-    if (destroy_cache == NULL) return -1;
+INT32 kmem_cache_destroy(kmem_cache_t *cache) {
+    if (cache == NULL) return -1;
 
-    kmem_cache_node_t *next_node = CONTAINER_OF(destroy_cache->slub_head.next,kmem_cache_node_t,slub_node);
-    while (next_node != NULL) {
-        free_pages(va_to_page(next_node->page_va));
-        kmem_cache_free(&kmem_cache_node, next_node);
-        next_node = CONTAINER_OF(next_node->slub_node.next,kmem_cache_node_t,slub_node);
+    list_head_t *pos = cache->slub_head.next;
+    while (pos != &cache->slub_head) {
+        page_t *new_slub = CONTAINER_OF(pos,page_t,list);
+        free_pages(new_slub);
+        pos = pos->next;
     }
-    kmem_cache_free(&kmem_cache, destroy_cache);
+    kmem_cache_free(&kmem_cache,cache);
     return 0;
 }
 
