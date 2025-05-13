@@ -195,7 +195,7 @@ INT32 kfree(void *va) {
     page_t *page = va_to_page(va);
     kmem_cache_free(page->slub_cache,va);
 
-    return -1;
+    return 0;
 }
 
 //初始化slub分配器
@@ -229,4 +229,9 @@ INIT_TEXT void init_slub(void) {
         kmalloc_cache[i] = kmem_cache_create(kmalloc_name[i], object_size);
         object_size <<= 1;
     }
+
+    UINT64 *ptr = (UINT64 *)kmalloc(sizeof(UINT64));
+    UINT64 *ptr1 = (UINT64 *)kmalloc(sizeof(UINT64));
+    kfree(ptr1);
+
 }
