@@ -56,7 +56,7 @@ void create_cache(char *cache_name, kmem_cache_t *cache, UINT32 object_size) {
 }
 
 //cache中添加一个slub
-static inline void add_slub(kmem_cache_t *cache) {
+static inline void new_slub(kmem_cache_t *cache) {
     page_t *slub = alloc_pages(cache->order_per_slub);
     slub->list.prev = NULL;
     slub->list.next = NULL;
@@ -71,8 +71,8 @@ static inline void add_slub(kmem_cache_t *cache) {
     cache->total_free += cache->object_per_slub;
 }
 
-//cache中删除一个slub
-static inline void del_slub(kmem_cache_t *cache) {
+//cache中回收空闲slub
+static inline void recycle_slub(kmem_cache_t *cache) {
     //遍历当前cache如果空闲对象大于一个slub对象数量则释放空闲node
     list_head_t *pos = cache->slub_head.next;
     while (pos != &cache->slub_head) {
@@ -132,7 +132,7 @@ void *kmem_cache_alloc(kmem_cache_t *cache) {
     if (cache == NULL) return NULL;
 
     //如果当前cache的总空闲对象为空则先进行slub扩容
-    if (cache->total_free == 0) add_slub(cache);
+    if (cache->total_free == 0) new_slub(cache);
 
     //返回缓存池对象
     return alloc_cache_object(cache);
@@ -145,8 +145,8 @@ INT32 kmem_cache_free(kmem_cache_t *cache, void *object) {
     //释放object
     if (free_cache_object(cache, object)) return -1;
 
-    //检查cache是否如果空闲slub大于1个则释放部分空闲slub
-    del_slub(cache);
+    //检查cache是否如果空闲slub大于1个则回收部分空闲slub
+    recycle_slub(cache);
 
     return 0;
 }
