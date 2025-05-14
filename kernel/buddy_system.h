@@ -17,19 +17,19 @@
 }__attribute__((aligned(32))) page_t;*/
 
 typedef struct{
-    UINT32       flags;
-    UINT32       order;
-    UINT32       refcount;
+    UINT32       flags;                // 类型
+    UINT32       order;                // 阶数
+    UINT32       refcount;             // 引用此处
     UINT32       using_count;          // 当前slab节点已用对象数量
     UINT32       free_count;           // 当前slab节点空闲对象数量
     void         *page_va;             // 伙伴系统分配的页面块起始虚拟地址
     void         *free_list;           // 下一个空闲对象指针
     kmem_cache_t *slub_cache;          // 指向所属kmem_cache
     union {
-        list_head_t  list;
-        UINT64       compound_head;
+        list_head_t  list;             // 链表
+        UINT64       compound_head;    // 复合页头指针 位0为1表示页尾，为0表示页头
     };
-    UINT32       registers;
+    UINT32       registers;            // 保留
 }__attribute__((aligned(64))) page_t;
 
 
