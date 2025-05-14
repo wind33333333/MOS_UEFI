@@ -62,10 +62,10 @@ INIT_TEXT void init_buddy_system(void) {
 page_t *alloc_pages(UINT32 order) {
     page_t *page;
     UINT32 current_order = order;
-    while (TRUE){     //阶链表没有空闲块则分裂
-        //如果阶无效直接返回空指针
-        if (current_order > MAX_ORDER) return NULL;
-        if (buddy_system.free_area[current_order].count != 0) {
+    //阶链表没有空闲块则分裂
+    while (TRUE){
+        if (current_order > MAX_ORDER) return NULL;        //如果阶无效直接返回空指针
+        if (buddy_system.free_area[current_order].count) {
             page = CONTAINER_OF(buddy_system.free_area[current_order].list.next,page_t,list);
             list_del(buddy_system.free_area[current_order].list.next);
             buddy_system.free_area[current_order].count--;
@@ -74,7 +74,8 @@ page_t *alloc_pages(UINT32 order) {
         current_order++;
     }
 
-    while (current_order > order){//分裂得到的阶块到合适大小
+    //分裂得到的阶块到合适大小
+    while (current_order > order){
         current_order--;
         list_add_head(&buddy_system.free_area[current_order].list,&page->list);
         page->order = current_order;
@@ -82,6 +83,12 @@ page_t *alloc_pages(UINT32 order) {
         page += 1<<current_order;
         page->order = current_order;
     }
+
+    //如果是复合也则标记填充符合页page
+    for (UINT32 i = 1; i < (1 << current_order); i++) {
+        page[i].compound_head = (UINT64)page | 1;
+    }
+
     return page;
 }
 

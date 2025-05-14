@@ -192,8 +192,9 @@ void *kmalloc(UINT64 size) {
 INT32 kfree(void *va) {
     if (va == NULL) return -1;
 
-    page_t *page = va_to_page(va);
-    kmem_cache_free(page->slub_cache,va);
+    page_t *slub = va_to_page(va);
+    slub = compound_head(slub);
+    kmem_cache_free(slub->slub_cache,va);
 
     return 0;
 }
@@ -230,8 +231,8 @@ INIT_TEXT void init_slub(void) {
         object_size <<= 1;
     }
 
-    UINT64 *ptr = (UINT64 *)kmalloc(sizeof(UINT64));
-    UINT64 *ptr1 = (UINT64 *)kmalloc(sizeof(UINT64));
+    UINT64 *ptr = (UINT64 *)kmalloc(1048576);
+    UINT64 *ptr1 = (UINT64 *)kmalloc(1048576);
     kfree(ptr1);
 
 }

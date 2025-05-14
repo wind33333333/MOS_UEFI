@@ -25,7 +25,10 @@ typedef struct{
     void         *page_va;             // 伙伴系统分配的页面块起始虚拟地址
     void         *free_list;           // 下一个空闲对象指针
     kmem_cache_t *slub_cache;          // 指向所属kmem_cache
-    list_head_t  list;
+    union {
+        list_head_t  list;
+        UINT64       compound_head;
+    };
     UINT32       registers;
 }__attribute__((aligned(64))) page_t;
 
@@ -60,6 +63,14 @@ static inline void *page_to_va(page_t *page) {
 //虚拟地址转page地址
 static inline page_t *va_to_page(void *va) {
     return pa_to_page(va_to_pa(va));
+}
+
+//符合页转页头
+static inline struct page_t *compound_head(page_t *page){
+    UINT64 head = page->compound_head;
+    if (head & 1)
+        return (page_t*)(head - 1);
+    return (page_t*)page;
 }
 
 void init_buddy_system(void);
