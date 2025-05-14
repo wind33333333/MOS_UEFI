@@ -20,6 +20,8 @@ typedef struct kmem_cache_t {
 void init_slub(void);
 kmem_cache_t* kmem_cache_create(char *cache_name,UINT32 object_size);
 INT32 kmem_cache_destroy(kmem_cache_t *kmem_cache);
+void *kmem_cache_alloc(kmem_cache_t *cache);
+INT32 kmem_cache_free(kmem_cache_t *cache, void *object);
 void *kmalloc(UINT64 size);
 INT32 kfree(void *va);
 
