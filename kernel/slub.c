@@ -1,4 +1,7 @@
 #include "slub.h"
+
+#include <stdlib.h>
+
 #include "buddy_system.h"
 #include "vmm.h"
 
@@ -63,7 +66,7 @@ static inline void new_slub(kmem_cache_t *cache) {
     slub->using_count = 0;
     slub->free_count = cache->object_per_slub;
     slub->free_list = page_to_va(slub);
-    slub->page_va = slub->free_list;
+    //slub->page_va = slub->free_list;
     slub->slub_cache = cache;
     free_list_init(slub->free_list, cache->object_size, cache->object_per_slub - 1);
     list_add_head(&cache->slub_head, &slub->list);
@@ -112,8 +115,8 @@ static inline INT32 free_cache_object(kmem_cache_t *cache, void *object) {
     list_head_t *pos = cache->slub_head.next;
     while (pos != &cache->slub_head) {
         page_t *slub = CONTAINER_OF(pos,page_t,list);
-        void *page_va_end = slub->page_va + (PAGE_4K_SIZE << cache->order_per_slub);
-        if (object >= slub->page_va && object < page_va_end) {
+        page_t *object_slub = compound_head(va_to_page(object));
+        if (object_slub == slub){
             *(UINT64 *)object = (UINT64) slub->free_list;
             slub->free_list = object;
             slub->free_count++;
@@ -192,8 +195,7 @@ void *kmalloc(UINT64 size) {
 INT32 kfree(void *va) {
     if (va == NULL) return -1;
 
-    page_t *slub = va_to_page(va);
-    slub = compound_head(slub);
+    page_t *slub = compound_head(va_to_page(va));
     kmem_cache_free(slub->slub_cache,va);
 
     return 0;
@@ -230,6 +232,11 @@ INIT_TEXT void init_slub(void) {
         kmalloc_cache[i] = kmem_cache_create(kmalloc_name[i], object_size);
         object_size <<= 1;
     }
+
+    UINT8 x = sizeof(page_t);
+    void *i=kmalloc(4096);
+    void *i1=kmalloc(4096);
+    kfree(i1);
 
 
 }
