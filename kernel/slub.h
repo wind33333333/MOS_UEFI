@@ -10,9 +10,9 @@ typedef struct kmem_cache_t {
     UINT32 object_size;           // 对象大小
     UINT32 order_per_slub;        // 每个slub页数量
     UINT32 object_per_slub;       // 每个slub对象数量
-    UINT32 slub_count;            // slub数量
-    UINT64 total_using;           // 总已使用对象数量
-    UINT64 total_free;            // 总空闲对象数量
+    UINT32 slub_count;            // 当前cache slub总数量
+    UINT64 total_using;           // 当前cache已使用对象数量
+    UINT64 total_free;            // 当前cache空闲对象数量
     list_head_t slub_head;        // slub链表头
 }kmem_cache_t;
 
