@@ -5,16 +5,6 @@
 #define MAX_OBJECT_SIZE (1*1024*1024)
 #define KMALLOC_CACHE_SIZE 18
 
-/*
-typedef struct kmem_cache_node_t {
-    UINT64 using_count;        // 当前slab节点已用对象数量
-    UINT64 free_count;         // 当前slab节点空闲对象数量
-    void *page_va;             // 伙伴系统分配的页面块起始虚拟地址
-    void *free_list;           // 下一个空闲对象指针
-    list_head_t slub_node;     // slub链表
-}kmem_cache_node_t;
-*/
-
 typedef struct kmem_cache_t {
     char* name;                   // 缓存池名称
     UINT32 object_size;           // 对象大小
