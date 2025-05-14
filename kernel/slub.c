@@ -231,8 +231,5 @@ INIT_TEXT void init_slub(void) {
         object_size <<= 1;
     }
 
-    UINT64 *ptr = (UINT64 *)kmalloc(1048576);
-    UINT64 *ptr1 = (UINT64 *)kmalloc(1048576);
-    kfree(ptr1);
 
 }
