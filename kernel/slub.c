@@ -66,7 +66,6 @@ static inline void new_slub(kmem_cache_t *cache) {
     slub->using_count = 0;
     slub->free_count = cache->object_per_slub;
     slub->free_list = page_to_va(slub);
-    //slub->page_va = slub->free_list;
     slub->slub_cache = cache;
     free_list_init(slub->free_list, cache->object_size, cache->object_per_slub - 1);
     list_add_head(&cache->slub_head, &slub->list);
