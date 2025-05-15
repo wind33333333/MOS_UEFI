@@ -232,10 +232,5 @@ INIT_TEXT void init_slub(void) {
         object_size <<= 1;
     }
 
-    UINT8 x = sizeof(page_t);
-    void *i=kmalloc(4096);
-    void *i1=kmalloc(4096);
-    kfree(i1);
-
 
 }
