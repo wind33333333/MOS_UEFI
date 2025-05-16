@@ -8,8 +8,15 @@
 
 #define VMEMMAP_START 0xFFFFFC0000000000UL
 
+typedef enum {
+    pg_locked = 1UL <<0,          /* 位 0: 页面锁定 */
+    pg_slab   = 1UL << 9,         /* 位 9: SLUB/SLAB 页面，kmalloc 使用 */
+    pg_head   = 1UL << 16,        /* 位 16: 复合页面头部 */
+    pg_buddy  = 1UL << 27,        /* 位 27: 伙伴系统空闲页面 */
+}pg_flags;
+
 typedef struct{
-    UINT32       flags;                // 类型
+    pg_flags     flags;                // 类型
     UINT32       order;                // 阶数
     UINT32       refcount;             // 引用此处
     UINT32       using_count;          // 当前slab节点已用对象数量

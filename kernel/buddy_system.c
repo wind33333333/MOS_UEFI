@@ -1,5 +1,7 @@
 #include "buddy_system.h"
 
+#include <iso646.h>
+
 #include "kpage_table.h"
 #include "memblock.h"
 
@@ -57,12 +59,14 @@ INIT_TEXT void init_buddy_system(void) {
             page_t *page = &buddy_system.page_table[page_index];
             list_add_head(&buddy_system.free_area[order].list, &page->list);
             page->order = order;
+            page->flags = pg_buddy;
             UINT64 block_size = PAGE_4K_SIZE << order;
             pa += block_size;
             size -= block_size;
             buddy_system.free_area[order].count++;
         }
     }
+
 }
 
 //伙伴系统物理页分配器
@@ -91,7 +95,8 @@ page_t *alloc_pages(UINT32 order) {
         page->order = current_order;
     }
 
-    //如果是复合也则标记填充符合页page
+    //如果是复合也则标记头并填充符合页page
+    page->flags = order ? pg_head : 0;
     for (UINT32 i = 1; i < (1 << current_order); i++) {
         page[i].compound_head = (UINT64)page | 1;
     }
@@ -106,8 +111,8 @@ void free_pages(page_t *page) {
 
     while (page->order < MAX_ORDER) {         //当前阶链表有其他page尝试合并伙伴
         //计算伙伴page
-        page_t* buddy_page = buddy_system.page_table+(page-buddy_system.page_table^(1<<page->order));
-        if (list_find(&buddy_system.free_area[page->order].list,&buddy_page->list) == FALSE) break;
+        page_t* buddy_page = buddy_system.page_table + (page - buddy_system.page_table ^ (1UL<<page->order));
+        if (buddy_page->flags != pg_buddy || buddy_page->order != page->order) break;
         if (page > buddy_page) page = buddy_page;
         list_del(&buddy_page->list);
         buddy_system.free_area[page->order].count--;
