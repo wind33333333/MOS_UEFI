@@ -5,6 +5,17 @@
 
 buddy_system_t buddy_system;
 
+INIT_TEXT static inline UINT32 get_trailing_zeros(UINT64 page_index) {
+    if (page_index == 0) return 64;
+    return __builtin_ctzll(page_index);
+}
+
+INIT_TEXT static inline UINT32 get_max_order_for_size(UINT64 num_pages) {
+    UINT32 k = 0;
+    while ((1ULL << k) <= num_pages && k <= MAX_ORDER) k++;
+    return k - 1;
+}
+
 //初始化伙伴系统
 INIT_TEXT void init_buddy_system(void) {
     //初始化page_table指针
@@ -37,23 +48,19 @@ INIT_TEXT void init_buddy_system(void) {
     for (UINT32 i = 0; i < memblock.memory.count; i++) {
         UINT64 pa = memblock.memory.region[i].base;
         UINT64 size = memblock.memory.region[i].size;
-        UINT64 order = MAX_ORDER;
-        while (size) {
-            //如果地址对齐order地址且长度大于等于order长度等于一个有效块
-            if ((pa & (PAGE_4K_SIZE << order) - 1) == 0 && size >= PAGE_4K_SIZE << order) {
-                //addr除4096等于page索引，把page索引转成链表地址
-                page_t *page = &buddy_system.page_table[pa>>PAGE_4K_SHIFT];
-                //添加一个链表节点
-                list_add_head(&buddy_system.free_area[order].list,&page->list);
-                //设置page的阶数
-                page->order = order;
-                pa += PAGE_4K_SIZE << order;
-                size -= PAGE_4K_SIZE << order;
-                buddy_system.free_area[order].count++;
-                order = MAX_ORDER;
-                continue;
-            }
-            order--;
+        while (size >= PAGE_4K_SIZE) {
+            UINT64 page_index = pa >> PAGE_4K_SHIFT;
+            UINT64 num_pages = size >> PAGE_4K_SHIFT;
+            UINT32 k_alignment = get_trailing_zeros(page_index);
+            UINT32 k_size = get_max_order_for_size(num_pages);
+            UINT32 order = (k_alignment < k_size) ? k_alignment : k_size;
+            page_t *page = &buddy_system.page_table[page_index];
+            list_add_head(&buddy_system.free_area[order].list, &page->list);
+            page->order = order;
+            UINT64 block_size = PAGE_4K_SIZE << order;
+            pa += block_size;
+            size -= block_size;
+            buddy_system.free_area[order].count++;
         }
     }
 }
