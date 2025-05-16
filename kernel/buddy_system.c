@@ -118,6 +118,7 @@ void free_pages(page_t *page) {
         buddy_system.free_area[page->order].count--;
         page->order++;
     }
+    page->flags = pg_buddy;
     list_add_head(&buddy_system.free_area[page->order].list,&page->list);
     buddy_system.free_area[page->order].count++;
 }
