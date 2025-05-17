@@ -22,6 +22,7 @@ INIT_TEXT void init_kernel(void) {
     init_rbtree_empty_augment_callbacks();     //红黑树空回掉函数
     init_vmalloc();                            //初始化vmalloc
 
+
     while (TRUE);
     //////////////////
     // init_acpi();                               //初始化acpi
