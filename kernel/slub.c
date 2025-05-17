@@ -233,5 +233,4 @@ INIT_TEXT void init_slub(void) {
         object_size <<= 1;
     }
 
-
 }
