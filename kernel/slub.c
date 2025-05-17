@@ -61,6 +61,7 @@ void create_cache(char *cache_name, kmem_cache_t *cache, UINT32 object_size) {
 //cache中添加一个slub
 static inline void new_slub(kmem_cache_t *cache) {
     page_t *slub = alloc_pages(cache->order_per_slub);
+    bts(&slub->flags,PG_SLUB);
     slub->list.prev = NULL;
     slub->list.next = NULL;
     slub->using_count = 0;
