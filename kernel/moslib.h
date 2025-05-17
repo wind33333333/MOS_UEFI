@@ -84,12 +84,47 @@ static inline void lfence(void) {
     __asm__ __volatile__("lfence \n\t" ::: "memory");
 }
 
-// 自旋锁的实现
+//设置bit位
+static inline bts(UINT64 *addr,UINT64 nr) {
+    __asm__ __volatile__(
+        "lock \n\t"
+        "btsq   %1,%0 \n\t"
+        :"+m"(*addr)
+        :"ir"(nr)
+        :"memory"
+        );
+}
+
+//清除bit位
+static inline btr(UINT64 *addr,UINT64 nr) {
+    __asm__ __volatile__(
+        "lock \n\t"
+        "btrq   %1,%0 \n\t"
+        :"+m"(*addr)
+        :"ir"(nr)
+        :"memory"
+        );
+}
+
+//位测试
+static inline BOOLEAN bt(UINT64 var,UINT64 nr) {
+    BOOLEAN ret;
+    __asm__ __volatile__(
+        "btq   %2,%1 \n\t"
+        "setc  %0 \n\t"
+        :"=r"(ret)
+        :"m"(var),"ir"(nr)
+        :"memory"
+        );
+    return ret;
+}
+
+// 自旋锁
 static inline void spin_lock(volatile UINT8 *lock_var) {
     __asm__ __volatile__ (
             "mov        $1,%%bl         \n\t"  // 将值1加载到BL寄存器中
             "1:                         \n\t"
-            "xor    %%al,%%al           \n\t"  // 清空AL寄存器（设置为0）
+            "xor        %%al,%%al       \n\t"  // 清空AL寄存器（设置为0）
             "lock                       \n\t"  // 确保后续的操作是原子的
             "cmpxchg    %%bl,%0         \n\t"  // 比较 lock_var 和 AL，若相等，则将 BL 写入 lock_var
             "jnz        1b              \n\t"  // 如果未能成功锁定，则跳转到标签1重试
@@ -98,7 +133,6 @@ static inline void spin_lock(volatile UINT8 *lock_var) {
             :"m"(*lock_var)
             :"%rax","%rbx","memory"
             );
-    return;
 }
 
 static inline void invlpg(void *vir_addr) {
@@ -122,7 +156,6 @@ static inline void lgdt(void *gdt_ptr, UINT16 code64_sel, UINT16 data64_sel) {
             : "r"(gdt_ptr), "r"(code64_sel), "r"(data64_sel)
             : "memory", "%rax"
             );
-    return;
 }
 
 static inline void lidt(void *idt_ptr) {
@@ -132,7 +165,6 @@ static inline void lidt(void *idt_ptr) {
             : "r"(idt_ptr)    // 输入：IDT 描述符的地址
             : "memory"        // 防止编译器重排序内存操作
             );
-    return;
 }
 
 static inline void ltr(UINT16 tss_sel) {
@@ -153,7 +185,6 @@ static inline void rdtscp(UINT32 *apic_id,UINT64 *timestamp) {
             :
             : "rdx","memory"
             );
-    return;
 }
 
 static inline UINT64 get_cr0(void) {
@@ -174,7 +205,6 @@ static inline void set_cr0(UINT64 value) {
             :"r"(value)
             : "memory"
             );
-    return;
 }
 
 static inline UINT64 get_cr3(void) {
@@ -195,7 +225,6 @@ static inline void set_cr3(UINT64 value) {
             :"r"(value)
             : "memory"
             );
-    return;
 }
 
 static inline UINT64 get_cr4(void) {
@@ -216,7 +245,6 @@ static inline void set_cr4(UINT64 value) {
             :"r"(value)
             : "memory"
             );
-    return;
 }
 
 static inline UINT64 xgetbv(UINT32 register_number) {
@@ -239,7 +267,6 @@ static inline void xsetbv(UINT32 register_number,UINT64 value) {
             : "a"((UINT32)(value & 0xFFFFFFFFUL)),"d"((UINT32)(value >> 32)),"c"(register_number)
             : "memory"
             );
-    return;
 }
 
 static inline UINT64 rdmsr(UINT32 register_number) {
@@ -262,7 +289,6 @@ static inline void wrmsr(UINT32 register_number,UINT64 value) {
             : "a"((UINT32)(value & 0xFFFFFFFFUL)),"d"((UINT32)(value >> 32)),"c"(register_number)
             : "memory"
             );
-    return;
 }
 
 static inline void cpuid(UINT32 in_eax, UINT32 in_ecx,UINT32 *out_eax, UINT32 *out_ebx,UINT32 *out_ecx, UINT32 *out_edx) {
@@ -272,7 +298,6 @@ static inline void cpuid(UINT32 in_eax, UINT32 in_ecx,UINT32 *out_eax, UINT32 *o
             : "a"(in_eax),"c"(in_ecx)
             : "memory"
             );
-    return;
 }
 
 static inline void *memcpy(void *From, void *To, long Num) {

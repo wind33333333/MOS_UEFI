@@ -8,15 +8,13 @@
 
 #define VMEMMAP_START 0xFFFFFC0000000000UL
 
-typedef enum {
-    pg_locked = 1UL <<0,          /* 位 0: 页面锁定 */
-    pg_slab   = 1UL << 9,         /* 位 9: SLUB/SLAB 页面，kmalloc 使用 */
-    pg_head   = 1UL << 16,        /* 位 16: 复合页面头部 */
-    pg_buddy  = 1UL << 27,        /* 位 27: 伙伴系统空闲页面 */
-}pg_flags;
+#define     PG_LOCKED 0      /* 页面锁定 */
+#define     PG_SLUB   1      /* SLUB/SLAB 页面，kmalloc 使用 */
+#define     PG_HEAD   2      /* 复合页面头部 */
+#define     PG_BUDDY  3      /* 伙伴系统空闲页面 */
 
 typedef struct{
-    pg_flags     flags;                // 类型
+    UINT64       flags;                // 类型
     UINT32       order;                // 阶数
     UINT32       refcount;             // 引用此处
     UINT32       using_count;          // 当前slab节点已用对象数量
@@ -69,6 +67,7 @@ static inline struct page_t *compound_head(page_t *page){
         return (page_t*)(head - 1);
     return (page_t*)page;
 }
+
 
 void init_buddy_system(void);
 page_t* alloc_pages(UINT32 order);

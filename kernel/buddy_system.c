@@ -96,7 +96,8 @@ page_t *alloc_pages(UINT32 order) {
     }
 
     //如果是复合也则标记头并填充符合页page
-    page->flags = order ? pg_head : 0;
+    page->flags = 0;
+    if (order) bts(&page->flags,PG_HEAD);
     for (UINT32 i = 1; i < (1 << current_order); i++) {
         page[i].compound_head = (UINT64)page | 1;
     }
@@ -112,13 +113,14 @@ void free_pages(page_t *page) {
     while (page->order < MAX_ORDER) {         //当前阶链表有其他page尝试合并伙伴
         //计算伙伴page
         page_t* buddy_page = buddy_system.page_table + (page - buddy_system.page_table ^ (1UL<<page->order));
-        if (buddy_page->flags != pg_buddy || buddy_page->order != page->order) break;
+        if (!bt(page->flags,PG_BUDDY) || buddy_page->order != page->order) break;
         if (page > buddy_page) page = buddy_page;
         list_del(&buddy_page->list);
         buddy_system.free_area[page->order].count--;
         page->order++;
     }
-    page->flags = pg_buddy;
+    page->flags = 0;
+    bts(&page->flags,PG_BUDDY);
     list_add_head(&buddy_system.free_area[page->order].list,&page->list);
     buddy_system.free_area[page->order].count++;
 }
