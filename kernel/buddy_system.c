@@ -113,7 +113,7 @@ void free_pages(page_t *page) {
     while (page->order < MAX_ORDER) {         //当前阶链表有其他page尝试合并伙伴
         //计算伙伴page
         page_t* buddy_page = buddy_system.page_table + (page - buddy_system.page_table ^ (1UL<<page->order));
-        if (!bt(page->flags,PG_BUDDY) || buddy_page->order != page->order) break;
+        if (!bt(buddy_page->flags,PG_BUDDY) || buddy_page->order != page->order) break;
         if (page > buddy_page) page = buddy_page;
         list_del(&buddy_page->list);
         buddy_system.free_area[page->order].count--;
