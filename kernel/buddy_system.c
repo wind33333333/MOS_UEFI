@@ -9,7 +9,7 @@ buddy_system_t buddy_system;
 
 INIT_TEXT static inline UINT32 get_trailing_zeros(UINT64 page_index) {
     if (page_index == 0) return 64;
-    return __builtin_ctzll(page_index);
+    return bsf(page_index);
 }
 
 INIT_TEXT static inline UINT32 get_max_order_for_size(UINT64 num_pages) {
@@ -59,7 +59,8 @@ INIT_TEXT void init_buddy_system(void) {
             page_t *page = &buddy_system.page_table[page_index];
             list_add_head(&buddy_system.free_area[order].list, &page->list);
             page->order = order;
-            page->flags = pg_buddy;
+            page->flags = 0;
+            bts(&page->flags,PG_BUDDY);
             UINT64 block_size = PAGE_4K_SIZE << order;
             pa += block_size;
             size -= block_size;

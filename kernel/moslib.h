@@ -119,6 +119,30 @@ static inline BOOLEAN bt(UINT64 var,UINT64 nr) {
     return ret;
 }
 
+//位扫描最低位1
+static inline UINT32 bsf(UINT64 var) {
+    UINT32 ret;
+    __asm__ __volatile__(
+        "bsf    %1,%0   \n\t"
+        :"=r"(ret)
+        :"m"(var)
+        :"memory"
+        );
+    return ret;
+}
+
+//位扫描最高位1
+static inline UINT32 bsr(UINT64 var) {
+    UINT32 ret;
+    __asm__ __volatile__(
+        "bsr    %1,%0   \n\t"
+        :"=r"(ret)
+        :"m"(var)
+        :"memory"
+        );
+    return ret;
+}
+
 // 自旋锁
 static inline void spin_lock(volatile UINT8 *lock_var) {
     __asm__ __volatile__ (
