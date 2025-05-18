@@ -173,6 +173,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     BootInfo->MemMap=MemMap;
     BootInfo->MemMapSize=MemMapSize;
     BootInfo->MemDescriptorSize=DescriptorSize;
+    BootInfo->DesVersion=DesVersion;
     BootInfo->gRTS=SystemTable->RuntimeServices;
     Status=gBS->ExitBootServices(ImageHandle,MapKey);
     if(EFI_ERROR(Status))
