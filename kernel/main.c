@@ -20,6 +20,7 @@ INIT_TEXT void init_kernel(void) {
     init_slub();                               //初始化slub内存分配器
     init_rbtree_empty_augment_callbacks();     //初始化红黑树空回调函数
     init_vmalloc();                            //初始化vmalloc
+    init_efi_runtime_service                   //初始化efi运行时服务
     init_output();                             //初始化输出控制台
 
     while (TRUE);
