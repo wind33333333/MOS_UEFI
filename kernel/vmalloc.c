@@ -340,7 +340,7 @@ void *iomap (UINT64 pa,UINT64 size,UINT64 attr) {
     //4k对齐
     size = PAGE_4K_ALIGN(size);
     //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area(size,VMALLOC_START,VMALLOC_END);
+    vmap_area_t *vmap_area = alloc_vmap_area(size,VMIOMAP_START,VMIOMAP_END);
     //分配物理页，映射物理页
     UINT64 va = vmap_area->va_start;
     for (UINT64 i=0;i<(size>>PAGE_4K_SHIFT);i++) {
