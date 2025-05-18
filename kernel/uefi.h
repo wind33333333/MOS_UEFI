@@ -656,6 +656,11 @@ typedef struct{
 
 } __attribute__((packed)) boot_info_t;
 
+typedef struct {
+  EFI_MEMORY_DESCRIPTOR mem_map[10];
+  UINT32 conut;
+}efi_runtime_mem_t;
+
 extern  boot_info_t* boot_info;
 //endregion
 

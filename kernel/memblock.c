@@ -4,6 +4,8 @@
 
 INIT_DATA memblock_t memblock;
 
+INIT_DATA efi_runtime_mem_t efi_runtime_mem;
+
 INIT_TEXT void init_memblock(void) {
     for (UINT32 i = 0; i < (boot_info->mem_map_size / boot_info->mem_descriptor_size); i++) {
         //如果内存类型是1M内或是lode_data或是acpi则先放入保留区
@@ -16,11 +18,10 @@ INIT_TEXT void init_memblock(void) {
                    || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA || boot_info->mem_map[i].Type == EFI_CONVENTIONAL_MEMORY) {
             memblock_add(&memblock.memory, boot_info->mem_map[i].PhysicalStart,
                          boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
-        } else if (boot_info->mem_map[i].Type == EFI_RUNTIME_SERVICES_CODE || boot_info->mem_map[i].Type == EFI_RUNTIME_SERVICES_DATA) {
-            UINT64 pa = boot_info->mem_map[i].PhysicalStart;
-            UINT64 size = boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT;
-            UINT64 end = pa + size;
-            end = pa + size;
+            //efi运行时服务保存后续需要使用
+        }else if (boot_info->mem_map[i].Type == EFI_RUNTIME_SERVICES_CODE || boot_info->mem_map[i].Type == EFI_RUNTIME_SERVICES_DATA) {
+            efi_runtime_mem.mem_map[efi_runtime_mem.conut] = boot_info->mem_map[i];
+            efi_runtime_mem.conut++;
         }
     }
 }
