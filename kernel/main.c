@@ -11,6 +11,7 @@
 #include "vmm.h"
 #include "vmalloc.h"
 #include "rbtree.h"
+#include "uefi.h"
 
 INIT_TEXT void init_kernel(void) {
     mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
@@ -20,7 +21,7 @@ INIT_TEXT void init_kernel(void) {
     init_slub();                               //初始化slub内存分配器
     init_rbtree_empty_augment_callbacks();     //初始化红黑树空回调函数
     init_vmalloc();                            //初始化vmalloc
-    init_efi_runtime_service                   //初始化efi运行时服务
+    init_efi_runtime_service();                //初始化efi运行时服务
     init_output();                             //初始化输出控制台
 
     while (TRUE);

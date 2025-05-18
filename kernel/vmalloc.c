@@ -391,8 +391,6 @@ void INIT_TEXT init_vmalloc(void) {
     insert_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
 
 
-
-
 };
 
 
