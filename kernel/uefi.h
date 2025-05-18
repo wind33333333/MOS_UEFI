@@ -646,7 +646,7 @@ typedef struct{
     EFI_MEMORY_DESCRIPTOR* mem_map;
     UINT64 mem_descriptor_size;
     UINT64 mem_map_size;
-    UINT32 des_version;
+    UINT32 mem_descriptor_version;
 
     /*RSDP*/
     rsdp_t* rsdp;
