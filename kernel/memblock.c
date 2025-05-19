@@ -16,10 +16,6 @@ INIT_TEXT void init_memblock(void) {
                    || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA || boot_info->mem_map[i].Type == EFI_CONVENTIONAL_MEMORY) {
             memblock_add(&memblock.memory, boot_info->mem_map[i].PhysicalStart,
                          boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
-            //efi运行时服务保存后续需要使用
-        }else if (boot_info->mem_map[i].Type == EFI_RUNTIME_SERVICES_CODE || boot_info->mem_map[i].Type == EFI_RUNTIME_SERVICES_DATA) {
-            efi_runtime_mem.mem_map[efi_runtime_mem.conut] = boot_info->mem_map[i];
-            efi_runtime_mem.conut++;
         }
     }
 }
