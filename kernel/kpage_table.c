@@ -1,5 +1,6 @@
 #include "kpage_table.h"
 #include "memblock.h"
+#include "uefi.h"
 #include "vmm.h"
 
 UINT64 *kpml4t_ptr; //正式内核页表
@@ -19,6 +20,10 @@ INIT_TEXT void init_kpage_table(void) {
     memblock_mmap_range(kpml4t_ptr,_start_text-KERNEL_OFFSET, _start_text, _start_data - _start_text, PAGE_ROOT_RX_4K,PAGE_4K_SIZE);
     //.data-.stack可读写
     memblock_mmap_range(kpml4t_ptr,_start_data-KERNEL_OFFSET, _start_data, _end_stack - _start_data, PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
+
+    boot_info = pa_to_va(boot_info);
+    boot_info->mem_map = pa_to_va(boot_info->mem_map);
+    boot_info->gRTS = pa_to_va(boot_info->gRTS);
 
     //设置正式内核页表
     set_cr3((UINT64)kpml4t_ptr);
