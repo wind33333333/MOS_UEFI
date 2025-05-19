@@ -662,7 +662,6 @@ typedef struct {
 }efi_runtime_mem_t;
 
 extern  boot_info_t* boot_info;
-extern  efi_runtime_mem_t efi_runtime_mem;
 //endregion
 
 void init_efi_runtime_service(void);
