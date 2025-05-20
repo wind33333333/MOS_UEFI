@@ -26,7 +26,7 @@ void init_efi_runtime_service(void) {
             efi_runtime_index++;
         } else if (boot_info->mem_map[mem_map_index].Type == EFI_RUNTIME_SERVICES_CODE) {
             efi_runtime_mem[efi_runtime_index] = boot_info->mem_map[mem_map_index];
-            efi_runtime_mem[efi_runtime_index].VirtualStart = (UINT64)iomap(efi_runtime_mem[efi_runtime_index].PhysicalStart,efi_runtime_mem[efi_runtime_index].NumberOfPages << PAGE_4K_SHIFT,PAGE_ROOT_RWX_4K);
+            efi_runtime_mem[efi_runtime_index].VirtualStart = (UINT64)iomap(efi_runtime_mem[efi_runtime_index].PhysicalStart,efi_runtime_mem[efi_runtime_index].NumberOfPages << PAGE_4K_SHIFT,PAGE_4K_SIZE,PAGE_ROOT_RWX_4K);
             efi_runtime_index++;
         }
         mem_map_index++;

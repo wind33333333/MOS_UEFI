@@ -44,7 +44,7 @@ typedef struct {
 void init_vmalloc(void);
 void *vmalloc(UINT64 size);
 void vfree(void *ptr);
-void *iomap (UINT64 pa,UINT64 size,UINT64 attr);
+void *iomap (UINT64 pa,UINT64 size,UINT64 align,UINT64 attr);
 void iounmap (void *ptr);
 
 
