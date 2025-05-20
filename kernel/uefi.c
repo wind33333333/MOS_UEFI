@@ -36,6 +36,7 @@ void init_efi_runtime_service(void) {
     efi_max_length = PAGE_1G_ALIGN(efi_max_length);
     mmap_range(kpml4t_ptr,0,(void*)0,efi_max_length,PAGE_ROOT_RWX_2M1G,PAGE_1G_SIZE);
 
+    boot_info->gRTS = pa_to_va(boot_info->gRTS);
     boot_info->gRTS->SetVirtualAddressMap(efi_runtime_count * boot_info->mem_descriptor_size,boot_info->mem_descriptor_size,boot_info->mem_descriptor_version,efi_runtime_mem);
 
     unmmap_range(kpml4t_ptr,(void*)0,efi_max_length,PAGE_1G_SIZE);

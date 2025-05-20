@@ -5,6 +5,8 @@
 INIT_DATA memblock_t memblock;
 
 INIT_TEXT void init_memblock(void) {
+    boot_info = pa_to_va(boot_info);
+    boot_info->mem_map = pa_to_va(boot_info->mem_map);
     for (UINT32 i = 0; i < (boot_info->mem_map_size / boot_info->mem_descriptor_size); i++) {
         //如果内存类型是1M内或是lode_data或是acpi则先放入保留区
         if ((boot_info->mem_map[i].PhysicalStart < 0x100000 && boot_info->mem_map[i].NumberOfPages != 0) || boot_info->
