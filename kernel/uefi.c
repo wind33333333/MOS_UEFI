@@ -1,6 +1,6 @@
 #include "uefi.h"
 #include "vmm.h"
-#include "kpage_table.h"
+#include "kernel_page_table.h"
 #include "linkage.h"
 #include "slub.h"
 #include "vmalloc.h"

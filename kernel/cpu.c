@@ -3,7 +3,7 @@
 #include "apic.h"
 #include "gdt.h"
 #include "tss.h"
-#include "kpage_table.h"
+#include "kernel_page_table.h"
 #include "ap.h"
 #include "acpi.h"
 #include "syscall.h"

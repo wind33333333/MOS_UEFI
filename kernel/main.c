@@ -6,7 +6,7 @@
 #include "slub.h"
 #include "cpu.h"
 #include "hpet.h"
-#include "kpage_table.h"
+#include "kernel_page_table.h"
 #include "memblock.h"
 #include "vmm.h"
 #include "vmalloc.h"

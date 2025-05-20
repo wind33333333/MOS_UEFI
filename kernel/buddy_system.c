@@ -2,7 +2,7 @@
 
 #include <iso646.h>
 
-#include "kpage_table.h"
+#include "kernel_page_table.h"
 #include "memblock.h"
 
 buddy_system_t buddy_system;
