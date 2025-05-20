@@ -184,10 +184,13 @@ static inline UINT64 get_va_end(rb_node_t *node) {
 static inline vmap_area_t *find_vmap_lowest_match(UINT64 va_start,UINT64 size,UINT64 align) {
     rb_node_t *node = free_vmap_area_root.rb_node;
     vmap_area_t *vmap_area;
-    UINT64 align_va_start;
+    UINT64 align_va_start,align_va_end;
+    UINT64 subtree_max_size;
     while (node) {
         align_va_start = align_up(get_va_start(node->left),align);
-        if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) >= va_start && align_va_start < get_va_end(node->left)) {
+        align_va_end = get_va_end(node->left);
+        subtree_max_size = get_subtree_max_size(node->left);
+        if (subtree_max_size >= size && align_va_start >= va_start && align_va_start+size <= align_va_end) {
         //if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) >= va_start) {
             node=node->left;
         }else {
