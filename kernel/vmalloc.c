@@ -191,7 +191,6 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 va_start,UINT64 size,UI
         align_va_end = get_va_end(node->left);
         subtree_max_size = get_subtree_max_size(node->left);
         if (subtree_max_size >= size && align_va_start >= va_start && align_va_start+size <= align_va_end) {
-        //if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) >= va_start) {
             node=node->left;
         }else {
             vmap_area = CONTAINER_OF(node,vmap_area_t,rb_node);
