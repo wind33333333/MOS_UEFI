@@ -174,16 +174,25 @@ static inline UINT64 get_va_start(rb_node_t *node) {
     return (CONTAINER_OF(node,vmap_area_t,rb_node))->va_start;
 }
 
+//获取节点va_end
+static inline UINT64 get_va_end(rb_node_t *node) {
+    if (!node)return 0;
+    return (CONTAINER_OF(node,vmap_area_t,rb_node))->va_end;
+}
+
 /*低地址优先搜索最佳适应空闲vmap_area*/
 static inline vmap_area_t *find_vmap_lowest_match(UINT64 va_start,UINT64 size,UINT64 align) {
     rb_node_t *node = free_vmap_area_root.rb_node;
     vmap_area_t *vmap_area;
+    UINT64 align_va_start;
     while (node) {
-        if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) >= va_start) {
+        align_va_start = align_up(get_va_start(node->left),align);
+        if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) >= va_start && align_va_start < get_va_end(node->left)) {
+        //if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) >= va_start) {
             node=node->left;
         }else {
             vmap_area = CONTAINER_OF(node,vmap_area_t,rb_node);
-            UINT64 align_va_start = align_up(vmap_area->va_start,align);
+            align_va_start = align_up(vmap_area->va_start,align);
             if (align_va_start >= va_start && align_va_start+size <= vmap_area->va_end) return vmap_area;
             node=node->right;
         }
@@ -394,7 +403,7 @@ void INIT_TEXT init_vmalloc(void) {
 
     va = iomap(0x1000,4096,0x200000,PAGE_ROOT_RW_4K);
     va = iomap(0x1000,0x200000,0x200000,PAGE_ROOT_RW_4K);
-    va = iomap(0x1000,0x40000000,0x40000000,PAGE_ROOT_RW_4K);
+    va = iomap(0x1000,4096,0x40000000,PAGE_ROOT_RW_4K);
 
 
 };
