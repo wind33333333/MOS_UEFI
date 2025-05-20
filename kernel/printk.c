@@ -3,6 +3,7 @@
 #include "memblock.h"
 #include "vmm.h"
 #include "uefi.h"
+#include "vmalloc.h"
 
 extern UINT64 *kpml4t_ptr;
 
@@ -343,9 +344,7 @@ INIT_TEXT void init_output(void) {
     Pos.XCharSize = 8;
     Pos.YCharSize = 16;
 
-    Pos.FB_addr = pa_to_va((UINT64)boot_info->frame_buffer_base);
-    memblock_mmap_range(kpml4t_ptr, boot_info->frame_buffer_base,Pos.FB_addr,
-                   PAGE_4K_ALIGN(boot_info->frame_buffer_size),PAGE_ROOT_RW_WC_4K,PAGE_4K_SIZE);
+    Pos.FB_addr = iomap(boot_info->frame_buffer_base,PAGE_4K_ALIGN(boot_info->frame_buffer_size),PAGE_ROOT_RW_WC_4K);
     Pos.FB_length = boot_info->frame_buffer_size;
     Pos.lock = 0;
 
