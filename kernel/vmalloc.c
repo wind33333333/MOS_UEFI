@@ -224,35 +224,6 @@ static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area,UINT64 size,UI
         list_add_head(&vmap_area->list,&new_vmap_area->list);
     }
     return new_vmap_area;
-
-    /*vmap_area_t *new_vmap_area;
-    if (size == (vmap_area->va_end-vmap_area->va_start)) {
-        //情况1:占用整个
-        erase_vmap_area(&free_vmap_area_root,vmap_area,&vmap_area_augment_callbacks);
-        new_vmap_area = vmap_area;
-    }else if (vmap_area->va_start >= va_start) {
-        //情况2：从头切割
-        new_vmap_area = create_vmap_area(vmap_area->va_start,vmap_area->va_start+size,vmap_area->flags);
-        vmap_area->va_start += size;
-        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
-        list_add_tail(&vmap_area->list,&new_vmap_area->list);
-    }else if (vmap_area->va_end == (va_start+size)) {
-        //情况3：从尾切割
-        new_vmap_area = create_vmap_area(va_start,va_start+size,vmap_area->flags);
-        vmap_area->va_end -= size;
-        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
-        list_add_head(&vmap_area->list,&new_vmap_area->list);
-    }else{
-        //情况4：从中间切割
-        new_vmap_area = create_vmap_area(va_start+size,vmap_area->va_end,vmap_area->flags);
-        vmap_area->va_end = va_start;
-        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
-        insert_vmap_area(&free_vmap_area_root,new_vmap_area,&vmap_area_augment_callbacks);
-        list_add_head(&vmap_area->list,&new_vmap_area->list);
-        new_vmap_area = create_vmap_area(va_start,va_start+size,vmap_area->flags);
-        list_add_head(&vmap_area->list,&new_vmap_area->list);
-    }
-    return new_vmap_area;*/
 }
 
 /*
