@@ -184,50 +184,37 @@ static inline UINT64 get_va_end(rb_node_t *node) {
 }
 
 /*低地址优先搜索最佳适应空闲vmap_area*/
-static inline vmap_area_t *find_vmap_lowest_match(UINT64 va_start, UINT64 va_end, UINT64 size, UINT64 align) {
+static inline vmap_area_t *find_vmap_lowest_match(UINT64 small_addr, UINT64 max_addr, UINT64 size, UINT64 align) {
     rb_node_t *node = free_vmap_area_root.rb_node;
+    vmap_area_t *vmap_area, *best_vmap_area = NULL;
+    UINT64 align_va_end;
     while (node) {
-        vmap_area_t *vmap_area;
-        UINT64 align_va_end;
         if (node->left) {
             vmap_area = CONTAINER_OF(node->left, vmap_area_t, rb_node);
             align_va_end = align_up(vmap_area->va_start, align) + size;
-            if (vmap_area->subtree_max_size >= size &&\
-                align_va_end <= vmap_area->va_end &&\
-                vmap_area->va_start >= va_start &&\
-                vmap_area->va_end <= va_end) {
+            if (align_va_end <= vmap_area->va_end &&\
+                vmap_area->va_start >= small_addr &&\
+                vmap_area->va_end <= max_addr) {
+                //保存当前适配的vmap_area，继续往左找
+                best_vmap_area = vmap_area;
+            }
+            if (vmap_area->subtree_max_size >= size) {
                 node = node->left;
                 continue;
             }
         }
+        //如果best_vmap_area中保存了则返回
+        if (best_vmap_area) return best_vmap_area;
         vmap_area = CONTAINER_OF(node, vmap_area_t, rb_node);
+        //如果中间vmap_area的结束地址大于max_addr跟据红黑树规则左中右后面的必定都大于，表示红黑树中没有符合的vmap_area了提前退出
+        if (vmap_area->va_end > max_addr) return NULL;
         align_va_end = align_up(vmap_area->va_start, align) + size;
-        if (align_va_end <= vmap_area->va_end &&\
-            vmap_area->va_start >= va_start &&\
-            vmap_area->va_end <= va_end)
-            return vmap_area;
+        //如果中间节点符合则必定为最佳节点直接返回
+        if (align_va_end <= vmap_area->va_end)return vmap_area;
+        //往右搜索
         node = node->right;
     }
     return NULL;
-
-    /*rb_node_t *node = free_vmap_area_root.rb_node;
-    vmap_area_t *vmap_area;
-    UINT64 align_va_start,align_va_end;
-    UINT64 subtree_max_size;
-    while (node) {
-        align_va_start = align_up(get_va_start(node->left),align);
-        align_va_end = get_va_end(node->left);
-        subtree_max_size = get_subtree_max_size(node->left);
-        if (subtree_max_size >= size && align_va_start >= va_start && align_va_start+size <= align_va_end) {
-            node=node->left;
-        }else {
-            vmap_area = CONTAINER_OF(node,vmap_area_t,rb_node);
-            align_va_start = align_up(vmap_area->va_start,align);
-            if (align_va_start >= va_start && align_va_start+size <= vmap_area->va_end) return vmap_area;
-            node=node->right;
-        }
-    }
-    return NULL;*/
 }
 
 /*
@@ -429,11 +416,11 @@ void INIT_TEXT init_vmalloc(void) {
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
 
-    UINT64 va = iomap(0x1000, 4096, 4096,PAGE_ROOT_RW_4K);
+    vmap_area_t *m0 = alloc_vmap_area(VMALLOC_START,VMALLOC_END,0x1000,0x1000);
+    vmap_area_t *m1 = alloc_vmap_area(VMALLOC_START,VMALLOC_END,0x1000,0x200000);
+    vmap_area_t *m2 = alloc_vmap_area(VMALLOC_START,VMALLOC_END,0x1000,0x40000000);
+    vmap_area_t *m3 = alloc_vmap_area(VMALLOC_START,VMALLOC_END,0x1000,0x1000);
 
-    va = iomap(0x1000, 4096, 0x200000,PAGE_ROOT_RW_4K);
-    va = iomap(0x1000, 0x200000, 0x200000,PAGE_ROOT_RW_4K);
-    va = iomap(0x1000, 4096, 0x40000000,PAGE_ROOT_RW_4K);
 };
 
 
