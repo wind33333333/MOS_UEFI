@@ -180,8 +180,8 @@ static inline UINT64 get_va_start(rb_node_t *node) {
 /*低地址优先搜索最佳适应空闲vmap_area*/
 static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_addr, UINT64 size, UINT64 align) {
     rb_node_t *node = free_vmap_area_root.rb_node;
-    vmap_area_t *vmap_area,*best_vmap_area;
-    UINT64 align_va_end,best_va_start = 0xFFFFFFFFFFFFFFFFUL;
+    vmap_area_t *vmap_area, *best_vmap_area;
+    UINT64 align_va_end, best_va_start = 0xFFFFFFFFFFFFFFFFUL;
     while (node) {
         vmap_area = CONTAINER_OF(node, vmap_area_t, rb_node);
         align_va_end = align_up(vmap_area->va_start, align) + size;
@@ -193,15 +193,12 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_ad
                 best_vmap_area = vmap_area; //保存当前适配的vmap_area
             }
         }
-        if (node->left) {
-            vmap_area = CONTAINER_OF(node->left, vmap_area_t, rb_node);
-            if (vmap_area->subtree_max_size >= size && vmap_area->va_start >= min_addr)
-                node = node->left; //往左找
-        } else if (vmap_area->va_start > max_addr) {
-            break; // 右子树无需检查
-        } else {
-            node = node->right;//往右找
+        if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) >= min_addr) {
+            node = node->left; //往左找
+            continue;
         }
+        if (vmap_area->va_start > max_addr) break; // 右子树无需检查
+        node = node->right; //往右找
     }
     return best_vmap_area;
 
@@ -233,7 +230,6 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_ad
         node = node->right;
     }
     return NULL;*/
-
 }
 
 /*
@@ -435,10 +431,10 @@ void INIT_TEXT init_vmalloc(void) {
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
 
-    vmap_area_t *m0 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x1000);
-    vmap_area_t *m1 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x200000);
-    vmap_area_t *m2 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x40000000);
-    vmap_area_t *m3 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x1000);
+    vmap_area_t *m0 = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, 0x1000, 0x1000);
+    vmap_area_t *m1 = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, 0x1000, 0x200000);
+    vmap_area_t *m2 = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, 0x1000, 0x40000000);
+    vmap_area_t *m3 = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, 0x1000, 0x1000);
 };
 
 
