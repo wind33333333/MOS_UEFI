@@ -185,7 +185,7 @@ static inline UINT64 get_va_end(rb_node_t *node) {
 
 /*低地址优先搜索最佳适应空闲vmap_area*/
 static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_addr, UINT64 size, UINT64 align) {
-    /*rb_node_t *node = free_vmap_area_root.rb_node;
+    rb_node_t *node = free_vmap_area_root.rb_node;
     vmap_area_t *vmap_area, *best_vmap_area = NULL;
     UINT64 align_va_end;
     while (node) {
@@ -206,9 +206,9 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_ad
             node = node->right;//往右找
         }
     }
-    return best_vmap_area;*/
+    return best_vmap_area;
 
-    rb_node_t *node = free_vmap_area_root.rb_node;
+    /*rb_node_t *node = free_vmap_area_root.rb_node;
     vmap_area_t *vmap_area, *best_vmap_area = NULL;
     UINT64 align_va_end;
     while (node) {
@@ -235,7 +235,7 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_ad
             return vmap_area;
         node = node->right;
     }
-    return NULL;
+    return NULL;*/
 
 }
 
