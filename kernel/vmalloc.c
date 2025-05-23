@@ -207,7 +207,6 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_ad
         }
     }
     return best_vmap_area;
-
 }
 
 /*
