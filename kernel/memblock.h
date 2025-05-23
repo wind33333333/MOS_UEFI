@@ -19,15 +19,6 @@ typedef struct memblock_t {
     memblock_type_t reserved;       /* 保留内存区域 */
 }memblock_t;
 
-// 对齐函数，确保 addr 按 align 对齐（align 为 2 的幂）
-static inline UINT64 align_up(UINT64 addr, UINT64 align) {
-    return (addr + align - 1) & -align;
-}
-
-static inline UINT64 align_down(UINT64 addr, UINT64 align) {
-    return addr & -align;
-}
-
 extern memblock_t memblock;
 
 void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 size);

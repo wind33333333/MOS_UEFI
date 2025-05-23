@@ -76,6 +76,15 @@ typedef enum {
 #define PDE_SHIFT 21    // PDE 索引的位移量
 #define PTE_SHIFT 12    // PTE 索引的位移量
 
+// 对齐函数，确保 addr 按 align 对齐（align 为 2 的幂）
+static inline UINT64 align_up(UINT64 addr, UINT64 align) {
+    return (addr + align - 1) & -align;
+}
+
+static inline UINT64 align_down(UINT64 addr, UINT64 align) {
+    return addr & -align;
+}
+
 //虚拟地址转物理地址
 static inline UINT64 va_to_pa(void *va) {
     return (UINT64)va & ~DIRECT_MAP_OFFSET;
