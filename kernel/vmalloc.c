@@ -413,4 +413,5 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area = create_vmap_area(MODULES_START,MODULES_END,VM_MODULES);
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
+
 };
