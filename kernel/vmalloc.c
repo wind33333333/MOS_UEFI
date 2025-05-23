@@ -177,30 +177,27 @@ static inline UINT64 get_va_start(rb_node_t *node) {
     return (CONTAINER_OF(node, vmap_area_t, rb_node))->va_start;
 }
 
-//获取节点va_end
-static inline UINT64 get_va_end(rb_node_t *node) {
-    if (!node)return 0;
-    return (CONTAINER_OF(node, vmap_area_t, rb_node))->va_end;
-}
-
 /*低地址优先搜索最佳适应空闲vmap_area*/
 static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_addr, UINT64 size, UINT64 align) {
     rb_node_t *node = free_vmap_area_root.rb_node;
-    vmap_area_t *vmap_area, *best_vmap_area = NULL;
-    UINT64 align_va_end;
+    vmap_area_t *vmap_area,*best_vmap_area;
+    UINT64 align_va_end,best_va_start = 0xFFFFFFFFFFFFFFFFUL;
     while (node) {
         vmap_area = CONTAINER_OF(node, vmap_area_t, rb_node);
         align_va_end = align_up(vmap_area->va_start, align) + size;
         if (align_va_end <= vmap_area->va_end &&\
             vmap_area->va_start >= min_addr &&\
             vmap_area->va_end <= max_addr) {
-            if (vmap_area->va_start < best_vmap_area->va_start)
+            if (best_va_start > vmap_area->va_start) {
+                best_va_start = vmap_area->va_start;
                 best_vmap_area = vmap_area; //保存当前适配的vmap_area
+            }
         }
-
-        if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) >= min_addr) {
-            node = node->left; //往左找
-        } else if (get_va_end(node->left) > max_addr) {
+        if (node->left) {
+            vmap_area = CONTAINER_OF(node->left, vmap_area_t, rb_node);
+            if (vmap_area->subtree_max_size >= size && vmap_area->va_start >= min_addr)
+                node = node->left; //往左找
+        } else if (vmap_area->va_start > max_addr) {
             break; // 右子树无需检查
         } else {
             node = node->right;//往右找
