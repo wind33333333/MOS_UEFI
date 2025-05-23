@@ -199,10 +199,10 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_ad
         if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) >= min_addr) {
             node = node->left; //往左找
             /* 3. 如果当前节点区间已经超出了 max_addr或best_va_start，右子树更大则无需搜索 */
-        }else if (vmap_area->va_start > max_addr || vmap_area->va_start >= best_va_start) {
+        } else if (vmap_area->va_start > max_addr || vmap_area->va_start >= best_va_start) {
             break;
             /* 4. 否则尝试右子树 */
-        }else {
+        } else {
             node = node->right;
         }
     }
@@ -356,17 +356,22 @@ void vfree(void *ptr) {
  * pa:物理起始地址
  * attr:属性
  */
-void *iomap(UINT64 pa, UINT64 size, UINT64 align, UINT64 attr) {
-    if (!pa || !size) return NULL;
-    //4k对齐
-    size = PAGE_4K_ALIGN(size);
+void *iomap(UINT64 pa, UINT64 size, UINT64 page_size, UINT64 attr) {
+    if (!pa || !size ||\
+        size < page_size ||\
+        (page_size != PAGE_4K_SIZE && page_size != PAGE_2M_SIZE && page_size != PAGE_1G_SIZE))
+        return NULL;
+    //对齐
+    pa = align_down(pa, page_size);
+    size = align_up(size, page_size);
     //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, size, align);
+    vmap_area_t *vmap_area = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, size, page_size);
     //分配物理页，映射物理页
     UINT64 va = vmap_area->va_start;
-    for (UINT64 i = 0; i < (size >> PAGE_4K_SHIFT); i++) {
-        mmap(kpml4t_ptr, pa, (UINT64 *) va, attr,PAGE_4K_SIZE);
-        va += PAGE_4K_SIZE;
+    UINT64 page_count = size / page_size;
+    for (UINT64 i = 0; i < page_count; i++) {
+        mmap(kpml4t_ptr, pa, (UINT64 *) va, attr,page_size);
+        va += page_size;
     }
     return (void *) vmap_area->va_start;
 }
@@ -407,6 +412,4 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area = create_vmap_area(MODULES_START,MODULES_END,VM_MODULES);
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
-
 };
-
