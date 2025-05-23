@@ -379,14 +379,15 @@ void *iomap(UINT64 pa, UINT64 size, UINT64 page_size, UINT64 attr) {
 /*
  *设备虚拟地址释放和卸载映射
  */
-void iounmap(void *ptr) {
+void iounmap(void *ptr,UINT64 page_size) {
     //通过虚拟地址找Vmap_area
     vmap_area_t *vmap_area = find_vmap_area((UINT64) ptr);
     //卸载虚拟地址和物理页映射，释放物理页
     UINT64 va = vmap_area->va_start;
-    for (UINT64 i = 0; i < (vmap_area->va_end - vmap_area->va_start >> PAGE_4K_SHIFT); i++) {
-        unmmap(kpml4t_ptr, (void *) va,PAGE_4K_SIZE);
-        va += PAGE_4K_SIZE;
+    UINT64 page_count = (vmap_area->va_end - vmap_area->va_start) / page_size;
+    for (UINT64 i = 0; i < page_count; i++) {
+        unmmap(kpml4t_ptr, (void *) va,page_size);
+        va += page_size;
     }
     //释放虚拟地址
     free_vmap_area(vmap_area);
