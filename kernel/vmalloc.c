@@ -198,47 +198,16 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_ad
         /* 2. 根据左子树的最大容量和左子树起始地址，决定是否进入左子树 */
         if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) >= min_addr) {
             node = node->left; //往左找
-            continue;
+            /* 3. 如果当前节点区间已经超出了 max_addr或best_va_start，右子树更大则无需搜索 */
+        }else if (vmap_area->va_start > max_addr || vmap_area->va_start >= best_va_start) {
+            break;
+            /* 4. 否则尝试右子树 */
+        }else {
+            node = node->right;
         }
-        /* 3. 如果当前节点区间已经超出了 max_addr或best_va_start，右子树更大则无需搜索 */
-        if (vmap_area->va_start > max_addr || vmap_area->va_start >= best_va_start) break;
-        /* 4. 否则尝试右子树 */
-        node = node->right;
     }
     return best_vmap_area;
 
-    /*rb_node_t *node = free_vmap_area_root.rb_node;
-    vmap_area_t *vmap_area, *best_vmap_area = NULL;
-    UINT64 align_va_end;
-    while (node) {
-        if (node->left) {
-            vmap_area = CONTAINER_OF(node->left, vmap_area_t, rb_node);
-            align_va_end = align_up(vmap_area->va_start, align) + size;
-            if (align_va_end <= vmap_area->va_end &&\
-                vmap_area->va_start >= min_addr &&\
-                vmap_area->va_end <= max_addr) {
-                best_vmap_area = vmap_area; //保存当前适配的vmap_area，继续往左找
-            }
-            if (vmap_area->subtree_max_size >= size && vmap_area->va_start >= min_addr) {
-                node = node->left;
-                continue;
-            }
-        }
-        if (best_vmap_area) return best_vmap_area;
-
-        vmap_area = CONTAINER_OF(node, vmap_area_t, rb_node);
-        align_va_end = align_up(vmap_area->va_start, align) + size;
-
-        if (vmap_area->va_start > max_addr) break;
-
-        if (align_va_end <= vmap_area->va_end &&\
-            vmap_area->va_start >= min_addr &&\
-            vmap_area->va_end <= max_addr)
-            return vmap_area;
-
-        node = node->right;
-    }
-    return NULL;*/
 }
 
 /*
@@ -442,51 +411,3 @@ void INIT_TEXT init_vmalloc(void) {
 
 };
 
-
-/* 传入key查找node */
-/*rb_node_t *rb_find(rb_root_t *root, UINT64 key) {
-    rb_node_t *node = root->rb_node;
-    while (node) {
-        if (((my_data_t *) node)->key == key) return node; //搜索key对应的节点
-        node = key < ((my_data_t *) node)->key ? node->left : node->right;
-    }
-    return NULL; //没有找到
-}*/
-
-
-/*//中序遍历
-void mid_traversal1(rb_root_t *rbtree) {
-    rb_node_t *cur_node = rbtree->root;
-    while (cur_node->left) {
-        //找到最左边的节点
-        cur_node = cur_node->left;
-    }
-
-    while (cur_node) {
-        color_printk(GREEN,BLACK, "key:%d   color:%d\n", cur_node->key, cur_node->color);
-        if (cur_node->right) {
-            // 有右子树，转向右子树的最左节点
-            cur_node = cur_node->right;
-            while (cur_node->left) {
-                cur_node = cur_node->left;
-            }
-        } else {
-            // 没有右子树，回溯到父节点
-            while (cur_node->parent != NULL && cur_node->parent->right == cur_node) {
-                cur_node = cur_node->parent;
-            }
-            cur_node = cur_node->parent;
-        }
-    }
-}*/
-
-
-//递归中序遍历
-/*
-void mid_traversal(rb_root_t *root, rb_node_t *node) {
-    if (!node) return;
-    mid_traversal(root, node->left); //处理左子树
-    color_printk(GREEN, BLACK, "key:%d   color:%d\n", ((my_data_t *) node)->key, rb_color(node));
-    mid_traversal(root, node->right); //处理右子树
-}
-*/
