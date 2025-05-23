@@ -194,261 +194,254 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_ad
         if (align_va_end <= vmap_area->va_end &&\
             vmap_area->va_start >= min_addr &&\
             vmap_area->va_end <= max_addr) {
-            best_vmap_area = vmap_area; //保存当前适配的vmap_area
+            if (vmap_area->va_start < best_vmap_area->va_start)
+                best_vmap_area = vmap_area; //保存当前适配的vmap_area
         }
 
-        if (node->left) {
-            vmap_area = CONTAINER_OF(node->left, vmap_area_t, rb_node);
-            align_va_end = align_up(vmap_area->va_start, align) + size;
-            if (vmap_area->subtree_max_size >= size &&\
-                align_va_end <= vmap_area->va_end &&\
-                vmap_area->va_start >= min_addr &&\
-                vmap_area->va_end <= max_addr) {
-                node = node->left;
-            }
-        } else if (vmap_area->va_end > max_addr) {
+        if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) >= min_addr) {
+            node = node->left; //往左找
+        } else if (get_va_end(node->left) > max_addr) {
             break; // 右子树无需检查
         } else {
-            node = node->right;
+            node = node->right;//往右找
         }
     }
-    return best_vmap_area ;
+    return best_vmap_area;
 
-    /*while (node) {
+    /*rb_node_t *node = free_vmap_area_root.rb_node;
+    vmap_area_t *vmap_area, *best_vmap_area = NULL;
+    UINT64 align_va_end;
+    while (node) {
         if (node->left) {
             vmap_area = CONTAINER_OF(node->left, vmap_area_t, rb_node);
             align_va_end = align_up(vmap_area->va_start, align) + size;
             if (align_va_end <= vmap_area->va_end &&\
                 vmap_area->va_start >= min_addr &&\
                 vmap_area->va_end <= max_addr) {
-                //保存当前适配的vmap_area，继续往左找
-                best_vmap_area = vmap_area;
+                best_vmap_area = vmap_area; //保存当前适配的vmap_area，继续往左找
             }
-            if (vmap_area->subtree_max_size >= size &&\
-                vmap_area->va_start >= min_addr &&\
-                vmap_area->va_end <= max_addr) {
+            if (vmap_area->subtree_max_size >= size && vmap_area->va_start >= min_addr) {
                 node = node->left;
                 continue;
             }
         }
-        //如果best_vmap_area中保存了则返回
-        if (best_vmap_area) return best_vmap_area;
         vmap_area = CONTAINER_OF(node, vmap_area_t, rb_node);
-        //如果中间vmap_area的结束地址大于max_addr跟据红黑树规则左中右后面的必定都大于，表示红黑树中没有符合的vmap_area了提前退出
-        if (vmap_area->va_end > max_addr) return NULL;
         align_va_end = align_up(vmap_area->va_start, align) + size;
-        //如果中间节点符合则必定为最佳节点直接返回
-        if (align_va_end <= vmap_area->va_end)return vmap_area;
-        //往右搜索
+        if (best_vmap_area) return best_vmap_area;
+        if (vmap_area->va_end > max_addr) return NULL;
+        if (align_va_end <= vmap_area->va_end &&\
+            vmap_area->va_start >= min_addr &&\
+            vmap_area->va_end <= max_addr)
+            return vmap_area;
         node = node->right;
     }
-    return NULL;*/
-}
-
-/*
- * 尝试把vmap_area分割到合适大小
- */
-static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area, UINT64 size, UINT64 align) {
-    vmap_area_t *new_vmap_area;
-    UINT64 align_va_start = align_up(vmap_area->va_start, align);
-    if (vmap_area->va_end - vmap_area->va_start == size) {
-        //情况1:占用整个
-        erase_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
-        new_vmap_area = vmap_area;
-    } else if (align_va_start == vmap_area->va_start) {
-        //情况2：从头切割
-        new_vmap_area = create_vmap_area(align_va_start, align_va_start + size, vmap_area->flags);
-        vmap_area->va_start += size;
-        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
-        list_add_tail(&vmap_area->list, &new_vmap_area->list);
-    } else if (align_va_start + size == vmap_area->va_end) {
-        //情况3：从尾切割
-        new_vmap_area = create_vmap_area(align_va_start, align_va_start + size, vmap_area->flags);
-        vmap_area->va_end -= size;
-        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
-        list_add_head(&vmap_area->list, &new_vmap_area->list);
-    } else {
-        //情况4：从中间切割
-        new_vmap_area = create_vmap_area(align_va_start + size, vmap_area->va_end, vmap_area->flags);
-        vmap_area->va_end = align_va_start;
-        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
-        insert_vmap_area(&free_vmap_area_root, new_vmap_area, &vmap_area_augment_callbacks);
-        list_add_head(&vmap_area->list, &new_vmap_area->list);
-        new_vmap_area = create_vmap_area(align_va_start, align_va_start + size, vmap_area->flags);
-        list_add_head(&vmap_area->list, &new_vmap_area->list);
-    }
-    return new_vmap_area;
-}
-
-/*
- * 分配一个vmap_area
- * size:需要分配的大小4K对齐
- * va_start:分配的起始地址
- * va_end:结束地址
- */
-static vmap_area_t *alloc_vmap_area(UINT64 va_start, UINT64 va_end, UINT64 size, UINT64 align) {
-    //空闲树找可用的节点
-    vmap_area_t *vmap_area = find_vmap_lowest_match(va_start, va_end, size, align);
-    if (!vmap_area)return NULL;
-    //尝试分割Vmap_area
-    vmap_area = split_vmap_area(vmap_area, size, align);
-    //把vmap_area插入忙碌树，设置状态
-    set_used(vmap_area);
-    insert_vmap_area(&used_vmap_area_root, vmap_area, &empty_augment_callbacks);
-    return vmap_area;
-}
-
-/*
- * 尝试合并左右空闲vmap_area
- */
-static inline void merge_free_vmap_area(vmap_area_t *vmap_area) {
-    vmap_area_t *tmp_vmap_area;
-    //先检查左边是否能合并
-    tmp_vmap_area = CONTAINER_OF(vmap_area->list.prev, vmap_area_t, list);
-    if (is_free(tmp_vmap_area) && vmap_area->va_start == tmp_vmap_area->va_end) {
-        vmap_area->va_start = tmp_vmap_area->va_start;
-        list_del(&tmp_vmap_area->list);
-        erase_vmap_area(&free_vmap_area_root, tmp_vmap_area, &vmap_area_augment_callbacks);
-        kfree(tmp_vmap_area);
-    }
-    //检查右边是否能合并
-    tmp_vmap_area = CONTAINER_OF(vmap_area->list.next, vmap_area_t, list);
-    if (is_free(tmp_vmap_area) && vmap_area->va_end == tmp_vmap_area->va_start) {
-        vmap_area->va_end = tmp_vmap_area->va_end;
-        list_del(&tmp_vmap_area->list);
-        erase_vmap_area(&free_vmap_area_root, tmp_vmap_area, &vmap_area_augment_callbacks);
-        kfree(tmp_vmap_area);
-    }
-}
-
-/*释放一个vmap_area
- * 把vmap_area从used_vmap_area_root树
- * 移动到free_vmap_area_root树
- * 检查前后虚拟地址空闲则合并
- */
-static void free_vmap_area(vmap_area_t *vmap_area) {
-    //从忙碌树释放vmpa_area
-    erase_vmap_area(&used_vmap_area_root, vmap_area, &empty_augment_callbacks);
-    //尝试合并空闲树相邻vmap_area
-    merge_free_vmap_area(vmap_area);
-    //插入空闲树,设置转状态空闲
-    set_free(vmap_area);
-    insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
-}
-
-/*
- * 查找vmap_area
- */
-vmap_area_t *find_vmap_area(UINT64 va_start) {
-    rb_node_t *node = used_vmap_area_root.rb_node;
-    while (node) {
-        vmap_area_t *vmap_area = CONTAINER_OF(node, vmap_area_t, rb_node);
-        if (vmap_area->va_start == va_start) return vmap_area;
-        node = va_start > vmap_area->va_start ? node->right : node->left;
-    }
     return NULL;
-}
+    }*/
 
-/*
- * 分配内存
- */
-void *vmalloc(UINT64 size) {
-    if (!size) return NULL;
-    //4k对齐
-    size = PAGE_4K_ALIGN(size);
-    //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area(VMALLOC_START,VMALLOC_END, size,PAGE_4K_SIZE);
-    //分配物理页，映射物理页
-    UINT64 va = vmap_area->va_start;
-    for (UINT64 i = 0; i < (size >> PAGE_4K_SHIFT); i++) {
-        page_t *page = alloc_pages(0);
-        if (!page) return NULL;
-        mmap(kpml4t_ptr, page_to_pa(page), (UINT64 *) va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
-        va += PAGE_4K_SIZE;
+    /*
+     * 尝试把vmap_area分割到合适大小
+     */
+    static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area, UINT64 size, UINT64 align) {
+        vmap_area_t *new_vmap_area;
+        UINT64 align_va_start = align_up(vmap_area->va_start, align);
+        if (vmap_area->va_end - vmap_area->va_start == size) {
+            //情况1:占用整个
+            erase_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
+            new_vmap_area = vmap_area;
+        } else if (align_va_start == vmap_area->va_start) {
+            //情况2：从头切割
+            new_vmap_area = create_vmap_area(align_va_start, align_va_start + size, vmap_area->flags);
+            vmap_area->va_start += size;
+            vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
+            list_add_tail(&vmap_area->list, &new_vmap_area->list);
+        } else if (align_va_start + size == vmap_area->va_end) {
+            //情况3：从尾切割
+            new_vmap_area = create_vmap_area(align_va_start, align_va_start + size, vmap_area->flags);
+            vmap_area->va_end -= size;
+            vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
+            list_add_head(&vmap_area->list, &new_vmap_area->list);
+        } else {
+            //情况4：从中间切割
+            new_vmap_area = create_vmap_area(align_va_start + size, vmap_area->va_end, vmap_area->flags);
+            vmap_area->va_end = align_va_start;
+            vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
+            insert_vmap_area(&free_vmap_area_root, new_vmap_area, &vmap_area_augment_callbacks);
+            list_add_head(&vmap_area->list, &new_vmap_area->list);
+            new_vmap_area = create_vmap_area(align_va_start, align_va_start + size, vmap_area->flags);
+            list_add_head(&vmap_area->list, &new_vmap_area->list);
+        }
+        return new_vmap_area;
     }
-    return (void *) vmap_area->va_start;
-}
 
-/*
- * 释放内存
- */
-void vfree(void *ptr) {
-    //通过虚拟地址找Vmap_area
-    vmap_area_t *vmap_area = find_vmap_area((UINT64) ptr);
-    //卸载虚拟地址和物理页映射，释放物理页
-    UINT64 va = vmap_area->va_start;
-    for (UINT64 i = 0; i < (vmap_area->va_end - vmap_area->va_start >> PAGE_4K_SHIFT); i++) {
-        page_t *page = pa_to_page(find_page_table_entry(kpml4t_ptr, (void *) va, pte_level) & PAGE_PA_MASK);
-        unmmap(kpml4t_ptr, (void *) va,PAGE_4K_SIZE);
-        free_pages(page);
-        va += PAGE_4K_SIZE;
+    /*
+     * 分配一个vmap_area
+     * size:需要分配的大小4K对齐
+     * va_start:分配的起始地址
+     * va_end:结束地址
+     */
+    static vmap_area_t *alloc_vmap_area(UINT64 va_start, UINT64 va_end, UINT64 size, UINT64 align) {
+        //空闲树找可用的节点
+        vmap_area_t *vmap_area = find_vmap_lowest_match(va_start, va_end, size, align);
+        if (!vmap_area)return NULL;
+        //尝试分割Vmap_area
+        vmap_area = split_vmap_area(vmap_area, size, align);
+        //把vmap_area插入忙碌树，设置状态
+        set_used(vmap_area);
+        insert_vmap_area(&used_vmap_area_root, vmap_area, &empty_augment_callbacks);
+        return vmap_area;
     }
-    //释放虚拟地址
-    free_vmap_area(vmap_area);
-}
 
-/*
- * 设备虚拟地址分配和映射
- * pa:物理起始地址
- * attr:属性
- */
-void *iomap(UINT64 pa, UINT64 size, UINT64 align, UINT64 attr) {
-    if (!pa || !size) return NULL;
-    //4k对齐
-    size = PAGE_4K_ALIGN(size);
-    //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, size, align);
-    //分配物理页，映射物理页
-    UINT64 va = vmap_area->va_start;
-    for (UINT64 i = 0; i < (size >> PAGE_4K_SHIFT); i++) {
-        mmap(kpml4t_ptr, pa, (UINT64 *) va, attr,PAGE_4K_SIZE);
-        va += PAGE_4K_SIZE;
+    /*
+     * 尝试合并左右空闲vmap_area
+     */
+    static inline void merge_free_vmap_area(vmap_area_t *vmap_area) {
+        vmap_area_t *tmp_vmap_area;
+        //先检查左边是否能合并
+        tmp_vmap_area = CONTAINER_OF(vmap_area->list.prev, vmap_area_t, list);
+        if (is_free(tmp_vmap_area) && vmap_area->va_start == tmp_vmap_area->va_end) {
+            vmap_area->va_start = tmp_vmap_area->va_start;
+            list_del(&tmp_vmap_area->list);
+            erase_vmap_area(&free_vmap_area_root, tmp_vmap_area, &vmap_area_augment_callbacks);
+            kfree(tmp_vmap_area);
+        }
+        //检查右边是否能合并
+        tmp_vmap_area = CONTAINER_OF(vmap_area->list.next, vmap_area_t, list);
+        if (is_free(tmp_vmap_area) && vmap_area->va_end == tmp_vmap_area->va_start) {
+            vmap_area->va_end = tmp_vmap_area->va_end;
+            list_del(&tmp_vmap_area->list);
+            erase_vmap_area(&free_vmap_area_root, tmp_vmap_area, &vmap_area_augment_callbacks);
+            kfree(tmp_vmap_area);
+        }
     }
-    return (void *) vmap_area->va_start;
-}
 
-/*
- *设备虚拟地址释放和卸载映射
- */
-void iounmap(void *ptr) {
-    //通过虚拟地址找Vmap_area
-    vmap_area_t *vmap_area = find_vmap_area((UINT64) ptr);
-    //卸载虚拟地址和物理页映射，释放物理页
-    UINT64 va = vmap_area->va_start;
-    for (UINT64 i = 0; i < (vmap_area->va_end - vmap_area->va_start >> PAGE_4K_SHIFT); i++) {
-        unmmap(kpml4t_ptr, (void *) va,PAGE_4K_SIZE);
-        va += PAGE_4K_SIZE;
+    /*释放一个vmap_area
+     * 把vmap_area从used_vmap_area_root树
+     * 移动到free_vmap_area_root树
+     * 检查前后虚拟地址空闲则合并
+     */
+    static void free_vmap_area(vmap_area_t *vmap_area) {
+        //从忙碌树释放vmpa_area
+        erase_vmap_area(&used_vmap_area_root, vmap_area, &empty_augment_callbacks);
+        //尝试合并空闲树相邻vmap_area
+        merge_free_vmap_area(vmap_area);
+        //插入空闲树,设置转状态空闲
+        set_free(vmap_area);
+        insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
     }
-    //释放虚拟地址
-    free_vmap_area(vmap_area);
-}
 
-//初始化vmalloc
-void INIT_TEXT init_vmalloc(void) {
-    vmap_area_augment_callbacks.rotate = vmap_area_augment_rotate;
-    vmap_area_augment_callbacks.copy = vmap_area_augment_copy;
-    vmap_area_augment_callbacks.propagate = vmap_area_augment_propagate;
+    /*
+     * 查找vmap_area
+     */
+    vmap_area_t *find_vmap_area(UINT64 va_start) {
+        rb_node_t *node = used_vmap_area_root.rb_node;
+        while (node) {
+            vmap_area_t *vmap_area = CONTAINER_OF(node, vmap_area_t, rb_node);
+            if (vmap_area->va_start == va_start) return vmap_area;
+            node = va_start > vmap_area->va_start ? node->right : node->left;
+        }
+        return NULL;
+    }
 
-    //60TB vmalloc映射区
-    vmap_area_t *vmap_area = create_vmap_area(VMALLOC_START,VMALLOC_END,VM_ALLOC);
-    list_head_init(&vmap_area->list);
-    insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
+    /*
+     * 分配内存
+     */
+    void *vmalloc(UINT64 size) {
+        if (!size) return NULL;
+        //4k对齐
+        size = PAGE_4K_ALIGN(size);
+        //分配虚拟地址空间
+        vmap_area_t *vmap_area = alloc_vmap_area(VMALLOC_START,VMALLOC_END, size,PAGE_4K_SIZE);
+        //分配物理页，映射物理页
+        UINT64 va = vmap_area->va_start;
+        for (UINT64 i = 0; i < (size >> PAGE_4K_SHIFT); i++) {
+            page_t *page = alloc_pages(0);
+            if (!page) return NULL;
+            mmap(kpml4t_ptr, page_to_pa(page), (UINT64 *) va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
+            va += PAGE_4K_SIZE;
+        }
+        return (void *) vmap_area->va_start;
+    }
 
-    //3070GB IO/UEFI/ACPI/APIC等映射区
-    vmap_area = create_vmap_area(VMIOMAP_START,VMIOMAP_END,VM_IOREMAP);
-    list_head_init(&vmap_area->list);
-    insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
+    /*
+     * 释放内存
+     */
+    void vfree(void *ptr) {
+        //通过虚拟地址找Vmap_area
+        vmap_area_t *vmap_area = find_vmap_area((UINT64) ptr);
+        //卸载虚拟地址和物理页映射，释放物理页
+        UINT64 va = vmap_area->va_start;
+        for (UINT64 i = 0; i < (vmap_area->va_end - vmap_area->va_start >> PAGE_4K_SHIFT); i++) {
+            page_t *page = pa_to_page(find_page_table_entry(kpml4t_ptr, (void *) va, pte_level) & PAGE_PA_MASK);
+            unmmap(kpml4t_ptr, (void *) va,PAGE_4K_SIZE);
+            free_pages(page);
+            va += PAGE_4K_SIZE;
+        }
+        //释放虚拟地址
+        free_vmap_area(vmap_area);
+    }
 
-    //初始化动态模块空间 1536MB
-    vmap_area = create_vmap_area(MODULES_START,MODULES_END,VM_MODULES);
-    list_head_init(&vmap_area->list);
-    insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
+    /*
+     * 设备虚拟地址分配和映射
+     * pa:物理起始地址
+     * attr:属性
+     */
+    void *iomap(UINT64 pa, UINT64 size, UINT64 align, UINT64 attr) {
+        if (!pa || !size) return NULL;
+        //4k对齐
+        size = PAGE_4K_ALIGN(size);
+        //分配虚拟地址空间
+        vmap_area_t *vmap_area = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, size, align);
+        //分配物理页，映射物理页
+        UINT64 va = vmap_area->va_start;
+        for (UINT64 i = 0; i < (size >> PAGE_4K_SHIFT); i++) {
+            mmap(kpml4t_ptr, pa, (UINT64 *) va, attr,PAGE_4K_SIZE);
+            va += PAGE_4K_SIZE;
+        }
+        return (void *) vmap_area->va_start;
+    }
 
-    vmap_area_t *m0 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x1000);
-    vmap_area_t *m1 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x200000);
-    vmap_area_t *m2 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x40000000);
-    vmap_area_t *m3 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x1000);
-};
+    /*
+     *设备虚拟地址释放和卸载映射
+     */
+    void iounmap(void *ptr) {
+        //通过虚拟地址找Vmap_area
+        vmap_area_t *vmap_area = find_vmap_area((UINT64) ptr);
+        //卸载虚拟地址和物理页映射，释放物理页
+        UINT64 va = vmap_area->va_start;
+        for (UINT64 i = 0; i < (vmap_area->va_end - vmap_area->va_start >> PAGE_4K_SHIFT); i++) {
+            unmmap(kpml4t_ptr, (void *) va,PAGE_4K_SIZE);
+            va += PAGE_4K_SIZE;
+        }
+        //释放虚拟地址
+        free_vmap_area(vmap_area);
+    }
+
+    //初始化vmalloc
+    void INIT_TEXT init_vmalloc(void) {
+        vmap_area_augment_callbacks.rotate = vmap_area_augment_rotate;
+        vmap_area_augment_callbacks.copy = vmap_area_augment_copy;
+        vmap_area_augment_callbacks.propagate = vmap_area_augment_propagate;
+
+        //60TB vmalloc映射区
+        vmap_area_t *vmap_area = create_vmap_area(VMALLOC_START,VMALLOC_END,VM_ALLOC);
+        list_head_init(&vmap_area->list);
+        insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
+
+        //3070GB IO/UEFI/ACPI/APIC等映射区
+        vmap_area = create_vmap_area(VMIOMAP_START,VMIOMAP_END,VM_IOREMAP);
+        list_head_init(&vmap_area->list);
+        insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
+
+        //初始化动态模块空间 1536MB
+        vmap_area = create_vmap_area(MODULES_START,MODULES_END,VM_MODULES);
+        list_head_init(&vmap_area->list);
+        insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
+
+        vmap_area_t *m0 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x1000);
+        vmap_area_t *m1 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x200000);
+        vmap_area_t *m2 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x40000000);
+        vmap_area_t *m3 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x1000);
+    };
 
 
 /* 传入key查找node */
