@@ -440,10 +440,6 @@ void INIT_TEXT init_vmalloc(void) {
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
 
-    vmap_area_t *m0 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x1000);
-    vmap_area_t *m1 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x200000);
-    vmap_area_t *m2 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x40000000);
-    vmap_area_t *m3 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x1000);
 };
 
 
