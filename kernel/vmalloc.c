@@ -200,8 +200,8 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_ad
             node = node->left; //往左找
             continue;
         }
-        /* 3. 如果当前节点区间已经超出了 max_addr，右子树更大则无需搜索 */
-        if (vmap_area->va_start > max_addr) break;
+        /* 3. 如果当前节点区间已经超出了 max_addr或best_va_start，右子树更大则无需搜索 */
+        if (vmap_area->va_start > max_addr || vmap_area->va_start >= best_va_start) break;
         /* 4. 否则尝试右子树 */
         node = node->right;
     }
@@ -224,14 +224,18 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_ad
                 continue;
             }
         }
+        if (best_vmap_area) return best_vmap_area;
+
         vmap_area = CONTAINER_OF(node, vmap_area_t, rb_node);
         align_va_end = align_up(vmap_area->va_start, align) + size;
-        if (best_vmap_area) return best_vmap_area;
-        if (vmap_area->va_start > max_addr) return NULL;
+
+        if (vmap_area->va_start > max_addr) break;
+
         if (align_va_end <= vmap_area->va_end &&\
             vmap_area->va_start >= min_addr &&\
             vmap_area->va_end <= max_addr)
             return vmap_area;
+
         node = node->right;
     }
     return NULL;*/
@@ -436,10 +440,10 @@ void INIT_TEXT init_vmalloc(void) {
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
 
-    vmap_area_t *m0 = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, 0x1000, 0x1000);
-    vmap_area_t *m1 = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, 0x1000, 0x200000);
-    vmap_area_t *m2 = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, 0x1000, 0x40000000);
-    vmap_area_t *m3 = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, 0x1000, 0x1000);
+    vmap_area_t *m0 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x1000);
+    vmap_area_t *m1 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x200000);
+    vmap_area_t *m2 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x40000000);
+    vmap_area_t *m3 = alloc_vmap_area(VMALLOC_START,VMALLOC_END, 0x1000, 0x1000);
 };
 
 
