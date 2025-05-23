@@ -180,25 +180,30 @@ static inline UINT64 get_va_start(rb_node_t *node) {
 /*低地址优先搜索最佳适应空闲vmap_area*/
 static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_addr, UINT64 size, UINT64 align) {
     rb_node_t *node = free_vmap_area_root.rb_node;
-    vmap_area_t *vmap_area, *best_vmap_area;
+    vmap_area_t *vmap_area, *best_vmap_area = NULL;
     UINT64 align_va_end, best_va_start = 0xFFFFFFFFFFFFFFFFUL;
     while (node) {
         vmap_area = CONTAINER_OF(node, vmap_area_t, rb_node);
         align_va_end = align_up(vmap_area->va_start, align) + size;
+        /* 1. 判断当前区间是否满足：对齐＋大小＋边界 */
         if (align_va_end <= vmap_area->va_end &&\
             vmap_area->va_start >= min_addr &&\
             vmap_area->va_end <= max_addr) {
+            /* 找到一个可行解，且比之前解的起始更小，则更新最佳解 */
             if (best_va_start > vmap_area->va_start) {
                 best_va_start = vmap_area->va_start;
                 best_vmap_area = vmap_area; //保存当前适配的vmap_area
             }
         }
+        /* 2. 根据左子树的最大容量和左子树起始地址，决定是否进入左子树 */
         if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) >= min_addr) {
             node = node->left; //往左找
             continue;
         }
-        if (vmap_area->va_start > max_addr) break; // 中间子树va_start大于max_addr则右子树无需检查
-        node = node->right; //往右找
+        /* 3. 如果当前节点区间已经超出了 max_addr，右子树更大则无需搜索 */
+        if (vmap_area->va_start > max_addr) break;
+        /* 4. 否则尝试右子树 */
+        node = node->right;
     }
     return best_vmap_area;
 
@@ -222,7 +227,7 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_ad
         vmap_area = CONTAINER_OF(node, vmap_area_t, rb_node);
         align_va_end = align_up(vmap_area->va_start, align) + size;
         if (best_vmap_area) return best_vmap_area;
-        if (vmap_area->va_end > max_addr) return NULL;
+        if (vmap_area->va_start > max_addr) return NULL;
         if (align_va_end <= vmap_area->va_end &&\
             vmap_area->va_start >= min_addr &&\
             vmap_area->va_end <= max_addr)
