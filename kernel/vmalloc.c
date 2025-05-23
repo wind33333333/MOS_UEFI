@@ -197,7 +197,7 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_ad
             node = node->left; //往左找
             continue;
         }
-        if (vmap_area->va_start > max_addr) break; // 右子树无需检查
+        if (vmap_area->va_start > max_addr) break; // 中间子树va_start大于max_addr则右子树无需检查
         node = node->right; //往右找
     }
     return best_vmap_area;
