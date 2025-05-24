@@ -121,7 +121,7 @@ huge_page:
 //批量映射页表
 INT32 mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 size, UINT64 attr, UINT64 page_size) {
     UINT64 page_count = size / page_size;
-    for (UINT64 i = 0; i < page_count; i++) {
+    while(page_count--) {
         if (mmap(pml4t, pa, va, attr, page_size)) return -1;
         pa += page_size;
         va += page_size;
@@ -132,7 +132,7 @@ INT32 mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 size, UINT64 attr, U
 //批量删除页表映射
 INT32 unmmap_range(UINT64 *pml4t, void *va, UINT64 size, UINT64 page_size) {
     UINT64 page_count = size / page_size;
-    for (UINT64 i = 0; i < page_count; i++) {
+    while (page_count--) {
         if (unmmap(pml4t, va, page_size)) return -1;
         va += page_size;
     }

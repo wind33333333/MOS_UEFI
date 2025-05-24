@@ -24,6 +24,9 @@ INIT_TEXT void init_kernel(void) {
     init_efi_runtime_service();                //初始化efi运行时服务
     init_output();                             //初始化输出控制台
 
+    mmap_range(kpml4t_ptr,0,(void*)0,10*0x1000,PAGE_ROOT_RWX_4K,PAGE_4K_SIZE);
+    unmmap_range(kpml4t_ptr,(void*)0,10*0x1000,PAGE_4K_SIZE);
+
     while (TRUE);
     //////////////////
     // init_acpi();                               //初始化acpi

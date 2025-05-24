@@ -130,25 +130,11 @@ INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, U
 }
 
 
-INIT_TEXT INT32 memblock_mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr,
+INIT_TEXT INT32 memblock_mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 size, UINT64 attr,
                                     UINT64 page_size) {
-    UINT64 count;
-    switch (page_size) {
-        case PAGE_4K_SIZE:
-            count = PAGE_4K_ALIGN(length) >> PAGE_4K_SHIFT;
-            break;
-        case PAGE_2M_SIZE:
-            count = PAGE_2M_ALIGN(length) >> PAGE_2M_SHIFT;
-            break;
-        case PAGE_1G_SIZE:
-            count = PAGE_1G_ALIGN(length) >> PAGE_1G_SHIFT;
-            break;
-        default:
-            return -1;
-    }
-
-    for (; count > 0; count--) {
-        if (memblock_mmap(pml4t, pa, va, attr, page_size) != 0) return -1;
+    UINT64 page_count = size / page_size;
+    while (page_count--) {
+        if (memblock_mmap(pml4t, pa, va, attr, page_size)) return -1;
         pa += page_size;
         va += page_size;
     }
