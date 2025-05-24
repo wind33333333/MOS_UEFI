@@ -7,6 +7,8 @@
  * augment_rotate:增强旋转回调函数
  */
 static void rb_left_rotate(rb_root_t *root, rb_node_t *node, augment_rotate_f augment_rotate) {
+    //主父节点
+    rb_node_t *gparent = rb_parent(node);
     //获取右子节点（旋转后的新父节点)
     rb_node_t *new_parent = node->right;
     //右子节点的左子节点挂到旋转节点的右子节点
@@ -16,19 +18,19 @@ static void rb_left_rotate(rb_root_t *root, rb_node_t *node, augment_rotate_f au
     //旋转节点挂到右子节点的左子节点
     new_parent->left = node;
     //右子节点的父亲更新为旋转节点的父亲
-    rb_set_parent(new_parent, rb_parent(node));
+    rb_set_parent(new_parent, gparent);
     //旋转节点的父亲更新为右子节点
     rb_set_parent(node, new_parent);
 
-    if (!rb_parent(new_parent)) {
+    if (!gparent) {
         //如果父节点是空则当前节点是根节点，更新根指针
         root->rb_node = new_parent;
-    } else if (node == rb_parent(new_parent)->left) {
+    } else if (node == gparent->left) {
         //更新父节点的左指针
-        rb_parent(new_parent)->left = new_parent;
-    } else if (node == rb_parent(new_parent)->right) {
+        gparent->left = new_parent;
+    } else if (node == gparent->right) {
         //更新父节点的右指针
-        rb_parent(new_parent)->right = new_parent;
+        gparent->right = new_parent;
     }
     //用户自定义回调函数处理旋转
     augment_rotate(node, new_parent);
