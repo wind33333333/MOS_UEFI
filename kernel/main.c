@@ -1,3 +1,5 @@
+#include <time.h>
+
 #include "moslib.h"
 #include "printk.h"
 #include "acpi.h"
@@ -24,9 +26,6 @@ INIT_TEXT void init_kernel(void) {
     init_efi_runtime_service();                //初始化efi运行时服务
     init_output();                             //初始化输出控制台
 
-
-
-    while (TRUE);
     //////////////////
     // init_acpi();                               //初始化acpi
     // init_ioapic();                             //初始化ioapic
