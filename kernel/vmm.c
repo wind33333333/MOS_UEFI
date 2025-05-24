@@ -120,12 +120,9 @@ huge_page:
 
 //批量映射页表
 INT32 mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 size, UINT64 attr, UINT64 page_size) {
-    if (size < page_size || (page_size != PAGE_4K_SIZE && page_size != PAGE_2M_SIZE && page_size != PAGE_1G_SIZE))
-        return NULL;
-    pa = align_down(pa, page_size);
-    UINT64 page_count = align_up(size, page_size) / page_size;
+    UINT64 page_count = size / page_size;
     for (UINT64 i = 0; i < page_count; i++) {
-        if (mmap(pml4t, pa, va, attr, page_size) != 0) return -1;
+        if (mmap(pml4t, pa, va, attr, page_size)) return -1;
         pa += page_size;
         va += page_size;
     }
@@ -134,11 +131,9 @@ INT32 mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 size, UINT64 attr, U
 
 //批量删除页表映射
 INT32 unmmap_range(UINT64 *pml4t, void *va, UINT64 size, UINT64 page_size) {
-    if (size < page_size || (page_size != PAGE_4K_SIZE && page_size != PAGE_2M_SIZE && page_size != PAGE_1G_SIZE))
-        return NULL;
-    UINT64 page_count = align_up(size, page_size) / page_size;
+    UINT64 page_count = size / page_size;
     for (UINT64 i = 0; i < page_count; i++) {
-        if (unmmap(pml4t, va, page_size) != 0) return -1;
+        if (unmmap(pml4t, va, page_size)) return -1;
         va += page_size;
     }
     return 0;

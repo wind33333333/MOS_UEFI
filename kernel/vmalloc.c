@@ -377,14 +377,8 @@ INT32 uniomap(void *ptr,UINT64 page_size) {
     vmap_area_t *vmap_area = find_vmap_area((UINT64) ptr);
     if ((page_size != PAGE_4K_SIZE && page_size != PAGE_2M_SIZE && page_size != PAGE_1G_SIZE) || !vmap_area)
         return -1;
-    //卸载虚拟地址和物理页映射，释放物理页
-    unmmap_range(kpml4t_ptr,ptr);
-    UINT64 va = vmap_area->va_start;
-    UINT64 page_count = (vmap_area->va_end - vmap_area->va_start) / page_size;
-    for (UINT64 i = 0; i < page_count; i++) {
-        unmmap(kpml4t_ptr, (void *) va,page_size);
-        va += page_size;
-    }
+    //卸载映射
+    unmmap_range(kpml4t_ptr,ptr,vmap_area->va_end - vmap_area->va_start,page_size);
     //释放虚拟地址
     free_vmap_area(vmap_area);
 }
