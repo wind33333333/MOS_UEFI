@@ -334,6 +334,18 @@ char buf[4096];
 
 INIT_TEXT void init_output(void) {
     boot_info=pa_to_va((UINT64)boot_info);
+
+    UINT64 page_size,attr;
+    if (boot_info->frame_buffer_size >= PAGE_1G_SIZE) {
+        page_size = PAGE_1G_SIZE;
+        attr = PAGE_ROOT_RWX_2M1G;
+    }else if (boot_info->frame_buffer_size >= PAGE_2M_SIZE) {
+        page_size = PAGE_2M_SIZE;
+        attr = PAGE_ROOT_RWX_2M1G;
+    }else {
+        page_size = PAGE_4K_SIZE;
+        attr = PAGE_ROOT_RWX_4K;
+    }
     Pos.XResolution = boot_info->horizontal_resolution;
     Pos.YResolution = boot_info->vertical_resolution;
     Pos.PixelsPerScanLine = boot_info->pixels_per_scan_line;
@@ -344,7 +356,7 @@ INIT_TEXT void init_output(void) {
     Pos.XCharSize = 8;
     Pos.YCharSize = 16;
 
-    Pos.FB_addr = iomap(boot_info->frame_buffer_base,PAGE_4K_ALIGN(boot_info->frame_buffer_size),PAGE_4K_SIZE,PAGE_ROOT_RW_WC_4K);
+    Pos.FB_addr = iomap(boot_info->frame_buffer_base,boot_info->frame_buffer_size,page_size,attr);
     Pos.FB_length = boot_info->frame_buffer_size;
     Pos.lock = 0;
 
