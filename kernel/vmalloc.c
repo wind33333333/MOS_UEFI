@@ -357,9 +357,7 @@ void vfree(void *ptr) {
  * attr:属性
  */
 void *iomap(UINT64 pa, UINT64 size, UINT64 page_size, UINT64 attr) {
-    if (!pa || !size ||\
-        size < page_size ||\
-        (page_size != PAGE_4K_SIZE && page_size != PAGE_2M_SIZE && page_size != PAGE_1G_SIZE))
+    if (size < page_size || (page_size != PAGE_4K_SIZE && page_size != PAGE_2M_SIZE && page_size != PAGE_1G_SIZE))
         return NULL;
     //对齐
     pa = align_down(pa, page_size);

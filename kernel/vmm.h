@@ -121,8 +121,8 @@ static inline UINT32 get_pte_index(void *va)
 
 INT32 mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr,UINT64 page_size);
 INT32 unmmap(UINT64 *pml4t, void *va,UINT64 page_size);
-INT32 mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 length, UINT64 attr,UINT64 page_size);
-INT32 unmmap_range(UINT64 *pml4t, void *va, UINT64 length, UINT64 page_size);
+INT32 mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 size, UINT64 attr,UINT64 page_size);
+INT32 unmmap_range(UINT64 *pml4t, void *va, UINT64 size, UINT64 page_size);
 UINT64 find_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level);
 UINT32 update_page_table_entry(UINT64 *pml4t, void *va, UINT32 page_level,UINT64 entry);
 
