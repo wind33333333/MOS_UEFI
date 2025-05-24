@@ -338,13 +338,13 @@ INIT_TEXT void init_output(void) {
     UINT64 page_size,attr;
     if (boot_info->frame_buffer_size >= PAGE_1G_SIZE) {
         page_size = PAGE_1G_SIZE;
-        attr = PAGE_ROOT_RWX_2M1G;
+        attr = PAGE_ROOT_RW_WC_2M1G;
     }else if (boot_info->frame_buffer_size >= PAGE_2M_SIZE) {
         page_size = PAGE_2M_SIZE;
-        attr = PAGE_ROOT_RWX_2M1G;
+        attr = PAGE_ROOT_RW_WC_2M1G;
     }else {
         page_size = PAGE_4K_SIZE;
-        attr = PAGE_ROOT_RWX_4K;
+        attr = PAGE_ROOT_RW_WC_4K;
     }
     Pos.XResolution = boot_info->horizontal_resolution;
     Pos.YResolution = boot_info->vertical_resolution;
