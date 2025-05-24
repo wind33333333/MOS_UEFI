@@ -1,7 +1,4 @@
 #include "slub.h"
-
-#include <stdlib.h>
-
 #include "buddy_system.h"
 #include "vmm.h"
 

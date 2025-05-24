@@ -222,7 +222,7 @@ static inline void rb_erase_fixup(rb_root_t *root, rb_node_t *node, rb_node_t *p
                     }
                     //情况3：RLR型->RRR型：兄弟的右孩是黑色，左孩是红色，右旋兄弟
                     rb_right_rotate(root, sibling, augment_rotate);
-                    sibling = parent->left;
+                    sibling = parent->right;
                 }
                 //情况4：RRR型：兄弟的右孩是红色，左旋父亲，兄弟继承父亲颜色，父亲和左孩变黑，黑高修复完成
                 rb_left_rotate(root, parent, augment_rotate);

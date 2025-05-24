@@ -323,7 +323,8 @@ void *vmalloc(UINT64 size) {
     vmap_area_t *vmap_area = alloc_vmap_area(VMALLOC_START,VMALLOC_END, size,PAGE_4K_SIZE);
     //分配物理页，映射物理页
     UINT64 va = vmap_area->va_start;
-    for (UINT64 i = 0; i < (size >> PAGE_4K_SHIFT); i++) {
+    UINT64 page_count = size >> PAGE_4K_SHIFT;
+    while (page_count--) {
         page_t *page = alloc_pages(0);
         if (!page) return NULL;
         mmap(kpml4t_ptr, page_to_pa(page), (UINT64 *) va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
@@ -340,10 +341,11 @@ void vfree(void *ptr) {
     vmap_area_t *vmap_area = find_vmap_area((UINT64) ptr);
     //卸载虚拟地址和物理页映射，释放物理页
     UINT64 va = vmap_area->va_start;
-    for (UINT64 i = 0; i < (vmap_area->va_end - vmap_area->va_start >> PAGE_4K_SHIFT); i++) {
+    UINT64 page_count = vmap_area->va_end - vmap_area->va_start >> PAGE_4K_SHIFT;
+    while (page_count--) {
         page_t *page = pa_to_page(find_page_table_entry(kpml4t_ptr, (void *) va, pte_level) & PAGE_PA_MASK);
-        unmmap(kpml4t_ptr, (void *) va,PAGE_4K_SIZE);
         free_pages(page);
+        unmmap(kpml4t_ptr, (void *) va,PAGE_4K_SIZE);
         va += PAGE_4K_SIZE;
     }
     //释放虚拟地址

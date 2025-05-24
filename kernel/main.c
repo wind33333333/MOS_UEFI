@@ -26,6 +26,12 @@ INIT_TEXT void init_kernel(void) {
     init_efi_runtime_service();                //初始化efi运行时服务
     init_output();                             //初始化输出控制台
 
+    EFI_TIME *efi_time = vmalloc(sizeof(EFI_TIME));
+    boot_info->gRTS->GetTime(efi_time,NULL);
+    color_printk(GREEN,BLACK,"%d %d %d %d %d %d",efi_time->Year,efi_time->Month,efi_time->Day,efi_time->Hour,efi_time->Minute,efi_time->Second);
+    vfree(efi_time);
+
+    while (TRUE);
     //////////////////
     // init_acpi();                               //初始化acpi
     // init_ioapic();                             //初始化ioapic
