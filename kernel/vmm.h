@@ -1,7 +1,7 @@
 #ifndef __MEMORY_H__
 #define __MEMORY_H__
 #include "moslib.h"
-#include "vmalloc.h"
+#include "linkage.h"
 
 //页级别
 typedef enum {

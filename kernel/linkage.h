@@ -1,6 +1,12 @@
 #ifndef _LINKAGE_H_
 #define _LINKAGE_H_
 
+//内核偏移地址
+#define KERNEL_OFFSET 0xFFFFFFFF80000000UL
+
+//直接映射区偏移地址
+#define DIRECT_MAP_OFFSET 0xFFFF800000000000UL
+
 #define L1_CACHE_BYTES 32
 
 #define asmlinkage __attribute__((regparm(0)))	
