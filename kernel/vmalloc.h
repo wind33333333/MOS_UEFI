@@ -45,7 +45,7 @@ void init_vmalloc(void);
 void *vmalloc(UINT64 size);
 void vfree(void *ptr);
 void *iomap (UINT64 pa,UINT64 size,UINT64 page_size,UINT64 attr);
-void iounmap (void *ptr,UINT64 page_size);
+UINT32 uniomap (void *ptr,UINT64 page_size);
 
 
 #endif

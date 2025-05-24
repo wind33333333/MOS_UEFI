@@ -364,23 +364,21 @@ void *iomap(UINT64 pa, UINT64 size, UINT64 page_size, UINT64 attr) {
     size = align_up(size, page_size);
     //分配虚拟地址空间
     vmap_area_t *vmap_area = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, size, page_size);
-    //分配物理页，映射物理页
-    UINT64 va = vmap_area->va_start;
-    UINT64 page_count = size / page_size;
-    for (UINT64 i = 0; i < page_count; i++) {
-        mmap(kpml4t_ptr, pa, (UINT64 *) va, attr,page_size);
-        va += page_size;
-    }
+    //映射物理内存
+    mmap_range(kpml4t_ptr,pa,(void*)vmap_area->va_start,size,attr,page_size);
     return (void *) vmap_area->va_start;
 }
 
 /*
  *设备虚拟地址释放和卸载映射
  */
-void iounmap(void *ptr,UINT64 page_size) {
+INT32 uniomap(void *ptr,UINT64 page_size) {
     //通过虚拟地址找Vmap_area
     vmap_area_t *vmap_area = find_vmap_area((UINT64) ptr);
+    if ((page_size != PAGE_4K_SIZE && page_size != PAGE_2M_SIZE && page_size != PAGE_1G_SIZE) || !vmap_area)
+        return -1;
     //卸载虚拟地址和物理页映射，释放物理页
+    unmmap_range(kpml4t_ptr,ptr);
     UINT64 va = vmap_area->va_start;
     UINT64 page_count = (vmap_area->va_end - vmap_area->va_start) / page_size;
     for (UINT64 i = 0; i < page_count; i++) {

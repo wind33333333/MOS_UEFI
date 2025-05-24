@@ -1,8 +1,4 @@
 #include "vmm.h"
-
-#include <stdbool.h>
-#include <strings.h>
-
 #include "buddy_system.h"
 
 //映射一个页表
