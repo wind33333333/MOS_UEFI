@@ -4,7 +4,6 @@
 #include "printk.h"
 #include "vmm.h"
 #include "kernel_page_table.h"
-#include "memblock.h"
 
 //忙碌树
 rb_root_t used_vmap_area_root;
@@ -330,7 +329,7 @@ void *vmalloc(UINT64 size) {
         mmap(kpml4t_ptr, page_to_pa(page), (UINT64 *) va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
         va += PAGE_4K_SIZE;
     }
-    return (void *) vmap_area->va_start;
+    return (void*)vmap_area->va_start;
 }
 
 /*
