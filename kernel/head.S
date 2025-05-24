@@ -1,4 +1,5 @@
 #include "linkage.h"
+#include "vmalloc.h"
 /***************************内核初始化代码入口*******************************/
 .code64
 .section    .init_text, "ax"
