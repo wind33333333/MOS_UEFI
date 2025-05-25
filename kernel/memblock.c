@@ -41,8 +41,8 @@ INIT_TEXT void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 
 
 
 //线性分配物理内存
-INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align, memblock_attr_e attr) {
-    if (!size) return NULL;
+INIT_TEXT UINT64 memblock_alloc(UINT64 size, UINT64 align) {
+    if (!size) return 0;
     UINT64 align_base, align_size;
     UINT32 index = 0;
     while (index < memblock.memory.count) {
@@ -52,7 +52,7 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align, memblock_attr_e attr) 
         index++;
     }
     //没有合适大小块
-    if (index >= memblock.memory.count) return NULL;
+    if (index >= memblock.memory.count) return 0;
     //如果长度相等则刚好等于一个块
     if (size == memblock.memory.region[index].size) {
         for (UINT32 j = index; j < memblock.memory.count; j++) {
@@ -76,42 +76,51 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align, memblock_attr_e attr) 
         memblock.memory.region[index].size = align_base - memblock.memory.region[index].base;
         memblock.memory.count++;
     }
-    //如果属性为kernel的则直接返回，为init则先把待分配的内存块放到reserved再返回
-    if (attr == kernel) return (void *) align_base;
-    //在reserved找中根据align_base找合适的插入位置
-    index = 0;
-    while (index < memblock.reserved.count) {
-        if (align_base <= memblock.reserved.region[index].base + memblock.reserved.region[index].size) break;
+    return align_base;
+}
+
+//释放物理内存
+INIT_TEXT INT32 memblock_free(UINT64 ptr, UINT64 size) {
+    //根据align_base找合适的插入位置
+    UINT32 index = 0;
+    while (index < memblock.memory.count) {
+        if (ptr <= memblock.memory.region[index].base + memblock.memory.region[index].size) break;
         index++;
     }
-    //分配的地址在头部
-    if (align_base + size == memblock.reserved.region[index].base) {
-        memblock.reserved.region[index].base = align_base;
-        memblock.reserved.region[index].size += size;
-        //分配的地址在尾部
-    } else if (memblock.reserved.region[index].base + memblock.reserved.region[index].size == align_base) {
-        memblock.reserved.region[index].size += size;
-        //
-    } else {
-        for (UINT32 j = memblock.reserved.count; j > index; j--) {
-            memblock.reserved.region[j] = memblock.reserved.region[j - 1];
+    //释放地址在头部
+    if (ptr + size == memblock.memory.region[index].base) {
+        memblock.memory.region[index].base = ptr;
+        memblock.memory.region[index].size += size;
+        //释放的地址在尾部
+    } else if (memblock.memory.region[index].base + memblock.memory.region[index].size == ptr) {
+        memblock.memory.region[index].size += size;
+        //合并
+        if (memblock.memory.region[index].base + memblock.memory.region[index].size == memblock.memory.region[index+1].base) {
+            memblock.memory.region[index].size += memblock.memory.region[index+1].size;
+            for (UINT32 j = index+1; j < memblock.memory.count; j++) {
+                memblock.memory.region[j] = memblock.memory.region[j + 1];
+            }
+            memblock.memory.count--;
         }
-        memblock.reserved.region[index].base = align_base;
-        memblock.reserved.region[index].size = size;
-        memblock.reserved.count++;
+        //释放的地址不在块中
+    } else {
+        for (UINT32 j = memblock.memory.count; j > index; j--) {
+            memblock.memory.region[j] = memblock.memory.region[j - 1];
+        }
+        memblock.memory.region[index].base = ptr;
+        memblock.memory.region[index].size = size;
+        memblock.memory.count++;
     }
-    return (void *) align_base;
 }
 
 INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
     pml4t = pa_to_va(pml4t);
-    UINT32 alloc_attr = (attr >> 9) & 1;
 
     index = get_pml4e_index(va);
     if (pml4t[index] == 0) {
-        pml4t[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE,alloc_attr) | (
+        pml4t[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                            attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
         mem_set(pa_to_va(pml4t[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }
@@ -129,7 +138,7 @@ INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, U
     }
 
     if (pdptt[index] == 0) {
-        pdptt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE,alloc_attr) | (
+        pdptt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                            attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
         mem_set(pa_to_va(pdptt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }
@@ -147,7 +156,7 @@ INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, U
     }
 
     if (pdt[index] == 0) {
-        pdt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE,alloc_attr) | (
+        pdt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                          attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
         mem_set(pa_to_va(pdt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }
