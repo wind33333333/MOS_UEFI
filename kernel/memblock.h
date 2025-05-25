@@ -27,11 +27,10 @@ typedef struct memblock_t {
 extern memblock_t memblock;
 
 void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 size);
-void *memblock_alloc(UINT64 size, UINT64 align);
 INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr,UINT64 page_size);
 INT32 memblock_mmap_range(UINT64 *pml4t, UINT64 pa, void *va,UINT64 length, UINT64 attr,UINT64 page_size);
 void init_memblock(void);
-INIT_TEXT void *memblock_alloc1(UINT64 size, UINT64 align, memblock_attr_e attr);
+void *memblock_alloc(UINT64 size, UINT64 align, memblock_attr_e attr);
 
 
 #endif
