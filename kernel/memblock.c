@@ -44,7 +44,7 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
     if (!size) return NULL;
     UINT64 align_base, align_size;
     UINT32 index = 0;
-    while (index <= memblock.memory.count) {
+    while (index < memblock.memory.count) {
         align_base = align_up(memblock.memory.region[index].base, align);
         align_size = align_base - memblock.memory.region[index].base + size;
         if (align_size <= memblock.memory.region[index].size) break;
