@@ -77,7 +77,7 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align, memblock_attr_e attr) 
         memblock.memory.count++;
     }
     //如果属性为kernel的则直接返回，为init则先把待分配的内存块放到reserved再返回
-    if (attr = kernel) return (void *) align_base;
+    if (attr == kernel) return (void *) align_base;
     //在reserved找中根据align_base找合适的插入位置
     index = 0;
     while (index < memblock.reserved.count) {
