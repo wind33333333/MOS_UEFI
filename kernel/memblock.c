@@ -114,6 +114,7 @@ INIT_TEXT INT32 memblock_free(UINT64 ptr, UINT64 size) {
     return 0;
 }
 
+//映射一个页表
 INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
@@ -172,13 +173,84 @@ INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, U
     return -1; //失败
 }
 
-
+//批量映射
 INIT_TEXT INT32 memblock_mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 size, UINT64 attr,
                                     UINT64 page_size) {
     UINT64 page_count = size / page_size;
     while (page_count--) {
         if (memblock_mmap(pml4t, pa, va, attr, page_size)) return -1;
         pa += page_size;
+        va += page_size;
+    }
+    return 0;
+}
+
+//删除一个页表映射
+INT32 memblock_unmmap(UINT64 *pml4t, void *va, UINT64 page_size) {
+    UINT64 *pdptt, *pdt, *ptt;
+    UINT32 pml4e_index, pdpte_index, pde_index, pte_index;
+
+    pml4t = pa_to_va((UINT64) pml4t);
+    pml4e_index = get_pml4e_index(va);
+    if (pml4t[pml4e_index] == 0) return -1; //pml4e无效
+
+    pdptt = pa_to_va(pml4t[pml4e_index] & PAGE_PA_MASK);
+    pdpte_index = get_pdpte_index(va);
+    if (pdptt[pdpte_index] == 0) return -1; //pdpte无效
+    if (page_size == PAGE_1G_SIZE) {
+        //如果为1G巨页，跳转到巨页释放
+        pdptt[pdpte_index] = 0;
+        invlpg(va);
+        goto huge_page;
+    }
+
+    pdt = pa_to_va(pdptt[pdpte_index] & PAGE_PA_MASK);
+    pde_index = get_pde_index(va);
+    if (pdt[pde_index] == 0) return -1; //pde无效
+    if (page_size == PAGE_2M_SIZE) {
+        //如果等于1则表示该页为2M大页，跳转到大页释放
+        pdt[pde_index] = 0;
+        invlpg(va);
+        goto big_page;
+    }
+
+    ptt = pa_to_va(pdt[pde_index] & PAGE_PA_MASK); //4K页
+    pte_index = get_pte_index(va);
+    ptt[pte_index] = 0;
+    invlpg(va);
+
+
+    //ptt为空则释放
+    if (forward_find_qword(ptt, 512, 0) == 0) {
+        memblock_free(va_to_pa(ptt),PAGE_4K_SIZE);
+        pdt[pde_index] = 0;
+    } else {
+        return 0;
+    }
+
+    big_page:
+        //pde为空则释放
+        if (forward_find_qword(pdt, 512, 0) == 0) {
+            memblock_free(va_to_pa(pdt),PAGE_4K_SIZE);
+            pdptt[pdpte_index] = 0;
+        } else {
+            return 0;
+        }
+
+    huge_page:
+        //pdpt为空则释放
+        if (forward_find_qword(pdptt, 512, 0) == 0) {
+            memblock_free(va_to_pa(pdptt),PAGE_4K_SIZE);
+            pml4t[pml4e_index] = 0;
+        }
+    return 0;
+}
+
+//批量删除页表映射
+INT32 memblock_unmmap_range(UINT64 *pml4t, void *va, UINT64 size, UINT64 page_size) {
+    UINT64 page_count = size / page_size;
+    while (page_count--) {
+        if (unmmap(pml4t, va, page_size)) return -1;
         va += page_size;
     }
     return 0;
