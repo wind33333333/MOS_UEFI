@@ -52,19 +52,20 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
     }
     //没有合适大小块
     if (index >= memblock.memory.count) return NULL;
-    //如果对齐地址和长度都相等则直接从中取出内存块，向前移动数组和数组数量减一
+    //如果长度相等则刚好等于一个块
     if (size == memblock.memory.region[index].size) {
         for (UINT32 j = index; j < memblock.memory.count; j++) {
             memblock.memory.region[j] = memblock.memory.region[j + 1];
         }
         memblock.memory.count--;
-        //如果对齐后地址相等且长度小于这则修正当前的块起始地址和长度
+        //如果对齐后地址等于起始地址则从头切
     }else if (align_base == memblock.memory.region[index].base) {
         memblock.memory.region[index].base += size;
         memblock.memory.region[index].size -= size;
-        //如果对齐地址不相等但是长度小于先拆分块再分配，向后移动数组和数组加一
+        //如果对齐后地址等于结束地址则尾部切
     }else if (align_size == memblock.memory.region[index].size) {
         memblock.memory.region[index].size -= size;
+        //否则中间切
     }else{
         for (UINT32 j = memblock.memory.count; j > index; j--) {
             memblock.memory.region[j] = memblock.memory.region[j - 1];
