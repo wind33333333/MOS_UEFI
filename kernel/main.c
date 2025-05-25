@@ -20,7 +20,7 @@ INIT_TEXT void init_kernel(void) {
     init_memblock();                           //初始化启动内存分配器
 
     //memblock.memory.region[0].size = 0xDD000;
-    UINT64 i = memblock_alloc(0x1000,0x100000000);
+    UINT64 i = memblock_alloc1(0x1000,0x1000,init);
 
     init_kpage_table();                        //初始化正式内核页表
     init_buddy_system();                       //初始化伙伴系统

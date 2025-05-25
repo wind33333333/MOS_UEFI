@@ -59,14 +59,14 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
         }
         memblock.memory.count--;
         //如果对齐后地址等于起始地址则从头切
-    }else if (align_base == memblock.memory.region[index].base) {
+    } else if (align_base == memblock.memory.region[index].base) {
         memblock.memory.region[index].base += size;
         memblock.memory.region[index].size -= size;
         //如果对齐后地址等于结束地址则尾部切
-    }else if (align_size == memblock.memory.region[index].size) {
+    } else if (align_size == memblock.memory.region[index].size) {
         memblock.memory.region[index].size -= size;
         //否则中间切
-    }else{
+    } else {
         for (UINT32 j = memblock.memory.count; j > index; j--) {
             memblock.memory.region[j] = memblock.memory.region[j - 1];
         }
@@ -74,6 +74,70 @@ INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
         memblock.memory.region[index + 1].size -= align_size;
         memblock.memory.region[index].size = align_base - memblock.memory.region[index].base;
         memblock.memory.count++;
+    }
+    return (void *) align_base;
+}
+
+
+//线性分配物理内存
+INIT_TEXT void *memblock_alloc1(UINT64 size, UINT64 align, memblock_attr_e attr) {
+    if (!size) return NULL;
+    UINT64 align_base, align_size;
+    UINT32 index = 0;
+    while (index < memblock.memory.count) {
+        align_base = align_up(memblock.memory.region[index].base, align);
+        align_size = align_base - memblock.memory.region[index].base + size;
+        if (align_size <= memblock.memory.region[index].size) break;
+        index++;
+    }
+    //没有合适大小块
+    if (index >= memblock.memory.count) return NULL;
+    //如果长度相等则刚好等于一个块
+    if (size == memblock.memory.region[index].size) {
+        for (UINT32 j = index; j < memblock.memory.count; j++) {
+            memblock.memory.region[j] = memblock.memory.region[j + 1];
+        }
+        memblock.memory.count--;
+        //如果对齐后地址等于起始地址则从头切
+    } else if (align_base == memblock.memory.region[index].base) {
+        memblock.memory.region[index].base += size;
+        memblock.memory.region[index].size -= size;
+        //如果对齐后地址等于结束地址则尾部切
+    } else if (align_size == memblock.memory.region[index].size) {
+        memblock.memory.region[index].size -= size;
+        //否则中间切
+    } else {
+        for (UINT32 j = memblock.memory.count; j > index; j--) {
+            memblock.memory.region[j] = memblock.memory.region[j - 1];
+        }
+        memblock.memory.region[index + 1].base += align_size;
+        memblock.memory.region[index + 1].size -= align_size;
+        memblock.memory.region[index].size = align_base - memblock.memory.region[index].base;
+        memblock.memory.count++;
+    }
+    //如果属性为kernel的则直接返回，为init则先把待分配的内存块放到reserved再返回
+    if (attr = kernel) return (void *) align_base;
+    //在reserved找中根据align_base找合适的插入位置
+    index = 0;
+    while (index < memblock.reserved.count) {
+        if (align_base <= memblock.reserved.region[index].base + memblock.reserved.region[index].size) break;
+        index++;
+    }
+    //分配的地址在头部
+    if (align_base + size == memblock.reserved.region[index].base) {
+        memblock.reserved.region[index].base = align_base;
+        memblock.reserved.region[index].size += size;
+        //分配的地址在尾部
+    } else if (memblock.reserved.region[index].base + memblock.reserved.region[index].size == align_base) {
+        memblock.reserved.region[index].size += size;
+        //
+    } else {
+        for (UINT32 j = memblock.reserved.count; j > index; j--) {
+            memblock.reserved.region[j] = memblock.reserved.region[j - 1];
+        }
+        memblock.reserved.region[index].base = align_base;
+        memblock.reserved.region[index].size = size;
+        memblock.reserved.count++;
     }
     return (void *) align_base;
 }
