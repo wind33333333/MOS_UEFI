@@ -128,7 +128,7 @@ INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, U
     }
 
     if (pdptt[index] == 0) {
-        pdptt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+        pdptt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE,) | (
                            attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
         mem_set(pa_to_va(pdptt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }

@@ -1,8 +1,23 @@
 #ifndef __MEMBLOCK_H__
 #define __MEMBLOCK_H__
 #include "moslib.h"
+#include "vmm.h"
 
 #define MAX_MEMBLOCK 128
+
+#define PAGE_ROOT_RWX_4K_INIT       PAGE_ROOT_RWX_4K | 1<<9     //可读-可写-可执行
+#define PAGE_ROOT_RX_4K_INIT        PAGE_ROOT_RX_4K | 1<<9      //可读-可执行
+#define PAGE_ROOT_R_4K_INIT         PAGE_ROOT_R_4K | 1<<9       //只读
+#define PAGE_ROOT_RW_4K_INIT        PAGE_ROOT_RW_4K | 1<<9      //可读-可写-普通内存
+#define PAGE_ROOT_RW_WC_4K_INIT     PAGE_ROOT_RW_WC_4K | 1<<9   //可读-可写-显卡内存
+#define PAGE_ROOT_RW_UC_4K_INIT     PAGE_ROOT_RW_UC_4K | 1<<9   //可读-可写-IO映射内存
+
+#define PAGE_ROOT_RWX_2M1G_INIT     PAGE_ROOT_RWX_2M1G | 1<<9  //可读-可写-可执行
+#define PAGE_ROOT_RX_2M1G_INIT      PAGE_ROOT_RX_2M1G | 1<<9   //可读-可执行
+#define PAGE_ROOT_RX_2M1G_INIT      PAGE_ROOT_R_2M1G | 1<<9    //只读
+#define PAGE_ROOT_RWX_2M1G_INIT     PAGE_ROOT_RW_2M1G | 1<<9   //可读-可写-普通内存
+#define PAGE_ROOT_RW_WC_2M1G_INIT   PAGE_ROOT_RW_2M1G | 1<<9   //可读-可写-显卡内存
+#define PAGE_ROOT_RW_UC_2M1G_INIT   PAGE_ROOT_RW_2M1G | 1<<9   //可读-可写-IO映射内存
 
 typedef enum {
     kernel = 0,
