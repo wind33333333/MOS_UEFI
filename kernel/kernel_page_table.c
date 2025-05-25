@@ -6,7 +6,7 @@
 UINT64 *kpml4t_ptr; //正式内核页表
 
 INIT_TEXT void init_kpage_table(void) {
-    kpml4t_ptr = memblock_alloc(PAGE_4K_SIZE, PAGE_4K_SIZE);
+    kpml4t_ptr = memblock_alloc(PAGE_4K_SIZE, PAGE_4K_SIZE,kernel);
     mem_set(kpml4t_ptr, 0, PAGE_4K_SIZE);
 
     //直接映射区

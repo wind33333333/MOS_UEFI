@@ -107,10 +107,11 @@ INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, U
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 index;
     pml4t = pa_to_va(pml4t);
+    UINT32 alloc_attr = (attr >> 9) & 1;
 
     index = get_pml4e_index(va);
     if (pml4t[index] == 0) {
-        pml4t[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+        pml4t[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE,alloc_attr) | (
                            attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
         mem_set(pa_to_va(pml4t[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }
@@ -128,7 +129,7 @@ INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, U
     }
 
     if (pdptt[index] == 0) {
-        pdptt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE,) | (
+        pdptt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE,alloc_attr) | (
                            attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
         mem_set(pa_to_va(pdptt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }
@@ -146,7 +147,7 @@ INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, U
     }
 
     if (pdt[index] == 0) {
-        pdt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+        pdt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE,alloc_attr) | (
                          attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
         mem_set(pa_to_va(pdt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }

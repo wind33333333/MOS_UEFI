@@ -18,10 +18,6 @@
 INIT_TEXT void init_kernel(void) {
     mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
     init_memblock();                           //初始化启动内存分配器
-
-    //memblock.memory.region[0].size = 0xDD000;
-    UINT64 i = memblock_alloc1(0x1000,0x1000,init);
-
     init_kpage_table();                        //初始化正式内核页表
     init_buddy_system();                       //初始化伙伴系统
     init_slub();                               //初始化slub内存分配器

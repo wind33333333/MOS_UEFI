@@ -39,7 +39,7 @@ INIT_TEXT void init_buddy_system(void) {
                 vmemmap_va += PAGE_2M_SIZE;
                 continue;
             }
-            UINT64 pa = (UINT64)memblock_alloc(PAGE_2M_SIZE,PAGE_2M_SIZE);
+            UINT64 pa = (UINT64)memblock_alloc(PAGE_2M_SIZE,PAGE_2M_SIZE,kernel);
             memblock_mmap(kpml4t_ptr, pa, vmemmap_va,PAGE_ROOT_RW_2M1G, PAGE_2M_SIZE);
             mem_set((void*)vmemmap_va, 0, PAGE_2M_SIZE);
             vmemmap_va += PAGE_2M_SIZE;
