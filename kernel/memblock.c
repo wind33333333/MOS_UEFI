@@ -111,6 +111,7 @@ INIT_TEXT INT32 memblock_free(UINT64 ptr, UINT64 size) {
         memblock.memory.region[index].size = size;
         memblock.memory.count++;
     }
+    return 0;
 }
 
 INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
