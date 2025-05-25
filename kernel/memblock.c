@@ -15,7 +15,8 @@ INIT_TEXT void init_memblock(void) {
                          boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
             //其他可用类型合并放入可用类型保存
         } else if (boot_info->mem_map[i].Type == EFI_LOADER_CODE || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_CODE
-                   || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA || boot_info->mem_map[i].Type == EFI_CONVENTIONAL_MEMORY) {
+                   || boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA || boot_info->mem_map[i].Type ==
+                   EFI_CONVENTIONAL_MEMORY) {
             memblock_add(&memblock.memory, boot_info->mem_map[i].PhysicalStart,
                          boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
         }
@@ -40,35 +41,40 @@ INIT_TEXT void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 
 
 //线性分配物理内存
 INIT_TEXT void *memblock_alloc(UINT64 size, UINT64 align) {
-    if (size != 0) {
-        for (UINT32 i = 0; i < memblock.memory.count; i++) {
-            UINT64 align_base = align_up(memblock.memory.region[i].base, align);
-            UINT64 align_size = align_base - memblock.memory.region[i].base + size;
-            if (align_size > memblock.memory.region[i].size) continue;
-            if (align_base == memblock.memory.region[i].base && align_size == memblock.memory.region[i].size) {
-                //如果对齐地址和长度都相等则直接从中取出内存块，向前移动数组和数组数量减一
-                for (UINT32 j = i; j < memblock.memory.count; j++) {
-                    memblock.memory.region[j] = memblock.memory.region[j + 1];
-                }
-                memblock.memory.count--;
-            } else if (align_base == memblock.memory.region[i].base) {
-                //如果对齐后地址相等且长度小于这则修正当前的块起始地址和长度
-                memblock.memory.region[i].base += align_size;
-                memblock.memory.region[i].size -= align_size;
-            } else if (align_base != memblock.memory.region[i].base) {
-                //如果对齐地址不相等但是长度小于先拆分块再分配，向后移动数组和数组加一
-                for (UINT32 j = memblock.memory.count; j > i; j--) {
-                    memblock.memory.region[j] = memblock.memory.region[j - 1];
-                }
-                memblock.memory.region[i + 1].base += align_size;
-                memblock.memory.region[i + 1].size -= align_size;
-                memblock.memory.region[i].size = align_base - memblock.memory.region[i].base;
-                memblock.memory.count++;
-            }
-            return (void *) align_base;
-        }
+    if (!size) return NULL;
+    UINT64 align_base, align_size;
+    UINT32 index = 0;
+    while (index <= memblock.memory.count) {
+        align_base = align_up(memblock.memory.region[index].base, align);
+        align_size = align_base - memblock.memory.region[index].base + size;
+        if (align_size <= memblock.memory.region[index].size) break;
+        index++;
     }
-    return NULL;
+    //没有合适大小块
+    if (index >= memblock.memory.count) return NULL;
+    //如果对齐地址和长度都相等则直接从中取出内存块，向前移动数组和数组数量减一
+    if (size == memblock.memory.region[index].size) {
+        for (UINT32 j = index; j < memblock.memory.count; j++) {
+            memblock.memory.region[j] = memblock.memory.region[j + 1];
+        }
+        memblock.memory.count--;
+        //如果对齐后地址相等且长度小于这则修正当前的块起始地址和长度
+    }else if (align_base == memblock.memory.region[index].base) {
+        memblock.memory.region[index].base += size;
+        memblock.memory.region[index].size -= size;
+        //如果对齐地址不相等但是长度小于先拆分块再分配，向后移动数组和数组加一
+    }else if (align_size == memblock.memory.region[index].size) {
+        memblock.memory.region[index].size -= size;
+    }else{
+        for (UINT32 j = memblock.memory.count; j > index; j--) {
+            memblock.memory.region[j] = memblock.memory.region[j - 1];
+        }
+        memblock.memory.region[index + 1].base += align_size;
+        memblock.memory.region[index + 1].size -= align_size;
+        memblock.memory.region[index].size = align_base - memblock.memory.region[index].base;
+        memblock.memory.count++;
+    }
+    return (void *) align_base;
 }
 
 INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
