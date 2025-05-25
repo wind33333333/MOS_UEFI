@@ -250,7 +250,7 @@ INT32 memblock_unmmap(UINT64 *pml4t, void *va, UINT64 page_size) {
 INT32 memblock_unmmap_range(UINT64 *pml4t, void *va, UINT64 size, UINT64 page_size) {
     UINT64 page_count = size / page_size;
     while (page_count--) {
-        if (unmmap(pml4t, va, page_size)) return -1;
+        if (memblock_unmmap(pml4t, va, page_size)) return -1;
         va += page_size;
     }
     return 0;
