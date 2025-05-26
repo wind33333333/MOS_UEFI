@@ -1,6 +1,7 @@
 #include "buddy_system.h"
 
 #include <iso646.h>
+#include <wchar.h>
 
 #include "kernel_page_table.h"
 #include "memblock.h"
@@ -67,6 +68,44 @@ INIT_TEXT void init_buddy_system(void) {
             buddy_system.free_area[order].count++;
         }
     }
+
+    //清空memblock.memory
+    for (UINT32 i = 0; i < memblock.memory.count; i++) {
+        memblock.memory.region[i].base = 0;
+        memblock.memory.region[i].size = 0;
+    }
+    memblock.memory.count = 0;
+
+    //把memblock.reserved移动到memory中并找出内核段剔除,清空memblock.reserved
+    UINT64 kernel_start = _start_text-KERNEL_OFFSET;
+    UINT64 kernel_end = _end_stack-KERNEL_OFFSET;
+    UINT32 j = 0;
+    for (UINT32 i = 0; i < memblock.reserved.count; i++) {
+        UINT64 memblock_end = memblock.reserved.region[i].base + memblock.reserved.region[i].size;
+        if (kernel_start < memblock.reserved.region[i].base || kernel_end > memblock_end ) {
+            memblock.memory.region[j] = memblock.reserved.region[i];
+        }else if (kernel_start == memblock.reserved.region[i].base && kernel_end == memblock_end) {
+            continue;
+        }else if (kernel_start == memblock.reserved.region[i].base) {
+            memblock.memory.region[j].base = kernel_end;
+            memblock.memory.region[j].size = memblock_end - kernel_end;
+        }else if (kernel_end == memblock_end) {
+            memblock.memory.region[j].base = memblock.reserved.region[i].base;
+            memblock.memory.region[j].size = kernel_start - memblock.memory.region[j].base;
+        }else {
+            memblock.memory.region[j].base = memblock.reserved.region[i].base;
+            memblock.memory.region[j].size = kernel_start -memblock.memory.region[j].base;
+            j++;
+            memblock.memory.region[j].base = kernel_end;
+            memblock.memory.region[j].size = memblock_end - kernel_end;
+        }
+        memblock.reserved.region[i].base = 0;
+        memblock.reserved.region[i].size = 0;
+        j++;
+    }
+    memblock.memory.count = memblock.reserved.count;
+    memblock.reserved.count = 0;
+
 
 }
 
