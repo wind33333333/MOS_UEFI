@@ -186,7 +186,7 @@ INIT_TEXT INT32 memblock_mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 s
 }
 
 //删除一个页表映射
-INT32 memblock_unmmap(UINT64 *pml4t, void *va, UINT64 page_size) {
+INIT_TEXT INT32 memblock_unmmap(UINT64 *pml4t, void *va, UINT64 page_size) {
     UINT64 *pdptt, *pdt, *ptt;
     UINT32 pml4e_index, pdpte_index, pde_index, pte_index;
 
@@ -247,7 +247,7 @@ INT32 memblock_unmmap(UINT64 *pml4t, void *va, UINT64 page_size) {
 }
 
 //批量删除页表映射
-INT32 memblock_unmmap_range(UINT64 *pml4t, void *va, UINT64 size, UINT64 page_size) {
+INIT_TEXT INT32 memblock_unmmap_range(UINT64 *pml4t, void *va, UINT64 size, UINT64 page_size) {
     UINT64 page_count = size / page_size;
     while (page_count--) {
         if (memblock_unmmap(pml4t, va, page_size)) return -1;
