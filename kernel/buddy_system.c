@@ -18,13 +18,11 @@ INIT_TEXT static inline UINT32 get_max_order_for_size(UINT64 num_pages) {
 //初始化伙伴系统
 INIT_TEXT void init_buddy_system(void) {
     //初始化page_table指针
-    buddy_system.page_table = (page_t*)VMEMMAP_START;
-
+    buddy_system.page_table = (page_t *) VMEMMAP_START;
     //初始化空闲链表
-    for (UINT64 i = 0; i<=MAX_ORDER; i++) {
+    for (UINT64 i = 0; i <= MAX_ORDER; i++) {
         list_head_init(&buddy_system.free_area[i].list);
     }
-
     //把memblock中的memory内存移交给伙伴系统管理，memblock_alloc内存分配器退出，由伙伴系统接管物理内存管理。
     for (UINT32 i = 0; i < memblock.memory.count; i++) {
         UINT64 pa = memblock.memory.region[i].base;
@@ -47,44 +45,38 @@ INIT_TEXT void init_buddy_system(void) {
         }
     }
 
-    //清空memblock.memory
-    for (UINT32 i = 0; i < memblock.memory.count; i++) {
-        memblock.memory.region[i].base = 0;
-        memblock.memory.region[i].size = 0;
+    //在memblock.reserved中找出内核段并剔除，防止后期错误释放
+    UINT64 kernel_start = _start_text - KERNEL_OFFSET;
+    UINT64 kernel_end = _end_stack - KERNEL_OFFSET;
+    UINT64 kernel_size = _end_stack - _start_text;
+    UINT64 memblock_end = 0;
+    UINT32 index = 0;
+    while (index < memblock.reserved.count) {
+        memblock_end = memblock.reserved.region[index].base +memblock.reserved.region[index].size;
+        if (kernel_start >= memblock.reserved.region[index].base && kernel_end <= memblock_end) break;
+        index++;
     }
-    memblock.memory.count = 0;
 
-    //把memblock.reserved移动到memory中并找出内核段剔除,清空memblock.reserved
-    UINT64 kernel_start = _start_text-KERNEL_OFFSET;
-    UINT64 kernel_end = _end_stack-KERNEL_OFFSET;
-    UINT32 j = 0;
-    for (UINT32 i = 0; i < memblock.reserved.count; i++) {
-        UINT64 memblock_end = memblock.reserved.region[i].base + memblock.reserved.region[i].size;
-        if (kernel_start < memblock.reserved.region[i].base || kernel_end > memblock_end ) {
-            memblock.memory.region[j] = memblock.reserved.region[i];
-        }else if (kernel_start == memblock.reserved.region[i].base && kernel_end == memblock_end) {
-            continue;
-        }else if (kernel_start == memblock.reserved.region[i].base) {
-            memblock.memory.region[j].base = kernel_end;
-            memblock.memory.region[j].size = memblock_end - kernel_end;
-        }else if (kernel_end == memblock_end) {
-            memblock.memory.region[j].base = memblock.reserved.region[i].base;
-            memblock.memory.region[j].size = kernel_start - memblock.memory.region[j].base;
-        }else {
-            memblock.memory.region[j].base = memblock.reserved.region[i].base;
-            memblock.memory.region[j].size = kernel_start -memblock.memory.region[j].base;
-            j++;
-            memblock.memory.region[j].base = kernel_end;
-            memblock.memory.region[j].size = memblock_end - kernel_end;
+    if (kernel_start == memblock.reserved.region[index].base && kernel_size ==\
+        memblock.reserved.region[index].size) {
+        for (UINT32 j = index; j < memblock.reserved.count; j++) {
+            memblock.reserved.region[j] = memblock.reserved.region[j + 1];
         }
-        memblock.reserved.region[i].base = 0;
-        memblock.reserved.region[i].size = 0;
-        j++;
+        memblock.reserved.count--;
+    } else if (kernel_start == memblock.reserved.region[index].base) {
+        memblock.reserved.region[index].base = kernel_end;
+        memblock.reserved.region[index].size -= kernel_size;
+    } else if (kernel_end == memblock_end) {
+        memblock.reserved.region[index].size -= kernel_size;
+    } else {
+        for (UINT32 j = memblock.reserved.count; j > index; j--) {
+            memblock.reserved.region[j] = memblock.reserved.region[j - 1];
+        }
+        memblock.reserved.region[index + 1].base = kernel_end;
+        memblock.reserved.region[index + 1].size = memblock_end - kernel_end;
+        memblock.reserved.region[index].size = kernel_start - memblock.reserved.region[index].base;
+        memblock.reserved.count++;
     }
-    memblock.memory.count = memblock.reserved.count;
-    memblock.reserved.count = 0;
-
-
 }
 
 //伙伴系统物理页分配器
@@ -92,10 +84,10 @@ page_t *alloc_pages(UINT32 order) {
     page_t *page;
     UINT32 current_order = order;
     //阶链表没有空闲块则分裂
-    while (TRUE){
-        if (current_order > MAX_ORDER) return NULL;        //如果阶无效直接返回空指针
+    while (TRUE) {
+        if (current_order > MAX_ORDER) return NULL; //如果阶无效直接返回空指针
         if (buddy_system.free_area[current_order].count) {
-            page = CONTAINER_OF(buddy_system.free_area[current_order].list.next,page_t,list);
+            page = CONTAINER_OF(buddy_system.free_area[current_order].list.next, page_t, list);
             list_del(buddy_system.free_area[current_order].list.next);
             buddy_system.free_area[current_order].count--;
             break;
@@ -104,12 +96,12 @@ page_t *alloc_pages(UINT32 order) {
     }
 
     //分裂得到的阶块到合适大小
-    while (current_order > order){
+    while (current_order > order) {
         current_order--;
-        list_add_head(&buddy_system.free_area[current_order].list,&page->list);
+        list_add_head(&buddy_system.free_area[current_order].list, &page->list);
         page->order = current_order;
         buddy_system.free_area[current_order].count++;
-        page += 1<<current_order;
+        page += 1 << current_order;
         page->order = current_order;
     }
 
@@ -117,7 +109,7 @@ page_t *alloc_pages(UINT32 order) {
     page->flags = 0;
     if (order) bts(&page->flags,PG_HEAD);
     for (UINT32 i = 1; i < (1 << current_order); i++) {
-        page[i].compound_head = (UINT64)page | 1;
+        page[i].compound_head = (UINT64) page | 1;
     }
 
     return page;
@@ -128,9 +120,10 @@ void free_pages(page_t *page) {
     //空指针或者被引用了直接返回
     if (page == NULL || page->refcount > 0) return;
 
-    while (page->order < MAX_ORDER) {         //当前阶链表有其他page尝试合并伙伴
+    while (page->order < MAX_ORDER) {
+        //当前阶链表有其他page尝试合并伙伴
         //计算伙伴page
-        page_t* buddy_page = buddy_system.page_table + (page - buddy_system.page_table ^ (1UL<<page->order));
+        page_t *buddy_page = buddy_system.page_table + (page - buddy_system.page_table ^ (1UL << page->order));
         if (!bt(buddy_page->flags,PG_BUDDY) || buddy_page->order != page->order) break;
         if (page > buddy_page) page = buddy_page;
         list_del(&buddy_page->list);
@@ -139,6 +132,6 @@ void free_pages(page_t *page) {
     }
     page->flags = 0;
     bts(&page->flags,PG_BUDDY);
-    list_add_head(&buddy_system.free_area[page->order].list,&page->list);
+    list_add_head(&buddy_system.free_area[page->order].list, &page->list);
     buddy_system.free_area[page->order].count++;
 }
