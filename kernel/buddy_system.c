@@ -1,8 +1,4 @@
 #include "buddy_system.h"
-
-#include <iso646.h>
-#include <wchar.h>
-
 #include "kernel_page_table.h"
 #include "memblock.h"
 
@@ -27,24 +23,6 @@ INIT_TEXT void init_buddy_system(void) {
     //初始化空闲链表
     for (UINT64 i = 0; i<=MAX_ORDER; i++) {
         list_head_init(&buddy_system.free_area[i].list);
-    }
-
-    //初始化vmemmap区为2M页表
-    for (UINT32 i = 0; i < memblock.memory.count; i++) {
-        UINT64 pa = memblock.memory.region[i].base;
-        UINT64 size = memblock.memory.region[i].size;
-        UINT64 vmemmap_va = (UINT64)pa_to_page(pa)&PAGE_2M_MASK;
-        UINT64 pdte_count = PAGE_2M_ALIGN((size >> PAGE_4K_SHIFT)*sizeof(page_t))>>PAGE_2M_SHIFT;
-        for (UINT64 i = 0; i < pdte_count; i++) {
-            if (find_page_table_entry(kpml4t_ptr, vmemmap_va, pde_level)) {
-                vmemmap_va += PAGE_2M_SIZE;
-                continue;
-            }
-            UINT64 pa = (UINT64)memblock_alloc(PAGE_2M_SIZE,PAGE_2M_SIZE);
-            memblock_mmap(kpml4t_ptr, pa, vmemmap_va,PAGE_ROOT_RW_2M1G, PAGE_2M_SIZE);
-            mem_set((void*)vmemmap_va, 0, PAGE_2M_SIZE);
-            vmemmap_va += PAGE_2M_SIZE;
-        }
     }
 
     //把memblock中的memory内存移交给伙伴系统管理，memblock_alloc内存分配器退出，由伙伴系统接管物理内存管理。
