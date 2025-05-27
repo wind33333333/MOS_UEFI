@@ -23,7 +23,7 @@ INIT_TEXT void init_memblock(void) {
             memblock_add(&memblock.memory, boot_info->mem_map[i].PhysicalStart,
                          boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
         }
-        //把所有物理内存放入phy_mem_map
+        //把所可用物理内存放入phy_mem_map
         if (boot_info->mem_map[i].NumberOfPages != 0 &&\
         (boot_info->mem_map[i].Type == EFI_LOADER_DATA ||\
         boot_info->mem_map[i].Type == EFI_LOADER_CODE ||\
