@@ -42,12 +42,12 @@ extern buddy_system_t buddy_system;
 
 //page地址转换物理地址
 static inline UINT64 page_to_pa(page_t *page) {
-    return (UINT64)(page - VMEMMAP_START) << PAGE_4K_SHIFT;
+    return (UINT64)(page - (page_t*)VMEMMAP_START) << PAGE_4K_SHIFT;
 }
 
 //物理地址转换page地址
 static inline page_t* pa_to_page(UINT64 pa) {
-    return VMEMMAP_START+(pa >> PAGE_4K_SHIFT);
+    return (page_t*)VMEMMAP_START+(pa >> PAGE_4K_SHIFT);
 }
 
 //page地址转虚拟地址
