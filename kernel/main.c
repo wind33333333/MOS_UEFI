@@ -23,6 +23,7 @@ INIT_TEXT void init_kernel(void) {
     init_vmalloc();                            //初始化vmalloc
     init_efi_runtime_service();                //初始化efi运行时服务
     init_output();                             //初始化输出控制台
+    while (1);
     init_acpi();                               //初始化acpi
     // init_ioapic();                             //初始化ioapic
     // init_hpet();                               //初始化hpet
