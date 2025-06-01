@@ -15,8 +15,7 @@ INIT_TEXT void init_kpage_table(void) {
     memblock_mmap_range(kpml4t_ptr, 0,DIRECT_MAP_OFFSET,
                         memblock.memory.region[memblock.memory.count - 1].base + memblock.memory.region[
                             memblock.memory.count - 1].size,PAGE_ROOT_RW_2M1G,PAGE_1G_SIZE);
-
-    //初始化vmemmap区为2M页表
+    //初始化vmemmap区为2M页表,把内存块合并对齐128MB,每个page结构64字节，一个page等于4KB,一个2M页刚好等于128MB物理内存。
     UINT32 i = 0;
     while (i < phy_mem_map.count) {
         if (phy_mem_map.region[i+1].base - (phy_mem_map.region[i].base + phy_mem_map.region[i].size) < 0x8000000) {
