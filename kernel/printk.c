@@ -333,8 +333,6 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
 char buf[4096];
 
 INIT_TEXT void init_output(void) {
-    boot_info=pa_to_va((UINT64)boot_info);
-
     UINT64 page_size,attr;
     if (boot_info->frame_buffer_size >= PAGE_1G_SIZE) {
         page_size = PAGE_1G_SIZE;
