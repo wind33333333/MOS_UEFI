@@ -6,7 +6,6 @@ INIT_DATA memblock_t memblock;
 INIT_DATA memblock_type_t phy_mem_map;
 
 INIT_TEXT void init_memblock(void) {
-    UINT64 kernel_start = _start_text - KERNEL_OFFSET;
     UINT64 kernel_end = _end_stack - KERNEL_OFFSET;
     UINT64 kernel_size = _end_stack - _start_text;
     boot_info = pa_to_va(boot_info);
