@@ -26,25 +26,12 @@ INIT_TEXT void init_buddy_system(void) {
     //把memblock中的memory内存移交给伙伴系统管理，memblock_alloc内存分配器退出，由伙伴系统接管物理内存管理。
     for (UINT32 i = 0; i < memblock.memory.count; i++) {
         UINT64 pa = memblock.memory.region[i].base;
-        UINT64 size = memblock.memory.region[i].size;
-        while (size >= PAGE_4K_SIZE) {
-            UINT64 page_index = pa >> PAGE_4K_SHIFT;
-            UINT64 num_pages = size >> PAGE_4K_SHIFT;
-            UINT32 k_alignment = get_trailing_zeros(page_index);
-            UINT32 k_size = get_max_order_for_size(num_pages);
-            UINT32 order = (k_alignment < k_size) ? k_alignment : k_size;
-            page_t *page = &buddy_system.page_table[page_index];
-            list_add_head(&buddy_system.free_area[order].list, &page->list);
-            page->order = order;
-            page->flags = 0;
-            bts(&page->flags,PG_BUDDY);
-            UINT64 block_size = PAGE_4K_SIZE << order;
-            pa += block_size;
-            size -= block_size;
-            buddy_system.free_area[order].count++;
+        UINT64 count = memblock.memory.region[i].size >> PAGE_4K_SHIFT;
+        while (count--) {
+            free_pages(pa_to_page(pa));
+            pa += PAGE_4K_SIZE;
         }
     }
-
     //在memblock.reserved中找出内核段并剔除，防止后期错误释放
     UINT64 kernel_start = _start_text - KERNEL_OFFSET;
     UINT64 kernel_end = _end_stack - KERNEL_OFFSET;
