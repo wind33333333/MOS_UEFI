@@ -32,38 +32,6 @@ INIT_TEXT void init_buddy_system(void) {
             pa += PAGE_4K_SIZE;
         }
     }
-    //在memblock.reserved中找出内核段并剔除，防止后期错误释放
-    UINT64 kernel_start = _start_text - KERNEL_OFFSET;
-    UINT64 kernel_end = _end_stack - KERNEL_OFFSET;
-    UINT64 kernel_size = _end_stack - _start_text;
-    UINT64 memblock_end = 0;
-    UINT32 index = 0;
-    while (index < memblock.reserved.count) {
-        memblock_end = memblock.reserved.region[index].base +memblock.reserved.region[index].size;
-        if (kernel_start >= memblock.reserved.region[index].base && kernel_end <= memblock_end) break;
-        index++;
-    }
-
-    if (kernel_start == memblock.reserved.region[index].base && kernel_size ==\
-        memblock.reserved.region[index].size) {
-        for (UINT32 j = index; j < memblock.reserved.count; j++) {
-            memblock.reserved.region[j] = memblock.reserved.region[j + 1];
-        }
-        memblock.reserved.count--;
-    } else if (kernel_start == memblock.reserved.region[index].base) {
-        memblock.reserved.region[index].base = kernel_end;
-        memblock.reserved.region[index].size -= kernel_size;
-    } else if (kernel_end == memblock_end) {
-        memblock.reserved.region[index].size -= kernel_size;
-    } else {
-        for (UINT32 j = memblock.reserved.count; j > index; j--) {
-            memblock.reserved.region[j] = memblock.reserved.region[j - 1];
-        }
-        memblock.reserved.region[index + 1].base = kernel_end;
-        memblock.reserved.region[index + 1].size = memblock_end - kernel_end;
-        memblock.reserved.region[index].size = kernel_start - memblock.reserved.region[index].base;
-        memblock.reserved.count++;
-    }
 }
 
 //伙伴系统物理页分配器
