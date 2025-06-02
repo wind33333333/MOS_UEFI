@@ -31,8 +31,15 @@ INIT_TEXT void init_memblock(void) {
         boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA ||\
         boot_info->mem_map[i].Type == EFI_CONVENTIONAL_MEMORY ||\
         boot_info->mem_map[i].Type == EFI_ACPI_RECLAIM_MEMORY)) {
-            memblock_add(&phy_mem_map, boot_info->mem_map[i].PhysicalStart,
-             boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
+                if (boot_info->mem_map[i].PhysicalStart - (phy_mem_map.region[phy_mem_map.count].base + phy_mem_map.region[phy_mem_map.count].size) < 0x8000000) {
+                    phy_mem_map.region[phy_mem_map.count].size = boot_info->mem_map[i].PhysicalStart+(boot_info->mem_map[i].NumberOfPages<<PAGE_4K_SHIFT)-phy_mem_map.region[i].base;
+                }else {
+                    phy_mem_map.region[phy_mem_map.count].base = align_down(phy_mem_map.region[phy_mem_map.count].base,0x8000000);
+                    phy_mem_map.region[phy_mem_map.count].size = align_up(phy_mem_map.region[phy_mem_map.count].size,0x8000000);
+                    phy_mem_map.count++;
+                    phy_mem_map.region[phy_mem_map.count].base = boot_info->mem_map[i].PhysicalStart;
+                    phy_mem_map.region[phy_mem_map.count].size = boot_info->mem_map[i].NumberOfPages<<PAGE_4K_SHIFT;
+                }
         }
     }
 }

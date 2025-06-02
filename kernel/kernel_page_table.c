@@ -16,21 +16,9 @@ INIT_TEXT void init_kpage_table(void) {
                         memblock.memory.region[memblock.memory.count - 1].base + memblock.memory.region[
                             memblock.memory.count - 1].size,PAGE_ROOT_RW_2M1G,PAGE_1G_SIZE);
     //初始化vmemmap区为2M页表,把内存块合并对齐128MB,每个page结构64字节，一个page等于4KB,一个2M页刚好等于128MB物理内存。
-    UINT32 i = 0;
-    while (i < phy_mem_map.count) {
-        if (phy_mem_map.region[i+1].base - (phy_mem_map.region[i].base + phy_mem_map.region[i].size) < 0x8000000) {
-            phy_mem_map.region[i].size = phy_mem_map.region[i+1].base+phy_mem_map.region[i+1].size-phy_mem_map.region[i].base;
-            for (UINT32 j = i+1; j < phy_mem_map.count; j++) {
-                phy_mem_map.region[j] = phy_mem_map.region[j + 1];
-            }
-            phy_mem_map.count--;
-        }else {
-            i++;
-        }
-    }
-    for (UINT32 i = 0; i < phy_mem_map.count; i++) {
-        UINT64 vmemmap_va = (UINT64)pa_to_page(align_down(phy_mem_map.region[i].base,0x8000000));
-        UINT32 count = align_up(phy_mem_map.region[i].size,0x8000000) >> 27;
+    for (UINT32 i = 0; i <= phy_mem_map.count; i++) {
+        UINT64 vmemmap_va = (UINT64)pa_to_page(phy_mem_map.region[i].base);
+        UINT32 count = phy_mem_map.region[i].size >> 27;
         while (count--) {
             UINT64 pa = memblock_alloc(PAGE_2M_SIZE,PAGE_2M_SIZE);
             mem_set((void *) pa, 0, PAGE_2M_SIZE);
