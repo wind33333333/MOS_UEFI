@@ -6,6 +6,9 @@ INIT_DATA memblock_t memblock;
 INIT_DATA memblock_type_t phy_mem_map;
 
 INIT_TEXT void init_memblock(void) {
+    UINT64 kernel_start = _start_text - KERNEL_OFFSET;
+    UINT64 kernel_end = _end_stack - KERNEL_OFFSET;
+    UINT64 kernel_size = _end_stack - _start_text;
     boot_info = pa_to_va(boot_info);
     boot_info->mem_map = pa_to_va(boot_info->mem_map);
     for (UINT32 i = 0; i < (boot_info->mem_map_size / boot_info->mem_descriptor_size); i++) {
@@ -20,8 +23,14 @@ INIT_TEXT void init_memblock(void) {
             if (boot_info->mem_map[i].PhysicalStart < 0x100000 ||\
                 boot_info->mem_map[i].Type == EFI_LOADER_DATA ||\
                 boot_info->mem_map[i].Type == EFI_ACPI_RECLAIM_MEMORY) {
-                memblock_add(&memblock.reserved, boot_info->mem_map[i].PhysicalStart,
-                             boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
+                //在memblock.reserved中找出内核段并剔除，防止后期错误释放
+                UINT64 memblock_size = boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT;
+                UINT64 memblock_end = boot_info->mem_map[i].PhysicalStart + memblock_size;
+                if (kernel_end == memblock_end) {
+                    memblock_size -= kernel_size;
+                    boot_info->mem_map[i].NumberOfPages -= (kernel_size >> PAGE_4K_SHIFT);
+                }
+                memblock_add(&memblock.reserved, boot_info->mem_map[i].PhysicalStart, memblock_size);
                 //其他可用类型合并放入可用类型保存
             } else if (boot_info->mem_map[i].Type == EFI_LOADER_CODE ||\
                        boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_CODE ||\
@@ -31,51 +40,25 @@ INIT_TEXT void init_memblock(void) {
                              boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
             }
             //把所可用物理内存放入phy_mem_map，后续vmemmap区初始化需要使用
-            if (boot_info->mem_map[i].PhysicalStart - (phy_mem_map.region[phy_mem_map.count].base + phy_mem_map.region[phy_mem_map.count].size) < 0x8000000) {
-                phy_mem_map.region[phy_mem_map.count].size = boot_info->mem_map[i].PhysicalStart + (boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT) - phy_mem_map.region[i].base;
+            if (boot_info->mem_map[i].PhysicalStart - (
+                    phy_mem_map.region[phy_mem_map.count].base + phy_mem_map.region[phy_mem_map.count].size) <
+                0x8000000) {
+                phy_mem_map.region[phy_mem_map.count].size =
+                        boot_info->mem_map[i].PhysicalStart + (boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT)
+                        - phy_mem_map.region[i].base;
             } else {
-                phy_mem_map.region[phy_mem_map.count].base = align_down(phy_mem_map.region[phy_mem_map.count].base,0x8000000);
-                phy_mem_map.region[phy_mem_map.count].size = align_up(phy_mem_map.region[phy_mem_map.count].size, 0x8000000);
+                phy_mem_map.region[phy_mem_map.count].base = align_down(
+                    phy_mem_map.region[phy_mem_map.count].base, 0x8000000);
+                phy_mem_map.region[phy_mem_map.count].size = align_up(
+                    phy_mem_map.region[phy_mem_map.count].size, 0x8000000);
                 phy_mem_map.count++;
                 phy_mem_map.region[phy_mem_map.count].base = boot_info->mem_map[i].PhysicalStart;
                 phy_mem_map.region[phy_mem_map.count].size = boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT;
             }
         }
     }
-
-    //在memblock.reserved中找出内核段并剔除，防止后期错误释放
-    UINT64 kernel_start = _start_text - KERNEL_OFFSET;
-    UINT64 kernel_end = _end_stack - KERNEL_OFFSET;
-    UINT64 kernel_size = _end_stack - _start_text;
-    UINT64 memblock_end = 0;
-    UINT32 index = 0;
-    while (index < memblock.reserved.count) {
-        memblock_end = memblock.reserved.region[index].base + memblock.reserved.region[index].size;
-        if (kernel_start >= memblock.reserved.region[index].base && kernel_end <= memblock_end) break;
-        index++;
-    }
-
-    if (kernel_start == memblock.reserved.region[index].base && kernel_size ==\
-        memblock.reserved.region[index].size) {
-        for (UINT32 j = index; j < memblock.reserved.count; j++) {
-            memblock.reserved.region[j] = memblock.reserved.region[j + 1];
-        }
-        memblock.reserved.count--;
-    } else if (kernel_start == memblock.reserved.region[index].base) {
-        memblock.reserved.region[index].base = kernel_end;
-        memblock.reserved.region[index].size -= kernel_size;
-    } else if (kernel_end == memblock_end) {
-        memblock.reserved.region[index].size -= kernel_size;
-    } else {
-        for (UINT32 j = memblock.reserved.count; j > index; j--) {
-            memblock.reserved.region[j] = memblock.reserved.region[j - 1];
-        }
-        memblock.reserved.region[index + 1].base = kernel_end;
-        memblock.reserved.region[index + 1].size = memblock_end - kernel_end;
-        memblock.reserved.region[index].size = kernel_start - memblock.reserved.region[index].base;
-        memblock.reserved.count++;
-    }
 }
+
 
 //物理内存区域添加到 memblock 的列表中
 INIT_TEXT void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 size) {
