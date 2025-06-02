@@ -3,55 +3,54 @@
 #include "vmm.h"
 
 INIT_DATA memblock_t memblock;
-INIT_DATA memblock_type_t phy_mem_map;
+INIT_DATA memblock_type_t phy_vmemmap;
 
 INIT_TEXT void init_memblock(void) {
     UINT64 kernel_end = _end_stack - KERNEL_OFFSET;
     UINT64 kernel_size = _end_stack - _start_text;
-    for (UINT32 i = 0; i < (boot_info->mem_map_size / boot_info->mem_descriptor_size); i++) {
-        EFI_MEMORY_DESCRIPTOR *cur_mem_des = &boot_info->mem_map[i];
-        if (cur_mem_des->NumberOfPages == 0) continue;
-        switch (cur_mem_des->Type) {
+    UINT32 count = boot_info->mem_map_size / boot_info->mem_descriptor_size;
+    for (UINT32 i = 0; i < count; i++) {
+        EFI_MEMORY_DESCRIPTOR *mem_des = &boot_info->mem_map[i];
+        if (mem_des->NumberOfPages == 0) continue;
+        UINT32 type = mem_des->Type;
+        switch (type) {
             case EFI_LOADER_DATA:
-                break;
             case EFI_LOADER_CODE:
-                break;
             case EFI_BOOT_SERVICES_CODE:
-                break;
             case EFI_BOOT_SERVICES_DATA:
-                break;
             case EFI_CONVENTIONAL_MEMORY:
-                break;
             case EFI_ACPI_RECLAIM_MEMORY:
                 break;
             default:
                 continue;
         }
-        UINT64 memblock_size = cur_mem_des->NumberOfPages << PAGE_4K_SHIFT;
+        UINT64 mem_des_pstart = mem_des->PhysicalStart;
+        UINT64 mem_des_size = mem_des->NumberOfPages << PAGE_4K_SHIFT;
         //如果内存类型是1M内或是lode_data或是acpi则先放入保留区
-        if (cur_mem_des->PhysicalStart < 0x100000 ||\
-            cur_mem_des->Type == EFI_LOADER_DATA ||\
-            cur_mem_des->Type == EFI_ACPI_RECLAIM_MEMORY) {
+        if (mem_des_pstart < 0x100000 || type == EFI_LOADER_DATA || type == EFI_ACPI_RECLAIM_MEMORY) {
             //在memblock.reserved中找出内核段并剔除，防止后期错误释放
-            UINT64 memblock_end = cur_mem_des->PhysicalStart + memblock_size;
-            if (kernel_end == memblock_end) {
-                memblock_size -= kernel_size;
-                cur_mem_des->NumberOfPages -= (kernel_size >> PAGE_4K_SHIFT);
+            UINT64 memblock_pend = mem_des_pstart + mem_des_size;
+            if (kernel_end == memblock_pend) {
+                mem_des_size -= kernel_size;
+                mem_des->NumberOfPages -= (kernel_size >> PAGE_4K_SHIFT);
             }
-            memblock_add(&memblock.reserved, cur_mem_des->PhysicalStart, memblock_size);
+            memblock_add(&memblock.reserved, mem_des_pstart, mem_des_size);
             //其他可用类型合并放入可用类型保存
         } else {
-            memblock_add(&memblock.memory, cur_mem_des->PhysicalStart,memblock_size);
+            memblock_add(&memblock.memory, mem_des_pstart,mem_des_size);
         }
         //把所可用物理内存放入phy_mem_map，后续vmemmap区初始化需要使用
-        if (cur_mem_des->PhysicalStart - (phy_mem_map.region[phy_mem_map.count].base + phy_mem_map.region[phy_mem_map.count].size) < 0x8000000) {
-            phy_mem_map.region[phy_mem_map.count].size = cur_mem_des->PhysicalStart + memblock_size - phy_mem_map.region[i].base;
+        memblock_region_t *memblock = &phy_vmemmap.region[phy_vmemmap.count];
+        UINT64 memblock_gap = mem_des_pstart - (memblock->base + memblock->size);
+        if (memblock_gap < 0x8000000) {
+            memblock->size = mem_des->PhysicalStart + mem_des_size - memblock->base;
         } else {
-            phy_mem_map.region[phy_mem_map.count].base = align_down(phy_mem_map.region[phy_mem_map.count].base, 0x8000000);
-            phy_mem_map.region[phy_mem_map.count].size = align_up(phy_mem_map.region[phy_mem_map.count].size, 0x8000000);
-            phy_mem_map.count++;
-            phy_mem_map.region[phy_mem_map.count].base = cur_mem_des->PhysicalStart;
-            phy_mem_map.region[phy_mem_map.count].size = memblock_size;
+            memblock->base = align_down(memblock->base, 0x8000000);
+            memblock->size = align_up(memblock->size, 0x8000000);
+            phy_vmemmap.count++;
+            memblock = &phy_vmemmap.region[phy_vmemmap.count];
+            memblock->base = mem_des_pstart;
+            memblock->size = mem_des_size;
         }
     }
 }

@@ -21,7 +21,7 @@ typedef struct memblock_t {
 }memblock_t;
 
 extern memblock_t memblock;
-extern memblock_type_t phy_mem_map;
+extern memblock_type_t phy_vmemmap;
 
 void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 size);
 INT32 memblock_unmmap(UINT64 *pml4t, void *va, UINT64 page_size);
