@@ -2,37 +2,17 @@
 #include "vmm.h"
 #include "kernel_page_table.h"
 #include "linkage.h"
+#include "memblock.h"
 #include "slub.h"
 #include "vmalloc.h"
 
 void init_efi_runtime_service(void) {
-    UINT32 efi_runtime_count = 0;
-    UINT32 efi_runtime_index = 0;
-    UINT32 mem_map_index = 0;
-    UINT32 mem_map_count = boot_info->mem_map_size / boot_info->mem_descriptor_size;
-    while (mem_map_index < mem_map_count) {
-        if (boot_info->mem_map[mem_map_index].Type == EFI_RUNTIME_SERVICES_CODE || boot_info->mem_map[mem_map_index].Type == EFI_RUNTIME_SERVICES_DATA) {
-            efi_runtime_count++;
+    for (UINT32 i=0;i<efi_memmap.count;i++) {
+        if (efi_memmap.mem_map[i].Type == EFI_RUNTIME_SERVICES_DATA) {
+            efi_memmap.mem_map[i].VirtualStart = (UINT64)pa_to_va(efi_memmap.mem_map[i].PhysicalStart);
+        } else{
+            efi_memmap.mem_map[i].VirtualStart = (UINT64)iomap(efi_memmap.mem_map[i].PhysicalStart,efi_memmap.mem_map[i].NumberOfPages << PAGE_4K_SHIFT,PAGE_4K_SIZE,PAGE_ROOT_RWX_4K);
         }
-        mem_map_index++;
     }
-
-    EFI_MEMORY_DESCRIPTOR *efi_runtime_mem = kmalloc(efi_runtime_count * boot_info->mem_descriptor_size);
-    mem_map_index = 0;
-    while (mem_map_index < mem_map_count && efi_runtime_index < efi_runtime_count ) {
-        if (boot_info->mem_map[mem_map_index].Type == EFI_RUNTIME_SERVICES_DATA) {
-            efi_runtime_mem[efi_runtime_index] = boot_info->mem_map[mem_map_index];
-            efi_runtime_mem[efi_runtime_index].VirtualStart = (UINT64)pa_to_va(efi_runtime_mem[efi_runtime_index].PhysicalStart);
-            efi_runtime_index++;
-        } else if (boot_info->mem_map[mem_map_index].Type == EFI_RUNTIME_SERVICES_CODE) {
-            efi_runtime_mem[efi_runtime_index] = boot_info->mem_map[mem_map_index];
-            efi_runtime_mem[efi_runtime_index].VirtualStart = (UINT64)iomap(efi_runtime_mem[efi_runtime_index].PhysicalStart,efi_runtime_mem[efi_runtime_index].NumberOfPages << PAGE_4K_SHIFT,PAGE_4K_SIZE,PAGE_ROOT_RWX_4K);
-            efi_runtime_index++;
-        }
-        mem_map_index++;
-    }
-
-    boot_info->gRTS->SetVirtualAddressMap(efi_runtime_count *boot_info->mem_descriptor_size,boot_info->mem_descriptor_size,boot_info->mem_descriptor_version,efi_runtime_mem);
-
-    kfree(efi_runtime_mem);
+    boot_info->gRTS->SetVirtualAddressMap(efi_memmap.count*boot_info->mem_descriptor_size,boot_info->mem_descriptor_size,boot_info->mem_descriptor_version,&efi_memmap.mem_map);
 }

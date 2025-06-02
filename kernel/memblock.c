@@ -1,13 +1,9 @@
 #include "memblock.h"
-#include "uefi.h"
 #include "vmm.h"
 
 INIT_DATA memblock_t memblock;
 INIT_DATA memblock_type_t phy_vmemmap;
-INIT_DATA struct {
-    EFI_MEMORY_DESCRIPTOR mem_map[10];
-    UINT32 count;
-}efi_memmap;
+INIT_DATA efi_memmap_t efi_memmap;
 
 INIT_TEXT void init_memblock(void) {
     UINT64 kernel_end = _end_stack - KERNEL_OFFSET;

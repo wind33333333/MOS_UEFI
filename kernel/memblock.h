@@ -1,6 +1,7 @@
 #ifndef __MEMBLOCK_H__
 #define __MEMBLOCK_H__
 #include "moslib.h"
+#include "uefi.h"
 #include "vmm.h"
 
 #define MAX_MEMBLOCK 128
@@ -20,8 +21,15 @@ typedef struct memblock_t {
     memblock_type_t reserved;       /* 保留内存区域 */
 }memblock_t;
 
+typedef struct {
+    EFI_MEMORY_DESCRIPTOR mem_map[10];
+    UINT32 count;
+}efi_memmap_t;
+
 extern memblock_t memblock;
 extern memblock_type_t phy_vmemmap;
+extern efi_memmap_t efi_memmap;
+
 
 void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 size);
 INT32 memblock_unmmap(UINT64 *pml4t, void *va, UINT64 page_size);
