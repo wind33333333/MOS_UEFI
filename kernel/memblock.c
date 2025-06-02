@@ -4,6 +4,10 @@
 
 INIT_DATA memblock_t memblock;
 INIT_DATA memblock_type_t phy_vmemmap;
+INIT_DATA struct {
+    EFI_MEMORY_DESCRIPTOR mem_map[10];
+    UINT32 count;
+}efi_memmap;
 
 INIT_TEXT void init_memblock(void) {
     UINT64 kernel_end = _end_stack - KERNEL_OFFSET;
@@ -13,44 +17,39 @@ INIT_TEXT void init_memblock(void) {
         EFI_MEMORY_DESCRIPTOR *mem_des = &boot_info->mem_map[i];
         if (mem_des->NumberOfPages == 0) continue;
         UINT32 type = mem_des->Type;
-        switch (type) {
-            case EFI_LOADER_DATA:
-            case EFI_LOADER_CODE:
-            case EFI_BOOT_SERVICES_CODE:
-            case EFI_BOOT_SERVICES_DATA:
-            case EFI_CONVENTIONAL_MEMORY:
-            case EFI_ACPI_RECLAIM_MEMORY:
-                break;
-            default:
-                continue;
-        }
-        UINT64 mem_des_pstart = mem_des->PhysicalStart;
-        UINT64 mem_des_size = mem_des->NumberOfPages << PAGE_4K_SHIFT;
-        //如果内存类型是1M内或是lode_data或是acpi则先放入保留区
-        if (mem_des_pstart < 0x100000 || type == EFI_LOADER_DATA || type == EFI_ACPI_RECLAIM_MEMORY) {
-            //在memblock.reserved中找出内核段并剔除，防止后期错误释放
-            UINT64 memblock_pend = mem_des_pstart + mem_des_size;
-            if (kernel_end == memblock_pend) {
-                mem_des_size -= kernel_size;
-                mem_des->NumberOfPages -= (kernel_size >> PAGE_4K_SHIFT);
+        if (type == EFI_LOADER_DATA || type == EFI_LOADER_CODE || type == EFI_BOOT_SERVICES_CODE ||\
+            type == EFI_BOOT_SERVICES_DATA || type == EFI_CONVENTIONAL_MEMORY || type == EFI_ACPI_RECLAIM_MEMORY) {
+            UINT64 mem_des_pstart = mem_des->PhysicalStart;
+            UINT64 mem_des_size = mem_des->NumberOfPages << PAGE_4K_SHIFT;
+            //如果内存类型是1M内或是lode_data或是acpi则先放入保留区
+            if (mem_des_pstart < 0x100000 || type == EFI_LOADER_DATA || type == EFI_ACPI_RECLAIM_MEMORY) {
+                //在memblock.reserved中找出内核段并剔除，防止后期错误释放
+                UINT64 memblock_pend = mem_des_pstart + mem_des_size;
+                if (kernel_end == memblock_pend) {
+                    mem_des_size -= kernel_size;
+                    mem_des->NumberOfPages -= (kernel_size >> PAGE_4K_SHIFT);
+                }
+                memblock_add(&memblock.reserved, mem_des_pstart, mem_des_size);
+                //其他可用类型合并放入可用类型保存
+            } else {
+                memblock_add(&memblock.memory, mem_des_pstart, mem_des_size);
             }
-            memblock_add(&memblock.reserved, mem_des_pstart, mem_des_size);
-            //其他可用类型合并放入可用类型保存
-        } else {
-            memblock_add(&memblock.memory, mem_des_pstart,mem_des_size);
-        }
-        //把所可用物理内存放入phy_mem_map，后续vmemmap区初始化需要使用
-        memblock_region_t *memblock = &phy_vmemmap.region[phy_vmemmap.count];
-        UINT64 memblock_gap = mem_des_pstart - (memblock->base + memblock->size);
-        if (memblock_gap < 0x8000000) {
-            memblock->size = mem_des->PhysicalStart + mem_des_size - memblock->base;
-        } else {
-            memblock->base = align_down(memblock->base, 0x8000000);
-            memblock->size = align_up(memblock->size, 0x8000000);
-            phy_vmemmap.count++;
-            memblock = &phy_vmemmap.region[phy_vmemmap.count];
-            memblock->base = mem_des_pstart;
-            memblock->size = mem_des_size;
+            //把所可用物理内存放入phy_mem_map，后续vmemmap区初始化需要使用
+            memblock_region_t *phy_vmemmap_block = &phy_vmemmap.region[phy_vmemmap.count];
+            UINT64 memblock_gap = mem_des_pstart - (phy_vmemmap_block->base + phy_vmemmap_block->size);
+            if (memblock_gap < 0x8000000) {
+                phy_vmemmap_block->size = mem_des->PhysicalStart + mem_des_size - phy_vmemmap_block->base;
+            } else {
+                phy_vmemmap_block->base = align_down(phy_vmemmap_block->base, 0x8000000);
+                phy_vmemmap_block->size = align_up(phy_vmemmap_block->size, 0x8000000);
+                phy_vmemmap.count++;
+                phy_vmemmap_block = &phy_vmemmap.region[phy_vmemmap.count];
+                phy_vmemmap_block->base = mem_des_pstart;
+                phy_vmemmap_block->size = mem_des_size;
+            }
+        }else if (type==EFI_RUNTIME_SERVICES_DATA || type==EFI_RUNTIME_SERVICES_CODE) {
+            efi_memmap.mem_map[efi_memmap.count] = *mem_des;
+            efi_memmap.count++;
         }
     }
 }
