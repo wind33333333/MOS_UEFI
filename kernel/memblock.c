@@ -17,29 +17,35 @@ INIT_TEXT void init_memblock(void) {
                          boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
             //其他可用类型合并放入可用类型保存
         } else if (boot_info->mem_map[i].Type == EFI_LOADER_CODE ||\
-            boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_CODE ||\
-            boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA ||\
-            boot_info->mem_map[i].Type == EFI_CONVENTIONAL_MEMORY) {
+                   boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_CODE ||\
+                   boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA ||\
+                   boot_info->mem_map[i].Type == EFI_CONVENTIONAL_MEMORY) {
             memblock_add(&memblock.memory, boot_info->mem_map[i].PhysicalStart,
                          boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT);
         }
         //把所可用物理内存放入phy_mem_map
         if (boot_info->mem_map[i].NumberOfPages != 0 &&\
-        (boot_info->mem_map[i].Type == EFI_LOADER_DATA ||\
-        boot_info->mem_map[i].Type == EFI_LOADER_CODE ||\
-        boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_CODE ||\
-        boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA ||\
-        boot_info->mem_map[i].Type == EFI_CONVENTIONAL_MEMORY ||\
-        boot_info->mem_map[i].Type == EFI_ACPI_RECLAIM_MEMORY)) {
-                if (boot_info->mem_map[i].PhysicalStart - (phy_mem_map.region[phy_mem_map.count].base + phy_mem_map.region[phy_mem_map.count].size) < 0x8000000) {
-                    phy_mem_map.region[phy_mem_map.count].size = boot_info->mem_map[i].PhysicalStart+(boot_info->mem_map[i].NumberOfPages<<PAGE_4K_SHIFT)-phy_mem_map.region[i].base;
-                }else {
-                    phy_mem_map.region[phy_mem_map.count].base = align_down(phy_mem_map.region[phy_mem_map.count].base,0x8000000);
-                    phy_mem_map.region[phy_mem_map.count].size = align_up(phy_mem_map.region[phy_mem_map.count].size,0x8000000);
-                    phy_mem_map.count++;
-                    phy_mem_map.region[phy_mem_map.count].base = boot_info->mem_map[i].PhysicalStart;
-                    phy_mem_map.region[phy_mem_map.count].size = boot_info->mem_map[i].NumberOfPages<<PAGE_4K_SHIFT;
-                }
+            (boot_info->mem_map[i].Type == EFI_LOADER_DATA ||\
+             boot_info->mem_map[i].Type == EFI_LOADER_CODE ||\
+             boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_CODE ||\
+             boot_info->mem_map[i].Type == EFI_BOOT_SERVICES_DATA ||\
+             boot_info->mem_map[i].Type == EFI_CONVENTIONAL_MEMORY ||\
+             boot_info->mem_map[i].Type == EFI_ACPI_RECLAIM_MEMORY)) {
+            if (boot_info->mem_map[i].PhysicalStart - (
+                    phy_mem_map.region[phy_mem_map.count].base + phy_mem_map.region[phy_mem_map.count].size) <
+                0x8000000) {
+                phy_mem_map.region[phy_mem_map.count].size =
+                        boot_info->mem_map[i].PhysicalStart + (boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT) -
+                        phy_mem_map.region[i].base;
+            } else {
+                phy_mem_map.region[phy_mem_map.count].base = align_down(phy_mem_map.region[phy_mem_map.count].base,
+                                                                        0x8000000);
+                phy_mem_map.region[phy_mem_map.count].size = align_up(
+                    phy_mem_map.region[phy_mem_map.count].size, 0x8000000);
+                phy_mem_map.count++;
+                phy_mem_map.region[phy_mem_map.count].base = boot_info->mem_map[i].PhysicalStart;
+                phy_mem_map.region[phy_mem_map.count].size = boot_info->mem_map[i].NumberOfPages << PAGE_4K_SHIFT;
+            }
         }
     }
 }
@@ -116,9 +122,10 @@ INIT_TEXT INT32 memblock_free(UINT64 ptr, UINT64 size) {
     } else if (memblock.memory.region[index].base + memblock.memory.region[index].size == ptr) {
         memblock.memory.region[index].size += size;
         //合并
-        if (memblock.memory.region[index].base + memblock.memory.region[index].size == memblock.memory.region[index+1].base) {
-            memblock.memory.region[index].size += memblock.memory.region[index+1].size;
-            for (UINT32 j = index+1; j < memblock.memory.count; j++) {
+        if (memblock.memory.region[index].base + memblock.memory.region[index].size == memblock.memory.region[index + 1]
+            .base) {
+            memblock.memory.region[index].size += memblock.memory.region[index + 1].size;
+            for (UINT32 j = index + 1; j < memblock.memory.count; j++) {
                 memblock.memory.region[j] = memblock.memory.region[j + 1];
             }
             memblock.memory.count--;
@@ -249,21 +256,21 @@ INIT_TEXT INT32 memblock_unmmap(UINT64 *pml4t, void *va, UINT64 page_size) {
         return 0;
     }
 
-    big_page:
-        //pde为空则释放
-        if (forward_find_qword(pdt, 512, 0) == 0) {
-            memblock_free(va_to_pa(pdt),PAGE_4K_SIZE);
-            pdptt[pdpte_index] = 0;
-        } else {
-            return 0;
-        }
+big_page:
+    //pde为空则释放
+    if (forward_find_qword(pdt, 512, 0) == 0) {
+        memblock_free(va_to_pa(pdt),PAGE_4K_SIZE);
+        pdptt[pdpte_index] = 0;
+    } else {
+        return 0;
+    }
 
-    huge_page:
-        //pdpt为空则释放
-        if (forward_find_qword(pdptt, 512, 0) == 0) {
-            memblock_free(va_to_pa(pdptt),PAGE_4K_SIZE);
-            pml4t[pml4e_index] = 0;
-        }
+huge_page:
+    //pdpt为空则释放
+    if (forward_find_qword(pdptt, 512, 0) == 0) {
+        memblock_free(va_to_pa(pdptt),PAGE_4K_SIZE);
+        pml4t[pml4e_index] = 0;
+    }
     return 0;
 }
 
