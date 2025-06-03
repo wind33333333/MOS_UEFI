@@ -49,7 +49,6 @@ INIT_TEXT void init_acpi(void) {
                     cpu_info.logical_processors_number++;
                 }
                 break;
-
             case 1://ioapic
                 ioapic_address.ioregsel = (UINT8*)pa_to_va(
                         ((ioapic_entry_t *) madt_entry)->ioapic_address);
@@ -58,31 +57,26 @@ INIT_TEXT void init_acpi(void) {
                 color_printk(RED, BLACK, "IOAPIC Addr:%#lX\n",
                              ((ioapic_entry_t *) madt_entry)->ioapic_address);
                 break;
-
             case 2://中断重定向
                 color_printk(RED, BLACK, "IRQ#%d -> GSI#%d\n",
                              ((interrupt_source_override_entry_t *) madt_entry)->irq_source,
                              ((interrupt_source_override_entry_t *) madt_entry)->global_system_interrupt);
                 break;
-
             case 3://不可屏蔽中断
                 color_printk(RED,BLACK,"non-maskable interrupt:%d\n",((nmi_source_entry_t *) madt_entry)->global_interrupt);
                 break;
             case 4://apic nmi引脚
                 //color_printk(RED, BLACK, "APIC NMI ApicID:%#lX LINT:%d\n",((apic_nmi_entry_t *) madt_entry)->apic_id,((apic_nmi_entry_t *) madt_entry)->lint);
                 break;
-
             case 5://64位local apic地址
                 color_printk(RED,BLACK,"64-bit local apic address:%#lX\n",((apic_address_override_entry_t *)madt_entry)->apic_address);
                 break;
-
             case 9://X2APIC ID
                 color_printk(RED, BLACK, "x2apic id:%d p:%d f:%d\n",((x2apic_entry_t*)madt_entry)->x2apic_id,((x2apic_entry_t*)madt_entry)->processor_id,((x2apic_entry_t*)madt_entry)->flags);
                 ((UINT32*)ap_boot_loader_address)[apic_id_index]=((x2apic_entry_t*)madt_entry)->x2apic_id;
                 apic_id_index++;
                 cpu_info.logical_processors_number++;
                 break;
-
             case 10://X2APIC不可屏蔽中断
                 color_printk(RED,BLACK,"X2APIC NMI X2ApicID:%#lX LINT:%d\n",
                              ((x2apic_nmi_entry_t *) madt_entry)->x2apic_id,
