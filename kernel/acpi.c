@@ -21,7 +21,8 @@ INIT_TEXT void init_acpi(void) {
 
     //region XSDT中找出各个ACPI表的指针
     xsdt_t *xsdt = boot_info->rsdp->xsdt_address;
-    for (UINT32 i = 0; i < ((xsdt->acpi_header.length - sizeof(acpi_header_t)) / sizeof(UINT32 *)); i++) {
+    UINT32 xsdt_count = (xsdt->acpi_header.length - sizeof(acpi_header_t)) / sizeof(UINT32*);
+    for (UINT32 i = 0; i < xsdt_count; i++) {
         switch (*xsdt->entry[i]) {
             case 0x43495041://"APIC 指针"
                 madt = (madt_t *) xsdt->entry[i];
@@ -39,11 +40,12 @@ INIT_TEXT void init_acpi(void) {
     //region MADT初始化
     UINT32 apic_id_index=0;
     madt_header_t *madt_entry = (madt_header_t *)&madt->entry;
-    while((UINT64)madt_entry < ((UINT64)madt+madt->acpi_header.length)){
+    UINT64 madt_endaddr = (UINT64)madt+madt->acpi_header.length;
+    while((UINT64)madt_entry < madt_endaddr){
         switch(madt_entry->type) {
             case 0://APIC ID
                 if(((apic_entry_t*)madt_entry)->flags & 1){
-                    //color_printk(RED, BLACK, "apic id:%d p:%d f:%d\n",((apic_entry_t *) madt_entry)->apic_id,((apic_entry_t *) madt_entry)->processor_id,((apic_entry_t *) madt_entry)->flags);
+                    color_printk(GREEN, BLACK, "apic_id:%d proc_id:%d flags:%d\n",((apic_entry_t *) madt_entry)->apic_id,((apic_entry_t *) madt_entry)->processor_id,((apic_entry_t *) madt_entry)->flags);
                     ((UINT32*)ap_boot_loader_address)[apic_id_index]=((apic_entry_t *) madt_entry)->apic_id;
                     apic_id_index++;
                     cpu_info.logical_processors_number++;
@@ -72,7 +74,7 @@ INIT_TEXT void init_acpi(void) {
                 color_printk(RED,BLACK,"64-bit local apic address:%#lX\n",((apic_address_override_entry_t *)madt_entry)->apic_address);
                 break;
             case 9://X2APIC ID
-                color_printk(RED, BLACK, "x2apic id:%d p:%d f:%d\n",((x2apic_entry_t*)madt_entry)->x2apic_id,((x2apic_entry_t*)madt_entry)->processor_id,((x2apic_entry_t*)madt_entry)->flags);
+                color_printk(RED, BLACK, "x2apic_id:%d proc_id:%d flags:%d\n",((x2apic_entry_t*)madt_entry)->x2apic_id,((x2apic_entry_t*)madt_entry)->processor_id,((x2apic_entry_t*)madt_entry)->flags);
                 ((UINT32*)ap_boot_loader_address)[apic_id_index]=((x2apic_entry_t*)madt_entry)->x2apic_id;
                 apic_id_index++;
                 cpu_info.logical_processors_number++;
