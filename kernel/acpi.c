@@ -101,9 +101,9 @@ INIT_TEXT void init_acpi(void) {
 
     //mcfg初始化
     mcfg_entry_t *mcfg_entry=(mcfg_entry_t *)&mcfg->entry;
-    UINT32 mcfg_count=(mcfg->acpi_header.length-sizeof(acpi_header_t)-sizeof(UINT64))/sizeof(mcfg_entry_t);
+    UINT32 mcfg_count=(mcfg->acpi_header.length-sizeof(acpi_header_t)-sizeof(mcfg->reserved))/sizeof(mcfg_entry_t);
     for(UINT32 j=0;j<mcfg_count;j++){
-        color_printk(RED,BLACK,"PCIE BaseAddr:%#lX Segment:%d StartBus:%d EndBus:%d\n",mcfg_entry[j].base_address,mcfg_entry[j].pci_segment,mcfg_entry[j].start_bus,mcfg_entry[j].end_bus);
+        color_printk(GREEN,BLACK,"PCIE BaseAddr:%#lX Segment:%d StartBus:%d EndBus:%d\n",mcfg_entry[j].base_address,mcfg_entry[j].pci_segment,mcfg_entry[j].start_bus,mcfg_entry[j].end_bus);
     }
 
     //移动apic id到内核空间
