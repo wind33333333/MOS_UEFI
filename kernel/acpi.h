@@ -163,5 +163,55 @@ typedef struct {
 } __attribute__((packed)) rsdp_t;
 //endregion
 
+#include <stdint.h>
+
+typedef struct {
+    UINT16 vendor_id;         // 0x00: 供应商 ID
+    UINT16 device_id;         // 0x02: 设备 ID
+
+    UINT16 command;           // 0x04: 命令寄存器
+    UINT16 status;            // 0x06: 状态寄存器
+
+    UINT8 revision_id;        // 0x08: 修订号
+    UINT8 prog_if;            // 0x09: 编程接口
+    UINT8 subclass;           // 0x0A: 子类
+    UINT8 class_code;         // 0x0B: 类别代码
+
+    UINT8 cache_line_size;    // 0x0C
+    UINT8 latency_timer;      // 0x0D
+    UINT8 header_type;        // 0x0E: 头部类型
+    UINT8 bist;               // 0x0F: 自测试
+
+    UINT32 bar[6];            // 0x10 - 0x27: Base Address Registers (BAR0 - BAR5)
+
+    UINT32 cardbus_cis_ptr;   // 0x28: CardBus CIS 指针
+
+    UINT16 subsystem_vendor_id; // 0x2C
+    UINT16 subsystem_id;        // 0x2E
+
+    UINT32 expansion_rom_base; // 0x30: 扩展 ROM 地址
+
+    UINT8 capabilities_ptr;    // 0x34: 能力列表指针
+    UINT8 reserved1[3];        // 0x35 - 0x37
+
+    UINT32 reserved2;          // 0x38 - 0x3B
+    UINT8 interrupt_line;      // 0x3C
+    UINT8 interrupt_pin;       // 0x3D
+    UINT8 min_grant;           // 0x3E
+    UINT8 max_latency;         // 0x3F
+} __attribute__((packed)) pci_config_space_header_t;
+
+typedef struct {
+    pci_config_space_header_t header;
+    UINT8 device_specific[192]; // 0x40 - 0xFF: 设备私有数据
+} __attribute__((packed)) pci_config_space_t;
+
+typedef struct {
+    pci_config_space_header_t header;
+    UINT8 device_specific[192];     // 0x40 - 0xFF
+    UINT8 extended_config[4096 - 256]; // 0x100 - 0xFFF: 扩展配置空间
+} __attribute__((packed)) pcie_config_space_t;
+
+
 
 #endif
