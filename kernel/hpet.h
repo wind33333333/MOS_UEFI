@@ -49,8 +49,9 @@ typedef struct {
     UINT64 *tim7_comp;    // 1E8h ~ 1EFh 定时器7对比寄存器
 } hpet_registers_t;
 
-extern hpet_t hpet;
+
 extern hpet_registers_t hpetRegisters;
+extern hpet_t hpet1;
 
 void init_hpet(void);
 

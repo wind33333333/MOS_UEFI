@@ -44,49 +44,51 @@ INIT_TEXT void init_acpi(void) {
     while((UINT64)madt_entry < madt_endaddr){
         switch(madt_entry->type) {
             case 0://APIC ID
-                if(((apic_entry_t*)madt_entry)->flags & 1){
-                    color_printk(GREEN, BLACK, "apic_id:%d proc_id:%d flags:%d\n",((apic_entry_t *) madt_entry)->apic_id,((apic_entry_t *) madt_entry)->processor_id,((apic_entry_t *) madt_entry)->flags);
-                    ((UINT32*)ap_boot_loader_address)[apic_id_index]=((apic_entry_t *) madt_entry)->apic_id;
+                apic_entry_t *apic_entry = (apic_entry_t *)madt_entry;
+                if(apic_entry->flags & 1){
+                    color_printk(GREEN, BLACK, "apic_id:%d proc_id:%d flags:%d\n",apic_entry->apic_id,apic_entry->processor_id,apic_entry->flags);
+                    ((UINT32*)ap_boot_loader_address)[apic_id_index]=apic_entry->apic_id;
                     apic_id_index++;
                     cpu_info.logical_processors_number++;
                 }
                 break;
             case 1://ioapic
-                ioapic_address.ioregsel = (UINT8*)pa_to_va(
-                        ((ioapic_entry_t *) madt_entry)->ioapic_address);
+                ioapic_entry_t *ioapic_entry = (ioapic_entry_t *)madt_entry;
+                ioapic_address.ioregsel = pa_to_va(ioapic_entry->ioapic_address);
                 ioapic_address.iowin = (UINT32*)((UINT64)ioapic_address.ioregsel + 0x10);
                 ioapic_address.eoi = (UINT32*)((UINT64)ioapic_address.ioregsel + 0x40);
-                color_printk(RED, BLACK, "IOAPIC Addr:%#lX\n",
-                             ((ioapic_entry_t *) madt_entry)->ioapic_address);
+                color_printk(GREEN, BLACK, "IOAPIC Addr:%#lX\n",ioapic_entry->ioapic_address);
                 break;
             case 2://中断重定向
-                color_printk(RED, BLACK, "IRQ#%d -> GSI#%d\n",
-                             ((interrupt_source_override_entry_t *) madt_entry)->irq_source,
-                             ((interrupt_source_override_entry_t *) madt_entry)->global_system_interrupt);
+                interrupt_source_override_entry_t *iso_entry = (interrupt_source_override_entry_t *)madt_entry;
+                color_printk(GREEN, BLACK, "IRQ#%d -> GSI#%d\n",iso_entry->irq_source,iso_entry->global_system_interrupt);
                 break;
             case 3://不可屏蔽中断
-                color_printk(RED,BLACK,"non-maskable interrupt:%d\n",((nmi_source_entry_t *) madt_entry)->global_interrupt);
+                nmi_source_entry_t *nmi_source_entry = (nmi_source_entry_t *)madt_entry;
+                color_printk(GREEN,BLACK,"non-maskable interrupt:%d\n",nmi_source_entry->global_interrupt);
                 break;
             case 4://apic nmi引脚
-                //color_printk(RED, BLACK, "APIC NMI ApicID:%#lX LINT:%d\n",((apic_nmi_entry_t *) madt_entry)->apic_id,((apic_nmi_entry_t *) madt_entry)->lint);
+                apic_nmi_entry_t *apic_nmi_entry = (apic_nmi_entry_t *)madt_entry;
+                color_printk(GREEN, BLACK, "APIC NMI ApicID:%#lX LINT:%d\n",apic_nmi_entry->apic_id,apic_nmi_entry->lint);
                 break;
             case 5://64位local apic地址
-                color_printk(RED,BLACK,"64-bit local apic address:%#lX\n",((apic_address_override_entry_t *)madt_entry)->apic_address);
+                apic_address_override_entry_t *apic_addr_override_entry = (apic_address_override_entry_t *)madt_entry;
+                color_printk(GREEN,BLACK,"64-bit local apic address:%#lX\n",apic_addr_override_entry->apic_address);
                 break;
             case 9://X2APIC ID
-                color_printk(RED, BLACK, "x2apic_id:%d proc_id:%d flags:%d\n",((x2apic_entry_t*)madt_entry)->x2apic_id,((x2apic_entry_t*)madt_entry)->processor_id,((x2apic_entry_t*)madt_entry)->flags);
-                ((UINT32*)ap_boot_loader_address)[apic_id_index]=((x2apic_entry_t*)madt_entry)->x2apic_id;
+                x2apic_entry_t *x2apic_entry = (x2apic_entry_t *)madt_entry;
+                color_printk(GREEN, BLACK, "x2apic_id:%d proc_id:%d flags:%d\n",x2apic_entry->x2apic_id,x2apic_entry->processor_id,x2apic_entry->flags);
+                ((UINT32*)ap_boot_loader_address)[apic_id_index]=x2apic_entry->x2apic_id;
                 apic_id_index++;
                 cpu_info.logical_processors_number++;
                 break;
             case 10://X2APIC不可屏蔽中断
-                color_printk(RED,BLACK,"X2APIC NMI X2ApicID:%#lX LINT:%d\n",
-                             ((x2apic_nmi_entry_t *) madt_entry)->x2apic_id,
-                             ((x2apic_nmi_entry_t *) madt_entry)->lint);
+                x2apic_nmi_entry_t *x2apic_nmi_entry = (x2apic_nmi_entry_t *)madt_entry;
+                color_printk(RED,BLACK,"X2APIC NMI X2ApicID:%#lX LINT:%d\n",x2apic_nmi_entry->x2apic_id,x2apic_nmi_entry->lint);
                 break;
-
             case 13://多处理器唤醒
-                color_printk(RED,BLACK,"Multiprocessor Wakeup Address:%#lX\n",((multiprocessor_wakeup_entry_t *)madt_entry)->mailbox_address);
+                multiprocessor_wakeup_entry_t *mult_proc_wakeup_entry = (multiprocessor_wakeup_entry_t *)madt_entry;
+                color_printk(RED,BLACK,"Multiprocessor Wakeup Address:%#lX\n",mult_proc_wakeup_entry->mailbox_address);
                 break;
         }
         madt_entry=(madt_header_t *)((UINT64)madt_entry+madt_entry->length);
@@ -94,12 +96,13 @@ INIT_TEXT void init_acpi(void) {
     //endregion
 
     //hpet初始化
-    hpet.address = (UINT64) pa_to_va(hpett->acpi_generic_adderss.address);
-    color_printk(RED,BLACK,"HPET MiniMumTick:%d Number:%d SpaceID:%d BitWidth:%d BiteOffset:%d AccessSize:%d Address:%#lX\n",hpett->minimum_tick,hpett->hpet_number,hpett->acpi_generic_adderss.space_id,hpett->acpi_generic_adderss.bit_width,hpett->acpi_generic_adderss.bit_offset,hpett->acpi_generic_adderss.access_size,hpett->acpi_generic_adderss.address);
+    hpet1.address = (UINT64)pa_to_va(hpett->acpi_generic_adderss.address);
+    color_printk(GREEN,BLACK,"HPET MiniMumTick:%d Number:%d SpaceID:%d BitWidth:%d BiteOffset:%d AccessSize:%d Address:%#lX\n",hpett->minimum_tick,hpett->hpet_number,hpett->acpi_generic_adderss.space_id,hpett->acpi_generic_adderss.bit_width,hpett->acpi_generic_adderss.bit_offset,hpett->acpi_generic_adderss.access_size,hpett->acpi_generic_adderss.address);
 
     //mcfg初始化
     mcfg_entry_t *mcfg_entry=(mcfg_entry_t *)&mcfg->entry;
-    for(UINT32 j=0;j<((mcfg->acpi_header.length-sizeof(acpi_header_t)-sizeof(UINT64))/sizeof(mcfg_entry_t));j++){
+    UINT32 mcfg_count=(mcfg->acpi_header.length-sizeof(acpi_header_t)-sizeof(UINT64))/sizeof(mcfg_entry_t);
+    for(UINT32 j=0;j<mcfg_count;j++){
         color_printk(RED,BLACK,"PCIE BaseAddr:%#lX Segment:%d StartBus:%d EndBus:%d\n",mcfg_entry[j].base_address,mcfg_entry[j].pci_segment,mcfg_entry[j].start_bus,mcfg_entry[j].end_bus);
     }
 

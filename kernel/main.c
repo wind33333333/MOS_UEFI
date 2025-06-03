@@ -25,9 +25,9 @@ INIT_TEXT void init_kernel(void) {
     init_output();                             //初始化输出控制台
     init_acpi();                               //初始化acpi
     while (1);
-    // init_ioapic();                             //初始化ioapic
-    // init_hpet();                               //初始化hpet
-    // init_cpu();                                //初始化CPU
+    init_ioapic();                             //初始化ioapic
+    init_hpet();                               //初始化hpet
+    init_cpu();                                //初始化CPU
 
     //ENABLE_HPET_TIMES(*hpetRegisters.tim0_conf,*hpetRegisters.tim0_comp,0x3000000,HPET_PERIODIC,0);
     //enable_apic_time(0xF000,APIC_TSC_DEADLINE,0x20);
