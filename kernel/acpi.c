@@ -136,10 +136,11 @@ INIT_TEXT void init_acpi(void) {
 
 
 
-    pcie_config_space_t *xhci = 0xE0010000;
-    UINT64 *bar = &xhci->header.bar;
+    pcie_config_space_t *pcie_xhci = 0xE0010000;
+    UINT64 *bar = &pcie_xhci->header.bar;
     UINT64 i = *bar & ~0xFUL;
-    xhci_cap_regs_t *xchi = iomap(i,0x1000,PAGE_4K_SIZE,PAGE_ROOT_RW_WC_4K);
+    xhci_cap_regs_t *xchi_cap = iomap(i,0x1000,PAGE_4K_SIZE,PAGE_ROOT_RW_WC_4K);
+    xhci_op_regs_t *xhci_op_regs = xchi_cap->caplength+(UINT64)xchi_cap;
     struct capability *cap=0xE0010090;
     cap = (struct capability *)(0xE0010000+cap->next_ptr);
     cap = (struct capability *)(0xE0010000+cap->next_ptr);
