@@ -27,7 +27,7 @@ typedef VOID *EFI_HANDLE;
 #define EFI_MEMORY_MAPPED_IO_PORT_SPACE   12 // 内存映射 I/O 端口空间
 #define EFI_PAL_CODE                      13 // 处理器抽象层代码
 #define EFI_PERSISTENT_MEMORY             14 // 持久性内存
-#define EfiMaxMemoryType                 15  // 内存类型计数上限标志（不是实际类型）
+#define EFI_MAXMEMORYTYPE                 15  // 内存类型计数上限标志（不是实际类型）
 
 #define IN
 #define OUT

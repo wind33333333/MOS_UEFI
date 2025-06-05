@@ -10,6 +10,7 @@
 #include "vmalloc.h"
 #include "vmm.h"
 #include "xhci.h"
+#include "pcie.h"
 
 
 UINT32 *apic_id_table; //apic_id_table
@@ -138,7 +139,7 @@ INIT_TEXT void init_acpi(void) {
     pcie_config_space_t *xhci = 0xE0010000;
     UINT64 *bar = &xhci->header.bar;
     UINT64 i = *bar & ~0xFUL;
-    xhci_regs_t *xchi = iomap(i,0x1000,PAGE_4K_SIZE,PAGE_ROOT_RW_WC_4K);
+    xhci_cap_regs_t *xchi = iomap(i,0x1000,PAGE_4K_SIZE,PAGE_ROOT_RW_WC_4K);
     struct capability *cap=0xE0010090;
     cap = (struct capability *)(0xE0010000+cap->next_ptr);
     cap = (struct capability *)(0xE0010000+cap->next_ptr);
