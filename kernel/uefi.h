@@ -11,22 +11,23 @@ typedef UINT64 EFI_VIRTUAL_ADDRESS;
 typedef UINT64 EFI_STATUS;
 typedef VOID *EFI_HANDLE;
 
-#define EFI_RESERVED_MEMORY_TYPE          0
-#define EFI_LOADER_CODE                   1
-#define EFI_LOADER_DATA                   2
-#define EFI_BOOT_SERVICES_CODE            3
-#define EFI_BOOT_SERVICES_DATA            4
-#define EFI_RUNTIME_SERVICES_CODE         5
-#define EFI_RUNTIME_SERVICES_DATA         6
-#define EFI_CONVENTIONAL_MEMORY           7
-#define EFI_UNUSABLE_MEMORY               8
-#define EFI_ACPI_RECLAIM_MEMORY           9
-#define EFI_ACPI_MEMORY_NVS               10
-#define EFI_MEMORY_MAPPED_IO              11
-#define EFI_MEMORY_MAPPED_IO_PORT_SPACE   12
-#define EFI_PAL_CODE                      13
-#define EFI_PERSISTENT_MEMORY             14
-
+/* UEFI 内存类型定义 (UEFI Specification 2.9) */
+#define EFI_RESERVED_MEMORY_TYPE          0  // 预留 - 不可使用
+#define EFI_LOADER_CODE                   1  // 引导加载程序代码
+#define EFI_LOADER_DATA                   2  // 引导加载程序数据
+#define EFI_BOOT_SERVICES_CODE            3  // UEFI 引导服务代码
+#define EFI_BOOT_SERVICES_DATA            4  // UEFI 引导服务数据
+#define EFI_RUNTIME_SERVICES_CODE         5  // UEFI 运行时服务代码
+#define EFI_RUNTIME_SERVICES_DATA         6  // UEFI 运行时服务数据
+#define EFI_CONVENTIONAL_MEMORY           7  // 常规可用内存 (操作系统可用)
+#define EFI_UNUSABLE_MEMORY               8  // 损坏或不可用内存
+#define EFI_ACPI_RECLAIM_MEMORY           9  // ACPI 表内存 (OS启动后可回收)
+#define EFI_ACPI_MEMORY_NVS               10 // ACPI NVS 内存 (操作系统不能使用)
+#define EFI_MEMORY_MAPPED_IO              11 // 内存映射 I/O (MMIO) 区域
+#define EFI_MEMORY_MAPPED_IO_PORT_SPACE   12 // 内存映射 I/O 端口空间
+#define EFI_PAL_CODE                      13 // 处理器抽象层代码
+#define EFI_PERSISTENT_MEMORY             14 // 持久性内存
+#define EfiMaxMemoryType                 15  // 内存类型计数上限标志（不是实际类型）
 
 #define IN
 #define OUT

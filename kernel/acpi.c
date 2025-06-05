@@ -5,8 +5,11 @@
 #include "printk.h"
 #include "cpu.h"
 #include "ap.h"
+#include "apic.h"
 #include "memblock.h"
+#include "vmalloc.h"
 #include "vmm.h"
+#include "xhci.h"
 
 
 UINT32 *apic_id_table; //apic_id_table
@@ -124,12 +127,21 @@ INIT_TEXT void init_acpi(void) {
                 pcie_config_space_t *pcie_config_space = (pcie_config_space_t *) (
                     mcfg_entry->base_address + (i << 20) + (j << 15) + (k << 12));
                 if (pcie_config_space->header.vendor_id != 0xFFFF && pcie_config_space->header.device_id !=0xFFFF) {
-                    color_printk(GREEN,BLACK, "vorend_id:%#lx device_id:%#lx\n", pcie_config_space->header.vendor_id,
-                                 pcie_config_space->header.device_id);
+                    color_printk(GREEN,BLACK, "bus:%d dev:%d func:%d vorend_id:%#lx device_id:%#lx class_code:%#lx sub_class:%#lx prog_if:%#lx\n",i,j,k,pcie_config_space->header.vendor_id,pcie_config_space->header.device_id,pcie_config_space->header.class_code,pcie_config_space->header.subclass,pcie_config_space->header.prog_if);
                 }
             }
         }
     }
+
+
+
+    pcie_config_space_t *xhci = 0xE0010000;
+    UINT64 *bar = &xhci->header.bar;
+    UINT64 i = *bar & ~0xFUL;
+    xhci_regs_t *xchi = iomap(i,0x1000,PAGE_4K_SIZE,PAGE_ROOT_RW_WC_4K);
+    struct capability *cap=0xE0010090;
+    cap = (struct capability *)(0xE0010000+cap->next_ptr);
+    cap = (struct capability *)(0xE0010000+cap->next_ptr);
 
 
     //移动apic id到内核空间

@@ -1,6 +1,9 @@
 #ifndef __init_acpi__
 #define __init_acpi__
 #include "moslib.h"
+#include "kernel_page_table.h"
+#include "vmm.h"
+#include "slub.h"
 
 void init_acpi(void);
 UINT32 apicid_to_cpuid(UINT32 apic_id);
@@ -212,6 +215,31 @@ typedef struct {
     UINT8 extended_config[4096 - 256]; // 0x100 - 0xFFF: 扩展配置空间
 } __attribute__((packed)) pcie_config_space_t;
 
-
+// 通用能力结构
+struct capability {
+    UINT8 cap_id;      // Capability ID
+    UINT8 next_ptr;    // Next Pointer
+    union {              // 能力特定字段
+        // MSI-X能力结构（ID 0x11）
+        struct {
+            UINT16 control;     // 控制字段（表大小、启用位）
+            UINT32 table_offset; // MSI-X表偏移
+            UINT32 pba_offset;   // 挂起位阵列偏移
+        } msi_x;
+        // Power Management能力结构（ID 0x01）
+        struct {
+            UINT16 pmc;         // 能力字段（支持的状态）
+            UINT16 pmcsr;       // 控制/状态寄存器
+        } power_mgmt;
+        // PCIe能力结构（ID 0x10）
+        struct {
+            UINT16 pcie_cap;    // PCIe能力字段
+            UINT32 dev_cap;     // 设备能力
+            UINT16 dev_ctrl;    // 设备控制
+        } pcie;
+        // 通用数据（占位）
+        UINT8 data[14];         // 最大能力结构长度（16字节-公共字段）
+    } specific;
+};
 
 #endif
