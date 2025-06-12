@@ -23,14 +23,14 @@ void enumerate_pcie_config_space(UINT64 ecam_base, UINT8 start_bus) {
                 ecam_base + (bus << 20) + (dev << 15) + (func << 12));
             if (pcie_config_space->header.vendor_id == 0xFFFF && func == 0) break;
             if (pcie_config_space->header.vendor_id == 0xFFFF) continue;
-            if (pcie_config_space->header.header_type & 1) {
+            if (pcie_config_space->header.header_type & 1) { //type1 pcie桥
                 UINT32 *class_code = &pcie_config_space->header.class_code;
                 color_printk(
                     GREEN,BLACK, "bus:%d dev:%d func:%d vorend_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
                     dev, func, pcie_config_space->header.vendor_id, pcie_config_space->header.device_id,
                     *class_code & 0xFFFFFF);
                 enumerate_pcie_config_space(ecam_base, pcie_config_space->header.type1.secondary_bus);
-            } else {
+            } else {//type0 终端设备
                 UINT32 *class_code = &pcie_config_space->header.class_code;
                 color_printk(
                     GREEN,BLACK, "bus:%d dev:%d func:%d vorend_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
