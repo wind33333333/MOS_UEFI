@@ -15,30 +15,28 @@
 
 UINT32 *apic_id_table; //apic_id_table
 
-void enumerate_pcie_config_space(UINT64 ecam_base, UINT8 start_bus, UINT8 end_bus) {
-    for (UINT16 bus = start_bus; bus <= end_bus; bus++) {
-        for (UINT8 dev = 0; dev < 32; dev++) {
-            for (UINT8 func = 0; func < 8; func++) {
-                pcie_config_space_t *pcie_config_space = (pcie_config_space_t *) (
-                    ecam_base + (bus << 20) + (dev << 15) + (func << 12));
-                if (pcie_config_space->header.vendor_id == 0xFFFF && func == 0) break;
-                if (pcie_config_space->header.vendor_id == 0xFFFF) continue;
-                if (pcie_config_space->header.header_type & 1) {
-                    UINT32 *class_code = &pcie_config_space->header.class_code;
-                    color_printk(
-                        GREEN,BLACK, "bus:%d dev:%d func:%d vorend_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
-                        dev, func, pcie_config_space->header.vendor_id, pcie_config_space->header.device_id,
-                        *class_code & 0xFFFFFF);
-                    enumerate_pcie_config_space(ecam_base, pcie_config_space->header.type1.secondary_bus,
-                                                pcie_config_space->header.type1.subordinate_bus);
-                } else {
-                    UINT32 *class_code = &pcie_config_space->header.class_code;
-                    color_printk(
-                        GREEN,BLACK, "bus:%d dev:%d func:%d vorend_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
-                        dev, func, pcie_config_space->header.vendor_id, pcie_config_space->header.device_id,
-                        *class_code & 0xFFFFFF);
-                    if ((pcie_config_space->header.header_type & 0x80) == 0) break;
-                }
+void enumerate_pcie_config_space(UINT64 ecam_base, UINT8 start_bus) {
+    UINT8 bus = start_bus;
+    for (UINT8 dev = 0; dev < 32; dev++) {
+        for (UINT8 func = 0; func < 8; func++) {
+            pcie_config_space_t *pcie_config_space = (pcie_config_space_t *) (
+                ecam_base + (bus << 20) + (dev << 15) + (func << 12));
+            if (pcie_config_space->header.vendor_id == 0xFFFF && func == 0) break;
+            if (pcie_config_space->header.vendor_id == 0xFFFF) continue;
+            if (pcie_config_space->header.header_type & 1) {
+                UINT32 *class_code = &pcie_config_space->header.class_code;
+                color_printk(
+                    GREEN,BLACK, "bus:%d dev:%d func:%d vorend_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
+                    dev, func, pcie_config_space->header.vendor_id, pcie_config_space->header.device_id,
+                    *class_code & 0xFFFFFF);
+                enumerate_pcie_config_space(ecam_base, pcie_config_space->header.type1.secondary_bus);
+            } else {
+                UINT32 *class_code = &pcie_config_space->header.class_code;
+                color_printk(
+                    GREEN,BLACK, "bus:%d dev:%d func:%d vorend_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
+                    dev, func, pcie_config_space->header.vendor_id, pcie_config_space->header.device_id,
+                    *class_code & 0xFFFFFF);
+                if ((pcie_config_space->header.header_type & 0x80) == 0) break;
             }
         }
     }
@@ -156,7 +154,7 @@ INIT_TEXT void init_acpi(void) {
                      mcfg_entry[j].pci_segment, mcfg_entry[j].start_bus, mcfg_entry[j].end_bus);
     }
 
-    enumerate_pcie_config_space(mcfg_entry->base_address, 0, 1);
+    enumerate_pcie_config_space(mcfg_entry->base_address, 0);
 
 
     for (UINT16 bus = mcfg_entry->start_bus; bus <= mcfg_entry->end_bus; bus++) {
