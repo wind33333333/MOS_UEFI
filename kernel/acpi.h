@@ -37,7 +37,7 @@ typedef struct{
 
 //region mcfg表
 typedef struct {
-    UINT64              base_address;        // 配置空间基地址
+    UINT64              base_address;        // ECAM配置空间基地址
     UINT16              pci_segment;         // PCIe 段号
     UINT8               start_bus;           // 起始总线号
     UINT8               end_bus;             // 结束总线号

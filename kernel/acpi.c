@@ -15,6 +15,35 @@
 
 UINT32 *apic_id_table; //apic_id_table
 
+void enumerate_pcie_config_space(UINT64 ecam_base, UINT8 start_bus, UINT8 end_bus) {
+    for (UINT16 bus = start_bus; bus <= end_bus; bus++) {
+        for (UINT8 dev = 0; dev < 32; dev++) {
+            for (UINT8 func = 0; func < 8; func++) {
+                pcie_config_space_t *pcie_config_space = (pcie_config_space_t *) (
+                    ecam_base + (bus << 20) + (dev << 15) + (func << 12));
+                if (pcie_config_space->header.vendor_id == 0xFFFF && func == 0) break;
+                if (pcie_config_space->header.vendor_id == 0xFFFF) continue;
+                if (pcie_config_space->header.header_type & 1) {
+                    UINT32 *class_code = &pcie_config_space->header.class_code;
+                    color_printk(
+                        GREEN,BLACK, "bus:%d dev:%d func:%d vorend_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
+                        dev, func, pcie_config_space->header.vendor_id, pcie_config_space->header.device_id,
+                        *class_code & 0xFFFFFF);
+                    enumerate_pcie_config_space(ecam_base, pcie_config_space->header.type1.secondary_bus,
+                                                pcie_config_space->header.type1.subordinate_bus);
+                } else {
+                    UINT32 *class_code = &pcie_config_space->header.class_code;
+                    color_printk(
+                        GREEN,BLACK, "bus:%d dev:%d func:%d vorend_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
+                        dev, func, pcie_config_space->header.vendor_id, pcie_config_space->header.device_id,
+                        *class_code & 0xFFFFFF);
+                    if ((pcie_config_space->header.header_type & 0x80) == 0) break;
+                }
+            }
+        }
+    }
+}
+
 INIT_TEXT void init_acpi(void) {
     madt_t *madt;
     hpett_t *hpett;
@@ -79,8 +108,10 @@ INIT_TEXT void init_acpi(void) {
                              apic_nmi_entry->lint);
                 break;
             case 5: //64位local apic地址
-                apic_address_override_entry_t *apic_addr_override_entry = (apic_address_override_entry_t *) madt_entry;
-                color_printk(GREEN,BLACK, "64-bit local apic address:%#lX\n", apic_addr_override_entry->apic_address);
+                apic_address_override_entry_t *apic_addr_override_entry = (apic_address_override_entry_t *)
+                        madt_entry;
+                color_printk(GREEN,BLACK, "64-bit local apic address:%#lX\n",
+                             apic_addr_override_entry->apic_address);
                 break;
             case 9: //X2APIC ID
                 x2apic_entry_t *x2apic_entry = (x2apic_entry_t *) madt_entry;
@@ -96,7 +127,8 @@ INIT_TEXT void init_acpi(void) {
                              x2apic_nmi_entry->lint);
                 break;
             case 13: //多处理器唤醒
-                multiprocessor_wakeup_entry_t *mult_proc_wakeup_entry = (multiprocessor_wakeup_entry_t *) madt_entry;
+                multiprocessor_wakeup_entry_t *mult_proc_wakeup_entry = (multiprocessor_wakeup_entry_t *)
+                        madt_entry;
                 color_printk(RED,BLACK, "Multiprocessor Wakeup Address:%#lX\n",
                              mult_proc_wakeup_entry->mailbox_address);
                 break;
@@ -108,7 +140,8 @@ INIT_TEXT void init_acpi(void) {
     //hpet初始化
     hpet1.address = (UINT64) pa_to_va(hpett->acpi_generic_adderss.address);
     color_printk(
-        GREEN,BLACK, "HPET MiniMumTick:%d Number:%d SpaceID:%d BitWidth:%d BiteOffset:%d AccessSize:%d Address:%#lX\n",
+        GREEN,BLACK,
+        "HPET MiniMumTick:%d Number:%d SpaceID:%d BitWidth:%d BiteOffset:%d AccessSize:%d Address:%#lX\n",
         hpett->minimum_tick, hpett->hpet_number, hpett->acpi_generic_adderss.space_id,
         hpett->acpi_generic_adderss.bit_width, hpett->acpi_generic_adderss.bit_offset,
         hpett->acpi_generic_adderss.access_size, hpett->acpi_generic_adderss.address);
@@ -118,32 +151,51 @@ INIT_TEXT void init_acpi(void) {
     UINT32 mcfg_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
                             mcfg_entry_t);
     for (UINT32 j = 0; j < mcfg_count; j++) {
-        color_printk(GREEN,BLACK, "PCIE BaseAddr:%#lX Segment:%d StartBus:%d EndBus:%d\n", mcfg_entry[j].base_address,
+        color_printk(GREEN,BLACK, "PCIE BaseAddr:%#lX Segment:%d StartBus:%d EndBus:%d\n",
+                     mcfg_entry[j].base_address,
                      mcfg_entry[j].pci_segment, mcfg_entry[j].start_bus, mcfg_entry[j].end_bus);
     }
 
-    for (UINT16 i = mcfg_entry->start_bus; i <= mcfg_entry->end_bus; i++) {
-        for (UINT8 j = 0; j < 32; j++) {
-            for (UINT8 k = 0; k < 8; k++) {
+    enumerate_pcie_config_space(mcfg_entry->base_address, 0, 1);
+
+
+    for (UINT16 bus = mcfg_entry->start_bus; bus <= mcfg_entry->end_bus; bus++) {
+        for (UINT8 dev = 0; dev < 32; dev++) {
+            for (UINT8 func = 0; func < 8; func++) {
                 pcie_config_space_t *pcie_config_space = (pcie_config_space_t *) (
-                    mcfg_entry->base_address + (i << 20) + (j << 15) + (k << 12));
-                if (pcie_config_space->header.vendor_id != 0xFFFF && pcie_config_space->header.device_id !=0xFFFF) {
-                    color_printk(GREEN,BLACK, "bus:%d dev:%d func:%d vorend_id:%#lx device_id:%#lx class_code:%#lx sub_class:%#lx prog_if:%#lx\n",i,j,k,pcie_config_space->header.vendor_id,pcie_config_space->header.device_id,pcie_config_space->header.class_code,pcie_config_space->header.subclass,pcie_config_space->header.prog_if);
+                    mcfg_entry->base_address + (bus << 20) + (dev << 15) + (func << 12));
+                if (pcie_config_space->header.vendor_id != 0xFFFF) {
+                    UINT32 *class_code = &pcie_config_space->header.class_code;
+                    color_printk(
+                        GREEN,BLACK, "bus:%d dev:%d func:%d vorend_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
+                        dev, func, pcie_config_space->header.vendor_id, pcie_config_space->header.device_id,
+                        *class_code & 0xFFFFFF);
+                    if (pcie_config_space->header.header_type == 0) break;
+                } else if (func == 0) {
+                    break;
                 }
             }
         }
     }
 
 
-
     pcie_config_space_t *pcie_xhci = 0xE0010000;
-    UINT64 *bar = &pcie_xhci->header.bar;
-    UINT64 i = *bar & ~0xFUL;
-    xhci_cap_regs_t *xchi_cap = iomap(i,0x1000,PAGE_4K_SIZE,PAGE_ROOT_RW_WC_4K);
-    xhci_op_regs_t *xhci_op_regs = xchi_cap->caplength+(UINT64)xchi_cap;
-    struct capability *cap=0xE0010090;
-    cap = (struct capability *)(0xE0010000+cap->next_ptr);
-    cap = (struct capability *)(0xE0010000+cap->next_ptr);
+    UINT64 *xhci_bar0 = &pcie_xhci->header.type0.bar[0];
+    UINT64 bak = *xhci_bar0;
+    *xhci_bar0 = 0xFFFFFFFFFFFFFFFFUL;
+    *xhci_bar0 = bak;
+    xhci_cap_regs_t *xchi_cap = iomap(bak & ~0xF, 0x4000,PAGE_4K_SIZE,PAGE_ROOT_RW_WC_4K);
+    xhci_op_regs_t *xhci_op_regs = xchi_cap->caplength + (UINT64) xchi_cap;
+    msi_x_capability_t *cap = 0xE0010000 + pcie_xhci->header.type0.cap_ptr;
+    msi_x_table_entry_t *msi_x_table_entry = (UINT64) xchi_cap + (cap->table_offset_bir & ~0x3);
+    msi_x_table_entry_t *msi;
+    for (UINT16 i = 0; i < 20; i++) {
+        msi = &msi_x_table_entry[i];
+        msi->msg_addr_hi = 0xFF;
+        msi->msg_addr_lo = 0xEE;
+        msi->msg_data = 8;
+        msi->vector_control = 0;
+    }
 
 
     //移动apic id到内核空间
@@ -154,6 +206,7 @@ INIT_TEXT void init_acpi(void) {
         apic_id_table[i] = ((UINT32 *) ap_boot_loader_address)[i];
     }
 }
+
 
 INIT_TEXT UINT32 apicid_to_cpuid(UINT32 apic_id) {
     for (UINT32 i = 0; i < cpu_info.logical_processors_number; i++) {

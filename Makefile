@@ -71,15 +71,18 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	-pkill udk-gdb-server
 	-pkill qemu-system-x86
 	qemu-system-x86_64 -monitor telnet:localhost:4444,server,nowait \
-					   -S -s \
-					   -net none \
-					   -M q35 \
-					   -m 8G \
-					   -cpu max -smp sockets=2,cores=2,threads=2 \
-					   -bios OVMF.fd \
- 					   -device qemu-xhci,id=xhci \
-                       -device usb-storage,bus=xhci.0,drive=usbdisk \
-                       -drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp &
+                   -S -s \
+                   -net none \
+                   -M q35 \
+                   -m 8G \
+                   -cpu max -smp sockets=2,cores=2,threads=2 \
+                   -bios OVMF.fd \
+                   -device pcie-root-port,bus=pcie.0,id=rp1,slot=1 \
+                   -device ahci,bus=rp1,id=ahci1 \
+                   -device pcie-root-port,bus=pcie.0,id=rp2,slot=2 \
+                   -device qemu-xhci,bus=rp2,id=xhci \
+                   -device usb-storage,bus=xhci.0,drive=usbdisk \
+                   -drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp &
 
 
 qemu-monitor:
