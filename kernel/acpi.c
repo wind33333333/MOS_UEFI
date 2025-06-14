@@ -15,8 +15,7 @@
 
 UINT32 *apic_id_table; //apic_id_table
 
-void scan_pcie(UINT64 ecam_base, UINT8 start_bus) {
-    UINT8 bus = start_bus;
+void scan_pcie(UINT64 ecam_base, UINT8 bus) {
     for (UINT8 dev = 0; dev < 32; dev++) {
         for (UINT8 func = 0; func < 8; func++) {
             pcie_config_space_t *pcie_config_space = (pcie_config_space_t *) (
