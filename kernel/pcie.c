@@ -1,5 +1,6 @@
 #include "pcie.h"
 #include "acpi.h"
+#include "printk.h"
 
 void pcie_scan(UINT64 ecam_base, UINT8 bus) {
     for (UINT8 dev = 0; dev < 32; dev++) {
@@ -29,7 +30,7 @@ void pcie_scan(UINT64 ecam_base, UINT8 bus) {
     }
 }
 
-void init_pcie(void) {
+INIT_TEXT void init_pcie(void) {
     //mcfg初始化
     mcfg_entry_t *mcfg_entry = &mcfg->entry;
     UINT32 mcfg_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(

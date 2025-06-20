@@ -135,4 +135,6 @@ typedef struct {
     UINT32 vector_control; // 向量控制 (通常Bit0=Per Vector Mask)
 } msi_x_table_entry_t;
 
+void init_pcie(void);
+
 #endif
