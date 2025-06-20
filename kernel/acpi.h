@@ -166,4 +166,6 @@ typedef struct {
 } __attribute__((packed)) rsdp_t;
 //endregion
 
+extern mcfg_t *mcfg;
+
 #endif
