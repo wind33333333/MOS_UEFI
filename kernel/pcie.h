@@ -135,6 +135,16 @@ typedef struct {
     UINT32 vector_control; // 向量控制 (通常Bit0=Per Vector Mask)
 } msi_x_table_entry_t;
 
+typedef struct {
+    list_head_t         list;               /* 全局 PCI 设备链表节点 */
+    UINT8               func;               /* 功能号 */
+    UINT8               dev;                /* 设备号 */
+    UINT8               bus;                /* 总线号 */
+    UINT8               *name;              /* 设备名 */
+    pcie_config_space_t *config_space;      /* pcie配置空间 */
+
+} pcie_dev_t;
+
 void init_pcie(void);
 
 #endif
