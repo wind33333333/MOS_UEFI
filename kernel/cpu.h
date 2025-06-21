@@ -9,6 +9,8 @@
 #define IA32_CSTAR_MSR      0xC0000083   // 兼容模式系统调用入口寄存器（Compatibility Mode System Call Target Address Register）
 #define IA32_FMASK_MSR      0xC0000084   // 系统调用掩码寄存器（System Call Flag Mask Register）
 
+UINT32 apicid_to_cpuid(UINT32 apic_id);
+UINT32 cpuid_to_apicid(UINT32 cpu_id);
 void init_cpu(void);
 void init_cpu_amode(void);
 void get_cpu_info(void);
@@ -24,5 +26,6 @@ typedef struct {
 }cpu_info_t;
 
 extern cpu_info_t cpu_info;
+extern UINT32 *apic_id_table;
 
 #endif

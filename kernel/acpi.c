@@ -5,8 +5,7 @@
 #include "printk.h"
 #include "cpu.h"
 #include "ap.h"
-#include "apic.h"
-#include "memblock.h"
+#include "slub.h"
 #include "vmalloc.h"
 #include "vmm.h"
 #include "xhci.h"
@@ -14,14 +13,9 @@
 
 INIT_DATA mcfg_t *mcfg;
 
-UINT32 *apic_id_table; //apic_id_table
-
 INIT_TEXT void init_acpi(void) {
     madt_t *madt;
     hpett_t *hpett;
-
-    //初始化ap_boot_loader_adderss
-    ap_boot_loader_address = (UINT64) pa_to_va(memblock.reserved.region[0].base);
 
     //region XSDT中找出各个ACPI表的指针
     xsdt_t *xsdt = boot_info->rsdp->xsdt_address;
@@ -42,9 +36,11 @@ INIT_TEXT void init_acpi(void) {
     //endregion
 
     //region MADT初始化
-    UINT32 apic_id_index = 0;
     madt_header_t *madt_entry = (madt_header_t *) &madt->entry;
     UINT64 madt_endaddr = (UINT64) madt + madt->acpi_header.length;
+    UINT32 apic_id_index = 0;
+    apic_id_table = kmalloc(4096);
+    mem_set(apic_id_table, 0, 4096);
     while ((UINT64) madt_entry < madt_endaddr) {
         switch (madt_entry->type) {
             case 0: //APIC ID
@@ -52,7 +48,7 @@ INIT_TEXT void init_acpi(void) {
                 if (apic_entry->flags & 1) {
                     color_printk(GREEN, BLACK, "apic_id:%d proc_id:%d flags:%d\n", apic_entry->apic_id,
                                  apic_entry->processor_id, apic_entry->flags);
-                    ((UINT32 *) ap_boot_loader_address)[apic_id_index] = apic_entry->apic_id;
+                    apic_id_table[apic_id_index] = apic_entry->apic_id;
                     apic_id_index++;
                     cpu_info.logical_processors_number++;
                 }
@@ -117,24 +113,5 @@ INIT_TEXT void init_acpi(void) {
         hpett->acpi_generic_adderss.bit_width, hpett->acpi_generic_adderss.bit_offset,
         hpett->acpi_generic_adderss.access_size, hpett->acpi_generic_adderss.address);
 
-    //移动apic id到内核空间
-    apic_id_table = (UINT32 *) pa_to_va(
-        bitmap_alloc_pages(PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2) >> PAGE_4K_SHIFT));
-    mem_set((void *) apic_id_table, 0x0,PAGE_4K_ALIGN(cpu_info.logical_processors_number<<2));
-    for (UINT32 i = 0; i < cpu_info.logical_processors_number; i++) {
-        apic_id_table[i] = ((UINT32 *) ap_boot_loader_address)[i];
-    }
 }
 
-
-INIT_TEXT UINT32 apicid_to_cpuid(UINT32 apic_id) {
-    for (UINT32 i = 0; i < cpu_info.logical_processors_number; i++) {
-        if (apic_id == apic_id_table[i])
-            return i;
-    }
-    return 0xFFFFFFFF;
-}
-
-INIT_TEXT UINT32 cpuid_to_apicid(UINT32 cpu_id) {
-    return apic_id_table[cpu_id];
-}

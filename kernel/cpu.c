@@ -11,6 +11,7 @@
 #include "vmm.h"
 
 cpu_info_t cpu_info;
+UINT32 *apic_id_table; //apic_id_table
 
 INIT_TEXT void init_cpu(void){
     UINT32 apic_id,cpu_id,tmp;
@@ -167,5 +168,16 @@ INIT_TEXT void init_cpu_amode(void){
     wrmsr(IA32_PAT_MSR,0x070504010006);
 }
 
+INIT_TEXT UINT32 apicid_to_cpuid(UINT32 apic_id) {
+    for (UINT32 i = 0; i < cpu_info.logical_processors_number; i++) {
+        if (apic_id == apic_id_table[i])
+            return i;
+    }
+    return 0xFFFFFFFF;
+}
+
+INIT_TEXT UINT32 cpuid_to_apicid(UINT32 cpu_id) {
+    return apic_id_table[cpu_id];
+}
 
 
