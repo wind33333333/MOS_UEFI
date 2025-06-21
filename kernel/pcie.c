@@ -13,7 +13,7 @@ void pcie_scan(UINT64 ecam_base, UINT8 bus) {
                 //type1 pcie桥
                 UINT32 *class_code = &pcie_config_space->header.class_code;
                 color_printk(
-                    GREEN,BLACK, "bus:%d dev:%d func:%d vorend_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
+                    GREEN,BLACK, "bus:%d dev:%d func:%d vendor_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
                     dev, func, pcie_config_space->header.vendor_id, pcie_config_space->header.device_id,
                     *class_code & 0xFFFFFF);
                 pcie_scan(ecam_base, pcie_config_space->header.type1.secondary_bus);
@@ -21,7 +21,7 @@ void pcie_scan(UINT64 ecam_base, UINT8 bus) {
                 //type0 终端设备
                 UINT32 *class_code = &pcie_config_space->header.class_code;
                 color_printk(
-                    GREEN,BLACK, "bus:%d dev:%d func:%d vorend_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
+                    GREEN,BLACK, "bus:%d dev:%d func:%d vendor_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
                     dev, func, pcie_config_space->header.vendor_id, pcie_config_space->header.device_id,
                     *class_code & 0xFFFFFF);
                 if ((pcie_config_space->header.header_type & 0x80) == 0) break;
@@ -35,9 +35,10 @@ INIT_TEXT void init_pcie(void) {
     mcfg_entry_t *mcfg_entry = &mcfg->entry;
     UINT32 mcfg_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
                             mcfg_entry_t);
-    for (UINT32 j = 0; j < mcfg_count; j++) {
-        color_printk(GREEN,BLACK, "PCIE BaseAddr:%#lX Segment:%d StartBus:%d EndBus:%d\n",
-                     mcfg_entry[j].base_address,
-                     mcfg_entry[j].pci_segment, mcfg_entry[j].start_bus, mcfg_entry[j].end_bus);
+    for (UINT32 i = 0; i < mcfg_count; i++) {
+        color_printk(GREEN,BLACK, "ECAM base:%#lX Segment:%d StartBus:%d EndBus:%d\n",
+                     mcfg_entry[i].base_address,mcfg_entry[i].pci_segment, mcfg_entry[i].start_bus, mcfg_entry[i].end_bus);
+        pcie_scan(mcfg_entry[i].base_address,0);
     }
+
 }
