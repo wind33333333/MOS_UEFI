@@ -13,23 +13,6 @@
 cpu_info_t cpu_info;
 UINT32 *apic_id_table; //apic_id_table
 
-INIT_TEXT void init_cpu(void){
-    UINT32 apic_id,cpu_id,tmp;
-    cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
-    cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
-    init_cpu_amode();                          //初始化cpu开启高级功能
-    get_cpu_info();                            //获取cpu信息
-    init_gdt();                                //初始化GDT
-    init_tss();                                //初始化TSS
-    init_idt();                                //初始化IDT
-    init_apic();                               //初始化apic
-    init_syscall();                            //初始化系统调用
-    color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
-    color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
-    init_ap();                                 //初始化ap核
-    color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);
-}
-
 INIT_TEXT void get_cpu_info(void) {
     UINT32 eax,ebx,ecx,edx;
     // 获取CPU厂商
@@ -178,6 +161,23 @@ INIT_TEXT UINT32 apicid_to_cpuid(UINT32 apic_id) {
 
 INIT_TEXT UINT32 cpuid_to_apicid(UINT32 cpu_id) {
     return apic_id_table[cpu_id];
+}
+
+INIT_TEXT void init_cpu(void){
+    UINT32 apic_id,cpu_id,tmp;
+    cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
+    cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
+    init_cpu_amode();                          //初始化cpu开启高级功能
+    get_cpu_info();                            //获取cpu信息
+    init_gdt();                                //初始化GDT
+    init_tss();                                //初始化TSS
+    init_idt();                                //初始化IDT
+    init_apic();                               //初始化apic
+    init_syscall();                            //初始化系统调用
+    color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
+    color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
+    init_ap();                                 //初始化ap核
+    color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);
 }
 
 
