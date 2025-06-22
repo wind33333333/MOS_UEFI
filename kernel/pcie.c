@@ -7,24 +7,22 @@ void pcie_scan(UINT64 ecam_base, UINT8 bus) {
         for (UINT8 func = 0; func < 8; func++) {
             pcie_config_space_t *pcie_config_space = (pcie_config_space_t *) (
                 ecam_base + (bus << 20) + (dev << 15) + (func << 12));
-            if (pcie_config_space->header.vendor_id == 0xFFFF && func == 0) break;
-            if (pcie_config_space->header.vendor_id == 0xFFFF) continue;
-            if (pcie_config_space->header.header_type & 1) {
+            if (pcie_config_space->vendor_id == 0xFFFF && func == 0) break;
+            if (pcie_config_space->vendor_id == 0xFFFF) continue;
+            if (pcie_config_space->header_type & 1) {
                 //type1 pcie桥
-                UINT32 *class_code = &pcie_config_space->header.class_code;
+                UINT32 *class_code = &pcie_config_space->class_code;
                 color_printk(
                     GREEN,BLACK, "bus:%d dev:%d func:%d vendor_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
-                    dev, func, pcie_config_space->header.vendor_id, pcie_config_space->header.device_id,
-                    *class_code & 0xFFFFFF);
-                pcie_scan(ecam_base, pcie_config_space->header.type1.secondary_bus);
+                    dev, func, pcie_config_space->vendor_id, pcie_config_space->device_id,*class_code & 0xFFFFFF);
+                pcie_scan(ecam_base, pcie_config_space->type1.secondary_bus);
             } else {
                 //type0 终端设备
-                UINT32 *class_code = &pcie_config_space->header.class_code;
+                UINT32 *class_code = &pcie_config_space->class_code;
                 color_printk(
                     GREEN,BLACK, "bus:%d dev:%d func:%d vendor_id:%#lx device_id:%#lx class_code:%#lx\n", bus,
-                    dev, func, pcie_config_space->header.vendor_id, pcie_config_space->header.device_id,
-                    *class_code & 0xFFFFFF);
-                if ((pcie_config_space->header.header_type & 0x80) == 0) break;
+                    dev, func, pcie_config_space->vendor_id, pcie_config_space->device_id,*class_code & 0xFFFFFF);
+                if ((pcie_config_space->header_type & 0x80) == 0) break;
             }
         }
     }
