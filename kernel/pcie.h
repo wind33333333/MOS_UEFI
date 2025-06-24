@@ -18,8 +18,8 @@ typedef struct {
     UINT8 bist; // BIST 寄存器 (0x0F) - 自检控制
     /* 设备/桥专用区 (0x10 - 0x3F) */
     union {
+        // Type 0: 端点设备结构
         struct {
-            // Type 0: 端点设备结构
             UINT32 bar[6]; // BAR0-BAR5 (0x10-0x27) - 基地址寄存器
             UINT32 cardbus_cis; // CardBus CIS 指针 (0x28) - 向后兼容
             UINT16 subsystem_vendor; // 子系统厂商ID (0x2C)
@@ -33,8 +33,8 @@ typedef struct {
             UINT8 max_latency; // 最大延迟 (0x3F) - PCI 时序
         } type0;
 
+        // Type 1: PCI 桥设备结构
         struct {
-            // Type 1: PCI 桥设备结构
             UINT32 bar[2]; // BAR0-BAR1 (0x10-0x17) - 桥专用
             UINT8 primary_bus; // 上游总线号 (0x18)
             UINT8 secondary_bus; // 下游总线号 (0x19)
@@ -104,11 +104,18 @@ typedef struct {
 
 typedef struct {
     list_head_t list; /* 全局 PCI 设备链表节点 */
-    UINT8 func; /* 功能号 */
-    UINT8 dev; /* 设备号 */
-    UINT8 bus; /* 总线号 */
-    UINT8 *name; /* 设备名 */
-    pcie_config_space_t *config_space; /* pcie配置空间 */
+    UINT8 func;         /* 功能号 */
+    UINT8 dev;          /* 设备号 */
+    UINT8 bus;          /* 总线号 */
+    UINT8 *name;        /* 设备名 */
+    UINT32 class;       /* 设备类 */
+    union {
+        UINT32 *bar32[6];
+        UINT64 *bar64[3];
+    };
+    UINT16 *msi_x_control;
+    msi_x_table_entry_t *msi_x_table;
+    UINT32 *msi_x_pad;
 } pcie_dev_t;
 
 void init_pcie(void);

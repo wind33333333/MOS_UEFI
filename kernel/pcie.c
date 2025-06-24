@@ -2,11 +2,20 @@
 #include "acpi.h"
 #include "printk.h"
 
-void pcie_scan(UINT64 ecam_base, UINT8 bus) {
+/*
+ * pcie 地址计算
+ */
+static inline pcie_config_space_t  *ecam_bdf_to_pcie_config_space_addr(UINT64 ecam_base,UINT8 bus,UINT8 dev,UINT8 func) {
+    return (pcie_config_space_t*)(ecam_base + (bus << 20) + (dev << 15) + (func << 12));
+}
+
+/*
+ * pcie 总线扫描
+ */
+static inline void pcie_scan(UINT64 ecam_base, UINT8 bus) {
     for (UINT8 dev = 0; dev < 32; dev++) {
         for (UINT8 func = 0; func < 8; func++) {
-            pcie_config_space_t *pcie_config_space = (pcie_config_space_t *) (
-                ecam_base + (bus << 20) + (dev << 15) + (func << 12));
+            pcie_config_space_t *pcie_config_space = ecam_bdf_to_pcie_config_space_addr(ecam_base, bus, dev, func);
             if (pcie_config_space->vendor_id == 0xFFFF && func == 0) break;
             if (pcie_config_space->vendor_id == 0xFFFF) continue;
             if (pcie_config_space->header_type & 1) {
@@ -36,7 +45,7 @@ INIT_TEXT void init_pcie(void) {
     for (UINT32 i = 0; i < mcfg_count; i++) {
         color_printk(GREEN,BLACK, "ECAM base:%#lX Segment:%d StartBus:%d EndBus:%d\n",
                      mcfg_entry[i].base_address,mcfg_entry[i].pci_segment, mcfg_entry[i].start_bus, mcfg_entry[i].end_bus);
-        pcie_scan(mcfg_entry[i].base_address,0);
+        pcie_scan(mcfg_entry[i].base_address,mcfg_entry[i].start_bus);
     }
 
 }
