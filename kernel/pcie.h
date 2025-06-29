@@ -109,13 +109,7 @@ typedef struct {
     UINT8                   bus;                /* 总线号 */
     UINT8                   *name;              /* 设备名 */
     pcie_config_space_t     *pcie_config_space; /* pcie配置空间 */
-    union {
-        UINT32 *bar32[6];
-        UINT64 *bar64[3];
-    };
-    UINT16 *msi_x_control;
-    msi_x_table_entry_t *msi_x_table;
-    UINT32 *msi_x_pad;
+    UINT64 bar[6];                              /* bar0-bar6 */
 } pcie_dev_t;
 
 void init_pcie(void);
