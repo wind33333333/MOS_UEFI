@@ -13,6 +13,7 @@ struct {
 
     {0x010000, "SCSI Controller"},
     {0x010601, "SATA Controller (AHCI)"},
+    {0x010802, "NVMe Controller"},
 
     {0x020000, "Ethernet Controller"},
 
@@ -24,12 +25,29 @@ struct {
     {0x040000, "Multimedia Video Controller"},
 
     {0x060000, "Host Bridge"},
+    {0x060100, "ISA Bridge"},
+    {0x060200, "EISA Bridge"},
+    {0x060300, "MCA Bridge"},
+    {0x060400, "PCI-to-PCI Bridge"},
+    {0x060500, "PCMCIA Bridge"},
+    {0x060600, "NuBus Bridge"},
+    {0x060700, "CardBus Bridge"},
+    {0x060800, "RACEway Bridge"},
+    {0x060900, "PCI-to-PCI Bridge"},
+    {0x060A00, "InfiniBand-to-PCI Host Bridge"},
     {0x068000, "Other Bridge"},
 
     {0x0C0300, "USB1.1 Controller (UHCI)"},
     {0x0C0310, "USB1.1 Controller (OHCI)"},
     {0x0C0320, "USB2.0 Controller (EHCI)"},
     {0x0C0330, "USB3.0 Controller (XHCI)"},
+    {0x0C0400, "Fibre Channel"},
+    {0x0C0500, "SMBus Controller"},
+    {0x0C0600, "InfiniBand Controller"},
+    {0x0C0700, "IPMI Interface"},
+    {0x0C0800, "SERCOS Interface (IEC 61491)"},
+    {0x0C0900, "CANbus Controller"},
+    {0x0C8000, "Other Serial Bus Controller"},
 
     {0x000000, NULL}
 };
