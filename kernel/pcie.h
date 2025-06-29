@@ -103,12 +103,12 @@ typedef struct {
 } msi_x_table_entry_t;
 
 typedef struct {
-    list_head_t list; /* 全局 PCI 设备链表节点 */
-    UINT8 func;         /* 功能号 */
-    UINT8 dev;          /* 设备号 */
-    UINT8 bus;          /* 总线号 */
-    UINT8 *name;        /* 设备名 */
-    UINT32 class;       /* 设备类 */
+    list_head_t             list;               /* 全局 PCI 设备链表节点 */
+    UINT8                   func;               /* 功能号 */
+    UINT8                   dev;                /* 设备号 */
+    UINT8                   bus;                /* 总线号 */
+    UINT8                   *name;              /* 设备名 */
+    pcie_config_space_t     *pcie_config_space; /* pcie配置空间 */
     union {
         UINT32 *bar32[6];
         UINT64 *bar64[3];
