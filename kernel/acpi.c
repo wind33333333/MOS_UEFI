@@ -13,9 +13,20 @@
 
 INIT_DATA mcfg_t *mcfg;
 
+INIT_TEXT void *acpi_get_table(UINT32 table) {
+    UINT32 **acpi_table = &boot_info->rsdp->xsdt_address->entry;
+    UINT32 acpi_count = (boot_info->rsdp->xsdt_address->acpi_header.length - sizeof(acpi_header_t)) / sizeof(UINT32 *);
+    for (UINT32 i = 0; i < acpi_count; i++) {
+        if (*acpi_table[i] == table) return acpi_table[i];
+    }
+    return NULL;
+}
+
 INIT_TEXT void init_acpi(void) {
     madt_t *madt;
     hpett_t *hpett;
+
+    hpett = acpi_get_table((UINT32)'RAMD');
 
     //region XSDT中找出各个ACPI表的指针
     xsdt_t *xsdt = boot_info->rsdp->xsdt_address;
