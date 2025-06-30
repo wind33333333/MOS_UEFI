@@ -26,7 +26,6 @@ INIT_TEXT void init_acpi(void) {
     madt_t *madt;
     hpett_t *hpett;
 
-    hpett = acpi_get_table((UINT32)'RAMD');
 
     //region XSDT中找出各个ACPI表的指针
     xsdt_t *xsdt = boot_info->rsdp->xsdt_address;
