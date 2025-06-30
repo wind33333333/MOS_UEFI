@@ -13,6 +13,11 @@
 
 INIT_DATA mcfg_t *mcfg;
 
+/*
+ * 查找acpi表
+ * 参数用法 talbe = 'TEPH' //hpet表
+ * 返回acpi表的指针
+ */
 INIT_TEXT void *acpi_get_table(UINT32 table) {
     UINT32 **acpi_table = &boot_info->rsdp->xsdt_address->entry;
     UINT32 acpi_count = (boot_info->rsdp->xsdt_address->acpi_header.length - sizeof(acpi_header_t)) / sizeof(UINT32 *);
