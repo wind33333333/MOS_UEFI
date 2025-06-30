@@ -11,8 +11,6 @@
 #include "xhci.h"
 #include "pcie.h"
 
-INIT_DATA mcfg_t *mcfg;
-
 /*
  * 查找acpi表
  * 参数用法 talbe = 'TEPH' //hpet表
@@ -30,25 +28,6 @@ INIT_TEXT void *acpi_get_table(UINT32 table) {
 INIT_TEXT void init_acpi(void) {
     madt_t *madt;
     hpett_t *hpett;
-
-
-    //region XSDT中找出各个ACPI表的指针
-    xsdt_t *xsdt = boot_info->rsdp->xsdt_address;
-    UINT32 xsdt_count = (xsdt->acpi_header.length - sizeof(acpi_header_t)) / sizeof(UINT32 *);
-    for (UINT32 i = 0; i < xsdt_count; i++) {
-        switch (*xsdt->entry[i]) {
-            case 0x43495041: //"APIC 指针"
-                madt = (madt_t *) xsdt->entry[i];
-                break;
-            case 0x54455048: //"HPET 指针"
-                hpett = (hpett_t *) xsdt->entry[i];
-                break;
-            case 0x4746434D: //"MCFG 指针"
-                mcfg = (mcfg_t *) xsdt->entry[i];
-                break;
-        }
-    }
-    //endregion
 
     //region MADT初始化
     madt_header_t *madt_entry = (madt_header_t *) &madt->entry;

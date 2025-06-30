@@ -106,7 +106,8 @@ static inline void pcie_scan(UINT64 ecam_base, UINT8 bus) {
 INIT_TEXT void init_pcie(void) {
     //初始化pcie设备链表
     list_head_init(&pcie_dev_list);
-    //mcfg初始化
+    //查找mcfg表
+    mcfg_t *mcfg = acpi_get_table('GFCM');
     mcfg_entry_t *mcfg_entry = &mcfg->entry;
     UINT32 mcfg_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
                             mcfg_entry_t);
