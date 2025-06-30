@@ -160,5 +160,6 @@ typedef struct {
 //endregion
 
 extern mcfg_t *mcfg;
+void *acpi_get_table(UINT32 table);
 
 #endif
