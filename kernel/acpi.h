@@ -249,7 +249,7 @@ typedef struct {
 
 // IVHD 子表（类型 0x10）
 typedef struct {
-    UINT8       type;           // 0x10 or 0x11
+    UINT8       type;           // 0x10
     UINT8       flags;          // 功能标志
     UINT16      length;        // 子表长度
     UINT16      device_id;     // IOMMU 设备的 BDF
