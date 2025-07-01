@@ -160,6 +160,7 @@ typedef struct {
 //endregion
 
 //region intel DMAR表
+//DMAR主表
 typedef struct {
     acpi_header_t   acpi_header;                 // 标准 ACPI 表头（36 字节
     /* DMAR特定字段 */
@@ -237,7 +238,60 @@ typedef struct {
 //endregion
 
 //region amd IVRS表
+// IVRS主表
+typedef struct {
+    acpi_header_t header;
+    UINT32 info;          // 功能信息
+    UINT32 reserved;
+    UINT32 ivhd_offset;   // 第一个 IVHD 的偏移
+    // 后面跟随子表（IVHD, IVMD）
+} __attribute__((packed)) ivrs_t;
 
+// IVHD 子表（类型 0x10）
+typedef struct {
+    UINT8 type;           // 0x10 or 0x11
+    UINT8 flags;          // 功能标志
+    UINT16 length;        // 子表长度
+    UINT16 device_id;     // IOMMU 设备的 BDF
+    UINT16 capability_offset; // 能力寄存器偏移
+    UINT64 iommu_base;    // IOMMU 寄存器基地址
+    UINT16 segment;       // PCIe 段号
+    UINT16 reserved;      // 保留
+    // 后面跟随 Device Entries
+} __attribute__((packed)) ivrs_ivhd_t;
+
+// IVHD 子表（类型 0x11，扩展）
+typedef struct {
+    UINT8       type;           // 0x11
+    UINT8       flags;
+    UINT16      length;
+    UINT16      device_id;
+    UINT16      capability_offset;
+    UINT64      iommu_base;
+    UINT16      segment;
+    UINT32      info;          // 扩展功能信息
+    UINT32      efr;           // Extended Feature Register
+    // 后面跟随 Device Entries
+} __attribute__((packed)) ivrs_ivhd_ext_t;
+
+// Device Entry（简化）
+typedef struct {
+    UINT8       type;           // 0x01 (Select), 0x02 (Start Range), 0x03 (End Range), etc.
+    UINT16      device_id;     // PCIe BDF
+    UINT8       additional_data; // 视类型而定
+} __attribute__((packed)) ivrs_device_entry;
+
+// IVMD 子表（类型 0x20-0x22）
+typedef struct {
+    UINT8       type;           // 0x20, 0x21, 0x22
+    UINT8       flags;          // 内存访问标志
+    UINT16      length;        // 子表长度
+    UINT16      device_id;     // 设备 BDF（0x20 为 0）
+    UINT16      auxiliary_data; // 辅助数据
+    UINT64      reserved;      // 保留
+    UINT64      base_address;  // 保留内存起始地址
+    UINT64      end_address;   // 保留内存结束地址
+} __attribute__((packed)) ivrs_ivmd_t;
 
 //endregion
 
