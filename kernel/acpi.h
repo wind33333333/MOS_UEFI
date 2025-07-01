@@ -6,7 +6,7 @@ void init_acpi(void);
 
 //region acpi通用头
 typedef struct {
-    CHAR8 signature[4];        // 表的签名，例如 "XSDT" "ACPI" "HPET" "MCFG"
+    UINT32 signature;        // 表的签名，例如 "XSDT" "ACPI" "HPET" "MCFG"
     UINT32 length;             // 表的总长度，包括头部
     UINT8 revision;            // 表的修订版本
     UINT8 checksum;            // 校验和，所有字节的和应为 0
@@ -139,7 +139,7 @@ typedef struct {
 //region xsdt表
 typedef struct {
     acpi_header_t acpi_header;           // 标准 ACPI 表头
-    UINT32 *entry[];                     // 指向其他 ACPI 表的 64 位指针数组
+    acpi_header_t *entry[];              // 指向其他 ACPI 表的 64 位指针数组
 } __attribute__((packed)) xsdt_t;
 //endregion
 
