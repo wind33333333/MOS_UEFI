@@ -236,6 +236,11 @@ typedef struct {
 
 //endregion
 
+//region amd IVRS表
+
+
+//endregion
+
 void *acpi_get_table(UINT32 table);
 
 #endif
