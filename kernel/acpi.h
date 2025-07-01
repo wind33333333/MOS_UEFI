@@ -240,23 +240,23 @@ typedef struct {
 //region amd IVRS表
 // IVRS主表
 typedef struct {
-    acpi_header_t header;
-    UINT32 info;          // 功能信息
-    UINT32 reserved;
-    UINT32 ivhd_offset;   // 第一个 IVHD 的偏移
+    acpi_header_t   header;
+    UINT32          info;          // 功能信息
+    UINT32          reserved;
+    UINT32          ivhd_offset;   // 第一个 IVHD 的偏移
     // 后面跟随子表（IVHD, IVMD）
 } __attribute__((packed)) ivrs_t;
 
 // IVHD 子表（类型 0x10）
 typedef struct {
-    UINT8 type;           // 0x10 or 0x11
-    UINT8 flags;          // 功能标志
-    UINT16 length;        // 子表长度
-    UINT16 device_id;     // IOMMU 设备的 BDF
-    UINT16 capability_offset; // 能力寄存器偏移
-    UINT64 iommu_base;    // IOMMU 寄存器基地址
-    UINT16 segment;       // PCIe 段号
-    UINT16 reserved;      // 保留
+    UINT8       type;           // 0x10 or 0x11
+    UINT8       flags;          // 功能标志
+    UINT16      length;        // 子表长度
+    UINT16      device_id;     // IOMMU 设备的 BDF
+    UINT16      capability_offset; // 能力寄存器偏移
+    UINT64      iommu_base;    // IOMMU 寄存器基地址
+    UINT16      segment;       // PCIe 段号
+    UINT16      reserved;      // 保留
     // 后面跟随 Device Entries
 } __attribute__((packed)) ivrs_ivhd_t;
 
