@@ -159,6 +159,83 @@ typedef struct {
 } __attribute__((packed)) rsdp_t;
 //endregion
 
+//region intel DMAR表
+typedef struct {
+    acpi_header_t   acpi_header;                 // 标准 ACPI 表头（36 字节
+    /* DMAR特定字段 */
+    UINT8            host_address_width;         // 物理地址宽度 = 值 + 1（如39表示40位地址）
+    UINT8            flags;                      // 标志位：
+    //   Bit 0: INTR_REMAP - 中断重映射支持
+    //   Bit 1: X2APIC_OPT_OUT - X2APIC模式禁用
+    //   Bit 2: DMA_CTRL_PLATFORM - 平台DMA控制
+    UINT8            reserved[10];               // 保留字段（必须为0）
+    // 后面跟随子表（DRHD, RMRR, etc.)
+} __attribute__((packed)) dmar_t;
+
+// Device Scope（DRHD/RMRR 中）
+typedef struct {
+    UINT8       type;           // 0x01 (PCI Endpoint), 0x02 (Sub-hierarchy), etc.
+    UINT8       length;
+    UINT16      reserved;
+    UINT8       enumeration_id;
+    UINT8       bus;
+    UINT8       device;
+    UINT8       function;
+    // 可变长度 Path 字段
+} __attribute__((packed)) dmar_device_scope_t;
+
+// DRHD 子表
+typedef struct {
+    UINT16                  type;          // 0x00
+    UINT16                  length;
+    UINT8                   flags;          // 位 0: INCLUDE_PCI_ALL
+    UINT8                   reserved;
+    UINT16                  segment;       // PCIe 段号
+    UINT64                  address;       // IOMMU 寄存器基地址
+    // 后面跟随 dmar_device_scope_t
+} __attribute__((packed)) dmar_drhd_t;
+
+// RMRR 子表（简化）
+struct {
+    UINT16      type;          // 0x01
+    UINT16      length;
+    UINT16      reserved;
+    UINT16      segment;
+    UINT64      base_address;  // 保留内存区域起始地址
+    UINT64      end_address;   // 保留内存区域结束地址
+    // 后面跟随 dmar_device_scope_t
+} __attribute__((packed)) dmar_rmrr_t;
+
+// ATSR 子表
+typedef struct {
+    UINT16      type;          // 0x02
+    UINT16      length;        // 子表长度
+    UINT8       flags;          // 位 0: ALL_PORTS
+    UINT8       reserved;       // 0
+    UINT16      segment;       // PCIe 段号
+    // 后面跟随 Device Scope 数组
+} __attribute__((packed)) dmar_atsr_t;
+
+// RHSA 子表
+typedef struct {
+    UINT16      type;          // 0x03
+    UINT16      length;        // 16
+    UINT32      reserved;      // 0
+    UINT32      proximity_domain; // NUMA 节点 ID
+    UINT64      reg_base_addr; // IOMMU 寄存器基地址（匹配 DRHD 的 address）
+} __attribute__((packed)) dmar_rhsa_t;
+
+// ANDD 子表
+typedef struct {
+    UINT16       type;                // 0x04
+    UINT16       length;              // 子表长度
+    UINT8        reserved[3];         // 0
+    UINT8        device_name_length;  // 设备名称长度（包括 \0）
+    char         device_name[];       // 可变长度，NUL 终止的 ACPI 设备名称
+} __attribute__((packed)) dmar_andd_t;
+
+//endregion
+
 void *acpi_get_table(UINT32 table);
 
 #endif
