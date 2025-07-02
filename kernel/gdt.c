@@ -2,6 +2,7 @@
 #include "tss.h"
 #include "vmm.h"
 #include "cpu.h"
+#include "slub.h"
 
 INIT_DATA gdt_ptr_t gdt_ptr;
 
@@ -9,9 +10,7 @@ INIT_TEXT void init_gdt(void) {
     //gdt-limit限长=cpu核心数量*tss选择子字节数（tss选择子16字节每个）+ tss描述符起始索引号*16字节（tss起始描述符前是其他系统段描述符），limt对齐4K界限-1
     gdt_ptr.limit = PAGE_4K_ALIGN(cpu_info.logical_processors_number * 16 + TSS_DESCRIPTOR_START_INDEX*16) - 1;
     //alloc_pages分配的是物理页起始地址，gdt-base是虚拟地址需要通过pa_to_va宏把地址转换
-    gdt_ptr.base = (UINT64*)pa_to_va(bitmap_alloc_pages((gdt_ptr.limit + 1) >> PAGE_4K_SHIFT));
-    bitmap_map_pages(va_to_pa((UINT64)gdt_ptr.base),gdt_ptr.base,(gdt_ptr.limit + 1) >> PAGE_4K_SHIFT,PAGE_ROOT_RW_4K);
-    mem_set((void*)gdt_ptr.base,0,PAGE_4K_ALIGN(cpu_info.logical_processors_number * 16 + TSS_DESCRIPTOR_START_INDEX* 8));
+    gdt_ptr.base = kcalloc(gdt_ptr.limit+1);
 
     *(gdt_ptr.base + 0) = 0;               /*0	NULL descriptor		           	0x00*/
     *(gdt_ptr.base + 1) = CODE64_0;        /*1	KERNEL	Code	64-bit	Segment	0x08*/
