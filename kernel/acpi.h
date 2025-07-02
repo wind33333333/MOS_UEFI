@@ -2,8 +2,6 @@
 #define __init_acpi__
 #include "moslib.h"
 
-void init_acpi(void);
-
 //region acpi通用头
 typedef struct {
     UINT32 signature;        // 表的签名，例如 "XSDT" "ACPI" "HPET" "MCFG"

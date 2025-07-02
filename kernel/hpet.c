@@ -1,11 +1,22 @@
 #include "hpet.h"
 #include "printk.h"
 #include "vmm.h"
+#include "acpi.h"
 
 hpet_registers_t hpet_registers;
 hpet_t hpet1;
 
 void init_hpet(void) {
+    //hpet初始化
+    hpett_t *hpett = acpi_get_table('TEPH');
+    hpet1.address = (UINT64) pa_to_va(hpett->acpi_generic_adderss.address);
+    color_printk(
+        GREEN,BLACK,
+        "HPET MiniMumTick:%d Number:%d SpaceID:%d BitWidth:%d BiteOffset:%d AccessSize:%d Address:%#lX\n",
+        hpett->minimum_tick, hpett->hpet_number, hpett->acpi_generic_adderss.space_id,
+        hpett->acpi_generic_adderss.bit_width, hpett->acpi_generic_adderss.bit_offset,
+        hpett->acpi_generic_adderss.access_size, hpett->acpi_generic_adderss.address);
+
     hpet_registers.gcap_id = (UINT64 *) pa_to_va(hpet1.address + 0);
     hpet_registers.gen_conf = (UINT64 *) pa_to_va(hpet1.address + 0x10);
     hpet_registers.gintr_sta = (UINT64 *) pa_to_va(hpet1.address + 0x20);
