@@ -9,7 +9,6 @@
 #define TSS_LIMIT   (0x67UL & 0xFFFF) | ((0x67UL >> 16)<<48)
 
 void init_tss(void);
-void set_tss_descriptor(UINT32 index,UINT64 tss_address);
 
 typedef struct {
     UINT32   reserved0;

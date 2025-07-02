@@ -22,6 +22,5 @@ typedef struct{
 extern idt_ptr_t idt_ptr;
 
 void init_idt(void);
-void set_idt_descriptor(UINT32 index, UINT64 function_address, UINT64 ist, UINT64 type);
 
 #endif

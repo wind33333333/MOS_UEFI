@@ -1,15 +1,21 @@
 #include "idt.h"
 #include "gdt.h"
 #include "interrupt.h"
-#include "vmm.h"
+#include "slub.h"
 
 INIT_DATA idt_ptr_t idt_ptr;
 
+// 设置中断门描述符
+void set_idt_descriptor(UINT32 index, UINT64 function_address, UINT64 ist, UINT64 type){
+    // 低 64 位的描述符
+    idt_ptr.base[index*2] = ist|type|SEL_CODE64|DPL_0|P|(function_address&0xFFFF)|((function_address >> 16) << 48);
+    // 高 64 位的描述符
+    idt_ptr.base[index*2+1] = function_address >> 32;
+}
+
 INIT_TEXT void init_idt(void) {
-    idt_ptr.limit= 0xFFF;
-    idt_ptr.base = (UINT64*)pa_to_va(bitmap_alloc_pages(1));     //分配IDT指针
-    bitmap_map_pages(va_to_pa((UINT64)idt_ptr.base),idt_ptr.base,1,PAGE_ROOT_RW_4K);
-    mem_set((void*)idt_ptr.base,0,4096);                    //初始化IDT表为0
+    idt_ptr.limit= 4096-1;
+    idt_ptr.base = kcalloc(4096);     //分配IDT指针
 
     //初始化中断向量表为默认中断
     for (int i = 0; i < 256; i++) {
@@ -44,12 +50,4 @@ INIT_TEXT void init_idt(void) {
     set_idt_descriptor(0x32,(UINT64)hpet,IST_1,TYPE_INTRPT);
 
     lidt(&idt_ptr);
-}
-
-// 设置中断门描述符
-void set_idt_descriptor(UINT32 index, UINT64 function_address, UINT64 ist, UINT64 type){
-    // 低 64 位的描述符
-    idt_ptr.base[index*2] = ist|type|SEL_CODE64|DPL_0|P|(function_address&0xFFFF)|((function_address >> 16) << 48);
-    // 高 64 位的描述符
-    idt_ptr.base[index*2+1] = function_address >> 32;
 }
