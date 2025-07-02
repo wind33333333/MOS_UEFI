@@ -62,8 +62,7 @@ static inline char *pcie_clasename(UINT32 class_code) {
 }
 
 static inline void create_pcie_dev(pcie_config_space_t *pcie_config_space, UINT8 bus, UINT8 dev, UINT8 func) {
-    pcie_dev_t *pcie_dev = kmalloc(sizeof(pcie_dev_t));
-    mem_set(pcie_dev, 0, sizeof(pcie_dev_t));
+    pcie_dev_t *pcie_dev = kcalloc(sizeof(pcie_dev_t));
     UINT32 *class_code = &pcie_config_space->class_code;
     pcie_dev->name = pcie_clasename(*class_code & 0xFFFFFF);
     pcie_dev->bus = bus;

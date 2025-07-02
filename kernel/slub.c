@@ -192,16 +192,8 @@ void *kmalloc(UINT64 size) {
 }
 
 //通用内存分配器(清零)
-void *kcalloc(UINT64 size) {
-    if (size > MAX_OBJECT_SIZE) return NULL;
-
-    UINT32 index = 0;
-    size = object_size_align(size) >> 4;
-    while (size >= 1) {
-        index++;
-        size >>= 1;
-    }
-    void* ptr = kmem_cache_alloc(kmalloc_cache[index]);
+static inline void *kcalloc(UINT64 size) {
+    void* ptr = kmalloc(size);
     memset(ptr,0,size);
     return ptr;
 }
