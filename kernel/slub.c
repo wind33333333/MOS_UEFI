@@ -1,7 +1,4 @@
 #include "slub.h"
-
-#include <string.h>
-
 #include "buddy_system.h"
 #include "vmm.h"
 
@@ -192,9 +189,9 @@ void *kmalloc(UINT64 size) {
 }
 
 //通用内存分配器(清零)
-static inline void *kcalloc(UINT64 size) {
+inline void *kcalloc(UINT64 size) {
     void* ptr = kmalloc(size);
-    memset(ptr,0,size);
+    mem_set(ptr,0,size);
     return ptr;
 }
 

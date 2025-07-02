@@ -60,7 +60,7 @@ static inline page_t *va_to_page(void *va) {
     return pa_to_page(va_to_pa(va));
 }
 
-//符合页转页头
+//复合页转页头
 static inline struct page_t *compound_head(page_t *page){
     UINT64 head = page->compound_head;
     if (head & 1)
