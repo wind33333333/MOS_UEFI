@@ -8,7 +8,7 @@ INIT_DATA gdt_ptr_t gdt_ptr;
 
 INIT_TEXT void init_gdt(void) {
     //gdt-limit限长=cpu核心数量*tss选择子字节数（tss选择子16字节每个）+ tss描述符起始索引号*16字节（tss起始描述符前是其他系统段描述符），limt对齐4K界限-1
-    gdt_ptr.limit = PAGE_4K_ALIGN(cpu_info.logical_processors_number * 16 + TSS_DESCRIPTOR_START_INDEX*16) - 1;
+    gdt_ptr.limit = cpu_info.logical_processors_number * sizeof(tss_t) + TSS_DESCRIPTOR_START_INDEX*16 - 1;
     gdt_ptr.base = kcalloc(gdt_ptr.limit+1);
 
     *(gdt_ptr.base + 0) = 0;               /*0	NULL descriptor		           	0x00*/
