@@ -104,8 +104,6 @@ static inline void pcie_scan(UINT64 ecam_base, UINT8 bus) {
 }
 
 INIT_TEXT void init_pcie(void) {
-
-    dmar_t *dmar = acpi_get_table('RAMD');
     //初始化pcie设备链表
     list_head_init(&pcie_dev_list);
     //查找mcfg表
