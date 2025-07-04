@@ -9,6 +9,7 @@
 #include "kernel_page_table.h"
 #include "syscall.h"
 #include "slub.h"
+#include "vmalloc.h"
 
 INIT_DATA UINT64 ap_boot_loader_address;
 
@@ -17,7 +18,7 @@ INIT_TEXT void init_ap(void) {
     ap_main_ptr = &ap_main;
     ap_tmp_pml4t_ptr = (UINT64*)va_to_pa(&tmp_pml4t);
     apic_id_table_ptr = apic_id_table;
-    ap_rsp_ptr = (UINT64)kmalloc((cpu_info.logical_processors_number-1)*4);            //每个ap核分配16K栈
+    ap_rsp_ptr = (UINT64)vmalloc((cpu_info.logical_processors_number-1)*4);            //每个ap核分配16K栈
     memcpy(_apboot_start, (void*)ap_boot_loader_address,_apboot_end-_apboot_start);                 //把ap核初始化代码复制到过去
 
     UINT32 counter;
