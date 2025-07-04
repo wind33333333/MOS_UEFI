@@ -24,10 +24,11 @@ INIT_TEXT void init_kernel(void) {
     init_vmalloc();                            //初始化vmalloc
     init_efi_runtime_service();                //初始化efi运行时服务
     init_output();                             //初始化输出控制台
+    init_bsp();                                //初始化bsp核心
     init_pcie();                               //初始化pcie
     init_ioapic();                             //初始化ioapic
     init_hpet();                               //初始化hpet
-    init_cpu();                                //初始化CPU
+    init_ap();                                 //初始化ap核
     while (1);
 
     //ENABLE_HPET_TIMES(*hpetRegisters.tim0_conf,*hpetRegisters.tim0_comp,0x3000000,HPET_PERIODIC,0);

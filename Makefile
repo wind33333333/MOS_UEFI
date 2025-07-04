@@ -30,7 +30,7 @@ ${BUILD}/kernel.bin: ${BUILD}/kernel.elf
 	nm ${BUILD}/kernel.elf | sort > ${BUILD}/kernel.map
 
 ${BUILD}/kernel.elf: ${BUILD}/head.o ${BUILD}/main.o ${BUILD}/printk.o ${BUILD}/interrupt.o \
- 				 ${BUILD}/ap.o ${BUILD}/idt.o ${BUILD}/acpi.o ${BUILD}/apic.o ${BUILD}/ioapic.o \
+ 				 ${BUILD}/idt.o ${BUILD}/acpi.o ${BUILD}/apic.o ${BUILD}/ioapic.o \
 				 ${BUILD}/vmm.o ${BUILD}/gdt.o ${BUILD}/tss.o ${BUILD}/cpu.o ${BUILD}/memblock.o \
 				 ${BUILD}/hpet.o ${BUILD}/apboot.o ${BUILD}/syscall.o ${BUILD}/buddy_system.o \
 				 ${BUILD}/slub.o ${BUILD}/kernel_page_table.o ${BUILD}/vmalloc.o ${BUILD}/rbtree.o \

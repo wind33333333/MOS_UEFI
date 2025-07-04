@@ -4,11 +4,10 @@
 #include "gdt.h"
 #include "tss.h"
 #include "kernel_page_table.h"
-#include "ap.h"
-#include "acpi.h"
 #include "syscall.h"
 #include "printk.h"
 #include "vmm.h"
+#include "vmalloc.h"
 
 cpu_info_t cpu_info;
 UINT32 *apic_id_table; //apic_id_table
@@ -31,7 +30,7 @@ INIT_TEXT void get_cpu_info(void) {
     cpu_info.tsc_frequency = (ecx != 0) ? ebx*ecx/eax : 0;
 }
 
-INIT_TEXT void init_cpu_amode(void){
+INIT_TEXT void enable_cpu_amode(void){
     UINT32 eax,ebx,ecx,edx;
     UINT64 tmp,value;
 
@@ -163,11 +162,11 @@ INIT_TEXT UINT32 cpuid_to_apicid(UINT32 cpu_id) {
     return apic_id_table[cpu_id];
 }
 
-INIT_TEXT void init_cpu(void){
+INIT_TEXT void init_bsp(void){
     UINT32 apic_id,cpu_id,tmp;
     cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
-    init_cpu_amode();                          //初始化cpu开启高级功能
+    enable_cpu_amode();                        //启用cpu开启高级功能
     get_cpu_info();                            //获取cpu信息
     init_gdt();                                //初始化GDT
     init_tss();                                //初始化TSS
@@ -176,8 +175,49 @@ INIT_TEXT void init_cpu(void){
     init_syscall();                            //初始化系统调用
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
-    init_ap();                                 //初始化ap核
+}
+
+INIT_DATA UINT64 ap_boot_loader_address;
+
+//多核处理器初始化
+INIT_TEXT void init_ap(void) {
+    ap_main_ptr = &ap_main;
+    ap_tmp_pml4t_ptr = (UINT64*)va_to_pa(&tmp_pml4t);
+    apic_id_table_ptr = apic_id_table;
+    ap_rsp_ptr = (UINT64)vmalloc((cpu_info.logical_processors_number-1)*4);            //每个ap核分配16K栈
+    memcpy(_apboot_start, (void*)ap_boot_loader_address,_apboot_end-_apboot_start);                 //把ap核初始化代码复制到过去
+
+    UINT32 counter;
+    //bit8-10投递模式init101 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
+    wrmsr(APIC_INTERRUPT_COMMAND_MSR,0xC4500);
+
+    counter=0x5000;
+    while (counter !=0 )  //延时
+        counter--;
+
+    //Start-up IPI bit0-7处理器启动实模式物理地址VV000的高两位 ，bit8-10投递模式start-up110 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
+    wrmsr(APIC_INTERRUPT_COMMAND_MSR,(ap_boot_loader_address>>12)&0xFF|0xC4600);
+
+    counter=0x5000;
+    while (counter !=0 )  //延时
+        counter--;
+
+    wrmsr(APIC_INTERRUPT_COMMAND_MSR,(ap_boot_loader_address>>12)&0xFF|0xC4600);      //Start-up IPI
+}
+
+INIT_TEXT void ap_main(void){
+    UINT32 apic_id,cpu_id,tmp;
+    cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);        //获取apic_ia
+    cpu_id = apicid_to_cpuid(apic_id);
+    enable_cpu_amode();
+    set_cr3(kpml4t_ptr);
+    lgdt(&gdt_ptr,0x8,0x10);
+    ltr(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);
+    lidt(&idt_ptr);
+    init_apic();
+    init_syscall();
     color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);
+    while(1);
 }
 
 

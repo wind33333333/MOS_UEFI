@@ -11,9 +11,8 @@
 
 UINT32 apicid_to_cpuid(UINT32 apic_id);
 UINT32 cpuid_to_apicid(UINT32 cpu_id);
-void init_cpu(void);
-void init_cpu_amode(void);
-void get_cpu_info(void);
+void init_bsp(void);
+void enable_cpu_amode(void);
 
 typedef struct {
     CHAR8 manufacturer_name[13];
@@ -27,5 +26,23 @@ typedef struct {
 
 extern cpu_info_t cpu_info;
 extern UINT32 *apic_id_table;
+
+void init_ap(void);
+void ap_main(void);
+
+typedef struct {
+    UINT64 rsp;
+    UINT16 tr;
+}__attribute__((packed)) apboot_data_t;
+
+extern UINT8 _apboot_start[];
+extern UINT8 _apboot_end[];
+
+extern UINT64 ap_rsp_ptr;
+extern void *ap_main_ptr;
+extern UINT64* ap_tmp_pml4t_ptr;
+extern UINT32 *apic_id_table_ptr;
+extern UINT64 ap_boot_loader_address;
+
 
 #endif
