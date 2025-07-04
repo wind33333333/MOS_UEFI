@@ -15,7 +15,7 @@ void set_idt_descriptor(UINT32 index, UINT64 function_address, UINT64 ist, UINT6
 
 INIT_TEXT void init_idt(void) {
     idt_ptr.limit= 4096-1;
-    idt_ptr.base = kcalloc(4096);     //分配IDT指针
+    idt_ptr.base = kzalloc(4096);     //分配IDT指针
 
     //初始化中断向量表为默认中断
     for (int i = 0; i < 256; i++) {

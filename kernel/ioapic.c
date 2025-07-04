@@ -13,7 +13,7 @@ INIT_TEXT void init_ioapic(void) {
     madt_header_t *madt_entry = (madt_header_t *) &madt->entry;
     UINT64 madt_endaddr = (UINT64) madt + madt->acpi_header.length;
     UINT32 apic_id_index = 0;
-    apic_id_table = kcalloc(4096);
+    apic_id_table = kzalloc(4096);
     while ((UINT64) madt_entry < madt_endaddr) {
         switch (madt_entry->type) {
             case 0: //APIC ID

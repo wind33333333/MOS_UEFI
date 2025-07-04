@@ -23,7 +23,7 @@ INT32 kmem_cache_destroy(kmem_cache_t *kmem_cache);
 void *kmem_cache_alloc(kmem_cache_t *cache);
 INT32 kmem_cache_free(kmem_cache_t *cache, void *object);
 void *kmalloc(UINT64 size);
-void *kcalloc(UINT64 size);
+void *kzalloc(UINT64 size);
 INT32 kfree(void *va);
 
 #endif

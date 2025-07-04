@@ -189,7 +189,7 @@ void *kmalloc(UINT64 size) {
 }
 
 //通用内存分配器(清零)
-inline void *kcalloc(UINT64 size) {
+inline void *kzalloc(UINT64 size) {
     void* ptr = kmalloc(size);
     mem_set(ptr,0,size);
     return ptr;
