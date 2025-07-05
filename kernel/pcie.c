@@ -71,10 +71,10 @@ static inline UINT32 get_pcie_classcode(pcie_config_space_t *pcie_config_space) 
  * 参数 class_code
  * 返回一个pcie_dev_t指针
  */
-list_head_t *next_pcie_dev = pcie_dev_list.next;
+list_head_t *next_pcie_dev = &pcie_dev_list;
 pcie_dev_t *pcie_find(UINT32 class_code) {
-    if (next_pcie_dev == pcie_dev_list.next) next_pcie_dev = pcie_dev_list.next;
-    while (next_pcie_dev != pcie_dev_list.next) {
+    if (next_pcie_dev == &pcie_dev_list) next_pcie_dev = pcie_dev_list.next;
+    while (next_pcie_dev != &pcie_dev_list) {
         pcie_dev_t *pcie_dev = CONTAINER_OF(next_pcie_dev,pcie_dev_t,list);
         if (get_pcie_classcode(pcie_dev->pcie_config_space) == class_code) return pcie_dev;
         next_pcie_dev = next_pcie_dev->next;
@@ -84,15 +84,16 @@ pcie_dev_t *pcie_find(UINT32 class_code) {
 
 //获取能力链表
 //参数capability_id
-//返回一个void* 指针
-void *get_pcie_capability(pcie_config_space_t *pcie_config_space,UINT8 capability_id) {
+//返回一个capability_t* 指针
+capability_t *get_pcie_capability(pcie_config_space_t *pcie_config_space,UINT8 capability_id) {
     //检测是否支持能力链表
-    if (!(pcie_config_space->status & 0x40)) return NULL;
+    if (!(pcie_config_space->status & 0x10)) return NULL;
     capability_t *cap = (capability_t*)((UINT64)pcie_config_space + pcie_config_space->type0.cap_ptr);
-    do{
+    while (TRUE){
         if (cap->cap_id == capability_id) return cap;
-    }while (cap->next_ptr);
-    return NULL;
+        if (cap->next_ptr == 0) return NULL;
+        cap = (capability_t*)((UINT64)pcie_config_space + cap->next_ptr);
+    }
 }
 
 //启用msi-x中断

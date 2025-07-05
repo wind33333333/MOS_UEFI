@@ -27,6 +27,10 @@ INIT_TEXT void init_kernel(void) {
     init_ioapic();                             //初始化ioapic
     init_hpet();                               //初始化hpet
     init_pcie();                               //初始化pcie
+
+    pcie_dev_t *pcie_dev = pcie_find(0x0C0330);
+    capability_t *pcie_cap = get_pcie_capability(pcie_dev->pcie_config_space, 0x01);
+
     init_bsp();                                //初始化bsp核心
     init_ap();                                 //初始化ap核
     while (1);

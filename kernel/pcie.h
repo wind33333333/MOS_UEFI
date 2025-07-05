@@ -119,5 +119,7 @@ typedef struct {
 } pcie_dev_t;
 
 void init_pcie(void);
+pcie_dev_t *pcie_find(UINT32 class_code);
+capability_t *get_pcie_capability(pcie_config_space_t *pcie_config_space,UINT8 capability_id);
 
 #endif
