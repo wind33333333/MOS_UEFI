@@ -118,8 +118,14 @@ typedef struct {
 
 } pcie_dev_t;
 
+typedef enum {
+    power_mgmt = 1,
+    pcie = 0x10,
+    msi_x = 0x11
+} capability_id;
+
 void init_pcie(void);
 pcie_dev_t *pcie_find(UINT32 class_code);
-capability_t *get_pcie_capability(pcie_config_space_t *pcie_config_space,UINT8 capability_id);
+capability_t *get_pcie_capability(pcie_config_space_t *pcie_config_space,capability_id cap_id);
 
 #endif
