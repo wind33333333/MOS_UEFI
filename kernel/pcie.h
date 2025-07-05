@@ -71,9 +71,13 @@ typedef struct {
         // 能力特定字段
         // MSI-X能力结构（ID 0x11）
         struct {
-            UINT16 control; // 控制字段（表大小、启用位）
-            UINT32 table_offset; // MSI-X表偏移
-            UINT32 pba_offset; // 挂起位阵列偏移
+            UINT16 control; // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
+                            // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
+                            // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
+            UINT32 table_offset; // 位 0-2：BAR 指示器（Base Address Register Index）
+                                 // 位 3-31：MSI-X 表偏移地址（相对于 BAR 的基地址）
+            UINT32 pba_offset; // 位 0-2：PBA BAR 指示器
+                               // 位 3-31：PBA 偏移地址（相对于 BAR 的基地址）
         } msi_x;
 
         // Power Management能力结构（ID 0x01）
@@ -110,6 +114,8 @@ typedef struct {
     UINT8                   *name;              /* 设备名 */
     pcie_config_space_t     *pcie_config_space; /* pcie配置空间 */
     UINT64 bar[6];                              /* bar0-bar6 */
+    msi_x_table_entry_t     *msi_x_table;       /* msi-x中断配置表 */
+
 } pcie_dev_t;
 
 void init_pcie(void);
