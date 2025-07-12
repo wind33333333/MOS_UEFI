@@ -20,6 +20,12 @@ typedef struct {
     union {
         // Type 0: 端点设备结构
         struct {
+            /*+--------------------+---------+
+            | Bit 0              | 1 bit   | 0 = 内存 BAR
+            | Bit 1-2            | 2 bits  | 地址类型 (00 = 32-bit, 10 = 64-bit)
+            | Bit 3              | 1 bit   | 预取 (1 = Prefetchable, 0 = Non-Prefetchable)
+            | Bit 4-31           | 28 bits | 基地址 (4 字节对齐)
+            +--------------------+---------+*/
             UINT32 bar[6]; // BAR0-BAR5 (0x10-0x27) - 基地址寄存器
             UINT32 cardbus_cis; // CardBus CIS 指针 (0x28) - 向后兼容
             UINT16 subsystem_vendor; // 子系统厂商ID (0x2C)
@@ -140,9 +146,9 @@ typedef enum {
 } capability_id_e;
 
 void init_pcie(void);
-
 pcie_dev_t *pcie_find(UINT32 class_code);
-
 capability_t *get_pcie_capability(pcie_config_space_t *pcie_config_space, capability_id_e cap_id);
+UINT64 get_bar(pcie_config_space_t *pcie_config_space,UINT8 number);
+msi_x_table_entry_t *get_msi_x_table(pcie_config_space_t *pcie_config_space);
 
 #endif

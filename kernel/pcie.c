@@ -96,6 +96,24 @@ capability_t *get_pcie_capability(pcie_config_space_t *pcie_config_space,capabil
     }
 }
 
+//获取bar寄存器中地址
+//参数bar寄存器号
+//返回bar中的地址
+UINT64 get_bar(pcie_config_space_t *pcie_config_space,UINT8 number) {
+    if (number > 5) return 0;
+    UINT64 *bar_addr = &pcie_config_space->type0.bar[number];
+    UINT64 bar_data = *bar_addr;
+    return (bar_data & 0x6) == 0x4 ? bar_data & 0xFFFFFFFFFFFFFFF0UL : bar_data & 0xFFFFFFF0UL;
+}
+
+//获取msi-x表地址
+//参数1 pcie_config_space_t
+//返回msi_x_t结构地址
+msi_x_table_entry_t *get_msi_x_table(pcie_config_space_t *pcie_config_space) {
+    capability_t *cap= get_pcie_capability(pcie_config_space,msi_x_e);
+    return (msi_x_table_entry_t*)(get_bar(pcie_config_space,cap->msi_x.table_offset & 0x7) + (cap->msi_x.table_offset >> 3));
+}
+
 //启用msi-x中断
 
 //禁用msi-x中断

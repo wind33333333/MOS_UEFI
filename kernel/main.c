@@ -30,7 +30,8 @@ INIT_TEXT void init_kernel(void) {
 
     pcie_dev_t *pcie_dev = pcie_find(0x0C0330);
     capability_t *pcie_cap = get_pcie_capability(pcie_dev->pcie_config_space, msi_x_e);
-    pcie_cap = get_pcie_capability(pcie_dev->pcie_config_space, pcie_cap_e);
+    UINT64 bar = get_bar(pcie_dev->pcie_config_space,0);
+    msi_x_table_entry_t *msi_x_table = get_msi_x_table(pcie_dev->pcie_config_space);
 
     init_bsp();                                //初始化bsp核心
     init_ap();                                 //初始化ap核
