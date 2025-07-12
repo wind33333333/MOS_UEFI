@@ -106,12 +106,20 @@ UINT64 get_bar(pcie_config_space_t *pcie_config_space,UINT8 number) {
     return (bar_data & 0x6) == 0x4 ? bar_data & 0xFFFFFFFFFFFFFFF0UL : bar_data & 0xFFFFFFF0UL;
 }
 
+//获取msi-x终端数量
+//参数msi-x能力链表
+//数量
+UINT32 get_msi_x_irq_number(capability_t *cap) {
+    return (cap->msi_x.control & 0x7FF)+1;
+}
+
 //获取msi-x表地址
 //参数1 pcie_config_space_t
 //返回msi_x_t结构地址
 msi_x_table_entry_t *get_msi_x_table(pcie_config_space_t *pcie_config_space) {
     capability_t *cap= get_pcie_capability(pcie_config_space,msi_x_e);
-    return (msi_x_table_entry_t*)(get_bar(pcie_config_space,cap->msi_x.table_offset & 0x7) + (cap->msi_x.table_offset >> 3));
+    msi_x_table_entry_t *msi_x_table = (get_bar(pcie_config_space,cap->msi_x.table_offset & 0x7) + (cap->msi_x.table_offset >> 3));
+    msi_x_table =
 }
 
 //启用msi-x中断
