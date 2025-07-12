@@ -72,12 +72,12 @@ typedef struct {
         // MSI-X能力结构（ID 0x11）
         struct {
             UINT16 control; // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
-                            // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
-                            // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
+            // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
+            // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
             UINT32 table_offset; // 位 0-2：BAR 指示器（Base Address Register Index）
-                                 // 位 3-31：MSI-X 表偏移地址（相对于 BAR 的基地址）
+            // 位 3-31：MSI-X 表偏移地址（相对于 BAR 的基地址）
             UINT32 pba_offset; // 位 0-2：PBA BAR 指示器
-                               // 位 3-31：PBA 偏移地址（相对于 BAR 的基地址）
+            // 位 3-31：PBA 偏移地址（相对于 BAR 的基地址）
         } msi_x;
 
         // Power Management能力结构（ID 0x01）
@@ -88,15 +88,31 @@ typedef struct {
 
         // PCIe能力结构（ID 0x10）
         struct {
-            UINT16 pcie_cap; // PCIe能力字段
-            UINT32 dev_cap; // 设备能力
-            UINT16 dev_ctrl; // 设备控制
-        } pcie;
+            UINT16 pcie_capability;        // PCIe能力寄存器，包含版本和设备类型等信息
+            UINT32 device_capability;      // 设备能力寄存器，描述设备支持的功能
+            UINT16 device_control;         // 设备控制寄存器，用于配置设备行为
+            UINT16 device_status;          // 设备状态寄存器，反映设备当前状态
+            UINT32 link_capability;        // 链路能力寄存器，描述链路特性如带宽和速度
+            UINT16 link_control;           // 链路控制寄存器，用于配置链路行为
+            UINT16 link_status;            // 链路状态寄存器，反映链路当前状态
+            UINT32 slot_capability;        // 插槽能力寄存器（仅对Root Port或Switch有效）
+            UINT16 slot_control;           // 插槽控制寄存器，配置插槽行为
+            UINT16 slot_status;            // 插槽状态寄存器，反映插槽状态
+            UINT16 root_control;           // 根控制寄存器（仅对Root Complex有效）
+            UINT16 root_capability;        // 根能力寄存器，描述Root Complex支持的功能
+            UINT32 root_status;            // 根状态寄存器，反映Root Complex状态
+            UINT32 device_capability2;     // 设备能力寄存器2，支持扩展功能
+            UINT16 device_control2;        // 设备控制寄存器2，配置扩展功能
+            UINT16 device_status2;         // 设备状态寄存器2，反映扩展功能状态
+            UINT32 link_capability2;       // 链路能力寄存器2，支持更新的链路特性
+            UINT16 link_control2;          // 链路控制寄存器2，配置更新链路行为
+            UINT16 link_status2;           // 链路状态寄存器2，反映更新链路状态
+        } pcie_cap;
 
         // 通用数据（占位）
         UINT8 data[14]; // 最大能力结构长度（16字节-公共字段）
     };
-} capability_t;
+}__attribute__((packed)) capability_t;
 
 // MSI-X Table条目 (16字节)
 typedef struct {
@@ -104,28 +120,29 @@ typedef struct {
     UINT32 msg_addr_hi; // 消息地址高32位 (如果64位)
     UINT32 msg_data; // 消息数据值
     UINT32 vector_control; // 向量控制 (通常Bit0=Per Vector Mask)
-} msi_x_table_entry_t;
+}__attribute__((packed)) msi_x_table_entry_t;
 
 typedef struct {
-    list_head_t             list;               /* 全局 PCI 设备链表节点 */
-    UINT8                   func;               /* 功能号 */
-    UINT8                   dev;                /* 设备号 */
-    UINT8                   bus;                /* 总线号 */
-    UINT8                   *name;              /* 设备名 */
-    pcie_config_space_t     *pcie_config_space; /* pcie配置空间 */
-    UINT64 bar[6];                              /* bar0-bar6 */
-    msi_x_table_entry_t     *msi_x_table;       /* msi-x中断配置表 */
-
+    list_head_t list; /* 全局 PCI 设备链表节点 */
+    UINT8 func; /* 功能号 */
+    UINT8 dev; /* 设备号 */
+    UINT8 bus; /* 总线号 */
+    UINT8 *name; /* 设备名 */
+    pcie_config_space_t *pcie_config_space; /* pcie配置空间 */
+    UINT64 bar[6]; /* bar0-bar6 */
+    msi_x_table_entry_t *msi_x_table; /* msi-x中断配置表 */
 } pcie_dev_t;
 
 typedef enum {
-    power_mgmt = 1,
-    pcie = 0x10,
-    msi_x = 0x11
-} capability_id;
+    power_mgmt_e = 1,
+    pcie_cap_e = 0x10,
+    msi_x_e = 0x11
+} capability_id_e;
 
 void init_pcie(void);
+
 pcie_dev_t *pcie_find(UINT32 class_code);
-capability_t *get_pcie_capability(pcie_config_space_t *pcie_config_space,capability_id cap_id);
+
+capability_t *get_pcie_capability(pcie_config_space_t *pcie_config_space, capability_id_e cap_id);
 
 #endif

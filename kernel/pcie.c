@@ -85,7 +85,7 @@ pcie_dev_t *pcie_find(UINT32 class_code) {
 //获取能力链表
 //参数capability_id
 //返回一个capability_t* 指针
-capability_t *get_pcie_capability(pcie_config_space_t *pcie_config_space,capability_id cap_id) {
+capability_t *get_pcie_capability(pcie_config_space_t *pcie_config_space,capability_id_e cap_id) {
     //检测是否支持能力链表
     if (!(pcie_config_space->status & 0x10)) return NULL;
     capability_t *cap = (capability_t*)((UINT64)pcie_config_space + pcie_config_space->type0.cap_ptr);
