@@ -37,7 +37,7 @@ typedef struct {
             UINT8 interrupt_pin; // 中断引脚 (0x3D) - INTA#-INTD#
             UINT8 min_grant; // 最小授权 (0x3E) - PCI 时序
             UINT8 max_latency; // 最大延迟 (0x3F) - PCI 时序
-        } type0;
+        }__attribute__((packed)) type0;
 
         // Type 1: PCI 桥设备结构
         struct {
@@ -62,7 +62,7 @@ typedef struct {
             UINT8 interrupt_line; // 中断线 (0x3C)
             UINT8 interrupt_pin; // 中断引脚 (0x3D)
             UINT16 bridge_control; // 桥控制寄存器 (0x3E)
-        } type1;
+        }__attribute__((packed)) type1;
     };
 
     UINT8 device_specific[192]; // 0x40 - 0xFF
@@ -84,13 +84,13 @@ typedef struct {
             // 位 3-31：MSI-X 表偏移地址（相对于 BAR 的基地址）
             UINT32 pba_offset; // 位 0-2：PBA BAR 指示器
             // 位 3-31：PBA 偏移地址（相对于 BAR 的基地址）
-        } msi_x;
+        }__attribute__((packed)) msi_x;
 
         // Power Management能力结构（ID 0x01）
         struct {
             UINT16 pmc; // 能力字段（支持的状态）
             UINT16 pmcsr; // 控制/状态寄存器
-        } power_mgmt;
+        }__attribute__((packed)) power_mgmt;
 
         // PCIe能力结构（ID 0x10）
         struct {
@@ -113,7 +113,7 @@ typedef struct {
             UINT32 link_capability2;       // 链路能力寄存器2，支持更新的链路特性
             UINT16 link_control2;          // 链路控制寄存器2，配置更新链路行为
             UINT16 link_status2;           // 链路状态寄存器2，反映更新链路状态
-        } pcie_cap;
+        }__attribute__((packed)) pcie_cap;
 
         // 通用数据（占位）
         UINT8 data[14]; // 最大能力结构长度（16字节-公共字段）
