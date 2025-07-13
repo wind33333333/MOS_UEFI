@@ -29,7 +29,6 @@ INIT_TEXT void init_kernel(void) {
     init_pcie();                               //初始化pcie
 
     pcie_dev_t *pcie_dev = pcie_find(0x0C0330);
-    capability_t *cap = get_pcie_capability(pcie_dev->pcie_config_space,pcie_cap_e);
     msi_x_table_entry_t *msi_x_table = get_msi_x_table(pcie_dev->pcie_config_space);
     msi_x_table[0].msg_addr_lo = 1;
     msi_x_table[0].msg_addr_hi = 1;
