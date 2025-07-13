@@ -156,5 +156,7 @@ pcie_dev_t *find_pcie_dev(UINT32 class_code);
 cap_t *find_pcie_cap(pcie_config_space_t *pcie_config_space, cap_id_e cap_id);
 UINT64 set_bar(pcie_config_space_t *pcie_config_space,UINT8 number);
 msi_x_table_entry_t *get_msi_x_table(pcie_dev_t *pcie_dev);
+void enable_msi_x(pcie_config_space_t *pcie_config_space);
+void disable_msi_x(pcie_config_space_t *pcie_config_space);
 
 #endif

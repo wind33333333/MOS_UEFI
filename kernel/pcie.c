@@ -55,15 +55,58 @@ struct {
 //pcie设备全局链表
 list_head_t pcie_dev_list;
 
-static inline char *pcie_clasename(UINT32 class_code) {
+static inline char *find_pcie_clasename(UINT32 class_code) {
     for (int i = 0; pcie_classnames[i].name != NULL; i++) {
         if (class_code == pcie_classnames[i].class_code) return pcie_classnames[i].name;
     }
 }
 
-static inline UINT32 get_pcie_classcode(pcie_dev_t *pcie_dev) {
-    UINT32 *class_code = &pcie_dev->pcie_config_space->class_code;
+static inline UINT32 get_pcie_classcode(pcie_config_space_t *pcie_config_space) {
+    UINT32 *class_code = &pcie_config_space->class_code;
     return *class_code & 0xFFFFFF;
+}
+
+/*
+ * 创建pcie_dev结构
+ */
+void create_pcie_dev(pcie_config_space_t *pcie_config_space, UINT8 bus, UINT8 dev, UINT8 func) {
+    pcie_dev_t *pcie_dev = kzalloc(sizeof(pcie_dev_t));
+    pcie_dev->name = find_pcie_clasename(get_pcie_classcode(pcie_config_space));
+    pcie_dev->bus = bus;
+    pcie_dev->dev = dev;
+    pcie_dev->func = func;
+    pcie_dev->pcie_config_space = iomap(pcie_config_space,PAGE_4K_SIZE,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+    list_add_head(&pcie_dev_list, &pcie_dev->list);
+}
+
+/*
+ * pcie 地址计算
+ */
+static inline pcie_config_space_t *ecam_bdf_to_pcie_config_space_addr(UINT64 ecam_base, UINT8 bus, UINT8 dev,
+                                                                      UINT8 func) {
+    return (pcie_config_space_t *) (ecam_base + (bus << 20) + (dev << 15) + (func << 12));
+}
+
+/*
+ * pcie 总线扫描
+ */
+static inline void pcie_scan(UINT64 ecam_base, UINT8 bus) {
+    for (UINT8 dev = 0; dev < 32; dev++) {
+        for (UINT8 func = 0; func < 8; func++) {
+            pcie_config_space_t *pcie_config_space = ecam_bdf_to_pcie_config_space_addr(ecam_base, bus, dev, func);
+            if (pcie_config_space->vendor_id == 0xFFFF && func == 0) break;
+            if (pcie_config_space->vendor_id == 0xFFFF) continue;
+            if (pcie_config_space->header_type & 1) {
+                //type1 pcie桥
+                create_pcie_dev(pcie_config_space, bus, dev, func);
+                pcie_scan(ecam_base, pcie_config_space->type1.secondary_bus);
+            } else {
+                //type0 终端设备
+                create_pcie_dev(pcie_config_space, bus, dev, func);
+                if ((pcie_config_space->header_type & 0x80) == 0) break;
+            }
+        }
+    }
 }
 
 /*
@@ -82,7 +125,7 @@ pcie_dev_t *find_pcie_dev(UINT32 class_code) {
     return NULL;
 }
 
-//find能力链表
+//搜索能力链表
 //参数capability_id
 //返回一个capability_t* 指针
 cap_t *find_pcie_cap(pcie_config_space_t *pcie_config_space, cap_id_e cap_id) {
@@ -172,48 +215,6 @@ void disable_msi_x(pcie_config_space_t *pcie_config_space) {
     cap->msi_x.control |= 0x4000;
 }
 
-/*
- * 创建pcie_dev结构
- */
-void create_pcie_dev(pcie_config_space_t *pcie_config_space, UINT8 bus, UINT8 dev, UINT8 func) {
-    pcie_dev_t *pcie_dev = kzalloc(sizeof(pcie_dev_t));
-    pcie_dev->name = pcie_clasename(get_pcie_classcode(pcie_config_space));
-    pcie_dev->bus = bus;
-    pcie_dev->dev = dev;
-    pcie_dev->func = func;
-    pcie_dev->pcie_config_space = iomap(pcie_config_space,PAGE_4K_SIZE,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
-    list_add_head(&pcie_dev_list, &pcie_dev->list);
-}
-
-/*
- * pcie 地址计算
- */
-static inline pcie_config_space_t *ecam_bdf_to_pcie_config_space_addr(UINT64 ecam_base, UINT8 bus, UINT8 dev,
-                                                                      UINT8 func) {
-    return (pcie_config_space_t *) (ecam_base + (bus << 20) + (dev << 15) + (func << 12));
-}
-
-/*
- * pcie 总线扫描
- */
-static inline void pcie_scan(UINT64 ecam_base, UINT8 bus) {
-    for (UINT8 dev = 0; dev < 32; dev++) {
-        for (UINT8 func = 0; func < 8; func++) {
-            pcie_config_space_t *pcie_config_space = ecam_bdf_to_pcie_config_space_addr(ecam_base, bus, dev, func);
-            if (pcie_config_space->vendor_id == 0xFFFF && func == 0) break;
-            if (pcie_config_space->vendor_id == 0xFFFF) continue;
-            if (pcie_config_space->header_type & 1) {
-                //type1 pcie桥
-                create_pcie_dev(pcie_config_space, bus, dev, func);
-                pcie_scan(ecam_base, pcie_config_space->type1.secondary_bus);
-            } else {
-                //type0 终端设备
-                create_pcie_dev(pcie_config_space, bus, dev, func);
-                if ((pcie_config_space->header_type & 0x80) == 0) break;
-            }
-        }
-    }
-}
 
 INIT_TEXT void init_pcie(void) {
     //初始化pcie设备链表
