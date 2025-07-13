@@ -61,8 +61,8 @@ static inline char *pcie_clasename(UINT32 class_code) {
     }
 }
 
-static inline UINT32 get_pcie_classcode(pcie_config_space_t *pcie_config_space) {
-    UINT32 *class_code = &pcie_config_space->class_code;
+static inline UINT32 get_pcie_classcode(pcie_dev_t *pcie_dev) {
+    UINT32 *class_code = &pcie_dev->pcie_config_space->class_code;
     return *class_code & 0xFFFFFF;
 }
 
@@ -72,7 +72,7 @@ static inline UINT32 get_pcie_classcode(pcie_config_space_t *pcie_config_space) 
  * 返回一个pcie_dev_t指针
  */
 list_head_t *next_pcie_dev = &pcie_dev_list;
-pcie_dev_t *pcie_find(UINT32 class_code) {
+pcie_dev_t *find_pcie_dev(UINT32 class_code) {
     if (next_pcie_dev == &pcie_dev_list) next_pcie_dev = pcie_dev_list.next;
     while (next_pcie_dev != &pcie_dev_list) {
         pcie_dev_t *pcie_dev = CONTAINER_OF(next_pcie_dev,pcie_dev_t,list);
@@ -82,17 +82,17 @@ pcie_dev_t *pcie_find(UINT32 class_code) {
     return NULL;
 }
 
-//获取能力链表
+//find能力链表
 //参数capability_id
 //返回一个capability_t* 指针
-capability_t *get_pcie_capability(pcie_config_space_t *pcie_config_space,capability_id_e cap_id) {
+cap_t *find_pcie_cap(pcie_config_space_t *pcie_config_space, cap_id_e cap_id) {
     //检测是否支持能力链表
     if (!(pcie_config_space->status & 0x10)) return NULL;
-    capability_t *cap = (capability_t*)((UINT64)pcie_config_space + pcie_config_space->type0.cap_ptr);
+    cap_t *cap = (cap_t*)((UINT64)pcie_config_space + pcie_config_space->type0.cap_ptr);
     while (TRUE){
         if (cap->cap_id == cap_id) return cap;
         if (cap->next_ptr == 0) return NULL;
-        cap = (capability_t*)((UINT64)pcie_config_space + cap->next_ptr);
+        cap = (cap_t*)((UINT64)pcie_config_space + cap->next_ptr);
     }
 }
 
@@ -102,31 +102,34 @@ static inline UINT64 is_bar_bit(UINT64 bar_data) {
     return bar_data & 0x6;
 }
 
-//获取bar寄存器中地址
-//参数bar寄存器号
-//返回bar中的地址
-UINT64 get_bar_data(pcie_config_space_t *pcie_config_space,UINT8 number) {
-    if (number > 5) return 0;
-    UINT64 *bar_addr = &pcie_config_space->type0.bar[number];
-    UINT64 bar_data = *bar_addr;
-    return is_bar_bit(bar_data) ? bar_data & 0xFFFFFFFFFFFFFFF0UL : bar_data & 0xFFFFFFF0UL;
-}
 
-UINT64 get_bar_size(pcie_config_space_t *pcie_config_space,UINT8 number) {
+//配置bar寄存器
+//参数bar寄存器号
+//返回bar虚拟地址
+UINT64 set_bar(pcie_config_space_t *pcie_config_space,UINT8 number) {
     if (number > 5) return 0;
-    UINT64 *bar_addr = &pcie_config_space->type0.bar[number];
-    UINT64 bar_data = *bar_addr;
-    *bar_addr = 0xFFFFFFFFFFFFFFFFUL;
-    UINT64 bar_size = *bar_addr;
-    *bar_addr = bar_data;
-    return is_bar_bit(bar_data) ? -(bar_size &0xFFFFFFFFFFFFFFF0UL) : -(bar_size & 0xFFFFFFF0UL);
+    UINT64 *bar = &pcie_config_space->type0.bar[number];
+    UINT64 addr = *bar;
+    *bar = 0xFFFFFFFFFFFFFFFFUL;
+    UINT64 size = *bar;
+    *bar = addr;
+    if (is_bar_bit(addr)) {
+        addr &= 0xFFFFFFFFFFFFFFF0UL;
+        size &= 0xFFFFFFFFFFFFFFF0UL;
+    }else {
+        addr &= 0xFFFFFFF0UL;
+        size &= 0xFFFFFFF0UL;
+        size |= 0xFFFFFFFF00000000UL;
+    }
+    size = -size;
+    return iomap(addr,size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
 }
 
 //获取msi-x终端数量
 //参数pcie_config_space_t
 //数量
 UINT32 get_msi_x_irq_number(pcie_config_space_t *pcie_config_space) {
-    capability_t *cap= get_pcie_capability(pcie_config_space,msi_x_e);
+    cap_t *cap= find_pcie_cap(pcie_config_space,msi_x_e);
     return (cap->msi_x.control & 0x7FF)+1;
 }
 
@@ -136,34 +139,36 @@ UINT32 get_msi_x_irq_number(pcie_config_space_t *pcie_config_space) {
  *数量
  */
 UINT8 get_msi_x_bar_number(pcie_config_space_t *pcie_config_space) {
-    capability_t *cap= get_pcie_capability(pcie_config_space,msi_x_e);
+    cap_t *cap= find_pcie_cap(pcie_config_space,msi_x_e);
     return cap->msi_x.table_offset & 0x7;
 }
 
+/*
+ * 获取msi-x表相对bar偏移量
+ */
 UINT32 get_msi_x_offset(pcie_config_space_t *pcie_config_space) {
-    capability_t *cap= get_pcie_capability(pcie_config_space,msi_x_e);
+    cap_t *cap= find_pcie_cap(pcie_config_space,msi_x_e);
     return cap->msi_x.table_offset & ~0x7;
 }
 
 //获取msi-x中断表地址
 //参数1 pcie_config_space_t
 //返回msi_x_t结构地址
-msi_x_table_entry_t *get_msi_x_table(pcie_config_space_t *pcie_config_space) {
-    UINT64 msi_x_table = get_bar_data(pcie_config_space,get_msi_x_bar_number(pcie_config_space)) + get_msi_x_offset(pcie_config_space);
-    UINT64 msi_x_size = get_bar_size(pcie_config_space,get_msi_x_bar_number(pcie_config_space));
-    return iomap(msi_x_table,msi_x_size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+msi_x_table_entry_t *get_msi_x_table(pcie_dev_t *pcie_dev) {
+    UINT32 msi_x_bar_number = get_msi_x_bar_number(pcie_dev->pcie_config_space);
+    return (msi_x_table_entry_t*)(pcie_dev->bar[msi_x_bar_number] + get_msi_x_offset(pcie_dev->pcie_config_space));
 }
 
 //启用msi-x中断
 void enable_msi_x(pcie_config_space_t *pcie_config_space) {
-    capability_t *cap= get_pcie_capability(pcie_config_space,msi_x_e);
+    cap_t *cap= find_pcie_cap(pcie_config_space,msi_x_e);
     cap->msi_x.control |= 0x8000;
     cap->msi_x.control &= ~0x4000;
 }
 
 //禁用msi-x中断
 void disable_msi_x(pcie_config_space_t *pcie_config_space) {
-    capability_t *cap= get_pcie_capability(pcie_config_space,msi_x_e);
+    cap_t *cap= find_pcie_cap(pcie_config_space,msi_x_e);
     cap->msi_x.control |= 0x4000;
 }
 
