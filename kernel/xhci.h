@@ -4,6 +4,7 @@
 
 #include "moslib.h"
 
+#pragma pack(push,1)
 /* 功能寄存器 (偏移量: 0x00 - 0x3F) */
 typedef struct {
     uint8_t caplength;          /* 0x00: 功能寄存器长度，指示操作寄存器起始偏移 */
@@ -66,5 +67,9 @@ typedef struct {
     xhci_op_regs_t op;          /* 操作寄存器 (偏移量取决于CAPLENGTH) */
     /* 运行时寄存器和门铃寄存器通过DBOFF和RTSOFF偏移量访问 */
 } xhci_mmio_t;
+
+#pragma pack(pop)
+
+void init_xhci(void);
 
 #endif

@@ -153,7 +153,8 @@ typedef enum {
 void init_pcie(void);
 pcie_dev_t *pcie_find(UINT32 class_code);
 capability_t *get_pcie_capability(pcie_config_space_t *pcie_config_space, capability_id_e cap_id);
-UINT64 get_bar(pcie_config_space_t *pcie_config_space,UINT8 number);
+UINT64 get_bar_data(pcie_config_space_t *pcie_config_space,UINT8 number);
+UINT64 get_bar_size(pcie_config_space_t *pcie_config_space,UINT8 number);
 msi_x_table_entry_t *get_msi_x_table(pcie_config_space_t *pcie_config_space);
 
 #endif

@@ -13,6 +13,7 @@
 #include "rbtree.h"
 #include "uefi.h"
 #include "pcie.h"
+#include "xhci.h"
 
 INIT_TEXT void init_kernel(void) {
     mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
@@ -27,9 +28,7 @@ INIT_TEXT void init_kernel(void) {
     init_ioapic();                             //初始化ioapic
     init_hpet();                               //初始化hpet
     init_pcie();                               //初始化pcie
-
-    pcie_dev_t *pcie_dev = pcie_find(0x0C0330);
-    msi_x_table_entry_t *msi_x_table = get_msi_x_table(pcie_dev->pcie_config_space);
+    init_xhci();                               //初始化xhci
 
     init_bsp();                                //初始化bsp核心
     init_ap();                                 //初始化ap核

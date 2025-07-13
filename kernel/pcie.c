@@ -96,14 +96,30 @@ capability_t *get_pcie_capability(pcie_config_space_t *pcie_config_space,capabil
     }
 }
 
+//判断bar 64位或32位
+//0等于32位，4等于32位
+static inline UINT64 is_bar_bit(UINT64 bar_data) {
+    return bar_data & 0x6;
+}
+
 //获取bar寄存器中地址
 //参数bar寄存器号
 //返回bar中的地址
-UINT64 get_bar(pcie_config_space_t *pcie_config_space,UINT8 number) {
+UINT64 get_bar_data(pcie_config_space_t *pcie_config_space,UINT8 number) {
     if (number > 5) return 0;
     UINT64 *bar_addr = &pcie_config_space->type0.bar[number];
     UINT64 bar_data = *bar_addr;
-    return (bar_data & 0x6) == 0x4 ? bar_data & 0xFFFFFFFFFFFFFFF0UL : bar_data & 0xFFFFFFF0UL;
+    return is_bar_bit(bar_data) ? bar_data & 0xFFFFFFFFFFFFFFF0UL : bar_data & 0xFFFFFFF0UL;
+}
+
+UINT64 get_bar_size(pcie_config_space_t *pcie_config_space,UINT8 number) {
+    if (number > 5) return 0;
+    UINT64 *bar_addr = &pcie_config_space->type0.bar[number];
+    UINT64 bar_data = *bar_addr;
+    *bar_addr = 0xFFFFFFFFFFFFFFFFUL;
+    UINT64 bar_size = *bar_addr;
+    *bar_addr = bar_data;
+    return is_bar_bit(bar_data) ? -(bar_size &0xFFFFFFFFFFFFFFF0UL) : -(bar_size & 0xFFFFFFF0UL);
 }
 
 //获取msi-x终端数量
@@ -133,7 +149,7 @@ UINT32 get_msi_x_offset(pcie_config_space_t *pcie_config_space) {
 //参数1 pcie_config_space_t
 //返回msi_x_t结构地址
 msi_x_table_entry_t *get_msi_x_table(pcie_config_space_t *pcie_config_space) {
-    UINT64 msi_x_table = get_bar(pcie_config_space,get_msi_x_bar_number(pcie_config_space)) + get_msi_x_offset(pcie_config_space);
+    UINT64 msi_x_table = get_bar_data(pcie_config_space,get_msi_x_bar_number(pcie_config_space)) + get_msi_x_offset(pcie_config_space);
     return iomap(msi_x_table,get_msi_x_irq_number(pcie_config_space)*sizeof(msi_x_table_entry_t),PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
 }
 
