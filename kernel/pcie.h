@@ -139,7 +139,7 @@ typedef struct {
     UINT8 bus; /* 总线号 */
     UINT8 *name; /* 设备名 */
     pcie_config_space_t *pcie_config_space; /* pcie配置空间 */
-    UINT64 bar[6]; /*bar*/
+    void *bar[6]; /*bar*/
     msi_x_table_entry_t *msi_x_table; /* msi-x中断配置表 */
 } pcie_dev_t;
 
@@ -154,7 +154,7 @@ typedef enum {
 void init_pcie(void);
 pcie_dev_t *find_pcie_dev(UINT32 class_code);
 cap_t *find_pcie_cap(pcie_config_space_t *pcie_config_space, cap_id_e cap_id);
-UINT64 set_bar(pcie_config_space_t *pcie_config_space,UINT8 number);
+void *set_bar(pcie_config_space_t *pcie_config_space,UINT8 number);
 msi_x_table_entry_t *get_msi_x_table(pcie_dev_t *pcie_dev);
 void enable_msi_x(pcie_config_space_t *pcie_config_space);
 void disable_msi_x(pcie_config_space_t *pcie_config_space);
