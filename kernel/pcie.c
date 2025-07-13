@@ -150,7 +150,8 @@ UINT32 get_msi_x_offset(pcie_config_space_t *pcie_config_space) {
 //返回msi_x_t结构地址
 msi_x_table_entry_t *get_msi_x_table(pcie_config_space_t *pcie_config_space) {
     UINT64 msi_x_table = get_bar_data(pcie_config_space,get_msi_x_bar_number(pcie_config_space)) + get_msi_x_offset(pcie_config_space);
-    return iomap(msi_x_table,get_msi_x_irq_number(pcie_config_space)*sizeof(msi_x_table_entry_t),PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+    UINT64 msi_x_size = get_bar_size(pcie_config_space,get_msi_x_bar_number(pcie_config_space));
+    return iomap(msi_x_table,msi_x_size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
 }
 
 //启用msi-x中断
