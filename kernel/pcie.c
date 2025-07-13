@@ -107,29 +107,52 @@ UINT64 get_bar(pcie_config_space_t *pcie_config_space,UINT8 number) {
 }
 
 //获取msi-x终端数量
-//参数msi-x能力链表
+//参数pcie_config_space_t
 //数量
-UINT32 get_msi_x_irq_number(capability_t *cap) {
+UINT32 get_msi_x_irq_number(pcie_config_space_t *pcie_config_space) {
+    capability_t *cap= get_pcie_capability(pcie_config_space,msi_x_e);
     return (cap->msi_x.control & 0x7FF)+1;
 }
 
-//获取msi-x表地址
+/*
+ *获取msi-x表bar号
+ *参数pcie_config_space_t
+ *数量
+ */
+UINT8 get_msi_x_bar_number(pcie_config_space_t *pcie_config_space) {
+    capability_t *cap= get_pcie_capability(pcie_config_space,msi_x_e);
+    return cap->msi_x.table_offset & 0x7;
+}
+
+UINT32 get_msi_x_offset(pcie_config_space_t *pcie_config_space) {
+    capability_t *cap= get_pcie_capability(pcie_config_space,msi_x_e);
+    return cap->msi_x.table_offset & ~0x7;
+}
+
+//获取msi-x中断表地址
 //参数1 pcie_config_space_t
 //返回msi_x_t结构地址
 msi_x_table_entry_t *get_msi_x_table(pcie_config_space_t *pcie_config_space) {
-    capability_t *cap= get_pcie_capability(pcie_config_space,msi_x_e);
-    msi_x_table_entry_t *msi_x_table = (get_bar(pcie_config_space,cap->msi_x.table_offset & 0x7) + (cap->msi_x.table_offset >> 3));
-    msi_x_table =
+    UINT64 msi_x_table = get_bar(pcie_config_space,get_msi_x_bar_number(pcie_config_space)) + get_msi_x_offset(pcie_config_space);
+    return iomap(msi_x_table,get_msi_x_irq_number(pcie_config_space)*sizeof(msi_x_table_entry_t),PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
 }
 
 //启用msi-x中断
+void enable_msi_x(pcie_config_space_t *pcie_config_space) {
+    capability_t *cap= get_pcie_capability(pcie_config_space,msi_x_e);
+    cap->msi_x.control |= 0x8000;
+    cap->msi_x.control &= ~0x4000;
+}
 
 //禁用msi-x中断
+void disable_msi_x(pcie_config_space_t *pcie_config_space) {
+    capability_t *cap= get_pcie_capability(pcie_config_space,msi_x_e);
+    cap->msi_x.control |= 0x4000;
+}
 
-//获取msi-x中断表地址
-
-
-
+/*
+ * 创建pcie_dev结构
+ */
 static inline void create_pcie_dev(pcie_config_space_t *pcie_config_space, UINT8 bus, UINT8 dev, UINT8 func) {
     pcie_dev_t *pcie_dev = kzalloc(sizeof(pcie_dev_t));
     pcie_dev->name = pcie_clasename(get_pcie_classcode(pcie_config_space));

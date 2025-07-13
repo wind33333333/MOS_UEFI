@@ -29,9 +29,13 @@ INIT_TEXT void init_kernel(void) {
     init_pcie();                               //初始化pcie
 
     pcie_dev_t *pcie_dev = pcie_find(0x0C0330);
-    capability_t *pcie_cap = get_pcie_capability(pcie_dev->pcie_config_space, msi_x_e);
-    UINT64 bar = get_bar(pcie_dev->pcie_config_space,0);
     msi_x_table_entry_t *msi_x_table = get_msi_x_table(pcie_dev->pcie_config_space);
+    msi_x_table[0].msg_addr_lo = 1;
+    msi_x_table[0].msg_addr_hi = 1;
+    UINT64 x = msi_x_table[0].msg_addr_lo;
+    x = msi_x_table[0].msg_addr_hi;
+    x = msi_x_table[0].msg_data;
+    x = msi_x_table[0].vector_control;
 
     init_bsp();                                //初始化bsp核心
     init_ap();                                 //初始化ap核
