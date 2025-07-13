@@ -3,6 +3,8 @@
 
 #include "moslib.h"
 
+#pragma pack(push,1)
+
 typedef struct {
     /* PCI 通用配置头（前 64 字节）*/
     /* 设备标识区 (0x00 - 0x0F) */
@@ -37,7 +39,7 @@ typedef struct {
             UINT8 interrupt_pin; // 中断引脚 (0x3D) - INTA#-INTD#
             UINT8 min_grant; // 最小授权 (0x3E) - PCI 时序
             UINT8 max_latency; // 最大延迟 (0x3F) - PCI 时序
-        }__attribute__((packed)) type0;
+        } type0;
 
         // Type 1: PCI 桥设备结构
         struct {
@@ -62,12 +64,12 @@ typedef struct {
             UINT8 interrupt_line; // 中断线 (0x3C)
             UINT8 interrupt_pin; // 中断引脚 (0x3D)
             UINT16 bridge_control; // 桥控制寄存器 (0x3E)
-        }__attribute__((packed)) type1;
+        } type1;
     };
 
     UINT8 device_specific[192]; // 0x40 - 0xFF
     UINT8 extended_config[4096 - 256]; // 0x100 - 0xFFF: 扩展配置空间
-} __attribute__((packed)) pcie_config_space_t;
+} pcie_config_space_t;
 
 // 通用能力结构
 typedef struct {
@@ -84,13 +86,13 @@ typedef struct {
             // 位 3-31：MSI-X 表偏移地址（相对于 BAR 的基地址）
             UINT32 pba_offset; // 位 0-2：PBA BAR 指示器
             // 位 3-31：PBA 偏移地址（相对于 BAR 的基地址）
-        }__attribute__((packed)) msi_x;
+        } msi_x;
 
         // Power Management能力结构（ID 0x01）
         struct {
             UINT16 pmc; // 能力字段（支持的状态）
             UINT16 pmcsr; // 控制/状态寄存器
-        }__attribute__((packed)) power_mgmt;
+        } power_mgmt;
 
         // PCIe能力结构（ID 0x10）
         struct {
@@ -113,12 +115,12 @@ typedef struct {
             UINT32 link_capability2;       // 链路能力寄存器2，支持更新的链路特性
             UINT16 link_control2;          // 链路控制寄存器2，配置更新链路行为
             UINT16 link_status2;           // 链路状态寄存器2，反映更新链路状态
-        }__attribute__((packed)) pcie_cap;
+        } pcie_cap;
 
         // 通用数据（占位）
         UINT8 data[14]; // 最大能力结构长度（16字节-公共字段）
     };
-}__attribute__((packed)) capability_t;
+} capability_t;
 
 // MSI-X Table条目 (16字节)
 typedef struct {
@@ -126,7 +128,9 @@ typedef struct {
     UINT32 msg_addr_hi; // 消息地址高32位 (如果64位)
     UINT32 msg_data; // 消息数据值
     UINT32 vector_control; // 向量控制 (通常Bit0=Per Vector Mask)
-}__attribute__((packed)) msi_x_table_entry_t;
+} msi_x_table_entry_t;
+
+#pragma pack(pop)
 
 typedef struct {
     list_head_t list; /* 全局 PCI 设备链表节点 */
@@ -144,6 +148,8 @@ typedef enum {
     pcie_cap_e = 0x10,
     msi_x_e = 0x11
 } capability_id_e;
+
+
 
 void init_pcie(void);
 pcie_dev_t *pcie_find(UINT32 class_code);
