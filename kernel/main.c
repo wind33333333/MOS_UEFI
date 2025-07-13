@@ -26,11 +26,11 @@ INIT_TEXT void init_kernel(void) {
     init_efi_runtime_service();                //初始化efi运行时服务
     init_output();                             //初始化输出控制台
     init_ioapic();                             //初始化ioapic
+    init_bsp();                                //初始化bsp核心
     init_hpet();                               //初始化hpet
     init_pcie();                               //初始化pcie
     init_xhci();                               //初始化xhci
 
-    init_bsp();                                //初始化bsp核心
     init_ap();                                 //初始化ap核
     while (1);
 
