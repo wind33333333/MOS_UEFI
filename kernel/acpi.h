@@ -123,7 +123,7 @@ typedef struct {
     UINT16                          reserved;                 // 保留字段，必须为 0
     UINT32                          mailbox_address;          // 唤醒邮箱的物理地址
     UINT32                          reserved2;                // 保留字段，必须为 0
-} multiprocessor_wakeup_entry_t;
+}__attribute__((packed)) multiprocessor_wakeup_entry_t;
 
 typedef struct {
     acpi_header_t                    acpi_header;                    // 标准 ACPI 表头
