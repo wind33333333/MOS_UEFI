@@ -4,68 +4,142 @@
 #include "moslib.h"
 
 #pragma pack(push,1)
-/* 功能寄存器 (偏移量: 0x00 - 0x3F) */
-typedef struct {
-    uint8_t caplength;          /* 0x00: 功能寄存器长度，指示操作寄存器起始偏移 */
-    uint8_t reserved1;          /* 0x01: 保留 */
-    uint16_t hciversion;        /* 0x02: 主机控制器接口版本号 */
-    uint32_t hcsparams1;        /* 0x04: 结构参数1，定义端口数量、插槽数等 */
-    uint32_t hcsparams2;        /* 0x08: 结构参数2 */
-    uint32_t hcsparams3;        /* 0x0C: 结构参数3 */
-    uint32_t hccparams1;        /* 0x10: 能力参数1，例如64位寻址支持 */
-    uint32_t dboff;             /* 0x14: 门铃寄存器数组偏移量 */
-    uint32_t rtsoff;            /* 0x18: 运行时寄存器集偏移量 */
-    uint32_t hccparams2;        /* 0x1C: 能力参数2 */
-    uint8_t reserved2[0x20];    /* 0x20 - 0x3F: 保留 */
-} xhci_cap_regs_t;
 
-/* 操作寄存器 (偏移量: CAPLENGTH - CAPLENGTH + N) */
+// ===== 1. 能力寄存器 (Capability Registers) =====
 typedef struct {
-    uint32_t usbcmd;            /* CAPLENGTH + 0x00: USB命令寄存器，控制主机运行/停止 */
-    uint32_t usbsts;            /* CAPLENGTH + 0x04: USB状态寄存器，报告控制器状态 */
-    uint32_t pagesize;          /* CAPLENGTH + 0x08: 页面大小 */
-    uint8_t reserved1[0x08];    /* CAPLENGTH + 0x0C - 0x13: 保留 */
-    uint32_t dnctrl;            /* CAPLENGTH + 0x14: 设备通知控制 */
-    uint64_t crcr;              /* CAPLENGTH + 0x18: 命令环控制 */
-    uint8_t reserved2[0x10];    /* CAPLENGTH + 0x20 - 0x2F: 保留 */
-    uint64_t dcbaap;            /* CAPLENGTH + 0x30: 设备上下文基地址数组指针 */
-    uint32_t config;            /* CAPLENGTH + 0x38: 配置最大设备插槽数 */
-    uint8_t reserved3[0x3C4];   /* CAPLENGTH + 0x3C - 0x3FF: 保留 */
-    /* 端口寄存器 (每个端口，从CAPLENGTH + 0x400开始) */
+    // 00h: 能力长度和版本 (CAPLENGTH/HCIVERSION)
+    uint8_t cap_length;      // [7:0] 能力寄存器总长度 (字节)
+    uint8_t reserved0;        // 保留
+    uint16_t hci_version;     // [31:16] 控制器版本 (0x100 = 1.0, 0x110 = 1.1)
+
+    // 04h: 硬件参数寄存器 (HCSPARAMS1)
+    uint32_t hcsparams1;      //
+        // [7:0]   MaxSlots: 支持的最大设备槽数 (实际=值+1)
+        // [15:8]  MaxIntrs: 支持的中断向量数 (实际=值+1)
+        // [23:16] MaxPorts: 支持的根端口数
+
+    // 08h: 硬件参数寄存器 (HCSPARAMS2)
+    uint32_t hcsparams2;      //
+        // [0]     IsochSchedThreshold: 等时调度阈值
+        // [1]     EventInterrupterMax: 事件中断器最大索引
+        // [3:2]   ERSTMax: 事件环段表最大大小 (2^ERSTMax)
+        // [7:4]   MaxScratchpadBufs: 最大暂存缓冲区数
+
+    // 0Ch: 硬件参数寄存器 (HCSPARAMS3)
+    uint32_t hcsparams3;      //
+        // [0]     U1DeviceExitLatency: U1延迟支持
+        // [1]     U2DeviceExitLatency: U2延迟支持
+
+    // 10h: 硬件参数寄存器 (HCCPARAMS1)
+    uint32_t hccparams1;      //
+        // [0]     AC64: 64位寻址能力
+        // [1]     BNC: 带宽协商能力
+        // [2]     CSZ: 上下文大小 (0=64字节, 1=32字节)
+        // [4]     PPC: 端口功率控制支持
+        // [5]     PIND: 端口指示器支持
+
+    uint32_t dboff;           // 0x14 门铃寄存器偏移
+    uint32_t rtsoff;          // 0x18 运行时寄存器偏移
+    uint32_t hccparams2;      // 0x1C 主机控制器能力参数2（1.1引入）
+}  xhci_cap_regs_t;
+
+// ===== 2. 操作寄存器 (Operational Registers) =====
+typedef struct {
+    // 00h: 命令寄存器 (USBCMD)
+    uint32_t usbcmd; // 控制器命令寄存器
+        #define XHCI_CMD_RS    (1 << 0)  // 运行/停止 (1=运行)
+        #define XHCI_CMD_HCRST (1 << 1)  // 主机控制器复位
+        #define XHCI_CMD_INTE   (1 << 2)  // 中断使能
+        #define XHCI_CMD_HSEE  (1 << 3)  // 主机系统错误使能
+
+    // 04h: 状态寄存器 (USBSTS)
+    uint32_t usbsts; // 控制器状态寄存器
+        #define XHCI_STS_HCH   (1 << 0)  // 控制器停止状态
+        #define XHCI_STS_CNR   (1 << 1)  // 控制器未准备好
+        #define XHCI_STS_EINT  (1 << 3)  // 事件中断挂起
+        #define XHCI_STS_PCD   (1 << 4)  // 端口变更检测
+
+    // 08h: 页面大小寄存器 (PAGESIZE)
+    uint32_t pagesize; // [15:0] 控制器支持的页面大小
+
+    // 0Ch: 保留 [RsvdZ]
+    uint32_t reserved0;
+
+    // 10h: 设备上下文基础地址数组指针 (DCBAAP)
+    uint64_t dcbaap;  // DCBAA的物理地址指针 (低32位+高32位)
+
+    // 18h: 配置寄存器 (CONFIG)
+    uint32_t config;   // [7:0] 启用的设备槽数 (值≤MaxSlots)
+
+    // ... 更多寄存器 ...
+
+    // 20h: 端口状态控制寄存器 (PORTSC[n]) - 每个端口一个
+    uint32_t portsc[64]; // 最大支持64个端口
+        #define PORTSC_CCS   (1 << 0)   // 当前连接状态 (1=连接设备)
+        #define PORTSC_PED   (1 << 1)   // 端口启用/禁用 (1=启用)
+        #define PORTSC_OCA   (1 << 3)   // 过流激活
+        #define PORTSC_PR    (1 << 4)   // 端口复位 (写1启动复位)
+        #define PORTSC_PP    (1 << 9)   // 端口电源 (1=开启)
+        #define PORTSC_PLS   (0xF << 5) // 端口链路状态
+        #define PORTSC_SPEED (0xF << 10) // 端口速度 (SS=0x03, HS=0x02)
+}  xhci_op_regs_t;
+
+// ===== 3. 运行时寄存器 (Runtime Registers) =====
+typedef struct {
+    // 00h: 微帧索引寄存器 (MFINDEX)
+    uint32_t mfindex;  // [13:0] 当前微帧索引
+
+    // 04h: 保留
+    uint32_t reserved0[7];
+
+    // 中断管理数组 (IMAN) - 每个中断向量一个
     struct {
-        uint32_t portsc;        /* 端口状态和控制 */
-        uint32_t portpmsc;      /* 端口电源管理状态和控制 */
-        uint32_t portli;        /* 端口链接信息 */
-        uint32_t porthlpmc;     /* 端口硬件LPM控制 */
-    } portregs[255];            /* 支持最多255个端口 */
-} xhci_op_regs_t;
+        uint32_t iman; // 中断管理
+        #define IMAN_IE  (1 << 0)   // 中断使能
+        #define IMAN_IP  (1 << 1)   // 中断挂起 (写1清除)
+        uint32_t imod; // 中断调制器
+    } intr_regs[256]; // 最多支持256个中断向量
 
-/* 运行时寄存器 (偏移量: RTSOFF - RTSOFF + M) */
-typedef struct {
-    uint32_t mfindex;           /* RTSOFF + 0x00: 微帧索引，用于时间同步 */
-    uint8_t reserved[0x1C];     /* RTSOFF + 0x04 - 0x1F: 保留 */
-    /* 中断器寄存器集 (每个中断器) */
-    struct {
-        uint32_t iman;          /* 中断器管理 */
-        uint32_t imod;          /* 中断器调节 */
-        uint32_t erstsz;        /* 事件环段表大小 */
-        uint32_t reserved;      /* 保留 */
-        uint64_t erstba;        /* 事件环段表基地址 */
-        uint64_t erdp;          /* 事件环出队指针 */
-    } interrupter[128];         /* 支持最多128个中断器 */
-} xhci_runtime_regs_t;
+    // 事件环段表基址寄存器 (ERSTBA) - 每个中断向量一个
+    uint64_t erstba[256]; // 事件环段表的物理地址
 
-/* 门铃寄存器 (偏移量: DBOFF - DBOFF + K) */
-typedef struct {
-    uint32_t doorbell[256];     /* DBOFF + n*4: 每个插槽的门铃寄存器 (最多256个插槽) */
-} xhci_doorbell_regs_t;
+    // 事件环段表大小寄存器 (ERSTSZ) - 每个中断向量一个
+    uint32_t erstsz[256]; // [15:0] 事件环段表中的条目数
 
-/* xHCI MMIO空间 (从BAR0基地址开始) */
+    // ... 更多运行时寄存器 ...
+} xhci_rt_regs_t;
+
+// ===== 4. 门铃寄存器 (Doorbell Registers) =====
 typedef struct {
-    xhci_cap_regs_t cap;        /* 功能寄存器 */
-    xhci_op_regs_t op;          /* 操作寄存器 (偏移量取决于CAPLENGTH) */
-    /* 运行时寄存器和门铃寄存器通过DBOFF和RTSOFF偏移量访问 */
-} xhci_mmio_t;
+    // 门铃寄存器数组 (每个设备槽一个 + 主机控制器)
+    uint32_t doorbell[256]; // 最大支持256个设备槽
+
+    // 寄存器定义:
+    // 写门铃寄存器会通知主机控制器处理命令
+    // 格式: [7:0] - 目标端点ID (0=控制端点)
+    //       [15:8] - 设备槽ID
+} xhci_db_regs_t;
+
+// ===== 5. 扩展寄存器 (HCCPARAMS2) =====
+// 当HCCPARAMS1[0] (AC64) 设置为1时出现
+typedef struct {
+    // 00h: U1设备退出延迟 (U1DEL)
+    uint32_t u1del;   // 默认U1退出延迟
+
+    // 04h: U2设备退出延迟 (U2DEL)
+    uint32_t u2del;   // 默认U2退出延迟
+
+    // ... 更多扩展寄存器 ...
+} xhci_ext_regs_t;
+
+// ===== 完整xHCI寄存器结构 =====
+typedef struct {
+    xhci_cap_regs_t *cap;        // 能力寄存器 (只读)
+    xhci_op_regs_t  *op;          // 操作寄存器 (读写)
+    xhci_rt_regs_t  *runtime;     // 运行时寄存器 (通常是op_regs + cap.cap_length)
+    xhci_db_regs_t  *doorbells;   // 门铃寄存器 (通常是runtime + runtime_offset)
+    xhci_ext_regs_t *ext;        // 扩展寄存器 (可选的)
+} xhci_regs_t;
 
 #pragma pack(pop)
 
