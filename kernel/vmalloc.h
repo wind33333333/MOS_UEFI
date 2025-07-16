@@ -1,5 +1,5 @@
-#ifndef VMALLOC_H
-#define VMALLOC_H
+#pragma once
+
 #include "moslib.h"
 #include "rbtree.h"
 
@@ -47,5 +47,3 @@ void vfree(void *ptr);
 void *iomap (UINT64 pa,UINT64 size,UINT64 page_size,UINT64 attr);
 INT32 uniomap (void *ptr,UINT64 page_size);
 
-
-#endif

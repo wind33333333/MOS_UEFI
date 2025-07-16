@@ -1,5 +1,5 @@
-#ifndef __MEMORY_H__
-#define __MEMORY_H__
+#pragma once
+
 #include "moslib.h"
 #include "linkage.h"
 
@@ -126,4 +126,3 @@ INT32 unmmap_range(UINT64 *pml4t, void *va, UINT64 size, UINT64 page_size);
 UINT64 find_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level);
 UINT32 update_page_table_entry(UINT64 *pml4t, void *va, UINT32 page_level,UINT64 entry);
 
-#endif

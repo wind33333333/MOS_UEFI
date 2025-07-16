@@ -17,5 +17,8 @@ INIT_TEXT void init_xhci(void) {
     xhci_dev->msi_x_table[0].msg_data = 0x40;
     xhci_dev->msi_x_table[0].vector_control = 0;
 
+    xhci_cap_regs_t *xhci_cap_regs = xhci_dev->bar[0];
+    xhci_op_regs_t *xhci_op_regs = xhci_dev->bar[0]+xhci_cap_regs->caplength;
+    xhci_runtime_regs_t *xhci_runtime_regs = xhci_dev->bar[0]+xhci_cap_regs->rtsoff;
 
 }

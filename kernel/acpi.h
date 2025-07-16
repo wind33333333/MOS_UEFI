@@ -1,5 +1,4 @@
-#ifndef __init_acpi__
-#define __init_acpi__
+#pragma once
 #include "moslib.h"
 
 #pragma pack(push,1)
@@ -295,5 +294,3 @@ typedef struct {
 #pragma pack(pop)
 
 void *acpi_get_table(UINT32 table);
-
-#endif

@@ -1,5 +1,5 @@
-#ifndef __MEMBLOCK_H__
-#define __MEMBLOCK_H__
+#pragma once
+
 #include "moslib.h"
 #include "uefi.h"
 #include "vmm.h"
@@ -39,7 +39,3 @@ INT32 memblock_mmap_range(UINT64 *pml4t, UINT64 pa, void *va,UINT64 size, UINT64
 void init_memblock(void);
 UINT64 memblock_alloc(UINT64 size, UINT64 align);
 INT32 memblock_free(UINT64 ptr, UINT64 size);
-
-
-
-#endif

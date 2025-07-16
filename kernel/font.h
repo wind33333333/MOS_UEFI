@@ -1,5 +1,4 @@
-#ifndef __FONT_H__
-#define __FONT_H__
+#pragma once
 
 #include "moslib.h"
 
@@ -317,5 +316,4 @@ UINT8 font_ascii[256][16]=
 
 };
 
-#endif
 

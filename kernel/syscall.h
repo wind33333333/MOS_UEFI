@@ -1,3 +1,5 @@
+#pragma once
+
 #include "moslib.h"
 
 void init_syscall(void);

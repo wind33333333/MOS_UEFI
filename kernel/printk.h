@@ -1,5 +1,4 @@
-#ifndef __PRINTK_H__
-#define __PRINTK_H__
+#pragma once
 
 #include <stdarg.h>
 #include "font.h"
@@ -66,5 +65,4 @@ int vsprintf(char * buf,const char *fmt, va_list args);
 
 int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...);
 
-#endif
 

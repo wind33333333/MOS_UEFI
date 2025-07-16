@@ -1,5 +1,5 @@
-#ifndef __IOAPIC_H__
-#define __IOAPIC_H__
+#pragma once
+
 #include "moslib.h"
 
 void init_ioapic(void);
@@ -63,6 +63,3 @@ extern ioapic_address_t ioapic_address;
 #define IO_APIC_TBL23_LOW32   0x3E    //中断定向投递寄存器23，低 32 位，读写
 #define IO_APIC_TBL23_HIGH32  0x3F    //中断定向投递寄存器23，高 32 位，读写
 
-
-
-#endif

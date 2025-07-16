@@ -1,5 +1,5 @@
-#ifndef SLUB_H
-#define SLUB_H
+#pragma once
+
 #include "moslib.h"
 
 #define MAX_OBJECT_SIZE (1*1024*1024)
@@ -26,4 +26,3 @@ void *kmalloc(UINT64 size);
 void *kzalloc(UINT64 size);
 INT32 kfree(void *va);
 
-#endif

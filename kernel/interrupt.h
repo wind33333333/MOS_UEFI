@@ -1,5 +1,5 @@
-#ifndef _INTERRUPT_H
-#define _INTERRUPT_H
+#pragma once
+
 #include "linkage.h"
 #include "moslib.h"
 
@@ -31,5 +31,3 @@ void alignment_check();
 void machine_check();
 void SIMD_exception();
 void virtualization_exception();
-
-#endif

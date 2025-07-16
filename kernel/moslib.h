@@ -1,5 +1,4 @@
-#ifndef __MOSLIB_H__
-#define __MOSLIB_H__
+#pragma once
 
 #define INIT_TEXT __attribute__((__section__(".init_text")))
 #define INIT_DATA __attribute__((__section__(".init_data")))
@@ -614,4 +613,3 @@ static inline BOOLEAN list_empty(list_head_t *head) {
     return 0;
 }
 
-#endif

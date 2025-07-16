@@ -1,5 +1,5 @@
-#ifndef __IDT_H__
-#define __IDT_H__
+#pragma once
+
 #include "moslib.h"
 
 #define TYPE_INTRPT     (0xEUL << 40)
@@ -22,5 +22,3 @@ typedef struct{
 extern idt_ptr_t idt_ptr;
 
 void init_idt(void);
-
-#endif

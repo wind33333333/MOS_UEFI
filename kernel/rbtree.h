@@ -1,5 +1,5 @@
-#ifndef RBTREE_H
-#define RBTREE_H
+#pragma once
+
 #include "moslib.h"
 
 typedef enum {
@@ -85,5 +85,3 @@ void init_rbtree_empty_augment_callbacks(void);
 void rb_erase(rb_root_t *root, rb_node_t *node,rb_augment_callbacks_f *augment_callbacks);
 void rb_insert(rb_root_t *root, rb_node_t *node, rb_node_t *parent, rb_node_t **link, rb_augment_callbacks_f *augment_callbacks);
 
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef _CPU_H
-#define _CPU_H
+#pragma once
 #include "moslib.h"
 
 #define IA32_PAT_MSR        0x277        //设置页属性PAT类型
@@ -43,6 +42,3 @@ extern void *ap_main_ptr;
 extern UINT64* ap_tmp_pml4t_ptr;
 extern UINT32 *apic_id_table_ptr;
 extern UINT64 ap_boot_loader_address;
-
-
-#endif

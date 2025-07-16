@@ -1,6 +1,5 @@
 #include <stdint.h>
-#ifndef _XHCI_H
-#define _XHCI_H
+#pragma once
 
 #include "moslib.h"
 
@@ -71,5 +70,3 @@ typedef struct {
 #pragma pack(pop)
 
 void init_xhci(void);
-
-#endif

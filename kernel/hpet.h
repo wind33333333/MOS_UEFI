@@ -1,5 +1,5 @@
-#ifndef _HPET_H_
-#define _HPET_H_
+#pragma once
+
 #include "moslib.h"
 
 
@@ -54,5 +54,3 @@ extern hpet_registers_t hpetRegisters;
 extern hpet_t hpet1;
 
 void init_hpet(void);
-
-#endif

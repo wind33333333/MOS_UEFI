@@ -1,5 +1,4 @@
-#ifndef BUDDY_SYSTEM_H
-#define BUDDY_SYSTEM_H
+#pragma once
 #include "moslib.h"
 #include "slub.h"
 #include "vmm.h"
@@ -73,5 +72,3 @@ void init_buddy_system(void);
 page_t* alloc_pages(UINT32 order);
 void free_pages(page_t *page);
 
-
-#endif

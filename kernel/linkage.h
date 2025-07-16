@@ -1,5 +1,4 @@
-#ifndef _LINKAGE_H_
-#define _LINKAGE_H_
+#pragma once
 
 //内核偏移地址
 #define KERNEL_OFFSET 0xFFFFFFFF80000000UL
@@ -56,4 +55,3 @@ name:; \
 #define	OLDRSP		0xb0
 #define	OLDSS		0xb8
 
-#endif

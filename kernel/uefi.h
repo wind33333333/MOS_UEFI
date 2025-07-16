@@ -1,5 +1,4 @@
-#ifndef __UEFI_H__
-#define __UEFI_H__
+#pragma once
 
 #include "moslib.h"
 #include "acpi.h"
@@ -666,5 +665,3 @@ extern  boot_info_t* boot_info;
 //endregion
 
 void init_efi_runtime_service(void);
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef __ACPI_H__
-#define __ACPI_H__
+#pragma once
 #include "moslib.h"
 
 void init_apic(void);
@@ -105,4 +104,3 @@ void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt);
         ::"m"(TIME):"%rax","%rcx","%rdx"); \
         } while(0)
 
-#endif

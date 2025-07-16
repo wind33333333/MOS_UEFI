@@ -1,5 +1,5 @@
-#ifndef __TSS_INIT_H__
-#define __TSS_INIT_H__
+#pragma once
+
 #include "moslib.h"
 
 //TSS起始选择子
@@ -9,6 +9,8 @@
 #define TSS_LIMIT   (0x67UL & 0xFFFF) | ((0x67UL >> 16)<<48)
 
 void init_tss(void);
+
+#pragma pack(push,1)
 
 typedef struct {
     UINT32   reserved0;
@@ -26,6 +28,6 @@ typedef struct {
     UINT64   reserved2;
     UINT16   reserved3;
     UINT16   iomap_base;
-} __attribute__((packed)) tss_t;
+} tss_t;
 
-#endif
+#pragma pack(pop)

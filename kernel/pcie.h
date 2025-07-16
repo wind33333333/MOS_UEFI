@@ -1,10 +1,7 @@
-#ifndef _PCIE_H_
-#define _PCIE_H_
-
+#pragma once
 #include "moslib.h"
 
 #pragma pack(push,1)
-
 typedef struct {
     /* PCI 通用配置头（前 64 字节）*/
     /* 设备标识区 (0x00 - 0x0F) */
@@ -149,8 +146,6 @@ typedef enum {
     msi_x_e = 0x11
 } cap_id_e;
 
-
-
 void init_pcie(void);
 pcie_dev_t *find_pcie_dev(UINT32 class_code);
 cap_t *find_pcie_cap(pcie_config_space_t *pcie_config_space, cap_id_e cap_id);
@@ -159,4 +154,3 @@ msi_x_table_entry_t *get_msi_x_table(pcie_dev_t *pcie_dev);
 void enable_msi_x(pcie_config_space_t *pcie_config_space);
 void disable_msi_x(pcie_config_space_t *pcie_config_space);
 
-#endif

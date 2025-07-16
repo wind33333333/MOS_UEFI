@@ -1,5 +1,5 @@
-#ifndef __GDT_INIT_H__
-#define __GDT_INIT_H__
+#pragma once
+
 #include "moslib.h"
 
 void    init_gdt(void);
@@ -33,4 +33,3 @@ extern gdt_ptr_t gdt_ptr;
 #define DB          (1UL << 54)
 #define G           (1UL << 55)
 
-#endif
