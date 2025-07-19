@@ -23,5 +23,7 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->runtime = xhci_dev->bar[0] + xhci_regs->cap->rtsoff;
     xhci_regs->doorbells = xhci_dev->bar[0] + xhci_regs->cap->dboff;
 
+    color_printk(GREEN,BLACK,"hccparams1:%#lx",xhci_regs->cap->hccparams1);
+    while (1);
 
 }

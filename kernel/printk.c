@@ -1,11 +1,7 @@
 #include "printk.h"
-
-#include "memblock.h"
 #include "vmm.h"
 #include "uefi.h"
 #include "vmalloc.h"
-
-extern UINT64 *kpml4t_ptr;
 
 void putchar(unsigned int *fb, int Xsize, int x, int y, unsigned int FRcolor, unsigned int BKcolor,
              unsigned char font) {
