@@ -16,9 +16,11 @@ INIT_TEXT void init_kpage_table(void) {
                         memblock.memory.region[memblock.memory.count - 1].base + memblock.memory.region[
                             memblock.memory.count - 1].size,PAGE_ROOT_RW_2M1G,PAGE_1G_SIZE);
     //初始化vmemmap区为2M页表,每个page结构64字节，一个page等于4KB,一个2M页刚好等于128MB物理内存。
-    for (UINT32 i = 0; i < phy_vmemmap.count; i++) {
-        UINT64 vmemmap_va = (UINT64)pa_to_page(phy_vmemmap.region[i].base);
-        UINT32 count = phy_vmemmap.region[i].size >> 27;
+    for (UINT32 i = 0; i <= phy_vmemmap.count; i++) {
+        UINT64 base = align_down(phy_vmemmap.region[i].base, 0x8000000);
+        UINT64 size = align_up(phy_vmemmap.region[i].size, 0x8000000);
+        UINT64 vmemmap_va = (UINT64)pa_to_page(base);
+        UINT32 count = size >> 27;
         while (count--) {
             UINT64 pa = memblock_alloc(PAGE_2M_SIZE,PAGE_2M_SIZE);
             mem_set((void *) pa, 0, PAGE_2M_SIZE);

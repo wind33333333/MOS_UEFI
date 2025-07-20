@@ -34,10 +34,8 @@ INIT_TEXT void init_memblock(void) {
             memblock_region_t *phy_vmemmap_block = &phy_vmemmap.region[phy_vmemmap.count];
             UINT64 memblock_gap = mem_des_pstart - (phy_vmemmap_block->base + phy_vmemmap_block->size);
             if (memblock_gap < 0x8000000) {
-                phy_vmemmap_block->size = mem_des->PhysicalStart + mem_des_size - phy_vmemmap_block->base;
+                phy_vmemmap_block->size = mem_des_pstart + mem_des_size - phy_vmemmap_block->base;
             } else {
-                phy_vmemmap_block->base = align_down(phy_vmemmap_block->base, 0x8000000);
-                phy_vmemmap_block->size = align_up(phy_vmemmap_block->size, 0x8000000);
                 phy_vmemmap.count++;
                 phy_vmemmap_block = &phy_vmemmap.region[phy_vmemmap.count];
                 phy_vmemmap_block->base = mem_des_pstart;
@@ -48,9 +46,6 @@ INIT_TEXT void init_memblock(void) {
             efi_runtime_memmap.count++;
         }
     }
-    phy_vmemmap.region[phy_vmemmap.count].base = align_down(phy_vmemmap.region[phy_vmemmap.count].base, 0x8000000);
-    phy_vmemmap.region[phy_vmemmap.count].size = align_up(phy_vmemmap.region[phy_vmemmap.count].size, 0x8000000);
-    phy_vmemmap.count++;
 }
 
 
