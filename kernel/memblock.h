@@ -24,11 +24,11 @@ typedef struct memblock_t {
 typedef struct {
     EFI_MEMORY_DESCRIPTOR mem_map[10];
     UINT32 count;
-}efi_memmap_t;
+}efi_runtime_memmap_t;
 
 extern memblock_t memblock;
 extern memblock_type_t phy_vmemmap;
-extern efi_memmap_t efi_memmap;
+extern efi_runtime_memmap_t efi_runtime_memmap;
 
 
 void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 size);

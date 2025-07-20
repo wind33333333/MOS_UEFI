@@ -16,7 +16,21 @@
 #include "xhci.h"
 
 INIT_TEXT void init_kernel(void) {
+    enable_cpu_amode();
     mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
+    /*初始化控制台*/
+    Pos.XResolution = boot_info->horizontal_resolution;
+    Pos.YResolution = boot_info->vertical_resolution;
+    Pos.PixelsPerScanLine = boot_info->pixels_per_scan_line;
+    Pos.XPosition = 0;
+    Pos.YPosition = 0;
+    Pos.XCharSize = 8;
+    Pos.YCharSize = 16;
+    Pos.FB_addr = boot_info->frame_buffer_base;
+    Pos.FB_length = boot_info->frame_buffer_size;
+    Pos.lock = 0;
+    clear_screen();
+    /*******************/
     init_memblock();                           //初始化启动内存分配器
     init_kpage_table();                        //初始化正式内核页表
     init_buddy_system();                       //初始化伙伴系统

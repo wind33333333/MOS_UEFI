@@ -24,24 +24,6 @@ INIT_TEXT void init_buddy_system(void) {
     for (UINT64 i = 0; i <= MAX_ORDER; i++) {
         list_head_init(&buddy_system.free_area[i].list);
     }
-
-    /////////////////////////
-    Pos.XResolution = boot_info->horizontal_resolution;
-    Pos.YResolution = boot_info->vertical_resolution;
-    Pos.PixelsPerScanLine = boot_info->pixels_per_scan_line;
-    Pos.XPosition = 0;
-    Pos.YPosition = 0;
-    Pos.XCharSize = 8;
-    Pos.YCharSize = 16;
-    Pos.FB_addr = boot_info->frame_buffer_base;
-    Pos.FB_length = boot_info->frame_buffer_size;
-    Pos.lock = 0;
-    clear_screen();
-    for (UINT32 i = 0; i < memblock.memory.count; i++) {
-        color_printk(GREEN,BLACK,"%#lx %#lx\n",memblock.memory.region[i].base,memblock.memory.region[i].size);
-    }
-    color_printk(GREEN,BLACK,"memory.count:%d\n",memblock.memory.count);
-    ////////////////////////
     //把memblock中的memory内存移交给伙伴系统管理，memblock_alloc内存分配器退出，由伙伴系统接管物理内存管理。
     for (UINT32 i = 0; i < memblock.memory.count; i++) {
         UINT64 pa = memblock.memory.region[i].base;
@@ -51,8 +33,6 @@ INIT_TEXT void init_buddy_system(void) {
             pa += PAGE_4K_SIZE;
         }
     }
-    color_printk(GREEN, BLACK, "hello word!\n");
-    while (1);
 }
 
 //伙伴系统物理页分配器

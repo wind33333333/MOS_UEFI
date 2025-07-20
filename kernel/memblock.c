@@ -3,7 +3,7 @@
 
 INIT_DATA memblock_t memblock;
 INIT_DATA memblock_type_t phy_vmemmap;
-INIT_DATA efi_memmap_t efi_memmap;
+INIT_DATA efi_runtime_memmap_t efi_runtime_memmap;
 
 INIT_TEXT void init_memblock(void) {
     UINT64 kernel_end = _end_stack - KERNEL_OFFSET;
@@ -44,10 +44,13 @@ INIT_TEXT void init_memblock(void) {
                 phy_vmemmap_block->size = mem_des_size;
             }
         }else if (type==EFI_RUNTIME_SERVICES_DATA || type==EFI_RUNTIME_SERVICES_CODE) {
-            efi_memmap.mem_map[efi_memmap.count] = *mem_des;
-            efi_memmap.count++;
+            efi_runtime_memmap.mem_map[efi_runtime_memmap.count] = *mem_des;
+            efi_runtime_memmap.count++;
         }
     }
+    phy_vmemmap.region[phy_vmemmap.count].base = align_down(phy_vmemmap.region[phy_vmemmap.count].base, 0x8000000);
+    phy_vmemmap.region[phy_vmemmap.count].size = align_up(phy_vmemmap.region[phy_vmemmap.count].size, 0x8000000);
+    phy_vmemmap.count++;
 }
 
 
