@@ -6,7 +6,7 @@
 #include "slub.h"
 #include "vmalloc.h"
 
-void init_efi_runtime_service(void) {
+void efi_runtime_service_map(void) {
     for (UINT32 i = 0; i < efi_runtime_memmap.count; i++) {
         if (efi_runtime_memmap.mem_map[i].Type == EFI_RUNTIME_SERVICES_DATA) {
             efi_runtime_memmap.mem_map[i].VirtualStart = (UINT64) pa_to_va(efi_runtime_memmap.mem_map[i].PhysicalStart);

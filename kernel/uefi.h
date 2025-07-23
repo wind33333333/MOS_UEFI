@@ -664,4 +664,4 @@ typedef struct {
 extern  boot_info_t* boot_info;
 //endregion
 
-void init_efi_runtime_service(void);
+void efi_runtime_service_map(void);
