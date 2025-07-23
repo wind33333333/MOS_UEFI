@@ -9,7 +9,7 @@ UINT64 *kpml4t_ptr; //正式内核页表
 INIT_TEXT void init_kpage_table(void) {
     kpml4t_ptr = memblock_alloc(PAGE_4K_SIZE, PAGE_4K_SIZE);
     mem_set(kpml4t_ptr, 0, PAGE_4K_SIZE);
-    //虚拟地址和物理地址512G空间左对等映射
+    //虚拟地址和物理地址512G空间对等映射
     memblock_mmap_range(kpml4t_ptr, 0, (void *) 0, 512 * PAGE_1G_SIZE,PAGE_ROOT_RWX_2M1G,PAGE_1G_SIZE);
     //直接映射区
     memblock_mmap_range(kpml4t_ptr, 0,DIRECT_MAP_OFFSET,

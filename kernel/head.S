@@ -6,7 +6,7 @@
 .globl _start
 _start:
     cli
-    movq     %rdi,boot_info(%rip)           //保存loader通过rdi传递过来的boot_info指针
+    movq     %rdi,boot_info(%rip)       //保存loader通过rdi传递过来的boot_info指针
 
 /*初始化一个临时内核页表
 *物理内存地址
