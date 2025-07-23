@@ -24,6 +24,7 @@ INIT_TEXT void init_buddy_system(void) {
     for (UINT64 i = 0; i <= MAX_ORDER; i++) {
         list_head_init(&buddy_system.free_area[i].list);
     }
+
     //把memblock中的memory内存移交给伙伴系统管理，memblock_alloc内存分配器退出，由伙伴系统接管物理内存管理。
     for (UINT32 i = 0; i < memblock.memory.count; i++) {
         UINT64 pa = memblock.memory.region[i].base;
