@@ -340,6 +340,8 @@ INIT_TEXT void init_output(void) {
     Pos.FB_length = boot_info->frame_buffer_size;
     Pos.lock = 0;
     clear_screen();
+
+    color_printk(GREEN, BLACK, "voide memory phyaddr:%#lx size:%#lx",Pos.FB_addr,Pos.FB_length);
 }
 
 INIT_TEXT void video_mem_map(void) {
