@@ -30,7 +30,7 @@ INIT_TEXT void get_cpu_info(void) {
     cpu_info.tsc_frequency = (ecx != 0) ? ebx*ecx/eax : 0;
 }
 
-INIT_TEXT void enable_cpu_amode(void){
+INIT_TEXT void enable_cpu_advanced_features(void){
     UINT32 eax,ebx,ecx,edx;
     UINT64 tmp,value;
 
@@ -166,7 +166,6 @@ INIT_TEXT void init_bsp(void){
     UINT32 apic_id,cpu_id,tmp;
     cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
-    enable_cpu_amode();                        //启用cpu开启高级功能
     get_cpu_info();                            //获取cpu信息
     init_gdt();                                //初始化GDT
     init_tss();                                //初始化TSS
@@ -209,7 +208,7 @@ INIT_TEXT void ap_main(void){
     UINT32 apic_id,cpu_id,tmp;
     cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);        //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);
-    enable_cpu_amode();
+    enable_cpu_advanced_features();
     set_cr3(kpml4t_ptr);
     lgdt(&gdt_ptr,0x8,0x10);
     ltr(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);

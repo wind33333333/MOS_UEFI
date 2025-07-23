@@ -17,6 +17,7 @@
 
 INIT_TEXT void init_kernel(void) {
     mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
+    enable_cpu_advanced_features();            //启用cpu开启高级功能
     init_output();                             //初始化输出控制台
     init_memblock();                           //初始化启动内存分配器
     init_kpage_table();                        //初始化正式内核页表
@@ -31,6 +32,8 @@ INIT_TEXT void init_kernel(void) {
     init_hpet();                               //初始化hpet
     init_pcie();                               //初始化pcie
     init_xhci();                               //初始化xhci
+
+    while (1);
 
     init_ap();                                 //初始化ap核
     while (1);

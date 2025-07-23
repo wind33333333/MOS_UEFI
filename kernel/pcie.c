@@ -94,8 +94,10 @@ static inline void pcie_scan(UINT64 ecam_base, UINT8 bus) {
     for (UINT8 dev = 0; dev < 32; dev++) {
         for (UINT8 func = 0; func < 8; func++) {
             pcie_config_space_t *pcie_config_space = ecam_bdf_to_pcie_config_space_addr(ecam_base, bus, dev, func);
-            if (pcie_config_space->vendor_id == 0xFFFF && func == 0) break;
-            if (pcie_config_space->vendor_id == 0xFFFF) continue;
+            if (pcie_config_space->vendor_id == 0xFFFF) {
+                if (func == 0) break;
+                continue;
+            }
             if (pcie_config_space->header_type & 1) {
                 //type1 pcie桥
                 create_pcie_dev(pcie_config_space, bus, dev, func);

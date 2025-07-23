@@ -11,7 +11,7 @@
 UINT32 apicid_to_cpuid(UINT32 apic_id);
 UINT32 cpuid_to_apicid(UINT32 cpu_id);
 void init_bsp(void);
-void enable_cpu_amode(void);
+void enable_cpu_advanced_features(void);
 
 typedef struct {
     CHAR8 manufacturer_name[13];
