@@ -329,6 +329,20 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
 char buf[4096];
 
 INIT_TEXT void init_output(void) {
+    Pos.XResolution = boot_info->horizontal_resolution;
+    Pos.YResolution = boot_info->vertical_resolution;
+    Pos.PixelsPerScanLine = boot_info->pixels_per_scan_line;
+    Pos.XPosition = 0;
+    Pos.YPosition = 0;
+    Pos.XCharSize = 8;
+    Pos.YCharSize = 16;
+    Pos.FB_addr = boot_info->frame_buffer_base;
+    Pos.FB_length = boot_info->frame_buffer_size;
+    Pos.lock = 0;
+    clear_screen();
+}
+
+INIT_TEXT void video_mem_map(void) {
     UINT64 page_size,attr;
     if (boot_info->frame_buffer_size >= PAGE_1G_SIZE) {
         page_size = PAGE_1G_SIZE;
@@ -340,21 +354,7 @@ INIT_TEXT void init_output(void) {
         page_size = PAGE_4K_SIZE;
         attr = PAGE_ROOT_RW_WC_4K;
     }
-    Pos.XResolution = boot_info->horizontal_resolution;
-    Pos.YResolution = boot_info->vertical_resolution;
-    Pos.PixelsPerScanLine = boot_info->pixels_per_scan_line;
-
-    Pos.XPosition = 0;
-    Pos.YPosition = 0;
-
-    Pos.XCharSize = 8;
-    Pos.YCharSize = 16;
-
-    Pos.FB_addr = iomap(boot_info->frame_buffer_base,boot_info->frame_buffer_size,page_size,attr);
-    Pos.FB_length = boot_info->frame_buffer_size;
-    Pos.lock = 0;
-
-    clear_screen();
+    Pos.FB_addr = iomap(Pos.FB_addr,Pos.FB_length,page_size,attr);
 }
 
 void clear_screen(void) {
