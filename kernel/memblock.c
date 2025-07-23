@@ -1,11 +1,13 @@
 #include "memblock.h"
 #include "vmm.h"
+#include "printk.h"
 
 INIT_DATA memblock_t memblock;
 INIT_DATA memblock_type_t phy_vmemmap;
 INIT_DATA efi_runtime_memmap_t efi_runtime_memmap;
 
 INIT_TEXT void init_memblock(void) {
+    UINT64 phy_mem_size = 0;
     UINT64 kernel_end = _end_stack - KERNEL_OFFSET;
     UINT64 kernel_size = _end_stack - _start_text;
     UINT32 count = boot_info->mem_map_size / boot_info->mem_descriptor_size;
@@ -30,6 +32,10 @@ INIT_TEXT void init_memblock(void) {
             } else {
                 memblock_add(&memblock.memory, mem_des_pstart, mem_des_size);
             }
+
+            //统计系统总物理内存容量
+            phy_mem_size += mem_des_size;
+
             //把所可用物理内存放入phy_mem_map，后续vmemmap区初始化需要使用
             memblock_region_t *phy_vmemmap_block = &phy_vmemmap.region[phy_vmemmap.count];
             UINT64 memblock_gap = mem_des_pstart - (phy_vmemmap_block->base + phy_vmemmap_block->size);
@@ -46,6 +52,7 @@ INIT_TEXT void init_memblock(void) {
             efi_runtime_memmap.count++;
         }
     }
+    color_printk(GREEN, BLACK, "Total Physics Memory:%dMB\n",phy_mem_size/1024/1024);
 }
 
 

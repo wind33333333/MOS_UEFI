@@ -340,7 +340,7 @@ INIT_TEXT void init_output(void) {
     Pos.FB_length = boot_info->frame_buffer_size;
     Pos.lock = 0;
     clear_screen();
-    color_printk(GREEN, BLACK, "video memory phyaddr:%#lx video_size:%#lx\n",Pos.FB_addr,Pos.FB_length);
+    color_printk(GREEN, BLACK, "Video Memory Physics Addr:%#lx Video Size:%#lx Resolution:%d * %d\n",Pos.FB_addr,Pos.FB_length,Pos.XResolution,Pos.YResolution);
 }
 
 INIT_TEXT void video_mem_map(void) {
@@ -356,7 +356,7 @@ INIT_TEXT void video_mem_map(void) {
         attr = PAGE_ROOT_RW_WC_4K;
     }
     Pos.FB_addr = iomap(Pos.FB_addr,Pos.FB_length,page_size,attr);
-    color_printk(GREEN, BLACK, "voide memory phyaddr:%#lx -> viraddr:%#lx\n",boot_info->frame_buffer_base,Pos.FB_addr);
+    color_printk(GREEN, BLACK, "Voide Memory Physics Address:%#lx -> Virtual Address:%#lx\n",boot_info->frame_buffer_base,Pos.FB_addr);
 }
 
 void clear_screen(void) {
