@@ -94,18 +94,18 @@ static inline void pcie_scan(UINT64 ecam_base, UINT8 bus) {
     for (UINT8 dev = 0; dev < 32; dev++) {
         for (UINT8 func = 0; func < 8; func++) {
             pcie_config_space_t *pcie_config_space = ecam_bdf_to_pcie_config_space_addr(ecam_base, bus, dev, func);
-            //如果设备厂商id为0xFFFF且功能号为0则跳过该无效设备，否则检测该设备下一个功能号。
+            //如果设备功能0无效则整个设备无效提前终止扫描，如果非功能0无效则跳过当前功能。
             if (pcie_config_space->vendor_id == 0xFFFF) {
                 if (func == 0) break;
                 continue;
             }
-            //创建pcie_dev
-            create_pcie_dev(pcie_config_space, bus, dev, func);
-            //type1 pcie桥 继续向下扫描
+            //type1类型为pcie桥优先扫描桥下的设备（深度优先）
             if (pcie_config_space->header_type & 1) {
                 pcie_scan(ecam_base, pcie_config_space->type1.secondary_bus);
-            } else {
-                //type0 终端设备
+            } else {//type0 终端设备
+                //创建pcie_dev
+                create_pcie_dev(pcie_config_space, bus, dev, func);
+                //如果不是多功能设备则提前终止当前设备的功能扫描
                 if ((pcie_config_space->header_type & 0x80) == 0) break;
             }
         }
