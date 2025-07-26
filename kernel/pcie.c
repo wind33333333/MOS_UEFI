@@ -69,7 +69,7 @@ static inline UINT32 get_pcie_classcode(pcie_config_space_t *pcie_config_space) 
 /*
  * 创建pcie_dev结构
  */
-void create_pcie_dev(pcie_config_space_t *pcie_config_space, UINT8 bus, UINT8 dev, UINT8 func) {
+static inline void create_pcie_dev(pcie_config_space_t *pcie_config_space, UINT8 bus, UINT8 dev, UINT8 func) {
     pcie_dev_t *pcie_dev = kzalloc(sizeof(pcie_dev_t));
     pcie_dev->name = find_pcie_clasename(get_pcie_classcode(pcie_config_space));
     pcie_dev->bus = bus;
