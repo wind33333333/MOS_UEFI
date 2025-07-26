@@ -19,7 +19,7 @@ INIT_TEXT void init_ioapic(void) {
             case 0: //APIC ID
                 apic_entry_t *apic_entry = (apic_entry_t *) madt_entry;
                 if (apic_entry->flags & 1) {
-                    color_printk(GREEN, BLACK, "apic_id:%d proc_id:%d flags:%d\n", apic_entry->apic_id,
+                    color_printk(GREEN, BLACK, "Apic_id:%d Proc_id:%d Flags:%d\n", apic_entry->apic_id,
                                  apic_entry->processor_id, apic_entry->flags);
                     apic_id_table[apic_id_index] = apic_entry->apic_id;
                     apic_id_index++;
