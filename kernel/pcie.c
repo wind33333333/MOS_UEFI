@@ -241,10 +241,9 @@ INIT_TEXT void init_pcie(void) {
     list_head_t *next = pcie_dev_list.next;
     while (next != &pcie_dev_list) {
         pcie_dev_t *pcie_dev = CONTAINER_OF(next, pcie_dev_t, list);
-        UINT32 *class_code = &pcie_dev->pcie_config_space->class_code;
         color_printk(GREEN,BLACK, "bus:%d dev:%d func:%d vendor_id:%#lx device_id:%#lx class_code:%#lx %s\n",
                      pcie_dev->bus, pcie_dev->dev, pcie_dev->func, pcie_dev->pcie_config_space->vendor_id,
-                     pcie_dev->pcie_config_space->device_id, *class_code & 0xFFFFFF, pcie_dev->name);
+                     pcie_dev->pcie_config_space->device_id, get_pcie_classcode(pcie_dev->pcie_config_space), pcie_dev->name);
         next = next->next;
     }
 }
