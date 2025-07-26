@@ -80,7 +80,7 @@ static inline void create_pcie_dev(pcie_config_space_t *pcie_config_space, UINT8
 }
 
 /*
- * pcie 地址计算
+ * pcie配置空间地址计算
  */
 static inline pcie_config_space_t *ecam_bdf_to_pcie_config_space_addr(UINT64 ecam_base, UINT8 bus, UINT8 dev,
                                                                       UINT8 func) {
@@ -88,7 +88,7 @@ static inline pcie_config_space_t *ecam_bdf_to_pcie_config_space_addr(UINT64 eca
 }
 
 /*
- * pcie 总线扫描
+ * pcie总线扫描
  */
 static inline void pcie_scan(UINT64 ecam_base, UINT8 bus) {
     // 遍历当前总线上的32个设备(0-31)
