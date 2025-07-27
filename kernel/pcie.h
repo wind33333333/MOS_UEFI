@@ -150,11 +150,17 @@ typedef enum {
     msi_x_e = 0x11
 } cap_id_e;
 
+//获取pice设备的class_code
+static inline UINT32 get_pcie_classcode(pcie_dev_t *pcie_dev) {
+    UINT32 *class_code = &pcie_dev->pcie_config_space->revision_id;
+    return *class_code >> 8;
+}
+
 void init_pcie(void);
 pcie_dev_t *find_pcie_dev(UINT32 class_code);
-cap_t *find_pcie_cap(pcie_config_space_t *pcie_config_space, cap_id_e cap_id);
-void *set_bar(pcie_config_space_t *pcie_config_space,UINT8 number);
+cap_t *find_pcie_cap(pcie_dev_t *pcie_dev, cap_id_e cap_id);
+void *set_bar(pcie_dev_t *pcie_dev,UINT8 number);
 msi_x_table_entry_t *get_msi_x_table(pcie_dev_t *pcie_dev);
-void enable_msi_x(pcie_config_space_t *pcie_config_space);
-void disable_msi_x(pcie_config_space_t *pcie_config_space);
+void enable_msi_x(pcie_dev_t *pcie_dev);
+void disable_msi_x(pcie_dev_t *pcie_dev);
 
