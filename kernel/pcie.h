@@ -14,8 +14,8 @@ typedef struct {
     // 偏移 0x08
     UINT8 revision_id;  // 修订ID (0x08) - 硬件版本号
     UINT8 prog_if;      // 编程接口，定义设备特定功能接口
-    UINT8 subclass;         // 子类别代码，标识设备子类型
-    UINT8 class_code;       // 类别代码，标识设备类型（如显示控制器、网络控制器等）
+    UINT8 subclass;     // 子类别代码，标识设备子类型
+    UINT8 class_code;   // 类别代码，标识设备类型（如显示控制器、网络控制器等）
     // 偏移 0x0C
     UINT8 cache_line_size; // 缓存行大小 (0x0C) - CPU 缓存对齐
     UINT8 latency_timer; // 延迟定时器 (0x0D) - PCI 总线延迟
