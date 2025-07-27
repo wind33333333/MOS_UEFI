@@ -62,8 +62,8 @@ static inline char *find_pcie_clasename(UINT32 class_code) {
 }
 
 static inline UINT32 get_pcie_classcode(pcie_config_space_t *pcie_config_space) {
-    UINT32 *class_code = &pcie_config_space->class_code;
-    return *class_code & 0xFFFFFF;
+    UINT32 *class_code = &pcie_config_space->revision_id;
+    return *class_code >> 8;
 }
 
 /*

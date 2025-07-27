@@ -5,12 +5,16 @@
 typedef struct {
     /* PCI 通用配置头（前 64 字节）*/
     /* 设备标识区 (0x00 - 0x0F) */
+    // 偏移 0x00
     UINT16 vendor_id; // 厂商ID (0x00) - 由 PCI-SIG 分配
     UINT16 device_id; // 设备ID (0x02) - 厂商自定义型号
+    // 偏移 0x04
     UINT16 command; // 命令寄存器 (0x04)
     UINT16 status; // 状态寄存器 (0x06)
+    // 偏移 0x08
     UINT8 revision_id; // 修订ID (0x08) - 硬件版本号
     UINT8 class_code[3]; // 类代码 (0x09-0x0B)
+    // 偏移 0x0C
     UINT8 cache_line_size; // 缓存行大小 (0x0C) - CPU 缓存对齐
     UINT8 latency_timer; // 延迟定时器 (0x0D) - PCI 总线延迟
     UINT8 header_type; // 头类型 (0x0E) - bit0 0=端点设备 1=桥设备,bit7 0=单功能设备 1=多功能设备
