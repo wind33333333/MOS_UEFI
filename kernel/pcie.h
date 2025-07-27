@@ -13,7 +13,7 @@ typedef struct {
     UINT8 class_code[3]; // 类代码 (0x09-0x0B)
     UINT8 cache_line_size; // 缓存行大小 (0x0C) - CPU 缓存对齐
     UINT8 latency_timer; // 延迟定时器 (0x0D) - PCI 总线延迟
-    UINT8 header_type; // 头类型 (0x0E) - 0=端点设备,1=桥设备
+    UINT8 header_type; // 头类型 (0x0E) - bit0 0=端点设备 1=桥设备,bit7 0=单功能设备 1=多功能设备
     UINT8 bist; // BIST 寄存器 (0x0F) - 自检控制
     /* 设备/桥专用区 (0x10 - 0x3F) */
     union {
