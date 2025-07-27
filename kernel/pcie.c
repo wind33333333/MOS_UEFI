@@ -88,8 +88,8 @@ static inline void pcie_scan(UINT64 ecam_base, UINT8 bus) {
         for (UINT8 func = 0; func < 8; func++) {
             // 将BDF(总线-设备-功能)转换为配置空间地址
             pcie_config_space_t *pcie_config_space = ecam_bdf_to_pcie_config_space_addr(ecam_base, bus, dev, func);
-            // 检查设备是否存在 (无效设备的Vendor ID为0xFFFF 或者 Devide ID为0xFFFF)
-            if (pcie_config_space->vendor_id == 0xFFFF || pcie_config_space->device_id == 0xFFFF) {
+            // 检查设备是否存在 (无效设备的vendor_id=0xFFFF)
+            if (pcie_config_space->vendor_id == 0xFFFF) {
                 // 功能0不存在意味着整个设备不存在， 跳过该设备的后续功能
                 if (func == 0) break;
                 // 继续检查下一个功能
