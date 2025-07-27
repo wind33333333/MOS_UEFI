@@ -12,6 +12,9 @@ INIT_TEXT void init_xhci(void) {
     xhci_dev->bar[0] = set_bar(xhci_dev,0);
     xhci_dev->msi_x_table = get_msi_x_table(xhci_dev);
     UINT64 msg_addr = rdmsr(IA32_APIC_BASE_MSR) & ~0xFFFUL;
+
+    find_pcie_cap(xhci_dev,7);
+
     xhci_dev->msi_x_table[0].msg_addr_lo = msg_addr;
     xhci_dev->msi_x_table[0].msg_addr_hi = msg_addr >> 32;
     xhci_dev->msi_x_table[0].msg_data = 0x40;

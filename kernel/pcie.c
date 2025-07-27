@@ -126,14 +126,16 @@ pcie_dev_t *find_pcie_dev(UINT32 class_code) {
 //参数capability_id
 //返回一个capability_t* 指针
 cap_t *find_pcie_cap(pcie_dev_t *pcie_dev, cap_id_e cap_id) {
-    //检测是否支持能力链表
+    //检测是否支持能力链表,不支持返回空指针
     if (!(pcie_dev->pcie_config_space->status & 0x10)) return NULL;
-    cap_t *cap = (cap_t*)((UINT64)pcie_dev->pcie_config_space + pcie_dev->pcie_config_space->type0.cap_ptr);
-    while (TRUE){
+    //计算能力链表起始地址
+    UINT8 next_ptr = pcie_dev->pcie_config_space->type0.cap_ptr;
+    while (next_ptr){
+        cap_t *cap = (cap_t*)((UINT64)pcie_dev->pcie_config_space + next_ptr);
         if (cap->cap_id == cap_id) return cap;
-        if (cap->next_ptr == 0) return NULL;
-        cap = (cap_t*)((UINT64)pcie_dev->pcie_config_space + cap->next_ptr);
+        next_ptr = cap->next_ptr;
     }
+    return NULL;
 }
 
 //判断bar 64位或32位
@@ -188,6 +190,7 @@ static inline UINT8 get_msi_x_bar_number(pcie_dev_t *pcie_dev) {
  */
 static inline UINT32 get_msi_x_offset(pcie_dev_t *pcie_dev) {
     cap_t *cap= find_pcie_cap(pcie_dev,msi_x_e);
+    if (cap == NULL) return 0;
     return cap->msi_x.table_offset & ~0x7;
 }
 
@@ -195,8 +198,8 @@ static inline UINT32 get_msi_x_offset(pcie_dev_t *pcie_dev) {
 //参数1 pcie_config_space_t
 //返回msi_x_t结构地址
 msi_x_table_entry_t *get_msi_x_table(pcie_dev_t *pcie_dev) {
-    UINT32 msi_x_bar_number = get_msi_x_bar_number(pcie_dev->pcie_config_space);
-    return (msi_x_table_entry_t*)(pcie_dev->bar[msi_x_bar_number] + get_msi_x_offset(pcie_dev->pcie_config_space));
+    UINT32 msi_x_bar_number = get_msi_x_bar_number(pcie_dev);
+    return (msi_x_table_entry_t*)(pcie_dev->bar[msi_x_bar_number] + get_msi_x_offset(pcie_dev));
 }
 
 //启用msi-x中断
