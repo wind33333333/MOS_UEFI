@@ -156,6 +156,41 @@ static inline UINT32 get_pcie_classcode(pcie_dev_t *pcie_dev) {
     return *class_code >> 8;
 }
 
+/*pcie设备class_code*/
+#define UNCLASSIFIED_CLASS_CODE        0x000000  // 未分类设备
+#define SCSI_CLASS_CODE                0x010000  // SCSI 控制器
+#define AHCI_CLASS_CODE                0x010601  // SATA 控制器（AHCI 模式）
+#define NVME_CLASS_CODE                0x010802  // NVMe 控制器
+#define ETHERNET_CLASS_CODE            0x020000  // 以太网控制器
+#define VGA_CLASS_CODE                 0x030000  // VGA 控制器
+#define XGA_CLASS_CODE                 0x030100  // XGA 控制器
+#define DISPLAY_3D_CLASS_CODE          0x030200  // 3D 控制器（非 VGA 兼容）
+#define DISPLAY_OTHER_CLASS_CODE       0x038000  // 其他显示控制器
+#define MULTIMEDIA_VIDEO_CLASS_CODE    0x040000  // 多媒体视频控制器
+#define HOST_BRIDGE_CLASS_CODE         0x060000  // 主机桥
+#define ISA_BRIDGE_CLASS_CODE          0x060100  // ISA 桥
+#define EISA_BRIDGE_CLASS_CODE         0x060200  // EISA 桥
+#define MCA_BRIDGE_CLASS_CODE          0x060300  // MCA 桥
+#define PCI_TO_PCI_BRIDGE_CLASS_CODE   0x060400  // PCI 到 PCI 桥
+#define PCMCIA_BRIDGE_CLASS_CODE       0x060500  // PCMCIA 桥
+#define NUBUS_BRIDGE_CLASS_CODE        0x060600  // NuBus 桥
+#define CARDBUS_BRIDGE_CLASS_CODE      0x060700  // CardBus 桥
+#define RACEWAY_BRIDGE_CLASS_CODE      0x060800  // RACEway 桥
+#define PCI_TO_PCI_ALT_CLASS_CODE      0x060900  // PCI 到 PCI 桥（备用）
+#define INFINIBAND_TO_PCI_CLASS_CODE   0x060A00  // InfiniBand 到 PCI 主机桥
+#define BRIDGE_OTHER_CLASS_CODE        0x068000  // 其他桥接设备
+#define UHCI_CLASS_CODE                0x0C0300  // USB 1.1 控制器（UHCI）
+#define OHCI_CLASS_CODE                0x0C0310  // USB 1.1 控制器（OHCI）
+#define EHCI_CLASS_CODE                0x0C0320  // USB 2.0 控制器（EHCI）
+#define XHCI_CLASS_CODE                0x0C0330  // USB 3.0 控制器（XHCI）
+#define FIBRE_CHANNEL_CLASS_CODE       0x0C0400  // 光纤通道
+#define SMBUS_CLASS_CODE               0x0C0500  // SMBus 控制器
+#define INFINIBAND_CLASS_CODE          0x0C0600  // InfiniBand 控制器
+#define IPMI_CLASS_CODE                0x0C0700  // IPMI 接口
+#define SERCOS_CLASS_CODE              0x0C0800  // SERCOS 接口（IEC 61491）
+#define CANBUS_CLASS_CODE              0x0C0900  // CANbus 控制器
+#define SERIAL_BUS_OTHER_CLASS_CODE    0x0C8000  // 其他串行总线控制器
+
 void init_pcie(void);
 pcie_dev_t *find_pcie_dev(UINT32 class_code);
 cap_t *find_pcie_cap(pcie_dev_t *pcie_dev, cap_id_e cap_id);
