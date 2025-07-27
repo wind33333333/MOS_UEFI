@@ -27,7 +27,7 @@ INIT_TEXT void get_cpu_info(void) {
 
     // 获取CPU TSC频率
     cpuid(0x15,0,&eax,&ebx,&ecx,&edx);
-    cpu_info.tsc_frequency = (ecx != 0) ? ebx*ecx/eax : 0;
+    cpu_info.tsc_frequency = eax&ebx&ecx ? ebx*ecx/eax : 0;
 }
 
 INIT_TEXT void enable_cpu_advanced_features(void){
