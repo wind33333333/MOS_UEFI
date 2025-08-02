@@ -142,7 +142,7 @@ typedef struct {
     UINT8 bus; /* 总线号 */
     UINT8 *name; /* 设备名 */
     pcie_config_space_t *pcie_config_space; /* pcie配置空间 */
-    UINT64 bar[6]; /*bar*/
+    void *bar[6]; /*bar*/
     UINT16 *msi_x_control;  // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
     // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
     // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
