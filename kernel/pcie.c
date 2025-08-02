@@ -219,7 +219,7 @@ static inline UINT32 get_msi_x_offset(pcie_dev_t *pcie_dev) {
 //返回msi_x_t结构地址
 msi_x_table_entry_t *get_msi_x_table(pcie_dev_t *pcie_dev) {
     UINT32 msi_x_bar_number = get_msi_x_bar_number(pcie_dev);
-    return (msi_x_table_entry_t*)(pcie_dev->bar[msi_x_bar_number] + get_msi_x_offset(pcie_dev));
+    return pcie_dev->bar[msi_x_bar_number] + get_msi_x_offset(pcie_dev);
 }
 
 /*

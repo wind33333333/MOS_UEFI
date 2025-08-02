@@ -13,7 +13,13 @@ INIT_TEXT void init_xhci(void) {
     xhci_dev->msi_x_control = get_msi_x_control(xhci_dev);
     xhci_dev->msi_x_table = get_msi_x_table(xhci_dev);
     xhci_dev->msi_x_pba_offset = get_pda_table(xhci_dev);
+    color_printk(GREEN,BLACK,"pcie bar:%#lx\n",xhci_dev->pcie_config_space->type0.bar[0]);
+    color_printk(GREEN,BLACK,"xchi bar:%#lx\n",xhci_dev->bar[0]);
+    color_printk(GREEN,BLACK,"msi_x_table:%#lx\n",xhci_dev->msi_x_table);
     UINT64 msg_addr = rdmsr(IA32_APIC_BASE_MSR) & ~0xFFFUL;
+    UINT64 *msi_x_table = (UINT64*)xhci_dev->msi_x_table;
+    *msi_x_table = 0xFFFFFFFFFFFFFFFFUL;
+    while (1);
     xhci_dev->msi_x_table[0].msg_addr_lo = msg_addr;
     xhci_dev->msi_x_table[0].msg_addr_hi = msg_addr >> 32;
     xhci_dev->msi_x_table[0].msg_data = 0x40;
@@ -25,7 +31,12 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs.runtime = xhci_dev->bar[0] + xhci_regs.cap->rtsoff;
     xhci_regs.doorbells = xhci_dev->bar[0] + xhci_regs.cap->dboff;
 
-    color_printk(GREEN,BLACK,"Xhci Version:%#lx",xhci_regs.cap->xhci_version);
+    UINT16 *x = &xhci_regs.cap->xhci_version;
+    UINT16 c = *x;
+    UINT32 *y = (UINT32*)&xhci_regs.cap->cap_length;
+    UINT32 i = *y;
+    color_printk(GREEN,BLACK,"Xhci Version:%x\n",c);
+    color_printk(GREEN,BLACK,"Xhci Version:%x\n",i);
     while (1);
 
 }
