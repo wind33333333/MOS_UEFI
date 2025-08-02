@@ -150,19 +150,24 @@ static inline UINT64 is_bar_bit(UINT64 bar_data) {
 //返回bar虚拟地址
 void *set_bar(pcie_dev_t *pcie_dev,UINT8 number) {
     if (number > 5) return 0;
-    UINT64 *bar = (UINT64*)&pcie_dev->pcie_config_space->type0.bar[number];
+    UINT32 *bar = &pcie_dev->pcie_config_space->type0.bar[number];
     UINT64 addr = *bar;
-    *bar = 0xFFFFFFFFFFFFFFFFUL;
+    *bar = 0xFFFFFFFF;
     UINT64 size = *bar;
-    *bar = addr;
+    *bar = (UINT32)addr;
     if (is_bar_bit(addr)) {
-        addr &= 0xFFFFFFFFFFFFFFF0UL;
-        size &= 0xFFFFFFFFFFFFFFF0UL;
+        bar++;
+        UINT64 addr_h = *bar;
+        *bar = 0xFFFFFFFF;
+        UINT64 size_h = *bar;
+        *bar = (UINT32)addr_h;
+        size |= size_h << 32;
+        addr |= addr_h << 32;
     }else {
-        addr &= 0xFFFFFFF0UL;
-        size &= 0xFFFFFFF0UL;
         size |= 0xFFFFFFFF00000000UL;
     }
+    addr &= 0xFFFFFFFFFFFFFFF0UL;
+    size &= 0xFFFFFFFFFFFFFFF0UL;
     size = -size;
     return iomap(addr,size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
 }
