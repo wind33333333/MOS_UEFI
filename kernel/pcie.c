@@ -168,10 +168,10 @@ void *set_bar(pcie_dev_t *pcie_dev,UINT8 number) {
 }
 
 //获取msi_x控制寄存器
-UINT32 *get_msi_x_control(pcie_dev_t *pcie_dev) {
+UINT16 *get_msi_x_control(pcie_dev_t *pcie_dev) {
     cap_t *cap= find_pcie_cap(pcie_dev,msi_x_e);
     if (!cap) return NULL;
-    return (UINT32*)&cap->msi_x.control;
+    return &cap->msi_x.control;
 }
 
 //启用msi-x中断

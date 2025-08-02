@@ -158,7 +158,7 @@ typedef enum {
 
 //获取pice设备的class_code
 static inline UINT32 get_pcie_classcode(pcie_dev_t *pcie_dev) {
-    UINT32 *class_code = &pcie_dev->pcie_config_space->revision_id;
+    UINT32 *class_code = (UINT32*)&pcie_dev->pcie_config_space->revision_id;
     return *class_code >> 8;
 }
 
@@ -203,7 +203,7 @@ cap_t *find_pcie_cap(pcie_dev_t *pcie_dev, cap_id_e cap_id);
 void *set_bar(pcie_dev_t *pcie_dev,UINT8 number);
 UINT64 *get_pda_table(pcie_dev_t *pcie_dev);
 msi_x_table_entry_t *get_msi_x_table(pcie_dev_t *pcie_dev);
-UINT32 *get_msi_x_control(pcie_dev_t *pcie_dev);
+UINT16 *get_msi_x_control(pcie_dev_t *pcie_dev);
 void enable_msi_x(pcie_dev_t *pcie_dev);
 void disable_msi_x(pcie_dev_t *pcie_dev);
 
