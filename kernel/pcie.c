@@ -171,7 +171,7 @@ void *set_bar(pcie_dev_t *pcie_dev,UINT8 number) {
 UINT32 *get_msi_x_control(pcie_dev_t *pcie_dev) {
     cap_t *cap= find_pcie_cap(pcie_dev,msi_x_e);
     if (!cap) return NULL;
-    return &cap->msi_x.control;
+    return (UINT32*)&cap->msi_x.control;
 }
 
 //启用msi-x中断
@@ -220,6 +220,32 @@ static inline UINT32 get_msi_x_offset(pcie_dev_t *pcie_dev) {
 msi_x_table_entry_t *get_msi_x_table(pcie_dev_t *pcie_dev) {
     UINT32 msi_x_bar_number = get_msi_x_bar_number(pcie_dev);
     return (msi_x_table_entry_t*)(pcie_dev->bar[msi_x_bar_number] + get_msi_x_offset(pcie_dev));
+}
+
+/*
+ *获取pda表bar号
+ *参数pcie_config_space_t
+ *数量
+ */
+static inline UINT8 get_pda_bar_number(pcie_dev_t *pcie_dev) {
+    UINT32 table_offset = *(UINT32*)((UINT64)pcie_dev->msi_x_control + sizeof(UINT16) + sizeof(UINT32));
+    return table_offset & 0x7;
+}
+
+/*
+ * 获取pda表相对bar偏移量
+ */
+static inline UINT32 get_pda_offset(pcie_dev_t *pcie_dev) {
+    UINT32 table_offset = *(UINT32*)((UINT64)pcie_dev->msi_x_control + sizeof(UINT16)+ sizeof(UINT32));
+    return table_offset & ~0x7;
+}
+
+//获取pda中断表地址
+//参数1 pcie_config_space_t
+//返回msi_x_t结构地址
+UINT64 *get_pda_table(pcie_dev_t *pcie_dev) {
+    UINT32 pda_bar_number = get_pda_bar_number(pcie_dev);
+    return (UINT64*)(pcie_dev->bar[pda_bar_number] + get_pda_offset(pcie_dev));
 }
 
 

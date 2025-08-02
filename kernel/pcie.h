@@ -147,7 +147,7 @@ typedef struct {
     // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
     // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
     msi_x_table_entry_t *msi_x_table; /* msi-x中断配置表 */
-    UINT32 *msi_x_pba_offset;
+    UINT64 *msi_x_pba_offset; /*中断挂起表*/
 } pcie_dev_t;
 
 typedef enum {
@@ -201,6 +201,7 @@ void init_pcie(void);
 pcie_dev_t *find_pcie_dev(UINT32 class_code);
 cap_t *find_pcie_cap(pcie_dev_t *pcie_dev, cap_id_e cap_id);
 void *set_bar(pcie_dev_t *pcie_dev,UINT8 number);
+UINT64 *get_pda_table(pcie_dev_t *pcie_dev);
 msi_x_table_entry_t *get_msi_x_table(pcie_dev_t *pcie_dev);
 UINT32 *get_msi_x_control(pcie_dev_t *pcie_dev);
 void enable_msi_x(pcie_dev_t *pcie_dev);
