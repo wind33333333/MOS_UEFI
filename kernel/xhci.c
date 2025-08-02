@@ -18,7 +18,6 @@ INIT_TEXT void init_xhci(void) {
     xhci_dev->msi_x_table[0].msg_addr_hi = msg_addr >> 32;
     xhci_dev->msi_x_table[0].msg_data = 0x40;
     xhci_dev->msi_x_table[0].vector_control = 0;
-    while (1);
 
     xhci_regs_t xhci_regs;
     xhci_regs.cap = xhci_dev->bar[0];
@@ -26,12 +25,7 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs.runtime = xhci_dev->bar[0] + xhci_regs.cap->rtsoff;
     xhci_regs.doorbells = xhci_dev->bar[0] + xhci_regs.cap->dboff;
 
-    UINT16 *x = &xhci_regs.cap->xhci_version;
-    UINT16 c = *x;
-    UINT32 *y = (UINT32*)&xhci_regs.cap->cap_length;
-    UINT32 i = *y;
-    color_printk(GREEN,BLACK,"Xhci Version:%x\n",c);
-    color_printk(GREEN,BLACK,"Xhci Version:%x\n",i);
+    color_printk(GREEN,BLACK,"Xhci Version:%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d CSZ:%d\n",xhci_regs.cap->xhci_version,xhci_regs.cap->hcsparams1&0xFF,xhci_regs.cap->hcsparams1>>8&0xFF,xhci_regs.cap->hcsparams1>>24,xhci_regs.cap->hccparams1>>2&1);
     while (1);
 
 }

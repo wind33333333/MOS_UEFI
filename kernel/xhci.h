@@ -13,9 +13,9 @@ typedef struct {
 
     // 04h: 硬件参数寄存器 (HCSPARAMS1)
     UINT32 hcsparams1;      //
-        // [7:0]   MaxSlots: 支持的最大设备槽数 (实际=值+1)
-        // [15:8]  MaxIntrs: 支持的中断向量数 (实际=值+1)
-        // [23:16] MaxPorts: 支持的根端口数
+        // [7:0]   MaxSlots: 支持的最大设备槽数
+        // [15:8]  MaxIntrs: 支持的中断向量数
+        // [24:31] MaxPorts: 支持的根端口数
 
     // 08h: 硬件参数寄存器 (HCSPARAMS2)
     UINT32 hcsparams2;      //
