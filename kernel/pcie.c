@@ -150,7 +150,7 @@ static inline UINT64 is_bar_bit(UINT64 bar_data) {
 //返回bar虚拟地址
 void *set_bar(pcie_dev_t *pcie_dev,UINT8 number) {
     if (number > 5) return 0;
-    UINT64 *bar = &pcie_dev->pcie_config_space->type0.bar[number];
+    UINT64 *bar = (UINT64*)&pcie_dev->pcie_config_space->type0.bar[number];
     UINT64 addr = *bar;
     *bar = 0xFFFFFFFFFFFFFFFFUL;
     UINT64 size = *bar;

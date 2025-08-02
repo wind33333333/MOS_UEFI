@@ -9,7 +9,7 @@ typedef struct {
     // 00h: 能力长度和版本 (CAPLENGTH/HCIVERSION)
     UINT8 cap_length;      // [7:0] 能力寄存器总长度 (字节)
     UINT8 reserved0;        // 保留
-    UINT16 hci_version;     // [31:16] 控制器版本 (0x100 = 1.0, 0x110 = 1.1)
+    UINT16 xhci_version;     // [31:16] 控制器版本 (0x100 = 1.0, 0x110 = 1.1)
 
     // 04h: 硬件参数寄存器 (HCSPARAMS1)
     UINT32 hcsparams1;      //
