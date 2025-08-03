@@ -138,7 +138,7 @@ typedef struct {
 
 // MSI-X Table条目 (16字节)
 typedef struct {
-    UINT32 msg_addr_lo;    // 消息地址低32位
+    UINT32 msg_addr_lo;    // 消息地址低32位,位12-19 指向local apic
     UINT32 msg_addr_hi;    // 消息地址高32位 (如果64位)
     UINT32 msg_data;       // 消息数据值
     UINT32 vector_control; // 向量控制 (通常Bit0=Per Vector Mask)
