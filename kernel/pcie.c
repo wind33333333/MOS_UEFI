@@ -176,20 +176,19 @@ void *set_bar(pcie_dev_t *pcie_dev,UINT8 number) {
 UINT16 *get_msi_x_control(pcie_dev_t *pcie_dev) {
     cap_t *cap= find_pcie_cap(pcie_dev,msi_x_e);
     if (!cap) return NULL;
+    color_printk(GREEN,BLACK,"control:%#x table:%#x pda:%#x\n",cap->msi_x.control,cap->msi_x.table_offset,cap->msi_x.pba_offset);
     return &cap->msi_x.control;
 }
 
 //启用msi-x中断
 void enable_msi_x(pcie_dev_t *pcie_dev) {
-    cap_t *cap= find_pcie_cap(pcie_dev,msi_x_e);
-    cap->msi_x.control |= 0x8000;
-    cap->msi_x.control &= ~0x4000;
+    *pcie_dev->msi_x_control |= 0x8000;
+    *pcie_dev->msi_x_control &= ~0x4000;
 }
 
 //禁用msi-x中断
 void disable_msi_x(pcie_dev_t *pcie_dev) {
-    cap_t *cap= find_pcie_cap(pcie_dev,msi_x_e);
-    cap->msi_x.control |= 0x4000;
+    *pcie_dev->msi_x_control |= 0x4000;
 }
 
 //获取msi-x终端数量

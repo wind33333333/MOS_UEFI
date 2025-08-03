@@ -8,17 +8,20 @@
 
 INIT_TEXT void init_xhci(void) {
     pcie_dev_t *xhci_dev = find_pcie_dev(XHCI_CLASS_CODE);
-    disable_msi_x(xhci_dev);
     xhci_dev->bar[0] = set_bar(xhci_dev,0);
     xhci_dev->msi_x_control = get_msi_x_control(xhci_dev);
     xhci_dev->msi_x_table = get_msi_x_table(xhci_dev);
     xhci_dev->msi_x_pba_offset = get_pda_table(xhci_dev);
+    disable_msi_x(xhci_dev);
     UINT64 msg_addr = rdmsr(IA32_APIC_BASE_MSR) & ~0xFFFUL;
     xhci_dev->msi_x_table[0].msg_addr_lo = (UINT32)msg_addr;
     xhci_dev->msi_x_table[0].msg_addr_hi = (UINT32)(msg_addr >> 32);
     xhci_dev->msi_x_table[0].msg_data = 0x40;
     xhci_dev->msi_x_table[0].vector_control = 0;
-    color_printk(GREEN,BLACK,"msg_addr_lo:%#x msg_addr_hi%#x\n",xhci_dev->msi_x_table[0].msg_addr_lo,xhci_dev->msi_x_table[0].msg_addr_hi);
+    color_printk(GREEN,BLACK,"bar0:%#lx\n",xhci_dev->bar[0]);
+    color_printk(GREEN,BLACK,"msg_addr:%#lx msg_addr_lo:%#x msg_addr_hi:%#x msg_data:%#x msg_vector:%#x\n",msg_addr,xhci_dev->msi_x_table[0].msg_addr_lo,xhci_dev->msi_x_table[0].msg_addr_hi,xhci_dev->msi_x_table[0].msg_data,xhci_dev->msi_x_table[0].vector_control);
+    UINT64 *x = (UINT64*)xhci_dev->msi_x_table;
+    color_printk(GREEN,BLACK,"%#lx",*x);
 
     xhci_regs_t xhci_regs;
     xhci_regs.cap = xhci_dev->bar[0];

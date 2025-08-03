@@ -44,8 +44,7 @@ INIT_TEXT void init_ioapic(void) {
                 break;
             case 4: //apic nmi引脚
                 apic_nmi_entry_t *apic_nmi_entry = (apic_nmi_entry_t *) madt_entry;
-                color_printk(GREEN, BLACK, "APIC NMI ApicID:%#lX LINT:%d\n", apic_nmi_entry->apic_id,
-                             apic_nmi_entry->lint);
+                //color_printk(GREEN, BLACK, "APIC NMI ApicID:%#lX LINT:%d\n", apic_nmi_entry->apic_id,apic_nmi_entry->lint);
                 break;
             case 5: //64位local apic地址
                 apic_address_override_entry_t *apic_addr_override_entry = (apic_address_override_entry_t *)
