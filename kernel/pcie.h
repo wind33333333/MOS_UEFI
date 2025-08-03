@@ -86,7 +86,7 @@ typedef struct {
                              - 位4-6：Multiple Message Enable（启用的向量数）。
                              - 位7：64-bit Address Capable（1=支持64位地址）。
                              - 位8-15：保留。*/
-            UINT32 msg_addr_lo;  //32位消息地址（MSI中断写入的内存地址）。
+            UINT32 msg_addr_lo;  //32位消息地址（MSI中断写入的内存地址）,位12-19 指向local apic。
             UINT32 msg_addr_hi;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
             UINT16 msg_data;     //中断消息数据（写入Message Address的值，用于触发中断）。
         }msi;
@@ -162,7 +162,7 @@ typedef struct {
                                   - 位4-6：Multiple Message Enable（启用的向量数）。
                                   - 位7：64-bit Address Capable（1=支持64位地址）。
                                   - 位8-15：保留。*/
-            UINT32 *msg_addr_lo;  //32位消息地址（MSI中断写入的内存地址）。
+            UINT32 *msg_addr_lo;  //32位消息地址（MSI中断写入的内存地址,位12-19 指向local apic。
             UINT32 *msg_addr_hi;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
             UINT16 *msg_data;     //中断消息数据（写入Message Address的值，用于触发中断）。
         } msi;
