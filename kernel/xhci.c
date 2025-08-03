@@ -11,13 +11,14 @@ INIT_TEXT void init_xhci(void) {
     init_pcie_bar(xhci_dev,0);
     init_pcie_msi_intrpt(xhci_dev);
 
-    xhci_regs_t xhci_regs;
-    xhci_regs.cap = xhci_dev->bar[0];
-    xhci_regs.op = xhci_dev->bar[0] + xhci_regs.cap->cap_length;
-    xhci_regs.runtime = xhci_dev->bar[0] + xhci_regs.cap->rtsoff;
-    xhci_regs.doorbells = xhci_dev->bar[0] + xhci_regs.cap->dboff;
+    xhci_dev->private_data = kmalloc(sizeof(xhci_regs_t));
+    xhci_regs_t *xhci_regs = xhci_dev->private_data;
+    xhci_regs->cap = xhci_dev->bar[0];
+    xhci_regs->op = xhci_dev->bar[0] + xhci_regs->cap->cap_length;
+    xhci_regs->runtime = xhci_dev->bar[0] + xhci_regs->cap->rtsoff;
+    xhci_regs->doorbells = xhci_dev->bar[0] + xhci_regs->cap->dboff;
 
-    color_printk(GREEN,BLACK,"Xhci Version:%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d ContextSize:%d USBcmd:%#x USBsts:%#x PageSize:%d\n",xhci_regs.cap->xhci_version,xhci_regs.cap->hcsparams1&0xFF,xhci_regs.cap->hcsparams1>>8&0xFF,xhci_regs.cap->hcsparams1>>24,xhci_regs.cap->hccparams1>>2&1,xhci_regs.op->usbcmd,xhci_regs.op->usbsts,xhci_regs.op->pagesize<<12);
+    color_printk(GREEN,BLACK,"Xhci Version:%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d ContextSize:%d USBcmd:%#x USBsts:%#x PageSize:%d MSI-X:%d\n",xhci_regs->cap->xhci_version,xhci_regs->cap->hcsparams1&0xFF,xhci_regs->cap->hcsparams1>>8&0xFF,xhci_regs->cap->hcsparams1>>24,xhci_regs->cap->hccparams1>>2&1,xhci_regs->op->usbcmd,xhci_regs->op->usbsts,xhci_regs->op->pagesize<<12,xhci_dev->msi_x_flags);
     while (1);
 
 }
