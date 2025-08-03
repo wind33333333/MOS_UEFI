@@ -81,25 +81,25 @@ typedef struct {
     union {
         //MSI 能力结构（ID 0x5）
         struct {
-            UINT16 control;/*- 位0：MSI Enable（1=启用，0=禁用）。
+            UINT16 msg_control;/*- 位0：MSI Enable（1=启用，0=禁用）。
                              - 位1-3：Multiple Message Capable（支持的向量数：0=1，1=2，2=4，3=8，4=16，5=32）。
                              - 位4-6：Multiple Message Enable（启用的向量数）。
                              - 位7：64-bit Address Capable（1=支持64位地址）。
                              - 位8-15：保留。*/
-            UINT32 addr_l;  //32位消息地址（MSI中断写入的内存地址）。
-            UINT32 addr_h;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
-            UINT16 data;    //中断消息数据（写入Message Address的值，用于触发中断）。
+            UINT32 msg_addr_lo;  //32位消息地址（MSI中断写入的内存地址）。
+            UINT32 msg_addr_hi;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
+            UINT16 msg_data;     //中断消息数据（写入Message Address的值，用于触发中断）。
         }msi;
 
         // MSI-X能力结构（ID 0x11）
         struct {
-            UINT16 control; // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
-            // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
-            // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
+            UINT16 msg_control; // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
+                                // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
+                                // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
             UINT32 table_offset; // 位 0-2：BAR 指示器（Base Address Register Index）
-            // 位 3-31：MSI-X 表偏移地址（相对于 BAR 的基地址）
-            UINT32 pba_offset; // 位 0-2：PBA BAR 指示器
-            // 位 3-31：PBA 偏移地址（相对于 BAR 的基地址）
+                                 // 位 3-31：MSI-X 表偏移地址（相对于 BAR 的基地址）
+            UINT32 pba_offset;   // 位 0-2：BAR 指示器
+                                 // 位 3-31：PBA 偏移地址（相对于 BAR 的基地址）
         } msi_x;
 
         // Power Management能力结构（ID 0x01）
@@ -138,11 +138,11 @@ typedef struct {
 
 // MSI-X Table条目 (16字节)
 typedef struct {
-    UINT32 msg_addr_lo; // 消息地址低32位
-    UINT32 msg_addr_hi; // 消息地址高32位 (如果64位)
-    UINT32 msg_data;    // 消息数据值
+    UINT32 msg_addr_lo;    // 消息地址低32位
+    UINT32 msg_addr_hi;    // 消息地址高32位 (如果64位)
+    UINT32 msg_data;       // 消息数据值
     UINT32 vector_control; // 向量控制 (通常Bit0=Per Vector Mask)
-} msi_x_table_entry_t;
+} msi_x_table_t;
 
 #pragma pack(pop)
 
@@ -156,21 +156,22 @@ typedef struct {
     void *bar[6]; /*bar*/
     union {
         struct {
-            UINT16 *control;/*- 位0：MSI Enable（1=启用，0=禁用）。
-                             - 位1-3：Multiple Message Capable（支持的向量数：0=1，1=2，2=4，3=8，4=16，5=32）。
-                             - 位4-6：Multiple Message Enable（启用的向量数）。
-                             - 位7：64-bit Address Capable（1=支持64位地址）。
-                             - 位8-15：保留。*/
-            UINT32 *addr_l;  //32位消息地址（MSI中断写入的内存地址）。
-            UINT32 *addr_h;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
-            UINT16 *data;    //中断消息数据（写入Message Address的值，用于触发中断）。
+            UINT16 *msg_control;/*- 位0：MSI Enable（1=启用，0=禁用）。
+                                  - 位1-3：Multiple Message Capable（支持的向量数：0=1，1=2，2=4，3=8，4=16，5=32）。
+                                  - 位4-6：Multiple Message Enable（启用的向量数）。
+                                  - 位7：64-bit Address Capable（1=支持64位地址）。
+                                  - 位8-15：保留。*/
+            UINT32 *msg_addr_lo;  //32位消息地址（MSI中断写入的内存地址）。
+            UINT32 *msg_addr_hi;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
+            UINT16 *msg_data;     //中断消息数据（写入Message Address的值，用于触发中断）。
         } msi;
+
         struct {
-            UINT16              *control;   // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
-                                            // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
-                                            // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
-            msi_x_table_entry_t *irq_table; /* msi-x中断配置表 */
-            UINT64              *pba_table; /*中断挂起表*/
+            UINT16        *msg_control;   // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
+                                          // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
+                                          // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
+            msi_x_table_t *msi_x_table;     /* msi-x中断配置表 */
+            UINT64        *pba_table;     /*中断挂起表*/
         } msi_x;
     };
 } pcie_dev_t;
