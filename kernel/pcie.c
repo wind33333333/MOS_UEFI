@@ -1,5 +1,6 @@
 #include "pcie.h"
 #include "acpi.h"
+#include "apic.h"
 #include "printk.h"
 #include "slub.h"
 #include "vmalloc.h"
@@ -239,12 +240,19 @@ static inline UINT32 get_pda_offset(cap_t *cap) {
 
 void init_pcie_msi_intrpt(pcie_dev_t *pcie_dev) {
     cap_t *cap = find_pcie_cap(pcie_dev,msi_x_e);
+    UINT64 msg_addr = rdmsr(IA32_APIC_BASE_MSR) & ~0xFFFUL;
     //优先启用msi-x中断
     if (cap) {
+        //初始化表
         pcie_dev->msi_x_flags = 1;
         pcie_dev->msi_x.msg_control = &cap->msi_x.msg_control;
         pcie_dev->msi_x.msi_x_table = (msi_x_table_t*)(pcie_dev->bar[get_msi_x_bir(cap)] + get_msi_x_offset(cap));
         pcie_dev->msi_x.pba_table = (UINT64*)(pcie_dev->bar[get_pda_bir(cap)] + get_pda_offset(cap));
+        //设置中断
+        pcie_dev->msi_x.msi_x_table[0].msg_addr_lo = (UINT32)msg_addr;
+        pcie_dev->msi_x.msi_x_table[0].msg_addr_hi = (UINT32)(msg_addr >> 32);
+        pcie_dev->msi_x.msi_x_table[0].msg_data = 0x40;
+        pcie_dev->msi_x.msi_x_table[0].vector_control = 0;
 
     }else {
         //启用msi中断
@@ -253,6 +261,10 @@ void init_pcie_msi_intrpt(pcie_dev_t *pcie_dev) {
         pcie_dev->msi.msg_control = &cap->msi.msg_control;
         pcie_dev->msi.msg_addr_lo = &cap->msi.msg_addr_lo;
         pcie_dev->msi.msg_addr_hi = &cap->msi.msg_addr_hi;
+        //设置中断
+        pcie_dev->msi.msg_addr_lo = (UINT32)msg_addr;
+        pcie_dev->msi.msg_addr_hi = (UINT32)msg_addr >> 32;
+        pcie_dev->msi.msg_data = 0x40;
     }
     disable_msi_intrpt(pcie_dev);
 }
