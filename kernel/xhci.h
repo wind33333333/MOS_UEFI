@@ -166,12 +166,11 @@ typedef struct {
 // ===== 4. 门铃寄存器 (Doorbell Registers) =====
 typedef struct {
     // 门铃寄存器数组 (每个设备槽一个 + 主机控制器)
-    UINT32 doorbell[256]; // 最大支持256个设备槽
-
-    // 寄存器定义:
-    // 写门铃寄存器会通知主机控制器处理命令
-    // 格式: [7:0] - 目标端点ID (0=控制端点)
-    //       [15:8] - 设备槽ID
+    UINT32 doorbell[256]; // 最大支持256个设备槽(由HCSPARAMS1的MaxSlots决定）
+                          // - DB Target (位 0-7): 门铃目标
+                          // - 值为0：触发命令环（Command Ring）
+                          // - 值为1-31：触发特定端点（Endpoint 0-31）的传输环
+                          // - DB Stream ID (位 16-31): 流ID（仅用于支持流的设备）
 } xhci_db_regs_t;
 
 // ===== 5. 扩展寄存器 (HCCPARAMS2) =====
