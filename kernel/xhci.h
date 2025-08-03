@@ -142,19 +142,25 @@ typedef struct {
 
     // 中断管理数组 (IMAN) - 每个中断向量一个
     struct {
-        UINT32 iman; // 中断管理
-        #define IMAN_IE  (1 << 0)   // 中断使能
-        #define IMAN_IP  (1 << 1)   // 中断挂起 (写1清除)
-        UINT32 imod; // 中断调制器
-    } intr_regs[256]; // 最多支持256个中断向量
+        // 中断管理寄存器 (IMAN), 偏移 0x00
+        UINT32 iman;    // 中断管理 [0]：IP中断挂起（1=有中断待处理），[1]：中断使能（1=使能，0=禁用）
 
-    // 事件环段表基址寄存器 (ERSTBA) - 每个中断向量一个
-    UINT64 erstba[256]; // 事件环段表的物理地址
+        //中断调节寄存器 (IMOD), 偏移 0x04,
+        UINT32 imod;    // 中断调制器 (位 0-15): 中断调节间隔（以250ns为单位，(位 16-31): 中断调节计数器（只读）
 
-    // 事件环段表大小寄存器 (ERSTSZ) - 每个中断向量一个
-    UINT32 erstsz[256]; // [15:0] 事件环段表中的条目数
+        // 事件环段表大小寄存器 (ERSTSZ), 偏移 0x08, 32位
+        UINT32 erstsz;  // - ERST Size (位 0-15): 事件环段表条目数（最大4096）
+        UINT32 reserved1;
 
-    // ... 更多运行时寄存器 ...
+        // 事件环段表基地址寄存器 (ERSTBA), 偏移 0x10-0x17, 64位
+        UINT64 erstba;  //指向事件环段表的64位基地址（对齐到64字节)
+
+        // 事件环出队指针寄存器 (ERDP), 偏移 0x18-0x1F, 64位
+        UINT64 erdp;   // 指向事件环的当前出队指针
+                       // - DESI (位 0-2): 出队事件环段索引
+                       // - EHB (位 3): 事件处理忙碌（1=忙碌，写1清除）
+                       // - Event Ring Dequeue Pointer (位 4-63): 出队指针地址
+    } intr_regs[1024]; // 最大支持1024个中断器（根据HCSPARAMS1中的MaxIntrs）
 } xhci_rt_regs_t;
 
 // ===== 4. 门铃寄存器 (Doorbell Registers) =====
