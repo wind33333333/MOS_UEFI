@@ -8,7 +8,7 @@
 
 INIT_TEXT void init_xhci(void) {
     pcie_dev_t *xhci_dev = find_pcie_dev(XHCI_CLASS_CODE);
-    xhci_dev->bar[0] = set_bar(xhci_dev,0);
+    xhci_dev->bar[0] = init_pcie_dev_bar(xhci_dev,0);
     UINT64 msg_addr = rdmsr(IA32_APIC_BASE_MSR) & ~0xFFFUL;
     if (find_pcie_cap(xhci_dev,msi_x_e)) {
         color_printk(GREEN,BLACK,"XHCI MSI-X Support!\n");

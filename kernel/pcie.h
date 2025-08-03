@@ -154,6 +154,7 @@ typedef struct {
     UINT8 *name; /* 设备名 */
     pcie_config_space_t *pcie_config_space; /* pcie配置空间 */
     void *bar[6]; /*bar*/
+    UINT8 msi_x_flags;    // 1 = 支持msi_x 0 = 不支持msi_x
     union {
         struct {
             UINT16 *msg_control;/*- 位0：MSI Enable（1=启用，0=禁用）。
@@ -227,9 +228,9 @@ static inline UINT32 get_pcie_classcode(pcie_dev_t *pcie_dev) {
 void init_pcie(void);
 pcie_dev_t *find_pcie_dev(UINT32 class_code);
 cap_t *find_pcie_cap(pcie_dev_t *pcie_dev, cap_id_e cap_id);
-void *set_bar(pcie_dev_t *pcie_dev,UINT8 number);
+void *init_pcie_dev_bar(pcie_dev_t *pcie_dev,UINT8 bar_number);
 UINT64 *get_pda_table(pcie_dev_t *pcie_dev);
-msi_x_table_entry_t *get_msi_x_table(pcie_dev_t *pcie_dev);
+msi_x_table_t *get_msi_x_table(pcie_dev_t *pcie_dev);
 UINT16 *get_msi_x_control(pcie_dev_t *pcie_dev);
 void enable_msi_x(pcie_dev_t *pcie_dev);
 void disable_msi_x(pcie_dev_t *pcie_dev);
