@@ -21,7 +21,7 @@ INIT_TEXT void init_xhci(void) {
     color_printk(GREEN,BLACK,"bar0:%#lx\n",xhci_dev->bar[0]);
     color_printk(GREEN,BLACK,"msg_addr:%#lx msg_addr_lo:%#x msg_addr_hi:%#x msg_data:%#x msg_vector:%#x\n",msg_addr,xhci_dev->msi_x_table[0].msg_addr_lo,xhci_dev->msi_x_table[0].msg_addr_hi,xhci_dev->msi_x_table[0].msg_data,xhci_dev->msi_x_table[0].vector_control);
     UINT64 *x = (UINT64*)xhci_dev->msi_x_table;
-    color_printk(GREEN,BLACK,"%#lx",*x);
+    color_printk(GREEN,BLACK,"%#lx\n",*x);
 
     xhci_regs_t xhci_regs;
     xhci_regs.cap = xhci_dev->bar[0];

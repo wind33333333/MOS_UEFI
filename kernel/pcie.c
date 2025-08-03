@@ -176,7 +176,6 @@ void *set_bar(pcie_dev_t *pcie_dev,UINT8 number) {
 UINT16 *get_msi_x_control(pcie_dev_t *pcie_dev) {
     cap_t *cap= find_pcie_cap(pcie_dev,msi_x_e);
     if (!cap) return NULL;
-    color_printk(GREEN,BLACK,"control:%#x table:%#x pda:%#x\n",cap->msi_x.control,cap->msi_x.table_offset,cap->msi_x.pba_offset);
     return &cap->msi_x.control;
 }
 

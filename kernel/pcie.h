@@ -152,8 +152,9 @@ typedef struct {
 
 typedef enum {
     power_mgmt_e = 1,
-    pcie_cap_e = 0x10,
-    msi_x_e = 0x11
+    msi_e        = 5,
+    pcie_cap_e   = 0x10,
+    msi_x_e      = 0x11
 } cap_id_e;
 
 //获取pice设备的class_code
