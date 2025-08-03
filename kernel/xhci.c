@@ -18,7 +18,7 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->runtime = xhci_dev->bar[0] + xhci_regs->cap->rtsoff;
     xhci_regs->doorbells = xhci_dev->bar[0] + xhci_regs->cap->dboff;
 
-    color_printk(GREEN,BLACK,"Xhci Version:%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d ContextSize:%d USBcmd:%#x USBsts:%#x PageSize:%d MSI-X:%d\n",xhci_regs->cap->xhci_version,xhci_regs->cap->hcsparams1&0xFF,xhci_regs->cap->hcsparams1>>8&0xFF,xhci_regs->cap->hcsparams1>>24,xhci_regs->cap->hccparams1>>2&1,xhci_regs->op->usbcmd,xhci_regs->op->usbsts,xhci_regs->op->pagesize<<12,xhci_dev->msi_x_flags);
+    color_printk(GREEN,BLACK,"Xhci Version:%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d ContextSize:%d USBcmd:%#x USBsts:%#x PageSize:%d MSI-X:%d\n",xhci_regs->cap->hciversion,xhci_regs->cap->hcsparams1&0xFF,xhci_regs->cap->hcsparams1>>8&0xFF,xhci_regs->cap->hcsparams1>>24,xhci_regs->cap->hccparams1>>2&1,xhci_regs->op->usbcmd,xhci_regs->op->usbsts,xhci_regs->op->pagesize<<12,xhci_dev->msi_x_flags);
     while (1);
 
 }
