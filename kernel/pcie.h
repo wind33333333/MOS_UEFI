@@ -170,8 +170,8 @@ typedef struct {
             UINT16        *msg_control;   // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
                                           // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
                                           // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
-            msi_x_table_t *msi_x_table;     /* msi-x中断配置表 */
-            UINT64        *pba_table;     /*中断挂起表*/
+            msi_x_table_t *msi_x_table;   //msi-x中断配置表
+            UINT64        *pba_table;     //中断挂起表
         } msi_x;
     };
 } pcie_dev_t;
