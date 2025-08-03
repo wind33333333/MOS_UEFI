@@ -140,7 +140,7 @@ typedef struct {
 typedef struct {
     UINT32 msg_addr_lo; // 消息地址低32位
     UINT32 msg_addr_hi; // 消息地址高32位 (如果64位)
-    UINT32 msg_data; // 消息数据值
+    UINT32 msg_data;    // 消息数据值
     UINT32 vector_control; // 向量控制 (通常Bit0=Per Vector Mask)
 } msi_x_table_entry_t;
 
@@ -154,11 +154,25 @@ typedef struct {
     UINT8 *name; /* 设备名 */
     pcie_config_space_t *pcie_config_space; /* pcie配置空间 */
     void *bar[6]; /*bar*/
-    UINT16 *msi_x_control;  // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
-    // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
-    // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
-    msi_x_table_entry_t *msi_x_table; /* msi-x中断配置表 */
-    UINT64 *msi_x_pba_offset; /*中断挂起表*/
+    union {
+        struct {
+            UINT16 *control;/*- 位0：MSI Enable（1=启用，0=禁用）。
+                             - 位1-3：Multiple Message Capable（支持的向量数：0=1，1=2，2=4，3=8，4=16，5=32）。
+                             - 位4-6：Multiple Message Enable（启用的向量数）。
+                             - 位7：64-bit Address Capable（1=支持64位地址）。
+                             - 位8-15：保留。*/
+            UINT32 *addr_l;  //32位消息地址（MSI中断写入的内存地址）。
+            UINT32 *addr_h;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
+            UINT16 *data;    //中断消息数据（写入Message Address的值，用于触发中断）。
+        } msi;
+        struct {
+            UINT16              *control;   // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
+                                            // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
+                                            // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
+            msi_x_table_entry_t *irq_table; /* msi-x中断配置表 */
+            UINT64              *pba_table; /*中断挂起表*/
+        } msi_x;
+    };
 } pcie_dev_t;
 
 typedef enum {
@@ -218,4 +232,10 @@ msi_x_table_entry_t *get_msi_x_table(pcie_dev_t *pcie_dev);
 UINT16 *get_msi_x_control(pcie_dev_t *pcie_dev);
 void enable_msi_x(pcie_dev_t *pcie_dev);
 void disable_msi_x(pcie_dev_t *pcie_dev);
+UINT16 *get_msi_control(pcie_dev_t *pcie_dev);
+UINT32 *get_msi_addrl(pcie_dev_t *pcie_dev);
+UINT32 *get_msi_addrh(pcie_dev_t *pcie_dev);
+UINT16 *get_msi_data(pcie_dev_t *pcie_dev);
+void enable_msi(pcie_dev_t *pcie_dev);
+void disable_msi(pcie_dev_t *pcie_dev);
 
