@@ -228,16 +228,8 @@ static inline UINT32 get_pcie_classcode(pcie_dev_t *pcie_dev) {
 void init_pcie(void);
 pcie_dev_t *find_pcie_dev(UINT32 class_code);
 cap_t *find_pcie_cap(pcie_dev_t *pcie_dev, cap_id_e cap_id);
-void *init_pcie_dev_bar(pcie_dev_t *pcie_dev,UINT8 bar_number);
-UINT64 *get_pda_table(pcie_dev_t *pcie_dev);
-msi_x_table_t *get_msi_x_table(pcie_dev_t *pcie_dev);
-UINT16 *get_msi_x_control(pcie_dev_t *pcie_dev);
-void enable_msi_x(pcie_dev_t *pcie_dev);
-void disable_msi_x(pcie_dev_t *pcie_dev);
-UINT16 *get_msi_control(pcie_dev_t *pcie_dev);
-UINT32 *get_msi_addrl(pcie_dev_t *pcie_dev);
-UINT32 *get_msi_addrh(pcie_dev_t *pcie_dev);
-UINT16 *get_msi_data(pcie_dev_t *pcie_dev);
-void enable_msi(pcie_dev_t *pcie_dev);
-void disable_msi(pcie_dev_t *pcie_dev);
+void *init_pcie_bar(pcie_dev_t *pcie_dev,UINT8 bar_number);
+void init_pcie_msi_intrpt(pcie_dev_t *pcie_dev) ;
+void enable_msi_intrpt(pcie_dev_t *pcie_dev);
+void disable_msi_intrpt(pcie_dev_t *pcie_dev);
 

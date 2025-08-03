@@ -148,7 +148,7 @@ static inline UINT64 is_bar_bit(UINT64 bar_data) {
 //配置bar寄存器
 //参数bar寄存器号
 //返回bar虚拟地址
-void *init_pcie_dev_bar(pcie_dev_t *pcie_dev,UINT8 bar_number) {
+void *init_pcie_bar(pcie_dev_t *pcie_dev,UINT8 bar_number) {
     if (bar_number > 5) return 0;
     UINT32 *bar = &pcie_dev->pcie_config_space->type0.bar[bar_number];
     UINT64 addr = *bar;
@@ -172,21 +172,25 @@ void *init_pcie_dev_bar(pcie_dev_t *pcie_dev,UINT8 bar_number) {
     return iomap(addr,size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
 }
 
-//获取msi_x控制寄存器
-UINT16 *get_msi_x_control(pcie_dev_t *pcie_dev) {
-    cap_t *cap= find_pcie_cap(pcie_dev,msi_x_e);
-    return &cap->msi_x.control;
+
+//启用msi中断
+void enable_msi_intrpt(pcie_dev_t *pcie_dev) {
+    if (pcie_dev->msi_x_flags) {
+        *pcie_dev->msi_x.msg_control |= 0x8000;
+        *pcie_dev->msi_x.msg_control &= ~0x4000;
+    }else {
+        *pcie_dev->msi.msg_control |= 1;
+    }
 }
 
-//启用msi-x中断
-void enable_msi_x(pcie_dev_t *pcie_dev) {
-    *pcie_dev->msi_x.control |= 0x8000;
-    *pcie_dev->msi_x.control &= ~0x4000;
-}
+//禁用msi中断
+void disable_msi_intrpt(pcie_dev_t *pcie_dev) {
+    if (pcie_dev->msi_x_flags) {
+        *pcie_dev->msi_x.msg_control |= 0x4000;
+    }else {
+        *pcie_dev->msi.msg_control &= ~1;
+    }
 
-//禁用msi-x中断
-void disable_msi_x(pcie_dev_t *pcie_dev) {
-    *pcie_dev->msi_x.control |= 0x4000;
 }
 
 //获取msi-x终端数量
@@ -194,7 +198,7 @@ void disable_msi_x(pcie_dev_t *pcie_dev) {
 //数量
 UINT32 get_msi_x_irq_number(pcie_dev_t *pcie_dev) {
     cap_t *cap= find_pcie_cap(pcie_dev,msi_x_e);
-    return (cap->msi_x.control & 0x7FF)+1;
+    return (cap->msi_x.msg_control & 0x7FF)+1;
 }
 
 /*
@@ -202,25 +206,17 @@ UINT32 get_msi_x_irq_number(pcie_dev_t *pcie_dev) {
  *参数pcie_config_space_t
  *数量
  */
-static inline UINT8 get_msi_x_bar_number(pcie_dev_t *pcie_dev) {
-    UINT32 table_offset = *(UINT32*)((UINT64)pcie_dev->msi_x.control + sizeof(UINT16));
-    return table_offset & 0x7;
+static inline UINT8 get_msi_x_bir(cap_t *cap) {
+    UINT32 bir = cap->msi_x.table_offset;
+    return bir & 0x7;
 }
 
 /*
  * 获取msi-x表相对bar偏移量
  */
-static inline UINT32 get_msi_x_offset(pcie_dev_t *pcie_dev) {
-    UINT32 table_offset = *(UINT32*)((UINT64)pcie_dev->msi_x.control + sizeof(UINT16));
+static inline UINT32 get_msi_x_offset(cap_t *cap) {
+    UINT32 table_offset = cap->msi_x.table_offset;
     return table_offset & ~0x7;
-}
-
-//获取msi-x中断表地址
-//参数1 pcie_config_space_t
-//返回msi_x_t结构地址
-msi_x_table_entry_t *get_msi_x_table(pcie_dev_t *pcie_dev) {
-    UINT32 msi_x_bar_number = get_msi_x_bar_number(pcie_dev);
-    return pcie_dev->bar[msi_x_bar_number] + get_msi_x_offset(pcie_dev);
 }
 
 /*
@@ -228,66 +224,37 @@ msi_x_table_entry_t *get_msi_x_table(pcie_dev_t *pcie_dev) {
  *参数pcie_config_space_t
  *数量
  */
-static inline UINT8 get_pda_bar_number(pcie_dev_t *pcie_dev) {
-    UINT32 table_offset = *(UINT32*)((UINT64)pcie_dev->msi_x.control + sizeof(UINT16) + sizeof(UINT32));
-    return table_offset & 0x7;
+static inline UINT8 get_pda_bir(cap_t *cap) {
+    UINT32 bir = cap->msi_x.pba_offset;
+    return bir & 0x7;
 }
 
 /*
  * 获取pda表相对bar偏移量
  */
-static inline UINT32 get_pda_offset(pcie_dev_t *pcie_dev) {
-    UINT32 table_offset = *(UINT32*)((UINT64)pcie_dev->msi_x.control + sizeof(UINT16)+ sizeof(UINT32));
+static inline UINT32 get_pda_offset(cap_t *cap) {
+    UINT32 table_offset = cap->msi_x.pba_offset;
     return table_offset & ~0x7;
 }
 
-//获取pda中断表地址
-//参数1 pcie_config_space_t
-//返回msi_x_t结构地址
-UINT64 *get_pda_table(pcie_dev_t *pcie_dev) {
-    UINT32 pda_bar_number = get_pda_bar_number(pcie_dev);
-    return (UINT64*)(pcie_dev->bar[pda_bar_number] + get_pda_offset(pcie_dev));
-}
-
-//获取msi control地址
-UINT16 *get_msi_control(pcie_dev_t *pcie_dev) {
-    cap_t *cap = find_pcie_cap(pcie_dev,msi_e);
-    return &cap->msi.control;
-}
-
-//获取msi addrl地址
-UINT32 *get_msi_addrl(pcie_dev_t *pcie_dev) {
-    return (UINT32*)((UINT64)pcie_dev->msi_x.control + sizeof(UINT16));
-}
-
-//获取msi_addrh地址
-UINT32 *get_msi_addrh(pcie_dev_t *pcie_dev) {
-    return (UINT32*)((UINT64)pcie_dev->msi_x.control + sizeof(UINT16)+sizeof(UINT32));
-}
-
-//获取msi_data地址
-UINT16 *get_msi_data(pcie_dev_t *pcie_dev) {
-    return (UINT16*)((UINT64)pcie_dev->msi_x.control + sizeof(UINT16) + sizeof(UINT32)+sizeof(UINT32));
-}
-
-void enable_msi(pcie_dev_t *pcie_dev) {
-    *pcie_dev->msi.control |= 1;
-}
-
-void disable_msi(pcie_dev_t *pcie_dev) {
-    *pcie_dev->msi.control &= ~1;
-}
-
-void init_pcie_msi(pcie_dev_t *pcie_dev) {
+void init_pcie_msi_intrpt(pcie_dev_t *pcie_dev) {
     cap_t *cap = find_pcie_cap(pcie_dev,msi_x_e);
+    //优先启用msi-x中断
     if (cap) {
         pcie_dev->msi_x_flags = 1;
-
+        pcie_dev->msi_x.msg_control = &cap->msi_x.msg_control;
+        pcie_dev->msi_x.msi_x_table = (msi_x_table_t*)(pcie_dev->bar[get_msi_x_bir(cap)] + get_msi_x_offset(cap));
+        pcie_dev->msi_x.pba_table = (UINT64*)(pcie_dev->bar[get_pda_bir(cap)] + get_pda_offset(cap));
 
     }else {
+        //启用msi中断
         cap = find_pcie_cap(pcie_dev,msi_e);
         pcie_dev->msi_x_flags = 0;
+        pcie_dev->msi.msg_control = &cap->msi.msg_control;
+        pcie_dev->msi.msg_addr_lo = &cap->msi.msg_addr_lo;
+        pcie_dev->msi.msg_addr_hi = &cap->msi.msg_addr_hi;
     }
+    disable_msi_intrpt(pcie_dev);
 }
 
 
