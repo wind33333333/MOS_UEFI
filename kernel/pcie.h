@@ -79,7 +79,18 @@ typedef struct {
     UINT8 cap_id; // Capability ID
     UINT8 next_ptr; // Next Pointer
     union {
-        // 能力特定字段
+        //MSI 能力结构（ID 0x5）
+        struct {
+            UINT16 control;/*- 位0：MSI Enable（1=启用，0=禁用）。
+                             - 位1-3：Multiple Message Capable（支持的向量数：0=1，1=2，2=4，3=8，4=16，5=32）。
+                             - 位4-6：Multiple Message Enable（启用的向量数）。
+                             - 位7：64-bit Address Capable（1=支持64位地址）。
+                             - 位8-15：保留。*/
+            UINT32 addr_l;  //32位消息地址（MSI中断写入的内存地址）。
+            UINT32 addr_h;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
+            UINT16 data;    //中断消息数据（写入Message Address的值，用于触发中断）。
+        }msi;
+
         // MSI-X能力结构（ID 0x11）
         struct {
             UINT16 control; // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
