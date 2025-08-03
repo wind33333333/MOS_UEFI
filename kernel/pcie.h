@@ -229,8 +229,8 @@ static inline UINT32 get_pcie_classcode(pcie_dev_t *pcie_dev) {
 void init_pcie(void);
 pcie_dev_t *find_pcie_dev(UINT32 class_code);
 cap_t *find_pcie_cap(pcie_dev_t *pcie_dev, cap_id_e cap_id);
-void init_pcie_bar(pcie_dev_t *pcie_dev,UINT8 bar_number);
+void init_pcie_bar(pcie_dev_t *pcie_dev,UINT8 bir);
 void init_pcie_msi_intrpt(pcie_dev_t *pcie_dev) ;
-void enable_msi_intrpt(pcie_dev_t *pcie_dev);
-void disable_msi_intrpt(pcie_dev_t *pcie_dev);
+void enable_msi_intrs(pcie_dev_t *pcie_dev);
+void disable_msi_intrs(pcie_dev_t *pcie_dev);
 

@@ -12,9 +12,9 @@ typedef struct {
     UINT16  hciversion;        // [31:16] 控制器版本 (0x100 = 1.0, 0x110 = 1.1, 0x120 = 1.2)
 
     // 04h: 硬件参数寄存器 (HCSPARAMS1)
-    UINT32 hcsparams1;      /*[7:0]   MaxSlots: 支持的最大设备槽数
-                              [15:8]  MaxIntrs: 支持的中断向量数
-                              [24:31] MaxPorts: 支持的根端口数*/
+    UINT32 hcsparams1;      /*[7:0]   MaxSlots: 支持的最大设备槽数（最大256）
+                              [18:8]  MaxIntrs: 支持的中断向量数（最大2048）
+                              [24:31] MaxPorts: 支持的根端口数（最大256）*/
 
     // 08h: 硬件参数寄存器 (HCSPARAMS2)
     UINT32 hcsparams2;      /*[3:0]IsochSchedThreshold: 等时调度阈值

@@ -141,7 +141,7 @@ cap_t *find_pcie_cap(pcie_dev_t *pcie_dev, cap_id_e cap_id) {
 
 //判断bar 64位或32位
 //0等于32位，4等于32位
-static inline UINT64 is_bar_bit(UINT64 bar_data) {
+static inline UINT64 is_bar64(UINT64 bar_data) {
     return bar_data & 0x6;
 }
 
@@ -156,7 +156,7 @@ void init_pcie_bar(pcie_dev_t *pcie_dev,UINT8 bir) {
     *bar = 0xFFFFFFFF;
     UINT64 size = *bar;
     *bar = (UINT32)addr;
-    if (is_bar_bit(addr)) {
+    if (is_bar64(addr)) {
         bar++;
         UINT64 addr_h = *bar;
         *bar = 0xFFFFFFFF;
@@ -175,7 +175,7 @@ void init_pcie_bar(pcie_dev_t *pcie_dev,UINT8 bir) {
 
 
 //启用msi中断
-void enable_msi_intrpt(pcie_dev_t *pcie_dev) {
+void enable_msi_intrs(pcie_dev_t *pcie_dev) {
     if (pcie_dev->msi_x_flags) {
         *pcie_dev->msi_x.msg_control |= 0x8000;
         *pcie_dev->msi_x.msg_control &= ~0x4000;
@@ -185,7 +185,7 @@ void enable_msi_intrpt(pcie_dev_t *pcie_dev) {
 }
 
 //禁用msi中断
-void disable_msi_intrpt(pcie_dev_t *pcie_dev) {
+void disable_msi_intrs(pcie_dev_t *pcie_dev) {
     if (pcie_dev->msi_x_flags) {
         *pcie_dev->msi_x.msg_control |= 0x4000;
     }else {
@@ -266,7 +266,7 @@ void init_pcie_msi_intrpt(pcie_dev_t *pcie_dev) {
         pcie_dev->msi.msg_addr_hi = (UINT32)msg_addr >> 32;
         pcie_dev->msi.msg_data = 0x40;
     }
-    disable_msi_intrpt(pcie_dev);
+    disable_msi_intrs(pcie_dev);
 }
 
 
