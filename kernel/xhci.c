@@ -19,7 +19,7 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->doorbells = xhci_dev->bar[0] + xhci_regs->cap->dboff;
 
     color_printk(GREEN,BLACK,"Xhci Version:%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d ContextSize:%d USBcmd:%#x USBsts:%#x PageSize:%d MSI-X:%d\n",xhci_regs->cap->xhci_version,xhci_regs->cap->hcsparams1&0xFF,xhci_regs->cap->hcsparams1>>8&0xFF,xhci_regs->cap->hcsparams1>>24,xhci_regs->cap->hccparams1>>2&1,xhci_regs->op->usbcmd,xhci_regs->op->usbsts,xhci_regs->op->pagesize<<12,xhci_dev->msi_x_flags);
-    color_printk(GREEN,BLACK,"MsgAdd:%#x%x MsgData:%#x\n",xhci_dev->msi.msg_addr_hi,xhci_dev->msi.msg_addr_lo,xhci_dev->msi.msg_data);
+    color_printk(GREEN,BLACK,"MsgAdd:%#lx MsgData:%#x\n",(UINT64)xhci_dev->msi.msg_addr_hi<<32 | (UINT64)xhci_dev->msi.msg_addr_lo,xhci_dev->msi.msg_data);
     while (1);
 
 }
