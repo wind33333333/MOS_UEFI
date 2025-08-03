@@ -73,7 +73,7 @@ typedef struct {
                       - HCE (位 12): 主机控制器错误*/
 
     // 08h: 页面大小寄存器 (PAGESIZE)
-    UINT32 pagesize; // [15:0] 控制器支持的页面大小*0x1000
+    UINT32 pagesize; // 控制器支持的页面大小*0x1000
 
     // 0Ch: 保留 [RsvdZ]
     UINT32 reserved0[2];
@@ -135,7 +135,7 @@ typedef struct {
 // ===== 3. 运行时寄存器 (Runtime Registers) =====
 typedef struct {
     // 00h: 微帧索引寄存器 (MFINDEX)
-    UINT32 mfindex;  // [13:0] 当前微帧索引
+    UINT32 mfindex;  // [13:0] 当前微帧索引（按125μs递增）
 
     // 04h: 保留
     UINT32 reserved0[7];
