@@ -87,6 +87,7 @@ typedef struct {
                    - CA (位 4): 命令终止
                    - CCE (位 5): 命令完成使能
                    - Command Ring Pointer (位 6-63): 命令环的64位基地址（对齐到64字节）*/
+
     //0x20: 保留字段
     UINT64 reserved1[2];
 
