@@ -1,5 +1,5 @@
 #include "xhci.h"
-
+#include "moslib.h"
 #include "apic.h"
 #include "pcie.h"
 #include "printk.h"
@@ -18,19 +18,27 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->runtime = xhci_dev->bar[0] + xhci_regs->cap->rtsoff;
     xhci_regs->doorbells = xhci_dev->bar[0] + xhci_regs->cap->dboff;
     color_printk(GREEN,BLACK,"Xhci Version:%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d ContextSize:%d USBcmd:%#x USBsts:%#x PageSize:%d MSI-X:%d\n",xhci_regs->cap->hciversion,xhci_regs->cap->hcsparams1&0xFF,xhci_regs->cap->hcsparams1>>8&0x7FF,xhci_regs->cap->hcsparams1>>24,xhci_regs->cap->hccparams1>>2&1,xhci_regs->op->usbcmd,xhci_regs->op->usbsts,xhci_regs->op->pagesize<<12,xhci_dev->msi_x_flags);
-
+    UINT64 crcr = xhci_regs->op->crcr;
+    color_printk(GREEN,BLACK,"crcr:%#lx dcbaap:%#lx portsc[0]:%#x portpmsc[0]:%#x portli[0]:%#x porthlpmc[0]:%#x erstba[0]:%#lx erdp[0]:%#lx\n",crcr,xhci_regs->op->dcbaap,xhci_regs->op->portregs[0].portsc,xhci_regs->op->portregs[0].portpmsc,xhci_regs->op->portregs[0].portli,xhci_regs->op->portregs[0].porthlpmc,xhci_regs->runtime->intr_regs[0].erstba,xhci_regs->runtime->intr_regs[0].erdp);
     xhci_regs->op->usbcmd &= ~1;
-    color_printk(GREEN,BLACK,"Xhci Version:%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d ContextSize:%d USBcmd:%#x USBsts:%#x PageSize:%d MSI-X:%d\n",xhci_regs->cap->hciversion,xhci_regs->cap->hcsparams1&0xFF,xhci_regs->cap->hcsparams1>>8&0x7FF,xhci_regs->cap->hcsparams1>>24,xhci_regs->cap->hccparams1>>2&1,xhci_regs->op->usbcmd,xhci_regs->op->usbsts,xhci_regs->op->pagesize<<12,xhci_dev->msi_x_flags);
-    color_printk(GREEN,BLACK,"crcr:%#lx dcbaap:%#lx portsc[0]:%#x portpmsc[0]:%#x portli[0]:%#x porthlpmc[0]:%#x erstba[0]:%#lx erdp[0]:%#lx\n",xhci_regs->op->crcr,xhci_regs->op->dcbaap,xhci_regs->op->portregs[0].portsc,xhci_regs->op->portregs[0].portpmsc,xhci_regs->op->portregs[0].portli,xhci_regs->op->portregs[0].porthlpmc,xhci_regs->runtime->intr_regs[0].erstba,xhci_regs->runtime->intr_regs[0].erdp);
-    xhci_regs->op->crcr = 0x100001UL;
+    while (!(xhci_regs->op->usbsts & 1)) {
+        pause();
+    }
+    xhci_regs->op->usbcmd |= 2;
+    while (xhci_regs->op->usbcmd & 2) {
+        pause();
+    }
+    while (xhci_regs->op->usbcmd & 0x800) {
+        pause();
+    }
+    xhci_regs->op->config = 32;
+    xhci_regs->op->crcr = 0x800000UL;
+    crcr = xhci_regs->op->crcr;
     xhci_regs->op->dcbaap = 0xBBBBBAAAAAAA0000UL;
-    // xhci_regs->op->portregs[0].portsc = 0xAAAAAAAAUL;
-    // xhci_regs->op->portregs[0].portpmsc = 0xAAAAAAAAUL;
-    // xhci_regs->op->portregs[0].portli = 0xAAAAAAAAUL;
-    // xhci_regs->op->portregs[0].porthlpmc = 0xAAAAAAAAUL;
     xhci_regs->runtime->intr_regs[0].erstba = 0xAAAAAAAAAAAA0000UL;
     xhci_regs->runtime->intr_regs[0].erdp = 0xAAAAAAAAAAAA0000UL;
-    color_printk(GREEN,BLACK,"crcr:%#lx dcbaap:%#lx portsc[0]:%#x portpmsc[0]:%#x portli[0]:%#x porthlpmc[0]:%#x erstba[0]:%#lx erdp[0]:%#lx\n",xhci_regs->op->crcr,xhci_regs->op->dcbaap,xhci_regs->op->portregs[0].portsc,xhci_regs->op->portregs[0].portpmsc,xhci_regs->op->portregs[0].portli,xhci_regs->op->portregs[0].porthlpmc,xhci_regs->runtime->intr_regs[0].erstba,xhci_regs->runtime->intr_regs[0].erdp);
+    color_printk(GREEN,BLACK,"Xhci Version:%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d ContextSize:%d USBcmd:%#x USBsts:%#x PageSize:%d MSI-X:%d\n",xhci_regs->cap->hciversion,xhci_regs->cap->hcsparams1&0xFF,xhci_regs->cap->hcsparams1>>8&0x7FF,xhci_regs->cap->hcsparams1>>24,xhci_regs->cap->hccparams1>>2&1,xhci_regs->op->usbcmd,xhci_regs->op->usbsts,xhci_regs->op->pagesize<<12,xhci_dev->msi_x_flags);
+    color_printk(GREEN,BLACK,"crcr:%#lx dcbaap:%#lx portsc[0]:%#x portpmsc[0]:%#x portli[0]:%#x porthlpmc[0]:%#x erstba[0]:%#lx erdp[0]:%#lx\n",crcr,xhci_regs->op->dcbaap,xhci_regs->op->portregs[0].portsc,xhci_regs->op->portregs[0].portpmsc,xhci_regs->op->portregs[0].portli,xhci_regs->op->portregs[0].porthlpmc,xhci_regs->runtime->intr_regs[0].erstba,xhci_regs->runtime->intr_regs[0].erdp);
 
     while (1);
 
