@@ -193,6 +193,10 @@ typedef struct {
     xhci_rt_regs_t  *runtime;     // 运行时寄存器 (通常是op_regs + cap.cap_length)
     xhci_db_regs_t  *doorbells;   // 门铃寄存器 (通常是runtime + runtime_offset)
     xhci_ext_regs_t *ext;        // 扩展寄存器 (可选的)
+    void *crcr;
+    void *dcbaap;
+    void *erstba;
+    void *erdp;
 } xhci_regs_t;
 
 #pragma pack(pop)
