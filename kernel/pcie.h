@@ -25,13 +25,12 @@ typedef struct {
     union {
         // Type 0: 端点设备结构
         struct {
-            /*+--------------------+---------+
-            | Bit 0              | 1 bit   | 0 = 内存 BAR
-            | Bit 1-2            | 2 bits  | 地址类型 (00 = 32-bit, 10 = 64-bit)
-            | Bit 3              | 1 bit   | 预取 (1 = Prefetchable, 0 = Non-Prefetchable)
-            | Bit 4-31           | 28 bits | 基地址 (4 字节对齐)
-            +--------------------+---------+*/
-            UINT32 bar[6]; // BAR0-BAR5 (0x10-0x27) - 基地址寄存器
+
+            UINT32 bar[6]; /*BAR0-BAR5 (0x10-0x27) - 基地址寄存器
+                            | Bit 0  0 = 内存 BAR
+                            | Bit 1-2  地址类型 (00 = 32-bit, 10 = 64-bit占用2个bar寄存器)
+                            | Bit 3    预取 (1 = Prefetchable, 0 = Non-Prefetchable)
+                            | Bit 4-31 基地址 (4 字节对齐)*/
             UINT32 cardbus_cis; // CardBus CIS 指针 (0x28) - 向后兼容
             UINT16 subsystem_vendor; // 子系统厂商ID (0x2C)
             UINT16 subsystem_id; // 子系统设备ID (0x2E)

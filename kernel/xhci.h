@@ -86,7 +86,7 @@ typedef struct {
                    - 位[1] - CS（Command Stop，命令停止）：当置1时，命令环在完成当前命令后停止运行。
                    - 位[2] - CA（Command Abort，命令中止）：当置1时，命令环立即停止，当前正在执行的命令被中止。
                    - 位[3] - CRR（Command Ring Running，命令环运行状态）：为1时表示命令环正在运行，为0时表示命令环已停止。
-                   - 位[6:63] - Command Ring Pointer（命令环指针）：指向命令环的64位基地址（物理地址）。低6位必须为0（即地址必须64字节对齐）
+                   - 位[6:63] - Command Ring Pointer（命令环指针）：指向命令环的64位基地址（物理地址）。低6位必须为0（即地址必须64字节对齐）*/
 
     //0x20: 保留字段
     UINT64 reserved1[2];
@@ -193,10 +193,10 @@ typedef struct {
     xhci_rt_regs_t  *runtime;     // 运行时寄存器 (通常是op_regs + cap.cap_length)
     xhci_db_regs_t  *doorbells;   // 门铃寄存器 (通常是runtime + runtime_offset)
     xhci_ext_regs_t *ext;        // 扩展寄存器 (可选的)
-    void *crcr;
-    void *dcbaap;
-    void *erstba;
-    void *erdp;
+    void *crcr_ptr;
+    void *dcbaap_ptr;
+    void *erstba_ptr;
+    void *erdp_ptr;
 } xhci_regs_t;
 
 #pragma pack(pop)
