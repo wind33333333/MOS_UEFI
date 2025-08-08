@@ -82,11 +82,11 @@ typedef struct {
     UINT32 dnctrl;  // - 每位对应一个设备槽的使能（0=禁用，1=使能）
 
     //0x18 命令环控制寄存器 (CRCR)
-    UINT64 crcr; /*- RCP (位 0-5): 环周期状态
-                   - CRR (位 3): 命令环运行（1=运行，0=停止）
-                   - CA (位 4): 命令终止
-                   - CCE (位 5): 命令完成使能
-                   - Command Ring Pointer (位 6-63): 命令环的64位基地址（对齐到64字节）*/
+    UINT64 crcr; /*- 位[0] - RCS（Ring Cycle State，环周期状态）：当RCS=1时，主机控制器从命令环中获取的TRB需要其Cycle Bit为1才会被处理；当RCS=0时，则处理Cycle Bit为0的TRB。
+                   - 位[1] - CS（Command Stop，命令停止）：当置1时，命令环在完成当前命令后停止运行。
+                   - 位[2] - CA（Command Abort，命令中止）：当置1时，命令环立即停止，当前正在执行的命令被中止。
+                   - 位[3] - CRR（Command Ring Running，命令环运行状态）：为1时表示命令环正在运行，为0时表示命令环已停止。
+                   - 位[6:63] - Command Ring Pointer（命令环指针）：指向命令环的64位基地址（物理地址）。低6位必须为0（即地址必须64字节对齐）
 
     //0x20: 保留字段
     UINT64 reserved1[2];
