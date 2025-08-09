@@ -9,7 +9,7 @@ typedef struct {
     // 00h: 能力长度和版本 (CAPLENGTH/HCIVERSION)
     UINT8   cap_length;        // [7:0] 能力寄存器总长度 (字节)
     UINT8   reserved0;         // 保留
-    UINT16  hciversion;        // [31:16] 控制器版本 (0x100 = 1.0, 0x110 = 1.1, 0x120 = 1.2)
+    UINT16  hciversion;        // [31:16] 控制器版本 (0x100 = 1.0.0, 0x110 = 1.1.0, 0x120 = 1.2.0)
 
     // 04h: 硬件参数寄存器 (HCSPARAMS1)
     UINT32 hcsparams1;      /*[7:0]   MaxSlots: 支持的最大设备槽数（最大256）
@@ -17,9 +17,13 @@ typedef struct {
                               [24:31] MaxPorts: 支持的根端口数（最大256）*/
 
     // 08h: 硬件参数寄存器 (HCSPARAMS2)
-    UINT32 hcsparams2;      /*[3:0]IsochSchedThreshold: 等时调度阈值
-                              [7:4]EventRingSegmentTableMax: 事件环段表最大条目数（2^(n+3)）
-                              [位 21:25: 高位, 27:31: 低位]MaxScratchpadBufs: 最大Scratchpad缓冲区数量*/
+    UINT32 hcsparams2;      /*[3:0]	    IST 等时调度阈值，单位为微帧（125us）。Host Controller 在这个阈值之后的同一帧内不再调度新的等时传输。常见值：0~8。
+                              [7:4]	    ERST Max 硬件支持的事件环段表最大条目数2^n ERST MAX = 8 则条目等于256。
+                              [13:8]	Max Scratchpad Buffers 最大 Scratchpad 缓冲区数量的高 6 位。与 [25:21] 一起组成完整值。
+                              [15:14]	保留。
+                              [20:16]	Scratchpad Restore Count 指定从保存状态恢复时，硬件会恢复多少个 Scratchpad 缓冲区（很少用）。
+                              [25:21]	Max Scratchpad Buffers (Low 5 bits)	最大 Scratchpad 缓冲区数量的低 5 位。和高 6 位组合得到完整的 Scratchpad Buffer 数量（范围 0~1023）。
+                              [31:26]	保留。*/
 
     // 0Ch: 硬件参数寄存器 (HCSPARAMS3)
     UINT32 hcsparams3;      /*[7:0]     U1DeviceExitLatency: U1设备退出延迟（以微秒为单位）
@@ -186,6 +190,13 @@ typedef struct {
     // ... 更多扩展寄存器 ...
 } xhci_ext_regs_t;
 
+/* ERST条目结构 (16字节) */
+typedef struct {
+    UINT64 ring_seg_base_addr;  // 段的64位物理基地址 (位[63:6]有效，位[5:0]为0)
+    UINT32 ring_seg_size;       // 段中TRB的数量 (16到4096)
+    UINT32 reserved;            // 保留位，初始化为0
+} xhci_erst_entry;
+
 // ===== 完整xHCI寄存器结构 =====
 typedef struct {
     xhci_cap_regs_t *cap;        // 能力寄存器 (只读)
@@ -193,10 +204,10 @@ typedef struct {
     xhci_rt_regs_t  *runtime;     // 运行时寄存器 (通常是op_regs + cap.cap_length)
     xhci_db_regs_t  *doorbells;   // 门铃寄存器 (通常是runtime + runtime_offset)
     xhci_ext_regs_t *ext;        // 扩展寄存器 (可选的)
-    void *crcr_ptr;
-    void *dcbaap_ptr;
-    void *erstba_ptr;
-    void *erdp_ptr;
+    void            *crcr_ptr;
+    void            *dcbaap_ptr;
+    xhci_erst_entry *erstba_ptr;
+    void            *erdp_ptr;
 } xhci_regs_t;
 
 #pragma pack(pop)

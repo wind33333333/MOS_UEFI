@@ -19,10 +19,15 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->runtime = xhci_dev->bar[0] + xhci_regs->cap->rtsoff;
     xhci_regs->doorbells = xhci_dev->bar[0] + xhci_regs->cap->dboff;
 
-    xhci_regs->crcr_ptr = kzalloc(4096);
-    xhci_regs->dcbaap_ptr = kzalloc(4096);
-    xhci_regs->erstba_ptr = kzalloc(4096);
-    xhci_regs->erdp_ptr = kzalloc(4096);
+    xhci_regs->crcr_ptr = kzalloc(PAGE_4K_SIZE);
+    xhci_regs->dcbaap_ptr = kzalloc((xhci_regs->cap->hcsparams1&0xff)<<3);
+    xhci_regs->erstba_ptr = kmalloc((1<<(xhci_regs->cap->hccparams2>>4&0xf)) * sizeof(xhci_erst_entry) + 64);
+    xhci_regs->erdp_ptr = kzalloc(256*16);
+    xhci_regs->erstba_ptr[0].ring_seg_base_addr = va_to_pa(xhci_regs->erdp_ptr);
+    xhci_regs->erstba_ptr[0].ring_seg_size = 256;
+    xhci_regs->erstba_ptr[0].reserved = 0;
+
+
     xhci_regs->op->usbcmd &= ~1;
     while (!(xhci_regs->op->usbsts & 1)) pause();
     xhci_regs->op->usbcmd |= 2;
@@ -32,6 +37,7 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->op->config = xhci_regs->cap->hcsparams1&0xFF;
     xhci_regs->op->dcbaap = va_to_pa(xhci_regs->dcbaap_ptr);
     xhci_regs->op->crcr = va_to_pa(xhci_regs->crcr_ptr)|1;
+    xhci_regs->runtime->intr_regs[0].erstsz = 1<<(xhci_regs->cap->hccparams2>>4&0xf);
     xhci_regs->runtime->intr_regs[0].erstba = va_to_pa(xhci_regs->erstba_ptr);
     xhci_regs->runtime->intr_regs[0].erdp = va_to_pa(xhci_regs->erdp_ptr);
     xhci_regs->op->usbcmd |= 1;
