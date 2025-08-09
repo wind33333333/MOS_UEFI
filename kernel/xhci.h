@@ -197,6 +197,13 @@ typedef struct {
     UINT32 reserved;            // 保留位，初始化为0
 } xhci_erst_entry;
 
+typedef struct {
+    UINT32 parameter1;
+    UINT32 parameter2;
+    UINT32 parameter3;
+    UINT32 control; // 位[0]为Cycle Bit
+} xhci_trb;
+
 // ===== 完整xHCI寄存器结构 =====
 typedef struct {
     xhci_cap_regs_t *cap;        // 能力寄存器 (只读)
@@ -204,10 +211,10 @@ typedef struct {
     xhci_rt_regs_t  *runtime;     // 运行时寄存器 (通常是op_regs + cap.cap_length)
     xhci_db_regs_t  *doorbells;   // 门铃寄存器 (通常是runtime + runtime_offset)
     xhci_ext_regs_t *ext;        // 扩展寄存器 (可选的)
-    void            *crcr_ptr;
+    xhci_trb        *crcr_ptr;
     void            *dcbaap_ptr;
     xhci_erst_entry *erstba_ptr;
-    void            *erdp_ptr;
+    xhci_trb        *erdp_ptr;
 } xhci_regs_t;
 
 #pragma pack(pop)
