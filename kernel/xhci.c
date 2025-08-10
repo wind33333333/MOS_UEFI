@@ -43,7 +43,7 @@ INIT_TEXT void init_xhci(void) {
     UINT32 max_slots = xhci_regs->cap->hcsparams1&0xff;
     xhci_regs->dcbaap_ptr32 = kzalloc(max_slots<<3);     //分配设备上下文插槽内存,最大插槽数量*8字节内存
     for (UINT32 i = 0; i < max_slots; i++) {                 //为每个插槽分配设备上下文内存
-        xhci_regs->dcbaap_ptr32[i] = va_to_pa(kzalloc(sizeof(xhci_device_context_32_t)));
+        xhci_regs->dcbaap_ptr32[i] = va_to_pa(kzalloc(sizeof(xhci_device_context32_t)));
     }
     xhci_regs->erstba_ptr = kmalloc((1<<(xhci_regs->cap->hccparams2>>4&0xf)) * sizeof(xhci_erst_entry) + 64); //分配事件环段数量*事件环段结构内存，对齐64字节
     xhci_regs->erdp_ptr = kzalloc(TRB_COUNT*16);  //分配事件环空间256*16
@@ -61,7 +61,7 @@ INIT_TEXT void init_xhci(void) {
     while (xhci_regs->op->usbcmd & 0x800) pause();
 
     xhci_regs->op->config = xhci_regs->cap->hcsparams1&0xFF;
-    xhci_regs->op->dcbaap = va_to_pa(xhci_regs->dcbaap_ptr);
+    xhci_regs->op->dcbaap = va_to_pa(xhci_regs->dcbaap_ptr64);
     xhci_regs->op->crcr = va_to_pa(xhci_regs->crcr_ptr)|1;
     xhci_regs->runtime->intr_regs[0].erstsz = 1<<(xhci_regs->cap->hccparams2>>4&0xf);
     xhci_regs->runtime->intr_regs[0].erstba = va_to_pa(xhci_regs->erstba_ptr);

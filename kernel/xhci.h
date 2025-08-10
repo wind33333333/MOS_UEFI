@@ -277,64 +277,55 @@ typedef struct {
     UINT32 control; // 位[0]为Cycle Bit
 } xhci_trb_t;
 
-// 64字节Device Context (1 slot context + 最多31个endpoint context)
+/* xHCI 设备上下文结构（64 字节版本，CSZ=1） */
 typedef struct {
-    // Slot Context (64字节)
+    /* Slot Context（64 字节） */
     struct {
-        UINT32 route_string;     // 位0-19: 路由字符串
-        UINT32 speed;            // 位20-23: 速度
-        UINT32 reserved0[3];
-        UINT32 max_exit_latency; // 最大退出延迟
-        UINT32 root_hub_port_num; // 根Hub端口号
-        UINT32 num_ports;        // 端口数
-        UINT32 tt_hub_slot_id;   // Transaction Translator hub slot ID
-        UINT32 tt_port_num;      // TT port number
-        UINT32 interrupter_target;
-        UINT32 usb_device_address;
-        UINT32 reserved1[3];
-    } slot;
+        UINT32 route_string;    /* 路由字符串：描述设备的拓扑路径 */
+        UINT32 speed_port;      /* 速度和端口：低 4 位为速度，高 8 位为根端口号 */
+        UINT32 slot_state;      /* 槽状态：描述设备槽的当前状态（如启用、禁用） */
+        UINT32 dev_info;        /* 设备信息：包含最大端点数、上下文条目数等 */
+        UINT32 hub_info;        /* 集线器信息：包含集线器槽 ID、端口数等 */
+        UINT32 tt_info;         /* TT 信息：事务转换器信息（用于 USB 2.0 集线器） */
+        UINT32 dev_addr;        /* 设备地址：xHCI 分配的设备地址 */
+        UINT32 reserved[9];     /* 保留字段：填充至 64 字节 */
+    } slot_context;
 
-    // Endpoint Context (64字节)
+    /* Endpoint 0 Context（默认控制端点，64 字节） */
     struct {
-        UINT32 ep_state;         // 位0-2: EP State
-        UINT32 mult;             // 位8-9: Mult
-        UINT32 max_pstreams;     // 位10-14: Max Primary Streams
-        UINT32 lsa;              // 位15: LSA
-        UINT32 interval;         // 位16-23: Interval
-        UINT32 max_esit_payload; // 位24-31
-        UINT64 tr_dequeue_ptr;   // TR Dequeue Pointer
-        UINT32 avg_trb_length;   // 平均TRB长度
-        UINT32 max_pkt_size;     // 最大包大小
-        UINT32 reserved[4];
+        UINT32 ep_state;        /* 端点状态：描述端点当前状态（如运行、停止） */
+        UINT32 ep_type;         /* 端点类型：包含端点方向、类型等信息 */
+        UINT32 max_packet_size; /* 最大包大小：端点的最大数据包大小 */
+        UINT32 tr_dequeue_ptr_lo; /* TRB 环出队指针（低 32 位） */
+        UINT32 tr_dequeue_ptr_hi; /* TRB 环出队指针（高 32 位，64 位地址） */
+        UINT32 dcs_cycle;       /* 出队循环状态：包含 DCS 位和其他信息 */
+        UINT32 error_count;     /* 错误计数：记录传输错误次数 */
+        UINT32 max_burst_size;  /* 最大突发大小：端点的最大突发传输量 */
+        UINT32 reserved[8];     /* 保留字段：填充至 64 字节 */
     } ep[31];
 } xhci_device_context64_t;
 
-// 64字节Device Context (1 slot context + 最多31个endpoint context)
+/* xHCI 设备上下文结构（32 字节版本，CSZ=0） */
 typedef struct {
-    // Slot Context (32字节)
+    /* Slot Context（32 字节） */
     struct {
-        UINT32 route_speed;     // bits 0-19: Route String
-                                // bits 20-23: Speed
-                                // bits 27-31: Reserved
-        UINT32 reserved0[2];
-        UINT32 max_exit_latency; // 最大退出延迟
-        UINT32 root_hub_port_num; // Root Hub Port #
-        UINT32 num_ports;       // 端口数量
-        UINT32 tt_hub_slot_id;  // TT Hub Slot ID
-        UINT32 tt_port_num;     // TT Port Number
+        UINT32 route_string;    /* 路由字符串：描述设备的拓扑路径 */
+        UINT32 speed_port;      /* 速度和端口：低 4 位为速度，高 8 位为根端口号 */
+        UINT32 slot_state;      /* 槽状态：描述设备槽的当前状态（如启用、禁用） */
+        UINT32 dev_info;        /* 设备信息：包含最大端点数、上下文条目数等 */
+        UINT32 reserved[4];     /* 保留字段：填充至 32 字节 */
     } slot;
 
-    // Endpoint Context (32字节)
+    /* Endpoint 0 Context（默认控制端点，32 字节） */
     struct {
-        UINT32 ep_state_mult;    // bits 0-2: Endpoint State
-                                 // bits 8-9: Mult
-                                 // bits 16-23: Interval
-        UINT32 max_pkt_size;     // 最大包大小
-        UINT32 tr_dequeue_ptr_lo;// TR Dequeue Pointer (低32位)
-        UINT32 avg_trb_length;   // 平均 TRB 长度
-        UINT32 reserved0[4];
+        UINT32 ep_state;        /* 端点状态：描述端点当前状态（如运行、停止） */
+        UINT32 ep_type;         /* 端点类型：包含端点方向、类型等信息 */
+        UINT32 max_packet_size; /* 最大包大小：端点的最大数据包大小 */
+        UINT32 tr_dequeue_ptr;  /* TRB 环出队指针：指向端点的 TRB 环（低 32 位） */
+        UINT32 dcs_cycle;       /* 出队循环状态：包含 DCS 位和其他信息 */
+        UINT32 reserved[3];     /* 保留字段：填充至 32 字节 */
     } ep[31];
-}xhci_device_context32_t;
+} xhci_device_context32_t;
 
 
 // ===== 完整xHCI寄存器结构 =====
@@ -347,10 +338,13 @@ typedef struct {
     xhci_trb_t      *crcr_ptr;
     union {
         xhci_device_context32_t  **dcbaap_ptr32;
-        xhci_device_context64_t  **dcbaap_ptr;
+        xhci_device_context64_t  **dcbaap_ptr64;
     };
     xhci_erst_entry *erstba_ptr;
     xhci_trb_t      *erdp_ptr;
+    UINT8 csz;      //设备上下文 1=64字节 0=32字节
+
+
 } xhci_regs_t;
 
 #pragma pack(pop)
