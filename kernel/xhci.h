@@ -4,6 +4,79 @@
 
 #pragma pack(push,1)
 
+/* xHCI 扩展能力 (xCAP) 结构体 */
+typedef struct {
+    union {
+        /* 通用头部：所有扩展能力的第一个 32 位寄存器 */
+        UINT32  cap_id;  /* 能力头部，低 8 位为 Capability ID ,高8位Next Capability Pointer*/
+
+        /* 0x01: USB Legacy Support (USB 传统支持) */
+        struct {
+            UINT32 usblegsup;     /* 位16=1 bios控制，位24=1 os控制 */
+            UINT32 usblegctlsts;  /* 位0: USB SMI启用
+                                     位4: 主机系统错误SMI启用
+                                     位13: OS所有权变更SMI启用
+                                     位14: PCI命令变更SMI启用
+                                     位15: BAR变更SMI启用
+
+                                     === 高16位：SMI 状态/事件区域 ===
+                                     RO：只读
+                                     位16: 事件中断SMI状态(RO)
+                                     位19:17 保留 (RsvdP)
+                                     位20: 主机系统错误SMI状态(RO)
+                                     位28:21 保留 (RsvdZ)
+
+                                     RW1C：写1清除
+                                     位29: OS所有权变更SMI状态(RW1C)
+                                     位30: PCI命令变更SMI状态(RW1C)
+                                     位31: BAR变更SMI状态(RW1C)*/
+        } legacy_support;
+
+        /* 0x02: Supported Protocol Capability (支持的协议能力) */
+        struct {
+            UINT32 protocol_ver;   /* 位 23:16 小修订版本0x10 = x.10
+                                      位 31:24 主修订版本0x03 = 3.x */
+            UINT32 name;           /* 位 31:0 4个asci字符 */
+            UINT32 port_info;      /* 位7:0 兼容端口偏移
+                                      位15:8 兼容端口计数偏移
+                                      31:28 速度id计数*/
+            UINT32 protocol_speed; /* 位3:0 协议速度id值
+                                      位5:4 协议速度标识 0=b/s 1=Kb/s 2=Mb/s 3=Gb/s */
+        } supported_protocol;
+
+        /* 0x03: Extended Power Management (扩展电源管理) */
+        struct {
+            UINT32 pwr_mgmt_cap;  /* 电源管理能力寄存器：描述电源管理功能 */
+            UINT32 pwr_mgmt_ctrl; /* 电源管理控制寄存器：控制电源管理行为 */
+        } ext_power_mgmt;
+
+        /* 0x04: I/O Virtualization (I/O 虚拟化) */
+        struct {
+            UINT32 virt_cap;  /* 虚拟化能力寄存器：描述虚拟化支持特性 */
+            UINT32 virt_ctrl; /* 虚拟化控制寄存器：控制虚拟化行为 */
+        } io_virt;
+
+        /* 0x05: Message Interrupts (消息中断) */
+        struct {
+            UINT32 msi_cap;  /* MSI/MSI-X 能力寄存器：描述消息中断支持 */
+            UINT32 msi_ctrl; /* MSI/MSI-X 控制寄存器：控制消息中断行为 */
+        } msg_interrupts;
+
+        /* 0x06: Latency Tolerance Messaging (延迟容忍消息) */
+        struct {
+            UINT32 ltm_cap;  /* LTM 能力寄存器：描述延迟容忍消息支持 */
+            UINT32 ltm_ctrl; /* LTM 控制寄存器：控制 LTM 行为 */
+        } latency_tolerance;
+
+        /* 0x07: USB Debug Capability (USB 调试能力) */
+        struct {
+            UINT32 dbc_cap;   /* 调试能力寄存器：描述 USB 调试功能参数 */
+            UINT32 dbc_ctrl;  /* 调试控制寄存器：控制调试行为 */
+            UINT32 dbc_port;  /* 调试端口寄存器：指定调试端口号 */
+        } usb_debug;
+    };
+} xhci_cap_t;
+
 // ===== 1. 能力寄存器 (Capability Registers) =====
 typedef struct {
     // 00h: 能力长度和版本 (CAPLENGTH/HCIVERSION)
