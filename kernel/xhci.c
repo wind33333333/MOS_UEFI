@@ -33,25 +33,24 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs_t *xhci_regs = xhci_dev->private;
     xhci_regs->cap = xhci_dev->bar[0];                                  //xhci能力寄存器基地址
     xhci_regs->op = xhci_dev->bar[0] + xhci_regs->cap->cap_length;      //xhci操作寄存器基地址
-    xhci_regs->rt = xhci_dev->bar[0] + xhci_regs->cap->rtsoff;     //xhci运行时寄存器基地址
-    xhci_regs->db = xhci_dev->bar[0] + xhci_regs->cap->dboff;    //xhci门铃寄存器基地址
+    xhci_regs->rt = xhci_dev->bar[0] + xhci_regs->cap->rtsoff;          //xhci运行时寄存器基地址
+    xhci_regs->db = xhci_dev->bar[0] + xhci_regs->cap->dboff;           //xhci门铃寄存器基地址
 
-    xhci_regs->crcr_ptr = kzalloc(TRB_COUNT*sizeof(xhci_trb_t));                 //分配命令环寄存器内存 4K
-    xhci_regs->crcr_ptr[TRB_COUNT-1].parameter1 = va_to_pa(xhci_regs->crcr_ptr);
-    xhci_regs->crcr_ptr[TRB_COUNT-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE;     //命令环最后一个trb设置位link
+    xhci_regs->crcr = kzalloc(TRB_COUNT*sizeof(xhci_trb_t));                 //分配命令环寄存器内存 4K
+    xhci_regs->crcr[TRB_COUNT-1].parameter1 = va_to_pa(xhci_regs->crcr);
+    xhci_regs->crcr[TRB_COUNT-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE;     //命令环最后一个trb设置位link
 
-    xhci_regs->csz = xhci_regs->cap->hccparams1 & 4 ? 64 : 32; //64 或 32字节设备上下文
     UINT32 max_slots = xhci_regs->cap->hcsparams1&0xff;
-    xhci_regs->dcbaap_ptr32 = kzalloc(max_slots<<3);     //分配设备上下文插槽内存,最大插槽数量*8字节内存
-    for (UINT32 i = 0; i < max_slots; i++) {                 //为每个插槽分配设备上下文内存
-        xhci_regs->dcbaap_ptr32[i] = va_to_pa(kzalloc(sizeof(xhci_device_context32_t)));
+    xhci_regs->dcbaap32 = kzalloc(max_slots<<3);     //分配设备上下文插槽内存,最大插槽数量*8字节内存
+    for (UINT32 i = 0; i < max_slots; i++) {             //为每个插槽分配设备上下文内存
+        xhci_regs->dcbaap32[i] = va_to_pa(kzalloc(sizeof(xhci_device_context32_t)));
     }
-    xhci_regs->erstba_ptr = kmalloc((1<<(xhci_regs->cap->hccparams2>>4&0xf)) * sizeof(xhci_erst_entry) + 64); //分配事件环段数量*事件环段结构内存，对齐64字节
-    xhci_regs->erdp_ptr = kzalloc(TRB_COUNT*16);  //分配事件环空间256*16
+    xhci_regs->erstba = kmalloc((1<<(xhci_regs->cap->hccparams2>>4&0xf)) * sizeof(xhci_erst_entry) + 64); //分配事件环段数量*事件环段结构内存，对齐64字节
+    xhci_regs->erdp = kzalloc(TRB_COUNT*16);  //分配事件环空间256*16
 
-    xhci_regs->erstba_ptr[0].ring_seg_base_addr = va_to_pa(xhci_regs->erdp_ptr);
-    xhci_regs->erstba_ptr[0].ring_seg_size = TRB_COUNT;
-    xhci_regs->erstba_ptr[0].reserved = 0;
+    xhci_regs->erstba[0].ring_seg_base_addr = va_to_pa(xhci_regs->erdp);
+    xhci_regs->erstba[0].ring_seg_size = TRB_COUNT;
+    xhci_regs->erstba[0].reserved = 0;
 
 
 
@@ -62,11 +61,11 @@ INIT_TEXT void init_xhci(void) {
     while (xhci_regs->op->usbcmd & 0x800) pause();
 
     xhci_regs->op->config = xhci_regs->cap->hcsparams1&0xFF;
-    xhci_regs->op->dcbaap = va_to_pa(xhci_regs->dcbaap_ptr64);
-    xhci_regs->op->crcr = va_to_pa(xhci_regs->crcr_ptr)|1;
-    xhci_regs->runtime->intr_regs[0].erstsz = 1<<(xhci_regs->cap->hccparams2>>4&0xf);
-    xhci_regs->runtime->intr_regs[0].erstba = va_to_pa(xhci_regs->erstba_ptr);
-    xhci_regs->runtime->intr_regs[0].erdp = va_to_pa(xhci_regs->erdp_ptr);
+    xhci_regs->op->dcbaap = va_to_pa(xhci_regs->dcbaap32);
+    xhci_regs->op->crcr = va_to_pa(xhci_regs->crcr)|1;
+    xhci_regs->rt->intr_regs[0].erstsz = 1<<(xhci_regs->cap->hccparams2>>4&0xf);
+    xhci_regs->rt->intr_regs[0].erstba = va_to_pa(xhci_regs->erstba);
+    xhci_regs->rt->intr_regs[0].erdp = va_to_pa(xhci_regs->erdp);
     xhci_regs->op->usbcmd |= 1; //启动xhci
 
     color_printk(GREEN,BLACK,"Xhci Version:%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d CS:%d AC64:%d USBcmd:%#x USBsts:%#x PageSize:%d iman:%#x imod:%#x\n",xhci_regs->cap->hciversion,(UINT64)xhci_dev->pcie_config_space->type0.bar[0]&~0x1f|(UINT64)xhci_dev->pcie_config_space->type0.bar[1]<<32,xhci_dev->msi_x_flags,xhci_regs->cap->hcsparams1&0xFF,xhci_regs->cap->hcsparams1>>8&0x7FF,xhci_regs->cap->hcsparams1>>24,xhci_regs->cap->hccparams1>>2&1,xhci_regs->cap->hccparams1&1,xhci_regs->op->usbcmd,xhci_regs->op->usbsts,xhci_regs->op->pagesize<<12,xhci_regs->runtime->intr_regs[0].iman,xhci_regs->runtime->intr_regs[0].imod);

@@ -96,7 +96,7 @@ typedef struct {
     UINT64 reserved1[2];
 
     //0x30h: 设备上下文基础地址数组指针 (DCBAAP)
-    UINT64 dcbaap;  // DCBAA的物理地址指针 (低32位+高32位)
+    UINT64 dcbaap;  // DCBAA的物理地址指针
 
     // 38h: 配置寄存器 (CONFIG)
     UINT32 config;   // [7:0] 启用的设备槽数 (值≤MaxSlots)
