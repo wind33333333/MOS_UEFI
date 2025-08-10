@@ -174,7 +174,7 @@ typedef struct {
             UINT64        *pba_table;     //中断挂起表
         } msi_x;
     };
-    void *private_data;
+    void *private;                      //设备私有数据指针
 } pcie_dev_t;
 
 typedef enum {
