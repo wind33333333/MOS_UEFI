@@ -357,10 +357,10 @@ typedef struct {
 
 // ===== 完整xHCI寄存器结构 =====
 typedef struct {
-    xhci_cap_regs_t *cap;        // 能力寄存器 (只读)
-    xhci_op_regs_t  *op;         // 操作寄存器 (读写)
-    xhci_rt_regs_t  *rt;         // 运行时寄存器 (通常是op_regs + cap.cap_length)
-    xhci_db_regs_t  *db;         // 门铃寄存器 (通常是runtime + runtime_offset)
+    xhci_cap_regs_t *cap;        // 能力寄存器
+    xhci_op_regs_t  *op;         // 操作寄存器
+    xhci_rt_regs_t  *rt;         // 运行时寄存器
+    xhci_db_regs_t  *db;         // 门铃寄存器
     xhci_ext_regs_t *ext;        // 扩展寄存器 (可选的)
 
     xhci_trb_t      *crcr_ptr;
