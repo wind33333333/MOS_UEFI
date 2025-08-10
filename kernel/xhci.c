@@ -7,8 +7,9 @@
 #include "vmalloc.h"
 #include "vmm.h"
 
-#define trbs_count 256
-#define TRB_TYPE_LINK        (0x06<<10)
+#define TRB_COUNT 256        //trb个数
+
+#define TRB_TYPE_LINK        (0x06<<10) //连接trb
 #define TRB_CYCLE            (1 << 0)
 #define TRB_TOGGLE_CYCLE     (1 << 1)
 #define TRB_CHAIN            (1 << 9)
@@ -35,21 +36,23 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->runtime = xhci_dev->bar[0] + xhci_regs->cap->rtsoff;     //xhci运行时寄存器基地址
     xhci_regs->doorbells = xhci_dev->bar[0] + xhci_regs->cap->dboff;    //xhci门铃寄存器基地址
 
-    xhci_regs->crcr_ptr = kzalloc(trbs_count*16);          //分配命令环寄存器内存
-    xhci_regs->dcbaap_ptr32 = kzalloc((xhci_regs->cap->hcsparams1&0xff)<<3); //分配设备上下文寄存器最大插槽数量*8字节内存
-    for (UINT32 i = 0; i < (xhci_regs->cap->hcsparams1&0xff); i++) {
+    xhci_regs->crcr_ptr = kzalloc(TRB_COUNT*sizeof(xhci_trb_t));                 //分配命令环寄存器内存 4K
+    xhci_regs->crcr_ptr[TRB_COUNT-1].parameter1 = va_to_pa(xhci_regs->crcr_ptr);
+    xhci_regs->crcr_ptr[TRB_COUNT-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE;     //命令环最后一个trb设置位link
+
+    UINT32 max_slots = xhci_regs->cap->hcsparams1&0xff;
+    xhci_regs->dcbaap_ptr32 = kzalloc(max_slots<<3);     //分配设备上下文插槽内存,最大插槽数量*8字节内存
+    for (UINT32 i = 0; i < max_slots; i++) {                 //为每个插槽分配设备上下文内存
         xhci_regs->dcbaap_ptr32[i] = va_to_pa(kzalloc(sizeof(xhci_device_context_32_t)));
     }
-
     xhci_regs->erstba_ptr = kmalloc((1<<(xhci_regs->cap->hccparams2>>4&0xf)) * sizeof(xhci_erst_entry) + 64); //分配事件环段数量*事件环段结构内存，对齐64字节
-    xhci_regs->erdp_ptr = kzalloc(trbs_count*16);  //分配事件环空间256*16
+    xhci_regs->erdp_ptr = kzalloc(TRB_COUNT*16);  //分配事件环空间256*16
 
     xhci_regs->erstba_ptr[0].ring_seg_base_addr = va_to_pa(xhci_regs->erdp_ptr);
-    xhci_regs->erstba_ptr[0].ring_seg_size = trbs_count;
+    xhci_regs->erstba_ptr[0].ring_seg_size = TRB_COUNT;
     xhci_regs->erstba_ptr[0].reserved = 0;
 
-    xhci_regs->crcr_ptr[3].parameter1 = va_to_pa(xhci_regs->crcr_ptr);
-    xhci_regs->crcr_ptr[3].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE;
+
 
     xhci_regs->op->usbcmd &= ~1;  //停止xhci
     while (!(xhci_regs->op->usbsts & 1)) pause();

@@ -4,80 +4,6 @@
 
 #pragma pack(push,1)
 
-/* xHCI 扩展能力 (xCAP) 结构体 */
-typedef struct {
-    union {
-        /* 通用头部：所有扩展能力的第一个 32 位寄存器 */
-        UINT32  cap_id;  /* 能力头部，低 8 位为 Capability ID ,高8位Next Capability Pointer*/
-        UINT32  next_ptr;
-
-        /* 0x01: USB Legacy Support (USB 传统支持) */
-        struct {
-            UINT32 usblegsup;     /* 位16=1 bios控制，位24=1 os控制 */
-            UINT32 usblegctlsts;  /* 位0: USB SMI启用
-                                     位4: 主机系统错误SMI启用
-                                     位13: OS所有权变更SMI启用
-                                     位14: PCI命令变更SMI启用
-                                     位15: BAR变更SMI启用
-
-                                     === 高16位：SMI 状态/事件区域 ===
-                                     RO：只读
-                                     位16: 事件中断SMI状态(RO)
-                                     位19:17 保留 (RsvdP)
-                                     位20: 主机系统错误SMI状态(RO)
-                                     位28:21 保留 (RsvdZ)
-
-                                     RW1C：写1清除
-                                     位29: OS所有权变更SMI状态(RW1C)
-                                     位30: PCI命令变更SMI状态(RW1C)
-                                     位31: BAR变更SMI状态(RW1C)*/
-        } legacy_support;
-
-        /* 0x02: Supported Protocol Capability (支持的协议能力) */
-        struct {
-            UINT32 protocol_ver;   /* 位 23:16 小修订版本0x10 = x.10
-                                      位 31:24 主修订版本0x03 = 3.x */
-            UINT32 name;           /* 位 31:0 4个asci字符 */
-            UINT32 port_info;      /* 位7:0 兼容端口偏移
-                                      位15:8 兼容端口计数偏移
-                                      31:28 速度id计数*/
-            UINT32 protocol_speed; /* 位3:0 协议速度id值
-                                      位5:4 协议速度标识 0=b/s 1=Kb/s 2=Mb/s 3=Gb/s */
-        } supported_protocol;
-
-        /* 0x03: Extended Power Management (扩展电源管理) */
-        struct {
-            UINT32 pwr_mgmt_cap;  /* 电源管理能力寄存器：描述电源管理功能 */
-            UINT32 pwr_mgmt_ctrl; /* 电源管理控制寄存器：控制电源管理行为 */
-        } ext_power_mgmt;
-
-        /* 0x04: I/O Virtualization (I/O 虚拟化) */
-        struct {
-            UINT32 virt_cap;  /* 虚拟化能力寄存器：描述虚拟化支持特性 */
-            UINT32 virt_ctrl; /* 虚拟化控制寄存器：控制虚拟化行为 */
-        } io_virt;
-
-        /* 0x05: Message Interrupts (消息中断) */
-        struct {
-            UINT32 msi_cap;  /* MSI/MSI-X 能力寄存器：描述消息中断支持 */
-            UINT32 msi_ctrl; /* MSI/MSI-X 控制寄存器：控制消息中断行为 */
-        } msg_interrupts;
-
-        /* 0x06: Latency Tolerance Messaging (延迟容忍消息) */
-        struct {
-            UINT32 ltm_cap;  /* LTM 能力寄存器：描述延迟容忍消息支持 */
-            UINT32 ltm_ctrl; /* LTM 控制寄存器：控制 LTM 行为 */
-        } latency_tolerance;
-
-        /* 0x07: USB Debug Capability (USB 调试能力) */
-        struct {
-            UINT32 dbc_cap;   /* 调试能力寄存器：描述 USB 调试功能参数 */
-            UINT32 dbc_ctrl;  /* 调试控制寄存器：控制调试行为 */
-            UINT32 dbc_port;  /* 调试端口寄存器：指定调试端口号 */
-        } usb_debug;
-    };
-} xhci_cap_t;
-
 // ===== 1. 能力寄存器 (Capability Registers) =====
 typedef struct {
     // 00h: 能力长度和版本 (CAPLENGTH/HCIVERSION)
@@ -264,6 +190,80 @@ typedef struct {
     // ... 更多扩展寄存器 ...
 } xhci_ext_regs_t;
 
+/* xHCI 扩展能力 (xCAP) 结构体 */
+typedef struct {
+    union {
+        /* 通用头部：所有扩展能力的第一个 32 位寄存器 */
+        UINT32  cap_id;  /* 能力头部，低 8 位为 Capability ID ,高8位Next Capability Pointer*/
+        UINT32  next_ptr;
+
+        /* 0x01: USB Legacy Support (USB 传统支持) */
+        struct {
+            UINT32 usblegsup;     /* 位16=1 bios控制，位24=1 os控制 */
+            UINT32 usblegctlsts;  /* 位0: USB SMI启用
+                                     位4: 主机系统错误SMI启用
+                                     位13: OS所有权变更SMI启用
+                                     位14: PCI命令变更SMI启用
+                                     位15: BAR变更SMI启用
+
+                                     === 高16位：SMI 状态/事件区域 ===
+                                     RO：只读
+                                     位16: 事件中断SMI状态(RO)
+                                     位19:17 保留 (RsvdP)
+                                     位20: 主机系统错误SMI状态(RO)
+                                     位28:21 保留 (RsvdZ)
+
+                                     RW1C：写1清除
+                                     位29: OS所有权变更SMI状态(RW1C)
+                                     位30: PCI命令变更SMI状态(RW1C)
+                                     位31: BAR变更SMI状态(RW1C)*/
+        } legacy_support;
+
+        /* 0x02: Supported Protocol Capability (支持的协议能力) */
+        struct {
+            UINT32 protocol_ver;   /* 位 23:16 小修订版本0x10 = x.10
+                                      位 31:24 主修订版本0x03 = 3.x */
+            UINT32 name;           /* 位 31:0 4个asci字符 */
+            UINT32 port_info;      /* 位7:0 兼容端口偏移
+                                      位15:8 兼容端口计数偏移
+                                      31:28 速度id计数*/
+            UINT32 protocol_speed; /* 位3:0 协议速度id值
+                                      位5:4 协议速度标识 0=b/s 1=Kb/s 2=Mb/s 3=Gb/s */
+        } supported_protocol;
+
+        /* 0x03: Extended Power Management (扩展电源管理) */
+        struct {
+            UINT32 pwr_mgmt_cap;  /* 电源管理能力寄存器：描述电源管理功能 */
+            UINT32 pwr_mgmt_ctrl; /* 电源管理控制寄存器：控制电源管理行为 */
+        } ext_power_mgmt;
+
+        /* 0x04: I/O Virtualization (I/O 虚拟化) */
+        struct {
+            UINT32 virt_cap;  /* 虚拟化能力寄存器：描述虚拟化支持特性 */
+            UINT32 virt_ctrl; /* 虚拟化控制寄存器：控制虚拟化行为 */
+        } io_virt;
+
+        /* 0x05: Message Interrupts (消息中断) */
+        struct {
+            UINT32 msi_cap;  /* MSI/MSI-X 能力寄存器：描述消息中断支持 */
+            UINT32 msi_ctrl; /* MSI/MSI-X 控制寄存器：控制消息中断行为 */
+        } msg_interrupts;
+
+        /* 0x06: Latency Tolerance Messaging (延迟容忍消息) */
+        struct {
+            UINT32 ltm_cap;  /* LTM 能力寄存器：描述延迟容忍消息支持 */
+            UINT32 ltm_ctrl; /* LTM 控制寄存器：控制 LTM 行为 */
+        } latency_tolerance;
+
+        /* 0x07: USB Debug Capability (USB 调试能力) */
+        struct {
+            UINT32 dbc_cap;   /* 调试能力寄存器：描述 USB 调试功能参数 */
+            UINT32 dbc_ctrl;  /* 调试控制寄存器：控制调试行为 */
+            UINT32 dbc_port;  /* 调试端口寄存器：指定调试端口号 */
+        } usb_debug;
+    };
+} xhci_cap_t;
+
 /* ERST条目结构 (16字节) */
 typedef struct {
     UINT64 ring_seg_base_addr;  // 段的64位物理基地址 (位[63:6]有效，位[5:0]为0)
@@ -275,73 +275,65 @@ typedef struct {
     UINT64 parameter1;
     UINT32 parameter2;
     UINT32 control; // 位[0]为Cycle Bit
-} xhci_trb;
+} xhci_trb_t;
 
-// Slot Context (64字节)
+// 64字节Device Context (1 slot context + 最多31个endpoint context)
 typedef struct {
-    UINT32 route_string;     // 位0-19: 路由字符串
-    UINT32 speed;            // 位20-23: 速度
-    UINT32 reserved0;
-    UINT32 reserved1;
-    UINT32 reserved2;
-    UINT32 max_exit_latency; // 最大退出延迟
-    UINT32 root_hub_port_num; // 根Hub端口号
-    UINT32 num_ports;        // 端口数
-    UINT32 tt_hub_slot_id;   // Transaction Translator hub slot ID
-    UINT32 tt_port_num;      // TT port number
-    UINT32 interrupter_target;
-    UINT32 usb_device_address;
-    UINT32 reserved3[3];
-} __attribute__((packed)) xhci_slot_context_t;
+    // Slot Context (64字节)
+    struct {
+        UINT32 route_string;     // 位0-19: 路由字符串
+        UINT32 speed;            // 位20-23: 速度
+        UINT32 reserved0[3];
+        UINT32 max_exit_latency; // 最大退出延迟
+        UINT32 root_hub_port_num; // 根Hub端口号
+        UINT32 num_ports;        // 端口数
+        UINT32 tt_hub_slot_id;   // Transaction Translator hub slot ID
+        UINT32 tt_port_num;      // TT port number
+        UINT32 interrupter_target;
+        UINT32 usb_device_address;
+        UINT32 reserved1[3];
+    } slot;
 
-// Endpoint Context (64字节)
-typedef struct {
-    UINT32 ep_state;         // 位0-2: EP State
-    UINT32 mult;             // 位8-9: Mult
-    UINT32 max_pstreams;     // 位10-14: Max Primary Streams
-    UINT32 lsa;              // 位15: LSA
-    UINT32 interval;         // 位16-23: Interval
-    UINT32 max_esit_payload; // 位24-31
-    UINT64 tr_dequeue_ptr;   // TR Dequeue Pointer
-    UINT32 avg_trb_length;   // 平均TRB长度
-    UINT32 max_pkt_size;     // 最大包大小
-    UINT32 reserved[4];
-} __attribute__((packed)) xhci_endpoint_context_t;
+    // Endpoint Context (64字节)
+    struct {
+        UINT32 ep_state;         // 位0-2: EP State
+        UINT32 mult;             // 位8-9: Mult
+        UINT32 max_pstreams;     // 位10-14: Max Primary Streams
+        UINT32 lsa;              // 位15: LSA
+        UINT32 interval;         // 位16-23: Interval
+        UINT32 max_esit_payload; // 位24-31
+        UINT64 tr_dequeue_ptr;   // TR Dequeue Pointer
+        UINT32 avg_trb_length;   // 平均TRB长度
+        UINT32 max_pkt_size;     // 最大包大小
+        UINT32 reserved[4];
+    } ep[31];
+} xhci_device_context64_t;
 
-// Device Context (1 slot context + 最多31个endpoint context)
+// 64字节Device Context (1 slot context + 最多31个endpoint context)
 typedef struct {
-    xhci_slot_context_t slot_ctx;
-    xhci_endpoint_context_t ep_ctx[31];
-} __attribute__((packed)) xhci_device_context_t;
+    // Slot Context (32字节)
+    struct {
+        UINT32 route_speed;     // bits 0-19: Route String
+                                // bits 20-23: Speed
+                                // bits 27-31: Reserved
+        UINT32 reserved0[2];
+        UINT32 max_exit_latency; // 最大退出延迟
+        UINT32 root_hub_port_num; // Root Hub Port #
+        UINT32 num_ports;       // 端口数量
+        UINT32 tt_hub_slot_id;  // TT Hub Slot ID
+        UINT32 tt_port_num;     // TT Port Number
+    } slot;
 
-// Slot Context (32字节)
-typedef struct {
-    UINT32 route_speed;     // bits 0-19: Route String
-    // bits 20-23: Speed
-    // bits 27-31: Reserved
-    UINT32 reserved1;
-    UINT32 reserved2;
-    UINT32 max_exit_latency; // 最大退出延迟
-    UINT32 root_hub_port_num; // Root Hub Port #
-    UINT32 num_ports;       // 端口数量
-    UINT32 tt_hub_slot_id;  // TT Hub Slot ID
-    UINT32 tt_port_num;     // TT Port Number
-}xhci_slot_context_32_t;
-
-// Endpoint Context (32字节)
-typedef struct {
-    UINT32 ep_state_mult;    // bits 0-2: Endpoint State
-    // bits 8-9: Mult
-    // bits 16-23: Interval
-    UINT32 max_pkt_size;     // 最大包大小
-    UINT32 tr_dequeue_ptr_lo;// TR Dequeue Pointer (低32位)
-    UINT32 avg_trb_length;   // 平均 TRB 长度
-    UINT32 reserved[4];
-}xhci_ep_context_32_t;
-
-typedef struct {
-    xhci_slot_context_32_t slot_ctx;    // 32B
-    xhci_ep_context_32_t   ep_ctx[31];  // 每个 32B
+    // Endpoint Context (32字节)
+    struct {
+        UINT32 ep_state_mult;    // bits 0-2: Endpoint State
+                                 // bits 8-9: Mult
+                                 // bits 16-23: Interval
+        UINT32 max_pkt_size;     // 最大包大小
+        UINT32 tr_dequeue_ptr_lo;// TR Dequeue Pointer (低32位)
+        UINT32 avg_trb_length;   // 平均 TRB 长度
+        UINT32 reserved0[4];
+    } ep[31];
 }xhci_device_context_32_t;
 
 
@@ -352,13 +344,13 @@ typedef struct {
     xhci_rt_regs_t  *runtime;     // 运行时寄存器 (通常是op_regs + cap.cap_length)
     xhci_db_regs_t  *doorbells;   // 门铃寄存器 (通常是runtime + runtime_offset)
     xhci_ext_regs_t *ext;        // 扩展寄存器 (可选的)
-    xhci_trb        *crcr_ptr;
+    xhci_trb_t      *crcr_ptr;
     union {
         xhci_device_context_32_t  **dcbaap_ptr32;
         xhci_device_context_t  **dcbaap_ptr;
     };
     xhci_erst_entry *erstba_ptr;
-    xhci_trb        *erdp_ptr;
+    xhci_trb_t      *erdp_ptr;
 } xhci_regs_t;
 
 #pragma pack(pop)
