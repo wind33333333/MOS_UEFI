@@ -362,18 +362,15 @@ typedef struct {
     xhci_op_regs_t  *op;         // 操作寄存器
     xhci_rt_regs_t  *rt;         // 运行时寄存器
     xhci_db_regs_t  *db;         // 门铃寄存器
-    xhci_ext_regs_t *ext;        // 扩展寄存器 (可选的)
+    xhci_ext_regs_t *ext;        // 扩展寄存器
 
-    xhci_trb_t      *crcr_ptr;
+    xhci_trb_t      *crcr;       //命令环基地址
     union {
-        xhci_device_context32_t  **dcbaap_ptr32;
-        xhci_device_context64_t  **dcbaap_ptr64;
+        xhci_device_context32_t  **dcbaap32; //设备上下文32字节
+        xhci_device_context64_t  **dcbaap64; //设备上下文64字节
     };
-    xhci_erst_entry *erstba_ptr;
-    xhci_trb_t      *erdp_ptr;
-    UINT8 csz;      //设备上下文 1=64字节 0=32字节
-
-
+    xhci_erst_entry *erstba;      //事件环段表
+    xhci_trb_t      *erdp;        //事件环基地址
 } xhci_regs_t;
 
 #pragma pack(pop)

@@ -33,13 +33,14 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs_t *xhci_regs = xhci_dev->private;
     xhci_regs->cap = xhci_dev->bar[0];                                  //xhci能力寄存器基地址
     xhci_regs->op = xhci_dev->bar[0] + xhci_regs->cap->cap_length;      //xhci操作寄存器基地址
-    xhci_regs->runtime = xhci_dev->bar[0] + xhci_regs->cap->rtsoff;     //xhci运行时寄存器基地址
-    xhci_regs->doorbells = xhci_dev->bar[0] + xhci_regs->cap->dboff;    //xhci门铃寄存器基地址
+    xhci_regs->rt = xhci_dev->bar[0] + xhci_regs->cap->rtsoff;     //xhci运行时寄存器基地址
+    xhci_regs->db = xhci_dev->bar[0] + xhci_regs->cap->dboff;    //xhci门铃寄存器基地址
 
     xhci_regs->crcr_ptr = kzalloc(TRB_COUNT*sizeof(xhci_trb_t));                 //分配命令环寄存器内存 4K
     xhci_regs->crcr_ptr[TRB_COUNT-1].parameter1 = va_to_pa(xhci_regs->crcr_ptr);
     xhci_regs->crcr_ptr[TRB_COUNT-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE;     //命令环最后一个trb设置位link
 
+    xhci_regs->csz = xhci_regs->cap->hccparams1 & 4 ? 64 : 32; //64 或 32字节设备上下文
     UINT32 max_slots = xhci_regs->cap->hcsparams1&0xff;
     xhci_regs->dcbaap_ptr32 = kzalloc(max_slots<<3);     //分配设备上下文插槽内存,最大插槽数量*8字节内存
     for (UINT32 i = 0; i < max_slots; i++) {                 //为每个插槽分配设备上下文内存
