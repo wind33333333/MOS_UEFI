@@ -18,7 +18,7 @@ xhci_cap_t *find_xhci_cap(xhci_regs_t *xhci_reg,UINT8 cap_id) {
     while (offset) {
         xhci_cap_t *xhci_cap = (void*)xhci_reg->cap + (offset<<2);
         if ((xhci_cap->cap_id&0xFF) == cap_id) return xhci_cap;
-        offset = (xhci_cap->cap_id>>8)&0xFF;
+        offset = (xhci_cap->next_ptr>>8)&0xFF;
     }
     return NULL;
 }
@@ -74,13 +74,6 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->crcr_ptr[3].control |= TRB_CYCLE;
     xhci_regs->doorbells->doorbell[0] = 0;
 
-    xhci_cap_t *xhci_cap = find_xhci_cap(xhci_regs,1);
-    UINT32 i = xhci_cap->legacy_support.usblegsup;
-    i |= 1<<24;
-    i &= ~(1<<16);
-    xhci_cap->legacy_support.usblegsup = i;
-    xhci_cap = find_xhci_cap(xhci_regs,2);
-    xhci_cap = find_xhci_cap(xhci_regs,3);
 
     color_printk(GREEN,BLACK,"Xhci Version:%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d CS:%d AC64:%d USBcmd:%#x USBsts:%#x PageSize:%d iman:%#x imod:%#x\n",xhci_regs->cap->hciversion,(UINT64)xhci_dev->pcie_config_space->type0.bar[0]&~0x1f|(UINT64)xhci_dev->pcie_config_space->type0.bar[1]<<32,xhci_dev->msi_x_flags,xhci_regs->cap->hcsparams1&0xFF,xhci_regs->cap->hcsparams1>>8&0x7FF,xhci_regs->cap->hcsparams1>>24,xhci_regs->cap->hccparams1>>2&1,xhci_regs->cap->hccparams1&1,xhci_regs->op->usbcmd,xhci_regs->op->usbsts,xhci_regs->op->pagesize<<12,xhci_regs->runtime->intr_regs[0].iman,xhci_regs->runtime->intr_regs[0].imod);
     color_printk(GREEN,BLACK,"crcr:%#lx dcbaap:%#lx erstba[0]:%#lx erdp[0]:%#lx erstsz:%d config:%d \n",xhci_regs->op->crcr,xhci_regs->op->dcbaap,xhci_regs->runtime->intr_regs[0].erstba,xhci_regs->runtime->intr_regs[0].erdp,xhci_regs->runtime->intr_regs[0].erstsz,xhci_regs->op->config);

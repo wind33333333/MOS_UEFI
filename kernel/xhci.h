@@ -9,6 +9,7 @@ typedef struct {
     union {
         /* 通用头部：所有扩展能力的第一个 32 位寄存器 */
         UINT32  cap_id;  /* 能力头部，低 8 位为 Capability ID ,高8位Next Capability Pointer*/
+        UINT32  next_ptr;
 
         /* 0x01: USB Legacy Support (USB 传统支持) */
         struct {
