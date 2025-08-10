@@ -46,8 +46,8 @@ INIT_TEXT void init_xhci(void) {
         xhci_regs->dcbaap32[i] = va_to_pa(kzalloc(sizeof(xhci_device_context32_t)));
     }
 
-    xhci_regs->erstba = kmalloc(sizeof(xhci_erst_t)); //单事件环段表
-    xhci_regs->erdp = kzalloc(TRB_COUNT*16);  //分配事件环空间256*16
+    xhci_regs->erstba = kmalloc(sizeof(xhci_erst_t)); //分配单事件环段表内存64字节
+    xhci_regs->erdp = kzalloc(TRB_COUNT*16);  //分配事件环空间256*16字节
     xhci_regs->erstba[0].ring_seg_base_addr = va_to_pa(xhci_regs->erdp);
     xhci_regs->erstba[0].ring_seg_size = TRB_COUNT;
     xhci_regs->erstba[0].reserved = 0;
