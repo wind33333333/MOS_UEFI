@@ -198,11 +198,78 @@ typedef struct {
 } xhci_erst_entry;
 
 typedef struct {
-    UINT32 parameter1;
+    UINT64 parameter1;
     UINT32 parameter2;
-    UINT32 parameter3;
     UINT32 control; // 位[0]为Cycle Bit
 } xhci_trb;
+
+// Slot Context (64字节)
+typedef struct {
+    UINT32 route_string;     // 位0-19: 路由字符串
+    UINT32 speed;            // 位20-23: 速度
+    UINT32 reserved0;
+    UINT32 reserved1;
+    UINT32 reserved2;
+    UINT32 max_exit_latency; // 最大退出延迟
+    UINT32 root_hub_port_num; // 根Hub端口号
+    UINT32 num_ports;        // 端口数
+    UINT32 tt_hub_slot_id;   // Transaction Translator hub slot ID
+    UINT32 tt_port_num;      // TT port number
+    UINT32 interrupter_target;
+    UINT32 usb_device_address;
+    UINT32 reserved3[3];
+} __attribute__((packed)) xhci_slot_context_t;
+
+// Endpoint Context (64字节)
+typedef struct {
+    UINT32 ep_state;         // 位0-2: EP State
+    UINT32 mult;             // 位8-9: Mult
+    UINT32 max_pstreams;     // 位10-14: Max Primary Streams
+    UINT32 lsa;              // 位15: LSA
+    UINT32 interval;         // 位16-23: Interval
+    UINT32 max_esit_payload; // 位24-31
+    UINT64 tr_dequeue_ptr;   // TR Dequeue Pointer
+    UINT32 avg_trb_length;   // 平均TRB长度
+    UINT32 max_pkt_size;     // 最大包大小
+    UINT32 reserved[4];
+} __attribute__((packed)) xhci_endpoint_context_t;
+
+// Device Context (1 slot context + 最多31个endpoint context)
+typedef struct {
+    xhci_slot_context_t slot_ctx;
+    xhci_endpoint_context_t ep_ctx[31];
+} __attribute__((packed)) xhci_device_context_t;
+
+// Slot Context (32字节)
+typedef struct {
+    UINT32 route_speed;     // bits 0-19: Route String
+    // bits 20-23: Speed
+    // bits 27-31: Reserved
+    UINT32 reserved1;
+    UINT32 reserved2;
+    UINT32 max_exit_latency; // 最大退出延迟
+    UINT32 root_hub_port_num; // Root Hub Port #
+    UINT32 num_ports;       // 端口数量
+    UINT32 tt_hub_slot_id;  // TT Hub Slot ID
+    UINT32 tt_port_num;     // TT Port Number
+}xhci_slot_context_32_t;
+
+// Endpoint Context (32字节)
+typedef struct {
+    UINT32 ep_state_mult;    // bits 0-2: Endpoint State
+    // bits 8-9: Mult
+    // bits 16-23: Interval
+    UINT32 max_pkt_size;     // 最大包大小
+    UINT32 tr_dequeue_ptr_lo;// TR Dequeue Pointer (低32位)
+    UINT32 avg_trb_length;   // 平均 TRB 长度
+    UINT32 reserved[4];
+}xhci_ep_context_32_t;
+
+typedef struct {
+    xhci_slot_context_32_t slot_ctx;    // 32B
+    xhci_ep_context_32_t   ep_ctx[31];  // 每个 32B
+}xhci_device_context_32_t;
+
 
 // ===== 完整xHCI寄存器结构 =====
 typedef struct {
@@ -212,7 +279,10 @@ typedef struct {
     xhci_db_regs_t  *doorbells;   // 门铃寄存器 (通常是runtime + runtime_offset)
     xhci_ext_regs_t *ext;        // 扩展寄存器 (可选的)
     xhci_trb        *crcr_ptr;
-    void            *dcbaap_ptr;
+    union {
+        xhci_device_context_32_t  **dcbaap_ptr32;
+        xhci_device_context_t  **dcbaap_ptr;
+    };
     xhci_erst_entry *erstba_ptr;
     xhci_trb        *erdp_ptr;
 } xhci_regs_t;
