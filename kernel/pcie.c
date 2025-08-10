@@ -278,7 +278,7 @@ INIT_TEXT void init_pcie(void) {
     mcfg_entry_t *mcfg_entry = &mcfg->entry;
     UINT32 mcfg_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
                             mcfg_entry_t);
-    //遍历pcie设备
+    //遍历pcie设备，
     for (UINT32 i = 0; i < mcfg_count; i++) {
         color_printk(GREEN,BLACK, "ECAM base:%#lX Segment:%d StartBus:%d EndBus:%d\n",
                      mcfg_entry[i].base_address, mcfg_entry[i].pci_segment, mcfg_entry[i].start_bus,
