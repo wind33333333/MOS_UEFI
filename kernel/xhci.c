@@ -24,7 +24,7 @@ xhci_cap_t *find_xhci_cap(xhci_regs_t *xhci_reg,UINT8 cap_id) {
 }
 
 INIT_TEXT void init_xhci(void) {
-    pcie_dev_t *xhci_dev = find_pcie_dev(XHCI_CLASS_CODE);
+    pcie_dev_t *xhci_dev = find_pcie_dev(XHCI_CLASS_CODE);      //找
     init_pcie_bar(xhci_dev,0);
     init_pcie_msi_intrpt(xhci_dev);
 
@@ -64,16 +64,6 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->runtime->intr_regs[0].erstba = va_to_pa(xhci_regs->erstba_ptr);
     xhci_regs->runtime->intr_regs[0].erdp = va_to_pa(xhci_regs->erdp_ptr);
     xhci_regs->op->usbcmd |= 1; //启动xhci
-
-    // 开中断
-    xhci_regs->runtime->intr_regs[0].iman |= 1;
-
-    xhci_regs->crcr_ptr[0].control = 23<<10 | TRB_CYCLE;
-    xhci_regs->crcr_ptr[1].control = 23<<10 | TRB_CYCLE;
-    xhci_regs->crcr_ptr[2].control = 23<<10 | TRB_CYCLE;
-    xhci_regs->crcr_ptr[3].control |= TRB_CYCLE;
-    xhci_regs->doorbells->doorbell[0] = 0;
-
 
     color_printk(GREEN,BLACK,"Xhci Version:%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d CS:%d AC64:%d USBcmd:%#x USBsts:%#x PageSize:%d iman:%#x imod:%#x\n",xhci_regs->cap->hciversion,(UINT64)xhci_dev->pcie_config_space->type0.bar[0]&~0x1f|(UINT64)xhci_dev->pcie_config_space->type0.bar[1]<<32,xhci_dev->msi_x_flags,xhci_regs->cap->hcsparams1&0xFF,xhci_regs->cap->hcsparams1>>8&0x7FF,xhci_regs->cap->hcsparams1>>24,xhci_regs->cap->hccparams1>>2&1,xhci_regs->cap->hccparams1&1,xhci_regs->op->usbcmd,xhci_regs->op->usbsts,xhci_regs->op->pagesize<<12,xhci_regs->runtime->intr_regs[0].iman,xhci_regs->runtime->intr_regs[0].imod);
     color_printk(GREEN,BLACK,"crcr:%#lx dcbaap:%#lx erstba[0]:%#lx erdp[0]:%#lx erstsz:%d config:%d \n",xhci_regs->op->crcr,xhci_regs->op->dcbaap,xhci_regs->runtime->intr_regs[0].erstba,xhci_regs->runtime->intr_regs[0].erdp,xhci_regs->runtime->intr_regs[0].erstsz,xhci_regs->op->config);

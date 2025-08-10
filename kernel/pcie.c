@@ -243,7 +243,7 @@ void init_pcie_msi_intrpt(pcie_dev_t *pcie_dev) {
     UINT64 msg_addr = rdmsr(IA32_APIC_BASE_MSR) & ~0xFFFUL;
     //优先启用msi-x中断
     if (cap) {
-        //初始化表
+        //初始化msi-x中断表
         pcie_dev->msi_x_flags = 1;
         pcie_dev->msi_x.msg_control = &cap->msi_x.msg_control;
         pcie_dev->msi_x.msi_x_table = (msi_x_table_t*)(pcie_dev->bar[get_msi_x_bir(cap)] + get_msi_x_offset(cap));
