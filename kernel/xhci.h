@@ -365,12 +365,12 @@ typedef struct {
     xhci_ext_regs_t *ext;        // 扩展寄存器
 
     xhci_trb_t      *crcr;       //命令环基地址
+    xhci_erst_entry *erstba;      //事件环段表
+    xhci_trb_t      *erdp;        //事件环基地址
     union {
         xhci_device_context32_t  **dcbaap32; //设备上下文32字节
         xhci_device_context64_t  **dcbaap64; //设备上下文64字节
     };
-    xhci_erst_entry *erstba;      //事件环段表
-    xhci_trb_t      *erdp;        //事件环基地址
 } xhci_regs_t;
 
 #pragma pack(pop)
