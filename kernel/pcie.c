@@ -101,8 +101,7 @@ static inline void pcie_scan(UINT64 ecam_base, UINT8 bus) {
             //type1 为pcie桥优先扫描下游设备（深度优先）
             if (pcie_config_space->header_type & 1) pcie_scan(ecam_base, pcie_config_space->type1.secondary_bus);
             //如果功能0不是多功能设备，则跳过该设备的后续功能
-            if ((pcie_config_space->header_type & 0x80) == 0 && func == 0) break;
-
+            if (!func && !(pcie_config_space->header_type & 0x80)) break;
         }
     }
 }
