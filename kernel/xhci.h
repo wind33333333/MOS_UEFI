@@ -281,10 +281,20 @@ typedef struct {
 typedef struct {
     /* Slot Context（64 字节） */
     struct {
-        UINT32 route_string;    /* 路由字符串：描述设备的拓扑路径 */
-        UINT32 speed_port;      /* 速度和端口：低 4 位为速度，高 8 位为根端口号 */
-        UINT32 slot_state;      /* 槽状态：描述设备槽的当前状态（如启用、禁用） */
-        UINT32 dev_info;        /* 设备信息：包含最大端点数、上下文条目数等 */
+        UINT32 route_string;    /* 位 19:0 Route String[19:8] - 路由字符串的高 12 位，描述设备在 USB 拓扑中的路径。
+                                 * 位 25 MTT 多重验证。
+                                 * 位 26 1=集线器 0=usb。
+                                 * 位 31:27 上下文条目 */
+
+        UINT32 speed_port;      /* 位 15:0  最大退出延迟微妙
+                                 * 位 23:16 根集线器端口号。
+                                 * 位 31:24 端口数量 */
+
+        UINT32 slot_state;      /* 位 7:0 父集线器插槽id
+                                 * 位 15:8 父端口号
+                                 * 位 17:16 事务转换器端口号 */
+
+        UINT32 dev_info;
         UINT32 hub_info;        /* 集线器信息：包含集线器槽 ID、端口数等 */
         UINT32 tt_info;         /* TT 信息：事务转换器信息（用于 USB 2.0 集线器） */
         UINT32 dev_addr;        /* 设备地址：xHCI 分配的设备地址 */
@@ -309,16 +319,33 @@ typedef struct {
 typedef struct {
     /* Slot Context（32 字节） */
     struct {
-        UINT32 route_string;    /* 路由字符串：描述设备的拓扑路径 */
-        UINT32 speed_port;      /* 速度和端口：低 4 位为速度，高 8 位为根端口号 */
-        UINT32 slot_state;      /* 槽状态：描述设备槽的当前状态（如启用、禁用） */
-        UINT32 dev_info;        /* 设备信息：包含最大端点数、上下文条目数等 */
+        UINT32 route_string;    /* 位 19:0 Route String[19:8] - 路由字符串的高 12 位，描述设备在 USB 拓扑中的路径。
+                                 * 位 25 MTT 多重验证。
+                                 * 位 26 1=集线器 0=usb。
+                                 * 位 31:27 上下文条目 */
+
+        UINT32 speed_port;      /* 位 15:0  最大退出延迟微妙
+                                 * 位 23:16 根集线器端口号。
+                                 * 位 31:24 端口数量 */
+
+        UINT32 slot_state;      /* 位 7:0 父集线器插槽id
+                                 * 位 15:8 父端口号
+                                 * 位 17:16 事务转换器端口号 */
+
+        UINT32 dev_info;
         UINT32 reserved[4];     /* 保留字段：填充至 32 字节 */
     } slot;
 
     /* Endpoint 0 Context（默认控制端点，32 字节） */
     struct {
-        UINT32 ep_state;        /* 端点状态：描述端点当前状态（如运行、停止） */
+        UINT32 ep_state;    /* 位 31-24: Max Endpoint Service Time Interval Payload High (Max ESIT Payload Hi) - 如果 LEC = '1'，表示 Max ESIT Payload 值的较高 8 位；如果 LEC = '0'，保留 (RsvdZ)。
+                             * 位 23-16: Interval - 请求发送或接收数据的周期，单位为 125 μs，值为 2^(n-1) * 125 μs，参考 Table 6-12。
+                             * 位 15: Linear Stream Array (LSA) - 标识 Stream ID 的解释方式，'0' 表示线性索引，'1' 表示二级 Stream Array 索引。
+                             * 位 14-10: 保留 (RsvdZ)。
+                             * 位 9-8: Mult - 如果 LEC = '0'，表示突发数范围 (0-3)；如果 LEC = '1'，计算为 ROUNDUP(Max Exit Payload / (Max Packet Size * (Max Burst Size + 1)) - 1)。
+                             * 位 7-3: RsvdZ - 保留，置 0。
+                             * 位 2-0: Endpoint State (EP State) - 端点状态 (0=Disabled，1=Running，2=Halted，3=Stopped，4=Error)。 */
+
         UINT32 ep_type;         /* 端点类型：包含端点方向、类型等信息 */
         UINT32 max_packet_size; /* 最大包大小：端点的最大数据包大小 */
         UINT32 tr_dequeue_ptr;  /* TRB 环出队指针：指向端点的 TRB 环（低 32 位） */
