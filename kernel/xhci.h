@@ -269,7 +269,7 @@ typedef struct {
     UINT64 ring_seg_base_addr;  // 段的64位物理基地址 (位[63:6]有效，位[5:0]为0)
     UINT32 ring_seg_size;       // 段中TRB的数量 (16到4096)
     UINT32 reserved;            // 保留位，初始化为0
-} xhci_erst_entry;
+} xhci_erst_t;
 
 typedef struct {
     UINT64 parameter1;
@@ -365,7 +365,7 @@ typedef struct {
     xhci_ext_regs_t *ext;        // 扩展寄存器
 
     xhci_trb_t      *crcr;       //命令环基地址
-    xhci_erst_entry *erstba;      //事件环段表
+    xhci_erst_t     *erstba;      //事件环段表
     xhci_trb_t      *erdp;        //事件环基地址
     union {
         xhci_device_context32_t  **dcbaap32; //设备上下文32字节
