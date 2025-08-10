@@ -334,7 +334,7 @@ typedef struct {
         UINT32 avg_trb_length;   // 平均 TRB 长度
         UINT32 reserved0[4];
     } ep[31];
-}xhci_device_context_32_t;
+}xhci_device_context32_t;
 
 
 // ===== 完整xHCI寄存器结构 =====
@@ -346,8 +346,8 @@ typedef struct {
     xhci_ext_regs_t *ext;        // 扩展寄存器 (可选的)
     xhci_trb_t      *crcr_ptr;
     union {
-        xhci_device_context_32_t  **dcbaap_ptr32;
-        xhci_device_context_t  **dcbaap_ptr;
+        xhci_device_context32_t  **dcbaap_ptr32;
+        xhci_device_context64_t  **dcbaap_ptr;
     };
     xhci_erst_entry *erstba_ptr;
     xhci_trb_t      *erdp_ptr;
