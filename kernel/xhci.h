@@ -289,7 +289,7 @@ typedef struct {
         UINT32 tt_info;         /* TT 信息：事务转换器信息（用于 USB 2.0 集线器） */
         UINT32 dev_addr;        /* 设备地址：xHCI 分配的设备地址 */
         UINT32 reserved[9];     /* 保留字段：填充至 64 字节 */
-    } slot_context;
+    } slot;
 
     /* Endpoint 0 Context（默认控制端点，64 字节） */
     struct {
