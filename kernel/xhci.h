@@ -169,14 +169,12 @@ typedef struct {
 } xhci_rt_regs_t;
 
 // ===== 4. 门铃寄存器 (Doorbell Registers) =====
-typedef struct {
-    // 门铃寄存器数组 (每个设备槽一个 + 主机控制器)
-    UINT32 doorbell[256]; // 最大支持256个设备槽(由HCSPARAMS1的MaxSlots决定）
-                          // - DB Target (位 0-7): 门铃目标
-                          // - 值为0：触发命令环（Command Ring）
-                          // - 值为1-31：触发特定端点（Endpoint 0-31）的传输环
-                          // - DB Stream ID (位 16-31): 流ID（仅用于支持流的设备）
-} xhci_db_regs_t;
+// 门铃寄存器数组 (每个设备槽一个 + 主机控制器)
+typedef unsigned int xhci_db_regs_t;    // 最大支持256个设备槽(由HCSPARAMS1的MaxSlots决定）
+                                        // - DB Target (位 0-7): 门铃目标
+                                        // - 值为0：触发命令环（Command Ring）
+                                        // - 值为1-31：触发特定端点（Endpoint 0-31）的传输环
+                                        // - DB Stream ID (位 16-31): 流ID（仅用于支持流的设备）
 
 // ===== 5. 扩展寄存器 (HCCPARAMS2) =====
 // 当HCCPARAMS1[0] (AC64) 设置为1时出现
@@ -368,8 +366,8 @@ typedef struct {
     xhci_erst_t     *erstba;      //事件环段表
     xhci_trb_t      *erdp;        //事件环基地址
     union {
-        xhci_device_context32_t  **dcbaap32; //设备上下文32字节
-        xhci_device_context64_t  **dcbaap64; //设备上下文64字节
+        xhci_device_context32_t  *dcbaap32; //设备上下文32字节
+        xhci_device_context64_t  *dcbaap64; //设备上下文64字节
     };
 } xhci_regs_t;
 
