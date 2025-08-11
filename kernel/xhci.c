@@ -50,10 +50,10 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->op->config = max_slots;                  //把最大插槽数量写入寄存器
     xhci_regs->op->dcbaap = va_to_pa(xhci_regs->dcbaap32);  //把设备上下文基地址数组表的物理地址写入寄存器
 
-    xhci_regs->crcr = kzalloc(TRB_COUNT*sizeof(xhci_trb_t));                 //分配命令环寄存器内存 4K
-    xhci_regs->crcr[TRB_COUNT-1].parameter1 = va_to_pa(xhci_regs->crcr);         //命令环最后一个trb指向环首地址
-    xhci_regs->crcr[TRB_COUNT-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE;     //命令环最后一个trb设置位link
-    xhci_regs->op->crcr = va_to_pa(xhci_regs->crcr)|1;                           //命令环物理地址写入crcr寄存器，置位rcs
+    xhci_regs->crcr = kzalloc(5*sizeof(xhci_trb_t));                 //分配命令环寄存器内存 4K
+    xhci_regs->crcr[5-1].parameter1 = va_to_pa(xhci_regs->crcr);         //命令环最后一个trb指向环首地址
+    xhci_regs->crcr[5-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE;     //命令环最后一个trb设置位link
+    xhci_regs->op->crcr = va_to_pa(xhci_regs->crcr)|TRB_CYCLE;           //命令环物理地址写入crcr寄存器，置位rcs
 
     xhci_regs->erstba = kmalloc(sizeof(xhci_erst_t));                       //分配单事件环段表内存64字节
     xhci_regs->erdp = kzalloc(TRB_COUNT*16);                                //分配事件环空间256*16字节
@@ -66,10 +66,21 @@ INIT_TEXT void init_xhci(void) {
 
     xhci_regs->op->usbcmd |= 1; //启动xhci
 
-    xhci_regs->crcr[0].parameter1 = 0;
-    xhci_regs->crcr[0].parameter2 = 0;
-    xhci_regs->crcr[0].control = 23<<10 | TRB_CYCLE;
+    for (UINT32 i = 0; i < 4; i++) {
+        xhci_regs->crcr[i].parameter1 = 0;
+        xhci_regs->crcr[i].parameter2 = 0;
+        xhci_regs->crcr[i].control = 23<<10 | TRB_CYCLE;
+    }
+    xhci_regs->crcr[4].control |= TRB_CYCLE;
 
+    xhci_regs->db[0] = 0;
+
+    for (UINT32 i = 0; i < 4; i++) {
+        xhci_regs->crcr[i].parameter1 = 0;
+        xhci_regs->crcr[i].parameter2 = 0;
+        xhci_regs->crcr[i].control &= ~TRB_CYCLE;
+    }
+    xhci_regs->crcr[4].control &= ~TRB_CYCLE;
 
     xhci_regs->db[0] = 0;
 
