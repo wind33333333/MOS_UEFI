@@ -29,7 +29,7 @@ INIT_TEXT void init_xhci(void) {
     init_pcie_bar(xhci_dev,0);                                         //初始化bar0寄存器
     init_pcie_msi_intrpt(xhci_dev);                                       //初始化msi中断
 
-    xhci_dev->private = kmalloc(sizeof(xhci_regs_t));                //设备似有数据空间申请一块内存，存放xhci相关信息
+    xhci_dev->private = kmalloc(sizeof(xhci_regs_t));                //设备私有数据空间申请一块内存，存放xhci相关信息
     xhci_regs_t *xhci_regs = xhci_dev->private;
     xhci_regs->cap = xhci_dev->bar[0];                                  //xhci能力寄存器基地址
     xhci_regs->op = xhci_dev->bar[0] + xhci_regs->cap->cap_length;      //xhci操作寄存器基地址
@@ -50,7 +50,7 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->op->config = max_slots;                  //把最大插槽数量写入寄存器
     xhci_regs->op->dcbaap = va_to_pa(xhci_regs->dcbaap32);  //把设备上下文基地址数组表的物理地址写入寄存器
 
-    xhci_regs->crcr = kzalloc(5*sizeof(xhci_trb_t));                 //分配事件环空间256* sizeof(xhci_trb_t) = 4K
+    xhci_regs->crcr = kzalloc(5*sizeof(xhci_trb_t));                 //分配命令环空间256* sizeof(xhci_trb_t) = 4K
     xhci_regs->crcr[5-1].parameter1 = va_to_pa(xhci_regs->crcr);         //命令环最后一个trb指向环首地址
     xhci_regs->crcr[5-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE;     //命令环最后一个trb设置位link
     xhci_regs->op->crcr = va_to_pa(xhci_regs->crcr)|TRB_CYCLE;           //命令环物理地址写入crcr寄存器，置位rcs
