@@ -45,7 +45,7 @@ INIT_TEXT void init_xhci(void) {
     UINT32 max_slots = xhci_regs->cap->hcsparams1&0xff;
     xhci_regs->dcbaap32 = kzalloc(max_slots<<3);     //分配设备上下文插槽内存,最大插槽数量*8字节内存
     for (UINT32 i = 0; i < max_slots; i++) {             //为每个插槽分配设备上下文内存
-        xhci_regs->dcbaap32[i] = va_to_pa(kzalloc(sizeof(xhci_device_context32_t)));
+        xhci_regs->dcbaap32[i] = (xhci_device_context32_t*)va_to_pa(kzalloc(sizeof(xhci_device_context32_t)));
     }
     xhci_regs->op->config = max_slots;                  //把最大插槽数量写入寄存器
     xhci_regs->op->dcbaap = va_to_pa(xhci_regs->dcbaap32);  //把设备上下文基地址数组表的物理地址写入寄存器
