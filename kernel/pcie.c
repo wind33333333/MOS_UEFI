@@ -254,9 +254,9 @@ void init_pcie_msi_intrpt(pcie_dev_t *pcie_dev) {
         pcie_dev->msi_x.msi_x_table[0].vector_control = 0;
 
     }else {
+        pcie_dev->msi_x_flags = 0;
         //启用msi中断
         cap = find_pcie_cap(pcie_dev,msi_e);
-        pcie_dev->msi_x_flags = 0;
         pcie_dev->msi.msg_control = &cap->msi.msg_control;
         pcie_dev->msi.msg_addr_lo = &cap->msi.msg_addr_lo;
         pcie_dev->msi.msg_addr_hi = &cap->msi.msg_addr_hi;
