@@ -261,9 +261,9 @@ void init_pcie_msi_intrpt(pcie_dev_t *pcie_dev) {
         pcie_dev->msi.msg_addr_lo = &cap->msi.msg_addr_lo;
         pcie_dev->msi.msg_addr_hi = &cap->msi.msg_addr_hi;
         //设置中断
-        pcie_dev->msi.msg_addr_lo = (UINT32)msg_addr;
-        pcie_dev->msi.msg_addr_hi = (UINT32)msg_addr >> 32;
-        pcie_dev->msi.msg_data = 0x40;
+        *pcie_dev->msi.msg_addr_lo = (UINT32)msg_addr;
+        *pcie_dev->msi.msg_addr_hi = (UINT32)msg_addr >> 32;
+        *pcie_dev->msi.msg_data = 0x40;
     }
     disable_msi_intrs(pcie_dev);
 }
