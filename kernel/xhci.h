@@ -319,6 +319,14 @@ typedef struct {
     } ep[31];
 } xhci_device_context64_t;
 
+/* 修改设备上下文数据结构 */
+typedef struct {
+    UINT32 drop_context;                    // 位图：指示要丢弃的上下文（通常为 0）
+    UINT32 add_context;                     // 位图：指示要添加/更新的上下文
+    UINT32 reserved[14];                    // 保留字段，填 0
+    xhci_device_context64_t dev_ctx;        // 需要修改的设备上下文
+} xhci_input_context64_t;
+
 /* xHCI 设备上下文结构（32 字节版本，CSZ=0） */
 typedef struct {
     /* Slot Context（32 字节） */
@@ -356,6 +364,14 @@ typedef struct {
         UINT32 reserved[3];     /* 保留字段：填充至 32 字节 */
     } ep[31];
 } xhci_device_context32_t;
+
+/* 修改设备上下文数据结构 */
+typedef struct {
+    UINT32 drop_context;    // 位图：指示要丢弃的上下文（通常为 0）
+    UINT32 add_context;     // 位图：指示要添加/更新的上下文
+    UINT32 reserved[6];     // 保留字段，填 0
+    xhci_device_context32_t dev_ctx;
+} xhci_input_context32_t;
 
 
 // ===== 完整xHCI寄存器结构 =====

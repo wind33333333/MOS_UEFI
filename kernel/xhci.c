@@ -44,13 +44,15 @@ UINT32 address_device(xhci_regs_t *xhci_regs,UINT32 slot,UINT32 port) {
     transfer_ring[TRB_COUNT-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE;
 
     //配置设备上下文
-    xhci_device_context32_t *device_ctx = pa_to_va((UINT64)xhci_regs->dcbaap[slot]);
-    device_ctx->slot.reg0 = 1<<27;
-    device_ctx->slot.reg1 = port<<16;
-    device_ctx->ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring);
-    device_ctx->ep[0].reg1 = 4<<3 | 64<<16;
+    xhci_input_context32_t *input_context = kzalloc(sizeof(xhci_input_context32_t));
+    input_context->add_context = 0x3; // 启用 Slot Context 和 Endpoint 0 Context
+    input_context->drop_context = 0x0;
+    input_context->dev_ctx.slot.reg0 = 1<<27;
+    input_context->dev_ctx.slot.reg1 = port<<16;
+    input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring);
+    input_context->dev_ctx.ep[0].reg1 = 4<<3 | 64<<16;
 
-    xhci_regs->crcr[1].parameter1 = xhci_regs->dcbaap[slot];
+    xhci_regs->crcr[1].parameter1 = va_to_pa(input_context);
     xhci_regs->crcr[1].parameter2 = 0;
     xhci_regs->crcr[1].control = (slot << 24) | (11 << 10) | TRB_CYCLE;
     xhci_regs->db[0] = 0;
