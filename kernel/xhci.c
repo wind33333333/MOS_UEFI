@@ -18,6 +18,11 @@
 #define TRB_CYCLE            (1 << 0)
 #define TRB_TOGGLE_CYCLE     (1 << 1)
 #define TRB_CHAIN            (1 << 9)
+// 建议增加宏
+#define TRB_IDT             (1 << 6)     // Immediate Data
+#define TRB_TRT_IN_DATA     (3 << 16)    // TRT=3: 有数据阶段，方向 IN
+#define TRB_DIR_IN          (1 << 16)    // Data/Status TRB 的方向位（对 Status 则相反）
+#define TRB_DIR             (1 << 16) // DIR for Data TRB
 
 typedef struct {
     UINT8 b_request_type;
@@ -105,7 +110,7 @@ void address_device(xhci_regs_t *xhci_regs,UINT32 slot_id,UINT32 port_number) {
     input_context->drop_context = 0x0;
     input_context->dev_ctx.slot.reg0 = 1<<27;
     input_context->dev_ctx.slot.reg1 = port_number<<16;
-    input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring);
+    input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring)|TRB_CYCLE;
     input_context->dev_ctx.ep[0].reg1 = 4<<3 | 64<<16;
 
     xhci_regs->crcr[1].parameter1 = va_to_pa(input_context);
@@ -118,32 +123,32 @@ void address_device(xhci_regs_t *xhci_regs,UINT32 slot_id,UINT32 port_number) {
 
 //获取设备描述符
 int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_id, void *buffer, UINT32 length) {
-    // 配置 Setup TRB（Get Descriptor）
     usb_setup_packet_t *setup = kmalloc(sizeof(usb_setup_packet_t));
     setup->b_request_type = 0x80;
     setup->b_request = 0x06;
-    setup->w_value = 0x100;
+    setup->w_value = 0x100; // 允许传入，如 0x100 Device, 0x200 Config
     setup->w_index = 0x0;
     setup->w_length = length;
-    xhci_device_context32_t *dev_cxt = pa_to_va(xhci_regs->dcbaap[slot_id]);
-    xhci_trb_t *transfer_ring = pa_to_va(dev_cxt->ep[0].tr_dequeue_pointer);
 
+    xhci_device_context32_t *dev_ctx = pa_to_va(xhci_regs->dcbaap[slot_id]);
+    xhci_trb_t *transfer_ring = pa_to_va(dev_ctx->ep[0].tr_dequeue_pointer & ~0xFULL);
+
+    // 假设环从0开始，实际应跟踪 Enqueue Pointer
     transfer_ring[0].parameter1 = va_to_pa(setup);
-    transfer_ring[0].parameter2 = sizeof(usb_setup_packet_t) | (1 << 16); // Transfer Length, TD Size
-    transfer_ring[0].control = TRB_TYPE_SETUP | TRB_IOC | TRB_CYCLE;
+    transfer_ring[0].parameter2 = 8;
+    transfer_ring[0].control = TRB_TYPE_SETUP | TRB_CHAIN | TRB_CYCLE; // 加 Chain
 
-    // 配置 Data TRB
     transfer_ring[1].parameter1 = va_to_pa(buffer);
-    transfer_ring[1].parameter2 = length | (1 << 16);
-    transfer_ring[1].control = TRB_TYPE_DATA | TRB_IOC | TRB_CYCLE | (1 << 2); // DIR=IN
+    transfer_ring[1].parameter2 = length;
+    transfer_ring[1].control = TRB_TYPE_DATA | TRB_CHAIN | TRB_DIR | TRB_CYCLE; // DIR=1 (IN), Chain
 
-    // 配置 Status TRB
     transfer_ring[2].parameter1 = 0;
     transfer_ring[2].parameter2 = 0;
-    transfer_ring[2].control = TRB_TYPE_STATUS | TRB_IOC | TRB_CYCLE;
+    transfer_ring[2].control = TRB_TYPE_STATUS | TRB_IOC | TRB_CYCLE; // 无 DIR for Status, 但对于 IN 传输 Status DIR=0
 
-    // 触发门铃（Endpoint 0）
-    xhci_regs->db[slot_id] = 1; // Stream ID = 0, Endpoint ID = 1 (Control Endpoint)
+    // 触发门铃
+    xhci_regs->db[slot_id] = 1;
+
 }
 
 INIT_TEXT void init_xhci(void) {
@@ -200,6 +205,7 @@ INIT_TEXT void init_xhci(void) {
     usb_device_descriptor_t *dev_desc = kzalloc(sizeof(usb_device_descriptor_t));
     UINT8 *config_buf = kzalloc(256);
     get_device_descriptor(xhci_regs, slot_id, dev_desc, sizeof(dev_desc));
+    while (1);
     get_device_descriptor(xhci_regs, slot_id, config_buf, 256);
 
 
