@@ -29,14 +29,15 @@ static inline UINT32 enable_slot(xhci_regs_t *xhci_regs) {
     xhci_regs->crcr[0].parameter1 = 0;
     xhci_regs->crcr[0].parameter2 = 0;
     xhci_regs->crcr[0].control = 9<<10|TRB_CYCLE;
-    if ((xhci_regs->erdp[0].control >> 10) & 0x3F == 33) {
-        return (xhci_regs->erdp[0].control >> 24) & 0xFF;
+    xhci_regs->db[0] = 0;
+    if ((xhci_regs->erdp[0].control >> 10 & 0x3F) == 33) {
+        return xhci_regs->erdp[0].control >> 24 & 0xFF;
     }
     return -1;
 }
 
 //设置设备地址
-UINT32 address_device(xhci_regs_t *xhci_regs,UINT32 slot) {
+UINT32 address_device(xhci_regs_t *xhci_regs,UINT32 slot,UINT32 port) {
     //分配传输环内存
     xhci_trb_t *transfer_ring = kzalloc(TRB_COUNT * sizeof(xhci_trb_t));
     transfer_ring[TRB_COUNT-1].parameter1 = va_to_pa(transfer_ring);
@@ -44,7 +45,15 @@ UINT32 address_device(xhci_regs_t *xhci_regs,UINT32 slot) {
 
     //配置设备上下文
     xhci_device_context32_t *device_ctx = pa_to_va((UINT64)xhci_regs->dcbaap[slot]);
-    device_ctx->slot.reg0 =
+    device_ctx->slot.reg0 = 1<<27;
+    device_ctx->slot.reg1 = port<<16;
+    device_ctx->ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring);
+    device_ctx->ep[0].reg1 = 4<<3 | 64<<16;
+
+    xhci_regs->crcr[1].parameter1 = xhci_regs->dcbaap[slot];
+    xhci_regs->crcr[1].parameter2 = 0;
+    xhci_regs->crcr[1].control = (slot << 24) | (11 << 10) | TRB_CYCLE;
+    xhci_regs->db[0] = 0;
 
 }
 
@@ -96,7 +105,7 @@ INIT_TEXT void init_xhci(void) {
     for (UINT32 i = 0; i < xhci_regs->cap->hcsparams1>>24; i++) {
         if (xhci_regs->op->portregs[i].portsc & 1) {
             UINT32 slot = enable_slot(xhci_regs);
-
+            address_device(xhci_regs,slot,i+1);
         }
     }
 
