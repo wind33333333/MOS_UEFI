@@ -367,7 +367,7 @@ typedef struct {
     xhci_db_regs_t  *db;         // 门铃寄存器
     xhci_ext_regs_t *ext;        // 扩展寄存器
 
-    xhci_trb_t      *crcr;       //命令环基地址
+    xhci_trb_t      *crcr;        //命令环基地址
     xhci_erst_t     *erstba;      //事件环段表
     xhci_trb_t      *erdp;        //事件环基地址
     union {
