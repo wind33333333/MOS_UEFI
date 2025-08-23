@@ -44,7 +44,7 @@ UINT32 address_device(xhci_regs_t *xhci_regs,UINT32 slot) {
 
     //配置设备上下文
     xhci_device_context32_t *device_ctx = pa_to_va((UINT64)xhci_regs->dcbaap[slot]);
-    device_ctx->slot
+    device_ctx->slot.reg0 =
 
 }
 
