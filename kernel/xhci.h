@@ -367,9 +367,9 @@ typedef struct {
 
 /* 修改设备上下文数据结构 */
 typedef struct {
-    UINT32 drop_context;    // 位图：指示要丢弃的上下文（通常为 0）
-    UINT32 add_context;     // 位图：指示要添加/更新的上下文
-    UINT32 reserved[6];     // 保留字段，填 0
+    UINT32 drop_context;                // 位图：指示要丢弃的上下文（通常为 0）
+    UINT32 add_context;                 // 位图：指示要添加/更新的上下文
+    UINT32 reserved[6];                 // 保留字段，填 0
     xhci_device_context32_t dev_ctx;
 } xhci_input_context32_t;
 
