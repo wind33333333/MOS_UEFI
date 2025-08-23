@@ -9,10 +9,63 @@
 
 #define TRB_COUNT 256        //trb个数
 
+#define TRB_TYPE_NORMAL      (1 << 10)
+#define TRB_TYPE_SETUP       (2 << 10)
+#define TRB_TYPE_DATA        (3 << 10)
+#define TRB_TYPE_STATUS      (4 << 10)
+#define TRB_IOC              (1 << 5) // Interrupt on Completion
 #define TRB_TYPE_LINK        (0x06<<10) //连接trb
 #define TRB_CYCLE            (1 << 0)
 #define TRB_TOGGLE_CYCLE     (1 << 1)
 #define TRB_CHAIN            (1 << 9)
+
+typedef struct {
+    UINT8 b_request_type;
+    UINT8 b_request;
+    UINT16 w_value;
+    UINT16 w_index;
+    UINT16 w_length;
+} __attribute__((packed)) usb_setup_packet_t;
+
+typedef struct {
+    UINT8 bLength;
+    UINT8 bDescriptorType;
+    UINT16 bcdUSB;
+    UINT8 bDeviceClass;
+    UINT8 bDeviceSubClass;
+    UINT8 bDeviceProtocol;
+    UINT8 bMaxPacketSize0;
+    UINT16 idVendor;
+    UINT16 idProduct;
+    UINT16 bcdDevice;
+    UINT8 iManufacturer;
+    UINT8 iProduct;
+    UINT8 iSerialNumber;
+    UINT8 bNumConfigurations;
+} __attribute__((packed)) usb_device_descriptor_t;
+
+typedef struct {
+    UINT8 bLength;
+    UINT8 bDescriptorType;
+    UINT16 wTotalLength;
+    UINT8 bNumInterfaces;
+    UINT8 bConfigurationValue;
+    UINT8 iConfiguration;
+    UINT8 bmAttributes;
+    UINT8 bMaxPower;
+} __attribute__((packed)) usb_config_descriptor_t;
+
+typedef struct {
+    UINT8 bLength;
+    UINT8 bDescriptorType;
+    UINT8 bInterfaceNumber;
+    UINT8 bAlternateSetting;
+    UINT8 bNumEndpoints;
+    UINT8 bInterfaceClass;
+    UINT8 bInterfaceSubClass;
+    UINT8 bInterfaceProtocol;
+    UINT8 iInterface;
+} __attribute__((packed)) usb_interface_descriptor_t;
 
 xhci_cap_t *find_xhci_cap(xhci_regs_t *xhci_reg,UINT8 cap_id) {
     UINT32 offset = xhci_reg->cap->hccparams1>>16;
@@ -63,6 +116,36 @@ void address_device(xhci_regs_t *xhci_regs,UINT32 slot_id,UINT32 port_number) {
     kfree(input_context);
 }
 
+//获取设备描述符
+int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_id, void *buffer, UINT32 length) {
+    // 配置 Setup TRB（Get Descriptor）
+    usb_setup_packet_t *setup = kmalloc(sizeof(usb_setup_packet_t));
+    setup->b_request_type = 0x80;
+    setup->b_request = 0x06;
+    setup->w_value = 0x100;
+    setup->w_index = 0x0;
+    setup->w_length = length;
+    xhci_device_context32_t *dev_cxt = pa_to_va(xhci_regs->dcbaap[slot_id]);
+    xhci_trb_t *transfer_ring = pa_to_va(dev_cxt->ep[0].tr_dequeue_pointer);
+
+    transfer_ring[0].parameter1 = va_to_pa(setup);
+    transfer_ring[0].parameter2 = sizeof(usb_setup_packet_t) | (1 << 16); // Transfer Length, TD Size
+    transfer_ring[0].control = TRB_TYPE_SETUP | TRB_IOC | TRB_CYCLE;
+
+    // 配置 Data TRB
+    transfer_ring[1].parameter1 = va_to_pa(buffer);
+    transfer_ring[1].parameter2 = length | (1 << 16);
+    transfer_ring[1].control = TRB_TYPE_DATA | TRB_IOC | TRB_CYCLE | (1 << 2); // DIR=IN
+
+    // 配置 Status TRB
+    transfer_ring[2].parameter1 = 0;
+    transfer_ring[2].parameter2 = 0;
+    transfer_ring[2].control = TRB_TYPE_STATUS | TRB_IOC | TRB_CYCLE;
+
+    // 触发门铃（Endpoint 0）
+    xhci_regs->db[slot_id] = 1; // Stream ID = 0, Endpoint ID = 1 (Control Endpoint)
+}
+
 INIT_TEXT void init_xhci(void) {
     pcie_dev_t *xhci_dev = find_pcie_dev(XHCI_CLASS_CODE);      //找xhci设备
     init_pcie_bar(xhci_dev,0);                                         //初始化bar0寄存器
@@ -82,7 +165,7 @@ INIT_TEXT void init_xhci(void) {
     while (xhci_regs->op->usbcmd & 0x800) pause();
 
     UINT32 max_slots = xhci_regs->cap->hcsparams1&0xff;
-    xhci_regs->dcbaap = kzalloc(max_slots<<3);       //分配设备上下文插槽内存,最大插槽数量*8字节内存
+    xhci_regs->dcbaap = kzalloc(max_slots<<3);        //分配设备上下文插槽内存,最大插槽数量*8字节内存
     xhci_regs->op->dcbaap = va_to_pa(xhci_regs->dcbaap);  //把设备上下文基地址数组表的物理地址写入寄存器
     xhci_regs->op->config = max_slots;                    //把最大插槽数量写入寄存器
 
@@ -106,13 +189,18 @@ INIT_TEXT void init_xhci(void) {
     color_printk(GREEN,BLACK,"crcr:%#lx dcbaap:%#lx erstba[0]:%#lx erdp[0]:%#lx erstsz:%d config:%d \n",xhci_regs->op->crcr,xhci_regs->op->dcbaap,xhci_regs->rt->intr_regs[0].erstba,xhci_regs->rt->intr_regs[0].erdp,xhci_regs->rt->intr_regs[0].erstsz,xhci_regs->op->config);
 
     //遍历端口，分配插槽和设备地址
+    UINT32 slot_id;
     for (UINT32 i = 0; i < xhci_regs->cap->hcsparams1>>24; i++) {
         if (xhci_regs->op->portregs[i].portsc & 1) {
-            UINT32 slot = enable_slot(xhci_regs);
-            address_device(xhci_regs,slot,i+1);
+            slot_id = enable_slot(xhci_regs);
+            address_device(xhci_regs,slot_id,i+1);
         }
     }
 
+    usb_device_descriptor_t *dev_desc = kzalloc(sizeof(usb_device_descriptor_t));
+    UINT8 *config_buf = kzalloc(256);
+    get_device_descriptor(xhci_regs, slot_id, dev_desc, sizeof(dev_desc));
+    get_device_descriptor(xhci_regs, slot_id, config_buf, 256);
 
 
     while (1);
