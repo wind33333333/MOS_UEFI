@@ -25,7 +25,7 @@ xhci_cap_t *find_xhci_cap(xhci_regs_t *xhci_reg,UINT8 cap_id) {
 }
 
 //分配插槽
-UINT32 enable_slot(xhci_regs_t *xhci_regs) {
+static inline UINT32 enable_slot(xhci_regs_t *xhci_regs) {
     xhci_regs->crcr[0].parameter1 = 0;
     xhci_regs->crcr[0].parameter2 = 0;
     xhci_regs->crcr[0].control = 9<<10|TRB_CYCLE;
@@ -33,6 +33,19 @@ UINT32 enable_slot(xhci_regs_t *xhci_regs) {
         return (xhci_regs->erdp[0].control >> 24) & 0xFF;
     }
     return -1;
+}
+
+//设置设备地址
+UINT32 address_device(xhci_regs_t *xhci_regs,UINT32 slot) {
+    //分配传输环内存
+    xhci_trb_t *transfer_ring = kzalloc(TRB_COUNT * sizeof(xhci_trb_t));
+    transfer_ring[TRB_COUNT-1].parameter1 = va_to_pa(transfer_ring);
+    transfer_ring[TRB_COUNT-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE;
+
+    //配置设备上下文
+    xhci_device_context32_t *device_ctx = pa_to_va((UINT64)xhci_regs->dcbaap[slot]);
+    device_ctx->slot
+
 }
 
 INIT_TEXT void init_xhci(void) {
@@ -54,12 +67,12 @@ INIT_TEXT void init_xhci(void) {
     while (xhci_regs->op->usbcmd & 0x800) pause();
 
     UINT32 max_slots = xhci_regs->cap->hcsparams1&0xff;
-    xhci_regs->dcbaap32 = kzalloc(max_slots<<3);     //分配设备上下文插槽内存,最大插槽数量*8字节内存
+    xhci_regs->dcbaap = kzalloc(max_slots<<3);       //分配设备上下文插槽内存,最大插槽数量*8字节内存
     for (UINT32 i = 0; i < max_slots; i++) {             //为每个插槽分配设备上下文内存
-        xhci_regs->dcbaap32[i] = (xhci_device_context32_t*)va_to_pa(kzalloc(sizeof(xhci_device_context32_t)));
+        xhci_regs->dcbaap[i] = va_to_pa(kzalloc(sizeof(xhci_device_context32_t)));
     }
-    xhci_regs->op->config = max_slots;                  //把最大插槽数量写入寄存器
-    xhci_regs->op->dcbaap = va_to_pa(xhci_regs->dcbaap32);  //把设备上下文基地址数组表的物理地址写入寄存器
+    xhci_regs->op->config = max_slots;                    //把最大插槽数量写入寄存器
+    xhci_regs->op->dcbaap = va_to_pa(xhci_regs->dcbaap);  //把设备上下文基地址数组表的物理地址写入寄存器
 
     xhci_regs->crcr = kzalloc(TRB_COUNT*sizeof(xhci_trb_t));                 //分配命令环空间256* sizeof(xhci_trb_t) = 4K
     xhci_regs->crcr[TRB_COUNT-1].parameter1 = va_to_pa(xhci_regs->crcr);         //命令环最后一个trb指向环首地址
@@ -83,6 +96,7 @@ INIT_TEXT void init_xhci(void) {
     for (UINT32 i = 0; i < xhci_regs->cap->hcsparams1>>24; i++) {
         if (xhci_regs->op->portregs[i].portsc & 1) {
             UINT32 slot = enable_slot(xhci_regs);
+
         }
     }
 
