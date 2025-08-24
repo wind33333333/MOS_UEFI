@@ -82,6 +82,11 @@ xhci_cap_t *xhci_cap_find(xhci_regs_t *xhci_reg,UINT8 cap_id) {
     return NULL;
 }
 
+//响铃
+static inline void ring_doorbell(xhci_regs_t xhci_regs,UINT8 db_number,UINT32 value) {
+    xhci_regs.db[db_number] = value;
+}
+
 //分配一个命令环trb
 static inline xhci_trb_t *xhci_alloc_cmd_ring(xhci_regs_t *xhci_regs) {
     if (xhci_regs->cmd_idx >= TRB_COUNT-1) {
@@ -134,9 +139,9 @@ static inline UINT32 xhci_enable_slot(xhci_regs_t *xhci_regs) {
 }
 
 //设置设备地址
-void xhci_address_device(xhci_regs_t *xhci_regs,UINT32 slot_id,UINT32 port_id) {
+void xhci_address_device(xhci_regs_t *xhci_regs,UINT32 slot_number,UINT32 port_number) {
     //分配设备插槽上下文内存
-    xhci_regs->dcbaap[slot_id] = va_to_pa(kzalloc(sizeof(xhci_device_context32_t)));
+    xhci_regs->dcbaap[slot_number] = va_to_pa(kzalloc(sizeof(xhci_device_context32_t)));
 
     //分配传输环内存
     xhci_trb_t *transfer_ring = kzalloc(TRB_COUNT * sizeof(xhci_trb_t));
@@ -148,14 +153,14 @@ void xhci_address_device(xhci_regs_t *xhci_regs,UINT32 slot_id,UINT32 port_id) {
     input_context->add_context = 0x3;                                                       // 启用 Slot Context 和 Endpoint 0 Context
     input_context->drop_context = 0x0;
     input_context->dev_ctx.slot.reg0 = 1<<27;
-    input_context->dev_ctx.slot.reg1 = port_id<<16;
+    input_context->dev_ctx.slot.reg1 = port_number<<16;
     input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring)|TRB_CYCLE;
     input_context->dev_ctx.ep[0].reg1 = 4<<3 | 64<<16;
 
     xhci_trb_t trb ={
         va_to_pa(input_context),
         0,
-        TRB_ADDRESS_DEVICE | slot_id<<24
+        TRB_ADDRESS_DEVICE | slot_number<<24
     };
     xhci_write_cmd_ring(xhci_regs, &trb);
     xhci_regs->db[0] = 0;
@@ -166,7 +171,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs,UINT32 slot_id,UINT32 port_id) {
 }
 
 //获取设备描述符
-int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_id, void *buffer, UINT32 length) {
+int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_number, void *buffer, UINT32 length) {
     usb_setup_packet_t *setup = kmalloc(sizeof(usb_setup_packet_t));
     setup->b_request_type = 0x80;
     setup->b_request = 0x06;
@@ -174,7 +179,7 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_id, void *buffer, 
     setup->w_index = 0x0;
     setup->w_length = length;
 
-    xhci_device_context32_t *dev_ctx = pa_to_va(xhci_regs->dcbaap[slot_id]);
+    xhci_device_context32_t *dev_ctx = pa_to_va(xhci_regs->dcbaap[slot_number]);
     xhci_trb_t *transfer_ring = pa_to_va(dev_ctx->ep[0].tr_dequeue_pointer & ~0xFULL);
 
     // 假设环从0开始，实际应跟踪 Enqueue Pointer
@@ -191,7 +196,7 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_id, void *buffer, 
     transfer_ring[2].control = TRB_TYPE_STATUS | TRB_IOC | TRB_CYCLE; // 无 DIR for Status, 但对于 IN 传输 Status DIR=0
 
     // 触发门铃
-    xhci_regs->db[slot_id] = 1;
+    xhci_regs->db[slot_number] = 1;
 
 }
 
