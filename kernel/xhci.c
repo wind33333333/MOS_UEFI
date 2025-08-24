@@ -72,7 +72,7 @@ typedef struct {
     UINT8 iInterface;
 } __attribute__((packed)) usb_interface_descriptor_t;
 
-xhci_cap_t *find_xhci_cap(xhci_regs_t *xhci_reg,UINT8 cap_id) {
+xhci_cap_t *xhci_cap_find(xhci_regs_t *xhci_reg,UINT8 cap_id) {
     UINT32 offset = xhci_reg->cap->hccparams1>>16;
     while (offset) {
         xhci_cap_t *xhci_cap = (void*)xhci_reg->cap + (offset<<2);
@@ -82,8 +82,8 @@ xhci_cap_t *find_xhci_cap(xhci_regs_t *xhci_reg,UINT8 cap_id) {
     return NULL;
 }
 
-//分配一个命令环槽位
-static inline xhci_trb_t *alloc_cmd_slot(xhci_regs_t *xhci_regs) {
+//分配一个命令环trb
+static inline xhci_trb_t *xhci_alloc_cmd_ring(xhci_regs_t *xhci_regs) {
     if (xhci_regs->cmd_idx >= TRB_COUNT-1) {
         xhci_regs->cmd_ring[TRB_COUNT-1].control ^= TRB_CYCLE;
         xhci_regs->cmd_idx =0;
@@ -94,20 +94,20 @@ static inline xhci_trb_t *alloc_cmd_slot(xhci_regs_t *xhci_regs) {
 }
 
 //写命令环
-int write_cmd_ring (xhci_regs_t *xhci_regs,xhci_trb_t *cmd_trb) {
-    xhci_trb_t *cmd_slot = alloc_cmd_slot(xhci_regs);
-    cmd_slot->parameter1 = cmd_trb->parameter1;
-    cmd_slot->parameter2 = cmd_trb->parameter2;
-    cmd_slot->control = cmd_trb->control | (xhci_regs->cmd_ring[TRB_COUNT-1].control&TRB_CYCLE);
+int xhci_write_cmd_ring(xhci_regs_t *xhci_regs,xhci_trb_t *cmd_trb) {
+    xhci_trb_t *cmd_ring = xhci_alloc_cmd_ring(xhci_regs);
+    cmd_ring->parameter1 = cmd_trb->parameter1;
+    cmd_ring->parameter2 = cmd_trb->parameter2;
+    cmd_ring->control = cmd_trb->control | (xhci_regs->cmd_ring[TRB_COUNT-1].control&TRB_CYCLE);
     return 0;
 }
 
 //读事件环
-int read_evt_ring (xhci_regs_t *xhci_regs,xhci_trb_t *evt_trb) {
-    xhci_trb_t *evt_slot = &xhci_regs->evt_ring[xhci_regs->evt_idx];
-    evt_trb->parameter1 = evt_slot->parameter1;
-    evt_trb->parameter2 = evt_slot->parameter2;
-    evt_trb->control = evt_slot->control;
+int xhci_read_evt_ring (xhci_regs_t *xhci_regs,xhci_trb_t *evt_trb) {
+    xhci_trb_t *evt_ring = &xhci_regs->evt_ring[xhci_regs->evt_idx];
+    evt_trb->parameter1 = evt_ring->parameter1;
+    evt_trb->parameter2 = evt_ring->parameter2;
+    evt_trb->control = evt_ring->control;
     if (xhci_regs->evt_idx >= TRB_COUNT-1) {
         xhci_regs->evt_idx = 0;
     }else {
@@ -118,14 +118,15 @@ int read_evt_ring (xhci_regs_t *xhci_regs,xhci_trb_t *evt_trb) {
 }
 
 //分配插槽
-static inline UINT32 enable_slot(xhci_regs_t *xhci_regs) {
-    xhci_trb_t trb;
-    trb.parameter1 = 0;
-    trb.parameter2 = 0;
-    trb.control = TRB_ENABLE_SLOT;
-    write_cmd_ring(xhci_regs, &trb);
+static inline UINT32 xhci_enable_slot(xhci_regs_t *xhci_regs) {
+    xhci_trb_t trb ={
+        0,
+        0,
+        TRB_ENABLE_SLOT
+    };
+    xhci_write_cmd_ring(xhci_regs, &trb);
     xhci_regs->db[0] = 0;
-    read_evt_ring(xhci_regs, &trb);
+    xhci_read_evt_ring(xhci_regs, &trb);
     if ((trb.control >> 10 & 0x3F) == 33 && trb.control>>24) {
         return trb.control >> 24 & 0xFF;
     }
@@ -133,7 +134,7 @@ static inline UINT32 enable_slot(xhci_regs_t *xhci_regs) {
 }
 
 //设置设备地址
-void address_device(xhci_regs_t *xhci_regs,UINT32 slot_id,UINT32 port_number) {
+void xhci_address_device(xhci_regs_t *xhci_regs,UINT32 slot_id,UINT32 port_id) {
     //分配设备插槽上下文内存
     xhci_regs->dcbaap[slot_id] = va_to_pa(kzalloc(sizeof(xhci_device_context32_t)));
 
@@ -144,17 +145,22 @@ void address_device(xhci_regs_t *xhci_regs,UINT32 slot_id,UINT32 port_number) {
 
     //配置设备上下文
     xhci_input_context32_t *input_context = kzalloc(sizeof(xhci_input_context32_t));
-    input_context->add_context = 0x3; // 启用 Slot Context 和 Endpoint 0 Context
+    input_context->add_context = 0x3;                                                       // 启用 Slot Context 和 Endpoint 0 Context
     input_context->drop_context = 0x0;
     input_context->dev_ctx.slot.reg0 = 1<<27;
-    input_context->dev_ctx.slot.reg1 = port_number<<16;
+    input_context->dev_ctx.slot.reg1 = port_id<<16;
     input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring)|TRB_CYCLE;
     input_context->dev_ctx.ep[0].reg1 = 4<<3 | 64<<16;
 
-    xhci_regs->cmd_ring[1].parameter1 = va_to_pa(input_context);
-    xhci_regs->cmd_ring[1].parameter2 = 0;
-    xhci_regs->cmd_ring[1].control = ((slot_id << 24) | (11 << 10) | TRB_CYCLE);
+    xhci_trb_t trb ={
+        va_to_pa(input_context),
+        0,
+        TRB_ADDRESS_DEVICE | slot_id<<24
+    };
+    xhci_write_cmd_ring(xhci_regs, &trb);
     xhci_regs->db[0] = 0;
+
+    xhci_read_evt_ring(xhci_regs, &trb);
 
     kfree(input_context);
 }
@@ -235,8 +241,8 @@ INIT_TEXT void init_xhci(void) {
     UINT32 slot_id;
     for (UINT32 i = 0; i < xhci_regs->cap->hcsparams1>>24; i++) {
         if (xhci_regs->op->portregs[i].portsc & 1) {
-            slot_id = enable_slot(xhci_regs);
-            address_device(xhci_regs,slot_id,i+1);
+            slot_id = xhci_enable_slot(xhci_regs);
+            xhci_address_device(xhci_regs,slot_id,i+1);
         }
     }
 
