@@ -83,7 +83,7 @@ xhci_cap_t *find_xhci_cap(xhci_regs_t *xhci_reg,UINT8 cap_id) {
 }
 
 //分配一个命令环槽位
-static inline xhci_trb_t *alloc_cmd_ring(xhci_regs_t *xhci_regs) {
+static inline xhci_trb_t *alloc_cmd_slot(xhci_regs_t *xhci_regs) {
     if (xhci_regs->crcr_idx >= TRB_COUNT-1) {
         xhci_regs->crcr[TRB_COUNT-1].control ^= TRB_CYCLE;
         xhci_regs->crcr_idx =0;
@@ -94,22 +94,40 @@ static inline xhci_trb_t *alloc_cmd_ring(xhci_regs_t *xhci_regs) {
 }
 
 //写命令环
-int write_cmd_ring (xhci_regs_t *xhci_regs,xhci_trb_t *trb) {
-    xhci_trb_t *cmd_ring = alloc_cmd_ring(xhci_regs);
-    cmd_ring->parameter1 = trb->parameter1;
-    cmd_ring->parameter2 = trb->parameter2;
-    cmd_ring->control = trb->control | (xhci_regs->crcr[TRB_COUNT-1].control&TRB_CYCLE);
+int write_cmd_ring (xhci_regs_t *xhci_regs,xhci_trb_t *cmd_trb) {
+    xhci_trb_t *cmd_slot = alloc_cmd_slot(xhci_regs);
+    cmd_slot->parameter1 = cmd_trb->parameter1;
+    cmd_slot->parameter2 = cmd_trb->parameter2;
+    cmd_slot->control = cmd_trb->control | (xhci_regs->crcr[TRB_COUNT-1].control&TRB_CYCLE);
+    return 0;
+}
+
+//读事件环
+int read_evt_ring (xhci_regs_t *xhci_regs,xhci_trb_t *evt_trb) {
+    xhci_trb_t *evt_slot = &xhci_regs->evt_ring[xhci_regs->evt_idx];
+    evt_trb->parameter1 = evt_slot->parameter1;
+    evt_trb->parameter2 = evt_slot->parameter2;
+    evt_trb->control = evt_slot->control;
+    if (xhci_regs->evt_idx >= TRB_COUNT-1) {
+        xhci_regs->evt_idx = 0;
+    }else {
+        xhci_regs->evt_idx++;
+    }
+    xhci_regs->rt->intr_regs->erdp = va_to_pa(&xhci_regs->evt_ring[xhci_regs->evt_idx])|8;
+    return 0;
 }
 
 //分配插槽
 static inline UINT32 enable_slot(xhci_regs_t *xhci_regs) {
-    xhci_trb_t *evt_ring = xhci_regs->erdp;
-    // cmd_ring[cmd_idx].parameter1 = 0;
-    // cmd_ring[cmd_idx].parameter2 = 0;
-    // cmd_ring[cmd_idx].control = TRB_ENABLE_SLOT|TRB_CYCLE;
+    xhci_trb_t trb;
+    trb.parameter1 = 0;
+    trb.parameter2 = 0;
+    trb.control = TRB_ENABLE_SLOT;
+    write_cmd_ring(xhci_regs, &trb);
     xhci_regs->db[0] = 0;
-    if ((evt_ring->control >> 10 & 0x3F) == 33 && xhci_regs->erdp->control>>24) {
-        return xhci_regs->erdp[0].control >> 24 & 0xFF;
+    read_evt_ring(xhci_regs, &trb);
+    if ((trb.control >> 10 & 0x3F) == 33 && trb.control>>24) {
+        return trb.control >> 24 & 0xFF;
     }
     return -1;
 }
@@ -199,14 +217,14 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->crcr[TRB_COUNT-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE |TRB_CYCLE;     //命令环最后一个trb设置位link
     xhci_regs->op->crcr = va_to_pa(xhci_regs->crcr)|TRB_CYCLE;                              //命令环物理地址写入crcr寄存器，置位rcs
 
-    xhci_erst_t *erstba =kmalloc(sizeof(xhci_erst_t));                       //分配单事件环段表内存64字节
-    xhci_regs->erdp = kzalloc(TRB_COUNT*sizeof(xhci_trb_t));                //分配事件环空间256* sizeof(xhci_trb_t) = 4K
-    erstba->ring_seg_base_addr = va_to_pa(xhci_regs->erdp);                     //段表中写入事件环物理地址
-    erstba->ring_seg_size = TRB_COUNT;                                          //写入段表最大trb个数
+    xhci_erst_t *erstba =kmalloc(sizeof(xhci_erst_t));                          //分配单事件环段表内存64字节
+    xhci_regs->evt_ring = kzalloc(TRB_COUNT*sizeof(xhci_trb_t));                //分配事件环空间256* sizeof(xhci_trb_t) = 4K
+    erstba->ring_seg_base_addr = va_to_pa(xhci_regs->evt_ring);                     //段表中写入事件环物理地址
+    erstba->ring_seg_size = TRB_COUNT;                                              //写入段表最大trb个数
     erstba->reserved = 0;
-    xhci_regs->rt->intr_regs->erstsz = 1;                                       //设置单事件环段
-    xhci_regs->rt->intr_regs->erstba = va_to_pa(erstba);                        //事件环段表物理地址写入寄存器
-    xhci_regs->rt->intr_regs->erdp = va_to_pa(xhci_regs->erdp);                 //事件环物理地址写入寄存器
+    xhci_regs->rt->intr_regs->erstsz = 1;                                           //设置单事件环段
+    xhci_regs->rt->intr_regs->erstba = va_to_pa(erstba);                            //事件环段表物理地址写入寄存器
+    xhci_regs->rt->intr_regs->erdp = va_to_pa(xhci_regs->evt_ring);                 //事件环物理地址写入寄存器
 
     xhci_regs->op->usbcmd |= 1; //启动xhci
 
