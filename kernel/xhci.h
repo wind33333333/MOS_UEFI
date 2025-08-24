@@ -2,6 +2,39 @@
 
 #include "moslib.h"
 
+#define TRB_RESERVED          (0 << 10)
+#define TRB_NORMAL            (1 << 10)
+#define TRB_SETUP_STAGE       (2 << 10)
+#define TRB_DATA_STAGE        (3 << 10)
+#define TRB_STATUS_STAGE      (4 << 10)
+#define TRB_ISOCH             (5 << 10)
+#define TRB_LINK              (6 << 10)
+#define TRB_EVDATA            (7 << 10)
+#define TRB_NOOP              (8 << 10)
+#define TRB_ENABLE_SLOT       (9 << 10)
+#define TRB_DISABLE_SLOT      (10 << 10)
+#define TRB_ADDRESS_DEVICE    (11 << 10)
+#define TRB_CONFIGURE_ENDPOINT (12 << 10)
+#define TRB_EVALUATE_CONTEXT  (13 << 10)
+#define TRB_RESET_ENDPOINT    (14 << 10)
+#define TRB_STOP_ENDPOINT     (15 << 10)
+#define TRB_SET_TR_DEQUEUE    (16 << 10)
+#define TRB_RESET_DEVICE      (17 << 10)
+#define TRB_FORCE_EVENT       (18 << 10)
+#define TRB_NEGOTIATE_BW      (19 << 10)
+#define TRB_SET_LATENCY_TOLERANCE (20 << 10)
+#define TRB_GET_PORT_BANDWIDTH (21 << 10)
+#define TRB_FORCE_HEADER      (22 << 10)
+#define TRB_NOOP_COMMAND      (23 << 10)
+#define TRB_TRANSFER          (32 << 10)
+#define TRB_COMMAND_COMPLETE  (33 << 10)
+#define TRB_PORT_STATUS_CHANGE (34 << 10)
+#define TRB_BANDWIDTH_REQUEST (35 << 10)
+#define TRB_DOORBELL          (36 << 10)
+#define TRB_HOST_CONTROLLER   (37 << 10)
+#define TRB_DEVICE_NOTIFICATION (38 << 10)
+#define TRB_MFINDEX_WRAP      (39 << 10)
+
 #pragma pack(push,1)
 
 // ===== 1. 能力寄存器 (Capability Registers) =====
@@ -380,13 +413,15 @@ typedef struct {
     xhci_op_regs_t  *op;         // 操作寄存器
     xhci_rt_regs_t  *rt;         // 运行时寄存器
     xhci_db_regs_t  *db;         // 门铃寄存器
-    xhci_ext_regs_t *ext;        // 扩展寄存器+
+    xhci_ext_regs_t *ext;        // 扩展寄存器
 
-    xhci_trb_t      *crcr;        //命令环基地址
-    xhci_erst_t     *erstba;      //事件环段表
-    xhci_trb_t      *erdp;        //事件环基地址
-    UINT64          *dcbaap;      //设备上下文
+    xhci_trb_t      *crcr;        //命令环虚拟地址
+    UINT32          crcr_idx;     //下一个可用命令槽
+    xhci_trb_t      *erdp;        //事件环虚拟地址
+    UINT64          *dcbaap;      //设备上下文虚拟地址
 } xhci_regs_t;
+
+
 
 #pragma pack(pop)
 
