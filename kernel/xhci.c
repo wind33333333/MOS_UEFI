@@ -84,12 +84,12 @@ xhci_cap_t *find_xhci_cap(xhci_regs_t *xhci_reg,UINT8 cap_id) {
 
 //分配一个命令环槽位
 static inline xhci_trb_t *alloc_cmd_slot(xhci_regs_t *xhci_regs) {
-    if (xhci_regs->crcr_idx >= TRB_COUNT-1) {
-        xhci_regs->crcr[TRB_COUNT-1].control ^= TRB_CYCLE;
-        xhci_regs->crcr_idx =0;
+    if (xhci_regs->cmd_idx >= TRB_COUNT-1) {
+        xhci_regs->cmd_ring[TRB_COUNT-1].control ^= TRB_CYCLE;
+        xhci_regs->cmd_idx =0;
     }
-    xhci_trb_t *cmd_ring = &xhci_regs->crcr[xhci_regs->crcr_idx];
-    xhci_regs->crcr_idx++;
+    xhci_trb_t *cmd_ring = &xhci_regs->cmd_ring[xhci_regs->cmd_idx];
+    xhci_regs->cmd_idx++;
     return cmd_ring;
 }
 
@@ -98,7 +98,7 @@ int write_cmd_ring (xhci_regs_t *xhci_regs,xhci_trb_t *cmd_trb) {
     xhci_trb_t *cmd_slot = alloc_cmd_slot(xhci_regs);
     cmd_slot->parameter1 = cmd_trb->parameter1;
     cmd_slot->parameter2 = cmd_trb->parameter2;
-    cmd_slot->control = cmd_trb->control | (xhci_regs->crcr[TRB_COUNT-1].control&TRB_CYCLE);
+    cmd_slot->control = cmd_trb->control | (xhci_regs->cmd_ring[TRB_COUNT-1].control&TRB_CYCLE);
     return 0;
 }
 
@@ -151,9 +151,9 @@ void address_device(xhci_regs_t *xhci_regs,UINT32 slot_id,UINT32 port_number) {
     input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring)|TRB_CYCLE;
     input_context->dev_ctx.ep[0].reg1 = 4<<3 | 64<<16;
 
-    xhci_regs->crcr[1].parameter1 = va_to_pa(input_context);
-    xhci_regs->crcr[1].parameter2 = 0;
-    xhci_regs->crcr[1].control = ((slot_id << 24) | (11 << 10) | TRB_CYCLE);
+    xhci_regs->cmd_ring[1].parameter1 = va_to_pa(input_context);
+    xhci_regs->cmd_ring[1].parameter2 = 0;
+    xhci_regs->cmd_ring[1].control = ((slot_id << 24) | (11 << 10) | TRB_CYCLE);
     xhci_regs->db[0] = 0;
 
     kfree(input_context);
@@ -212,10 +212,10 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->op->dcbaap = va_to_pa(xhci_regs->dcbaap);  //把设备上下文基地址数组表的物理地址写入寄存器
     xhci_regs->op->config = max_slots;                    //把最大插槽数量写入寄存器
 
-    xhci_regs->crcr = kzalloc(TRB_COUNT*sizeof(xhci_trb_t));                            //分配命令环空间256* sizeof(xhci_trb_t) = 4K
-    xhci_regs->crcr[TRB_COUNT-1].parameter1 = va_to_pa(xhci_regs->crcr);                    //命令环最后一个trb指向环首地址
-    xhci_regs->crcr[TRB_COUNT-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE |TRB_CYCLE;     //命令环最后一个trb设置位link
-    xhci_regs->op->crcr = va_to_pa(xhci_regs->crcr)|TRB_CYCLE;                              //命令环物理地址写入crcr寄存器，置位rcs
+    xhci_regs->cmd_ring = kzalloc(TRB_COUNT*sizeof(xhci_trb_t));                            //分配命令环空间256* sizeof(xhci_trb_t) = 4K
+    xhci_regs->cmd_ring[TRB_COUNT-1].parameter1 = va_to_pa(xhci_regs->cmd_ring);                //命令环最后一个trb指向环首地址
+    xhci_regs->cmd_ring[TRB_COUNT-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE |TRB_CYCLE;     //命令环最后一个trb设置位link
+    xhci_regs->op->crcr = va_to_pa(xhci_regs->cmd_ring)|TRB_CYCLE;                              //命令环物理地址写入crcr寄存器，置位rcs
 
     xhci_erst_t *erstba =kmalloc(sizeof(xhci_erst_t));                          //分配单事件环段表内存64字节
     xhci_regs->evt_ring = kzalloc(TRB_COUNT*sizeof(xhci_trb_t));                //分配事件环空间256* sizeof(xhci_trb_t) = 4K
