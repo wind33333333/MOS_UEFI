@@ -243,7 +243,6 @@ INIT_TEXT void init_xhci(void) {
     usb_device_descriptor_t *dev_desc = kzalloc(sizeof(usb_device_descriptor_t));
     UINT8 *config_buf = kzalloc(256);
     get_device_descriptor(xhci_regs, slot_id, dev_desc, sizeof(dev_desc));
-    while (1);
     get_device_descriptor(xhci_regs, slot_id, config_buf, 256);
 
 
