@@ -196,7 +196,7 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_number, void *buff
     transfer_ring[2].control = TRB_TYPE_STATUS | TRB_IOC | TRB_CYCLE; // 无 DIR for Status, 但对于 IN 传输 Status DIR=0
 
     // 触发门铃
-    xhci_regs->db[slot_number] = 1;
+    xhci_ring_doorbell(xhci_regs,slot_number,1);
 
 }
 
