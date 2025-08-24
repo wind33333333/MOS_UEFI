@@ -83,8 +83,8 @@ xhci_cap_t *xhci_cap_find(xhci_regs_t *xhci_reg,UINT8 cap_id) {
 }
 
 //响铃
-static inline void ring_doorbell(xhci_regs_t xhci_regs,UINT8 db_number,UINT32 value) {
-    xhci_regs.db[db_number] = value;
+static inline void xhci_ring_doorbell(xhci_regs_t *xhci_regs,UINT8 db_number,UINT32 value) {
+    xhci_regs->db[db_number] = value;
 }
 
 //分配一个命令环trb
@@ -130,7 +130,7 @@ static inline UINT32 xhci_enable_slot(xhci_regs_t *xhci_regs) {
         TRB_ENABLE_SLOT
     };
     xhci_write_cmd_ring(xhci_regs, &trb);
-    xhci_regs->db[0] = 0;
+    xhci_ring_doorbell(xhci_regs,0,0);
     xhci_read_evt_ring(xhci_regs, &trb);
     if ((trb.control >> 10 & 0x3F) == 33 && trb.control>>24) {
         return trb.control >> 24 & 0xFF;
@@ -163,7 +163,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs,UINT32 slot_number,UINT32 port_n
         TRB_ADDRESS_DEVICE | slot_number<<24
     };
     xhci_write_cmd_ring(xhci_regs, &trb);
-    xhci_regs->db[0] = 0;
+    xhci_ring_doorbell(xhci_regs,0,0);
 
     xhci_read_evt_ring(xhci_regs, &trb);
 
