@@ -323,7 +323,7 @@ static inline void cpuid(UINT32 in_eax, UINT32 in_ecx,UINT32 *out_eax, UINT32 *o
             );
 }
 
-static inline void *memcpy(void *From, void *To, long Num) {
+static inline void *mem_cpy(void *From, void *To, long Num) {
     int d0, d1, d2;
     __asm__ __volatile__    (    "cld	\n\t"
                                  "rep	\n\t"
@@ -345,7 +345,7 @@ static inline void *memcpy(void *From, void *To, long Num) {
     return To;
 }
 
-static inline int memcmp(void *FirstPart, void *SecondPart, long Count) {
+static inline int mem_cmp(void *FirstPart, void *SecondPart, long Count) {
     register int __res;
 
     __asm__ __volatile__    (    "cld	\n\t"        //clean direct

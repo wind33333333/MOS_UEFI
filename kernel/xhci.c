@@ -101,8 +101,8 @@ static inline xhci_trb_t *xhci_alloc_cmd_ring(xhci_regs_t *xhci_regs) {
 //写命令环
 int xhci_write_cmd_ring(xhci_regs_t *xhci_regs,xhci_trb_t *cmd_trb) {
     xhci_trb_t *cmd_ring = xhci_alloc_cmd_ring(xhci_regs);
-    cmd_ring->parameter1 = cmd_trb->parameter1;
-    cmd_ring->parameter2 = cmd_trb->parameter2;
+    cmd_ring->parameter = cmd_trb->parameter;
+    cmd_ring->status = cmd_trb->status;
     cmd_ring->control = cmd_trb->control | (xhci_regs->cmd_ring[TRB_COUNT-1].control&TRB_CYCLE);
     return 0;
 }
@@ -110,8 +110,8 @@ int xhci_write_cmd_ring(xhci_regs_t *xhci_regs,xhci_trb_t *cmd_trb) {
 //读事件环
 int xhci_read_evt_ring (xhci_regs_t *xhci_regs,xhci_trb_t *evt_trb) {
     xhci_trb_t *evt_ring = &xhci_regs->evt_ring[xhci_regs->evt_idx];
-    evt_trb->parameter1 = evt_ring->parameter1;
-    evt_trb->parameter2 = evt_ring->parameter2;
+    evt_trb->parameter = evt_ring->parameter;
+    evt_trb->status = evt_ring->status;
     evt_trb->control = evt_ring->control;
     if (xhci_regs->evt_idx >= TRB_COUNT-1) {
         xhci_regs->evt_idx = 0;
@@ -145,7 +145,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs,UINT32 slot_number,UINT32 port_n
 
     //分配传输环内存
     xhci_trb_t *transfer_ring = kzalloc(TRB_COUNT * sizeof(xhci_trb_t));
-    transfer_ring[TRB_COUNT-1].parameter1 = va_to_pa(transfer_ring);
+    transfer_ring[TRB_COUNT-1].parameter = va_to_pa(transfer_ring);
     transfer_ring[TRB_COUNT-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE;
 
     //配置设备上下文
@@ -172,28 +172,31 @@ void xhci_address_device(xhci_regs_t *xhci_regs,UINT32 slot_number,UINT32 port_n
 
 //获取设备描述符
 int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_number, void *buffer, UINT32 length) {
-    usb_setup_packet_t *setup = kmalloc(sizeof(usb_setup_packet_t));
-    setup->b_request_type = 0x80;
-    setup->b_request = 0x06;
-    setup->w_value = 0x100; // 允许传入，如 0x100 Device, 0x200 Config
-    setup->w_index = 0x0;
-    setup->w_length = length;
+    // Step 1: 构造 USB Setup Packet
+    usb_setup_packet_t setup = {
+        0x80,   // 设备到主机, 标准请求, 设备
+        0x06,   // GET_DESCRIPTOR
+        0x0100, // 描述符类型(1=Device), Index=0
+        0x0000, // 语言 ID (对 Device 描述符无意义)
+        18      // Device Descriptor 长度
+    };
 
     xhci_device_context32_t *dev_ctx = pa_to_va(xhci_regs->dcbaap[slot_number]);
     xhci_trb_t *transfer_ring = pa_to_va(dev_ctx->ep[0].tr_dequeue_pointer & ~0xFULL);
 
     // 假设环从0开始，实际应跟踪 Enqueue Pointer
-    transfer_ring[0].parameter1 = va_to_pa(setup);
-    transfer_ring[0].parameter2 = 8;
-    transfer_ring[0].control = TRB_TYPE_SETUP | TRB_CHAIN | TRB_CYCLE; // 加 Chain
+    mem_cpy(&transfer_ring[0].parameter,&setup,sizeof(setup));
+    //transfer_ring[0].parameter1 = va_to_pa(setup);
+    transfer_ring[0].status = (8 << 16);
+    transfer_ring[0].control = TRB_TYPE_SETUP | TRB_CYCLE | (3 << 16); // TRB Type=Setup Stage, IDT=1; // 加 Chain
 
-    transfer_ring[1].parameter1 = va_to_pa(buffer);
-    transfer_ring[1].parameter2 = length;
-    transfer_ring[1].control = TRB_TYPE_DATA | TRB_CHAIN | TRB_DIR | TRB_CYCLE; // DIR=1 (IN), Chain
+    transfer_ring[1].parameter = va_to_pa(buffer);
+    transfer_ring[1].status = (18 << 16);  // 需要读取 18 字节;
+    transfer_ring[1].control = TRB_TYPE_DATA | TRB_CYCLE| (1 << 16); // IN Data
 
-    transfer_ring[2].parameter1 = 0;
-    transfer_ring[2].parameter2 = 0;
-    transfer_ring[2].control = TRB_TYPE_STATUS | TRB_IOC | TRB_CYCLE; // 无 DIR for Status, 但对于 IN 传输 Status DIR=0
+    transfer_ring[2].parameter = 0;
+    transfer_ring[2].status = 0;
+    transfer_ring[2].control = TRB_TYPE_STATUS | TRB_CYCLE | (1 << 5); // IOC=1
 
     // 响铃
     xhci_ring_doorbell(xhci_regs,slot_number,1);
@@ -224,7 +227,7 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->op->config = max_slots;                    //把最大插槽数量写入寄存器
 
     xhci_regs->cmd_ring = kzalloc(TRB_COUNT*sizeof(xhci_trb_t));                            //分配命令环空间256* sizeof(xhci_trb_t) = 4K
-    xhci_regs->cmd_ring[TRB_COUNT-1].parameter1 = va_to_pa(xhci_regs->cmd_ring);                //命令环最后一个trb指向环首地址
+    xhci_regs->cmd_ring[TRB_COUNT-1].parameter = va_to_pa(xhci_regs->cmd_ring);                //命令环最后一个trb指向环首地址
     xhci_regs->cmd_ring[TRB_COUNT-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE |TRB_CYCLE;     //命令环最后一个trb设置位link
     xhci_regs->op->crcr = va_to_pa(xhci_regs->cmd_ring)|TRB_CYCLE;                              //命令环物理地址写入crcr寄存器，置位rcs
 

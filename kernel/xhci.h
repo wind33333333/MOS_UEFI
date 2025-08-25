@@ -308,8 +308,8 @@ typedef struct {
 } xhci_erst_t;
 
 typedef struct {
-    UINT64 parameter1;
-    UINT32 parameter2;
+    UINT64 parameter;
+    UINT32 status;
     UINT32 control; // 位[0]为Cycle Bit
 } xhci_trb_t;
 
