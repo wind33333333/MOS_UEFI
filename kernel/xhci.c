@@ -154,7 +154,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs,UINT32 slot_number,UINT32 port_n
     input_context->drop_context = 0x0;
     input_context->dev_ctx.slot.reg0 = 1<<27;
     input_context->dev_ctx.slot.reg1 = port_number<<16;
-    input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring)|TRB_CYCLE;
+    input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring);
     input_context->dev_ctx.ep[0].reg1 = 4<<3 | 64<<16;
 
     xhci_trb_t trb ={
@@ -185,7 +185,7 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_number, void *buff
     xhci_trb_t *transfer_ring = pa_to_va(dev_ctx->ep[0].tr_dequeue_pointer & ~0xFULL);
 
     // 假设环从0开始，实际应跟踪 Enqueue Pointer
-    mem_cpy(&transfer_ring[0].parameter,&setup,sizeof(setup));
+    mem_cpy(&setup,&transfer_ring[0].parameter,sizeof(setup));
     //transfer_ring[0].parameter1 = va_to_pa(setup);
     transfer_ring[0].status = (8 << 16);
     transfer_ring[0].control = TRB_TYPE_SETUP | TRB_CYCLE | (3 << 16); // TRB Type=Setup Stage, IDT=1; // 加 Chain
