@@ -248,7 +248,8 @@ INIT_TEXT void init_xhci(void) {
     //遍历端口，分配插槽和设备地址
     UINT32 slot_id;
     for (UINT32 i = 0; i < xhci_regs->cap->hcsparams1>>24; i++) {
-        if (xhci_regs->op->portregs[i].portsc & 1) {
+        if (xhci_regs->op->portregs[i].portsc & 1 && xhci_regs->op->portregs[i].portsc & 1<<17) {
+            xhci_regs->op->portregs[i].portsc |= 1<<17;
             slot_id = xhci_enable_slot(xhci_regs);
             xhci_address_device(xhci_regs,slot_id,i+1);
         }
