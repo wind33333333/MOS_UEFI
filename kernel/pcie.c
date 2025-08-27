@@ -269,7 +269,7 @@ void pcie_msi_intrpt_set(pcie_dev_t *pcie_dev) {
 }
 
 
-INIT_TEXT void init_pcie(void) {
+INIT_TEXT void pcie_init(void) {
     //初始化pcie设备链表
     list_head_init(&pcie_dev_list);
     //查找mcfg表

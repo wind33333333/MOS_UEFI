@@ -225,7 +225,7 @@ static inline UINT32 get_pcie_classcode(pcie_dev_t *pcie_dev) {
 #define CANBUS_CLASS_CODE              0x0C0900  // CANbus 控制器
 #define SERIAL_BUS_OTHER_CLASS_CODE    0x0C8000  // 其他串行总线控制器
 
-void init_pcie(void);
+void pcie_init(void);
 pcie_dev_t *pcie_dev_find(UINT32 class_code);
 cap_t *pcie_cap_find(pcie_dev_t *pcie_dev, cap_id_e cap_id);
 void pcie_bar_set(pcie_dev_t *pcie_dev,UINT8 bir);
