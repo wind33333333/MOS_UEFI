@@ -51,7 +51,7 @@ struct {
 list_head_t pcie_dev_list;
 
 //查找pcie的类名
-static inline char *find_pcie_clasename(pcie_dev_t *pcie_dev) {
+static inline char *pcie_clasename_find(pcie_dev_t *pcie_dev) {
     UINT32 class_code = get_pcie_classcode(pcie_dev);
     for (int i = 0; pcie_classnames[i].name != NULL; i++) {
         if (class_code == pcie_classnames[i].class_code) return pcie_classnames[i].name;
@@ -67,7 +67,7 @@ static inline void create_pcie_dev(pcie_config_space_t *pcie_config_space, UINT8
     pcie_dev->dev = dev;
     pcie_dev->func = func;
     pcie_dev->pcie_config_space = iomap(pcie_config_space,PAGE_4K_SIZE,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
-    pcie_dev->name = find_pcie_clasename(pcie_dev);
+    pcie_dev->name = pcie_clasename_find(pcie_dev);
     list_add_head(&pcie_dev_list, &pcie_dev->list);
 }
 
@@ -125,7 +125,7 @@ pcie_dev_t *pcie_dev_find(UINT32 class_code) {
 //搜索能力链表
 //参数capability_id
 //返回一个capability_t* 指针
-cap_t *find_pcie_cap(pcie_dev_t *pcie_dev, cap_id_e cap_id) {
+cap_t *pcie_cap_find(pcie_dev_t *pcie_dev, cap_id_e cap_id) {
     //检测是否支持能力链表,不支持返回空指针
     if (!(pcie_dev->pcie_config_space->status & 0x10)) return NULL;
     //计算能力链表起始地址
@@ -148,7 +148,7 @@ static inline UINT64 is_bar64(UINT64 bar_data) {
 //配置bar寄存器
 //参数bar寄存器号
 //返回bar虚拟地址
-void init_pcie_bar(pcie_dev_t *pcie_dev,UINT8 bir) {
+void pcie_bar_set(pcie_dev_t *pcie_dev,UINT8 bir) {
     if (bir > 5) return;
     UINT32 *bar = &pcie_dev->pcie_config_space->type0.bar[bir];
     UINT64 addr = *bar;
@@ -197,7 +197,7 @@ void pcie_disable_msi_intrs(pcie_dev_t *pcie_dev) {
 //参数pcie_config_space_t
 //数量
 UINT32 get_msi_x_irq_number(pcie_dev_t *pcie_dev) {
-    cap_t *cap= find_pcie_cap(pcie_dev,msi_x_e);
+    cap_t *cap= pcie_cap_find(pcie_dev,msi_x_e);
     return (cap->msi_x.msg_control & 0x7FF)+1;
 }
 
@@ -238,7 +238,7 @@ static inline UINT32 get_pda_offset(cap_t *cap) {
 }
 
 void pcie_msi_intrpt_set(pcie_dev_t *pcie_dev) {
-    cap_t *cap = find_pcie_cap(pcie_dev,msi_x_e);
+    cap_t *cap = pcie_cap_find(pcie_dev,msi_x_e);
     UINT64 msg_addr = rdmsr(IA32_APIC_BASE_MSR) & ~0xFFFUL;
     //优先启用msi-x中断
     if (cap) {
@@ -256,7 +256,7 @@ void pcie_msi_intrpt_set(pcie_dev_t *pcie_dev) {
     }else {
         pcie_dev->msi_x_flags = 0;
         //启用msi中断
-        cap = find_pcie_cap(pcie_dev,msi_e);
+        cap = pcie_cap_find(pcie_dev,msi_e);
         pcie_dev->msi.msg_control = &cap->msi.msg_control;
         pcie_dev->msi.msg_addr_lo = &cap->msi.msg_addr_lo;
         pcie_dev->msi.msg_addr_hi = &cap->msi.msg_addr_hi;
