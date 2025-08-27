@@ -112,7 +112,7 @@ static inline void pcie_enmu(UINT64 ecam_base, UINT8 bus) {
  * 返回一个pcie_dev_t指针
  */
 list_head_t *next_pcie_dev = &pcie_dev_list;
-pcie_dev_t *find_pcie_dev(UINT32 class_code) {
+pcie_dev_t *pcie_dev_find(UINT32 class_code) {
     if (next_pcie_dev == &pcie_dev_list) next_pcie_dev = pcie_dev_list.next;
     while (next_pcie_dev != &pcie_dev_list) {
         pcie_dev_t *pcie_dev = CONTAINER_OF(next_pcie_dev,pcie_dev_t,list);
@@ -174,7 +174,7 @@ void init_pcie_bar(pcie_dev_t *pcie_dev,UINT8 bir) {
 
 
 //启用msi中断
-void enable_msi_intrs(pcie_dev_t *pcie_dev) {
+void pcie_enable_msi_intrs(pcie_dev_t *pcie_dev) {
     if (pcie_dev->msi_x_flags) {
         *pcie_dev->msi_x.msg_control |= 0x8000;
         *pcie_dev->msi_x.msg_control &= ~0x4000;
@@ -184,7 +184,7 @@ void enable_msi_intrs(pcie_dev_t *pcie_dev) {
 }
 
 //禁用msi中断
-void disable_msi_intrs(pcie_dev_t *pcie_dev) {
+void pcie_disable_msi_intrs(pcie_dev_t *pcie_dev) {
     if (pcie_dev->msi_x_flags) {
         *pcie_dev->msi_x.msg_control |= 0x4000;
     }else {
@@ -237,7 +237,7 @@ static inline UINT32 get_pda_offset(cap_t *cap) {
     return table_offset & ~0x7;
 }
 
-void init_pcie_msi_intrpt(pcie_dev_t *pcie_dev) {
+void pcie_msi_intrpt_set(pcie_dev_t *pcie_dev) {
     cap_t *cap = find_pcie_cap(pcie_dev,msi_x_e);
     UINT64 msg_addr = rdmsr(IA32_APIC_BASE_MSR) & ~0xFFFUL;
     //优先启用msi-x中断
@@ -265,7 +265,7 @@ void init_pcie_msi_intrpt(pcie_dev_t *pcie_dev) {
         *pcie_dev->msi.msg_addr_hi = (UINT32)msg_addr >> 32;
         *pcie_dev->msi.msg_data = 0x40;
     }
-    disable_msi_intrs(pcie_dev);
+    pcie_disable_msi_intrs(pcie_dev);
 }
 
 

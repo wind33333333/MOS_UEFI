@@ -204,9 +204,9 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_number, void *buff
 }
 
 INIT_TEXT void init_xhci(void) {
-    pcie_dev_t *xhci_dev = find_pcie_dev(XHCI_CLASS_CODE);      //找xhci设备
+    pcie_dev_t *xhci_dev = pcie_dev_find(XHCI_CLASS_CODE);      //找xhci设备
     init_pcie_bar(xhci_dev,0);                                         //初始化bar0寄存器
-    init_pcie_msi_intrpt(xhci_dev);                                       //初始化msi中断
+    pcie_msi_intrpt_set(xhci_dev);                                       //初始化msi中断
 
     xhci_dev->private = kzalloc(sizeof(xhci_regs_t));                //设备私有数据空间申请一块内存，存放xhci相关信息
     xhci_regs_t *xhci_regs = xhci_dev->private;
