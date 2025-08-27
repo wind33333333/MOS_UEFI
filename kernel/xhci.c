@@ -146,7 +146,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs,UINT32 slot_number,UINT32 port_n
     //分配传输环内存
     xhci_trb_t *transfer_ring = kzalloc(TRB_COUNT * sizeof(xhci_trb_t));
     transfer_ring[TRB_COUNT-1].parameter = va_to_pa(transfer_ring);
-    transfer_ring[TRB_COUNT-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE;
+    transfer_ring[TRB_COUNT-1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE;
 
     //配置设备上下文
     xhci_input_context32_t *input_context = kzalloc(sizeof(xhci_input_context32_t));
@@ -172,31 +172,31 @@ void xhci_address_device(xhci_regs_t *xhci_regs,UINT32 slot_number,UINT32 port_n
 
 //获取设备描述符
 int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_number, void *buffer, UINT32 length) {
-    // Step 1: 构造 USB Setup Packet
-    usb_setup_packet_t setup = {
-        0x80,   // 设备到主机, 标准请求, 设备
-        0x06,   // GET_DESCRIPTOR
-        0x0100, // 描述符类型(1=Device), Index=0
-        0x0000, // 语言 ID (对 Device 描述符无意义)
-        18      // Device Descriptor 长度
-    };
+    // // Step 1: 构造 USB Setup Packet
+    // usb_setup_packet_t setup = {
+    //     0x80,   // 设备到主机, 标准请求, 设备
+    //     0x06,   // GET_DESCRIPTOR
+    //     0x0100, // 描述符类型(1=Device), Index=0
+    //     0x0000, // 语言 ID (对 Device 描述符无意义)
+    //     18      // Device Descriptor 长度
+    // };
 
     xhci_device_context32_t *dev_ctx = pa_to_va(xhci_regs->dcbaap[slot_number]);
     xhci_trb_t *transfer_ring = pa_to_va(dev_ctx->ep[0].tr_dequeue_pointer & ~0xFULL);
 
-    // 假设环从0开始，实际应跟踪 Enqueue Pointer
-    mem_cpy(&setup,&transfer_ring[0].parameter,sizeof(setup));
-    //transfer_ring[0].parameter1 = va_to_pa(setup);
-    transfer_ring[0].status = (8 << 16);
-    transfer_ring[0].control = TRB_TYPE_SETUP | TRB_CYCLE | (3 << 16); // TRB Type=Setup Stage, IDT=1; // 加 Chain
+    // Setup TRB
+    usb_setup_packet_t setup = {0x80, 0x06, 0x0100, 0x0000, 8}; // 初次请求 8 字节
+    transfer_ring[0].parameter = ((UINT64)setup.w_length << 32) | *(UINT32*)&setup; // 组合 64 位
+    transfer_ring[0].status = 8 << 16; // Transfer Length = 8
+    transfer_ring[0].control = TRB_TYPE_SETUP | TRB_CYCLE | TRB_IDT | TRB_TRT_IN_DATA;
 
+    // Data TRB
     transfer_ring[1].parameter = va_to_pa(buffer);
-    transfer_ring[1].status = (18 << 16);  // 需要读取 18 字节;
-    transfer_ring[1].control = TRB_TYPE_DATA | TRB_CYCLE| (1 << 16); // IN Data
+    transfer_ring[1].status = length << 16; // 根据请求长度
+    transfer_ring[1].control = TRB_TYPE_DATA | TRB_CYCLE | TRB_DIR_IN;
 
-    transfer_ring[2].parameter = 0;
-    transfer_ring[2].status = 0;
-    transfer_ring[2].control = TRB_TYPE_STATUS | TRB_CYCLE | (1 << 5); // IOC=1
+    // Status TRB
+    transfer_ring[2].control = TRB_TYPE_STATUS | TRB_CYCLE | TRB_IOC;
 
     // 响铃
     xhci_ring_doorbell(xhci_regs,slot_number,1);

@@ -80,9 +80,9 @@ static inline pcie_config_space_t *ecam_bdf_to_pcie_config_space_addr(UINT64 eca
 }
 
 /*
- * pcie总线扫描
+ * pcie总线枚举
  */
-static inline void pcie_scan(UINT64 ecam_base, UINT8 bus) {
+static inline void pcie_enmu(UINT64 ecam_base, UINT8 bus) {
     // 遍历当前总线上的32个设备(0-31)
     for (UINT8 dev = 0; dev < 32; dev++) {
         // 遍历设备上的8个功能(0-7)
@@ -99,7 +99,7 @@ static inline void pcie_scan(UINT64 ecam_base, UINT8 bus) {
             //创建pcie_dev
             create_pcie_dev(pcie_config_space, bus, dev, func);
             //type1 为pcie桥优先扫描下游设备（深度优先）
-            if (pcie_config_space->header_type & 1) pcie_scan(ecam_base, pcie_config_space->type1.secondary_bus);
+            if (pcie_config_space->header_type & 1) pcie_enmu(ecam_base, pcie_config_space->type1.secondary_bus);
             //如果功能0不是多功能设备，则跳过该设备的后续功能
             if (!func && !(pcie_config_space->header_type & 0x80)) break;
         }
@@ -282,7 +282,7 @@ INIT_TEXT void init_pcie(void) {
         color_printk(GREEN,BLACK, "ECAM base:%#lX Segment:%d StartBus:%d EndBus:%d\n",
                      mcfg_entry[i].base_address, mcfg_entry[i].pci_segment, mcfg_entry[i].start_bus,
                      mcfg_entry[i].end_bus);
-        pcie_scan(mcfg_entry[i].base_address, mcfg_entry[i].start_bus);
+        pcie_enmu(mcfg_entry[i].base_address, mcfg_entry[i].start_bus);
     }
     //打印pcie设备
     list_head_t *next = pcie_dev_list.next;
