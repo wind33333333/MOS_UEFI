@@ -54,9 +54,8 @@ typedef struct {
                               [7:4]	    ERST Max 硬件支持的事件环段表最大条目数2^n ERST MAX = 8 则条目等于256。
                               [13:8]	Max Scratchpad Buffers 最大 Scratchpad 缓冲区数量的高 6 位。与 [25:21] 一起组成完整值。
                               [15:14]	保留。
-                              [20:16]	Scratchpad Restore Count 指定从保存状态恢复时，硬件会恢复多少个 Scratchpad 缓冲区（很少用）。
-                              [25:21]	Max Scratchpad Buffers (Low 5 bits)	最大 Scratchpad 缓冲区数量的低 5 位。和高 6 位组合得到完整的 Scratchpad Buffer 数量（范围 0~1023）。
-                              [31:26]	保留。*/
+                              [25:21]	Max Scratchpad Buffers (hi  5 bits)	最大 Scratchpad 缓冲区数量的高 5 位位组合得到完整的 Scratchpad Buffer 数量（范围 0~1023）。
+                              [31:27]	Max Scratchpad Buffers (Low 5 bits)	最大 Scratchpad 缓冲区数量的低 5 位*/
 
     // 0Ch: 硬件参数寄存器 (HCSPARAMS3)
     UINT32 hcsparams3;      /*[7:0]     U1DeviceExitLatency: U1设备退出延迟（以微秒为单位）
