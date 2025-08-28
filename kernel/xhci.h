@@ -393,8 +393,8 @@ typedef struct {
                              * 位 2-0: Endpoint State (EP State) - 端点状态 (0=Disabled，1=Running，2=Halted，3=Stopped，4=Error)。 */
 
         UINT32 reg1;        /* 端点类型：包含端点方向、类型等信息 */
-        UINT64 tr_dequeue_pointer; /* */
-        UINT32 reg4;       /* 出队循环状态：包含 DCS 位和其他信息 */
+        UINT64 tr_dequeue_pointer; /* 出队循环状态：包含 DCS 位和其他信息 */
+        UINT32 reg4;
         UINT32 reserved[3];     /* 保留字段：填充至 32 字节 */
     } ep[31];
 } xhci_device_context32_t;
