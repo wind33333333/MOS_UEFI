@@ -155,7 +155,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs,UINT32 slot_number,UINT32 port_n
     input_context->dev_ctx.slot.reg0 = 1<<27;
     input_context->dev_ctx.slot.reg1 = port_number<<16;
     input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring)|TRB_CYCLE;
-    input_context->dev_ctx.ep[0].reg0 = 1;
+    //input_context->dev_ctx.ep[0].reg0 = 1;
     input_context->dev_ctx.ep[0].reg1 = 4<<3 | 64<<16;
 
     xhci_trb_t trb ={

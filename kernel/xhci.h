@@ -345,9 +345,9 @@ typedef struct {
                              * 位 2-0: Endpoint State (EP State) - 端点状态 (0=Disabled，1=Running，2=Halted，3=Stopped，4=Error)。 */
 
         UINT32 reg1;        /* 端点类型：包含端点方向、类型等信息 */
-        UINT32 reg2;       /* 最大包大小：端点的最大数据包大小 */
-        UINT32 reg3;       /* TRB 环出队指针：指向端点的 TRB 环（低 32 位） */
-        UINT32 reg4;       /* 出队循环状态：包含 DCS 位和其他信息 */
+        UINT64 tr_dequeue_pointer; /* 位 0：DCS（Dequeue Cycle State）。当DCS=1时，主机控制器从传输环中获取的TRB需要其Cycle Bit为1才会被处理；当RCS=0时，则处理Cycle Bit为0的TRB。
+                                    * 位 63:4：TR Dequeue Pointer（TR 出队指针）。64位传输环物理地址64字节对齐 */
+        UINT32 reg4;
         UINT32 reserved[11];     /* 保留字段：填充至 64 字节 */
     } ep[31];
 } xhci_device_context64_t;
@@ -393,7 +393,8 @@ typedef struct {
                              * 位 2-0: Endpoint State (EP State) - 端点状态 (0=Disabled，1=Running，2=Halted，3=Stopped，4=Error)。 */
 
         UINT32 reg1;        /* 端点类型：包含端点方向、类型等信息 */
-        UINT64 tr_dequeue_pointer; /* 出队循环状态：包含 DCS 位和其他信息 */
+        UINT64 tr_dequeue_pointer; /* 位 0：DCS（Dequeue Cycle State）。当DCS=1时，主机控制器从传输环中获取的TRB需要其Cycle Bit为1才会被处理；当RCS=0时，则处理Cycle Bit为0的TRB。
+                                    * 位 63:4：TR Dequeue Pointer（TR 出队指针）。64位传输环物理地址64字节对齐 */
         UINT32 reg4;
         UINT32 reserved[3];     /* 保留字段：填充至 32 字节 */
     } ep[31];
