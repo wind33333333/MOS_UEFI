@@ -172,7 +172,8 @@ void xhci_address_device(xhci_regs_t *xhci_regs,UINT32 slot_number,UINT32 port_n
 }
 
 //获取设备描述符
-int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_number, void *buffer, UINT32 length) {
+int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_number) {
+    usb_device_descriptor_t *dev_desc = kzalloc(sizeof(usb_device_descriptor_t));
     xhci_device_context32_t *dev_ctx = pa_to_va(xhci_regs->dcbaap[slot_number]);
     xhci_trb_t *transfer_ring = pa_to_va(dev_ctx->ep[0].tr_dequeue_pointer & ~0xFULL);
 
@@ -180,21 +181,21 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_number, void *buff
     usb_setup_packet_t setup = {0x80, 0x06, 0x0100, 0x0000, 8};  // 统一为8
     transfer_ring[0].parameter = *(UINT64*)&setup;  // 完整 8 字节
     transfer_ring[0].status = 8;  // TRB Length=8 (Setup 阶段长度)
-    transfer_ring[0].control = TRB_TYPE_SETUP | TRB_IDT | (3 << 16) | TRB_CHAIN | TRB_IOC | TRB_CYCLE;  // TRT=3 (IN), Chain, IO
+    transfer_ring[0].control = TRB_TYPE_SETUP | TRB_IDT | TRB_CYCLE;  // TRT=3 (IN), Chain, IO
 
     // Data TRB
-    transfer_ring[1].parameter = va_to_pa(buffer);
+    transfer_ring[1].parameter = va_to_pa(dev_desc);
     transfer_ring[1].status = 8;  // 匹配 w_length
-    transfer_ring[1].control = TRB_TYPE_DATA | TRB_DIR | TRB_CHAIN | TRB_IOC | TRB_CYCLE;
+    transfer_ring[1].control = TRB_TYPE_DATA | TRB_DIR | TRB_CYCLE;
 
     // Status TRB
     transfer_ring[2].parameter = 0;
     transfer_ring[2].status = 0;
-    transfer_ring[2].control = TRB_TYPE_STATUS | TRB_IOC | TRB_CYCLE;  // 无 Chain
-
+    transfer_ring[2].control = TRB_TYPE_STATUS | TRB_IOC | TRB_CYCLE;
     // 响铃
     xhci_ring_doorbell(xhci_regs,slot_number,1);
 
+    while (1);
 }
 
 INIT_TEXT void init_xhci(void) {
@@ -249,8 +250,7 @@ INIT_TEXT void init_xhci(void) {
         }
     }
 
-    usb_device_descriptor_t *dev_desc = kzalloc(sizeof(usb_device_descriptor_t));
-    get_device_descriptor(xhci_regs, slot_id, dev_desc, sizeof(dev_desc));
+    get_device_descriptor(xhci_regs, slot_id);
 
 
     while (1);
