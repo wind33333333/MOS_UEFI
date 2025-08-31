@@ -72,23 +72,15 @@ typedef struct {
     UINT8 iInterface;
 } __attribute__((packed)) usb_interface_descriptor_t;
 
-UINT32 offset = 0;
-xhci_cap_t *xhci_cap = 0;
+
 xhci_cap_t *xhci_cap_find(xhci_regs_t *xhci_reg,UINT8 cap_id) {
-   offset = offset == 0 ? xhci_reg->cap->hccparams1>>16 : (xhci_cap->next_ptr>>8)&0xFF;
-    while (offset) {
-        xhci_cap = (void*)xhci_reg->cap + (offset<<2);
-        if ((xhci_cap->cap_id&0xFF) == cap_id) return xhci_cap;
-        offset = (xhci_cap->next_ptr>>8)&0xFF;
-    }
-    return NULL;
-    /*UINT32 offset = xhci_reg->cap->hccparams1>>16;
+    UINT32 offset = xhci_reg->cap->hccparams1>>16;
     while (offset) {
         xhci_cap_t *xhci_cap = (void*)xhci_reg->cap + (offset<<2);
         if ((xhci_cap->cap_id&0xFF) == cap_id) return xhci_cap;
         offset = (xhci_cap->next_ptr>>8)&0xFF;
     }
-    return NULL;*/
+    return NULL;
 }
 
 //响铃
@@ -258,22 +250,42 @@ INIT_TEXT void init_xhci(void) {
     color_printk(GREEN,BLACK,"crcr:%#lx dcbaap:%#lx erstba[0]:%#lx erdp[0]:%#lx erstsz:%d config:%d \n",xhci_regs->op->crcr,xhci_regs->op->dcbaap,xhci_regs->rt->intr_regs[0].erstba,xhci_regs->rt->intr_regs[0].erdp,xhci_regs->rt->intr_regs[0].erstsz,xhci_regs->op->config);
 
     xhci_cap_t *supported_protocol = xhci_cap_find(xhci_regs,2);
-    supported_protocol = xhci_cap_find(xhci_regs,2);
-    supported_protocol = xhci_cap_find(xhci_regs,2);
+    color_printk(GREEN,BLACK,"USB%x.%x port_info:%#x port_slot_type:%#x\n",supported_protocol->supported_protocol.protocol_ver>>24,supported_protocol->supported_protocol.protocol_ver>>16&0xFF,supported_protocol->supported_protocol.port_info,supported_protocol->supported_protocol.protocol_slot_type);
+    for (UINT32 i=0;i < supported_protocol->supported_protocol.port_info>>28;i++) {
+        color_printk(GREEN,BLACK,"pro_speed:%#x\n",supported_protocol->supported_protocol.protocol_speed[i]);
+    }
 
-    //遍历端口，分配插槽和设备地址
-    UINT32 slot_id;
-    for (UINT32 i = 0; i < xhci_regs->cap->hcsparams1>>24; i++) {
+    // for (UINT32 i = 0; i < xhci_regs->cap->hcsparams1>>24; i++) {
+    //     UINT32 portsc = xhci_regs->op->portregs[i].portsc;
+    //     portsc |= 1<<4;
+    //     xhci_regs->op->portregs[i].portsc = portsc;
+    // }
+
+    UINT32 i = 0;
+    UINT32 j = 0;
+    while (TRUE) {
         if (xhci_regs->op->portregs[i].portsc & 1) {
             color_printk(GREEN,BLACK,"port_id:%d portsc:%x portpmsc:%x portli:%x porthlpmc:%x \n",i,xhci_regs->op->portregs[i].portsc,xhci_regs->op->portregs[i].portpmsc,xhci_regs->op->portregs[i].portli,xhci_regs->op->portregs[i].porthlpmc);
-            while(xhci_regs->op->portregs[i].portsc & 1<<4) pause();
+            //if (j==100)break;
+            j++;
+        }
+        i++;
+        if (i == xhci_regs->cap->hcsparams1>>24) i = 0;
+    }
+
+    //遍历端口，分配插槽和设备地址
+    /*UINT32 slot_id;
+    for (UINT32 i = 0; i < xhci_regs->cap->hcsparams1>>24; i++) {
+        color_printk(GREEN,BLACK,"port_id:%d portsc:%x portpmsc:%x portli:%x porthlpmc:%x \n",i,xhci_regs->op->portregs[i].portsc,xhci_regs->op->portregs[i].portpmsc,xhci_regs->op->portregs[i].portli,xhci_regs->op->portregs[i].porthlpmc);
+        if (xhci_regs->op->portregs[i].portsc & 1) {
             color_printk(GREEN,BLACK,"port_id:%d portsc:%x portpmsc:%x portli:%x porthlpmc:%x \n",i,xhci_regs->op->portregs[i].portsc,xhci_regs->op->portregs[i].portpmsc,xhci_regs->op->portregs[i].portli,xhci_regs->op->portregs[i].porthlpmc);
-            slot_id = xhci_enable_slot(xhci_regs);
-            xhci_address_device(xhci_regs,slot_id,i+1);
+            // slot_id = xhci_enable_slot(xhci_regs);
+            // xhci_address_device(xhci_regs,slot_id,i+1);
             color_printk(GREEN,BLACK,"port:%d slot_id:%d\n",i+1,slot_id);
+            break;
         }
         if (i == (xhci_regs->cap->hcsparams1>>24)-1) i = 0;
-    }
+    }*/
 
 
     while (1);

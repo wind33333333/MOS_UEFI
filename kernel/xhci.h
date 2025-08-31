@@ -261,9 +261,14 @@ typedef struct {
             UINT8 name[4];           /* 位 31:0 4个asci字符 */
             UINT32 port_info;      /* 位7:0 兼容端口偏移
                                       位15:8 兼容端口计数偏移
-                                      31:28 速度id计数*/
-            UINT32 protocol_speed; /* 位3:0 协议速度id值
-                                      位5:4 协议速度标识 0=b/s 1=Kb/s 2=Mb/s 3=Gb/s */
+                                      位31:28 协议速度 ID 计数 - RO，PSI 字段数量 (0-15)*/
+            UINT32 protocol_slot_type;/* 位4:0 协议插槽类型 */
+            UINT32 protocol_speed[15]; /* 位3:0 协议速度 ID 值 - RO，Port Speed ID (1-15)
+                                      位5:4 协议速度标识 0=b/s 1=Kb/s 2=Mb/s 3=Gb/s
+                                      位7:6 SI 类型 - RO，对称性 (0=对称, 2/3=非对称)
+                                      位8   全双工 - RO，1=全双工
+                                      位15:14 链路协议 - RO，1=定义链路协议
+                                      位31:16 协议速度 ID 尾数 - RO，速度尾数*/
         } supported_protocol;
 
         /* 0x03: Extended Power Management (扩展电源管理) */
