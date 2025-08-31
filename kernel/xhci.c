@@ -9,6 +9,56 @@
 
 #define TRB_COUNT 256        //trb个数
 
+#define XHCI_CMD_RS (1 << 0)
+#define XHCI_CMD_HCRST (1 << 1)
+#define XHCI_CMD_INTE (1 << 2)
+#define XHCI_CMD_HSEE (1 << 3)
+#define XHCI_CMD_LHCRST (1 << 7)
+#define XHCI_CMD_CSS (1 << 8)
+#define XHCI_CMD_CRS (1 << 9)
+#define XHCI_CMD_EWE (1 << 10)
+#define XHCI_CMD_EU3S (1 << 11)
+
+#define XHCI_STS_HCH (1 << 0)
+#define XHCI_STS_HSE (1 << 2)
+#define XHCI_STS_EINT (1 << 3)
+#define XHCI_STS_PCD (1 << 4)
+#define XHCI_STS_SSS (1 << 8)
+#define XHCI_STS_RSS (1 << 9)
+#define XHCI_STS_SRE (1 << 10)
+#define XHCI_STS_CNR (1 << 11)
+#define XHCI_STS_HCE (1 << 12)
+
+#define XHCI_PORTSC_CCS (1 << 0)
+#define XHCI_PORTSC_PED (1 << 1)
+#define XHCI_PORTSC_OCA (1 << 3)
+#define XHCI_PORTSC_PR (1 << 4)
+#define XHCI_PORTSC_PLS_SHIFT 5
+#define XHCI_PORTSC_PLS_MASK 0xf
+#define XHCI_PORTSC_PP (1 << 9)
+#define XHCI_PORTSC_SPEED_SHIFT 10
+#define XHCI_PORTSC_SPEED_MASK 0xf
+#define XHCI_PORTSC_SPEED_FULL (1 << 10)
+#define XHCI_PORTSC_SPEED_LOW (2 << 10)
+#define XHCI_PORTSC_SPEED_HIGH (3 << 10)
+#define XHCI_PORTSC_SPEED_SUPER (4 << 10)
+#define XHCI_PORTSC_PIC_SHIFT 14
+#define XHCI_PORTSC_PIC_MASK 0x3
+#define XHCI_PORTSC_LWS (1 << 16)
+#define XHCI_PORTSC_CSC (1 << 17)
+#define XHCI_PORTSC_PEC (1 << 18)
+#define XHCI_PORTSC_WRC (1 << 19)
+#define XHCI_PORTSC_OCC (1 << 20)
+#define XHCI_PORTSC_PRC (1 << 21)
+#define XHCI_PORTSC_PLC (1 << 22)
+#define XHCI_PORTSC_CEC (1 << 23)
+#define XHCI_PORTSC_CAS (1 << 24)
+#define XHCI_PORTSC_WCE (1 << 25)
+#define XHCI_PORTSC_WDE (1 << 26)
+#define XHCI_PORTSC_WOE (1 << 27)
+#define XHCI_PORTSC_DR (1 << 30)
+#define XHCI_PORTSC_WPR (1 << 31)
+
 #define TRB_TYPE_NORMAL      (1 << 10)
 #define TRB_TYPE_SETUP       (2 << 10)
 #define TRB_TYPE_DATA        (3 << 10)
@@ -219,11 +269,11 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->rt = xhci_dev->bar[0] + xhci_regs->cap->rtsoff;          //xhci运行时寄存器基地址
     xhci_regs->db = xhci_dev->bar[0] + xhci_regs->cap->dboff;           //xhci门铃寄存器基地址
 
-    xhci_regs->op->usbcmd &= ~1;  //停止xhci
-    while (!(xhci_regs->op->usbsts & 1)) pause();
-    xhci_regs->op->usbcmd |= 2;  //复位xhci
-    while (xhci_regs->op->usbcmd & 2) pause();
-    while (xhci_regs->op->usbcmd & 0x800) pause();
+    xhci_regs->op->usbcmd &= ~XHCI_CMD_RS;  //停止xhci
+    while (!(xhci_regs->op->usbsts & XHCI_STS_HCH)) pause();
+    xhci_regs->op->usbcmd |= XHCI_CMD_HCRST;  //复位xhci
+    while (xhci_regs->op->usbcmd & XHCI_CMD_HCRST) pause();
+    while (xhci_regs->op->usbcmd & XHCI_CMD_EU3S) pause();
 
     UINT32 max_slots = xhci_regs->cap->hcsparams1&0xff;
     xhci_regs->dcbaap = kzalloc(max_slots<<3);        //分配设备上下文插槽内存,最大插槽数量*8字节内存
@@ -244,7 +294,7 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->rt->intr_regs->erstba = va_to_pa(erstba);                            //事件环段表物理地址写入寄存器
     xhci_regs->rt->intr_regs->erdp = va_to_pa(xhci_regs->evt_ring);                 //事件环物理地址写入寄存器
 
-    xhci_regs->op->usbcmd |= 1; //启动xhci
+    xhci_regs->op->usbcmd |= XHCI_CMD_RS; //启动xhci
 
     color_printk(GREEN,BLACK,"Xhci Version:%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d CS:%d AC64:%d USBcmd:%#x USBsts:%#x PageSize:%d iman:%#x imod:%#x\n",xhci_regs->cap->hciversion,(UINT64)xhci_dev->pcie_config_space->type0.bar[0]&~0x1f|(UINT64)xhci_dev->pcie_config_space->type0.bar[1]<<32,xhci_dev->msi_x_flags,xhci_regs->cap->hcsparams1&0xFF,xhci_regs->cap->hcsparams1>>8&0x7FF,xhci_regs->cap->hcsparams1>>24,xhci_regs->cap->hccparams1>>2&1,xhci_regs->cap->hccparams1&1,xhci_regs->op->usbcmd,xhci_regs->op->usbsts,xhci_regs->op->pagesize<<12,xhci_regs->rt->intr_regs[0].iman,xhci_regs->rt->intr_regs[0].imod);
     color_printk(GREEN,BLACK,"crcr:%#lx dcbaap:%#lx erstba[0]:%#lx erdp[0]:%#lx erstsz:%d config:%d \n",xhci_regs->op->crcr,xhci_regs->op->dcbaap,xhci_regs->rt->intr_regs[0].erstba,xhci_regs->rt->intr_regs[0].erdp,xhci_regs->rt->intr_regs[0].erstsz,xhci_regs->op->config);
@@ -255,22 +305,21 @@ INIT_TEXT void init_xhci(void) {
         color_printk(GREEN,BLACK,"pro_speed:%#x\n",supported_protocol->supported_protocol.protocol_speed[i]);
     }
 
-    // for (UINT32 i = 0; i < xhci_regs->cap->hcsparams1>>24; i++) {
-    //     UINT32 portsc = xhci_regs->op->portregs[i].portsc;
-    //     portsc |= 1<<4;
-    //     xhci_regs->op->portregs[i].portsc = portsc;
-    // }
-
     UINT32 i = 0;
-    UINT32 j = 0;
+    UINT64 j = 0;
     while (TRUE) {
-        if (xhci_regs->op->portregs[i].portsc & 1) {
-            color_printk(GREEN,BLACK,"port_id:%d portsc:%x portpmsc:%x portli:%x porthlpmc:%x \n",i,xhci_regs->op->portregs[i].portsc,xhci_regs->op->portregs[i].portpmsc,xhci_regs->op->portregs[i].portli,xhci_regs->op->portregs[i].porthlpmc);
-            //if (j==100)break;
-            j++;
+        if ((xhci_regs->op->portregs[i].portsc & 0xE1) == 0xE1) {
+            color_printk(GREEN,BLACK,"port_id:%d portsc:%x portpmsc:%x portli:%x porthlpmc:%x j:%ld \n",i+1,xhci_regs->op->portregs[i].portsc,xhci_regs->op->portregs[i].portpmsc,xhci_regs->op->portregs[i].portli,xhci_regs->op->portregs[i].porthlpmc,j);
+            UINT32 portsc = xhci_regs->op->portregs[i].portsc;
+            portsc &= ~(0xF<<10);
+            xhci_regs->op->portregs[i].portsc = portsc;
+            while (!(xhci_regs->op->portregs[i].portsc == 1<<1)) pause();
+            color_printk(GREEN,BLACK,"port_id:%d portsc:%x portpmsc:%x portli:%x porthlpmc:%x j:%ld \n",i+1,xhci_regs->op->portregs[i].portsc,xhci_regs->op->portregs[i].portpmsc,xhci_regs->op->portregs[i].portli,xhci_regs->op->portregs[i].porthlpmc,j);
+            break;
         }
         i++;
         if (i == xhci_regs->cap->hcsparams1>>24) i = 0;
+        j++;
     }
 
     //遍历端口，分配插槽和设备地址
