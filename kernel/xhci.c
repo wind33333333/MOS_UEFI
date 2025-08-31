@@ -72,14 +72,23 @@ typedef struct {
     UINT8 iInterface;
 } __attribute__((packed)) usb_interface_descriptor_t;
 
+UINT32 offset = 0;
+xhci_cap_t *xhci_cap = 0;
 xhci_cap_t *xhci_cap_find(xhci_regs_t *xhci_reg,UINT8 cap_id) {
-    UINT32 offset = xhci_reg->cap->hccparams1>>16;
+   offset = offset == 0 ? xhci_reg->cap->hccparams1>>16 : (xhci_cap->next_ptr>>8)&0xFF;
+    while (offset) {
+        xhci_cap = (void*)xhci_reg->cap + (offset<<2);
+        if ((xhci_cap->cap_id&0xFF) == cap_id) return xhci_cap;
+        offset = (xhci_cap->next_ptr>>8)&0xFF;
+    }
+    return NULL;
+    /*UINT32 offset = xhci_reg->cap->hccparams1>>16;
     while (offset) {
         xhci_cap_t *xhci_cap = (void*)xhci_reg->cap + (offset<<2);
         if ((xhci_cap->cap_id&0xFF) == cap_id) return xhci_cap;
         offset = (xhci_cap->next_ptr>>8)&0xFF;
     }
-    return NULL;
+    return NULL;*/
 }
 
 //响铃
@@ -154,7 +163,10 @@ void xhci_address_device(xhci_regs_t *xhci_regs,UINT32 slot_number,UINT32 port_n
     input_context->drop_context = 0x0;
     input_context->dev_ctx.slot.reg0 = 1<<27;
     input_context->dev_ctx.slot.reg1 = port_number<<16;
-    input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring)|TRB_CYCLE;
+    UINT64 tr = va_to_pa(transfer_ring)|TRB_CYCLE;
+    color_printk(GREEN,BLACK,"tr:%lx\n",tr);
+    input_context->dev_ctx.ep[0].tr_dequeue_pointer = tr;
+    //input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring)|TRB_CYCLE;
     //input_context->dev_ctx.ep[0].reg0 = 1;
     input_context->dev_ctx.ep[0].reg1 = 4<<3 | 64<<16;
 
@@ -179,21 +191,26 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_number) {
 
     // Setup TRB
     usb_setup_packet_t setup = {0x80, 0x06, 0x0100, 0x0000, 8};  // 统一为8
+    color_printk(GREEN,BLACK,"transfer_ring:%lx\n",transfer_ring);
     transfer_ring[0].parameter = *(UINT64*)&setup;  // 完整 8 字节
+    while (1);
     transfer_ring[0].status = 8;  // TRB Length=8 (Setup 阶段长度)
-    transfer_ring[0].control = TRB_TYPE_SETUP | TRB_IDT | TRB_CYCLE;  // TRT=3 (IN), Chain, IO
+    transfer_ring[0].control = TRB_TYPE_SETUP | TRB_IDT | (3 << 16) | TRB_CHAIN | TRB_IOC | TRB_CYCLE;  // TRT=3 (IN), Chain, IO
 
     // Data TRB
     transfer_ring[1].parameter = va_to_pa(dev_desc);
     transfer_ring[1].status = 8;  // 匹配 w_length
-    transfer_ring[1].control = TRB_TYPE_DATA | TRB_DIR | TRB_CYCLE;
+    transfer_ring[1].control = TRB_TYPE_DATA | (1 << 16) | TRB_CHAIN | TRB_IOC | TRB_CYCLE;
 
     // Status TRB
     transfer_ring[2].parameter = 0;
     transfer_ring[2].status = 0;
     transfer_ring[2].control = TRB_TYPE_STATUS | TRB_IOC | TRB_CYCLE;
+
     // 响铃
     xhci_ring_doorbell(xhci_regs,slot_number,1);
+
+    color_printk(GREEN,BLACK,"bcd_usb:%x id_v:%x id_p:%x\n",dev_desc->bcdUSB,dev_desc->idVendor,dev_desc->idProduct);
 
     while (1);
 }
@@ -240,17 +257,23 @@ INIT_TEXT void init_xhci(void) {
     color_printk(GREEN,BLACK,"Xhci Version:%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d CS:%d AC64:%d USBcmd:%#x USBsts:%#x PageSize:%d iman:%#x imod:%#x\n",xhci_regs->cap->hciversion,(UINT64)xhci_dev->pcie_config_space->type0.bar[0]&~0x1f|(UINT64)xhci_dev->pcie_config_space->type0.bar[1]<<32,xhci_dev->msi_x_flags,xhci_regs->cap->hcsparams1&0xFF,xhci_regs->cap->hcsparams1>>8&0x7FF,xhci_regs->cap->hcsparams1>>24,xhci_regs->cap->hccparams1>>2&1,xhci_regs->cap->hccparams1&1,xhci_regs->op->usbcmd,xhci_regs->op->usbsts,xhci_regs->op->pagesize<<12,xhci_regs->rt->intr_regs[0].iman,xhci_regs->rt->intr_regs[0].imod);
     color_printk(GREEN,BLACK,"crcr:%#lx dcbaap:%#lx erstba[0]:%#lx erdp[0]:%#lx erstsz:%d config:%d \n",xhci_regs->op->crcr,xhci_regs->op->dcbaap,xhci_regs->rt->intr_regs[0].erstba,xhci_regs->rt->intr_regs[0].erdp,xhci_regs->rt->intr_regs[0].erstsz,xhci_regs->op->config);
 
+    xhci_cap_t *supported_protocol = xhci_cap_find(xhci_regs,2);
+    supported_protocol = xhci_cap_find(xhci_regs,2);
+    supported_protocol = xhci_cap_find(xhci_regs,2);
+
     //遍历端口，分配插槽和设备地址
     UINT32 slot_id;
     for (UINT32 i = 0; i < xhci_regs->cap->hcsparams1>>24; i++) {
-        if (xhci_regs->op->portregs[i].portsc & 1 && xhci_regs->op->portregs[i].portsc & 1<<17) {
-            xhci_regs->op->portregs[i].portsc |= 1<<17;
+        if (xhci_regs->op->portregs[i].portsc & 1) {
+            color_printk(GREEN,BLACK,"port_id:%d portsc:%x portpmsc:%x portli:%x porthlpmc:%x \n",i,xhci_regs->op->portregs[i].portsc,xhci_regs->op->portregs[i].portpmsc,xhci_regs->op->portregs[i].portli,xhci_regs->op->portregs[i].porthlpmc);
+            while(xhci_regs->op->portregs[i].portsc & 1<<4) pause();
+            color_printk(GREEN,BLACK,"port_id:%d portsc:%x portpmsc:%x portli:%x porthlpmc:%x \n",i,xhci_regs->op->portregs[i].portsc,xhci_regs->op->portregs[i].portpmsc,xhci_regs->op->portregs[i].portli,xhci_regs->op->portregs[i].porthlpmc);
             slot_id = xhci_enable_slot(xhci_regs);
             xhci_address_device(xhci_regs,slot_id,i+1);
+            color_printk(GREEN,BLACK,"port:%d slot_id:%d\n",i+1,slot_id);
         }
+        if (i == (xhci_regs->cap->hcsparams1>>24)-1) i = 0;
     }
-
-    get_device_descriptor(xhci_regs, slot_id);
 
 
     while (1);

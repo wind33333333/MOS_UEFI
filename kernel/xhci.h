@@ -229,7 +229,7 @@ typedef struct {
 typedef struct {
     union {
         /* 通用头部：所有扩展能力的第一个 32 位寄存器 */
-        UINT32  cap_id;  /* 能力头部，低 8 位为 Capability ID ,高8位Next Capability Pointer*/
+        UINT32  cap_id;  /* 能力头部，位7:0 为 Capability ID ,位15:8 为Next Capability Pointer*/
         UINT32  next_ptr;
 
         /* 0x01: USB Legacy Support (USB 传统支持) */
@@ -258,7 +258,7 @@ typedef struct {
         struct {
             UINT32 protocol_ver;   /* 位 23:16 小修订版本0x10 = x.10
                                       位 31:24 主修订版本0x03 = 3.x */
-            UINT32 name;           /* 位 31:0 4个asci字符 */
+            UINT8 name[4];           /* 位 31:0 4个asci字符 */
             UINT32 port_info;      /* 位7:0 兼容端口偏移
                                       位15:8 兼容端口计数偏移
                                       31:28 速度id计数*/
