@@ -257,10 +257,8 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_number) {
     while (1);
 }
 
+
 INIT_TEXT void init_xhci(void) {
-
-    pcie_dev_t *ehci_dev = pcie_dev_find(EHCI_CLASS_CODE);
-
     pcie_dev_t *xhci_dev = pcie_dev_find(XHCI_CLASS_CODE);      //找xhci设备
     pcie_bar_set(xhci_dev,0);                                         //初始化bar0寄存器
     pcie_msi_intrpt_set(xhci_dev);                                       //初始化msi中断
@@ -299,24 +297,18 @@ INIT_TEXT void init_xhci(void) {
 
     xhci_regs->op->usbcmd |= XHCI_CMD_RS; //启动xhci
 
-    color_printk(GREEN,BLACK,"Xhci Version:%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d CS:%d AC64:%d USBcmd:%#x USBsts:%#x PageSize:%d iman:%#x imod:%#x\n",xhci_regs->cap->hciversion,(UINT64)xhci_dev->pcie_config_space->type0.bar[0]&~0x1f|(UINT64)xhci_dev->pcie_config_space->type0.bar[1]<<32,xhci_dev->msi_x_flags,xhci_regs->cap->hcsparams1&0xFF,xhci_regs->cap->hcsparams1>>8&0x7FF,xhci_regs->cap->hcsparams1>>24,xhci_regs->cap->hccparams1>>2&1,xhci_regs->cap->hccparams1&1,xhci_regs->op->usbcmd,xhci_regs->op->usbsts,xhci_regs->op->pagesize<<12,xhci_regs->rt->intr_regs[0].iman,xhci_regs->rt->intr_regs[0].imod);
+    xhci_cap_t *sp_cap = xhci_cap_find(xhci_regs,2); //获取协议支持能力
+    color_printk(GREEN,BLACK,"Xhci Version:%x.%x USB%x.%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d CS:%d AC64:%d USBcmd:%#x USBsts:%#x PageSize:%d iman:%#x imod:%#x\n",xhci_regs->cap->hciversion>>8,xhci_regs->cap->hciversion&0xFF,sp_cap->supported_protocol.protocol_ver>>24,sp_cap->supported_protocol.protocol_ver>>16&0xFF,(UINT64)xhci_dev->pcie_config_space->type0.bar[0]&~0x1f|(UINT64)xhci_dev->pcie_config_space->type0.bar[1]<<32,xhci_dev->msi_x_flags,xhci_regs->cap->hcsparams1&0xFF,xhci_regs->cap->hcsparams1>>8&0x7FF,xhci_regs->cap->hcsparams1>>24,xhci_regs->cap->hccparams1>>2&1,xhci_regs->cap->hccparams1&1,xhci_regs->op->usbcmd,xhci_regs->op->usbsts,xhci_regs->op->pagesize<<12,xhci_regs->rt->intr_regs[0].iman,xhci_regs->rt->intr_regs[0].imod);
     color_printk(GREEN,BLACK,"crcr:%#lx dcbaap:%#lx erstba[0]:%#lx erdp[0]:%#lx erstsz:%d config:%d \n",xhci_regs->op->crcr,xhci_regs->op->dcbaap,xhci_regs->rt->intr_regs[0].erstba,xhci_regs->rt->intr_regs[0].erdp,xhci_regs->rt->intr_regs[0].erstsz,xhci_regs->op->config);
 
-    xhci_cap_t *supported_protocol = xhci_cap_find(xhci_regs,2);
-    color_printk(GREEN,BLACK,"USB%x.%x port_info:%#x port_slot_type:%#x\n",supported_protocol->supported_protocol.protocol_ver>>24,supported_protocol->supported_protocol.protocol_ver>>16&0xFF,supported_protocol->supported_protocol.port_info,supported_protocol->supported_protocol.protocol_slot_type);
-    for (UINT32 i=0;i < supported_protocol->supported_protocol.port_info>>28;i++) {
-        color_printk(GREEN,BLACK,"pro_speed:%#x\n",supported_protocol->supported_protocol.protocol_speed[i]);
-    }
 
     UINT32 i = 0;
     UINT64 j = 0;
     while (TRUE) {
-        if ((xhci_regs->op->portregs[i].portsc & 0xE1) == 0xE1) {
+        if (xhci_regs->op->portregs[i].portsc & 0x1) {
             color_printk(GREEN,BLACK,"port_id:%d portsc:%x portpmsc:%x portli:%x porthlpmc:%x j:%ld \n",i+1,xhci_regs->op->portregs[i].portsc,xhci_regs->op->portregs[i].portpmsc,xhci_regs->op->portregs[i].portli,xhci_regs->op->portregs[i].porthlpmc,j);
-            UINT32 portsc = xhci_regs->op->portregs[i].portsc;
-            portsc &= ~(0xF<<10);
-            xhci_regs->op->portregs[i].portsc = portsc;
-            while (!(xhci_regs->op->portregs[i].portsc == 1<<1)) pause();
+            xhci_regs->op->portregs[i].portsc |= 1<<4;
+            while (!((xhci_regs->op->portregs[i].portsc&3) == 3)) pause();
             color_printk(GREEN,BLACK,"port_id:%d portsc:%x portpmsc:%x portli:%x porthlpmc:%x j:%ld \n",i+1,xhci_regs->op->portregs[i].portsc,xhci_regs->op->portregs[i].portpmsc,xhci_regs->op->portregs[i].portli,xhci_regs->op->portregs[i].porthlpmc,j);
             break;
         }

@@ -35,7 +35,7 @@ struct {
     {UHCI_CLASS_CODE, "UHCI Controller (USB1.1)"},
     {OHCI_CLASS_CODE, "OHCI Controller (USB1.1)"},
     {EHCI_CLASS_CODE, "EHCI Controller (USB2.0)"},
-    {XHCI_CLASS_CODE, "XHCI Controller (USB3.0)"},
+    {XHCI_CLASS_CODE, "XHCI Controller (USBx.x)"},
     {FIBRE_CHANNEL_CLASS_CODE, "Fibre Channel"},
     {SMBUS_CLASS_CODE, "SMBus Controller"},
     {INFINIBAND_CLASS_CODE, "InfiniBand Controller"},

@@ -81,7 +81,6 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 					   -bios OVMF.fd \
  					   -device qemu-xhci,id=xhci \
                        -device usb-storage,bus=xhci.0,drive=usbdisk \
-                       -device usb-ehci,id=ehci \
                        -drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp &
 
 
