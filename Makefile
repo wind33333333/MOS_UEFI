@@ -61,9 +61,9 @@ debug-uefi: clean_uefi
 					   -m 8G \
  					   -cpu max -smp sockets=2,cores=2,threads=2 \
  					   -bios OVMF_debug.fd \
- 					   -device qemu-xhci,id=xhci \
-                       -device usb-storage,bus=xhci.0,drive=usbdisk \
-                       -drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp &
+					   -device qemu-xhci \
+                       -drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp \
+                       -device usb-storage,drive=usbdisk &
 
 #-device amd-iommu \amd cpu启用iommu
 #-device intel-iommu,intremap=on,caching-mode=on \ intel cpu启用iommu
@@ -79,9 +79,9 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 					   -m 8G \
 					   -cpu max -smp sockets=2,cores=2,threads=2 \
 					   -bios OVMF.fd \
- 					   -device qemu-xhci,id=xhci \
-                       -device usb-storage,bus=xhci.0,drive=usbdisk \
-                       -drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp &
+					   -device qemu-xhci \
+                       -drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp \
+                       -device usb-storage,drive=usbdisk &
 
 
 qemu-monitor:
