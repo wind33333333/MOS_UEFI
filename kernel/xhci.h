@@ -258,7 +258,7 @@ typedef struct {
         struct {
             UINT32 protocol_ver;   /* 位 23:16 小修订版本0x10 = x.10
                                       位 31:24 主修订版本0x03 = 3.x */
-            UINT8 name[4];           /* 位 31:0 4个asci字符 */
+            UINT8  name[4];           /* 位 31:0 4个asci字符 */
             UINT32 port_info;      /* 位7:0 兼容端口偏移
                                       位15:8 兼容端口计数偏移
                                       位31:28 协议速度 ID 计数 - RO，PSI 字段数量 (0-15)*/
