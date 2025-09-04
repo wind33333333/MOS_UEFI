@@ -314,7 +314,7 @@ typedef struct {
 typedef struct {
     UINT64 parameter;
     UINT32 status;
-    UINT32 control; // 位[0]为Cycle Bit
+    UINT32 control;
 } xhci_trb_t;
 
 /* xHCI 设备上下文结构（64 字节版本，CSZ=1） */

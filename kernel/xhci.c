@@ -175,7 +175,7 @@ int xhci_write_cmd_ring(xhci_regs_t *xhci_regs, xhci_trb_t *cmd_trb) {
 }
 
 //读事件环
-int xhci_read_evt_ring(xhci_regs_t *xhci_regs, xhci_trb_t *evt_trb) {
+int xhci_read_event_ring(xhci_regs_t *xhci_regs, xhci_trb_t *evt_trb) {
     xhci_trb_t *evt_ring = &xhci_regs->event_ring[xhci_regs->event_idx];
     evt_trb->parameter = evt_ring->parameter;
     evt_trb->status = evt_ring->status;
@@ -198,7 +198,7 @@ static inline UINT32 xhci_enable_slot(xhci_regs_t *xhci_regs) {
     };
     xhci_write_cmd_ring(xhci_regs, &trb);
     xhci_ring_doorbell(xhci_regs, 0, 0);
-    xhci_read_evt_ring(xhci_regs, &trb);
+    xhci_read_event_ring(xhci_regs, &trb);
     if ((trb.control >> 10 & 0x3F) == 33 && trb.control >> 24) {
         return trb.control >> 24 & 0xFF;
     }
@@ -233,7 +233,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs, UINT32 slot_number, UINT32 port
     xhci_write_cmd_ring(xhci_regs, &trb);
     xhci_ring_doorbell(xhci_regs, 0, 0);
 
-    xhci_read_evt_ring(xhci_regs, &trb);
+    xhci_read_event_ring(xhci_regs, &trb);
 
     kfree(input_context);
 }
@@ -327,8 +327,8 @@ INIT_TEXT void init_xhci(void) {
                  xhci_regs->rt->intr_regs[0].erdp, xhci_regs->rt->intr_regs[0].erstsz, xhci_regs->op->config);
 
     //延时等待xhci初始化完成
-    UINT64 count = 20000000;
-    while (count--) pause();
+    // UINT64 count = 20000000;
+    // while (count--) pause();
 
     xhci_trb_t trb;
 
@@ -337,7 +337,7 @@ INIT_TEXT void init_xhci(void) {
         if (xhci_regs->op->portregs[i].portsc & XHCI_PORTSC_CCS) {
             if ((xhci_regs->op->portregs[i].portsc>>XHCI_PORTSC_PLS_SHIFT&XHCI_PORTSC_PLS_MASK) == PLS_POLLING) { //usb2.0协议版本
                 xhci_regs->op->portregs[i].portsc |= XHCI_PORTSC_PR;
-                xhci_read_evt_ring(xhci_regs, &trb);
+                xhci_read_event_ring(xhci_regs, &trb);
             }
             //usb3.x以上协议版本
             while (!(xhci_regs->op->portregs[i].portsc & XHCI_PORTSC_PED)) pause();
