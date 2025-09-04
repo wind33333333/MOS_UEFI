@@ -2,38 +2,38 @@
 
 #include "moslib.h"
 
-#define TRB_RESERVED                (0 << 10)
-#define TRB_NORMAL                  (1 << 10)
-#define TRB_SETUP_STAGE             (2 << 10)
-#define TRB_DATA_STAGE              (3 << 10)
-#define TRB_STATUS_STAGE            (4 << 10)
-#define TRB_ISOCH                   (5 << 10)
-#define TRB_LINK                    (6 << 10)
-#define TRB_EVDATA                  (7 << 10)
-#define TRB_NOOP                    (8 << 10)
-#define TRB_ENABLE_SLOT             (9 << 10)
-#define TRB_DISABLE_SLOT            (10 << 10)
-#define TRB_ADDRESS_DEVICE          (11 << 10)
-#define TRB_CONFIGURE_ENDPOINT      (12 << 10)
-#define TRB_EVALUATE_CONTEXT        (13 << 10)
-#define TRB_RESET_ENDPOINT          (14 << 10)
-#define TRB_STOP_ENDPOINT           (15 << 10)
-#define TRB_SET_TR_DEQUEUE          (16 << 10)
-#define TRB_RESET_DEVICE            (17 << 10)
-#define TRB_FORCE_EVENT             (18 << 10)
-#define TRB_NEGOTIATE_BW            (19 << 10)
-#define TRB_SET_LATENCY_TOLERANCE   (20 << 10)
-#define TRB_GET_PORT_BANDWIDTH      (21 << 10)
-#define TRB_FORCE_HEADER            (22 << 10)
-#define TRB_NOOP_COMMAND            (23 << 10)
-#define TRB_TRANSFER                (32 << 10)
-#define TRB_COMMAND_COMPLETE        (33 << 10)
-#define TRB_PORT_STATUS_CHANGE      (34 << 10)
-#define TRB_BANDWIDTH_REQUEST       (35 << 10)
-#define TRB_DOORBELL                (36 << 10)
-#define TRB_HOST_CONTROLLER         (37 << 10)
-#define TRB_DEVICE_NOTIFICATION     (38 << 10)
-#define TRB_MFINDEX_WRAP            (39 << 10)
+#define TRB_RESERVED                (0 << 10)   // 保留
+#define TRB_NORMAL                  (1 << 10)   // 普通传输
+#define TRB_SETUP_STAGE             (2 << 10)   // 设置阶段
+#define TRB_DATA_STAGE              (3 << 10)   // 数据阶段
+#define TRB_STATUS_STAGE            (4 << 10)   // 状态阶段
+#define TRB_ISOCH                   (5 << 10)   // 等时传输
+#define TRB_LINK                    (6 << 10)   // 链接
+#define TRB_EVDATA                  (7 << 10)   // 事件数据
+#define TRB_NOOP                    (8 << 10)   // 空操作
+#define TRB_ENABLE_SLOT             (9 << 10)   // 启用插槽
+#define TRB_DISABLE_SLOT            (10 << 10)  // 禁用插槽
+#define TRB_ADDRESS_DEVICE          (11 << 10)  // 设备寻址
+#define TRB_CONFIGURE_ENDPOINT      (12 << 10)  // 配置端点
+#define TRB_EVALUATE_CONTEXT        (13 << 10)  // 评估上下文
+#define TRB_RESET_ENDPOINT          (14 << 10)  // 重置端点
+#define TRB_STOP_ENDPOINT           (15 << 10)  // 停止端点
+#define TRB_SET_TR_DEQUEUE          (16 << 10)  // 设置传输环出队
+#define TRB_RESET_DEVICE            (17 << 10)  // 重置设备
+#define TRB_FORCE_EVENT             (18 << 10)  // 强制事件
+#define TRB_NEGOTIATE_BW            (19 << 10)  // 协商带宽
+#define TRB_SET_LATENCY_TOLERANCE   (20 << 10)  // 设置延迟容忍
+#define TRB_GET_PORT_BANDWIDTH      (21 << 10)  // 获取端口带宽
+#define TRB_FORCE_HEADER            (22 << 10)  // 强制头部
+#define TRB_NOOP_COMMAND            (23 << 10)  // 空操作命令
+#define TRB_TRANSFER                (32 << 10)  // 传输
+#define TRB_COMMAND_COMPLETE        (33 << 10)  // 命令完成
+#define TRB_PORT_STATUS_CHANGE      (34 << 10)  // 端口状态改变
+#define TRB_BANDWIDTH_REQUEST       (35 << 10)  // 带宽请求
+#define TRB_DOORBELL                (36 << 10)  // 门铃
+#define TRB_HOST_CONTROLLER         (37 << 10)  // 主机控制器
+#define TRB_DEVICE_NOTIFICATION     (38 << 10)  // 设备通知
+#define TRB_MFINDEX_WRAP            (39 << 10)  // 主框架索引回绕
 
 #pragma pack(push,1)
 
