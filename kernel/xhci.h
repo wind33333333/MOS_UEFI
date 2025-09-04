@@ -423,10 +423,10 @@ typedef struct {
     xhci_ext_regs_t *ext;        // 扩展寄存器
 
     xhci_trb_t      *cmd_ring;    //命令环虚拟地址
-    xhci_trb_t      *evt_ring;    //事件环虚拟地址
+    xhci_trb_t      *event_ring;    //事件环虚拟地址
     UINT64          *dcbaap;      //设备上下文虚拟地址
     UINT32          cmd_idx;      //下一个可用命令槽
-    UINT32          evt_idx;      //下一个事件
+    UINT32          event_idx;      //下一个事件
 } xhci_regs_t;
 
 
