@@ -331,7 +331,6 @@ INIT_TEXT void init_xhci(void) {
     // while (count--) pause();
 
     xhci_trb_t trb;
-
     //遍历初始化端口，分配插槽和设备地址
     for (UINT32 i = 0; i < xhci_regs->cap->hcsparams1 >> 24; i++) {
         if (xhci_regs->op->portregs[i].portsc & XHCI_PORTSC_CCS) {
@@ -341,14 +340,14 @@ INIT_TEXT void init_xhci(void) {
             }
             //usb3.x以上协议版本
             while (!(xhci_regs->op->portregs[i].portsc & XHCI_PORTSC_PED)) pause();
-            color_printk(GREEN,BLACK, "port_id:%d portsc:%x portpmsc:%x portli:%x porthlpmc:%x \n", i+1,
-                         xhci_regs->op->portregs[i].portsc, xhci_regs->op->portregs[i].portpmsc,
-                         xhci_regs->op->portregs[i].portli, xhci_regs->op->portregs[i].porthlpmc);
-            UINT32 slot_id = xhci_enable_slot(xhci_regs);
-            color_printk(GREEN,BLACK, "port:%d slot_id:%d\n", i + 1, slot_id);
+             color_printk(GREEN,BLACK, "port_id:%d portsc:%x portpmsc:%x portli:%x porthlpmc:%x \n", i+1,
+                          xhci_regs->op->portregs[i].portsc, xhci_regs->op->portregs[i].portpmsc,
+                          xhci_regs->op->portregs[i].portli, xhci_regs->op->portregs[i].porthlpmc);
+             UINT32 slot_id = xhci_enable_slot(xhci_regs);
+             color_printk(GREEN,BLACK, "port:%d slot_id:%d\n", i + 1, slot_id);
             while (1);
-            xhci_address_device(xhci_regs, slot_id, i + 1);
-            color_printk(GREEN,BLACK, "port:%d slot_id:%d\n", i + 1, slot_id);
+            // xhci_address_device(xhci_regs, slot_id, i + 1);
+            // color_printk(GREEN,BLACK, "port:%d slot_id:%d\n", i + 1, slot_id);
         }
     }
 
