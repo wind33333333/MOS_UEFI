@@ -426,7 +426,7 @@ typedef struct {
     xhci_trb_t      *event_ring;    //事件环虚拟地址
     UINT64          *dcbaap;      //设备上下文虚拟地址
     UINT32          cmd_idx;      //下一个可用命令槽
-    UINT32          event_idx;      //下一个事件
+    UINT8           event_c;      //事件环C位标志
 } xhci_regs_t;
 
 
