@@ -283,75 +283,74 @@ INIT_TEXT void init_xhci(void) {
     pcie_dev_t *xhci_dev = pcie_dev_find(XHCI_CLASS_CODE); //找xhci设备
     pcie_bar_set(xhci_dev, 0); //初始化bar0寄存器
     pcie_msi_intrpt_set(xhci_dev); //初始化msi中断
-
     xhci_dev->private = kzalloc(sizeof(xhci_regs_t)); //设备私有数据空间申请一块内存，存放xhci相关信息
+
+    /*计算xhci寄存器*/
     xhci_regs_t *xhci_regs = xhci_dev->private;
     xhci_regs->cap = xhci_dev->bar[0]; //xhci能力寄存器基地址
     xhci_regs->op = xhci_dev->bar[0] + xhci_regs->cap->cap_length; //xhci操作寄存器基地址
     xhci_regs->rt = xhci_dev->bar[0] + xhci_regs->cap->rtsoff; //xhci运行时寄存器基地址
     xhci_regs->db = xhci_dev->bar[0] + xhci_regs->cap->dboff; //xhci门铃寄存器基地址
 
+    /*停止复位xhci*/
     xhci_regs->op->usbcmd &= ~XHCI_CMD_RS; //停止xhci
     while (!(xhci_regs->op->usbsts & XHCI_STS_HCH)) pause();
     xhci_regs->op->usbcmd |= XHCI_CMD_HCRST; //复位xhci
     while (xhci_regs->op->usbcmd & XHCI_CMD_HCRST) pause();
     while (xhci_regs->op->usbsts & XHCI_STS_CNR) pause();
 
-    UINT32 xhci_align_size = PAGE_4K_SIZE<<bsf(xhci_regs->op->pagesize);    //计算xhci内存对齐边界
+    /*计算xhci内存对齐边界*/
+    UINT32 xhci_align_size = PAGE_4K_SIZE<<bsf(xhci_regs->op->pagesize);
 
+    /*初始化设备上下文*/
     UINT32 max_slots = xhci_regs->cap->hcsparams1 & 0xff;
     xhci_regs->dcbaap = kzalloc(align_up((max_slots+1)<<3,xhci_align_size)); //分配设备上下文插槽内存,最大插槽数量(插槽从1开始需要+1)*8字节内存
     xhci_regs->op->dcbaap = va_to_pa(xhci_regs->dcbaap); //把设备上下文基地址数组表的物理地址写入寄存器
-    xhci_regs->op->config = max_slots; //把最大插槽数量写入寄存器
+    xhci_regs->op->config = max_slots;                   //把最大插槽数量写入寄存器
 
+    /*初始化命令环*/
     xhci_regs->cmd_ring = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_align_size)); //分配命令环空间256* sizeof(xhci_trb_t) = 4K
     xhci_regs->cmd_ring[TRB_COUNT - 1].parameter = va_to_pa(xhci_regs->cmd_ring); //命令环最后一个trb指向环首地址
     xhci_regs->cmd_ring[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE; //命令环最后一个trb设置位link
     xhci_regs->op->crcr = va_to_pa(xhci_regs->cmd_ring) | TRB_CYCLE; //命令环物理地址写入crcr寄存器，置位rcs
 
+    /*初始化事件环*/
+    xhci_regs->event_c = TRB_CYCLE;
     xhci_erst_t *erstba = kmalloc(align_up(sizeof(xhci_erst_t),xhci_align_size)); //分配单事件环段表内存64字节
     xhci_regs->event_ring = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_align_size)); //分配事件环空间256* sizeof(xhci_trb_t) = 4K
-    xhci_regs->event_c = TRB_CYCLE;
     erstba->ring_seg_base = va_to_pa(xhci_regs->event_ring); //段表中写入事件环物理地址
     erstba->ring_seg_size = TRB_COUNT;    //事件环最大trb个数
     erstba->reserved = 0;
-    xhci_regs->rt->intr_regs->erstsz = 1; //设置单事件环段
-    xhci_regs->rt->intr_regs->erstba = va_to_pa(erstba); //事件环段表物理地址写入寄存器
-    xhci_regs->rt->intr_regs->erdp = va_to_pa(xhci_regs->event_ring); //事件环物理地址写入寄存器
+    xhci_regs->rt->intr_regs[0].erstsz = 1; //设置单事件环段
+    xhci_regs->rt->intr_regs[0].erstba = va_to_pa(erstba); //事件环段表物理地址写入寄存器
+    xhci_regs->rt->intr_regs[0].erdp = va_to_pa(xhci_regs->event_ring); //事件环物理地址写入寄存器
 
-    //启用暂存器缓冲区
+    /*初始化暂存器缓冲区*/
     UINT32 spb_number = (xhci_regs->cap->hcsparams2 & 0x1f<<21)>>16 | xhci_regs->cap->hcsparams2>>27;
     if (spb_number) {
-        UINT64 *spb_arr = kzalloc(align_up(spb_number<<3,xhci_align_size)); //分配暂存器缓冲区指针数组
-
+        UINT64 *spb_array = kzalloc(align_up(spb_number<<3,xhci_align_size)); //分配暂存器缓冲区指针数组
         for (UINT32 i = 0; i < spb_number; i++) {
-            spb_arr[i] = va_to_pa(kzalloc(xhci_align_size));
+            spb_array[i] = va_to_pa(kzalloc(xhci_align_size));        //分配暂存器缓存区
         }
-        xhci_regs->dcbaap[0] = va_to_pa(spb_arr);
-
-        color_printk(GREEN,BLACK,"spb_nuber:%d spb:%lx spb[]:", spb_number,va_to_pa(spb_arr));
-        for (UINT32 i = 0; i < spb_number; i++) {
-            color_printk(GREEN,BLACK," %#lx ",spb_arr[i]);
-        }
-
+        xhci_regs->dcbaap[0] = va_to_pa(spb_array);                 //暂存器缓存去数组指针写入设备上下写文数组0
     }
 
-    xhci_regs->op->usbcmd |= XHCI_CMD_RS; //启动xhci
+    /*启动xhci*/
+    xhci_regs->op->usbcmd |= XHCI_CMD_RS;
 
-    xhci_cap_t *sp_cap = xhci_cap_find(xhci_regs, 2); //获取协议支持能力
+    /*获取协议支持能力*/
+    xhci_cap_t *sp_cap = xhci_cap_find(xhci_regs, 2);
+
     color_printk(
         GREEN,BLACK,
-        "Xhci Version:%x.%x USB%x.%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d CS:%d AC64:%d USBcmd:%#x USBsts:%#x PageSize:%d iman:%#x imod:%#x hcs2:%#x\n",
+        "Xhci Version:%x.%x USB%x.%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d CTS:%d AC64:%d USBcmd:%#x USBsts:%#x AlignSize:%d iman:%#x imod:%#x hcs2:%#x crcr:%#lx dcbaap:%#lx erstba:%#lx erdp:%#lx erstsz:%d\n",
         xhci_regs->cap->hciversion >> 8, xhci_regs->cap->hciversion & 0xFF,
         sp_cap->supported_protocol.protocol_ver >> 24, sp_cap->supported_protocol.protocol_ver >> 16 & 0xFF,
-        (UINT64) xhci_dev->pcie_config_space->type0.bar[0] & ~0x1f | (UINT64) xhci_dev->pcie_config_space->type0.bar[1]
-        << 32, xhci_dev->msi_x_flags, xhci_regs->cap->hcsparams1 & 0xFF, xhci_regs->cap->hcsparams1 >> 8 & 0x7FF,
+        va_to_pa(xhci_dev->bar[0]), xhci_dev->msi_x_flags, xhci_regs->cap->hcsparams1 & 0xFF, xhci_regs->cap->hcsparams1 >> 8 & 0x7FF,
         xhci_regs->cap->hcsparams1 >> 24, xhci_regs->cap->hccparams1 >> 2 & 1, xhci_regs->cap->hccparams1 & 1,
-        xhci_regs->op->usbcmd, xhci_regs->op->usbsts, xhci_regs->op->pagesize << 12, xhci_regs->rt->intr_regs[0].iman,
-        xhci_regs->rt->intr_regs[0].imod,xhci_regs->cap->hcsparams2);
-    color_printk(GREEN,BLACK, "cmd_ring:%#lx dcbaap:%#lx erstba:%#lx erdp:%#lx erstsz:%d config:%d \n",
-                 xhci_regs->cmd_ring, xhci_regs->op->dcbaap, xhci_regs->rt->intr_regs->erstba,
-                 xhci_regs->rt->intr_regs->erdp, xhci_regs->rt->intr_regs->erstsz, xhci_regs->op->config);
+        xhci_regs->op->usbcmd, xhci_regs->op->usbsts, xhci_align_size, xhci_regs->rt->intr_regs[0].iman,
+        xhci_regs->rt->intr_regs[0].imod,xhci_regs->cap->hcsparams2,va_to_pa(xhci_regs->cmd_ring), xhci_regs->op->dcbaap, xhci_regs->rt->intr_regs[0].erstba,
+                 xhci_regs->rt->intr_regs[0].erdp, xhci_regs->rt->intr_regs[0].erstsz);
 
     UINT64 count = 20000000;
     while (count--) pause();
