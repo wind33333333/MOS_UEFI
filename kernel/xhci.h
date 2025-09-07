@@ -52,10 +52,8 @@ typedef struct {
     // 08h: 硬件参数寄存器 (HCSPARAMS2)
     UINT32 hcsparams2;      /*[3:0]	    IST 等时调度阈值，单位为微帧（125us）。Host Controller 在这个阈值之后的同一帧内不再调度新的等时传输。常见值：0~8。
                               [7:4]	    ERST Max 硬件支持的事件环段表最大条目数2^n ERST MAX = 8 则条目等于256。
-                              [13:8]	Max Scratchpad Buffers 最大 Scratchpad 缓冲区数量的高 6 位。与 [25:21] 一起组成完整值。
-                              [15:14]	保留。
-                              [25:21]	Max Scratchpad Buffers (hi  5 bits)	最大 Scratchpad 缓冲区数量的高 5 位位组合得到完整的 Scratchpad Buffer 数量（范围 0~1023）。
-                              [31:27]	Max Scratchpad Buffers (Low 5 bits)	最大 Scratchpad 缓冲区数量的低 5 位*/
+                              [25:21]	Max Scratchpad Buffers (hi  5 bits)	最大暂存器缓冲区数量的高5位（范围 0~1023）。
+                              [31:27]	Max Scratchpad Buffers (Lo 5 bits)	最大暂存器缓冲区数量的低5位*/
 
     // 0Ch: 硬件参数寄存器 (HCSPARAMS3)
     UINT32 hcsparams3;      /*[7:0]     U1DeviceExitLatency: U1设备退出延迟（以微秒为单位）
@@ -306,7 +304,7 @@ typedef struct {
 
 /* ERST条目结构 (16字节) */
 typedef struct {
-    UINT64 ring_seg_base_addr;  // 段的64位物理基地址 (位[63:6]有效，位[5:0]为0)
+    UINT64 ring_seg_base;       // 段的64位物理基地址 (位[63:6]有效，位[5:0]为0)
     UINT32 ring_seg_size;       // 段中TRB的数量 (16到4096)
     UINT32 reserved;            // 保留位，初始化为0
 } xhci_erst_t;
