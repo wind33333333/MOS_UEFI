@@ -300,24 +300,24 @@ INIT_TEXT void init_xhci(void) {
     while (xhci_regs->op->usbsts & XHCI_STS_CNR) pause();
 
     /*计算xhci内存对齐边界*/
-    UINT32 xhci_align_size = PAGE_4K_SIZE<<bsf(xhci_regs->op->pagesize);
+    xhci_regs->align_size = PAGE_4K_SIZE<<bsf(xhci_regs->op->pagesize);
 
     /*初始化设备上下文*/
     UINT32 max_slots = xhci_regs->cap->hcsparams1 & 0xff;
-    xhci_regs->dcbaap = kzalloc(align_up((max_slots+1)<<3,xhci_align_size)); //分配设备上下文插槽内存,最大插槽数量(插槽从1开始需要+1)*8字节内存
+    xhci_regs->dcbaap = kzalloc(align_up((max_slots+1)<<3,xhci_regs->align_size)); //分配设备上下文插槽内存,最大插槽数量(插槽从1开始需要+1)*8字节内存
     xhci_regs->op->dcbaap = va_to_pa(xhci_regs->dcbaap); //把设备上下文基地址数组表的物理地址写入寄存器
     xhci_regs->op->config = max_slots;                   //把最大插槽数量写入寄存器
 
     /*初始化命令环*/
-    xhci_regs->cmd_ring = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_align_size)); //分配命令环空间256* sizeof(xhci_trb_t) = 4K
+    xhci_regs->cmd_ring = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_regs->align_size)); //分配命令环空间256* sizeof(xhci_trb_t) = 4K
     xhci_regs->cmd_ring[TRB_COUNT - 1].parameter = va_to_pa(xhci_regs->cmd_ring); //命令环最后一个trb指向环首地址
     xhci_regs->cmd_ring[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE; //命令环最后一个trb设置位link
     xhci_regs->op->crcr = va_to_pa(xhci_regs->cmd_ring) | TRB_CYCLE; //命令环物理地址写入crcr寄存器，置位rcs
 
     /*初始化事件环*/
     xhci_regs->event_c = TRB_CYCLE;
-    xhci_erst_t *erstba = kmalloc(align_up(sizeof(xhci_erst_t),xhci_align_size)); //分配单事件环段表内存64字节
-    xhci_regs->event_ring = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_align_size)); //分配事件环空间256* sizeof(xhci_trb_t) = 4K
+    xhci_erst_t *erstba = kmalloc(align_up(sizeof(xhci_erst_t),xhci_regs->align_size)); //分配单事件环段表内存64字节
+    xhci_regs->event_ring = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_regs->align_size)); //分配事件环空间256* sizeof(xhci_trb_t) = 4K
     erstba->ring_seg_base = va_to_pa(xhci_regs->event_ring); //段表中写入事件环物理地址
     erstba->ring_seg_size = TRB_COUNT;    //事件环最大trb个数
     erstba->reserved = 0;
@@ -328,9 +328,9 @@ INIT_TEXT void init_xhci(void) {
     /*初始化暂存器缓冲区*/
     UINT32 spb_number = (xhci_regs->cap->hcsparams2 & 0x1f<<21)>>16 | xhci_regs->cap->hcsparams2>>27;
     if (spb_number) {
-        UINT64 *spb_array = kzalloc(align_up(spb_number<<3,xhci_align_size)); //分配暂存器缓冲区指针数组
+        UINT64 *spb_array = kzalloc(align_up(spb_number<<3,xhci_regs->align_size)); //分配暂存器缓冲区指针数组
         for (UINT32 i = 0; i < spb_number; i++) {
-            spb_array[i] = va_to_pa(kzalloc(xhci_align_size));        //分配暂存器缓存区
+            spb_array[i] = va_to_pa(kzalloc(xhci_regs->align_size));        //分配暂存器缓存区
         }
         xhci_regs->dcbaap[0] = va_to_pa(spb_array);                 //暂存器缓存去数组指针写入设备上下写文数组0
     }
@@ -348,7 +348,7 @@ INIT_TEXT void init_xhci(void) {
         sp_cap->supported_protocol.protocol_ver >> 24, sp_cap->supported_protocol.protocol_ver >> 16 & 0xFF,
         va_to_pa(xhci_dev->bar[0]), xhci_dev->msi_x_flags, xhci_regs->cap->hcsparams1 & 0xFF, xhci_regs->cap->hcsparams1 >> 8 & 0x7FF,
         xhci_regs->cap->hcsparams1 >> 24, xhci_regs->cap->hccparams1 >> 2 & 1, xhci_regs->cap->hccparams1 & 1,
-        xhci_regs->op->usbcmd, xhci_regs->op->usbsts, xhci_align_size, xhci_regs->rt->intr_regs[0].iman,
+        xhci_regs->op->usbcmd, xhci_regs->op->usbsts, xhci_regs->align_size, xhci_regs->rt->intr_regs[0].iman,
         xhci_regs->rt->intr_regs[0].imod,xhci_regs->cap->hcsparams2,va_to_pa(xhci_regs->cmd_ring), xhci_regs->op->dcbaap, xhci_regs->rt->intr_regs[0].erstba,
                  xhci_regs->rt->intr_regs[0].erdp, xhci_regs->rt->intr_regs[0].erstsz);
 

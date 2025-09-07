@@ -425,6 +425,7 @@ typedef struct {
     UINT64          *dcbaap;      //设备上下文虚拟地址
     UINT32          cmd_idx;      //下一个可用命令槽
     UINT8           event_c;      //事件环C位标志
+    UINT32          align_size;  //对齐边界
 } xhci_regs_t;
 
 
