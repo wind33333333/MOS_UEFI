@@ -135,9 +135,9 @@ void xhci_address_device(xhci_regs_t *xhci_regs, UINT32 slot_number, UINT32 port
     xhci_regs->dcbaap[slot_number] = va_to_pa(kzalloc(align_up(sizeof(xhci_device_context64_t),xhci_regs->align_size)));
 
     //分配传输环内存
-    xhci_trb_t *transfer_ring = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_regs->align_size));
-    transfer_ring[TRB_COUNT - 1].parameter = va_to_pa(transfer_ring);
-    transfer_ring[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE;
+    xhci_regs->ep0_transfer_ring = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_regs->align_size));
+    xhci_regs->ep0_transfer_ring[TRB_COUNT - 1].parameter = va_to_pa(xhci_regs->ep0_transfer_ring);
+    xhci_regs->ep0_transfer_ring[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE;
 
     //配置设备上下文
     xhci_input_context64_t *input_context = kzalloc(align_up(sizeof(xhci_input_context64_t),xhci_regs->align_size));
@@ -146,7 +146,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs, UINT32 slot_number, UINT32 port
         input_context->drop_context = 0x0;
         input_context->dev_ctx.slot.reg0 = 1 << 27 | speed<<20;
         input_context->dev_ctx.slot.reg1 = port_number << 16;
-        input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring) | TRB_CYCLE;
+        input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(xhci_regs->ep0_transfer_ring) | TRB_CYCLE;
         input_context->dev_ctx.ep[0].reg0 = 1;
         input_context->dev_ctx.ep[0].reg1 = 4 << 3 | 64 << 16;
     }else {
@@ -155,7 +155,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs, UINT32 slot_number, UINT32 port
         input_context32->drop_context = 0x0;
         input_context32->dev_ctx.slot.reg0 = 1 << 27 | speed<<20;
         input_context32->dev_ctx.slot.reg1 = port_number << 16;
-        input_context32->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(transfer_ring) | TRB_CYCLE;
+        input_context32->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(xhci_regs->ep0_transfer_ring) | TRB_CYCLE;
         input_context32->dev_ctx.ep[0].reg0 = 1;
         input_context32->dev_ctx.ep[0].reg1 = 4 << 3 | 64 << 16;
     }
@@ -272,14 +272,14 @@ INIT_TEXT void init_xhci(void) {
 
     color_printk(
         GREEN,BLACK,
-        "Xhci Version:%x.%x USB%x.%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d CTS:%d AC64:%d USBcmd:%#x USBsts:%#x AlignSize:%d iman:%#x imod:%#x hcs2:%#x crcr:%#lx dcbaap:%#lx erstba:%#lx erdp:%#lx erstsz:%d\n",
+        "Xhci Version:%x.%x USB%x.%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d CTS:%d AC64:%d USBcmd:%#x USBsts:%#x AlignSize:%d iman:%#x imod:%#x crcr:%#lx dcbaap:%#lx erstba:%#lx erdp0:%#lx\n",
         xhci_regs->cap->hciversion >> 8, xhci_regs->cap->hciversion & 0xFF,
         sp_cap->supported_protocol.protocol_ver >> 24, sp_cap->supported_protocol.protocol_ver >> 16 & 0xFF,
         va_to_pa(xhci_dev->bar[0]), xhci_dev->msi_x_flags, xhci_regs->cap->hcsparams1 & 0xFF, xhci_regs->cap->hcsparams1 >> 8 & 0x7FF,
         xhci_regs->cap->hcsparams1 >> 24, xhci_regs->cap->hccparams1 >> 2 & 1, xhci_regs->cap->hccparams1 & 1,
         xhci_regs->op->usbcmd, xhci_regs->op->usbsts, xhci_regs->align_size, xhci_regs->rt->intr_regs[0].iman,
-        xhci_regs->rt->intr_regs[0].imod,xhci_regs->cap->hcsparams2,va_to_pa(xhci_regs->cmd_ring), xhci_regs->op->dcbaap, xhci_regs->rt->intr_regs[0].erstba,
-                 xhci_regs->rt->intr_regs[0].erdp, xhci_regs->rt->intr_regs[0].erstsz);
+        xhci_regs->rt->intr_regs[0].imod,va_to_pa(xhci_regs->cmd_ring), xhci_regs->op->dcbaap, xhci_regs->rt->intr_regs[0].erstba,
+                 xhci_regs->rt->intr_regs[0].erdp);
 
     UINT64 count = 20000000;
     while (count--) pause();
