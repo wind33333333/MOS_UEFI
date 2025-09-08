@@ -69,6 +69,7 @@ typedef struct {
                               - LTC (位 6): 延迟容忍能力
                               - NSS (位 7): 无嗅探能力
                               - MaxPSASize (位 12-15): 最大主控制器流数组大小*/
+    #define HCCP1_CSZ   (1<<2)
 
     UINT32 dboff;           // 0x14 门铃寄存器偏移
 
