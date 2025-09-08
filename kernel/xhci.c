@@ -72,23 +72,36 @@ static inline void xhci_ring_doorbell(xhci_regs_t *xhci_regs, UINT8 db_number, U
     xhci_regs->db[db_number] = value;
 }
 
-//分配一个命令环trb
-static inline xhci_trb_t *xhci_alloc_cmd_ring(xhci_regs_t *xhci_regs) {
-    if (xhci_regs->cmd_idx >= TRB_COUNT - 1) {
-        xhci_regs->cmd_ring[TRB_COUNT - 1].control ^= TRB_CYCLE;
-        xhci_regs->cmd_idx = 0;
-    }
-    xhci_trb_t *cmd_ring = &xhci_regs->cmd_ring[xhci_regs->cmd_idx];
-    xhci_regs->cmd_idx++;
-    return cmd_ring;
-}
 
 //写命令环
 int xhci_write_cmd_ring(xhci_regs_t *xhci_regs, xhci_trb_t *cmd_trb) {
-    xhci_trb_t *cmd_ring = xhci_alloc_cmd_ring(xhci_regs);
-    cmd_ring->parameter = cmd_trb->parameter;
-    cmd_ring->status = cmd_trb->status;
-    cmd_ring->control = cmd_trb->control | (xhci_regs->cmd_ring[TRB_COUNT - 1].control & TRB_CYCLE);
+    xhci_trb_t *cmd_ring_base = (xhci_trb_t*)((UINT64)xhci_regs->cmd_ring & ~(TRB_COUNT*sizeof(xhci_trb_t) - 1));
+    if (xhci_regs->cmd_ring >= cmd_ring_base) {
+        xhci_regs->cmd_ring = cmd_ring_base;
+        xhci_regs->cmd_c ^= TRB_CYCLE;
+        cmd_ring_base->parameter =0;
+        cmd_ring_base->status =0;
+        cmd_ring_base[TRB_COUNT-1].control = va_to_pa(cmd_ring_base) | TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | xhci_regs->cmd_c;
+    }
+    xhci_regs->cmd_ring->parameter = cmd_trb->parameter;
+    xhci_regs->cmd_ring->status = cmd_trb->status;
+    xhci_regs->cmd_ring->control = cmd_trb->control | xhci_regs->cmd_c;
+    return 0;
+}
+
+//写传输环
+int xhci_write_transfer_ring(xhci_regs_t *xhci_regs, xhci_trb_t *cmd_trb) {
+    xhci_trb_t *cmd_ring_base = (xhci_trb_t*)((UINT64)xhci_regs->cmd_ring & ~(TRB_COUNT*sizeof(xhci_trb_t) - 1));
+    if (xhci_regs->cmd_ring >= cmd_ring_base) {
+        xhci_regs->cmd_ring = cmd_ring_base;
+        xhci_regs->cmd_c ^= TRB_CYCLE;
+        cmd_ring_base->parameter =0;
+        cmd_ring_base->status =0;
+        cmd_ring_base[TRB_COUNT-1].control = va_to_pa(cmd_ring_base) | TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | xhci_regs->cmd_c;
+    }
+    xhci_regs->cmd_ring->parameter = cmd_trb->parameter;
+    xhci_regs->cmd_ring->status = cmd_trb->status;
+    xhci_regs->cmd_ring->control = cmd_trb->control | xhci_regs->cmd_c;
     return 0;
 }
 

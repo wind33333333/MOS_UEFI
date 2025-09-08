@@ -500,13 +500,13 @@ typedef struct {
     xhci_db_regs_t  *db;         // 门铃寄存器
     xhci_ext_regs_t *ext;        // 扩展寄存器
 
-    xhci_trb_t      *cmd_ring;    //命令环虚拟地址
-    xhci_trb_t      *event_ring;  //事件环虚拟地址
-    xhci_trb_t      *ep0_transfer_ring;     //事件环虚拟地址
-    UINT64          *dcbaap;      //设备上下文虚拟地址
-    UINT32          cmd_idx;      //下一个可用命令槽
-    UINT8           event_c;      //事件环C位标志
-    UINT32          align_size;  //对齐边界
+    xhci_trb_t      *cmd_ring;              //命令环虚拟地址
+    xhci_trb_t      *event_ring;            //事件环虚拟地址
+    xhci_trb_t      *ep0_transfer_ring;     //端点0事件环虚拟地址
+    UINT64          *dcbaap;                //设备上下文虚拟地址
+    UINT8           cmd_c;
+    UINT8           event_c;                //事件环C位标志
+    UINT32          align_size;             //对齐边界
 } xhci_regs_t;
 
 
