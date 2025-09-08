@@ -2,6 +2,8 @@
 
 #include "moslib.h"
 
+#define TRB_COUNT 256        //trb个数
+
 #define TRB_RESERVED                (0 << 10)   // 保留
 #define TRB_NORMAL                  (1 << 10)   // 普通传输
 #define TRB_SETUP_STAGE             (2 << 10)   // 设置阶段
@@ -34,6 +36,21 @@
 #define TRB_HOST_CONTROLLER         (37 << 10)  // 主机控制器
 #define TRB_DEVICE_NOTIFICATION     (38 << 10)  // 设备通知
 #define TRB_MFINDEX_WRAP            (39 << 10)  // 主框架索引回绕
+
+#define TRB_TYPE_NORMAL      (1 << 10)
+#define TRB_TYPE_SETUP       (2 << 10)
+#define TRB_TYPE_DATA        (3 << 10)
+#define TRB_TYPE_STATUS      (4 << 10)
+#define TRB_IOC              (1 << 5) // Interrupt on Completion
+#define TRB_TYPE_LINK        (0x06<<10) //连接trb
+#define TRB_CYCLE            (1 << 0)
+#define TRB_TOGGLE_CYCLE     (1 << 1)
+#define TRB_CHAIN            (1 << 9)
+// 建议增加宏
+#define TRB_IDT             (1 << 6)     // Immediate Data
+#define TRB_TRT_IN_DATA     (3 << 16)    // TRT=3: 有数据阶段，方向 IN
+#define TRB_DIR_IN          (1 << 16)    // Data/Status TRB 的方向位（对 Status 则相反）
+#define TRB_DIR             (1 << 16) // DIR for Data TRB
 
 #pragma pack(push,1)
 
@@ -95,6 +112,15 @@ typedef struct {
                       - CRS (位 9): 控制器恢复状态
                       - EWE (位 10): 事件中断使能
                       - EU3S (位 11): 启用U3 MMI（电源管理相关）*/
+    #define XHCI_CMD_RS (1 << 0)
+    #define XHCI_CMD_HCRST (1 << 1)
+    #define XHCI_CMD_INTE (1 << 2)
+    #define XHCI_CMD_HSEE (1 << 3)
+    #define XHCI_CMD_LHCRST (1 << 7)
+    #define XHCI_CMD_CSS (1 << 8)
+    #define XHCI_CMD_CRS (1 << 9)
+    #define XHCI_CMD_EWE (1 << 10)
+    #define XHCI_CMD_EU3S (1 << 11)
 
     // 04h: 状态寄存器 (USBSTS)
     UINT32 usbsts; /* - HCH (位 0): 主机控制器停止（1=已停止，0=运行中）
@@ -106,6 +132,15 @@ typedef struct {
                       - SRE (位 10): 保存/恢复错误
                       - CNR (位 11): 控制器未就绪（1=未就绪）
                       - HCE (位 12): 主机控制器错误*/
+    #define XHCI_STS_HCH (1 << 0)
+    #define XHCI_STS_HSE (1 << 2)
+    #define XHCI_STS_EINT (1 << 3)
+    #define XHCI_STS_PCD (1 << 4)
+    #define XHCI_STS_SSS (1 << 8)
+    #define XHCI_STS_RSS (1 << 9)
+    #define XHCI_STS_SRE (1 << 10)
+    #define XHCI_STS_CNR (1 << 11)
+    #define XHCI_STS_HCE (1 << 12)
 
     // 08h: 页面大小寄存器 (PAGESIZE)
     UINT32 pagesize; // 控制器支持的页面大小*0x1000
@@ -161,6 +196,49 @@ typedef struct {
                                - WOE (位 27)：过电流唤醒使能
                                - DR  (位 30)：1=设备不可拆卸 0=设备可移动
                                - WPR (位 31)：热端口复位 */
+        #define XHCI_PORTSC_CCS (1 << 0)
+        #define XHCI_PORTSC_PED (1 << 1)
+        #define XHCI_PORTSC_OCA (1 << 3)
+        #define XHCI_PORTSC_PR (1 << 4)
+        #define XHCI_PORTSC_PLS_SHIFT 5
+        #define XHCI_PORTSC_PLS_MASK 0xf
+        #define XHCI_PORTSC_PP (1 << 9)
+        #define XHCI_PORTSC_SPEED_SHIFT 10
+        #define XHCI_PORTSC_SPEED_MASK 0xf
+        #define XHCI_PORTSC_SPEED_FULL (1 << 10)
+        #define XHCI_PORTSC_SPEED_LOW (2 << 10)
+        #define XHCI_PORTSC_SPEED_HIGH (3 << 10)
+        #define XHCI_PORTSC_SPEED_SUPER (4 << 10)
+        #define XHCI_PORTSC_PIC_SHIFT 14
+        #define XHCI_PORTSC_PIC_MASK 0x3
+        #define XHCI_PORTSC_LWS (1 << 16)
+        #define XHCI_PORTSC_CSC (1 << 17)
+        #define XHCI_PORTSC_PEC (1 << 18)
+        #define XHCI_PORTSC_WRC (1 << 19)
+        #define XHCI_PORTSC_OCC (1 << 20)
+        #define XHCI_PORTSC_PRC (1 << 21)
+        #define XHCI_PORTSC_PLC (1 << 22)
+        #define XHCI_PORTSC_CEC (1 << 23)
+        #define XHCI_PORTSC_CAS (1 << 24)
+        #define XHCI_PORTSC_WCE (1 << 25)
+        #define XHCI_PORTSC_WDE (1 << 26)
+        #define XHCI_PORTSC_WOE (1 << 27)
+        #define XHCI_PORTSC_DR (1 << 30)
+        #define XHCI_PORTSC_WPR (1 << 31)
+
+        #define XHCI_PLS_U0              0   // 正常工作状态，USB 设备活跃，支持全速数据传输（USB 3.0 或 USB 2.0）
+        #define XHCI_PLS_U1              1   // U1 低功耗状态，USB 设备进入轻度节能模式，快速恢复，适用于 USB 3.0
+        #define XHCI_PLS_U2              2   // U2 低功耗状态，USB 设备进入更深节能模式，恢复时间稍长，适用于 USB 3.0
+        #define XHCI_PLS_U3              3   // U3 挂起状态，USB 设备进入深度休眠，功耗最低，恢复时间较长，适用于 USB 3.0
+        #define XHCI_PLS_DISABLED        4   // 禁用状态，USB 端口被禁用，无法通信
+        #define XHCI_PLS_RX_DETECT       5   // 接收检测状态，USB 控制器正在检测是否有设备连接
+        #define XHCI_PLS_INACTIVE        6   // 非活跃状态，USB 端口未连接设备或设备未响应
+        #define XHCI_PLS_POLLING         7   // 轮询状态，USB 控制器正在初始化或尝试建立与设备的连接
+        #define XHCI_PLS_RECOVERY        8   // 恢复状态，USB 端口从低功耗状态（如 U3）恢复到活跃状态
+        #define XHCI_PLS_HOT_RESET       9   // 热重置状态，USB 端口正在执行热重置操作，重新初始化设备
+        #define XHCI_PLS_COMPLIANCE_MODE 10  // 合规模式，用于 USB 设备或控制器的合规性测试
+        #define XHCI_PLS_TEST_MODE       11  // 测试模式，USB 端口进入特定测试状态，用于硬件或协议测试
+        #define XHCI_PLS_RESUME          15  // 恢复状态，USB 设备从挂起状态恢复，通常由主机发起
 
         // 端口电源管理状态和控制寄存器 (PORTPMSC),控制电源管理和U1/U2状态,具体字段依赖于协议（USB2或USB3）
         UINT32 portpmsc;
@@ -197,10 +275,11 @@ typedef struct {
         UINT64 erstba;  //指向事件环段表的64位基地址（对齐到64字节)
 
         // 事件环出队指针寄存器 (ERDP), 偏移 0x18-0x1F, 64位
-        UINT64 erdp;   // 指向事件环的当前出队指针
-                       // - DESI (位 0-2): 出队事件环段索引
-                       // - EHB (位 3): 事件处理忙碌（1=忙碌，写1清除）
-                       // - Event Ring Dequeue Pointer (位 4-63): 出队指针地址
+        UINT64 erdp;    /*指向事件环的当前出队指针
+                        - DESI (位 0-2): 出队事件环段索引
+                        - EHB (位 3): 事件处理忙碌（1=忙碌，写1清除）
+                        - Event Ring Dequeue Pointer (位 4-63): 出队指针地址*/
+        #define XHCI_ERDP_EHB (1<<3)
     } intr_regs[1024]; // 最大支持1024个中断器（根据HCSPARAMS1中的MaxIntrs）
 } xhci_rt_regs_t;
 
