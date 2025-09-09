@@ -129,9 +129,9 @@ void xhci_address_device(xhci_regs_t *xhci_regs, UINT32 slot_number, UINT32 port
     xhci_regs->dcbaap[slot_number] = va_to_pa(kzalloc(align_up(sizeof(xhci_device_context64_t),xhci_regs->align_size)));
 
     //分配传输环内存
-    xhci_regs->ep0_transfer_ring = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_regs->align_size));
-    xhci_regs->ep0_transfer_ring[TRB_COUNT - 1].parameter = va_to_pa(xhci_regs->ep0_transfer_ring);
-    xhci_regs->ep0_transfer_ring[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE;
+    xhci_regs->ep0_tr_queue_ptr = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_regs->align_size));
+    xhci_regs->ep0_tr_queue_ptr[TRB_COUNT - 1].parameter = va_to_pa(xhci_regs->ep0_tr_queue_ptr);
+    xhci_regs->ep0_tr_queue_ptr[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE;
 
     //配置设备上下文
     xhci_input_context64_t *input_context = kzalloc(align_up(sizeof(xhci_input_context64_t),xhci_regs->align_size));
@@ -140,7 +140,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs, UINT32 slot_number, UINT32 port
         input_context->drop_context = 0x0;
         input_context->dev_ctx.slot.reg0 = 1 << 27 | speed<<20;
         input_context->dev_ctx.slot.reg1 = port_number << 16;
-        input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(xhci_regs->ep0_transfer_ring) | TRB_CYCLE;
+        input_context->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(xhci_regs->ep0_tr_queue_ptr) | TRB_CYCLE;
         input_context->dev_ctx.ep[0].reg0 = 1;
         input_context->dev_ctx.ep[0].reg1 = 4 << 3 | 64 << 16;
     }else {
@@ -149,7 +149,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs, UINT32 slot_number, UINT32 port
         input_context32->drop_context = 0x0;
         input_context32->dev_ctx.slot.reg0 = 1 << 27 | speed<<20;
         input_context32->dev_ctx.slot.reg1 = port_number << 16;
-        input_context32->dev_ctx.ep[0].tr_dequeue_ptr = va_to_pa(xhci_regs->ep0_transfer_ring) | TRB_CYCLE;
+        input_context32->dev_ctx.ep[0].tr_dequeue_ptr = va_to_pa(xhci_regs->ep0_tr_queue_ptr) | TRB_CYCLE;
         input_context32->dev_ctx.ep[0].reg0 = 1;
         input_context32->dev_ctx.ep[0].reg1 = 4 << 3 | 64 << 16;
     }
