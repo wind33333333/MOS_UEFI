@@ -72,52 +72,33 @@ static inline void xhci_ring_doorbell(xhci_regs_t *xhci_regs, UINT8 db_number, U
     xhci_regs->db[db_number] = value;
 }
 
-
-//写命令环
-int xhci_write_cmd_ring(xhci_regs_t *xhci_regs, xhci_trb_t *cmd_trb) {
-    xhci_trb_t *cmd_ring_base = (xhci_trb_t*)((UINT64)xhci_regs->cmd_ring & ~(TRB_COUNT*sizeof(xhci_trb_t) - 1));
-    if (xhci_regs->cmd_ring >= cmd_ring_base) {
-        xhci_regs->cmd_ring = cmd_ring_base;
-        xhci_regs->cmd_c ^= TRB_CYCLE;
-        cmd_ring_base->parameter =0;
-        cmd_ring_base->status =0;
-        cmd_ring_base[TRB_COUNT-1].control = va_to_pa(cmd_ring_base) | TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | xhci_regs->cmd_c;
+//trb入队列
+int xhci_queue(xhci_trb_t **queue_ptr, xhci_trb_t *trb) {
+    xhci_trb_t *ring_base = (xhci_trb_t*)((UINT64)*queue_ptr & ~(TRB_COUNT*sizeof(xhci_trb_t) - 1));
+    if (*queue_ptr >= ring_base+TRB_COUNT-1) {
+        *queue_ptr = ring_base;
+        (*queue_ptr)[TRB_COUNT-1].control ^= TRB_CYCLE;
     }
-    xhci_regs->cmd_ring->parameter = cmd_trb->parameter;
-    xhci_regs->cmd_ring->status = cmd_trb->status;
-    xhci_regs->cmd_ring->control = cmd_trb->control | xhci_regs->cmd_c;
-    return 0;
-}
-
-//写传输环
-int xhci_write_transfer_ring(xhci_regs_t *xhci_regs, xhci_trb_t *cmd_trb) {
-    xhci_trb_t *cmd_ring_base = (xhci_trb_t*)((UINT64)xhci_regs->cmd_ring & ~(TRB_COUNT*sizeof(xhci_trb_t) - 1));
-    if (xhci_regs->cmd_ring >= cmd_ring_base) {
-        xhci_regs->cmd_ring = cmd_ring_base;
-        xhci_regs->cmd_c ^= TRB_CYCLE;
-        cmd_ring_base->parameter =0;
-        cmd_ring_base->status =0;
-        cmd_ring_base[TRB_COUNT-1].control = va_to_pa(cmd_ring_base) | TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | xhci_regs->cmd_c;
-    }
-    xhci_regs->cmd_ring->parameter = cmd_trb->parameter;
-    xhci_regs->cmd_ring->status = cmd_trb->status;
-    xhci_regs->cmd_ring->control = cmd_trb->control | xhci_regs->cmd_c;
+    (*queue_ptr)->parameter = trb->parameter;
+    (*queue_ptr)->status = trb->status;
+    (*queue_ptr)->control = trb->control | (*queue_ptr)[TRB_COUNT-1].control&TRB_CYCLE;
+    (*queue_ptr)++;
     return 0;
 }
 
 //读事件环
-int xhci_read_event_ring(xhci_regs_t *xhci_regs, xhci_trb_t *evt_trb) {
-    while ((xhci_regs->event_ring->control&TRB_CYCLE) == xhci_regs->event_c) {
-        evt_trb->parameter = xhci_regs->event_ring->parameter;
-        evt_trb->status = xhci_regs->event_ring->status;
-        evt_trb->control = xhci_regs->event_ring->control;
-        xhci_trb_t *event_base = (xhci_trb_t*)((UINT64)xhci_regs->event_ring & ~(TRB_COUNT*sizeof(xhci_trb_t) - 1));
-        xhci_regs->event_ring++;
-        if (xhci_regs->event_ring >= event_base+TRB_COUNT) {
-            xhci_regs->event_ring = event_base;
+int xhci_read_evt_queue_ptr(xhci_regs_t *xhci_regs, xhci_trb_t *evt_trb) {
+    while ((xhci_regs->evt_queue_ptr->control&TRB_CYCLE) == xhci_regs->event_c) {
+        evt_trb->parameter = xhci_regs->evt_queue_ptr->parameter;
+        evt_trb->status = xhci_regs->evt_queue_ptr->status;
+        evt_trb->control = xhci_regs->evt_queue_ptr->control;
+        xhci_trb_t *event_base = (xhci_trb_t*)((UINT64)xhci_regs->evt_queue_ptr & ~(TRB_COUNT*sizeof(xhci_trb_t) - 1));
+        xhci_regs->evt_queue_ptr++;
+        if (xhci_regs->evt_queue_ptr >= event_base+TRB_COUNT) {
+            xhci_regs->evt_queue_ptr = event_base;
             xhci_regs->event_c ^= TRB_CYCLE;
         }
-        xhci_regs->rt->intr_regs->erdp = va_to_pa(xhci_regs->event_ring) | XHCI_ERDP_EHB;
+        xhci_regs->rt->intr_regs->erdp = va_to_pa(xhci_regs->evt_queue_ptr) | XHCI_ERDP_EHB;
     }
     return 0;
 }
@@ -129,13 +110,13 @@ static inline UINT32 xhci_enable_slot(xhci_regs_t *xhci_regs) {
         0,
         TRB_ENABLE_SLOT
     };
-    xhci_write_cmd_ring(xhci_regs, &trb);
+    xhci_queue(&xhci_regs->cr_queue_ptr, &trb);
     xhci_ring_doorbell(xhci_regs, 0, 0);
 
-    UINT64 count = 20000000;
-    while (count--) pause();
+    // UINT64 count = 20000000;
+    // while (count--) pause();
 
-    xhci_read_event_ring(xhci_regs, &trb);
+    xhci_read_evt_queue_ptr(xhci_regs, &trb);
     if ((trb.control >> 10 & 0x3F) == 33 && trb.control >> 24) {
         return trb.control >> 24 & 0xFF;
     }
@@ -168,7 +149,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs, UINT32 slot_number, UINT32 port
         input_context32->drop_context = 0x0;
         input_context32->dev_ctx.slot.reg0 = 1 << 27 | speed<<20;
         input_context32->dev_ctx.slot.reg1 = port_number << 16;
-        input_context32->dev_ctx.ep[0].tr_dequeue_pointer = va_to_pa(xhci_regs->ep0_transfer_ring) | TRB_CYCLE;
+        input_context32->dev_ctx.ep[0].tr_dequeue_ptr = va_to_pa(xhci_regs->ep0_transfer_ring) | TRB_CYCLE;
         input_context32->dev_ctx.ep[0].reg0 = 1;
         input_context32->dev_ctx.ep[0].reg1 = 4 << 3 | 64 << 16;
     }
@@ -178,13 +159,13 @@ void xhci_address_device(xhci_regs_t *xhci_regs, UINT32 slot_number, UINT32 port
         0,
         TRB_ADDRESS_DEVICE | slot_number << 24
     };
-    xhci_write_cmd_ring(xhci_regs, &trb);
+    xhci_queue(&xhci_regs->cr_queue_ptr, &trb);
     xhci_ring_doorbell(xhci_regs, 0, 0);
 
-    UINT64 count = 20000000;
-    while (count--) pause();
+    // UINT64 count = 20000000;
+    // while (count--) pause();
 
-    xhci_read_event_ring(xhci_regs, &trb);
+    xhci_read_evt_queue_ptr(xhci_regs, &trb);
     kfree(input_context);
 }
 
@@ -192,7 +173,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs, UINT32 slot_number, UINT32 port
 int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_number) {
     usb_device_descriptor_t *dev_desc = kzalloc(sizeof(usb_device_descriptor_t));
     xhci_device_context32_t *dev_ctx = pa_to_va(xhci_regs->dcbaap[slot_number]);
-    xhci_trb_t *transfer_ring = pa_to_va(dev_ctx->ep[0].tr_dequeue_pointer & ~0xFULL);
+    xhci_trb_t *transfer_ring = pa_to_va(dev_ctx->ep[0].tr_dequeue_ptr & ~0xFULL);
 
     // Setup TRB
     usb_setup_packet_t setup = {0x80, 0x06, 0x0100, 0x0000, 8}; // 统一为8
@@ -251,21 +232,21 @@ INIT_TEXT void init_xhci(void) {
     xhci_regs->op->config = max_slots;                   //把最大插槽数量写入寄存器
 
     /*初始化命令环*/
-    xhci_regs->cmd_ring = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_regs->align_size)); //分配命令环空间256* sizeof(xhci_trb_t) = 4K
-    xhci_regs->cmd_ring[TRB_COUNT - 1].parameter = va_to_pa(xhci_regs->cmd_ring); //命令环最后一个trb指向环首地址
-    xhci_regs->cmd_ring[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE; //命令环最后一个trb设置位link
-    xhci_regs->op->crcr = va_to_pa(xhci_regs->cmd_ring) | TRB_CYCLE; //命令环物理地址写入crcr寄存器，置位rcs
+    xhci_regs->cr_queue_ptr = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_regs->align_size)); //分配命令环空间256* sizeof(xhci_trb_t) = 4K
+    xhci_regs->cr_queue_ptr[TRB_COUNT - 1].parameter = va_to_pa(xhci_regs->cr_queue_ptr); //命令环最后一个trb指向环首地址
+    xhci_regs->cr_queue_ptr[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE; //命令环最后一个trb设置位link
+    xhci_regs->op->crcr = va_to_pa(xhci_regs->cr_queue_ptr) | TRB_CYCLE; //命令环物理地址写入crcr寄存器，置位rcs
 
     /*初始化事件环*/
     xhci_regs->event_c = TRB_CYCLE;
     xhci_erst_t *erstba = kmalloc(align_up(sizeof(xhci_erst_t),xhci_regs->align_size)); //分配单事件环段表内存64字节
-    xhci_regs->event_ring = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_regs->align_size)); //分配事件环空间256* sizeof(xhci_trb_t) = 4K
-    erstba->ring_seg_base = va_to_pa(xhci_regs->event_ring); //段表中写入事件环物理地址
+    xhci_regs->evt_queue_ptr = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_regs->align_size)); //分配事件环空间256* sizeof(xhci_trb_t) = 4K
+    erstba->ring_seg_base = va_to_pa(xhci_regs->evt_queue_ptr); //段表中写入事件环物理地址
     erstba->ring_seg_size = TRB_COUNT;    //事件环最大trb个数
     erstba->reserved = 0;
     xhci_regs->rt->intr_regs[0].erstsz = 1; //设置单事件环段
     xhci_regs->rt->intr_regs[0].erstba = va_to_pa(erstba); //事件环段表物理地址写入寄存器
-    xhci_regs->rt->intr_regs[0].erdp = va_to_pa(xhci_regs->event_ring); //事件环物理地址写入寄存器
+    xhci_regs->rt->intr_regs[0].erdp = va_to_pa(xhci_regs->evt_queue_ptr); //事件环物理地址写入寄存器
 
     /*初始化暂存器缓冲区*/
     UINT32 spb_number = (xhci_regs->cap->hcsparams2 & 0x1f<<21)>>16 | xhci_regs->cap->hcsparams2>>27;
@@ -291,19 +272,11 @@ INIT_TEXT void init_xhci(void) {
         va_to_pa(xhci_dev->bar[0]), xhci_dev->msi_x_flags, xhci_regs->cap->hcsparams1 & 0xFF, xhci_regs->cap->hcsparams1 >> 8 & 0x7FF,
         xhci_regs->cap->hcsparams1 >> 24, xhci_regs->cap->hccparams1 >> 2 & 1, xhci_regs->cap->hccparams1 & 1,
         xhci_regs->op->usbcmd, xhci_regs->op->usbsts, xhci_regs->align_size, xhci_regs->rt->intr_regs[0].iman,
-        xhci_regs->rt->intr_regs[0].imod,va_to_pa(xhci_regs->cmd_ring), xhci_regs->op->dcbaap, xhci_regs->rt->intr_regs[0].erstba,
+        xhci_regs->rt->intr_regs[0].imod,va_to_pa(xhci_regs->cr_queue_ptr), xhci_regs->op->dcbaap, xhci_regs->rt->intr_regs[0].erstba,
                  xhci_regs->rt->intr_regs[0].erdp);
 
-    UINT64 count = 20000000;
-    while (count--) pause();
-
-    // for(UINT32 i=0;i<65;i++) {
-    //     UINT32 slot_id = xhci_enable_slot(xhci_regs);
-    //     color_printk(GREEN,BLACK,"slot_id:%#x  ",slot_id);
-    // }
-    // color_printk(GREEN,BLACK,"\nUSBcmd:%#x  USBsts:%#x",xhci_regs->op->usbcmd, xhci_regs->op->usbsts);
-    // while (1);
-
+    // UINT64 count = 20000000;
+    // while (count--) pause();
 
     xhci_trb_t trb;
 
@@ -312,9 +285,9 @@ INIT_TEXT void init_xhci(void) {
         if (xhci_regs->op->portregs[i].portsc & XHCI_PORTSC_CCS) {
             if ((xhci_regs->op->portregs[i].portsc>>XHCI_PORTSC_PLS_SHIFT&XHCI_PORTSC_PLS_MASK) == XHCI_PLS_POLLING) { //usb2.0协议版本
                 xhci_regs->op->portregs[i].portsc |= XHCI_PORTSC_PR;
-                UINT64 count = 20000000;
-                while (count--) pause();
-                xhci_read_event_ring(xhci_regs, &trb);
+                // UINT64 count = 20000000;
+                // while (count--) pause();
+                xhci_read_evt_queue_ptr(xhci_regs, &trb);
             }
             //usb3.x以上协议版本
             while (!(xhci_regs->op->portregs[i].portsc & XHCI_PORTSC_PED)) pause();

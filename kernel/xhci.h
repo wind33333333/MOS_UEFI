@@ -476,7 +476,7 @@ typedef struct {
                              * 位 2-0: Endpoint State (EP State) - 端点状态 (0=Disabled，1=Running，2=Halted，3=Stopped，4=Error)。 */
 
         UINT32 reg1;        /* 端点类型：包含端点方向、类型等信息 */
-        UINT64 tr_dequeue_pointer; /* 位 0：DCS（Dequeue Cycle State）。当DCS=1时，主机控制器从传输环中获取的TRB需要其Cycle Bit为1才会被处理；当RCS=0时，则处理Cycle Bit为0的TRB。
+        UINT64 tr_dequeue_ptr; /* 位 0：DCS（Dequeue Cycle State）。当DCS=1时，主机控制器从传输环中获取的TRB需要其Cycle Bit为1才会被处理；当RCS=0时，则处理Cycle Bit为0的TRB。
                                     * 位 63:4：TR Dequeue Pointer（TR 出队指针）。64位传输环物理地址64字节对齐 */
         UINT32 reg4;
         UINT32 reserved[3];     /* 保留字段：填充至 32 字节 */
@@ -500,11 +500,10 @@ typedef struct {
     xhci_db_regs_t  *db;         // 门铃寄存器
     xhci_ext_regs_t *ext;        // 扩展寄存器
 
-    xhci_trb_t      *cmd_ring;              //命令环虚拟地址
-    xhci_trb_t      *event_ring;            //事件环虚拟地址
-    xhci_trb_t      *ep0_transfer_ring;     //端点0事件环虚拟地址
-    UINT64          *dcbaap;                //设备上下文虚拟地址
-    UINT8           cmd_c;
+    UINT64          *dcbaap;                //设备上下文
+    xhci_trb_t      *cr_queue_ptr;          //命令环入队列指针
+    xhci_trb_t      *evt_queue_ptr;         //事件环入队列指针
+    xhci_trb_t      *ep0_tr_queue_ptr;      //端点0传输环虚拟地址
     UINT8           event_c;                //事件环C位标志
     UINT32          align_size;             //对齐边界
 } xhci_regs_t;
