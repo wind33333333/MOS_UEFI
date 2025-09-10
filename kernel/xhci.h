@@ -502,7 +502,7 @@ typedef struct {
 
     UINT64          *dcbaap;                //设备上下文
     xhci_trb_t      *cr_queue_ptr;          //命令环入队列指针
-    xhci_trb_t      *evt_queue_ptr;         //事件环入队列指针
+    xhci_trb_t      *er_queue_ptr;         //事件环入队列指针
     xhci_trb_t      *ep0_tr_queue_ptr;      //端点0传输环虚拟地址
     UINT8           event_c;                //事件环C位标志
     UINT32          align_size;             //对齐边界
