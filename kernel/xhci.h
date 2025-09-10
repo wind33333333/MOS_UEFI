@@ -43,7 +43,7 @@
 #define TRB_TYPE_STATUS      (4 << 10)
 #define TRB_IOC              (1 << 5) // Interrupt on Completion
 #define TRB_TYPE_LINK        (0x06<<10) //连接trb
-#define TRB_CYCLE            (1 << 0)
+#define TRB_CYCLE            (1UL << 0)
 #define TRB_TOGGLE_CYCLE     (1 << 1)
 #define TRB_CHAIN            (1 << 9)
 // 建议增加宏
@@ -501,10 +501,9 @@ typedef struct {
     xhci_ext_regs_t *ext;        // 扩展寄存器
 
     UINT64          *dcbaap;                //设备上下文
-    xhci_trb_t      *cr_queue_ptr;          //命令环入队列指针
-    xhci_trb_t      *er_queue_ptr;         //事件环入队列指针
-    xhci_trb_t      *ep0_tr_queue_ptr;      //端点0传输环虚拟地址
-    UINT8           event_c;                //事件环C位标志
+    UINT64          cr_enqueue_ptr;          //命令环入队列指针 63-1位:为地址 0位:C
+    UINT64          er_dequeue_ptr;          //事件环入队列指针 63-1位:为地址 0位:C
+    UINT64          ep0_tr_enqueue_ptr;      //端点0传输环虚拟地址 63-1位:为地址 0位:C
     UINT32          align_size;             //对齐边界
 } xhci_regs_t;
 
