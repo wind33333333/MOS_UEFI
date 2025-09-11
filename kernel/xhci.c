@@ -131,8 +131,8 @@ static inline UINT32 xhci_enable_slot(xhci_regs_t *xhci_regs) {
     xhci_ring_enqueue(&xhci_regs->cr_enqueue_ptr, &trb);
     xhci_ring_doorbell(xhci_regs->db, 0, 0);
 
-    // UINT64 count = 20000000;
-    // while (count--) pause();
+    UINT64 count = 20000000;
+    while (count--) pause();
 
     xhci_ering_dequeue(xhci_regs, &trb);
     if ((trb.control >> 10 & 0x3F) == 33 && trb.control >> 24) {
@@ -296,8 +296,8 @@ INIT_TEXT void init_xhci(void) {
         xhci_regs->rt->intr_regs[0].imod,va_to_pa(cr_enqueue_ptr), xhci_regs->op->dcbaap, xhci_regs->rt->intr_regs[0].erstba,
                  xhci_regs->rt->intr_regs[0].erdp);
 
-    // UINT64 count = 20000000;
-    // while (count--) pause();
+    UINT64 count = 20000000;
+    while (count--) pause();
 
     xhci_trb_t trb;
 

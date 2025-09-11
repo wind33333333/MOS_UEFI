@@ -2,7 +2,7 @@
 
 #include "moslib.h"
 
-#define TRB_COUNT 16        //trb个数
+#define TRB_COUNT 256        //trb个数
 
 #define TRB_RESERVED                (0 << 10)   // 保留
 #define TRB_NORMAL                  (1 << 10)   // 普通传输
