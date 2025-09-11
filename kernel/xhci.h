@@ -2,7 +2,7 @@
 
 #include "moslib.h"
 
-#define TRB_COUNT 256        //trb个数
+#define TRB_COUNT 16        //trb个数
 
 #define TRB_RESERVED                (0 << 10)   // 保留
 #define TRB_NORMAL                  (1 << 10)   // 普通传输
@@ -428,7 +428,7 @@ typedef struct {
                              * 位 2-0: Endpoint State (EP State) - 端点状态 (0=Disabled，1=Running，2=Halted，3=Stopped，4=Error)。 */
 
         UINT32 reg1;        /* 端点类型：包含端点方向、类型等信息 */
-        UINT64 tr_dequeue_pointer; /* 位 0：DCS（Dequeue Cycle State）。当DCS=1时，主机控制器从传输环中获取的TRB需要其Cycle Bit为1才会被处理；当RCS=0时，则处理Cycle Bit为0的TRB。
+        UINT64 tr_dequeue_ptr;     /* 位 0：DCS（Dequeue Cycle State）。当DCS=1时，主机控制器从传输环中获取的TRB需要其Cycle Bit为1才会被处理；当RCS=0时，则处理Cycle Bit为0的TRB。
                                     * 位 63:4：TR Dequeue Pointer（TR 出队指针）。64位传输环物理地址64字节对齐 */
         UINT32 reg4;
         UINT32 reserved[11];     /* 保留字段：填充至 64 字节 */
@@ -491,6 +491,11 @@ typedef struct {
     xhci_device_context32_t dev_ctx;
 } xhci_input_context32_t;
 
+typedef struct {
+    xhci_trb_t *ring_base;   //环起始地址
+    UINT32 index;            //trb索引
+    UINT32 status_c;         //循环位
+} xhci_ring_t;
 
 // ===== 完整xHCI寄存器结构 =====
 typedef struct {
@@ -500,11 +505,11 @@ typedef struct {
     xhci_db_regs_t  *db;         // 门铃寄存器
     xhci_ext_regs_t *ext;        // 扩展寄存器
 
-    UINT64          *dcbaap;                //设备上下文
-    UINT64          cr_enqueue_ptr;          //命令环入队列指针 63-1位:为地址 0位:C
-    UINT64          er_dequeue_ptr;          //事件环入队列指针 63-1位:为地址 0位:C
-    UINT64          ep0_tr_enqueue_ptr;      //端点0传输环虚拟地址 63-1位:为地址 0位:C
-    UINT32          align_size;             //对齐边界
+    UINT64          *dcbaap;                      //设备上下文
+    xhci_ring_t     cmd_ring;                     //命令环
+    xhci_ring_t     event_ring;                   //事件环
+    xhci_ring_t     ep0_trans_ring;               //端点0传输环虚拟地址 63-1位:为地址 0位:C
+    UINT32          align_size;                   //对齐边界
 } xhci_regs_t;
 
 
