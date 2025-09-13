@@ -312,6 +312,8 @@ INIT_TEXT void init_xhci(void) {
             //usb3.x以上协议版本
             while (!(xhci_regs->op->portregs[i].portsc & XHCI_PORTSC_PED)) pause();
             usb_dev_t *usb_dev = kmalloc(sizeof(usb_dev_t));
+            usb_dev->ep0_trans_ring.index=0;
+            usb_dev->ep0_trans_ring.status_c = TRB_CYCLE;
             usb_dev->port_id = i+1;
             usb_dev->slot_id = xhci_enable_slot(xhci_regs);
             xhci_address_device(xhci_regs,usb_dev);
