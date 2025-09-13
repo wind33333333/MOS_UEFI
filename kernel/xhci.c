@@ -17,20 +17,20 @@ typedef struct {
 } __attribute__((packed)) usb_setup_packet_t;
 
 typedef struct {
-    UINT8 bLength;
-    UINT8 bDescriptorType;
-    UINT16 bcdUSB;
-    UINT8 bDeviceClass;
-    UINT8 bDeviceSubClass;
-    UINT8 bDeviceProtocol;
-    UINT8 bMaxPacketSize0;
-    UINT16 idVendor;
-    UINT16 idProduct;
-    UINT16 bcdDevice;
-    UINT8 iManufacturer;
-    UINT8 iProduct;
-    UINT8 iSerialNumber;
-    UINT8 bNumConfigurations;
+    UINT8  bLength;            // 描述符长度（固定 0x12 = 18 字节）
+    UINT8  bDescriptorType;    // 描述符类型（固定 0x01，表示 Device Descriptor）
+    UINT16 bcdUSB;             // USB 规范版本（BCD 格式，例如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
+    UINT8  bDeviceClass;       // 设备类代码（0x00: 类在接口级定义；0x01: Audio；0x02: CDC；0x03: HID 等）
+    UINT8  bDeviceSubClass;    // 设备子类代码（依赖于 bDeviceClass，例如 HID 的子类 0x01 表示 Boot Interface）
+    UINT8  bDeviceProtocol;    // 设备协议代码（例如 HID Boot 时 0x01 表示 Keyboard）
+    UINT8  bMaxPacketSize0;    // 控制端点 0 (EP0) 的最大包大小（Low Speed: 8；Full Speed: 8/16/32/64；High Speed: 64；SuperSpeed: 512）
+    UINT16 idVendor;           // 厂商 ID (VID)，USB-IF 分配的唯一 ID（例如 Intel: 0x8086）
+    UINT16 idProduct;          // 产品 ID (PID)，厂商定义，用于驱动匹配
+    UINT16 bcdDevice;          // 设备版本（BCD 格式，例如 0x0100 表示 1.00）
+    UINT8  iManufacturer;      // 制造商字符串索引（0 表示无字符串）
+    UINT8  iProduct;           // 产品字符串索引
+    UINT8  iSerialNumber;      // 序列号字符串索引
+    UINT8  bNumConfigurations; // 支持的配置数量（通常 1 或更多）
 } __attribute__((packed)) usb_device_descriptor_t;
 
 typedef struct {
@@ -141,7 +141,9 @@ static inline UINT32 xhci_enable_slot(xhci_regs_t *xhci_regs) {
 //设置设备地址
 void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
     //分配设备插槽上下文内存
-    xhci_regs->dcbaap[usb_dev->slot_id] = va_to_pa(kzalloc(align_up(sizeof(xhci_device_context64_t),xhci_regs->align_size)));
+    xhci_device_context32_t *dev_context32 = kzalloc(align_up(sizeof(xhci_device_context64_t),xhci_regs->align_size));
+    xhci_regs->dcbaap[usb_dev->slot_id] = va_to_pa(dev_context32);
+    //xhci_regs->dcbaap[usb_dev->slot_id] = va_to_pa(kzalloc(align_up(sizeof(xhci_device_context64_t),xhci_regs->align_size)));
 
     //分配传输环内存
     usb_dev->ep0_trans_ring.ring_base = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_regs->align_size));
@@ -189,27 +191,27 @@ void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
 //获取设备描述符
 int get_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
     usb_device_descriptor_t *dev_desc = kzalloc(sizeof(usb_device_descriptor_t));
-    xhci_device_context32_t *dev_ctx = pa_to_va(xhci_regs->dcbaap[usb_dev->slot_id]);
+    xhci_device_context32_t *dev_context32 = pa_to_va(xhci_regs->dcbaap[usb_dev->slot_id]);
 
     xhci_trb_t trb;
     // Setup TRB
     usb_setup_packet_t setup = {0x80, 0x06, 0x0100, 0x0000, 8}; // 统一为8
     trb.parameter = *(UINT64 *) &setup; // 完整 8 字节
     trb.status = 8; // TRB Length=8 (Setup 阶段长度)
-    trb.control = TRB_TYPE_SETUP | TRB_IDT | (3 << 16) | TRB_CHAIN | TRB_IOC | TRB_CYCLE;
+    trb.control = TRB_TYPE_SETUP | TRB_IDT | (3 << 16) | TRB_CHAIN | TRB_IOC;
     xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
     // TRT=3 (IN), Chain, IO
 
     // Data TRB
     trb.parameter = va_to_pa(dev_desc);
     trb.status = 8; // 匹配 w_length
-    trb.control = TRB_TYPE_DATA | (1 << 16) | TRB_CHAIN | TRB_IOC | TRB_CYCLE;
+    trb.control = TRB_TYPE_DATA | (1 << 16) | TRB_CHAIN | TRB_IOC;
     xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
 
     // Status TRB
     trb.parameter = 0;
     trb.status = 0;
-    trb.control = TRB_TYPE_STATUS | TRB_IOC | TRB_CYCLE;
+    trb.control = TRB_TYPE_STATUS | TRB_IOC;
     xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
 
     // 响铃
