@@ -183,7 +183,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
 }
 
 //获取设备描述符
-int get_device_descriptor(xhci_regs_t *xhci_regs, UINT32 slot_number) {
+int get_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
     usb_device_descriptor_t *dev_desc = kzalloc(sizeof(usb_device_descriptor_t));
     xhci_device_context32_t *dev_ctx = pa_to_va(xhci_regs->dcbaap[slot_number]);
     xhci_trb_t *transfer_ring = pa_to_va(dev_ctx->ep[0].tr_dequeue_ptr & ~0xFULL);
@@ -317,7 +317,7 @@ INIT_TEXT void init_xhci(void) {
             usb_dev->port_id = i+1;
             usb_dev->slot_id = xhci_enable_slot(xhci_regs);
             xhci_address_device(xhci_regs,usb_dev);
-            get_device_descriptor(xhci_regs,slot_id);
+            get_device_descriptor(xhci_regs,usb_dev);
             color_printk(GREEN,BLACK, "port_id:%#x slot_id:%#x portsc:%#x portpmsc:%#x portli:%#x porthlpmc:%#x \n", i+1,slot_id,
               xhci_regs->op->portregs[i].portsc, xhci_regs->op->portregs[i].portpmsc,
               xhci_regs->op->portregs[i].portli, xhci_regs->op->portregs[i].porthlpmc);
