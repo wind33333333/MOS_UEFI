@@ -67,6 +67,12 @@ xhci_cap_t *xhci_cap_find(xhci_regs_t *xhci_reg, UINT8 cap_id) {
     return NULL;
 }
 
+//定时
+static inline void timing (void) {
+    // UINT64 count = 20000000;
+    // while (count--) pause();
+}
+
 //响铃
 static inline void xhci_ring_doorbell( xhci_db_regs_t *db, UINT8 db_number, UINT32 value) {
     db[db_number] = value;
@@ -123,8 +129,7 @@ static inline UINT32 xhci_enable_slot(xhci_regs_t *xhci_regs) {
     xhci_ring_enqueue(&xhci_regs->cmd_ring, &trb);
     xhci_ring_doorbell(xhci_regs->db, 0, 0);
 
-    UINT64 count = 20000000;
-    while (count--) pause();
+    timing();
 
     xhci_ering_dequeue(xhci_regs, &trb);
     if ((trb.control >> 10 & 0x3F) == 33 && trb.control >> 24) {
@@ -175,8 +180,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
     xhci_ring_enqueue(&xhci_regs->cmd_ring, &trb);
     xhci_ring_doorbell(xhci_regs->db, 0, 0);
 
-    UINT64 count = 20000000;
-    while (count--) pause();
+    timing();
 
     xhci_ering_dequeue(xhci_regs, &trb);
     kfree(input_context);
@@ -210,8 +214,8 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
 
     // 响铃
     xhci_ring_doorbell(xhci_regs->db, usb_dev->slot_id, 1);
-    UINT64 count = 20000000;
-    while (count--) pause();
+
+    timing();
 
     color_printk(GREEN,BLACK, "port_id:%d slot_id:%d bcd_usb:%#x id_v:%#x id_p:%#x portsc:%#x portpmsc:%#x portli:%#x porthlpmc:%#x\n",usb_dev->port_id,usb_dev->slot_id, dev_desc->bcdUSB, dev_desc->idVendor,
     dev_desc->idProduct,xhci_regs->op->portregs[usb_dev->port_id-1].portsc, xhci_regs->op->portregs[usb_dev->port_id-1].portpmsc,
@@ -295,8 +299,7 @@ INIT_TEXT void init_xhci(void) {
         xhci_regs->rt->intr_regs[0].imod,va_to_pa(xhci_regs->cmd_ring.ring_base), xhci_regs->op->dcbaap, xhci_regs->rt->intr_regs[0].erstba,
                  xhci_regs->rt->intr_regs[0].erdp);
 
-    // UINT64 count = 20000000;
-    // while (count--) pause();
+    timing();
 
     xhci_trb_t trb;
 
@@ -310,9 +313,6 @@ INIT_TEXT void init_xhci(void) {
         if (xhci_regs->op->portregs[i].portsc & XHCI_PORTSC_CCS) {
             if ((xhci_regs->op->portregs[i].portsc>>XHCI_PORTSC_PLS_SHIFT&XHCI_PORTSC_PLS_MASK) == XHCI_PLS_POLLING) { //usb2.0协议版本
                 xhci_regs->op->portregs[i].portsc |= XHCI_PORTSC_PR;
-                UINT64 count = 20000000;
-                while (count--) pause();
-                xhci_ering_dequeue(xhci_regs, &trb);
             }
             //usb3.x以上协议版本
             while (!(xhci_regs->op->portregs[i].portsc & XHCI_PORTSC_PED)) pause();
