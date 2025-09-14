@@ -1,5 +1,4 @@
 #pragma once
-
 #include "moslib.h"
 
 #define TRB_COUNT 256        //trb个数
@@ -540,9 +539,6 @@ typedef struct {
     xhci_ring_t     event_ring;                   //事件环
     UINT32          align_size;                   //对齐边界
 } xhci_regs_t;
-
-
-
 
 
 #pragma pack(pop)

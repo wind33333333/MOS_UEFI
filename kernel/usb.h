@@ -61,3 +61,5 @@ typedef struct {
 }usb_dev_t;
 
 #pragma pack(pop)
+
+void usb_init(xhci_regs_t *xhci_regs);
