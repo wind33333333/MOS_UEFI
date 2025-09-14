@@ -157,7 +157,7 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
 
     timing();
 
-    UINT32 max_packe_size = dev_desc->bcdUSB >= 0x300 ? 1<<dev_desc->bMaxPacketSize0:dev_desc->bMaxPacketSize0;
+    UINT32 max_packe_size = dev_desc->usb_version >= 0x300 ? 1<<dev_desc->max_packet_size0:dev_desc->max_packet_size0;
 
     //配置设备上下文
     xhci_input_context64_t *input_context = kzalloc(align_up(sizeof(xhci_input_context64_t),xhci_regs->align_size));
@@ -187,7 +187,7 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
     xhci_ering_dequeue(xhci_regs, &trb);
     kfree(input_context);
 
-    setup.w_length = 18;
+    setup.length = 18;
     trb.parameter = *(UINT64 *) &setup; // 完整 8 字节
     trb.status = 8; // TRB Length=8 (Setup 阶段长度)
     trb.control = TRB_TYPE_SETUP | TRB_IDT | (3 << 16) | TRB_CHAIN | TRB_IOC;
@@ -211,8 +211,8 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
 
     timing();
 
-    color_printk(GREEN,BLACK, "port_id:%d slot_id:%d portsc:%#x bcd_usb:%#x id_v:%#x id_p:%#x MaxPZ:%d DevClass:%#x DevSubClass:%#x DevProt:%#x\n",usb_dev->port_id,usb_dev->slot_id, dev_desc->bcdUSB,xhci_regs->op->portregs[usb_dev->port_id-1].portsc, dev_desc->idVendor,
-    dev_desc->idProduct,max_packe_size,dev_desc->bDeviceClass,dev_desc->bDeviceSubClass,dev_desc->bDeviceProtocol);
+    color_printk(GREEN,BLACK, "port_id:%d slot_id:%d portsc:%#x bcd_usb:%#x id_v:%#x id_p:%#x MaxPZ:%d DevClass:%#x DevSubClass:%#x DevProt:%#x\n",usb_dev->port_id,usb_dev->slot_id, dev_desc->usb_version,xhci_regs->op->portregs[usb_dev->port_id-1].portsc, dev_desc->vendor_id,
+    dev_desc->product_id,max_packe_size,dev_desc->device_class,dev_desc->device_subclass,dev_desc->device_protocol);
 }
 
 INIT_TEXT void init_xhci(void) {
