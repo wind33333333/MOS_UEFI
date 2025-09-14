@@ -6,56 +6,7 @@
 #include "slub.h"
 #include "vmalloc.h"
 #include "vmm.h"
-
-
-typedef struct {
-    UINT8 b_request_type;
-    UINT8 b_request;
-    UINT16 w_value;
-    UINT16 w_index;
-    UINT16 w_length;
-} __attribute__((packed)) usb_setup_packet_t;
-
-typedef struct {
-    UINT8  bLength;            // 描述符长度（固定 0x12 = 18 字节）
-    UINT8  bDescriptorType;    // 描述符类型（固定 0x01，表示 Device Descriptor）
-    UINT16 bcdUSB;             // USB 规范版本（BCD 格式，例如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
-    UINT8  bDeviceClass;       // 设备类代码（0x00: 类在接口级定义；0x01: Audio；0x02: CDC；0x03: HID 等）
-    UINT8  bDeviceSubClass;    // 设备子类代码（依赖于 bDeviceClass，例如 HID 的子类 0x01 表示 Boot Interface）
-    UINT8  bDeviceProtocol;    // 设备协议代码（例如 HID Boot 时 0x01 表示 Keyboard）
-    UINT8  bMaxPacketSize0;    // 控制端点 0 (EP0) 的最大包大小（Low Speed: 8；Full Speed: 8/16/32/64；High Speed: 64；SuperSpeed: 512）
-    UINT16 idVendor;           // 厂商 ID (VID)，USB-IF 分配的唯一 ID（例如 Intel: 0x8086）
-    UINT16 idProduct;          // 产品 ID (PID)，厂商定义，用于驱动匹配
-    UINT16 bcdDevice;          // 设备版本（BCD 格式，例如 0x0100 表示 1.00）
-    UINT8  iManufacturer;      // 制造商字符串索引（0 表示无字符串）
-    UINT8  iProduct;           // 产品字符串索引
-    UINT8  iSerialNumber;      // 序列号字符串索引
-    UINT8  bNumConfigurations; // 支持的配置数量（通常 1 或更多）
-} __attribute__((packed)) usb_device_descriptor_t;
-
-typedef struct {
-    UINT8 bLength;
-    UINT8 bDescriptorType;
-    UINT16 wTotalLength;
-    UINT8 bNumInterfaces;
-    UINT8 bConfigurationValue;
-    UINT8 iConfiguration;
-    UINT8 bmAttributes;
-    UINT8 bMaxPower;
-} __attribute__((packed)) usb_config_descriptor_t;
-
-typedef struct {
-    UINT8 bLength;
-    UINT8 bDescriptorType;
-    UINT8 bInterfaceNumber;
-    UINT8 bAlternateSetting;
-    UINT8 bNumEndpoints;
-    UINT8 bInterfaceClass;
-    UINT8 bInterfaceSubClass;
-    UINT8 bInterfaceProtocol;
-    UINT8 iInterface;
-} __attribute__((packed)) usb_interface_descriptor_t;
-
+#include "usb.h"
 
 xhci_cap_t *xhci_cap_find(xhci_regs_t *xhci_reg, UINT8 cap_id) {
     UINT32 offset = xhci_reg->cap->hccparams1 >> 16;
@@ -65,17 +16,6 @@ xhci_cap_t *xhci_cap_find(xhci_regs_t *xhci_reg, UINT8 cap_id) {
         offset = (xhci_cap->next_ptr >> 8) & 0xFF;
     }
     return NULL;
-}
-
-//定时
-static inline void timing (void) {
-    // UINT64 count = 20000000;
-    // while (count--) pause();
-}
-
-//响铃
-static inline void xhci_ring_doorbell( xhci_db_regs_t *db, UINT8 db_number, UINT32 value) {
-    db[db_number] = value;
 }
 
 static inline UINT8 get_sts_c(UINT64 ptr) {
@@ -188,95 +128,6 @@ void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
     kfree(input_context);
 }
 
-//获取设备描述符
-int get_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
-    usb_device_descriptor_t *dev_desc = kzalloc(sizeof(usb_device_descriptor_t));
-    xhci_device_context32_t *dev_context32 = pa_to_va(xhci_regs->dcbaap[usb_dev->slot_id]);
-
-    xhci_trb_t trb;
-    // Setup TRB
-    usb_setup_packet_t setup = {0x80, 0x06, 0x0100, 0x0000, 8}; // 统一为8
-    trb.parameter = *(UINT64 *) &setup; // 完整 8 字节
-    trb.status = 8; // TRB Length=8 (Setup 阶段长度)
-    trb.control = TRB_TYPE_SETUP | TRB_IDT | (3 << 16) | TRB_CHAIN | TRB_IOC;
-    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
-    // TRT=3 (IN), Chain, IO
-
-    // Data TRB
-    trb.parameter = va_to_pa(dev_desc);
-    trb.status = 8; // 匹配 w_length
-    trb.control = TRB_TYPE_DATA | (1 << 16) | TRB_CHAIN | TRB_IOC;
-    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
-
-    // Status TRB
-    trb.parameter = 0;
-    trb.status = 0;
-    trb.control = TRB_TYPE_STATUS | TRB_IOC;
-    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
-
-    // 响铃
-    xhci_ring_doorbell(xhci_regs->db, usb_dev->slot_id, 1);
-
-    timing();
-
-    UINT32 max_packe_size = dev_desc->bcdUSB >= 0x300 ? 1<<dev_desc->bMaxPacketSize0:dev_desc->bMaxPacketSize0;
-
-    //配置设备上下文
-    xhci_input_context64_t *input_context = kzalloc(align_up(sizeof(xhci_input_context64_t),xhci_regs->align_size));
-    if (xhci_regs->cap->hccparams1 & HCCP1_CSZ) {
-        input_context->add_context = 0x2;
-        input_context->drop_context = 0x0;
-        input_context->dev_ctx.ep[0].tr_dequeue_ptr = dev_context32->ep[0].tr_dequeue_ptr;
-        input_context->dev_ctx.ep[0].reg0 = dev_context32->ep[0].reg0;
-        input_context->dev_ctx.ep[0].reg1 = 4 << 3 | max_packe_size<<16;
-    }else {
-        xhci_input_context32_t *input_context32 = (xhci_input_context32_t*)input_context;
-        input_context32->add_context = 0x2;
-        input_context32->drop_context = 0x0;
-        input_context32->dev_ctx.ep[0].tr_dequeue_ptr = dev_context32->ep[0].tr_dequeue_ptr;
-        input_context32->dev_ctx.ep[0].reg0 = dev_context32->ep[0].reg0;
-        input_context32->dev_ctx.ep[0].reg1 = 4 << 3 | max_packe_size<<16;
-    }
-
-    trb.parameter = va_to_pa(input_context);
-    trb.status = 0;
-    trb.control =  usb_dev->slot_id << 24 | TRB_EVALUATE_CONTEXT;
-    xhci_ring_enqueue(&xhci_regs->cmd_ring, &trb);
-    xhci_ring_doorbell(xhci_regs->db, 0, 0);
-
-    timing();
-
-    xhci_ering_dequeue(xhci_regs, &trb);
-    kfree(input_context);
-
-    setup.w_length = 18;
-    trb.parameter = *(UINT64 *) &setup; // 完整 8 字节
-    trb.status = 8; // TRB Length=8 (Setup 阶段长度)
-    trb.control = TRB_TYPE_SETUP | TRB_IDT | (3 << 16) | TRB_CHAIN | TRB_IOC;
-    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
-    // TRT=3 (IN), Chain, IO
-
-    // Data TRB
-    trb.parameter = va_to_pa(dev_desc);
-    trb.status = 18; // 匹配 w_length
-    trb.control = TRB_TYPE_DATA | (1 << 16) | TRB_CHAIN | TRB_IOC;
-    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
-
-    // Status TRB
-    trb.parameter = 0;
-    trb.status = 0;
-    trb.control = TRB_TYPE_STATUS | TRB_IOC;
-    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
-
-    // 响铃
-    xhci_ring_doorbell(xhci_regs->db, usb_dev->slot_id, 1);
-
-    timing();
-
-    color_printk(GREEN,BLACK, "port_id:%d slot_id:%d portsc:%#x bcd_usb:%#x id_v:%#x id_p:%#x MaxPZ:%d DevClass:%#x DevSubClass:%#x DevProt:%#x\n",usb_dev->port_id,usb_dev->slot_id, dev_desc->bcdUSB,xhci_regs->op->portregs[usb_dev->port_id-1].portsc, dev_desc->idVendor,
-    dev_desc->idProduct,max_packe_size,dev_desc->bDeviceClass,dev_desc->bDeviceSubClass,dev_desc->bDeviceProtocol);
-}
-
 INIT_TEXT void init_xhci(void) {
     pcie_dev_t *xhci_dev = pcie_dev_find(XHCI_CLASS_CODE); //找xhci设备
     pcie_bar_set(xhci_dev, 0); //初始化bar0寄存器
@@ -357,11 +208,6 @@ INIT_TEXT void init_xhci(void) {
     timing();
 
     xhci_trb_t trb;
-
-    /*for (UINT32 i = 0; i < 65; i++) {
-        UINT32 slot_id = xhci_enable_slot(xhci_regs);
-        color_printk(GREEN,BLACK,"slot %d  ",slot_id);
-    }*/
 
     //遍历初始化端口，分配插槽和设备地址
     for (UINT32 i = 0; i < xhci_regs->cap->hcsparams1 >> 24; i++) {

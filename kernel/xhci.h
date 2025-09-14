@@ -547,4 +547,18 @@ typedef struct {
 
 #pragma pack(pop)
 
+
+//定时
+static inline void timing (void) {
+    // UINT64 count = 20000000;
+    // while (count--) pause();
+}
+
+//响铃
+static inline void xhci_ring_doorbell( xhci_db_regs_t *db, UINT8 db_number, UINT32 value) {
+    db[db_number] = value;
+}
+
 void init_xhci(void);
+int xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb);
+int xhci_ering_dequeue(xhci_regs_t *xhci_regs, xhci_trb_t *evt_trb);
