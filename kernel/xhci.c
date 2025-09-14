@@ -217,33 +217,30 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
     // 响铃
     xhci_ring_doorbell(xhci_regs->db, usb_dev->slot_id, 1);
 
+    timing();
+
+    UINT32 max_packe_size = dev_desc->bcdUSB >= 0x300 ? 1<<dev_desc->bMaxPacketSize0:dev_desc->bMaxPacketSize0;
 
     //配置设备上下文
     xhci_input_context64_t *input_context = kzalloc(align_up(sizeof(xhci_input_context64_t),xhci_regs->align_size));
     if (xhci_regs->cap->hccparams1 & HCCP1_CSZ) {
-        input_context->add_context = 0x3; // 启用 Slot Context 和 Endpoint 0 Context
+        input_context->add_context = 0x2;
         input_context->drop_context = 0x0;
-        input_context->dev_ctx.slot.reg0 = dev_context32->slot.reg0;
-        input_context->dev_ctx.slot.reg1 = dev_context32->slot.reg1;
         input_context->dev_ctx.ep[0].tr_dequeue_ptr = dev_context32->ep[0].tr_dequeue_ptr;
         input_context->dev_ctx.ep[0].reg0 = dev_context32->ep[0].reg0;
-        input_context->dev_ctx.ep[0].reg1 = 4 << 3 | (1<<dev_desc->bMaxPacketSize0);
+        input_context->dev_ctx.ep[0].reg1 = 4 << 3 | max_packe_size<<16;
     }else {
         xhci_input_context32_t *input_context32 = (xhci_input_context32_t*)input_context;
-        input_context32->add_context = 0x3; // 启用 Slot Context 和 Endpoint 0 Context
+        input_context32->add_context = 0x2;
         input_context32->drop_context = 0x0;
-        input_context32->dev_ctx.slot.reg0 = 1 << 27;
-        input_context32->dev_ctx.slot.reg1 = usb_dev->port_id << 16;
-        input_context32->dev_ctx.ep[0].tr_dequeue_ptr = va_to_pa(usb_dev->ep0_trans_ring.ring_base) | TRB_CYCLE;
-        input_context32->dev_ctx.ep[0].reg0 = 1;
-        input_context32->dev_ctx.ep[0].reg1 = 4 << 3 | 64 << 16;
+        input_context32->dev_ctx.ep[0].tr_dequeue_ptr = dev_context32->ep[0].tr_dequeue_ptr;
+        input_context32->dev_ctx.ep[0].reg0 = dev_context32->ep[0].reg0;
+        input_context32->dev_ctx.ep[0].reg1 = 4 << 3 | max_packe_size<<16;
     }
 
-    xhci_trb_t trb = {
-        va_to_pa(input_context),
-        0,
-        TRB_ADDRESS_DEVICE | usb_dev->slot_id << 24
-    };
+    trb.parameter = va_to_pa(input_context);
+    trb.status = 0;
+    trb.control =  usb_dev->slot_id << 24 | TRB_EVALUATE_CONTEXT;
     xhci_ring_enqueue(&xhci_regs->cmd_ring, &trb);
     xhci_ring_doorbell(xhci_regs->db, 0, 0);
 
@@ -252,13 +249,32 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
     xhci_ering_dequeue(xhci_regs, &trb);
     kfree(input_context);
 
+    setup.w_length = 18;
+    trb.parameter = *(UINT64 *) &setup; // 完整 8 字节
+    trb.status = 8; // TRB Length=8 (Setup 阶段长度)
+    trb.control = TRB_TYPE_SETUP | TRB_IDT | (3 << 16) | TRB_CHAIN | TRB_IOC;
+    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
+    // TRT=3 (IN), Chain, IO
+
+    // Data TRB
+    trb.parameter = va_to_pa(dev_desc);
+    trb.status = 18; // 匹配 w_length
+    trb.control = TRB_TYPE_DATA | (1 << 16) | TRB_CHAIN | TRB_IOC;
+    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
+
+    // Status TRB
+    trb.parameter = 0;
+    trb.status = 0;
+    trb.control = TRB_TYPE_STATUS | TRB_IOC;
+    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
+
+    // 响铃
+    xhci_ring_doorbell(xhci_regs->db, usb_dev->slot_id, 1);
+
     timing();
 
-
-
-    color_printk(GREEN,BLACK, "port_id:%d slot_id:%d bcd_usb:%#x id_v:%#x id_p:%#x portsc:%#x portpmsc:%#x portli:%#x porthlpmc:%#x\n",usb_dev->port_id,usb_dev->slot_id, dev_desc->bcdUSB, dev_desc->idVendor,
-    dev_desc->idProduct,xhci_regs->op->portregs[usb_dev->port_id-1].portsc, xhci_regs->op->portregs[usb_dev->port_id-1].portpmsc,
-xhci_regs->op->portregs[usb_dev->port_id-1].portli, xhci_regs->op->portregs[usb_dev->port_id-1].porthlpmc);
+    color_printk(GREEN,BLACK, "port_id:%d slot_id:%d portsc:%#x bcd_usb:%#x id_v:%#x id_p:%#x MaxPZ:%d DevClass:%#x DevSubClass:%#x DevProt:%#x\n",usb_dev->port_id,usb_dev->slot_id, dev_desc->bcdUSB,xhci_regs->op->portregs[usb_dev->port_id-1].portsc, dev_desc->idVendor,
+    dev_desc->idProduct,max_packe_size,dev_desc->bDeviceClass,dev_desc->bDeviceSubClass,dev_desc->bDeviceProtocol);
 }
 
 INIT_TEXT void init_xhci(void) {
@@ -352,6 +368,8 @@ INIT_TEXT void init_xhci(void) {
         if (xhci_regs->op->portregs[i].portsc & XHCI_PORTSC_CCS) {
             if ((xhci_regs->op->portregs[i].portsc>>XHCI_PORTSC_PLS_SHIFT&XHCI_PORTSC_PLS_MASK) == XHCI_PLS_POLLING) { //usb2.0协议版本
                 xhci_regs->op->portregs[i].portsc |= XHCI_PORTSC_PR;
+                timing();
+                xhci_ering_dequeue(xhci_regs,&trb);
             }
             //usb3.x以上协议版本
             while (!(xhci_regs->op->portregs[i].portsc & XHCI_PORTSC_PED)) pause();
