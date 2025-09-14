@@ -526,6 +526,63 @@ typedef struct {
     UINT32 status_c;         //循环位
 } xhci_ring_t;
 
+typedef struct {
+    UINT8  request_type;  /*请求类型，指定传输方向、类型和接收者
+                              位7：方向（0=主机到设备，1=设备到主机）
+                              位6-5：类型（0=标准，1=类，2=厂商，3=保留）
+                              位4-0：接收者（0=设备，1=接口，2=端点，3=其他）*/
+    UINT8  request;       /*请求代码，指定具体请求（如 GET_DESCRIPTOR、SET_ADDRESS）标准请求示例：0x06（GET_DESCRIPTOR）、0x05（SET_ADDRESS）*/
+    UINT16 value;         /*请求值，具体含义由 b_request 定义 例如：GET_DESCRIPTOR 中，w_value 高字节为描述符类型，低字节为索引*/
+    UINT16 index;         /*索引或偏移，具体含义由 b_request 定义 例如：接口号、端点号或字符串描述符索引*/
+    UINT16 length;        /*数据阶段的传输长度（字节）主机到设备：发送的数据长度 设备到主机：请求的数据长度*/
+} usb_setup_packet_t;
+
+typedef struct {
+    UINT8  length;              // 描述符长度，固定为 18 字节（0x12）
+    UINT8  descriptor_type;     // 描述符类型，固定为 0x01（设备描述符）
+    UINT16 usb_version;         // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
+    UINT8  device_class;        // 设备类代码，定义设备类别（如 0x00 表示类在接口描述符定义，0x03 表示 HID）
+    UINT8  device_subclass;     // 设备子类代码，进一步细化设备类（如 HID 的子类）
+    UINT8  device_protocol;     // 设备协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
+    UINT8  max_packet_size0;    // 端点 0 的最大数据包大小（字节），USB 2.0 为 8/16/32/64，USB 3.x 为 9（表示 2^9=512 字节）
+    UINT16 vendor_id;           // 供应商 ID（VID），由 USB-IF 分配，标识制造商
+    UINT16 product_id;          // 产品 ID（PID），由厂商分配，标识具体产品
+    UINT16 device_version;      // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
+    UINT8  manufacturer_index;  // 制造商字符串描述符索引（0 表示无）
+    UINT8  product_index;       // 产品字符串描述符索引（0 表示无）
+    UINT8  serial_number_index; // 序列号字符串描述符索引（0 表示无，建议提供唯一序列号）
+    UINT8  num_configurations;  // 支持的配置描述符数量（通常为 1）
+} usb_device_descriptor_t;
+
+typedef struct {
+    UINT8  length;              // 描述符长度，固定为 9 字节（0x09）
+    UINT8  descriptor_type;     // 描述符类型，固定为 0x02（配置描述符）
+    UINT16 total_length;        // 配置描述符总长度（包括所有子描述符，如接口、端点等），单位为字节
+    UINT8  num_interfaces;      // 该配置支持的接口数量
+    UINT8  configuration_value; // 配置值，用于 SET_CONFIGURATION 请求（通常从 1 开始）
+    UINT8  configuration_index; // 配置字符串描述符索引（0 表示无）
+    UINT8  attributes;          /*配置属性
+                                位7：固定为 1（保留）
+                                位6：1=自供电，0=总线供电
+                                位5：1=支持远程唤醒，0=不支持
+                                位4-0：保留，置 0*/
+    UINT8  max_power;           // 最大功耗，单位为 2mA（USB 2.0）或 8mA（USB 3.x）例如：50 表示 USB 2.0 的 100mA 或 USB 3.x 的 400mA
+} usb_config_descriptor_t;
+
+typedef struct {
+    UINT8  length;              // 描述符长度，固定为 9 字节（0x09）
+    UINT8  descriptor_type;     // 描述符类型，固定为 0x04（接口描述符）
+    UINT8  interface_number;    // 接口编号，从 0 开始，标识该接口
+    UINT8  alternate_setting;   // 备用设置编号，同一接口的不同配置（通常为 0）
+    UINT8  num_endpoints;       // 该接口使用的端点数量（不包括端点 0）
+    UINT8  interface_class;     // 接口类代码，定义接口功能（如 0x03 表示 HID，0x08 表示 Mass Storage）
+    UINT8  interface_subclass;  // 接口子类代码，进一步细化接口类（如 HID 的子类）
+    UINT8  interface_protocol;  // 接口协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
+    UINT8  interface_index;     // 接口字符串描述符索引（0 表示无）
+} usb_interface_descriptor_t;
+
+
+
 // ===== 完整xHCI寄存器结构 =====
 typedef struct {
     xhci_cap_regs_t *cap;        // 能力寄存器
@@ -540,6 +597,16 @@ typedef struct {
     UINT32          align_size;                   //对齐边界
 } xhci_regs_t;
 
+//USB设备
+typedef struct {
+    UINT32                          port_id;
+    UINT32                          slot_id;
+    xhci_ring_t                     ep0_trans_ring;               //端点0传输环虚拟地址 63-1位:为地址 0位:C
+    usb_device_descriptor_t         *dev_desc;
+    usb_config_descriptor_t         *config_desc;
+    usb_interface_descriptor_t      *interface_desc;
+    list_head_t list;
+}usb_dev_t;
 
 #pragma pack(pop)
 
