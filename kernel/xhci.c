@@ -100,7 +100,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
         input_context->dev_ctx.slot.reg1 = usb_dev->port_id << 16;
         input_context->dev_ctx.ep[0].tr_dequeue_ptr = va_to_pa(usb_dev->ep0_trans_ring.ring_base) | TRB_CYCLE;
         input_context->dev_ctx.ep[0].reg0 = 1;
-        input_context->dev_ctx.ep[0].reg1 = 4 << 3 | 64 << 16;
+        input_context->dev_ctx.ep[0].reg1 = 4 << 3 | 8 << 16; //第一次启用配置先设置为最大8字节包，后面获取设备描述符时在根据返回调整
     }else {
         xhci_input_context32_t *input_context32 = (xhci_input_context32_t*)input_context;
         input_context32->add_context = 0x3; // 启用 Slot Context 和 Endpoint 0 Context
@@ -109,7 +109,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
         input_context32->dev_ctx.slot.reg1 = usb_dev->port_id << 16;
         input_context32->dev_ctx.ep[0].tr_dequeue_ptr = va_to_pa(usb_dev->ep0_trans_ring.ring_base) | TRB_CYCLE;
         input_context32->dev_ctx.ep[0].reg0 = 1;
-        input_context32->dev_ctx.ep[0].reg1 = 4 << 3 | 64 << 16;
+        input_context32->dev_ctx.ep[0].reg1 = 4 << 3 | 8 << 16; //第一次启用配置先设置为最大8字节包，后面获取设备描述符时在根据返回调整
     }
 
     xhci_trb_t trb = {
@@ -131,14 +131,14 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
     usb_device_descriptor_t *dev_desc = kzalloc(sizeof(usb_device_descriptor_t));
     xhci_device_context32_t *dev_context32 = pa_to_va(xhci_regs->dcbaap[usb_dev->slot_id]);
 
+    //第一次先获取设备描述符前8字节，拿到max_pack_size后更新端点1，再重新获取描述符。
     xhci_trb_t trb;
     // Setup TRB
-    usb_setup_packet_t setup = {0x80, 0x06, 0x0100, 0x0000, 8}; // 统一为8
+    usb_setup_packet_t setup = {0x80, USB_REQ_GET_DESCRIPTOR, 0x0100, 0x0000, 8}; // 统一为8
     trb.parameter = *(UINT64 *) &setup; // 完整 8 字节
     trb.status = 8; // TRB Length=8 (Setup 阶段长度)
     trb.control = TRB_TYPE_SETUP | TRB_IDT | (3 << 16) | TRB_CHAIN | TRB_IOC;
     xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
-    // TRT=3 (IN), Chain, IO
 
     // Data TRB
     trb.parameter = va_to_pa(dev_desc);
@@ -157,9 +157,9 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
 
     timing();
 
-    UINT32 max_packe_size = dev_desc->usb_version >= 0x300 ? 1<<dev_desc->max_packet_size0:dev_desc->max_packet_size0;
+    UINT32 max_packe_size = dev_desc->usb_version >= 0x300 ? 1<<dev_desc->max_packet_size0:dev_desc->max_packet_size0; //端点1支持的最大包
 
-    //配置设备上下文
+    //更新端点1的最大包
     xhci_input_context64_t *input_context = kzalloc(align_up(sizeof(xhci_input_context64_t),xhci_regs->align_size));
     if (xhci_regs->cap->hccparams1 & HCCP1_CSZ) {
         input_context->add_context = 0x2;
@@ -187,12 +187,12 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
     xhci_ering_dequeue(xhci_regs, &trb);
     kfree(input_context);
 
+    //第二次获取整个设备描述符
     setup.length = 18;
     trb.parameter = *(UINT64 *) &setup; // 完整 8 字节
     trb.status = 8; // TRB Length=8 (Setup 阶段长度)
     trb.control = TRB_TYPE_SETUP | TRB_IDT | (3 << 16) | TRB_CHAIN | TRB_IOC;
     xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
-    // TRT=3 (IN), Chain, IO
 
     // Data TRB
     trb.parameter = va_to_pa(dev_desc);
