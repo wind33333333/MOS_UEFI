@@ -604,6 +604,7 @@ typedef struct {
                                            - w_index: 端点号
                                            - w_length: 2（返回 2 字节帧号） */
 
+//usb设备描述符
 typedef struct {
     UINT8  length;              // 描述符长度，固定为 18 字节（0x12）
     UINT8  descriptor_type;     // 描述符类型，固定为 0x01（设备描述符）
@@ -621,6 +622,7 @@ typedef struct {
     UINT8  num_configurations;  // 支持的配置描述符数量（通常为 1）
 } usb_device_descriptor_t;
 
+//usb配置描述符
 typedef struct {
     UINT8  length;              // 描述符长度，固定为 9 字节（0x09）
     UINT8  descriptor_type;     // 描述符类型，固定为 0x02（配置描述符）
@@ -636,6 +638,7 @@ typedef struct {
     UINT8  max_power;           // 最大功耗，单位为 2mA（USB 2.0）或 8mA（USB 3.x）例如：50 表示 USB 2.0 的 100mA 或 USB 3.x 的 400mA
 } usb_config_descriptor_t;
 
+//结构描述符
 typedef struct {
     UINT8  length;              // 描述符长度，固定为 9 字节（0x09）
     UINT8  descriptor_type;     // 描述符类型，固定为 0x04（接口描述符）
@@ -647,6 +650,37 @@ typedef struct {
     UINT8  interface_protocol;  // 接口协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
     UINT8  interface_index;     // 接口字符串描述符索引（0 表示无）
 } usb_interface_descriptor_t;
+
+//端点描述符
+typedef struct {
+    UINT8  length;            // 描述符长度（固定7字节）
+    UINT8  descriptor_type;   // 描述符类型：0x05 = 端点描述符
+    UINT8  endpoint_address;  // 端点地址：位7方向(0=OUT,1=IN)，位3-0端点号
+    UINT8  attributes;       // 传输类型：0x00=控制，0x01=Isochronous，0x02=Bulk，0x03=Interrupt
+    UINT16 max_packet_size;   // 该端点的最大包长（不同速度有不同限制）
+    UINT8  interval;          // 轮询间隔（仅中断/同步传输有意义）
+} usb_endpoint_descriptor_t;
+
+//HID 类描述符（可选
+typedef struct {
+    UINT8  length;            // 描述符长度
+    UINT8  descriptor_type;   // 描述符类型：0x21 = HID 描述符
+    UINT16 hid;               // HID 版本号
+    UINT8  country_code;      // 国家代码（0=无）
+    UINT8  num_descriptors;   // 后面跟随的子描述符数量
+    // 后面通常跟 HID 报告描述符（类型0x22）等
+} usb_hid_descriptor_t;
+
+//HUB 类描述符（可选）
+typedef struct {
+    UINT8  length;            // 描述符长度
+    UINT8  descriptor_type;   // 描述符类型：0x29 = HUB 描述符
+    UINT8  num_ports;         // hub 下行端口数量
+    UINT16 hub_characteristics;// hub 特性位（供电方式、过流保护等）
+    UINT8  power_on_to_power_good; // 端口上电到电源稳定的时间（单位2ms）
+    UINT8  hub_control_current;    // hub 控制器所需电流
+    // 之后还会跟一个可变长度的 DeviceRemovable 和 PortPwrCtrlMask
+} usb_hub_descriptor_t;
 
 
 

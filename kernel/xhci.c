@@ -211,6 +211,56 @@ int get_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
 
     timing();
 
+    UINT16 *tmp_desc = kmalloc(9);
+    setup.value = 0x200;
+    setup.length = 9;
+    trb.parameter = *(UINT64 *) &setup;
+    trb.status = 8;
+    trb.control = TRB_TYPE_SETUP | TRB_IDT | (3 << 16) | TRB_CHAIN | TRB_IOC;
+    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
+
+    // Data TRB
+    trb.parameter = va_to_pa(tmp_desc);
+    trb.status = 9;
+    trb.control = TRB_TYPE_DATA | (1 << 16) | TRB_CHAIN | TRB_IOC;
+    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
+
+    // Status TRB
+    trb.parameter = 0;
+    trb.status = 0;
+    trb.control = TRB_TYPE_STATUS | TRB_IOC;
+    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
+
+    // 响铃
+    xhci_ring_doorbell(xhci_regs->db, usb_dev->slot_id, 1);
+
+    timing();
+
+    setup.length = tmp_desc[1];
+    kfree(tmp_desc);
+    tmp_desc = kzalloc(setup.length);
+    trb.parameter = *(UINT64 *) &setup;
+    trb.status = 8;
+    trb.control = TRB_TYPE_SETUP | TRB_IDT | (3 << 16) | TRB_CHAIN | TRB_IOC;
+    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
+
+    // Data TRB
+    trb.parameter = va_to_pa(tmp_desc);
+    trb.status = setup.length;
+    trb.control = TRB_TYPE_DATA | (1 << 16) | TRB_CHAIN | TRB_IOC;
+    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
+
+    // Status TRB
+    trb.parameter = 0;
+    trb.status = 0;
+    trb.control = TRB_TYPE_STATUS | TRB_IOC;
+    xhci_ring_enqueue(&usb_dev->ep0_trans_ring, &trb);
+
+    // 响铃
+    xhci_ring_doorbell(xhci_regs->db, usb_dev->slot_id, 1);
+
+    timing();
+
     color_printk(GREEN,BLACK, "port_id:%d slot_id:%d portsc:%#x bcd_usb:%#x id_v:%#x id_p:%#x MaxPZ:%d DevClass:%#x DevSubClass:%#x DevProt:%#x\n",usb_dev->port_id,usb_dev->slot_id, dev_desc->usb_version,xhci_regs->op->portregs[usb_dev->port_id-1].portsc, dev_desc->vendor_id,
     dev_desc->product_id,max_packe_size,dev_desc->device_class,dev_desc->device_subclass,dev_desc->device_protocol);
 }
