@@ -638,7 +638,15 @@ typedef struct {
     UINT8  max_power;           // 最大功耗，单位为 2mA（USB 2.0）或 8mA（USB 3.x）例如：50 表示 USB 2.0 的 100mA 或 USB 3.x 的 400mA
 } usb_config_descriptor_t;
 
-//结构描述符
+
+//USB 字符串描述符
+typedef struct {
+    UINT8  length;          // 描述符长度（含头部和字符串）
+    UINT8  descriptor_type; // 描述符类型 = 0x03
+    UINT16 string[];        // UTF-16LE 编码的字符串内容（变长数组）
+} usb_string_descriptor_t;
+
+//接口描述符
 typedef struct {
     UINT8  length;              // 描述符长度，固定为 9 字节（0x09）
     UINT8  descriptor_type;     // 描述符类型，固定为 0x04（接口描述符）
@@ -655,7 +663,7 @@ typedef struct {
 typedef struct {
     UINT8  length;            // 描述符长度（固定7字节）
     UINT8  descriptor_type;   // 描述符类型：0x05 = 端点描述符
-    UINT8  endpoint_address;  // 端点地址：位7方向(0=OUT,1=IN)，位3-0端点号
+    UINT8  endpoint_address;  // 端点地址：位7方向(0=OUT,主机→设备 1=IN，设备→主机)，位3-0端点号
     UINT8  attributes;       // 传输类型：0x00=控制，0x01=Isochronous，0x02=Bulk，0x03=Interrupt
     UINT16 max_packet_size;   // 该端点的最大包长（不同速度有不同限制）
     UINT8  interval;          // 轮询间隔（仅中断/同步传输有意义）
@@ -682,6 +690,20 @@ typedef struct {
     // 之后还会跟一个可变长度的 DeviceRemovable 和 PortPwrCtrlMask
 } usb_hub_descriptor_t;
 
+/* ---------------- USB 标准描述符类型 ---------------- */
+#define USB_DESC_TYPE_DEVICE        0x01  /* 设备描述符 Device Descriptor */
+#define USB_DESC_TYPE_CONFIGURATION 0x02  /* 配置描述符 Configuration Descriptor */
+#define USB_DESC_TYPE_STRING        0x03  /* 字符串描述符 String Descriptor */
+#define USB_DESC_TYPE_INTERFACE     0x04  /* 接口描述符 Interface Descriptor */
+#define USB_DESC_TYPE_ENDPOINT      0x05  /* 端点描述符 Endpoint Descriptor */
+
+/* ---------------- USB HID 类相关描述符 ---------------- */
+#define USB_DESC_TYPE_HID           0x21  /* HID 类描述符 HID Descriptor */
+#define USB_DESC_TYPE_REPORT        0x22  /* HID 报告描述符 Report Descriptor */
+
+/* ---------------- USB Hub 相关描述符 ---------------- */
+#define USB_DESC_TYPE_HUB           0x29  /* Hub 描述符 Hub Descriptor */
+
 
 
 // ===== 完整xHCI寄存器结构 =====
@@ -706,6 +728,10 @@ typedef struct {
     usb_device_descriptor_t         *dev_desc;
     usb_config_descriptor_t         *config_desc;
     usb_interface_descriptor_t      *interface_desc;
+    usb_string_descriptor_t         *string_desc;
+    usb_endpoint_descriptor_t       *endpoint_desc;
+    usb_hid_descriptor_t            *hid_desc;
+    usb_hub_descriptor_t            *hub_desc;
     list_head_t list;
 }usb_dev_t;
 
