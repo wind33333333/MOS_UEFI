@@ -100,7 +100,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
         input_context->dev_ctx.slot.reg1 = usb_dev->port_id << 16;
         input_context->dev_ctx.ep[0].tr_dequeue_ptr = va_to_pa(usb_dev->ep0_trans_ring.ring_base) | TRB_CYCLE;
         input_context->dev_ctx.ep[0].reg0 = 1;
-        input_context->dev_ctx.ep[0].reg1 = 4 << 3 | 8 << 16; //第一次启用配置先设置为最大8字节包，后面获取设备描述符时在根据返回调整
+        input_context->dev_ctx.ep[0].reg1 = EP_TYPE_CONTROL | 8 << 16; //第一次启用配置先设置为最大8字节包，后面获取设备描述符时在根据返回调整
     }else {
         xhci_input_context32_t *input_context32 = (xhci_input_context32_t*)input_context;
         input_context32->add_context = 0x3; // 启用 Slot Context 和 Endpoint 0 Context
@@ -109,7 +109,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
         input_context32->dev_ctx.slot.reg1 = usb_dev->port_id << 16;
         input_context32->dev_ctx.ep[0].tr_dequeue_ptr = va_to_pa(usb_dev->ep0_trans_ring.ring_base) | TRB_CYCLE;
         input_context32->dev_ctx.ep[0].reg0 = 1;
-        input_context32->dev_ctx.ep[0].reg1 = 4 << 3 | 8 << 16; //第一次启用配置先设置为最大8字节包，后面获取设备描述符时在根据返回调整
+        input_context32->dev_ctx.ep[0].reg1 = EP_TYPE_CONTROL | 8 << 16; //第一次启用配置先设置为最大8字节包，后面获取设备描述符时在根据返回调整
     }
 
     xhci_trb_t trb = {
@@ -167,14 +167,14 @@ int get_usb_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
         input_context->drop_context = 0x0;
         input_context->dev_ctx.ep[0].tr_dequeue_ptr = dev_context->ep[0].tr_dequeue_ptr;
         input_context->dev_ctx.ep[0].reg0 = dev_context->ep[0].reg0;
-        input_context->dev_ctx.ep[0].reg1 = 4 << 3 | max_packe_size<<16;
+        input_context->dev_ctx.ep[0].reg1 = EP_TYPE_CONTROL | max_packe_size<<16;
     }else {
         xhci_input_context32_t *input_context32 = (xhci_input_context32_t*)input_context;
         input_context32->add_context = 0x2;
         input_context32->drop_context = 0x0;
         input_context32->dev_ctx.ep[0].tr_dequeue_ptr = dev_context32->ep[0].tr_dequeue_ptr;
         input_context32->dev_ctx.ep[0].reg0 = dev_context32->ep[0].reg0;
-        input_context32->dev_ctx.ep[0].reg1 = 4 << 3 | max_packe_size<<16;
+        input_context32->dev_ctx.ep[0].reg1 = EP_TYPE_CONTROL | max_packe_size<<16;
     }
 
     trb.parameter = va_to_pa(input_context);
