@@ -528,11 +528,6 @@ typedef struct {
     xhci_device_context32_t dev_ctx;
 } xhci_input_context32_t;
 
-typedef struct {
-    xhci_trb_t *ring_base;   //环起始地址
-    UINT32 index;            //trb索引
-    UINT32 status_c;         //循环位
-} xhci_ring_t;
 
 typedef struct {
     UINT8  request_type;  /*请求类型，指定传输方向、类型和接收者
@@ -712,7 +707,11 @@ typedef struct {
 /* ---------------- USB Hub 相关描述符 ---------------- */
 #define USB_DESC_TYPE_HUB           0x29  /* Hub 描述符 Hub Descriptor */
 
-
+typedef struct {
+    xhci_trb_t *ring_base;   //环起始地址
+    UINT32 index;            //trb索引
+    UINT32 status_c;         //循环位
+} xhci_ring_t;
 
 // ===== 完整xHCI寄存器结构 =====
 typedef struct {
