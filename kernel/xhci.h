@@ -732,12 +732,12 @@ typedef struct {
 typedef struct {
     UINT32                          port_id;
     UINT32                          slot_id;
-    xhci_ring_t                     ep0_trans_ring;               //端点0传输环虚拟地址 63-1位:为地址 0位:C
+    xhci_ring_t                     trans_ring[31];               //端点0传输环虚拟地址 63-1位:为地址 0位:C
     usb_device_descriptor_t         *dev_desc;
     usb_config_descriptor_t         *config_desc;
     usb_interface_descriptor_t      *interface_desc;
     usb_string_descriptor_t         *string_desc;
-    usb_endpoint_descriptor_t       *endpoint_desc[31];
+    usb_endpoint_descriptor_t       *endpoint_desc[30];
     usb_hid_descriptor_t            *hid_desc;
     usb_hub_descriptor_t            *hub_desc;
     list_head_t list;
