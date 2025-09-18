@@ -184,10 +184,10 @@ void xhci_config_endpoint(xhci_regs_t *xhci_regs,usb_dev_t *usb_dev) {
         }
         input_context->add_context |= 1<<ac_shift;
         if (xhci_regs->cap->hccparams1 & HCCP1_CSZ) {
-            input_context->dev_ctx.ep[tr_idx].reg0 = 1;
+            input_context->dev_ctx.ep[tr_idx].ep_info0 = 1;
             input_context->dev_ctx.ep[tr_idx].tr_dequeue_ptr = va_to_pa(ring_base) | TRB_CYCLE;
-            input_context->dev_ctx.ep[tr_idx].reg1 = ep_type | usb_dev->endpoint_desc[i]->max_packet_size << 16;
-            input_context->dev_ctx.ep[tr_idx].reg4 = 0;
+            input_context->dev_ctx.ep[tr_idx].ep_info1 = ep_type | usb_dev->endpoint_desc[i]->max_packet_size << 16;
+            input_context->dev_ctx.ep[tr_idx].ep_info2 = 0;
         }else {
             input_context32->dev_ctx.ep[tr_idx].reg0 = 1;
             input_context32->dev_ctx.ep[tr_idx].tr_dequeue_ptr = va_to_pa(ring_base) | TRB_CYCLE;
