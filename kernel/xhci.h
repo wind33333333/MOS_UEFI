@@ -461,11 +461,11 @@ typedef struct {
 typedef struct {
     /* Slot Context（32 字节） */
     struct {
-        UINT32 reg0;    /* 位 19:0 Route String[19:8] - 路由字符串的高 12 位，描述设备在 USB 拓扑中的路径。
-                         * 位 23:20 portsc速度
-                         * 位 25 MTT 多重验证。
-                         * 位 26 1=集线器 0=usb。
-                         * 位 31:27 端点上下文条目数量1-31 */
+        UINT32 slot_info;    /* 位 19:0 Route String[19:8] - 路由字符串的高 12 位，描述设备在 USB 拓扑中的路径。
+                             * 位 23:20 portsc速度
+                             * 位 25 MTT 多重验证。
+                             * 位 26 1=集线器 0=usb。
+                             * 位 31:27 端点上下文条目数量1-31 */
 
         UINT32 reg1;      /* 位 15:0  最大退出延迟微妙
                            * 位 23:16 根集线器端口号 1 - MaxPorts。
