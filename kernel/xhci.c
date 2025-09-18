@@ -339,7 +339,7 @@ int get_usb_config_descriptor(xhci_regs_t *xhci_regs,usb_dev_t *usb_dev) {
     usb_config_descriptor_t *config_desc_end = (usb_config_descriptor_t*)((UINT64)config_desc+config_desc->total_length);
     UINT32 ep_idx = 0;
     while (config_desc < config_desc_end) {
-        switch (config_desc->descriptor_type) {
+        switch (config_desc->head.descriptor_type) {
             case USB_DESC_TYPE_CONFIGURATION:
                 usb_dev->config_desc = config_desc;
                 break;
@@ -360,7 +360,7 @@ int get_usb_config_descriptor(xhci_regs_t *xhci_regs,usb_dev_t *usb_dev) {
                 usb_dev->hub_desc = config_desc;
                 break;
         }
-        config_desc = (usb_config_descriptor_t*)((UINT64)config_desc + config_desc->length);
+        config_desc = (usb_config_descriptor_t*)((UINT64)config_desc + config_desc->head.length);
     }
     return 0;
 }
