@@ -607,10 +607,17 @@ typedef struct {
                                            - w_index: 端点号
                                            - w_length: 2（返回 2 字节帧号） */
 
-//usb设备描述符
+//usb描述符通用头
 typedef struct {
     UINT8  length;              // 描述符长度，固定为 18 字节（0x12）
     UINT8  descriptor_type;     // 描述符类型，固定为 0x01（设备描述符）
+}descriptor_head_t;
+
+/*usb设备描述符
+描述符长度，固定为 18 字节（0x12）
+描述符类型，固定为 0x01（设备描述符）*/
+typedef struct {
+    descriptor_head_t   descriptor_head;
     UINT16 usb_version;         // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
     UINT8  device_class;        // 设备类代码，定义设备类别（如 0x00 表示类在接口描述符定义，0x03 表示 HID）
     UINT8  device_subclass;     // 设备子类代码，进一步细化设备类（如 HID 的子类）
@@ -625,10 +632,11 @@ typedef struct {
     UINT8  num_configurations;  // 支持的配置描述符数量（通常为 1）
 } usb_device_descriptor_t;
 
-//usb配置描述符
+/*usb配置描述符
+描述符长度，固定为 9 字节（0x09）
+描述符类型，固定为 0x02（配置描述符）*/
 typedef struct {
-    UINT8  length;              // 描述符长度，固定为 9 字节（0x09）
-    UINT8  descriptor_type;     // 描述符类型，固定为 0x02（配置描述符）
+    descriptor_head_t   descriptor_head;
     UINT16 total_length;        // 配置描述符总长度（包括所有子描述符，如接口、端点等），单位为字节
     UINT8  num_interfaces;      // 该配置支持的接口数量
     UINT8  configuration_value; // 配置值，用于 SET_CONFIGURATION 请求（通常从 1 开始）
@@ -642,17 +650,19 @@ typedef struct {
 } usb_config_descriptor_t;
 
 
-//USB 字符串描述符
+/*USB 字符串描述符
+描述符长度（含头部和字符串）
+描述符类型 = 0x03*/
 typedef struct {
-    UINT8  length;          // 描述符长度（含头部和字符串）
-    UINT8  descriptor_type; // 描述符类型 = 0x03
+    descriptor_head_t   descriptor_head;
     UINT16 string[];        // UTF-16LE 编码的字符串内容（变长数组）
 } usb_string_descriptor_t;
 
-//接口描述符
+/*接口描述符
+描述符长度，固定为 9 字节（0x09）
+描述符类型，固定为 0x04（接口描述符）*/
 typedef struct {
-    UINT8  length;              // 描述符长度，固定为 9 字节（0x09）
-    UINT8  descriptor_type;     // 描述符类型，固定为 0x04（接口描述符）
+    descriptor_head_t   descriptor_head;
     UINT8  interface_number;    // 接口编号，从 0 开始，标识该接口
     UINT8  alternate_setting;   // 备用设置编号，同一接口的不同配置（通常为 0）
     UINT8  num_endpoints;       // 该接口使用的端点数量（不包括端点 0）
@@ -662,30 +672,33 @@ typedef struct {
     UINT8  interface_index;     // 接口字符串描述符索引（0 表示无）
 } usb_interface_descriptor_t;
 
-//端点描述符
+/*端点描述符
+描述符长度（固定7字节）
+描述符类型：0x05 = 端点描述符*/
 typedef struct {
-    UINT8  length;            // 描述符长度（固定7字节）
-    UINT8  descriptor_type;   // 描述符类型：0x05 = 端点描述符
+    descriptor_head_t   descriptor_head;
     UINT8  endpoint_address;  // 端点地址：位7方向(0=OUT,主机→设备 1=IN，设备→主机)，位3-0端点号
     UINT8  attributes;       // 传输类型：0x00=控制，0x01=Isochronous，0x02=Bulk，0x03=Interrupt
     UINT16 max_packet_size;   // 该端点的最大包长（不同速度有不同限制）
     UINT8  interval;          // 轮询间隔（仅中断/同步传输有意义）
 } usb_endpoint_descriptor_t;
 
-//HID 类描述符（可选
+/*HID 类描述符（可选
+描述符长度
+描述符类型：0x21 = HID 描述符*/
 typedef struct {
-    UINT8  length;            // 描述符长度
-    UINT8  descriptor_type;   // 描述符类型：0x21 = HID 描述符
+    descriptor_head_t   descriptor_head;
     UINT16 hid;               // HID 版本号
     UINT8  country_code;      // 国家代码（0=无）
     UINT8  num_descriptors;   // 后面跟随的子描述符数量
     // 后面通常跟 HID 报告描述符（类型0x22）等
 } usb_hid_descriptor_t;
 
-//HUB 类描述符（可选）
+/*HUB 类描述符（可选）
+描述符长度
+描述符类型：0x29 = HUB 描述符*/
 typedef struct {
-    UINT8  length;            // 描述符长度
-    UINT8  descriptor_type;   // 描述符类型：0x29 = HUB 描述符
+    descriptor_head_t   descriptor_head;
     UINT8  num_ports;         // hub 下行端口数量
     UINT16 hub_characteristics;// hub 特性位（供电方式、过流保护等）
     UINT8  power_on_to_power_good; // 端口上电到电源稳定的时间（单位2ms）
