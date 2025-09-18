@@ -146,8 +146,9 @@ void xhci_config_endpoint(xhci_regs_t *xhci_regs,usb_dev_t *usb_dev) {
     }
     for (UINT8 i=0;i<usb_dev->interface_desc->num_endpoints;i++) {
         //分配传输环内存
-        UINT8 tr_idx = (usb_dev->endpoint_desc[i]->endpoint_address&0xF)<<1 | usb_dev->endpoint_desc[i]->endpoint_address>>7;
-        xhci_ring_t *trans_ring = &usb_dev->trans_ring[tr_idx-1];
+        UINT8 ac_shift = (usb_dev->endpoint_desc[i]->endpoint_address&0xF)<<1 | usb_dev->endpoint_desc[i]->endpoint_address>>7;
+        UINT8 tr_idx = ac_shift - 1;
+        xhci_ring_t *trans_ring = &usb_dev->trans_ring[tr_idx];
         xhci_trb_t* ring_base = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_regs->align_size));
         trans_ring->ring_base = ring_base;
         trans_ring->index = 0;
@@ -157,18 +158,18 @@ void xhci_config_endpoint(xhci_regs_t *xhci_regs,usb_dev_t *usb_dev) {
         ring_base[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE;
 
         //配置端点上下文
-        UINT32 ep_type = tr_idx & 1 ? EP_TYPE_INTERRUPT_IN : EP_TYPE_BULK_OUT;
-        input_context->add_context |= 1<<tr_idx;
+        UINT32 ep_type = ac_shift & 1 ? EP_TYPE_INTERRUPT_IN : EP_TYPE_BULK_OUT;
+        input_context->add_context |= 1<<ac_shift;
         if (xhci_regs->cap->hccparams1 & HCCP1_CSZ) {
-            input_context->dev_ctx.ep[tr_idx-1].reg0 = 1;
-            input_context->dev_ctx.ep[tr_idx-1].tr_dequeue_ptr = va_to_pa(ring_base) | TRB_CYCLE;
-            input_context->dev_ctx.ep[tr_idx-1].reg1 = ep_type | usb_dev->endpoint_desc[i]->max_packet_size << 16;
-            input_context->dev_ctx.ep[tr_idx-1].reg4 = 0;
+            input_context->dev_ctx.ep[tr_idx].reg0 = 1;
+            input_context->dev_ctx.ep[tr_idx].tr_dequeue_ptr = va_to_pa(ring_base) | TRB_CYCLE;
+            input_context->dev_ctx.ep[tr_idx].reg1 = ep_type | usb_dev->endpoint_desc[i]->max_packet_size << 16;
+            input_context->dev_ctx.ep[tr_idx].reg4 = 0;
         }else {
-            input_context32->dev_ctx.ep[tr_idx-1].reg0 = 1;
-            input_context32->dev_ctx.ep[tr_idx-1].tr_dequeue_ptr = va_to_pa(ring_base) | TRB_CYCLE;
-            input_context32->dev_ctx.ep[tr_idx-1].reg1 = ep_type | usb_dev->endpoint_desc[i]->max_packet_size << 16;
-            input_context32->dev_ctx.ep[tr_idx-1].reg4 = 0;
+            input_context32->dev_ctx.ep[tr_idx].reg0 = 1;
+            input_context32->dev_ctx.ep[tr_idx].tr_dequeue_ptr = va_to_pa(ring_base) | TRB_CYCLE;
+            input_context32->dev_ctx.ep[tr_idx].reg1 = ep_type | usb_dev->endpoint_desc[i]->max_packet_size << 16;
+            input_context32->dev_ctx.ep[tr_idx].reg4 = 0;
         }
     }
     xhci_trb_t trb = {
