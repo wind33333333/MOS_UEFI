@@ -158,7 +158,30 @@ void xhci_config_endpoint(xhci_regs_t *xhci_regs,usb_dev_t *usb_dev) {
         ring_base[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE;
 
         //配置端点上下文
-        UINT32 ep_type = ac_shift & 1 ? EP_TYPE_INTERRUPT_IN : EP_TYPE_BULK_OUT;
+        UINT32 ep_type = 0;
+        if (ac_shift & 1) {
+            switch (usb_dev->endpoint_desc[i]->attributes) {
+                case USB_EP_ISOCH:
+                    ep_type = EP_TYPE_ISOCH_IN;
+                    break;
+                case USB_EP_BULK:
+                    ep_type = EP_TYPE_BULK_IN;
+                    break;
+                case USB_EP_INTERRUPT:
+                    ep_type = EP_TYPE_INTERRUPT_IN;
+            }
+        }else {
+            switch (usb_dev->endpoint_desc[i]->attributes) {
+                case USB_EP_ISOCH:
+                    ep_type = EP_TYPE_ISOCH_OUT;
+                    break;
+                case USB_EP_BULK:
+                    ep_type = EP_TYPE_BULK_OUT;
+                    break;
+                case USB_EP_INTERRUPT:
+                    ep_type = EP_TYPE_INTERRUPT_OUT;
+            }
+        }
         input_context->add_context |= 1<<ac_shift;
         if (xhci_regs->cap->hccparams1 & HCCP1_CSZ) {
             input_context->dev_ctx.ep[tr_idx].reg0 = 1;

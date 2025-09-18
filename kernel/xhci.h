@@ -679,6 +679,10 @@ typedef struct {
     descriptor_head_t   head;
     UINT8  endpoint_address;  // 端点地址：位7方向(0=OUT,主机→设备 1=IN，设备→主机)，位3-0端点号
     UINT8  attributes;       // 传输类型：0x00=控制，0x01=Isochronous，0x02=Bulk，0x03=Interrupt
+    #define USB_EP_CONTROL   0x0   //ep0端点
+    #define USB_EP_ISOCH     0x1   //等时传输（实时音视频流，带带宽保证，不保证重传）
+    #define USB_EP_BULK      0x2   //批量传输（大容量数据，可靠，有重传机制，如 U 盘数据块）
+    #define USB_EP_INTERRUPT 0x3   //中断传输（小包，低延迟，周期性轮询，如键盘鼠标 HID 报告)
     UINT16 max_packet_size;   // 该端点的最大包长（不同速度有不同限制）
     UINT8  interval;          // 轮询间隔（仅中断/同步传输有意义）
 } usb_endpoint_descriptor_t;
