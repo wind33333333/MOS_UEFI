@@ -463,10 +463,14 @@ typedef struct {
     } ep[31];
 } xhci_device_context64_t;
 
+typedef struct {
+    UINT32 drop_context;   // Context Drop Flag 位图
+    UINT32 add_context;    // Context Add Flag 位图
+} input_control_context_t;
+
 /* 修改设备上下文数据结构 */
 typedef struct {
-    UINT32 drop_context;                    // 位图：指示要丢弃的上下文（通常为 0）
-    UINT32 add_context;                     // 位图：指示要添加/更新的上下文
+    input_control_context_t control;
     UINT32 reserved[14];                    // 保留字段，填 0
     xhci_device_context64_t dev_ctx;        // 需要修改的设备上下文
 } xhci_input_context64_t;
@@ -526,8 +530,7 @@ typedef struct {
 
 /* 修改设备上下文数据结构 */
 typedef struct {
-    UINT32 drop_context;                // 位图：指示要丢弃的上下文（通常为 0）
-    UINT32 add_context;                 // 位图：指示要添加/更新的上下文
+    input_control_context_t control;
     UINT32 reserved[6];                 // 保留字段，填 0
     xhci_device_context32_t dev_ctx;
 } xhci_input_context32_t;
