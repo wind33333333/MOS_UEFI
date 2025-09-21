@@ -170,12 +170,12 @@ void xhci_config_endpoint(xhci_regs_t *xhci_regs,usb_dev_t *usb_dev) {
         input_context32->add_context |= 1<<ac_shift;
         xhci_devctx_write(&input_context32->dev_ctx,xhci_regs->context_size,ac_shift,1,ep_type | usb_dev->endpoint_desc[i]->max_packet_size << 16,va_to_pa(usb_dev->trans_ring[tr_idx].ring_base) | TRB_CYCLE,0);
     }
+
     xhci_trb_t trb = {
         va_to_pa(input_context32),
         0,
         TRB_CONFIGURE_ENDPOINT | usb_dev->slot_id << 24
     };
-
     xhci_ring_enqueue(&xhci_regs->cmd_ring, &trb);
 
     xhci_ring_doorbell(xhci_regs->db, 0, 0);
