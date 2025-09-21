@@ -89,19 +89,19 @@ int xhci_ring_init(xhci_ring_t *ring,UINT32 align_size) {
     ring->ring_base[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE;
 }
 
-//写入设备上下文
-static inline void xhci_devctx_write(xhci_input_context32_t *input_ctx,UINT32 ctx_size,UINT32 ctx_number,xhci_ctx_t *from_ctx) {
-    xhci_ctx_t *to_ctx = (xhci_ctx_t*)((UINT64)input_ctx + ctx_size*ctx_number);
-    to_ctx->reg0 = from_ctx->reg0;
-    to_ctx->reg1 = from_ctx->reg1;
-    to_ctx->reg2 = from_ctx->reg2;
-    to_ctx->reg3 = from_ctx->reg3;
-    input_ctx->control.add_context |= 1<<ctx_number;
+//增加输入上下文
+void xhci_input_context_add(xhci_input_context_t *input_ctx,UINT32 ctx_size,UINT32 ctx_number,xhci_context_t *from_ctx) {
+    xhci_context_t *to_dev_ctx = (xhci_context_t*)((UINT64)input_ctx + ctx_size*(ctx_number+1));
+    to_dev_ctx->reg0 = from_ctx->reg0;
+    to_dev_ctx->reg1 = from_ctx->reg1;
+    to_dev_ctx->reg2 = from_ctx->reg2;
+    to_dev_ctx->reg3 = from_ctx->reg3;
+    input_ctx->input_ctx32.control.add_context |= 1<<ctx_number;
 }
 
 //读取设备上下文
-static inline  void xhci_devctx_read(void *ctx_base,UINT32 ctx_size,UINT32 ctx_number,xhci_ctx_t *to_ctx) {
-    xhci_ctx_t *from_ctx = (xhci_ctx_t*)((UINT64)ctx_base + ctx_size*ctx_number);
+static inline  void xhci_devctx_read(void *ctx_base,UINT32 ctx_size,UINT32 ctx_number,xhci_context_t *to_ctx) {
+    xhci_context_t *from_ctx = (xhci_context_t*)((UINT64)ctx_base + ctx_size*ctx_number);
     to_ctx->reg0 = from_ctx->reg0;
     to_ctx->reg1 = from_ctx->reg1;
     to_ctx->reg2 = from_ctx->reg2;
@@ -111,28 +111,25 @@ static inline  void xhci_devctx_read(void *ctx_base,UINT32 ctx_size,UINT32 ctx_n
 //设置设备地址
 void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
     //分配设备插槽上下文内存
-    xhci_regs->dcbaap[usb_dev->slot_id] = va_to_pa(kzalloc(align_up(sizeof(xhci_device_context64_t),xhci_regs->align_size)));
+    xhci_regs->dcbaap[usb_dev->slot_id] = va_to_pa(kzalloc(align_up(sizeof(xhci_device_context_t),xhci_regs->align_size)));
 
     //分配传输环内存
     xhci_ring_init(&usb_dev->trans_ring[0],xhci_regs->align_size);
 
     //配置设备上下文
-    xhci_input_context32_t *input_ctx32 = kzalloc(align_up(sizeof(xhci_input_context64_t),xhci_regs->align_size));
-    input_ctx32->add_context = 0x3; // 启用 Slot Context 和 Endpoint 0 Context
-    input_ctx32->drop_context = 0x0;
-
-    xhci_ctx_t ctx;
+    xhci_input_context_t *input_ctx32 = kzalloc(align_up(sizeof(xhci_input_context_t),xhci_regs->align_size));
+    xhci_context_t ctx;
     ctx.reg0 = 1 << 27;
     ctx.reg1 = usb_dev->port_id << 16;
     ctx.reg2 = 0;
     ctx.reg3 = 0;
-    xhci_devctx_write(&input_ctx32->dev_ctx,xhci_regs->context_size,0,&ctx); //slot
+    xhci_input_context_add(input_ctx32,xhci_regs->context_size,0,&ctx); // 启用 Slot Context
 
     ctx.reg0= 1;
     ctx.reg1 = EP_TYPE_CONTROL | 8 << 16;
     ctx.reg2 = va_to_pa(usb_dev->trans_ring[0].ring_base) | TRB_CYCLE;
     ctx.reg3 = 0;
-    xhci_devctx_write(&input_ctx32->dev_ctx,xhci_regs->context_size,1,&ctx); //ep0
+    xhci_input_context_add(&input_ctx32,xhci_regs->context_size,1,&ctx); //Endpoint 0 Context
 
     xhci_trb_t trb = {
         va_to_pa(input_ctx32),
@@ -150,18 +147,13 @@ void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
 
 //配置端点
 void xhci_config_endpoint(xhci_regs_t *xhci_regs,usb_dev_t *usb_dev) {
-    xhci_input_context32_t *input_ctx32 = kzalloc(align_up(sizeof(xhci_input_context64_t),xhci_regs->align_size));
-
-    //配置插槽上下文
-    input_ctx32->add_context |= 1;
-    input_ctx32->drop_context = 0x0;
-
-    xhci_ctx_t ctx;
+    xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t),xhci_regs->align_size));
+    xhci_context_t ctx;
     ctx.reg0 = (usb_dev->interface_desc->num_endpoints+1) << 27;
     ctx.reg1 = usb_dev->port_id << 16;
     ctx.reg2 = 0;
     ctx.reg3 = 0;
-    xhci_devctx_write(&input_ctx32->dev_ctx,xhci_regs->context_size,0,&ctx);    //更新slot
+    xhci_input_context_add(input_ctx,xhci_regs->context_size,0,&ctx);    //更新slot
 
     for (UINT8 i=0;i<usb_dev->interface_desc->num_endpoints;i++) {
         UINT8 ac_shift = (usb_dev->endpoint_desc[i]->endpoint_address&0xF)<<1 | usb_dev->endpoint_desc[i]->endpoint_address>>7;
@@ -194,17 +186,16 @@ void xhci_config_endpoint(xhci_regs_t *xhci_regs,usb_dev_t *usb_dev) {
                     ep_type = EP_TYPE_INTERRUPT_OUT;
             }
         }
-        //配置端点上下文
-        input_ctx32->add_context |= 1<<ac_shift;
+
         ctx.reg0 = 1;
         ctx.reg1 = ep_type | usb_dev->endpoint_desc[i]->max_packet_size << 16;
         ctx.reg2 = va_to_pa(usb_dev->trans_ring[tr_idx].ring_base) | TRB_CYCLE;
         ctx.reg3 = 0;
-        xhci_devctx_write(&input_ctx32->dev_ctx,xhci_regs->context_size,ac_shift,&ctx);
+        xhci_input_context_add(input_ctx,xhci_regs->context_size,ac_shift,&ctx);
     }
 
     xhci_trb_t trb = {
-        va_to_pa(input_ctx32),
+        va_to_pa(input_ctx),
         0,
         TRB_CONFIGURE_ENDPOINT | usb_dev->slot_id << 24
     };
@@ -215,14 +206,14 @@ void xhci_config_endpoint(xhci_regs_t *xhci_regs,usb_dev_t *usb_dev) {
     timing();
 
     xhci_ering_dequeue(xhci_regs, &trb);
-    kfree(input_ctx32);
+    kfree(input_ctx);
 
 }
 
 //获取usb设备描述符
 int get_usb_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
     usb_device_descriptor_t *dev_desc = kzalloc(sizeof(usb_device_descriptor_t));
-    xhci_device_context32_t *dev_ctx32 = pa_to_va(xhci_regs->dcbaap[usb_dev->slot_id]);
+    xhci_device_context_t *dev_ctx = pa_to_va(xhci_regs->dcbaap[usb_dev->slot_id]);
 
     //第一次先获取设备描述符前8字节，拿到max_pack_size后更新端点1，再重新获取描述符。
     xhci_trb_t trb;
@@ -250,21 +241,15 @@ int get_usb_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
 
     timing();
 
-    //端点0支持的最大包
-    UINT32 max_packe_size = dev_desc->usb_version >= 0x300 ? 1<<dev_desc->max_packet_size0:dev_desc->max_packet_size0;
-
-
-    xhci_input_context64_t *input_context32 = kzalloc(align_up(sizeof(xhci_input_context64_t),xhci_regs->align_size));
-    input_context32->add_context = 0x2;
-    input_context32->drop_context = 0x0;
-
     //更新端点0的最大包
-    xhci_ctx_t ctx;
-    xhci_devctx_read(dev_ctx32,xhci_regs->context_size,1,&ctx);
+    UINT32 max_packe_size = dev_desc->usb_version >= 0x300 ? 1<<dev_desc->max_packet_size0:dev_desc->max_packet_size0;
+    xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t),xhci_regs->align_size));
+    xhci_context_t ctx;
+    xhci_devctx_read(dev_ctx,xhci_regs->context_size,1,&ctx);
     ctx.reg1 = EP_TYPE_CONTROL | max_packe_size<<16;
-    xhci_devctx_write(&input_context32->dev_ctx,xhci_regs->context_size,1,&ctx);
+    xhci_input_context_add(&input_ctx,xhci_regs->context_size,1,&ctx);
 
-    trb.parameter = va_to_pa(input_context32);
+    trb.parameter = va_to_pa(input_ctx);
     trb.status = 0;
     trb.control =  usb_dev->slot_id << 24 | TRB_EVALUATE_CONTEXT;
     xhci_ring_enqueue(&xhci_regs->cmd_ring, &trb);
@@ -273,7 +258,7 @@ int get_usb_device_descriptor(xhci_regs_t *xhci_regs, usb_dev_t* usb_dev) {
     timing();
 
     xhci_ering_dequeue(xhci_regs, &trb);
-    kfree(input_context32);
+    kfree(input_ctx);
 
     //第二次获取整个设备描述符
     setup.length = 18;

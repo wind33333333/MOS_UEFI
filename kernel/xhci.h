@@ -395,13 +395,14 @@ typedef struct {
     UINT32 control;
 } xhci_trb_t;
 
+/**********设备上下文结构************/
 /*设备下文条目结构*/
 typedef struct {
     UINT32 reg0;
     UINT32 reg1;
     UINT32 reg2;
     UINT32 reg3;
-} xhci_ctx_t;
+} xhci_context_t;
 
 /* xHCI 设备上下文结构（64 字节版本，CSZ=1） */
 typedef struct {
@@ -471,7 +472,7 @@ typedef struct {
 
 /* 修改设备上下文数据结构 */
 typedef struct {
-    input_control_context64_t control;// 保留字段，填 0
+    input_control_context64_t control;
     xhci_device_context64_t dev_ctx;        // 需要修改的设备上下文
 } xhci_input_context64_t;
 
@@ -532,14 +533,28 @@ typedef struct {
     UINT32 drop_context;   // Context Drop Flag 位图
     UINT32 add_context;    // Context Add Flag 位图
     UINT32 reserved[6];    // 保留字段，填 0
-} input_control_context32_t;
+} xhci_input_control_context32_t;
 
 /* 修改设备上下文数据结构 */
 typedef struct {
-    input_control_context32_t control;
+    xhci_input_control_context32_t control;
     xhci_device_context32_t dev_ctx;
 } xhci_input_context32_t;
 
+typedef struct {
+    union {
+        xhci_device_context32_t dev_ctx32;
+        xhci_device_context64_t dev_ctx64;
+    };
+}xhci_device_context_t;
+
+typedef struct {
+    union {
+        xhci_input_context32_t input_ctx32;
+        xhci_input_context32_t input_ctx64;
+    };
+}xhci_input_context_t;
+/***********************************************************************/
 
 typedef struct {
     UINT8  request_type;  /*请求类型，指定传输方向、类型和接收者
