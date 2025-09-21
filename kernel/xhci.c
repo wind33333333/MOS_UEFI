@@ -1,4 +1,7 @@
 #include "xhci.h"
+
+#include <stdint.h>
+
 #include "moslib.h"
 #include "pcie.h"
 #include "printk.h"
@@ -88,49 +91,31 @@ int xhci_ring_init(xhci_ring_t *ring,UINT32 align_size) {
     ring->ring_base[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE;
 }
 
-int xhci_devctx_write(xhci_regs_t *xhci_regs, xhci_trb_t *trb) {
-    if (xhci_regs->cap->hccparams1 & HCCP1_CSZ) {
-
-    }
+static inline void xhci_devctx_write(UINT32 *context_base,UINT32 context_size,UINT32 context_number,UINT32 reg0,UINT32 reg1,UINT32 reg2,UINT32 reg3) {
+    context_base = (UINT32*)((UINT64)context_base + context_size*context_number);
+    context_base[0] = reg0;
+    context_base[1] = reg1;
+    context_base[2] = reg2;
+    context_base[3] = reg3;
 }
 
 //设置设备地址
 void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
     //分配设备插槽上下文内存
-    xhci_device_context32_t *dev_context32 = kzalloc(align_up(sizeof(xhci_device_context64_t),xhci_regs->align_size));
-    xhci_regs->dcbaap[usb_dev->slot_id] = va_to_pa(dev_context32);
-    //xhci_regs->dcbaap[usb_dev->slot_id] = va_to_pa(kzalloc(align_up(sizeof(xhci_device_context64_t),xhci_regs->align_size)));
+    xhci_regs->dcbaap[usb_dev->slot_id] = va_to_pa(kzalloc(align_up(sizeof(xhci_device_context64_t),xhci_regs->align_size)));
 
     //分配传输环内存
     xhci_ring_init(&usb_dev->trans_ring[0],xhci_regs->align_size);
 
     //配置设备上下文
-    xhci_input_context64_t *input_context = kzalloc(align_up(sizeof(xhci_input_context64_t),xhci_regs->align_size));
-    input_context->add_context = 0x3; // 启用 Slot Context 和 Endpoint 0 Context
-    input_context->drop_context = 0x0;
-    if (xhci_regs->cap->hccparams1 & HCCP1_CSZ) {
-        input_context->dev_ctx.slot.route_speed = 1 << 27;
-        input_context->dev_ctx.slot.latency_hub = usb_dev->port_id << 16;
-        input_context->dev_ctx.slot.parent_info = 0;
-        input_context->dev_ctx.slot.addr_status = 0;
-        input_context->dev_ctx.ep[0].ep_config = 1;
-        input_context->dev_ctx.ep[0].ep_type_size = EP_TYPE_CONTROL | 8 << 16; //第一次启用配置先设置为最大8字节包，后面获取设备描述符时在根据返回调整
-        input_context->dev_ctx.ep[0].tr_dequeue_ptr = va_to_pa(usb_dev->trans_ring[0].ring_base) | TRB_CYCLE;
-        input_context->dev_ctx.ep[0].trb_payload = 0;
-    }else {
-        xhci_input_context32_t *input_context32 = (xhci_input_context32_t*)input_context;
-        input_context32->dev_ctx.slot.route_speed = 1 << 27;
-        input_context32->dev_ctx.slot.latency_hub = usb_dev->port_id << 16;
-        input_context32->dev_ctx.slot.parent_info = 0;
-        input_context32->dev_ctx.slot.addr_status = 0;
-        input_context32->dev_ctx.ep[0].ep_config = 1;
-        input_context32->dev_ctx.ep[0].ep_type_size = EP_TYPE_CONTROL | 8 << 16; //第一次启用配置先设置为最大8字节包，后面获取设备描述符时在根据返回调整
-        input_context32->dev_ctx.ep[0].tr_dequeue_ptr = va_to_pa(usb_dev->trans_ring[0].ring_base) | TRB_CYCLE;
-        input_context32->dev_ctx.ep[0].trb_payload = 0;
-    }
+    xhci_input_context32_t *input_context32 = kzalloc(align_up(sizeof(xhci_input_context64_t),xhci_regs->align_size));
+    input_context32->add_context = 0x3; // 启用 Slot Context 和 Endpoint 0 Context
+    input_context32->drop_context = 0x0;
+    xhci_devctx_write(&input_context32->dev_ctx,xhci_regs->context_size,0,1 << 27,usb_dev->port_id << 16,0,0);
+    xhci_devctx_write(&input_context32->dev_ctx,xhci_regs->context_size,1,1,EP_TYPE_CONTROL | 8 << 16,va_to_pa(usb_dev->trans_ring[0].ring_base) | TRB_CYCLE,0);
 
     xhci_trb_t trb = {
-        va_to_pa(input_context),
+        va_to_pa(input_context32),
         0,
         TRB_ADDRESS_DEVICE | usb_dev->slot_id << 24
     };
@@ -140,40 +125,22 @@ void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
     timing();
 
     xhci_ering_dequeue(xhci_regs, &trb);
-    kfree(input_context);
+    kfree(input_context32);
 }
 
 //配置端点
 void xhci_config_endpoint(xhci_regs_t *xhci_regs,usb_dev_t *usb_dev) {
-    xhci_input_context64_t *input_context = kzalloc(align_up(sizeof(xhci_input_context64_t),xhci_regs->align_size));
-    xhci_input_context32_t *input_context32 = (xhci_input_context32_t*)input_context;
-    xhci_device_context32_t *device_context32 = pa_to_va(xhci_regs->dcbaap[usb_dev->slot_id]);
+    xhci_input_context32_t *input_context32 = kzalloc(align_up(sizeof(xhci_input_context64_t),xhci_regs->align_size));
     //配置插槽上下文
-    input_context->add_context |= 1;
-    input_context->drop_context = 0x0;
-    if (xhci_regs->cap->hccparams1 & HCCP1_CSZ) {
-        input_context->dev_ctx.slot.route_speed = (usb_dev->interface_desc->num_endpoints+1) << 27;
-        input_context->dev_ctx.slot.latency_hub = usb_dev->port_id << 16;
-        input_context->dev_ctx.slot.parent_info = 0;
-        input_context->dev_ctx.slot.addr_status = 0;
-    }else {
-        input_context32->dev_ctx.slot.route_speed = (usb_dev->interface_desc->num_endpoints+1) << 27;
-        input_context32->dev_ctx.slot.latency_hub = usb_dev->port_id << 16;
-        input_context32->dev_ctx.slot.parent_info = 0;
-        input_context32->dev_ctx.slot.addr_status = 0;
-    }
+    input_context32->add_context |= 1;
+    input_context32->drop_context = 0x0;
+    xhci_devctx_write(&input_context32->dev_ctx,xhci_regs->context_size,0,(usb_dev->interface_desc->num_endpoints+1) << 27,usb_dev->port_id << 16,0,0);
+
     for (UINT8 i=0;i<usb_dev->interface_desc->num_endpoints;i++) {
         //分配传输环内存
         UINT8 ac_shift = (usb_dev->endpoint_desc[i]->endpoint_address&0xF)<<1 | usb_dev->endpoint_desc[i]->endpoint_address>>7;
         UINT8 tr_idx = ac_shift - 1;
-        xhci_ring_t *trans_ring = &usb_dev->trans_ring[tr_idx];
-        xhci_trb_t* ring_base = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_regs->align_size));
-        trans_ring->ring_base = ring_base;
-        trans_ring->index = 0;
-        trans_ring->status_c = TRB_CYCLE;
-        ring_base[TRB_COUNT - 1].parameter = va_to_pa(ring_base);
-        ring_base[TRB_COUNT - 1].status = 0;
-        ring_base[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE;
+        xhci_ring_init(&usb_dev->trans_ring[tr_idx],xhci_regs->align_size);
 
         //配置端点上下文
         UINT32 ep_type = 0;
@@ -200,21 +167,11 @@ void xhci_config_endpoint(xhci_regs_t *xhci_regs,usb_dev_t *usb_dev) {
                     ep_type = EP_TYPE_INTERRUPT_OUT;
             }
         }
-        input_context->add_context |= 1<<ac_shift;
-        if (xhci_regs->cap->hccparams1 & HCCP1_CSZ) {
-            input_context->dev_ctx.ep[tr_idx].ep_config = 1;
-            input_context->dev_ctx.ep[tr_idx].ep_type_size = ep_type | usb_dev->endpoint_desc[i]->max_packet_size << 16;
-            input_context->dev_ctx.ep[tr_idx].tr_dequeue_ptr = va_to_pa(ring_base) | TRB_CYCLE;
-            input_context->dev_ctx.ep[tr_idx].trb_payload = 0;
-        }else {
-            input_context32->dev_ctx.ep[tr_idx].ep_config = 1;
-            input_context32->dev_ctx.ep[tr_idx].ep_type_size = ep_type | usb_dev->endpoint_desc[i]->max_packet_size << 16;
-            input_context32->dev_ctx.ep[tr_idx].tr_dequeue_ptr = va_to_pa(ring_base) | TRB_CYCLE;
-            input_context32->dev_ctx.ep[tr_idx].trb_payload = 0;
-        }
+        input_context32->add_context |= 1<<ac_shift;
+        xhci_devctx_write(&input_context32->dev_ctx,xhci_regs->context_size,ac_shift,1,ep_type | usb_dev->endpoint_desc[i]->max_packet_size << 16,va_to_pa(usb_dev->trans_ring[tr_idx].ring_base) | TRB_CYCLE,0);
     }
     xhci_trb_t trb = {
-        va_to_pa(input_context),
+        va_to_pa(input_context32),
         0,
         TRB_CONFIGURE_ENDPOINT | usb_dev->slot_id << 24
     };
@@ -226,7 +183,7 @@ void xhci_config_endpoint(xhci_regs_t *xhci_regs,usb_dev_t *usb_dev) {
     timing();
 
     xhci_ering_dequeue(xhci_regs, &trb);
-    kfree(input_context);
+    kfree(input_context32);
 
 }
 
