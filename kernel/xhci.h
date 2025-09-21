@@ -388,11 +388,20 @@ typedef struct {
     UINT32 reserved;            // 保留位，初始化为0
 } xhci_erst_t;
 
+/*trb 结构*/
 typedef struct {
     UINT64 parameter;
     UINT32 status;
     UINT32 control;
 } xhci_trb_t;
+
+/*设备下文条目结构*/
+typedef struct {
+    UINT32 reg0;
+    UINT32 reg1;
+    UINT32 reg2;
+    UINT32 reg3;
+} xhci_ctx_t;
 
 /* xHCI 设备上下文结构（64 字节版本，CSZ=1） */
 typedef struct {
@@ -437,6 +446,14 @@ typedef struct {
                                  * 位 7 流传输（Streams）开关控制 0=启用流传输（默认）1=禁用主机发起的流选择（需手动管理流ID）
                                  * 位 15:8 最大突发大小
                                  * 位 31:16 最大包大小（Max Packet Size）*/
+        // xHCI 端点类型 (Endpoint Type)
+        #define EP_TYPE_ISOCH_OUT       (1 << 3)   // 同步传输 OUT（主机→设备）
+        #define EP_TYPE_BULK_OUT        (2 << 3)   // 批量传输 OUT（主机→设备）
+        #define EP_TYPE_INTERRUPT_OUT   (3 << 3)   // 中断传输 OUT（主机→设备）
+        #define EP_TYPE_CONTROL         (4 << 3)   // 控制传输 双向（EP0）
+        #define EP_TYPE_ISOCH_IN        (5 << 3)   // 同步传输 IN（设备→主机）
+        #define EP_TYPE_BULK_IN         (6 << 3)   // 批量传输 IN（设备→主机）
+        #define EP_TYPE_INTERRUPT_IN    (7 << 3)   // 中断传输 IN（设备→主机）
         UINT64 tr_dequeue_ptr;      /* 位 0：DCS（Dequeue Cycle State）。当DCS=1时，主机控制器从传输环中获取的TRB需要其Cycle Bit为1才会被处理；当RCS=0时，则处理Cycle Bit为0的TRB。
                                      * 位 63:4：TR Dequeue Pointer（TR 出队指针）。64位传输环物理地址64字节对齐 */
         UINT32 trb_payload;         /*
@@ -497,14 +514,7 @@ typedef struct {
                                  * 位 7 流传输（Streams）开关控制 0=启用流传输（默认）1=禁用主机发起的流选择（需手动管理流ID）
                                  * 位 15:8 最大突发大小
                                  * 位 31:16 最大包大小（Max Packet Size）*/
-        // xHCI 端点类型 (Endpoint Type)
-        #define EP_TYPE_ISOCH_OUT       (1 << 3)   // 同步传输 OUT（主机→设备）
-        #define EP_TYPE_BULK_OUT        (2 << 3)   // 批量传输 OUT（主机→设备）
-        #define EP_TYPE_INTERRUPT_OUT   (3 << 3)   // 中断传输 OUT（主机→设备）
-        #define EP_TYPE_CONTROL         (4 << 3)   // 控制传输 双向（EP0）
-        #define EP_TYPE_ISOCH_IN        (5 << 3)   // 同步传输 IN（设备→主机）
-        #define EP_TYPE_BULK_IN         (6 << 3)   // 批量传输 IN（设备→主机）
-        #define EP_TYPE_INTERRUPT_IN    (7 << 3)   // 中断传输 IN（设备→主机）
+
         UINT64 tr_dequeue_ptr;      /* 位 0：DCS（Dequeue Cycle State）。当DCS=1时，主机控制器从传输环中获取的TRB需要其Cycle Bit为1才会被处理；当RCS=0时，则处理Cycle Bit为0的TRB。
                                      * 位 63:4：TR Dequeue Pointer（TR 出队指针）。64位传输环物理地址64字节对齐 */
         UINT32 trb_payload;         /*
