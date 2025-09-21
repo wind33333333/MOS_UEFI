@@ -79,6 +79,21 @@ UINT32 xhci_enable_slot(xhci_regs_t *xhci_regs) {
     return -1;
 }
 
+int xhci_ring_init(xhci_ring_t *ring,UINT32 align_size) {
+    ring->ring_base = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),align_size));
+    ring->index = 0;
+    ring->status_c = TRB_CYCLE;
+    ring->ring_base[TRB_COUNT - 1].parameter = va_to_pa(ring->ring_base);
+    ring->ring_base[TRB_COUNT - 1].status = 0;
+    ring->ring_base[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE;
+}
+
+int xhci_devctx_write(xhci_regs_t *xhci_regs, xhci_trb_t *trb) {
+    if (xhci_regs->cap->hccparams1 & HCCP1_CSZ) {
+
+    }
+}
+
 //设置设备地址
 void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
     //分配设备插槽上下文内存
@@ -87,12 +102,7 @@ void xhci_address_device(xhci_regs_t *xhci_regs, usb_dev_t *usb_dev) {
     //xhci_regs->dcbaap[usb_dev->slot_id] = va_to_pa(kzalloc(align_up(sizeof(xhci_device_context64_t),xhci_regs->align_size)));
 
     //分配传输环内存
-    usb_dev->trans_ring[0].ring_base = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_regs->align_size));
-    usb_dev->trans_ring[0].index = 0;
-    usb_dev->trans_ring[0].status_c = TRB_CYCLE;
-    usb_dev->trans_ring[0].ring_base[TRB_COUNT - 1].parameter = va_to_pa(usb_dev->trans_ring[0].ring_base);
-    usb_dev->trans_ring[0].ring_base[TRB_COUNT - 1].status = 0;
-    usb_dev->trans_ring[0].ring_base[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE;
+    xhci_ring_init(&usb_dev->trans_ring[0],xhci_regs->align_size);
 
     //配置设备上下文
     xhci_input_context64_t *input_context = kzalloc(align_up(sizeof(xhci_input_context64_t),xhci_regs->align_size));
@@ -431,6 +441,9 @@ INIT_TEXT void init_xhci(void) {
 
     /*计算xhci内存对齐边界*/
     xhci_regs->align_size = PAGE_4K_SIZE<<bsf(xhci_regs->op->pagesize);
+
+    /*设备上下文字节数*/
+    xhci_regs->context_size = 32 << ((xhci_regs->cap->hccparams1&HCCP1_CSZ)>>2);
 
     /*初始化设备上下文*/
     UINT32 max_slots = xhci_regs->cap->hcsparams1 & 0xff;

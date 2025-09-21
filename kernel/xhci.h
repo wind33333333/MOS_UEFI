@@ -735,7 +735,8 @@ typedef struct {
     UINT64          *dcbaap;                      //设备上下文
     xhci_ring_t     cmd_ring;                     //命令环
     xhci_ring_t     event_ring;                   //事件环
-    UINT32          align_size;                   //对齐边界
+    UINT32          align_size;                   //xhci内存分配对齐边界
+    UINT32          context_size;                 //设备上下文字节数（32或64字节）
 } xhci_regs_t;
 
 //USB设备
