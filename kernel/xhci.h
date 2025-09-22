@@ -1,5 +1,6 @@
 #pragma once
 #include "moslib.h"
+#include "pcie.h"
 
 #define TRB_COUNT 256        //trb个数
 
@@ -757,20 +758,20 @@ typedef struct {
     uint32 status_c;         //循环位
 } xhci_ring_t;
 
-// ===== 完整xHCI寄存器结构 =====
+//xhci控制器
 typedef struct {
-    xhci_cap_regs_t *cap;         // 能力寄存器
-    xhci_op_regs_t  *op;          // 操作寄存器
-    xhci_rt_regs_t  *rt;          // 运行时寄存器
-    xhci_db_regs_t  *db;          // 门铃寄存器
-    xhci_ext_regs_t *ext;         // 扩展寄存器
-
-    uint64          *dcbaap;      //设备上下文
-    xhci_ring_t     cmd_ring;     //命令环
-    xhci_ring_t     event_ring;   //事件环
-    uint32          align_size;   //xhci内存分配对齐边界
-    uint32          context_size; //设备上下文字节数（32或64字节）
-} xhci_regs_t;
+    xhci_cap_regs_t *cap_reg;         // 能力寄存器
+    xhci_op_regs_t  *op_reg;          // 操作寄存器
+    xhci_rt_regs_t  *rt_reg;          // 运行时寄存器
+    xhci_db_regs_t  *db_reg;          // 门铃寄存器
+    xhci_ext_regs_t *ext_reg;         // 扩展寄存器
+    uint64          *dcbaap;          //设备上下文
+    xhci_ring_t     cmd_ring;         //命令环
+    xhci_ring_t     event_ring;       //事件环
+    uint32          align_size;       //xhci内存分配对齐边界
+    uint32          context_size;     //设备上下文字节数（32或64字节）
+    pcie_dev_t      *pcie_dev;
+} xhci_controller_t;
 
 //USB设备
 typedef struct {
@@ -784,6 +785,7 @@ typedef struct {
     usb_endpoint_descriptor_t       *endpoint_desc[30];
     usb_hid_descriptor_t            *hid_desc;
     usb_hub_descriptor_t            *hub_desc;
+    xhci_controller_t                     *xhci_regs;
     list_head_t list;
 }usb_dev_t;
 
@@ -803,4 +805,4 @@ static inline void xhci_ring_doorbell( xhci_db_regs_t *db, uint8 db_number, uint
 
 void init_xhci(void);
 int xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb);
-int xhci_ering_dequeue(xhci_regs_t *xhci_regs, xhci_trb_t *evt_trb);
+int xhci_ering_dequeue(xhci_controller_t *xhci_regs, xhci_trb_t *evt_trb);

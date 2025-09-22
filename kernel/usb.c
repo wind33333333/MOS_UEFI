@@ -6,6 +6,6 @@
 
 
 
-void usb_init(xhci_regs_t *xhci_regs) {
+void usb_init(xhci_controller_t *xhci_regs) {
 
 }
