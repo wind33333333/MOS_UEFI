@@ -10,17 +10,17 @@
 #include "vmalloc.h"
 
 cpu_info_t cpu_info;
-UINT32 *apic_id_table; //apic_id_table
+uint32 *apic_id_table; //apic_id_table
 
 INIT_TEXT void get_cpu_info(void) {
-    UINT32 eax,ebx,ecx,edx;
+    uint32 eax,ebx,ecx,edx;
     // 获取CPU厂商
-    cpuid(0,0,(UINT32*)&cpu_info.manufacturer_name[8],(UINT32*)&cpu_info.manufacturer_name[0],(UINT32*)&cpu_info.manufacturer_name[8],(UINT32*)&cpu_info.manufacturer_name[4]);
+    cpuid(0,0,(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[0],(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[4]);
 
     // 获取CPU型号
-    cpuid(0x80000002,0,(UINT32*)&cpu_info.model_name[0],(UINT32*)&cpu_info.model_name[4],(UINT32*)&cpu_info.model_name[8],(UINT32*)&cpu_info.model_name[12]);
-    cpuid(0x80000003,0,(UINT32*)&cpu_info.model_name[16],(UINT32*)&cpu_info.model_name[20],(UINT32*)&cpu_info.model_name[24],(UINT32*)&cpu_info.model_name[28]);
-    cpuid(0x80000004,0,(UINT32*)&cpu_info.model_name[32],(UINT32*)&cpu_info.model_name[36],(UINT32*)&cpu_info.model_name[40],(UINT32*)&cpu_info.model_name[44]);
+    cpuid(0x80000002,0,(uint32*)&cpu_info.model_name[0],(uint32*)&cpu_info.model_name[4],(uint32*)&cpu_info.model_name[8],(uint32*)&cpu_info.model_name[12]);
+    cpuid(0x80000003,0,(uint32*)&cpu_info.model_name[16],(uint32*)&cpu_info.model_name[20],(uint32*)&cpu_info.model_name[24],(uint32*)&cpu_info.model_name[28]);
+    cpuid(0x80000004,0,(uint32*)&cpu_info.model_name[32],(uint32*)&cpu_info.model_name[36],(uint32*)&cpu_info.model_name[40],(uint32*)&cpu_info.model_name[44]);
 
     // 获取CPU频率
     cpuid(0x16,0,&cpu_info.fundamental_frequency,&cpu_info.maximum_frequency,&cpu_info.bus_frequency,&edx);
@@ -31,8 +31,8 @@ INIT_TEXT void get_cpu_info(void) {
 }
 
 INIT_TEXT void enable_cpu_advanced_features(void){
-    UINT32 eax,ebx,ecx,edx;
-    UINT64 tmp,value;
+    uint32 eax,ebx,ecx,edx;
+    uint64 tmp,value;
 
     //region IA32_APIC_BASE_MSR (MSR 0x1B)
     //X2APIC（bit 10）：作用：如果该位被设置为 1，处理器启用 X2APIC 模式。X2APIC 是 APIC 的扩展版本，提供了更多的功能，例如更大的中断目标地址空间。
@@ -150,20 +150,20 @@ INIT_TEXT void enable_cpu_advanced_features(void){
     wrmsr(IA32_PAT_MSR,0x070504010006);
 }
 
-INIT_TEXT UINT32 apicid_to_cpuid(UINT32 apic_id) {
-    for (UINT32 i = 0; i < cpu_info.logical_processors_number; i++) {
+INIT_TEXT uint32 apicid_to_cpuid(uint32 apic_id) {
+    for (uint32 i = 0; i < cpu_info.logical_processors_number; i++) {
         if (apic_id == apic_id_table[i])
             return i;
     }
     return 0xFFFFFFFF;
 }
 
-INIT_TEXT UINT32 cpuid_to_apicid(UINT32 cpu_id) {
+INIT_TEXT uint32 cpuid_to_apicid(uint32 cpu_id) {
     return apic_id_table[cpu_id];
 }
 
 INIT_TEXT void init_bsp(void){
-    UINT32 apic_id,cpu_id,tmp;
+    uint32 apic_id,cpu_id,tmp;
     cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
     get_cpu_info();                            //获取cpu信息
@@ -176,17 +176,17 @@ INIT_TEXT void init_bsp(void){
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
 }
 
-INIT_DATA UINT64 ap_boot_loader_address;
+INIT_DATA uint64 ap_boot_loader_address;
 
 //多核处理器初始化
 INIT_TEXT void init_ap(void) {
     ap_main_ptr = &ap_main;
-    ap_tmp_pml4t_ptr = (UINT64*)va_to_pa(&tmp_pml4t);
+    ap_tmp_pml4t_ptr = (uint64*)va_to_pa(&tmp_pml4t);
     apic_id_table_ptr = apic_id_table;
-    ap_rsp_ptr = (UINT64)vmalloc((cpu_info.logical_processors_number-1)*4);            //每个ap核分配16K栈
+    ap_rsp_ptr = (uint64)vmalloc((cpu_info.logical_processors_number-1)*4);            //每个ap核分配16K栈
     mem_cpy(_apboot_start, (void*)ap_boot_loader_address,_apboot_end-_apboot_start);                 //把ap核初始化代码复制到过去
 
-    UINT32 counter;
+    uint32 counter;
     //bit8-10投递模式init101 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
     wrmsr(APIC_INTERRUPT_COMMAND_MSR,0xC4500);
 
@@ -205,7 +205,7 @@ INIT_TEXT void init_ap(void) {
 }
 
 INIT_TEXT void ap_main(void){
-    UINT32 apic_id,cpu_id,tmp;
+    uint32 apic_id,cpu_id,tmp;
     cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);        //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);
     enable_cpu_advanced_features();

@@ -5,13 +5,13 @@
 
 buddy_system_t buddy_system;
 
-INIT_TEXT static inline UINT32 get_trailing_zeros(UINT64 page_index) {
+INIT_TEXT static inline uint32 get_trailing_zeros(uint64 page_index) {
     if (page_index == 0) return 64;
     return bsf(page_index);
 }
 
-INIT_TEXT static inline UINT32 get_max_order_for_size(UINT64 num_pages) {
-    UINT32 k = 0;
+INIT_TEXT static inline uint32 get_max_order_for_size(uint64 num_pages) {
+    uint32 k = 0;
     while ((1ULL << k) <= num_pages && k <= MAX_ORDER) k++;
     return k - 1;
 }
@@ -21,14 +21,14 @@ INIT_TEXT void init_buddy_system(void) {
     //初始化page_table指针
     buddy_system.page_table = (page_t *) VMEMMAP_START;
     //初始化空闲链表
-    for (UINT64 i = 0; i <= MAX_ORDER; i++) {
+    for (uint64 i = 0; i <= MAX_ORDER; i++) {
         list_head_init(&buddy_system.free_area[i].list);
     }
 
     //把memblock中的memory内存移交给伙伴系统管理，memblock_alloc内存分配器退出，由伙伴系统接管物理内存管理。
-    for (UINT32 i = 0; i < memblock.memory.count; i++) {
-        UINT64 pa = memblock.memory.region[i].base;
-        UINT64 count = memblock.memory.region[i].size >> PAGE_4K_SHIFT;
+    for (uint32 i = 0; i < memblock.memory.count; i++) {
+        uint64 pa = memblock.memory.region[i].base;
+        uint64 count = memblock.memory.region[i].size >> PAGE_4K_SHIFT;
         while (count--) {
             free_pages(pa_to_page(pa));
             pa += PAGE_4K_SIZE;
@@ -37,9 +37,9 @@ INIT_TEXT void init_buddy_system(void) {
 }
 
 //伙伴系统物理页分配器
-page_t *alloc_pages(UINT32 order) {
+page_t *alloc_pages(uint32 order) {
     page_t *page;
-    UINT32 current_order = order;
+    uint32 current_order = order;
     //阶链表没有空闲块则分裂
     while (TRUE) {
         if (current_order > MAX_ORDER) return NULL; //如果阶无效直接返回空指针
@@ -65,8 +65,8 @@ page_t *alloc_pages(UINT32 order) {
     //如果是复合也则标记头并填充符合页page
     page->flags = 0;
     if (order) bts(&page->flags,PG_HEAD);
-    for (UINT32 i = 1; i < (1 << current_order); i++) {
-        page[i].compound_head = (UINT64) page | 1;
+    for (uint32 i = 1; i < (1 << current_order); i++) {
+        page[i].compound_head = (uint64) page | 1;
     }
 
     return page;

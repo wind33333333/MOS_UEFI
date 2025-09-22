@@ -18,19 +18,19 @@ typedef enum {
 #define PAGE_4K_SHIFT    12
 #define PAGE_4K_SIZE    (1UL << PAGE_4K_SHIFT)
 #define PAGE_4K_MASK    (~(PAGE_4K_SIZE - 1))
-#define PAGE_4K_ALIGN(ADDR)    (((UINT64)(ADDR) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
+#define PAGE_4K_ALIGN(ADDR)    (((uint64)(ADDR) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
 
 //2M页表
 #define PAGE_2M_SHIFT    21
 #define PAGE_2M_SIZE    (1UL << PAGE_2M_SHIFT)
 #define PAGE_2M_MASK    (~(PAGE_2M_SIZE - 1))
-#define PAGE_2M_ALIGN(ADDR)     (((UINT64)(ADDR) + PAGE_2M_SIZE - 1) & PAGE_2M_MASK)
+#define PAGE_2M_ALIGN(ADDR)     (((uint64)(ADDR) + PAGE_2M_SIZE - 1) & PAGE_2M_MASK)
 
 //1G页表
 #define PAGE_1G_SHIFT    30
 #define PAGE_1G_SIZE    (1UL << PAGE_1G_SHIFT)
 #define PAGE_1G_MASK    (~(PAGE_1G_SIZE - 1))
-#define PAGE_1G_ALIGN(ADDR)     (((UINT64)(ADDR) + PAGE_1G_SIZE - 1) & PAGE_1G_MASK)
+#define PAGE_1G_ALIGN(ADDR)     (((uint64)(ADDR) + PAGE_1G_SIZE - 1) & PAGE_1G_MASK)
 
 //页属性
 #define PAGE_NX     1UL<<63
@@ -77,52 +77,52 @@ typedef enum {
 #define PTE_SHIFT 12    // PTE 索引的位移量
 
 // 对齐函数，确保 addr 按 align 对齐（align 为 2 的幂）
-static inline UINT64 align_up(UINT64 addr, UINT64 align) {
+static inline uint64 align_up(uint64 addr, uint64 align) {
     return addr + (align - 1) & -align;
 }
 
-static inline UINT64 align_down(UINT64 addr, UINT64 align) {
+static inline uint64 align_down(uint64 addr, uint64 align) {
     return addr & -align;
 }
 
 //虚拟地址转物理地址
-static inline UINT64 va_to_pa(void *va) {
-    return (UINT64)va & ~DIRECT_MAP_OFFSET;
+static inline uint64 va_to_pa(void *va) {
+    return (uint64)va & ~DIRECT_MAP_OFFSET;
 }
 
 //物理地址转虚拟地址
-static inline void *pa_to_va(UINT64 pa) {
+static inline void *pa_to_va(uint64 pa) {
     return (void *)(pa | DIRECT_MAP_OFFSET);
 }
 
 // 计算 PML4E 索引
-static inline UINT32 get_pml4e_index(void *va)
+static inline uint32 get_pml4e_index(void *va)
 {
-    return ((UINT64)va >> PML4E_SHIFT) & 0x1FF;
+    return ((uint64)va >> PML4E_SHIFT) & 0x1FF;
 }
 
 // 计算 PDPTE 索引
-static inline UINT32 get_pdpte_index(void *va)
+static inline uint32 get_pdpte_index(void *va)
 {
-    return ((UINT64)va >> PDPTE_SHIFT) & 0x1FF;
+    return ((uint64)va >> PDPTE_SHIFT) & 0x1FF;
 }
 
 // 计算 PDE 索引
-static inline UINT32 get_pde_index(void *va)
+static inline uint32 get_pde_index(void *va)
 {
-    return ((UINT64)va >> PDE_SHIFT) & 0x1FF;
+    return ((uint64)va >> PDE_SHIFT) & 0x1FF;
 }
 
 // 计算 PTE 索引
-static inline UINT32 get_pte_index(void *va)
+static inline uint32 get_pte_index(void *va)
 {
-    return ((UINT64)va >> PTE_SHIFT) & 0x1FF;
+    return ((uint64)va >> PTE_SHIFT) & 0x1FF;
 }
 
-INT32 mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr,UINT64 page_size);
-INT32 unmmap(UINT64 *pml4t, void *va,UINT64 page_size);
-INT32 mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 size, UINT64 attr,UINT64 page_size);
-INT32 unmmap_range(UINT64 *pml4t, void *va, UINT64 size, UINT64 page_size);
-UINT64 find_page_table_entry(UINT64 *pml4t,void *va,UINT32 page_level);
-UINT32 update_page_table_entry(UINT64 *pml4t, void *va, UINT32 page_level,UINT64 entry);
+int32 mmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr,uint64 page_size);
+int32 unmmap(uint64 *pml4t, void *va,uint64 page_size);
+int32 mmap_range(uint64 *pml4t, uint64 pa, void *va, uint64 size, uint64 attr,uint64 page_size);
+int32 unmmap_range(uint64 *pml4t, void *va, uint64 size, uint64 page_size);
+uint64 find_page_table_entry(uint64 *pml4t,void *va,uint32 page_level);
+uint32 update_page_table_entry(uint64 *pml4t, void *va, uint32 page_level,uint64 entry);
 

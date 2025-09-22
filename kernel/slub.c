@@ -30,7 +30,7 @@ char *kmalloc_name[KMALLOC_CACHE_SIZE] = {
 kmem_cache_t *kmalloc_cache[KMALLOC_CACHE_SIZE];
 
 //把对象size对齐到2^n字节，提高内存访问性能和每页刚好整数
-static inline UINT32 object_size_align(UINT32 objcet_size) {
+static inline uint32 object_size_align(uint32 objcet_size) {
     if (objcet_size <= 8) return 8; // 最小对齐值
     --objcet_size;
     objcet_size |= objcet_size >> 1;
@@ -42,10 +42,10 @@ static inline UINT32 object_size_align(UINT32 objcet_size) {
 }
 
 //1K以内的分配1一个4K页，1K以上乘4。
-static inline UINT32 object_size_order(UINT32 objcet_size) {
+static inline uint32 object_size_order(uint32 objcet_size) {
     if (objcet_size <= 1024) return 0;
     objcet_size >>= 11;
-    UINT32 order = 0;
+    uint32 order = 0;
     while (objcet_size >= 1) {
         order++;
         objcet_size >>= 1;
@@ -54,16 +54,16 @@ static inline UINT32 object_size_order(UINT32 objcet_size) {
 }
 
 //空闲链表初始化
-static inline void free_list_init(UINT64* next,UINT32 size,UINT32 count) {
+static inline void free_list_init(uint64* next,uint32 size,uint32 count) {
     while (count--) {
-        *next = (UINT64)next + size;
-        next = (UINT64*)*next;
+        *next = (uint64)next + size;
+        next = (uint64*)*next;
     }
     *next = 0;
 }
 
 //新建一个cache
-void create_cache(char *cache_name, kmem_cache_t *cache, UINT32 object_size) {
+void create_cache(char *cache_name, kmem_cache_t *cache, uint32 object_size) {
     cache->name = cache_name;
     cache->object_size = object_size_align(object_size);
     cache->order_per_slub = object_size_order(cache->object_size);
@@ -113,7 +113,7 @@ static inline void *alloc_cache_object(kmem_cache_t *cache) {
     while (pos != &cache->slub_head) {
         page_t *slub = CONTAINER_OF(pos,page_t,list);
         if (slub->free_list) {
-            UINT64 *object = slub->free_list;
+            uint64 *object = slub->free_list;
             slub->free_list = (void *)*object;
             slub->free_count--;
             slub->using_count++;
@@ -127,13 +127,13 @@ static inline void *alloc_cache_object(kmem_cache_t *cache) {
 }
 
 //释放一个对象到cache
-static inline INT32 free_cache_object(kmem_cache_t *cache, void *object) {
+static inline int32 free_cache_object(kmem_cache_t *cache, void *object) {
     list_head_t *pos = cache->slub_head.next;
     while (pos != &cache->slub_head) {
         page_t *slub = CONTAINER_OF(pos,page_t,list);
         page_t *object_slub = compound_head(va_to_page(object));
         if (object_slub == slub){
-            *(UINT64 *)object = (UINT64) slub->free_list;
+            *(uint64 *)object = (uint64) slub->free_list;
             slub->free_list = object;
             slub->free_count++;
             slub->using_count--;
@@ -158,7 +158,7 @@ void *kmem_cache_alloc(kmem_cache_t *cache) {
 }
 
 //释放对象到kmem_cache缓存池
-INT32 kmem_cache_free(kmem_cache_t *cache, void *object) {
+int32 kmem_cache_free(kmem_cache_t *cache, void *object) {
     if (cache == NULL || object == NULL) return -1;
 
     //释放object
@@ -171,7 +171,7 @@ INT32 kmem_cache_free(kmem_cache_t *cache, void *object) {
 }
 
 //创建kmem_cache缓存池
-kmem_cache_t *kmem_cache_create(char *cache_name, UINT32 object_size) {
+kmem_cache_t *kmem_cache_create(char *cache_name, uint32 object_size) {
     if (object_size > MAX_OBJECT_SIZE) return NULL;
 
     kmem_cache_t *cache = kmem_cache_alloc(&kmem_cache);
@@ -180,7 +180,7 @@ kmem_cache_t *kmem_cache_create(char *cache_name, UINT32 object_size) {
 }
 
 //销毁kmem_cache缓存池
-INT32 kmem_cache_destroy(kmem_cache_t *cache) {
+int32 kmem_cache_destroy(kmem_cache_t *cache) {
     if (cache == NULL) return -1;
 
     list_head_t *pos = cache->slub_head.next;
@@ -195,10 +195,10 @@ INT32 kmem_cache_destroy(kmem_cache_t *cache) {
 
 
 //通用内存分配器
-void *kmalloc(UINT64 size) {
+void *kmalloc(uint64 size) {
     if (size > MAX_OBJECT_SIZE) return NULL;
 
-    UINT32 index = 0;
+    uint32 index = 0;
     size = object_size_align(size) >> 4;
     while (size >= 1) {
         index++;
@@ -208,14 +208,14 @@ void *kmalloc(UINT64 size) {
 }
 
 //通用内存分配器(清零)
-inline void *kzalloc(UINT64 size) {
+inline void *kzalloc(uint64 size) {
     void *ptr = kmalloc(size);
     mem_set(ptr,0,size);
     return ptr;
 }
 
 //通用内存释放器
-INT32 kfree(void *va) {
+int32 kfree(void *va) {
     if (va == NULL) return -1;
 
     page_t *slub = compound_head(va_to_page(va));
@@ -230,8 +230,8 @@ INIT_TEXT void init_slub(void) {
     create_cache(kmem_cache_name, &kmem_cache, sizeof(kmem_cache_t));
 
     //创建kmalloc缓存池 8字节到1M
-    UINT32 object_size = 8;
-    for (UINT32 i = 0; i < KMALLOC_CACHE_SIZE; i++) {
+    uint32 object_size = 8;
+    for (uint32 i = 0; i < KMALLOC_CACHE_SIZE; i++) {
         kmalloc_cache[i] = kmem_cache_create(kmalloc_name[i], object_size);
         object_size <<= 1;
     }

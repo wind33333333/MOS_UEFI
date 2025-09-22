@@ -2,10 +2,10 @@
 #include "buddy_system.h"
 
 //映射一个页表
-INT32 mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
-    UINT64 *pdptt, *pdt, *ptt;
-    UINT32 index;
-    pml4t = pa_to_va((UINT64) pml4t);
+int32 mmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, uint64 page_size) {
+    uint64 *pdptt, *pdt, *ptt;
+    uint32 index;
+    pml4t = pa_to_va((uint64) pml4t);
 
     index = get_pml4e_index(va);
     if (pml4t[index] == 0) {
@@ -58,11 +58,11 @@ INT32 mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
 }
 
 //删除一个页表映射
-INT32 unmmap(UINT64 *pml4t, void *va, UINT64 page_size) {
-    UINT64 *pdptt, *pdt, *ptt;
-    UINT32 pml4e_index, pdpte_index, pde_index, pte_index;
+int32 unmmap(uint64 *pml4t, void *va, uint64 page_size) {
+    uint64 *pdptt, *pdt, *ptt;
+    uint32 pml4e_index, pdpte_index, pde_index, pte_index;
 
-    pml4t = pa_to_va((UINT64) pml4t);
+    pml4t = pa_to_va((uint64) pml4t);
     pml4e_index = get_pml4e_index(va);
     if (pml4t[pml4e_index] == 0) return -1; //pml4e无效
 
@@ -119,8 +119,8 @@ huge_page:
 }
 
 //批量映射页表
-INT32 mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 size, UINT64 attr, UINT64 page_size) {
-    UINT64 page_count = size / page_size;
+int32 mmap_range(uint64 *pml4t, uint64 pa, void *va, uint64 size, uint64 attr, uint64 page_size) {
+    uint64 page_count = size / page_size;
     while(page_count--) {
         if (mmap(pml4t, pa, va, attr, page_size)) return -1;
         pa += page_size;
@@ -130,8 +130,8 @@ INT32 mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 size, UINT64 attr, U
 }
 
 //批量删除页表映射
-INT32 unmmap_range(UINT64 *pml4t, void *va, UINT64 size, UINT64 page_size) {
-    UINT64 page_count = size / page_size;
+int32 unmmap_range(uint64 *pml4t, void *va, uint64 size, uint64 page_size) {
+    uint64 page_count = size / page_size;
     while (page_count--) {
         if (unmmap(pml4t, va, page_size)) return -1;
         va += page_size;
@@ -140,10 +140,10 @@ INT32 unmmap_range(UINT64 *pml4t, void *va, UINT64 size, UINT64 page_size) {
 }
 
 //查找页表项
-UINT64 find_page_table_entry(UINT64 *pml4t, void *va, page_level_e page_level) {
-    UINT64 *pdptt, *pdt, *ptt;
-    UINT32 index;
-    pml4t = pa_to_va((UINT64) pml4t);
+uint64 find_page_table_entry(uint64 *pml4t, void *va, page_level_e page_level) {
+    uint64 *pdptt, *pdt, *ptt;
+    uint32 index;
+    pml4t = pa_to_va((uint64) pml4t);
     index = get_pml4e_index(va);
     if (page_level == pml4e_level || pml4t[index] == 0) return pml4t[index];
 
@@ -161,10 +161,10 @@ UINT64 find_page_table_entry(UINT64 *pml4t, void *va, page_level_e page_level) {
 }
 
 //修改页表项
-UINT32 update_page_table_entry(UINT64 *pml4t, void *va, page_level_e page_level, UINT64 entry) {
-    UINT64 *pdptt, *pdt, *ptt;
-    UINT32 index;
-    pml4t = pa_to_va((UINT64) pml4t);
+uint32 update_page_table_entry(uint64 *pml4t, void *va, page_level_e page_level, uint64 entry) {
+    uint64 *pdptt, *pdt, *ptt;
+    uint32 index;
+    pml4t = pa_to_va((uint64) pml4t);
     index = get_pml4e_index(va);
     if (page_level == pml4e_level) {
         pml4t[index] = entry;

@@ -140,7 +140,7 @@ static inline void rb_insert_fixup(rb_root_t *root, rb_node_t *node, augment_rot
  * link: 左右子树
  */
 static inline void rb_link_node(rb_node_t *node, rb_node_t *parent, rb_node_t **link) {
-    node->parent_color = (UINT64)parent;
+    node->parent_color = (uint64)parent;
     node->left = NULL;
     node->right = NULL;
     *link = node;

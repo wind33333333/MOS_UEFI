@@ -7,7 +7,7 @@
 #include "vmm.h"
 
 struct {
-    UINT32 class_code;
+    uint32 class_code;
     char *name;
 } pcie_classnames[] = {
     {UNCLASSIFIED_CLASS_CODE, "Unclassified Device"},
@@ -52,7 +52,7 @@ list_head_t pcie_dev_list;
 
 //查找pcie的类名
 static inline char *pcie_clasename_find(pcie_dev_t *pcie_dev) {
-    UINT32 class_code = get_pcie_classcode(pcie_dev);
+    uint32 class_code = get_pcie_classcode(pcie_dev);
     for (int i = 0; pcie_classnames[i].name != NULL; i++) {
         if (class_code == pcie_classnames[i].class_code) return pcie_classnames[i].name;
     }
@@ -61,7 +61,7 @@ static inline char *pcie_clasename_find(pcie_dev_t *pcie_dev) {
 /*
  * 创建pcie_dev结构，添加到链表
  */
-static inline void create_pcie_dev(pcie_config_space_t *pcie_config_space, UINT8 bus, UINT8 dev, UINT8 func) {
+static inline void create_pcie_dev(pcie_config_space_t *pcie_config_space, uint8 bus, uint8 dev, uint8 func) {
     pcie_dev_t *pcie_dev = kzalloc(sizeof(pcie_dev_t));
     pcie_dev->bus = bus;
     pcie_dev->dev = dev;
@@ -74,19 +74,19 @@ static inline void create_pcie_dev(pcie_config_space_t *pcie_config_space, UINT8
 /*
  * pcie配置空间地址计算
  */
-static inline pcie_config_space_t *ecam_bdf_to_pcie_config_space_addr(UINT64 ecam_base, UINT8 bus, UINT8 dev,
-                                                                      UINT8 func) {
+static inline pcie_config_space_t *ecam_bdf_to_pcie_config_space_addr(uint64 ecam_base, uint8 bus, uint8 dev,
+                                                                      uint8 func) {
     return (pcie_config_space_t *) (ecam_base + (bus << 20) + (dev << 15) + (func << 12));
 }
 
 /*
  * pcie总线枚举
  */
-static inline void pcie_enmu(UINT64 ecam_base, UINT8 bus) {
+static inline void pcie_enmu(uint64 ecam_base, uint8 bus) {
     // 遍历当前总线上的32个设备(0-31)
-    for (UINT8 dev = 0; dev < 32; dev++) {
+    for (uint8 dev = 0; dev < 32; dev++) {
         // 遍历设备上的8个功能(0-7)
-        for (UINT8 func = 0; func < 8; func++) {
+        for (uint8 func = 0; func < 8; func++) {
             // 将BDF(总线-设备-功能)转换为配置空间地址
             pcie_config_space_t *pcie_config_space = ecam_bdf_to_pcie_config_space_addr(ecam_base, bus, dev, func);
             // 检查设备是否存在 (无效设备的vendor_id=0xFFFF)
@@ -112,7 +112,7 @@ static inline void pcie_enmu(UINT64 ecam_base, UINT8 bus) {
  * 返回一个pcie_dev_t指针
  */
 list_head_t *next_pcie_dev = &pcie_dev_list;
-pcie_dev_t *pcie_dev_find(UINT32 class_code) {
+pcie_dev_t *pcie_dev_find(uint32 class_code) {
     if (next_pcie_dev == &pcie_dev_list) next_pcie_dev = pcie_dev_list.next;
     while (next_pcie_dev != &pcie_dev_list) {
         pcie_dev_t *pcie_dev = CONTAINER_OF(next_pcie_dev,pcie_dev_t,list);
@@ -129,9 +129,9 @@ cap_t *pcie_cap_find(pcie_dev_t *pcie_dev, cap_id_e cap_id) {
     //检测是否支持能力链表,不支持返回空指针
     if (!(pcie_dev->pcie_config_space->status & 0x10)) return NULL;
     //计算能力链表起始地址
-    UINT8 next_ptr = pcie_dev->pcie_config_space->type0.cap_ptr;
+    uint8 next_ptr = pcie_dev->pcie_config_space->type0.cap_ptr;
     while (next_ptr){
-        cap_t *cap = (cap_t*)((UINT64)pcie_dev->pcie_config_space + next_ptr);
+        cap_t *cap = (cap_t*)((uint64)pcie_dev->pcie_config_space + next_ptr);
         if (cap->cap_id == cap_id) return cap;
         next_ptr = cap->next_ptr;
     }
@@ -140,7 +140,7 @@ cap_t *pcie_cap_find(pcie_dev_t *pcie_dev, cap_id_e cap_id) {
 
 //判断bar 64位或32位
 //0等于32位，4等于32位
-static inline UINT64 is_bar64(UINT64 bar_data) {
+static inline uint64 is_bar64(uint64 bar_data) {
     return bar_data & 0x6;
 }
 
@@ -148,19 +148,19 @@ static inline UINT64 is_bar64(UINT64 bar_data) {
 //配置bar寄存器
 //参数bar寄存器号
 //返回bar虚拟地址
-void pcie_bar_set(pcie_dev_t *pcie_dev,UINT8 bir) {
+void pcie_bar_set(pcie_dev_t *pcie_dev,uint8 bir) {
     if (bir > 5) return;
-    UINT32 *bar = &pcie_dev->pcie_config_space->type0.bar[bir];
-    UINT64 addr = *bar;
+    uint32 *bar = &pcie_dev->pcie_config_space->type0.bar[bir];
+    uint64 addr = *bar;
     *bar = 0xFFFFFFFF;
-    UINT64 size = *bar;
-    *bar = (UINT32)addr;
+    uint64 size = *bar;
+    *bar = (uint32)addr;
     if (is_bar64(addr)) {
         bar++;
-        UINT64 addr_h = *bar;
+        uint64 addr_h = *bar;
         *bar = 0xFFFFFFFF;
-        UINT64 size_h = *bar;
-        *bar = (UINT32)addr_h;
+        uint64 size_h = *bar;
+        *bar = (uint32)addr_h;
         size |= size_h << 32;
         addr |= addr_h << 32;
     }else {
@@ -196,7 +196,7 @@ void pcie_disable_msi_intrs(pcie_dev_t *pcie_dev) {
 //获取msi-x终端数量
 //参数pcie_config_space_t
 //数量
-UINT32 get_msi_x_irq_number(pcie_dev_t *pcie_dev) {
+uint32 get_msi_x_irq_number(pcie_dev_t *pcie_dev) {
     cap_t *cap= pcie_cap_find(pcie_dev,msi_x_e);
     return (cap->msi_x.msg_control & 0x7FF)+1;
 }
@@ -206,16 +206,16 @@ UINT32 get_msi_x_irq_number(pcie_dev_t *pcie_dev) {
  *参数pcie_config_space_t
  *数量
  */
-static inline UINT8 get_msi_x_bir(cap_t *cap) {
-    UINT32 bir = cap->msi_x.table_offset;
+static inline uint8 get_msi_x_bir(cap_t *cap) {
+    uint32 bir = cap->msi_x.table_offset;
     return bir & 0x7;
 }
 
 /*
  * 获取msi-x表相对bar偏移量
  */
-static inline UINT32 get_msi_x_offset(cap_t *cap) {
-    UINT32 table_offset = cap->msi_x.table_offset;
+static inline uint32 get_msi_x_offset(cap_t *cap) {
+    uint32 table_offset = cap->msi_x.table_offset;
     return table_offset & ~0x7;
 }
 
@@ -224,32 +224,32 @@ static inline UINT32 get_msi_x_offset(cap_t *cap) {
  *参数pcie_config_space_t
  *数量
  */
-static inline UINT8 get_pda_bir(cap_t *cap) {
-    UINT32 bir = cap->msi_x.pba_offset;
+static inline uint8 get_pda_bir(cap_t *cap) {
+    uint32 bir = cap->msi_x.pba_offset;
     return bir & 0x7;
 }
 
 /*
  * 获取pda表相对bar偏移量
  */
-static inline UINT32 get_pda_offset(cap_t *cap) {
-    UINT32 table_offset = cap->msi_x.pba_offset;
+static inline uint32 get_pda_offset(cap_t *cap) {
+    uint32 table_offset = cap->msi_x.pba_offset;
     return table_offset & ~0x7;
 }
 
 void pcie_msi_intrpt_set(pcie_dev_t *pcie_dev) {
     cap_t *cap = pcie_cap_find(pcie_dev,msi_x_e);
-    UINT64 msg_addr = rdmsr(IA32_APIC_BASE_MSR) & ~0xFFFUL;
+    uint64 msg_addr = rdmsr(IA32_APIC_BASE_MSR) & ~0xFFFUL;
     //优先启用msi-x中断
     if (cap) {
         //初始化msi-x中断表
         pcie_dev->msi_x_flags = 1;
         pcie_dev->msi_x.msg_control = &cap->msi_x.msg_control;
         pcie_dev->msi_x.msi_x_table = (msi_x_table_t*)(pcie_dev->bar[get_msi_x_bir(cap)] + get_msi_x_offset(cap));
-        pcie_dev->msi_x.pba_table = (UINT64*)(pcie_dev->bar[get_pda_bir(cap)] + get_pda_offset(cap));
+        pcie_dev->msi_x.pba_table = (uint64*)(pcie_dev->bar[get_pda_bir(cap)] + get_pda_offset(cap));
         //设置中断
-        pcie_dev->msi_x.msi_x_table[0].msg_addr_lo = (UINT32)msg_addr;
-        pcie_dev->msi_x.msi_x_table[0].msg_addr_hi = (UINT32)(msg_addr >> 32);
+        pcie_dev->msi_x.msi_x_table[0].msg_addr_lo = (uint32)msg_addr;
+        pcie_dev->msi_x.msi_x_table[0].msg_addr_hi = (uint32)(msg_addr >> 32);
         pcie_dev->msi_x.msi_x_table[0].msg_data = 0x40;
         pcie_dev->msi_x.msi_x_table[0].vector_control = 0;
 
@@ -261,8 +261,8 @@ void pcie_msi_intrpt_set(pcie_dev_t *pcie_dev) {
         pcie_dev->msi.msg_addr_lo = &cap->msi.msg_addr_lo;
         pcie_dev->msi.msg_addr_hi = &cap->msi.msg_addr_hi;
         //设置中断
-        *pcie_dev->msi.msg_addr_lo = (UINT32)msg_addr;
-        *pcie_dev->msi.msg_addr_hi = (UINT32)msg_addr >> 32;
+        *pcie_dev->msi.msg_addr_lo = (uint32)msg_addr;
+        *pcie_dev->msi.msg_addr_hi = (uint32)msg_addr >> 32;
         *pcie_dev->msi.msg_data = 0x40;
     }
     pcie_disable_msi_intrs(pcie_dev);
@@ -275,10 +275,10 @@ INIT_TEXT void pcie_init(void) {
     //查找mcfg表
     mcfg_t *mcfg = acpi_get_table('GFCM');
     mcfg_entry_t *mcfg_entry = &mcfg->entry;
-    UINT32 mcfg_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
+    uint32 mcfg_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
                             mcfg_entry_t);
     //扫描pcie设备，初始化并添加到链表
-    for (UINT32 i = 0; i < mcfg_count; i++) {
+    for (uint32 i = 0; i < mcfg_count; i++) {
         color_printk(GREEN,BLACK, "ECAM base:%#lX Segment:%d StartBus:%d EndBus:%d\n",
                      mcfg_entry[i].base_address, mcfg_entry[i].pci_segment, mcfg_entry[i].start_bus,
                      mcfg_entry[i].end_bus);

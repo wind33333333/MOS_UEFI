@@ -11,10 +11,10 @@ INIT_TEXT void init_ioapic(void) {
     //从madt表中获取关键数据
     madt_t *madt = acpi_get_table('CIPA');
     madt_header_t *madt_entry = (madt_header_t *) &madt->entry;
-    UINT64 madt_endaddr = (UINT64) madt + madt->acpi_header.length;
-    UINT32 apic_id_index = 0;
+    uint64 madt_endaddr = (uint64) madt + madt->acpi_header.length;
+    uint32 apic_id_index = 0;
     apic_id_table = kzalloc(4096);
-    while ((UINT64) madt_entry < madt_endaddr) {
+    while ((uint64) madt_entry < madt_endaddr) {
         switch (madt_entry->type) {
             case 0: //APIC ID
                 apic_entry_t *apic_entry = (apic_entry_t *) madt_entry;
@@ -29,8 +29,8 @@ INIT_TEXT void init_ioapic(void) {
             case 1: //ioapic
                 ioapic_entry_t *ioapic_entry = (ioapic_entry_t *) madt_entry;
                 ioapic_address.ioregsel = pa_to_va(ioapic_entry->ioapic_address);
-                ioapic_address.iowin = (UINT32 *) ((UINT64) ioapic_address.ioregsel + 0x10);
-                ioapic_address.eoi = (UINT32 *) ((UINT64) ioapic_address.ioregsel + 0x40);
+                ioapic_address.iowin = (uint32 *) ((uint64) ioapic_address.ioregsel + 0x10);
+                ioapic_address.eoi = (uint32 *) ((uint64) ioapic_address.ioregsel + 0x40);
                 color_printk(GREEN, BLACK, "IOAPIC Addr:%#lX\n", ioapic_entry->ioapic_address);
                 break;
             case 2: //中断重定向
@@ -72,7 +72,7 @@ INIT_TEXT void init_ioapic(void) {
                              mult_proc_wakeup_entry->mailbox_address);
                 break;
         }
-        madt_entry = (madt_header_t *) ((UINT64) madt_entry + madt_entry->length);
+        madt_entry = (madt_header_t *) ((uint64) madt_entry + madt_entry->length);
     }
 
     //禁用8259A

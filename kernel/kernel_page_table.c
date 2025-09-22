@@ -4,7 +4,7 @@
 #include "printk.h"
 #include "vmm.h"
 
-UINT64 *kpml4t_ptr; //正式内核页表
+uint64 *kpml4t_ptr; //正式内核页表
 
 INIT_TEXT void init_kpage_table(void) {
     kpml4t_ptr = memblock_alloc(PAGE_4K_SIZE, PAGE_4K_SIZE);
@@ -16,13 +16,13 @@ INIT_TEXT void init_kpage_table(void) {
                         memblock.memory.region[memblock.memory.count - 1].base + memblock.memory.region[
                             memblock.memory.count - 1].size,PAGE_ROOT_RW_2M1G,PAGE_1G_SIZE);
     //初始化vmemmap区为2M页表,每个page结构64字节，一个page等于4KB,一个2M页刚好等于128MB物理内存。
-    for (UINT32 i = 0; i <= phy_vmemmap.count; i++) {
-        UINT64 base = align_down(phy_vmemmap.region[i].base, 0x8000000);
-        UINT64 size = align_up(phy_vmemmap.region[i].size, 0x8000000);
-        UINT64 vmemmap_va = (UINT64)pa_to_page(base);
-        UINT32 count = size >> 27;
+    for (uint32 i = 0; i <= phy_vmemmap.count; i++) {
+        uint64 base = align_down(phy_vmemmap.region[i].base, 0x8000000);
+        uint64 size = align_up(phy_vmemmap.region[i].size, 0x8000000);
+        uint64 vmemmap_va = (uint64)pa_to_page(base);
+        uint32 count = size >> 27;
         while (count--) {
-            UINT64 pa = memblock_alloc(PAGE_2M_SIZE,PAGE_2M_SIZE);
+            uint64 pa = memblock_alloc(PAGE_2M_SIZE,PAGE_2M_SIZE);
             mem_set((void *) pa, 0, PAGE_2M_SIZE);
             memblock_mmap(kpml4t_ptr, pa, vmemmap_va,PAGE_ROOT_RW_2M1G, PAGE_2M_SIZE);
             vmemmap_va += PAGE_2M_SIZE;
@@ -38,5 +38,5 @@ INIT_TEXT void init_kpage_table(void) {
     memblock_mmap_range(kpml4t_ptr, _start_data - KERNEL_OFFSET, _start_data, _end_stack - _start_data, PAGE_ROOT_RW_4K,
                         PAGE_4K_SIZE);
     //设置正式内核页表
-    set_cr3((UINT64) kpml4t_ptr);
+    set_cr3((uint64) kpml4t_ptr);
 }

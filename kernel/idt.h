@@ -15,8 +15,8 @@
 #define SEL_CODE64      (0x8UL << 16)
 
 typedef struct{
-    UINT16 limit;
-    UINT64 *base;
+    uint16 limit;
+    uint64 *base;
 }__attribute__((packed)) idt_ptr_t;
 
 extern idt_ptr_t idt_ptr;

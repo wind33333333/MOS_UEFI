@@ -5,8 +5,8 @@
 void    init_gdt(void);
 
 typedef struct{
-    UINT16 limit;
-    UINT64 *base;
+    uint16 limit;
+    uint64 *base;
 } __attribute__((packed)) gdt_ptr_t;
 
 extern gdt_ptr_t gdt_ptr;

@@ -13,21 +13,21 @@ void init_tss(void);
 #pragma pack(push,1)
 
 typedef struct {
-    UINT32   reserved0;
-    UINT64   rsp0;
-    UINT64   rsp1;
-    UINT64   rsp2;
-    UINT64   reserved1;
-    UINT64   ist1;
-    UINT64   ist2;
-    UINT64   ist3;
-    UINT64   ist4;
-    UINT64   ist5;
-    UINT64   ist6;
-    UINT64   ist7;
-    UINT64   reserved2;
-    UINT16   reserved3;
-    UINT16   iomap_base;
+    uint32   reserved0;
+    uint64   rsp0;
+    uint64   rsp1;
+    uint64   rsp2;
+    uint64   reserved1;
+    uint64   ist1;
+    uint64   ist2;
+    uint64   ist3;
+    uint64   ist4;
+    uint64   ist5;
+    uint64   ist6;
+    uint64   ist7;
+    uint64   reserved2;
+    uint16   reserved3;
+    uint16   iomap_base;
 } tss_t;
 
 #pragma pack(pop)

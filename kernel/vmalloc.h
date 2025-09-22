@@ -30,20 +30,20 @@
 
 
 typedef struct {
-    UINT64           va_start;  // 虚拟地址起始
-    UINT64           va_end;    // 虚拟地址结束（va_start + size）
+    uint64           va_start;  // 虚拟地址起始
+    uint64           va_end;    // 虚拟地址结束（va_start + size）
     rb_node_t        rb_node;   // 红黑树节点，按地址排序
     list_head_t      list;      // 链表节点，连接所有 vmap_area
     union {
-        UINT64 subtree_max_size; //子树最大size
+        uint64 subtree_max_size; //子树最大size
     };
-    UINT64           flags;               //状态bit0 0为空闲，1为忙碌
+    uint64           flags;               //状态bit0 0为空闲，1为忙碌
 }vmap_area_t;
 
 //初始化vmalloc
 void init_vmalloc(void);
-void *vmalloc(UINT64 size);
+void *vmalloc(uint64 size);
 void vfree(void *ptr);
-void *iomap (UINT64 pa,UINT64 size,UINT64 page_size,UINT64 attr);
-INT32 uniomap (void *ptr,UINT64 page_size);
+void *iomap (uint64 pa,uint64 size,uint64 page_size,uint64 attr);
+int32 uniomap (void *ptr,uint64 page_size);
 

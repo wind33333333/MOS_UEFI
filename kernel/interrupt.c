@@ -6,7 +6,7 @@
 void do_apic_timer(void) {
     color_printk(RED,BLACK,"apic timer interrupt\n");
 
-//    UINT64 time = 0xF000000;
+//    uint64 time = 0xF000000;
 //    APIC_SET_TSCDEADLINE(time);
     EOI();
     return;
@@ -42,90 +42,90 @@ void do_ignore(void) {
 }
 
 
-void do_divide_error(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_divide_error(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_divide_error(0),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
     while (1);
 }
 
 
-void do_debug(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_debug(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_debug(1),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n", error_code,
                  rsp, *p);
     while (1);
 }
 
 
-void do_nmi(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_nmi(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_nmi(2),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n", error_code,
                  rsp, *p);
     while (1);
 }
 
 
-void do_int3(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_int3(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_int3(3),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n", error_code,
                  rsp, *p);
     while (1);
 }
 
 
-void do_overflow(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_overflow(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_overflow(4),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
     while (1);
 }
 
 
-void do_bounds(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_bounds(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_bounds(5),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
     while (1);
 }
 
 
-void do_undefined_opcode(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_undefined_opcode(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_undefined_opcode(6),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
     while (1);
 }
 
 
-void do_dev_not_available(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_dev_not_available(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_dev_not_available(7),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
     while (1);
 }
 
 
-void do_double_fault(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_double_fault(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_double_fault(8),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
     while (1);
 }
 
 
-void do_coprocessor_segment_overrun(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_coprocessor_segment_overrun(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK,
                  "do_coprocessor_segment_overrun(9),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
@@ -133,9 +133,9 @@ void do_coprocessor_segment_overrun(UINT64 rsp, UINT64 error_code) {
 }
 
 
-void do_invalid_TSS(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_invalid_TSS(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_invalid_TSS(10),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
 
@@ -160,9 +160,9 @@ void do_invalid_TSS(UINT64 rsp, UINT64 error_code) {
 }
 
 
-void do_segment_not_present(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_segment_not_present(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK,
                  "do_segment_not_present(11),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
@@ -188,9 +188,9 @@ void do_segment_not_present(UINT64 rsp, UINT64 error_code) {
 }
 
 
-void do_stack_segment_fault(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_stack_segment_fault(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK,
                  "do_stack_segment_fault(12),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
@@ -216,9 +216,9 @@ void do_stack_segment_fault(UINT64 rsp, UINT64 error_code) {
 }
 
 
-void do_general_protection(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_general_protection(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK,
                  "do_general_protection(13),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
@@ -244,13 +244,13 @@ void do_general_protection(UINT64 rsp, UINT64 error_code) {
 }
 
 
-void do_page_fault(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    UINT64 cr2 = 0;
+void do_page_fault(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    uint64 cr2 = 0;
 
     __asm__ __volatile__("movq	%%cr2,	%0":"=r"(cr2)::"memory");
 
-    p = (UINT64 *) (rsp + 0x98);
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_page_fault(14),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
 
@@ -281,45 +281,45 @@ void do_page_fault(UINT64 rsp, UINT64 error_code) {
 }
 
 
-void do_x87_FPU_error(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_x87_FPU_error(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_x87_FPU_error(16),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
     while (1);
 }
 
 
-void do_alignment_check(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_alignment_check(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_alignment_check(17),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
     while (1);
 }
 
 
-void do_machine_check(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_machine_check(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_machine_check(18),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
     while (1);
 }
 
 
-void do_SIMD_exception(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_SIMD_exception(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK, "do_SIMD_exception(19),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);
     while (1);
 }
 
 
-void do_virtualization_exception(UINT64 rsp, UINT64 error_code) {
-    UINT64 *p = NULL;
-    p = (UINT64 *) (rsp + 0x98);
+void do_virtualization_exception(uint64 rsp, uint64 error_code) {
+    uint64 *p = NULL;
+    p = (uint64 *) (rsp + 0x98);
     color_printk(RED, BLACK,
                  "do_virtualization_exception(20),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  error_code, rsp, *p);

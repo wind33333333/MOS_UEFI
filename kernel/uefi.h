@@ -4,10 +4,10 @@
 #include "acpi.h"
 
 typedef void VOID;
-typedef UINT64 UINTN;
-typedef UINT64 EFI_PHYSICAL_ADDRESS;
-typedef UINT64 EFI_VIRTUAL_ADDRESS;
-typedef UINT64 EFI_STATUS;
+typedef uint64 UINTN;
+typedef uint64 EFI_PHYSICAL_ADDRESS;
+typedef uint64 EFI_VIRTUAL_ADDRESS;
+typedef uint64 EFI_STATUS;
 typedef VOID *EFI_HANDLE;
 
 /* UEFI 内存类型定义 (UEFI Specification 2.9) */
@@ -76,17 +76,17 @@ typedef enum {
 } EFI_MEMORY_TYPE;
 
 typedef struct {
-  UINT16    Year;
-  UINT8     Month;
-  UINT8     Day;
-  UINT8     Hour; 
-  UINT8     Minute;
-  UINT8     Second;
-  UINT8     Pad1;
-  UINT32    Nanosecond;
-  INT16     TimeZone;
-  UINT8     Daylight;
-  UINT8     Pad2;
+  uint16    Year;
+  uint8     Month;
+  uint8     Day;
+  uint8     Hour;
+  uint8     Minute;
+  uint8     Second;
+  uint8     Pad1;
+  uint32    Nanosecond;
+  int16     TimeZone;
+  uint8     Daylight;
+  uint8     Pad2;
 } EFI_TIME;
 
 typedef struct {
@@ -96,14 +96,14 @@ typedef struct {
   /// value would be 1 Hz, or 1, to indicate that the device only reports
   /// the time to the resolution of 1 second.
   ///
-  UINT32     Resolution;
+  uint32     Resolution;
   ///
   /// Provides the timekeeping accuracy of the real-time clock in an
   /// error rate of 1E-6 parts per million. For a clock with an accuracy
   /// of 50 parts per million, the value in this field would be
   /// 50,000,000.
   ///
-  UINT32     Accuracy;
+  uint32     Accuracy;
   ///
   /// A TRUE indicates that a time set operation clears the device's
   /// time below the Resolution reporting level. A FALSE
@@ -111,7 +111,7 @@ typedef struct {
   /// device is not cleared when the time is set. Normal PC-AT CMOS
   /// RTC devices set this value to FALSE.
   ///
-  BOOLEAN    SetsToZero;
+  boolean    SetsToZero;
 } EFI_TIME_CAPABILITIES;
 
 
@@ -124,13 +124,13 @@ EFI_STATUS
 
 typedef struct
 {
-    UINT32  Type;
-    UINT32  ReservedA;
+    uint32  Type;
+    uint32  ReservedA;
     EFI_PHYSICAL_ADDRESS PhysicalStart;
     EFI_VIRTUAL_ADDRESS  VirtualStart;
-    UINT64  NumberOfPages;
-    UINT64  Attribute;
-    UINT64  ReservedB;
+    uint64  NumberOfPages;
+    uint64  Attribute;
+    uint64  ReservedB;
 } EFI_MEMORY_DESCRIPTOR;
 
 ///
@@ -142,27 +142,27 @@ typedef struct {
   /// Unique signatures have been generated for the EFI System Table,
   /// the EFI Boot Services Table, and the EFI Runtime Services Table.
   ///
-  UINT64    Signature;
+  uint64    Signature;
   ///
   /// The revision of the EFI Specification to which this table
   /// conforms. The upper 16 bits of this field contain the major
   /// revision value, and the lower 16 bits contain the minor revision
   /// value. The minor revision values are limited to the range of 00..99.
   ///
-  UINT32    Revision;
+  uint32    Revision;
   ///
   /// The size, in bytes, of the entire table including the EFI_TABLE_HEADER.
   ///
-  UINT32    HeaderSize;
+  uint32    HeaderSize;
   ///
   /// The 32-bit CRC for the entire table. This value is computed by
   /// setting this field to 0, and computing the 32-bit CRC for HeaderSize bytes.
   ///
-  UINT32    CRC32;
+  uint32    CRC32;
   ///
   /// Reserved field that must be set to 0.
   ///
-  UINT32    Reserved;
+  uint32    Reserved;
 } EFI_TABLE_HEADER;
 
 
@@ -172,10 +172,10 @@ typedef struct {
 ///
 
 typedef struct {
-  UINT32    Data1;
-  UINT16    Data2;
-  UINT16    Data3;
-  UINT8     Data4[8];
+  uint32    Data1;
+  uint16    Data2;
+  uint16    Data3;
+  uint8     Data4[8];
 } GUID;
 
 typedef GUID EFI_GUID;
@@ -242,8 +242,8 @@ EFI_STATUS
 typedef
 EFI_STATUS
 (EFIAPI *EFI_GET_WAKEUP_TIME)(
-  OUT BOOLEAN                     *Enabled,
-  OUT BOOLEAN                     *Pending,
+  OUT boolean                     *Enabled,
+  OUT boolean                     *Pending,
   OUT EFI_TIME                    *Time
   );
 
@@ -266,7 +266,7 @@ EFI_STATUS
 typedef
 EFI_STATUS
 (EFIAPI *EFI_SET_WAKEUP_TIME)(
-  IN  BOOLEAN                      Enable,
+  IN  boolean                      Enable,
   IN  EFI_TIME                     *Time   OPTIONAL
   );
 
@@ -297,7 +297,7 @@ EFI_STATUS
 (EFIAPI *EFI_SET_VIRTUAL_ADDRESS_MAP)(
   IN  UINTN                        MemoryMapSize,
   IN  UINTN                        DescriptorSize,
-  IN  UINT32                       DescriptorVersion,
+  IN  uint32                       DescriptorVersion,
   IN  EFI_MEMORY_DESCRIPTOR        *VirtualMap
   );
 
@@ -362,9 +362,9 @@ EFI_STATUS
 typedef
 EFI_STATUS
 (EFIAPI *EFI_GET_VARIABLE)(
-  IN     CHAR16                      *VariableName,
+  IN     char16                      *VariableName,
   IN     EFI_GUID                    *VendorGuid,
-  OUT    UINT32                      *Attributes     OPTIONAL,
+  OUT    uint32                      *Attributes     OPTIONAL,
   IN OUT UINTN                       *DataSize,
   OUT    VOID                        *Data           OPTIONAL
   );
@@ -403,7 +403,7 @@ typedef
 EFI_STATUS
 (EFIAPI *EFI_GET_NEXT_VARIABLE_NAME)(
   IN OUT UINTN                    *VariableNameSize,
-  IN OUT CHAR16                   *VariableName,
+  IN OUT char16                   *VariableName,
   IN OUT EFI_GUID                 *VendorGuid
   );
 
@@ -447,9 +447,9 @@ EFI_STATUS
 typedef
 EFI_STATUS
 (EFIAPI *EFI_SET_VARIABLE)(
-  IN  CHAR16                       *VariableName,
+  IN  char16                       *VariableName,
   IN  EFI_GUID                     *VendorGuid,
-  IN  UINT32                       Attributes,
+  IN  uint32                       Attributes,
   IN  UINTN                        DataSize,
   IN  VOID                         *Data
   );
@@ -471,7 +471,7 @@ EFI_STATUS
 typedef
 EFI_STATUS
 (EFIAPI *EFI_GET_NEXT_HIGH_MONO_COUNT)(
-  OUT UINT32                  *HighCount
+  OUT uint32                  *HighCount
   );
 
 
@@ -546,17 +546,17 @@ typedef struct {
   /// the EFI_CAPSULE_HEADER since CapsuleGuid may imply
   /// extended header entries
   ///
-  UINT32      HeaderSize;
+  uint32      HeaderSize;
   ///
   /// Bit-mapped list describing the capsule attributes. The Flag values
   /// of 0x0000 - 0xFFFF are defined by CapsuleGuid. Flag values
   /// of 0x10000 - 0xFFFFFFFF are defined by this specification
   ///
-  UINT32      Flags;
+  uint32      Flags;
   ///
   /// Size in bytes of the capsule (including capsule header).
   ///
-  UINT32      CapsuleImageSize;
+  uint32      CapsuleImageSize;
 } EFI_CAPSULE_HEADER;
 
 typedef
@@ -572,17 +572,17 @@ EFI_STATUS
 (EFIAPI *EFI_QUERY_CAPSULE_CAPABILITIES)(
   IN  EFI_CAPSULE_HEADER     **CapsuleHeaderArray,
   IN  UINTN                  CapsuleCount,
-  OUT UINT64                 *MaximumCapsuleSize,
+  OUT uint64                 *MaximumCapsuleSize,
   OUT EFI_RESET_TYPE         *ResetType
   );
 
 typedef
 EFI_STATUS
 (EFIAPI *EFI_QUERY_VARIABLE_INFO)(
-  IN  UINT32            Attributes,
-  OUT UINT64            *MaximumVariableStorageSize,
-  OUT UINT64            *RemainingVariableStorageSize,
-  OUT UINT64            *MaximumVariableSize
+  IN  uint32            Attributes,
+  OUT uint64            *MaximumVariableStorageSize,
+  OUT uint64            *RemainingVariableStorageSize,
+  OUT uint64            *MaximumVariableSize
   );
 ///
 /// EFI Runtime Services Table.
@@ -636,17 +636,17 @@ typedef struct {
 //region BootInfo结构
 typedef struct{
     /*显卡信息*/
-    UINT64  frame_buffer_base;
-    UINT32  horizontal_resolution;
-    UINT32  vertical_resolution;
-    UINT32  pixels_per_scan_line;
-    UINT64  frame_buffer_size;
+    uint64  frame_buffer_base;
+    uint32  horizontal_resolution;
+    uint32  vertical_resolution;
+    uint32  pixels_per_scan_line;
+    uint64  frame_buffer_size;
 
     /*内存图*/
     EFI_MEMORY_DESCRIPTOR* mem_map;
-    UINT64 mem_descriptor_size;
-    UINT64 mem_map_size;
-    UINT32 mem_descriptor_version;
+    uint64 mem_descriptor_size;
+    uint64 mem_map_size;
+    uint32 mem_descriptor_version;
 
     /*RSDP*/
     rsdp_t* rsdp;
@@ -658,7 +658,7 @@ typedef struct{
 
 typedef struct {
     EFI_MEMORY_DESCRIPTOR mem_map[10];
-    UINT32 conut;
+    uint32 conut;
 }efi_runtime_mem_t;
 
 extern  boot_info_t* boot_info;

@@ -2,7 +2,7 @@
 #include "cpu.h"
 
 INIT_TEXT void init_apic(void) {
-    UINT64 value;
+    uint64 value;
 
     //region IA32_APIC_BASE_MSR (MSR 0x1B)
     //X2APIC（bit 10）：作用：如果该位被设置为 1，处理器启用 X2APIC 模式。
@@ -38,15 +38,15 @@ INIT_TEXT void init_apic(void) {
     wrmsr(APIC_LVT_ERROR_MSR,0x10026);
 }
 
-void enable_apic_time (UINT64 time,UINT32 model,UINT32 ivt){
+void enable_apic_time (uint64 time,uint32 model,uint32 ivt){
 
-    UINT32 model_ivt = model | ivt;
+    uint32 model_ivt = model | ivt;
     //定时器LVT寄存器 bit0-7中断向量号,bit16屏蔽标志 0未屏蔽 1屏蔽,bit17 18 00/一次计数 01/周期计数 10/TSC-Deadline
     wrmsr(APIC_LVT_TIMER_MSR,model | ivt);
 
     if(model == APIC_TSC_DEADLINE){
-        UINT32 tmp;
-        UINT64 timestamp;
+        uint32 tmp;
+        uint64 timestamp;
         rdtscp(&tmp,&timestamp);
         timestamp += time;
         wrmsr(IA32_TSC_DEADLINE,timestamp);

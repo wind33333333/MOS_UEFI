@@ -4,4 +4,4 @@
 
 void init_kpage_table(void);
 
-extern UINT64 *kpml4t_ptr;
+extern uint64 *kpml4t_ptr;

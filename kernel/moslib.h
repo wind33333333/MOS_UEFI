@@ -4,17 +4,17 @@
 #define INIT_DATA __attribute__((__section__(".init_data")))
 #define STACK_SECTION __attribute__((__section__(".stack")))
 
-typedef unsigned char UINT8;
-typedef UINT8 BOOLEAN;
-typedef UINT8 CHAR8;
-typedef unsigned short UINT16;
-typedef UINT16 CHAR16;
-typedef unsigned int UINT32;
-typedef unsigned long long  UINT64;
-typedef char INT8;
-typedef short INT16;
-typedef int INT32;
-typedef long long INT64;
+typedef unsigned char uint8;
+typedef uint8 boolean;
+typedef uint8 char8;
+typedef unsigned short uint16;
+typedef uint16 char16;
+typedef unsigned int uint32;
+typedef unsigned long long  uint64;
+typedef char int8;
+typedef short int16;
+typedef int int32;
+typedef long long int64;
 
 extern char _start[];
 extern char _start_init_text[];
@@ -30,7 +30,7 @@ extern char _end_bss[];
 extern char _start_stack[];
 extern char _end_stack[];
 extern char _end[];
-extern UINT64 tmp_pml4t[];
+extern uint64 tmp_pml4t[];
 
 #define BOCHS_DG()    __asm__ __volatile__ ("xchg %%bx,%%bx \n\t":: :);
 
@@ -39,9 +39,9 @@ extern UINT64 tmp_pml4t[];
 #define TRUE 1
 
 //取通过结构成员偏移量
-#define OFFSETOF(type, member) ((UINT8*)&((type*)0)->member)
+#define OFFSETOF(type, member) ((uint8*)&((type*)0)->member)
 //通过成员计算结构起始地址
-#define CONTAINER_OF(ptr,type,member) (type*)((UINT8*)ptr-OFFSETOF(type,member))
+#define CONTAINER_OF(ptr,type,member) (type*)((uint8*)ptr-OFFSETOF(type,member))
 
 // 开启中断 (STI)
 static inline void sti(void) {
@@ -84,7 +84,7 @@ static inline void lfence(void) {
 }
 
 //设置bit位
-static inline bts(UINT64 *addr,UINT64 nr) {
+static inline bts(uint64 *addr,uint64 nr) {
     __asm__ __volatile__(
         "lock \n\t"
         "btsq   %1,%0 \n\t"
@@ -95,7 +95,7 @@ static inline bts(UINT64 *addr,UINT64 nr) {
 }
 
 //清除bit位
-static inline btr(UINT64 *addr,UINT64 nr) {
+static inline btr(uint64 *addr,uint64 nr) {
     __asm__ __volatile__(
         "lock \n\t"
         "btrq   %1,%0 \n\t"
@@ -106,8 +106,8 @@ static inline btr(UINT64 *addr,UINT64 nr) {
 }
 
 //位测试
-static inline BOOLEAN bt(UINT64 var,UINT64 nr) {
-    BOOLEAN ret;
+static inline boolean bt(uint64 var,uint64 nr) {
+    boolean ret;
     __asm__ __volatile__(
         "btq   %2,%1 \n\t"
         "setc  %0 \n\t"
@@ -119,8 +119,8 @@ static inline BOOLEAN bt(UINT64 var,UINT64 nr) {
 }
 
 //位扫描最低位1
-static inline UINT32 bsf(UINT64 var) {
-    UINT32 ret;
+static inline uint32 bsf(uint64 var) {
+    uint32 ret;
     __asm__ __volatile__(
         "bsf    %1,%0   \n\t"
         :"=r"(ret)
@@ -131,8 +131,8 @@ static inline UINT32 bsf(UINT64 var) {
 }
 
 //位扫描最高位1
-static inline UINT32 bsr(UINT64 var) {
-    UINT32 ret;
+static inline uint32 bsr(uint64 var) {
+    uint32 ret;
     __asm__ __volatile__(
         "bsr    %1,%0   \n\t"
         :"=r"(ret)
@@ -143,7 +143,7 @@ static inline UINT32 bsr(UINT64 var) {
 }
 
 // 自旋锁
-static inline void spin_lock(volatile UINT8 *lock_var) {
+static inline void spin_lock(volatile uint8 *lock_var) {
     __asm__ __volatile__ (
             "mov        $1,%%bl         \n\t"  // 将值1加载到BL寄存器中
             "1:                         \n\t"
@@ -162,7 +162,7 @@ static inline void invlpg(void *vir_addr) {
     __asm__ __volatile__("invlpg (%0) \n\t" : : "r"(vir_addr) : "memory");
 }
 
-static inline void lgdt(void *gdt_ptr, UINT16 code64_sel, UINT16 data64_sel) {
+static inline void lgdt(void *gdt_ptr, uint16 code64_sel, uint16 data64_sel) {
     __asm__ __volatile__(
             "lgdtq       (%0)                \n\t"  // 加载 GDT 描述符地址
             "pushq       %q1                 \n\t"  // 压入代码段选择器
@@ -190,7 +190,7 @@ static inline void lidt(void *idt_ptr) {
             );
 }
 
-static inline void ltr(UINT16 tss_sel) {
+static inline void ltr(uint16 tss_sel) {
     __asm__ __volatile__(
             "ltr    %w0 \n\t"
             :
@@ -199,7 +199,7 @@ static inline void ltr(UINT16 tss_sel) {
             );
 }
 
-static inline void rdtscp(UINT32 *apic_id,UINT64 *timestamp) {
+static inline void rdtscp(uint32 *apic_id,uint64 *timestamp) {
     __asm__ __volatile__(
             "rdtscp                 \n\t"  // 执行 rdtscp 指令
             "shlq    $32, %%rdx     \n\t"  // 将高 32 位左移 32 位
@@ -210,8 +210,8 @@ static inline void rdtscp(UINT32 *apic_id,UINT64 *timestamp) {
             );
 }
 
-static inline UINT64 get_cr0(void) {
-    UINT64 cr0;
+static inline uint64 get_cr0(void) {
+    uint64 cr0;
     __asm__ __volatile__(
             "movq   %%cr0,%%rax \n\t"
             :"=a"(cr0)
@@ -221,7 +221,7 @@ static inline UINT64 get_cr0(void) {
     return  cr0;
 }
 
-static inline void set_cr0(UINT64 value) {
+static inline void set_cr0(uint64 value) {
     __asm__ __volatile__(
             "movq   %0,%%cr0 \n\t"
             :
@@ -230,8 +230,8 @@ static inline void set_cr0(UINT64 value) {
             );
 }
 
-static inline UINT64 get_cr3(void) {
-    UINT64 cr3;
+static inline uint64 get_cr3(void) {
+    uint64 cr3;
     __asm__ __volatile__(
             "movq   %%cr3,%%rax \n\t"
             : "=a"(cr3)         // 输出：将 CR3 的值存入 value
@@ -241,7 +241,7 @@ static inline UINT64 get_cr3(void) {
     return cr3;
 }
 
-static inline void set_cr3(UINT64 value) {
+static inline void set_cr3(uint64 value) {
     __asm__ __volatile__(
             "movq   %0,%%cr3 \n\t"
             :
@@ -250,8 +250,8 @@ static inline void set_cr3(UINT64 value) {
             );
 }
 
-static inline UINT64 get_cr4(void) {
-    UINT64 cr4;
+static inline uint64 get_cr4(void) {
+    uint64 cr4;
     __asm__ __volatile__(
             "movq   %%cr4,%%rax \n\t"
             : "=a"(cr4)         // 输出：将 CR3 的值存入 value
@@ -261,7 +261,7 @@ static inline UINT64 get_cr4(void) {
     return cr4;
 }
 
-static inline void set_cr4(UINT64 value) {
+static inline void set_cr4(uint64 value) {
     __asm__ __volatile__(
             "movq   %0,%%cr4 \n\t"
             :
@@ -270,8 +270,8 @@ static inline void set_cr4(UINT64 value) {
             );
 }
 
-static inline UINT64 xgetbv(UINT32 register_number) {
-    UINT64 xcr;
+static inline uint64 xgetbv(uint32 register_number) {
+    uint64 xcr;
     __asm__ __volatile__(
             "xgetbv             \n\t"  // 执行 xgetbv 指令
             "shlq   $32,%%rdx   \n\t"
@@ -283,17 +283,17 @@ static inline UINT64 xgetbv(UINT32 register_number) {
     return xcr;
 }
 
-static inline void xsetbv(UINT32 register_number,UINT64 value) {
+static inline void xsetbv(uint32 register_number,uint64 value) {
     __asm__ __volatile__(
             "xsetbv \n\t"
             :
-            : "a"((UINT32)(value & 0xFFFFFFFFUL)),"d"((UINT32)(value >> 32)),"c"(register_number)
+            : "a"((uint32)(value & 0xFFFFFFFFUL)),"d"((uint32)(value >> 32)),"c"(register_number)
             : "memory"
             );
 }
 
-static inline UINT64 rdmsr(UINT32 register_number) {
-    UINT64 msr;
+static inline uint64 rdmsr(uint32 register_number) {
+    uint64 msr;
     __asm__ __volatile__(
             "rdmsr              \n\t"
             "shlq   $32,%%rdx   \n\t"
@@ -305,16 +305,16 @@ static inline UINT64 rdmsr(UINT32 register_number) {
     return msr;
 }
 
-static inline void wrmsr(UINT32 register_number,UINT64 value) {
+static inline void wrmsr(uint32 register_number,uint64 value) {
     __asm__ __volatile__(
             "wrmsr \n\t"
             :
-            : "a"((UINT32)(value & 0xFFFFFFFFUL)),"d"((UINT32)(value >> 32)),"c"(register_number)
+            : "a"((uint32)(value & 0xFFFFFFFFUL)),"d"((uint32)(value >> 32)),"c"(register_number)
             : "memory"
             );
 }
 
-static inline void cpuid(UINT32 in_eax, UINT32 in_ecx,UINT32 *out_eax, UINT32 *out_ebx,UINT32 *out_ecx, UINT32 *out_edx) {
+static inline void cpuid(uint32 in_eax, uint32 in_ecx,uint32 *out_eax, uint32 *out_ebx,uint32 *out_ecx, uint32 *out_edx) {
     __asm__ __volatile__(
             "cpuid \n\t"
             : "=a"(*out_eax),"=b"(*out_ebx),"=c"(*out_ecx),"=d"(*out_edx)
@@ -363,9 +363,9 @@ static inline int mem_cmp(void *FirstPart, void *SecondPart, long Count) {
     return __res;
 }
 
-static inline void *mem_set(void *Address, UINT8 C, long Count) {
+static inline void *mem_set(void *Address, uint8 C, long Count) {
     int d0, d1;
-    UINT64 tmp = C * 0x0101010101010101UL;
+    uint64 tmp = C * 0x0101010101010101UL;
     __asm__ __volatile__    (    "cld	\n\t"
                                  "rep	\n\t"
                                  "stosq	\n\t"
@@ -386,8 +386,8 @@ static inline void *mem_set(void *Address, UINT8 C, long Count) {
     return Address;
 }
 
-static inline UINT64 reverse_find_qword(void *address,UINT64 count,UINT64 value){
-    UINT64 result;
+static inline uint64 reverse_find_qword(void *address,uint64 count,uint64 value){
+    uint64 result;
     __asm__ __volatile__(
             "std                  \n\t"
             "repz                 \n\t"
@@ -396,14 +396,14 @@ static inline UINT64 reverse_find_qword(void *address,UINT64 count,UINT64 value)
             "inc   %%rcx          \n\t"
             "1:                   \n\t"
             :"=c"(result)
-            :"a"(value),"c"(count),"D"((UINT64)address+(count-1<<3))
+            :"a"(value),"c"(count),"D"((uint64)address+(count-1<<3))
             :"memory"
             );
     return result;
 }
 
-static inline UINT64 forward_find_qword(void *address,UINT64 count,UINT64 value){
-    UINT64 result;
+static inline uint64 forward_find_qword(void *address,uint64 count,uint64 value){
+    uint64 result;
     __asm__ __volatile__(
             "cld                  \n\t"
             "repz                 \n\t"
@@ -532,7 +532,7 @@ static inline int strlen(char *String) {
     return __res;
 }
 
-static inline void io_in8(UINT16 port, UINT8 *value) {
+static inline void io_in8(uint16 port, uint8 *value) {
     __asm__ __volatile__(
             "inb %%dx,%%al \n\t"
             :"=a"(*value)
@@ -540,7 +540,7 @@ static inline void io_in8(UINT16 port, UINT8 *value) {
             :"memory");
 }
 
-static inline void io_out8(UINT16 port, UINT8 value) {
+static inline void io_out8(uint16 port, uint8 value) {
     __asm__ __volatile__(
             "outb %%al,%%dx \n\t"
             :
@@ -548,7 +548,7 @@ static inline void io_out8(UINT16 port, UINT8 value) {
             :"memory");
 }
 
-static inline void io_in32(UINT16 port, UINT32 *value) {
+static inline void io_in32(uint16 port, uint32 *value) {
     __asm__ __volatile__(
             "inl %%dx,%%eax \n\t"
             :"=a"(*value)
@@ -556,7 +556,7 @@ static inline void io_in32(UINT16 port, UINT32 *value) {
             :"memory");
 }
 
-static inline void io_out32(UINT16 port, UINT32 value) {
+static inline void io_out32(uint16 port, uint32 value) {
     __asm__ __volatile__(
             "outl %%eax,%%dx \n\t"
             :
@@ -597,7 +597,7 @@ static inline void list_head_init(list_head_t *head) {
     head->next = head;
 }
 
-static inline BOOLEAN list_find(list_head_t *head,list_head_t *node) {
+static inline boolean list_find(list_head_t *head,list_head_t *node) {
     list_head_t *next = head;
     while (next->next != head) {
         if (next->next == node)
@@ -607,7 +607,7 @@ static inline BOOLEAN list_find(list_head_t *head,list_head_t *node) {
     return FALSE;
 }
 
-static inline BOOLEAN list_empty(list_head_t *head) {
+static inline boolean list_empty(list_head_t *head) {
     if (head->next == NULL && head->prev == NULL)
         return 1;
     return 0;

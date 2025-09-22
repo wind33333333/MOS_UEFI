@@ -7,22 +7,22 @@ INIT_DATA memblock_type_t phy_vmemmap;
 INIT_DATA efi_runtime_memmap_t efi_runtime_memmap;
 
 INIT_TEXT void init_memblock(void) {
-    UINT64 phy_mem_size = 0;
-    UINT64 kernel_end = _end_stack - KERNEL_OFFSET;
-    UINT64 kernel_size = _end_stack - _start_text;
-    UINT32 count = boot_info->mem_map_size / boot_info->mem_descriptor_size;
-    for (UINT32 i = 0; i < count; i++) {
+    uint64 phy_mem_size = 0;
+    uint64 kernel_end = _end_stack - KERNEL_OFFSET;
+    uint64 kernel_size = _end_stack - _start_text;
+    uint32 count = boot_info->mem_map_size / boot_info->mem_descriptor_size;
+    for (uint32 i = 0; i < count; i++) {
         EFI_MEMORY_DESCRIPTOR *mem_des = &boot_info->mem_map[i];
         if (mem_des->NumberOfPages == 0) continue;
-        UINT32 type = mem_des->Type;
+        uint32 type = mem_des->Type;
         if (type == EFI_LOADER_DATA || type == EFI_LOADER_CODE || type == EFI_BOOT_SERVICES_CODE ||\
             type == EFI_BOOT_SERVICES_DATA || type == EFI_CONVENTIONAL_MEMORY || type == EFI_ACPI_RECLAIM_MEMORY) {
-            UINT64 mem_des_pstart = mem_des->PhysicalStart;
-            UINT64 mem_des_size = mem_des->NumberOfPages << PAGE_4K_SHIFT;
+            uint64 mem_des_pstart = mem_des->PhysicalStart;
+            uint64 mem_des_size = mem_des->NumberOfPages << PAGE_4K_SHIFT;
             //如果内存类型是1M内或是lode_data或是acpi则先放入保留区
             if (mem_des_pstart < 0x100000 || type == EFI_LOADER_DATA || type == EFI_ACPI_RECLAIM_MEMORY) {
                 //在memblock.reserved中找出内核段并剔除，防止后期错误释放
-                UINT64 memblock_pend = mem_des_pstart + mem_des_size;
+                uint64 memblock_pend = mem_des_pstart + mem_des_size;
                 if (kernel_end == memblock_pend) {
                     mem_des_size -= kernel_size;
                     mem_des->NumberOfPages -= (kernel_size >> PAGE_4K_SHIFT);
@@ -38,7 +38,7 @@ INIT_TEXT void init_memblock(void) {
 
             //把所可用物理内存放入phy_mem_map，后续vmemmap区初始化需要使用
             memblock_region_t *phy_vmemmap_block = &phy_vmemmap.region[phy_vmemmap.count];
-            UINT64 memblock_gap = mem_des_pstart - (phy_vmemmap_block->base + phy_vmemmap_block->size);
+            uint64 memblock_gap = mem_des_pstart - (phy_vmemmap_block->base + phy_vmemmap_block->size);
             if (memblock_gap < 0x8000000) {
                 phy_vmemmap_block->size = mem_des_pstart + mem_des_size - phy_vmemmap_block->base;
             } else {
@@ -57,7 +57,7 @@ INIT_TEXT void init_memblock(void) {
 
 
 //物理内存区域添加到 memblock 的列表中
-INIT_TEXT void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 size) {
+INIT_TEXT void memblock_add(memblock_type_t *memblock_type, uint64 base, uint64 size) {
     if (memblock_type->count == 0) {
         memblock_type->region[0].base = base;
         memblock_type->region[0].size = size;
@@ -74,10 +74,10 @@ INIT_TEXT void memblock_add(memblock_type_t *memblock_type, UINT64 base, UINT64 
 
 
 //线性分配物理内存
-INIT_TEXT UINT64 memblock_alloc(UINT64 size, UINT64 align) {
+INIT_TEXT uint64 memblock_alloc(uint64 size, uint64 align) {
     if (!size) return 0;
-    UINT64 align_base, align_size;
-    UINT32 index = 0;
+    uint64 align_base, align_size;
+    uint32 index = 0;
     while (index < memblock.memory.count) {
         align_base = align_up(memblock.memory.region[index].base, align);
         align_size = align_base - memblock.memory.region[index].base + size;
@@ -88,7 +88,7 @@ INIT_TEXT UINT64 memblock_alloc(UINT64 size, UINT64 align) {
     if (index >= memblock.memory.count) return 0;
     //如果长度相等则刚好等于一个块
     if (size == memblock.memory.region[index].size) {
-        for (UINT32 j = index; j < memblock.memory.count; j++) {
+        for (uint32 j = index; j < memblock.memory.count; j++) {
             memblock.memory.region[j] = memblock.memory.region[j + 1];
         }
         memblock.memory.count--;
@@ -101,7 +101,7 @@ INIT_TEXT UINT64 memblock_alloc(UINT64 size, UINT64 align) {
         memblock.memory.region[index].size -= size;
         //否则中间切
     } else {
-        for (UINT32 j = memblock.memory.count; j > index; j--) {
+        for (uint32 j = memblock.memory.count; j > index; j--) {
             memblock.memory.region[j] = memblock.memory.region[j - 1];
         }
         memblock.memory.region[index + 1].base += align_size;
@@ -113,9 +113,9 @@ INIT_TEXT UINT64 memblock_alloc(UINT64 size, UINT64 align) {
 }
 
 //释放物理内存
-INIT_TEXT INT32 memblock_free(UINT64 ptr, UINT64 size) {
+INIT_TEXT int32 memblock_free(uint64 ptr, uint64 size) {
     //根据align_base找合适的插入位置
-    UINT32 index = 0;
+    uint32 index = 0;
     while (index < memblock.memory.count) {
         if (ptr <= memblock.memory.region[index].base + memblock.memory.region[index].size) break;
         index++;
@@ -131,14 +131,14 @@ INIT_TEXT INT32 memblock_free(UINT64 ptr, UINT64 size) {
         if (memblock.memory.region[index].base + memblock.memory.region[index].size == memblock.memory.region[index + 1]
             .base) {
             memblock.memory.region[index].size += memblock.memory.region[index + 1].size;
-            for (UINT32 j = index + 1; j < memblock.memory.count; j++) {
+            for (uint32 j = index + 1; j < memblock.memory.count; j++) {
                 memblock.memory.region[j] = memblock.memory.region[j + 1];
             }
             memblock.memory.count--;
         }
         //释放的地址不在块中
     } else {
-        for (UINT32 j = memblock.memory.count; j > index; j--) {
+        for (uint32 j = memblock.memory.count; j > index; j--) {
             memblock.memory.region[j] = memblock.memory.region[j - 1];
         }
         memblock.memory.region[index].base = ptr;
@@ -149,14 +149,14 @@ INIT_TEXT INT32 memblock_free(UINT64 ptr, UINT64 size) {
 }
 
 //映射一个页表
-INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, UINT64 page_size) {
-    UINT64 *pdptt, *pdt, *ptt;
-    UINT32 index;
+INIT_TEXT int32 memblock_mmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, uint64 page_size) {
+    uint64 *pdptt, *pdt, *ptt;
+    uint32 index;
     pml4t = pa_to_va(pml4t);
 
     index = get_pml4e_index(va);
     if (pml4t[index] == 0) {
-        pml4t[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+        pml4t[index] = (uint64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                            attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
         mem_set(pa_to_va(pml4t[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }
@@ -174,7 +174,7 @@ INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, U
     }
 
     if (pdptt[index] == 0) {
-        pdptt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+        pdptt[index] = (uint64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                            attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
         mem_set(pa_to_va(pdptt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }
@@ -192,7 +192,7 @@ INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, U
     }
 
     if (pdt[index] == 0) {
-        pdt[index] = (UINT64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
+        pdt[index] = (uint64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                          attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
         mem_set(pa_to_va(pdt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }
@@ -208,9 +208,9 @@ INIT_TEXT INT32 memblock_mmap(UINT64 *pml4t, UINT64 pa, void *va, UINT64 attr, U
 }
 
 //批量映射
-INIT_TEXT INT32 memblock_mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 size, UINT64 attr,
-                                    UINT64 page_size) {
-    UINT64 page_count = size / page_size;
+INIT_TEXT int32 memblock_mmap_range(uint64 *pml4t, uint64 pa, void *va, uint64 size, uint64 attr,
+                                    uint64 page_size) {
+    uint64 page_count = size / page_size;
     while (page_count--) {
         if (memblock_mmap(pml4t, pa, va, attr, page_size)) return -1;
         pa += page_size;
@@ -220,11 +220,11 @@ INIT_TEXT INT32 memblock_mmap_range(UINT64 *pml4t, UINT64 pa, void *va, UINT64 s
 }
 
 //删除一个页表映射
-INIT_TEXT INT32 memblock_unmmap(UINT64 *pml4t, void *va, UINT64 page_size) {
-    UINT64 *pdptt, *pdt, *ptt;
-    UINT32 pml4e_index, pdpte_index, pde_index, pte_index;
+INIT_TEXT int32 memblock_unmmap(uint64 *pml4t, void *va, uint64 page_size) {
+    uint64 *pdptt, *pdt, *ptt;
+    uint32 pml4e_index, pdpte_index, pde_index, pte_index;
 
-    pml4t = pa_to_va((UINT64) pml4t);
+    pml4t = pa_to_va((uint64) pml4t);
     pml4e_index = get_pml4e_index(va);
     if (pml4t[pml4e_index] == 0) return -1; //pml4e无效
 
@@ -281,8 +281,8 @@ huge_page:
 }
 
 //批量删除页表映射
-INIT_TEXT INT32 memblock_unmmap_range(UINT64 *pml4t, void *va, UINT64 size, UINT64 page_size) {
-    UINT64 page_count = size / page_size;
+INIT_TEXT int32 memblock_unmmap_range(uint64 *pml4t, void *va, uint64 size, uint64 page_size) {
+    uint64 page_count = size / page_size;
     while (page_count--) {
         if (memblock_unmmap(pml4t, va, page_size)) return -1;
         va += page_size;

@@ -8,10 +8,10 @@ INIT_TEXT void init_syscall(void){
     wrmsr(IA32_STAR_MSR,(0x18UL<<48)|(0x8UL<<32));
 
     //RIP=IA32_LSTAR_MSR  长模式系统调用入口地址
-    wrmsr(IA32_LSTAR_MSR,(UINT64)long_mode_syscall_entry);
+    wrmsr(IA32_LSTAR_MSR,(uint64)long_mode_syscall_entry);
 
     //RIP=IA32_CSTAR_MSR  兼容模式系统调用入口地址
-    //wrmsr(IA32_CSTAR_MSR,(UINT64)compatible_mode_syscall_entry);
+    //wrmsr(IA32_CSTAR_MSR,(uint64)compatible_mode_syscall_entry);
 
     //内核RFLAGS=~IA32_FMASK_MSR&RFLAGS  置1进入内核后屏蔽对应的RFLAGS
     wrmsr(IA32_FMASK_MSR,0);

@@ -32,22 +32,22 @@ extern char buf[4096];
 #define INDIGO	0x0000ffff		//靛
 #define PURPLE	0x008000ff		//紫
 
-extern UINT8 font_ascii[256][16];
+extern uint8 font_ascii[256][16];
 
 struct position
 {
-	UINT32 XResolution;
-	UINT32 YResolution;
-    UINT32 PixelsPerScanLine;
+	uint32 XResolution;
+	uint32 YResolution;
+    uint32 PixelsPerScanLine;
 
-	UINT32 XPosition;
-	UINT32 YPosition;
+	uint32 XPosition;
+	uint32 YPosition;
 
-	UINT32 XCharSize;
-	UINT32 YCharSize;
+	uint32 XCharSize;
+	uint32 YCharSize;
 
-	UINT32* FB_addr;
-	UINT64 FB_length;
+	uint32* FB_addr;
+	uint64 FB_length;
     char lock;
 }Pos;
 

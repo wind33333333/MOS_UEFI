@@ -344,7 +344,7 @@ INIT_TEXT void init_output(void) {
 }
 
 INIT_TEXT void video_mem_map(void) {
-    UINT64 page_size,attr;
+    uint64 page_size,attr;
     if (boot_info->frame_buffer_size >= PAGE_1G_SIZE) {
         page_size = PAGE_1G_SIZE;
         attr = PAGE_ROOT_RW_WC_2M1G;
@@ -360,8 +360,8 @@ INIT_TEXT void video_mem_map(void) {
 }
 
 void clear_screen(void) {
-    for (UINT64 i = 0; i < (Pos.PixelsPerScanLine * Pos.YResolution); i++) {
-        *((UINT32 *) Pos.FB_addr + i) = BLACK;
+    for (uint64 i = 0; i < (Pos.PixelsPerScanLine * Pos.YResolution); i++) {
+        *((uint32 *) Pos.FB_addr + i) = BLACK;
     }
     Pos.XPosition = 0;
     Pos.YPosition = 0;

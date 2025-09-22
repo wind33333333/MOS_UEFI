@@ -16,11 +16,11 @@ rb_augment_callbacks_f vmap_area_augment_callbacks;
 /*
  *计算最大值，当前节点和左右子树取最大值
  */
-static BOOLEAN compute_max(vmap_area_t *vmap_area, BOOLEAN exit) {
+static boolean compute_max(vmap_area_t *vmap_area, boolean exit) {
     vmap_area_t *child;
     rb_node_t *node = &vmap_area->rb_node;
     // 当前节点自身大小
-    UINT64 max = vmap_area->va_end - vmap_area->va_start;
+    uint64 max = vmap_area->va_end - vmap_area->va_start;
     // 比较左子树的取最大值
     if (node->left) {
         child = CONTAINER_OF(node->left, vmap_area_t, rb_node);
@@ -85,7 +85,7 @@ static void vmap_area_augment_propagate(rb_node_t *start_node, rb_node_t *stop_n
  * out_parent:返回插入位置节点
  * out_link:返回插入位置的左右子
  */
-static inline UINT32 find_vmap_area_insert_pos(rb_root_t *root, vmap_area_t *vmap_area, rb_node_t **out_parent,
+static inline uint32 find_vmap_area_insert_pos(rb_root_t *root, vmap_area_t *vmap_area, rb_node_t **out_parent,
                                                rb_node_t **out_link) {
     rb_node_t *parent = NULL, **link = &root->rb_node;
     vmap_area_t *curr_vmap_area;
@@ -112,7 +112,7 @@ static inline UINT32 find_vmap_area_insert_pos(rb_root_t *root, vmap_area_t *vma
  * vmap_area:需要插入的节点
  * augment_callbacks:红黑树回调增强函数
  */
-static inline UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,
+static inline uint32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,
                                       rb_augment_callbacks_f *augment_callbacks) {
     rb_node_t *parent, *link;
     find_vmap_area_insert_pos(root, vmap_area, &parent, &link);
@@ -123,7 +123,7 @@ static inline UINT32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,
 /*
  * 从红黑树删除一个vmap_area
  */
-static inline UINT32 erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,
+static inline uint32 erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,
                                      rb_augment_callbacks_f *augment_callbacks) {
     rb_erase(root, &vmap_area->rb_node, augment_callbacks);
 }
@@ -139,17 +139,17 @@ static inline set_used(vmap_area_t *vmap_area) {
 }
 
 //判断空闲
-static inline BOOLEAN is_free(vmap_area_t *vmap_area) {
+static inline boolean is_free(vmap_area_t *vmap_area) {
     return !(vmap_area->flags & 1);
 }
 
 //判断忙碌
-static inline BOOLEAN is_used(vmap_area_t *vmap_area) {
+static inline boolean is_used(vmap_area_t *vmap_area) {
     return vmap_area->flags & 1;
 }
 
 //新建一个vmap_area
-static vmap_area_t *create_vmap_area(UINT64 va_start, UINT64 va_end, UINT64 flags) {
+static vmap_area_t *create_vmap_area(uint64 va_start, uint64 va_end, uint64 flags) {
     vmap_area_t *vmap_area = kmalloc(sizeof(vmap_area_t));
     vmap_area->va_start = va_start;
     vmap_area->va_end = va_end;
@@ -164,23 +164,23 @@ static vmap_area_t *create_vmap_area(UINT64 va_start, UINT64 va_end, UINT64 flag
 }
 
 //获取节点subtree_max_size
-static inline UINT64 get_subtree_max_size(rb_node_t *node) {
+static inline uint64 get_subtree_max_size(rb_node_t *node) {
     if (!node)return 0;
     // 通过 rb_entry 获取 vmap_area，返回其 subtree_max_size
     return (CONTAINER_OF(node, vmap_area_t, rb_node))->subtree_max_size;
 }
 
 //获取节点va_start
-static inline UINT64 get_va_start(rb_node_t *node) {
+static inline uint64 get_va_start(rb_node_t *node) {
     if (!node)return 0;
     return (CONTAINER_OF(node, vmap_area_t, rb_node))->va_start;
 }
 
 /*低地址优先搜索最佳适应空闲vmap_area*/
-static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_addr, UINT64 size, UINT64 align) {
+static inline vmap_area_t *find_vmap_lowest_match(uint64 min_addr, uint64 max_addr, uint64 size, uint64 align) {
     rb_node_t *node = free_vmap_area_root.rb_node;
     vmap_area_t *vmap_area, *best_vmap_area = NULL;
-    UINT64 align_va_end, best_va_start = 0xFFFFFFFFFFFFFFFFUL;
+    uint64 align_va_end, best_va_start = 0xFFFFFFFFFFFFFFFFUL;
     while (node) {
         vmap_area = CONTAINER_OF(node, vmap_area_t, rb_node);
         align_va_end = align_up(vmap_area->va_start, align) + size;
@@ -211,9 +211,9 @@ static inline vmap_area_t *find_vmap_lowest_match(UINT64 min_addr, UINT64 max_ad
 /*
  * 尝试把vmap_area分割到合适大小
  */
-static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area, UINT64 size, UINT64 align) {
+static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area, uint64 size, uint64 align) {
     vmap_area_t *new_vmap_area;
-    UINT64 align_va_start = align_up(vmap_area->va_start, align);
+    uint64 align_va_start = align_up(vmap_area->va_start, align);
     if (vmap_area->va_end - vmap_area->va_start == size) {
         //情况1:占用整个
         erase_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
@@ -249,7 +249,7 @@ static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area, UINT64 size, 
  * va_start:分配的起始地址
  * va_end:结束地址
  */
-static vmap_area_t *alloc_vmap_area(UINT64 va_start, UINT64 va_end, UINT64 size, UINT64 align) {
+static vmap_area_t *alloc_vmap_area(uint64 va_start, uint64 va_end, uint64 size, uint64 align) {
     //空闲树找可用的节点
     vmap_area_t *vmap_area = find_vmap_lowest_match(va_start, va_end, size, align);
     if (!vmap_area)return NULL;
@@ -302,7 +302,7 @@ static void free_vmap_area(vmap_area_t *vmap_area) {
 /*
  * 查找vmap_area
  */
-vmap_area_t *find_vmap_area(UINT64 va_start) {
+vmap_area_t *find_vmap_area(uint64 va_start) {
     rb_node_t *node = used_vmap_area_root.rb_node;
     while (node) {
         vmap_area_t *vmap_area = CONTAINER_OF(node, vmap_area_t, rb_node);
@@ -315,19 +315,19 @@ vmap_area_t *find_vmap_area(UINT64 va_start) {
 /*
  * 分配内存
  */
-void *vmalloc(UINT64 size) {
+void *vmalloc(uint64 size) {
     if (!size) return NULL;
     //4k对齐
     size = PAGE_4K_ALIGN(size);
     //分配虚拟地址空间
     vmap_area_t *vmap_area = alloc_vmap_area(VMALLOC_START,VMALLOC_END, size,PAGE_4K_SIZE);
     //分配物理页，映射物理页
-    UINT64 va = vmap_area->va_start;
-    UINT64 page_count = size >> PAGE_4K_SHIFT;
+    uint64 va = vmap_area->va_start;
+    uint64 page_count = size >> PAGE_4K_SHIFT;
     while (page_count--) {
         page_t *page = alloc_pages(0);
         if (!page) return NULL;
-        mmap(kpml4t_ptr, page_to_pa(page), (UINT64 *) va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
+        mmap(kpml4t_ptr, page_to_pa(page), (uint64 *) va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
         va += PAGE_4K_SIZE;
     }
     return (void*)vmap_area->va_start;
@@ -338,10 +338,10 @@ void *vmalloc(UINT64 size) {
  */
 void vfree(void *ptr) {
     //通过虚拟地址找Vmap_area
-    vmap_area_t *vmap_area = find_vmap_area((UINT64) ptr);
+    vmap_area_t *vmap_area = find_vmap_area((uint64) ptr);
     //卸载虚拟地址和物理页映射，释放物理页
-    UINT64 va = vmap_area->va_start;
-    UINT64 page_count = vmap_area->va_end - vmap_area->va_start >> PAGE_4K_SHIFT;
+    uint64 va = vmap_area->va_start;
+    uint64 page_count = vmap_area->va_end - vmap_area->va_start >> PAGE_4K_SHIFT;
     while (page_count--) {
         page_t *page = pa_to_page(find_page_table_entry(kpml4t_ptr, (void *) va, pte_level) & PAGE_PA_MASK);
         free_pages(page);
@@ -357,7 +357,7 @@ void vfree(void *ptr) {
  * pa:物理起始地址
  * attr:属性
  */
-void *iomap(UINT64 pa, UINT64 size, UINT64 page_size, UINT64 attr) {
+void *iomap(uint64 pa, uint64 size, uint64 page_size, uint64 attr) {
     if (size == 0 || (page_size != PAGE_4K_SIZE && page_size != PAGE_2M_SIZE && page_size != PAGE_1G_SIZE))
         return NULL;
     //对齐
@@ -373,9 +373,9 @@ void *iomap(UINT64 pa, UINT64 size, UINT64 page_size, UINT64 attr) {
 /*
  *设备虚拟地址释放和卸载映射
  */
-INT32 uniomap(void *ptr,UINT64 page_size) {
+int32 uniomap(void *ptr,uint64 page_size) {
     //通过虚拟地址找Vmap_area
-    vmap_area_t *vmap_area = find_vmap_area((UINT64) ptr);
+    vmap_area_t *vmap_area = find_vmap_area((uint64) ptr);
     if ((page_size != PAGE_4K_SIZE && page_size != PAGE_2M_SIZE && page_size != PAGE_1G_SIZE) || !vmap_area)
         return -1;
     //卸载映射

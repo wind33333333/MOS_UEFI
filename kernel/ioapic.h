@@ -5,9 +5,9 @@
 void init_ioapic(void);
 
 typedef struct{
-    UINT8 *ioregsel;    //索引寄存器 8位
-    UINT32 *iowin;      //数据寄存器 32位
-    UINT32 *eoi;        //中断结束寄存器   32位
+    uint8 *ioregsel;    //索引寄存器 8位
+    uint32 *iowin;      //数据寄存器 32位
+    uint32 *eoi;        //中断结束寄存器   32位
 }ioapic_address_t;
 
 extern ioapic_address_t ioapic_address;
