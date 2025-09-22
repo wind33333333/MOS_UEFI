@@ -785,7 +785,7 @@ typedef struct {
     usb_endpoint_descriptor_t       *endpoint_desc[30];
     usb_hid_descriptor_t            *hid_desc;
     usb_hub_descriptor_t            *hub_desc;
-    xhci_controller_t                     *xhci_regs;
+    xhci_controller_t               *xhci_controller;
     list_head_t list;
 }usb_dev_t;
 
