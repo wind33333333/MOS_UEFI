@@ -798,11 +798,6 @@ static inline void timing (void) {
     // while (count--) pause();
 }
 
-//响铃
-static inline void xhci_ring_doorbell( xhci_db_regs_t *db, uint8 db_number, uint32 value) {
-    db[db_number] = value;
-}
-
 void init_xhci(void);
 int xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb);
 int xhci_ering_dequeue(xhci_controller_t *xhci_regs, xhci_trb_t *evt_trb);

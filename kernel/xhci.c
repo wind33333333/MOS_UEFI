@@ -27,6 +27,11 @@ static inline xhci_trb_t *get_queue_ptr(uint64 ptr) {
     return (xhci_trb_t *) (ptr & ~(TRB_CYCLE));
 }
 
+//响铃
+static inline void xhci_ring_doorbell( xhci_controller_t *xhci_controller, uint8 db_number, uint32 value) {
+    xhci_controller->db_reg[db_number] = value;
+}
+
 //命令环/传输环入队列
 int xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb) {
     if (ring->index >= TRB_COUNT-1) {
@@ -68,7 +73,7 @@ uint32 xhci_enable_slot(xhci_controller_t *xhci_controller) {
         TRB_ENABLE_SLOT
     };
     xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
-    xhci_ring_doorbell(xhci_controller->db_reg, 0, 0);
+    xhci_ring_doorbell(xhci_controller, 0, 0);
 
     timing();
 
@@ -138,7 +143,7 @@ void xhci_address_device(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev)
         TRB_ADDRESS_DEVICE | usb_dev->slot_id << 24
     };
     xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
-    xhci_ring_doorbell(xhci_controller->db_reg, 0, 0);
+    xhci_ring_doorbell(xhci_controller, 0, 0);
 
     timing();
 
@@ -202,7 +207,7 @@ void xhci_config_endpoint(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev)
     };
     xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
 
-    xhci_ring_doorbell(xhci_controller->db_reg, 0, 0);
+    xhci_ring_doorbell(xhci_controller, 0, 0);
 
     timing();
 
@@ -218,7 +223,7 @@ int get_usb_device_descriptor(xhci_controller_t *xhci_controller, usb_dev_t* usb
     xhci_trb_t trb;
     // Setup TRB
     usb_setup_packet_t setup = {0x80, USB_REQ_GET_DESCRIPTOR, 0x0100, 0x0000, 8}; // 统一为8
-    trb.parameter = *(uint64 *) &setup; // 完整 8 字节
+    trb.parameter = *(uint64 *)&setup; // 完整 8 字节
     trb.status = 8; // TRB Length=8 (Setup 阶段长度)
     trb.control = TRB_TYPE_SETUP | TRB_IDT | (3 << 16) | TRB_CHAIN;
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
@@ -236,7 +241,7 @@ int get_usb_device_descriptor(xhci_controller_t *xhci_controller, usb_dev_t* usb
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // 响铃
-    xhci_ring_doorbell(xhci_controller->db_reg, usb_dev->slot_id, 1);
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
 
     timing();
 
@@ -252,7 +257,7 @@ int get_usb_device_descriptor(xhci_controller_t *xhci_controller, usb_dev_t* usb
     trb.status = 0;
     trb.control =  usb_dev->slot_id << 24 | TRB_EVALUATE_CONTEXT;
     xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
-    xhci_ring_doorbell(xhci_controller->db_reg, 0, 0);
+    xhci_ring_doorbell(xhci_controller, 0, 0);
 
     timing();
 
@@ -279,7 +284,7 @@ int get_usb_device_descriptor(xhci_controller_t *xhci_controller, usb_dev_t* usb
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // 响铃
-    xhci_ring_doorbell(xhci_controller->db_reg, usb_dev->slot_id, 1);
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
 
     timing();
 
@@ -313,7 +318,7 @@ int get_usb_config_descriptor(xhci_controller_t *xhci_controller,usb_dev_t *usb_
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // 响铃
-    xhci_ring_doorbell(xhci_controller->db_reg, usb_dev->slot_id, 1);
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
 
     timing();
 
@@ -340,7 +345,7 @@ int get_usb_config_descriptor(xhci_controller_t *xhci_controller,usb_dev_t *usb_
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // 响铃
-    xhci_ring_doorbell(xhci_controller->db_reg, usb_dev->slot_id, 1);
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
 
     timing();
 
