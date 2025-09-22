@@ -79,7 +79,7 @@ uint32 xhci_enable_slot(xhci_controller_t *xhci_controller) {
     return -1;
 }
 
-//初始化命令环
+//初始化环
 int xhci_ring_init(xhci_ring_t *ring,uint32 align_size) {
     ring->ring_base = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),align_size));
     ring->index = 0;
