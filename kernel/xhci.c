@@ -393,10 +393,10 @@ INIT_TEXT void init_xhci(void) {
     pcie_msi_intrpt_set(xhci_dev); //初始化xhci msi中断
     xhci_dev->private = kzalloc(sizeof(xhci_controller_t)); //设备私有数据空间申请一块内存，存放xhci相关信息
 
-    /*初始化xhci寄存器*/
     xhci_controller_t *xhci_controller = xhci_dev->private;
     xhci_controller->pcie_dev = xhci_dev;
 
+    /*初始化xhci寄存器*/
     xhci_controller->cap_reg = xhci_dev->bar[0]; //xhci能力寄存器基地址
     xhci_controller->op_reg = xhci_dev->bar[0] + xhci_controller->cap_reg->cap_length; //xhci操作寄存器基地址
     xhci_controller->rt_reg = xhci_dev->bar[0] + xhci_controller->cap_reg->rtsoff; //xhci运行时寄存器基地址
@@ -422,12 +422,7 @@ INIT_TEXT void init_xhci(void) {
     xhci_controller->op_reg->config = max_slots;                   //把最大插槽数量写入寄存器
 
     /*初始化命令环*/
-    xhci_controller->cmd_ring.ring_base = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t),xhci_controller->align_size));//分配命令环空间256* sizeof(xhci_trb_t) = 4K
-    xhci_controller->cmd_ring.index = 0;
-    xhci_controller->cmd_ring.status_c = TRB_CYCLE;
-    xhci_controller->cmd_ring.ring_base[TRB_COUNT - 1].parameter = va_to_pa(xhci_controller->cmd_ring.ring_base); //命令环最后一个trb指向环首地址
-    xhci_controller->cmd_ring.ring_base[TRB_COUNT - 1].status = 0;
-    xhci_controller->cmd_ring.ring_base[TRB_COUNT - 1].control = TRB_TYPE_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE; //命令环最后一个trb设置位link
+    xhci_ring_init(&xhci_controller->cmd_ring,xhci_controller->align_size);
     xhci_controller->op_reg->crcr = va_to_pa(xhci_controller->cmd_ring.ring_base) | TRB_CYCLE; //命令环物理地址写入crcr寄存器，置位rcs
 
     /*初始化事件环*/
@@ -446,9 +441,7 @@ INIT_TEXT void init_xhci(void) {
     uint32 spb_number = (xhci_controller->cap_reg->hcsparams2 & 0x1f<<21)>>16 | xhci_controller->cap_reg->hcsparams2>>27;
     if (spb_number) {
         uint64 *spb_array = kzalloc(align_up(spb_number<<3,xhci_controller->align_size)); //分配暂存器缓冲区指针数组
-        for (uint32 i = 0; i < spb_number; i++) {
-            spb_array[i] = va_to_pa(kzalloc(xhci_controller->align_size));        //分配暂存器缓存区
-        }
+        for (uint32 i = 0; i < spb_number; i++) spb_array[i] = va_to_pa(kzalloc(xhci_controller->align_size));        //分配暂存器缓存区
         xhci_controller->dcbaap[0] = va_to_pa(spb_array);                 //暂存器缓存去数组指针写入设备上下写文数组0
     }
 
