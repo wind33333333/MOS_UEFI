@@ -115,7 +115,8 @@ void xhci_devctx_read(xhci_controller_t *xhci_controller,uint32 slot_id,uint32 c
 }
 
 //设置设备地址
-void xhci_address_device(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev) {
+void xhci_address_device(usb_dev_t *usb_dev) {
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     //分配设备插槽上下文内存
     xhci_controller->dcbaap[usb_dev->slot_id] = va_to_pa(kzalloc(align_up(sizeof(xhci_device_context_t),xhci_controller->align_size)));
 
@@ -152,7 +153,8 @@ void xhci_address_device(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev)
 }
 
 //配置端点
-void xhci_config_endpoint(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev) {
+void xhci_config_endpoint(usb_dev_t *usb_dev) {
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t),xhci_controller->align_size));
     xhci_context_t ctx;
     ctx.reg0 = (usb_dev->interface_desc->num_endpoints+1) << 27;
@@ -217,7 +219,8 @@ void xhci_config_endpoint(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev)
 }
 
 //获取usb设备描述符
-int get_usb_device_descriptor(xhci_controller_t *xhci_controller, usb_dev_t* usb_dev) {
+int get_usb_device_descriptor(usb_dev_t* usb_dev) {
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     usb_device_descriptor_t *dev_desc = kzalloc(sizeof(usb_device_descriptor_t));
     //第一次先获取设备描述符前8字节，拿到max_pack_size后更新端点1，再重新获取描述符。
     xhci_trb_t trb;
@@ -295,7 +298,8 @@ int get_usb_device_descriptor(xhci_controller_t *xhci_controller, usb_dev_t* usb
 }
 
 //获取usb配置描述符
-int get_usb_config_descriptor(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev) {
+int get_usb_config_descriptor(usb_dev_t *usb_dev) {
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     //第一次先获取配置描述符前9字节
     xhci_trb_t trb;
     usb_config_descriptor_t *config_desc = kmalloc(9);
@@ -381,13 +385,13 @@ int get_usb_config_descriptor(xhci_controller_t *xhci_controller,usb_dev_t *usb_
 //创建usb设备
 usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
     usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
+    usb_dev->xhci_controller=xhci_controller;
     usb_dev->port_id = port_id+1;
     usb_dev->slot_id = xhci_enable_slot(xhci_controller);
-    xhci_address_device(xhci_controller,usb_dev);
-    get_usb_device_descriptor(xhci_controller,usb_dev);
-    get_usb_config_descriptor(xhci_controller,usb_dev);
-    xhci_config_endpoint(xhci_controller,usb_dev);
-    usb_dev->xhci_controller=xhci_controller;
+    xhci_address_device(usb_dev);
+    get_usb_device_descriptor(usb_dev);
+    get_usb_config_descriptor(usb_dev);
+    xhci_config_endpoint(usb_dev);
     list_add_head(&usb_dev_list,&usb_dev->list);
 }
 
