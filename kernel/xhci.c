@@ -292,9 +292,6 @@ int get_usb_device_descriptor(usb_dev_t* usb_dev) {
     timing();
 
     usb_dev->dev_desc = dev_desc;
-
-    color_printk(GREEN,BLACK, "port_id:%d slot_id:%d portsc:%#x bcd_usb:%#x id_v:%#x id_p:%#x MaxPZ:%d DevClass:%#x DevSubClass:%#x DevProt:%#x\n",usb_dev->port_id,usb_dev->slot_id, dev_desc->usb_version,xhci_controller->op_reg->portregs[usb_dev->port_id-1].portsc, dev_desc->vendor_id,
-    dev_desc->product_id,max_packe_size,dev_desc->device_class,dev_desc->device_subclass,dev_desc->device_protocol);
 }
 
 //获取usb配置描述符
@@ -394,7 +391,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
     xhci_config_endpoint(usb_dev);
     list_add_head(&usb_dev_list,&usb_dev->list);
 
-    color_printk(GREEN,BLACK,"USB_vir:%x.%x VID:%#x PID:%#x ep_num:%d if_class:%#x if_subclass:%#x if_pro:%#x max_pack:%d\n",usb_dev->dev_desc->usb_version>>8,usb_dev->dev_desc->usb_version&0xFF,usb_dev->dev_desc->vendor_id,usb_dev->dev_desc->product_id,usb_dev->interface_desc->num_endpoints,usb_dev->interface_desc->interface_class,usb_dev->interface_desc->interface_subclass,usb_dev->interface_desc->interface_protocol,usb_dev->endpoint_desc[0]->max_packet_size);
+    color_printk(GREEN,BLACK,"port_id:%d slot_id:%d portsc:%#x USB_vir:%x.%x VID:%#x PID:%#x ep_num:%d if_class:%#x if_subclass:%#x if_pro:%#x max_pack:%d\n",usb_dev->port_id,usb_dev->slot_id,xhci_controller->op_reg->portregs[usb_dev->port_id-1].portsc,usb_dev->dev_desc->usb_version>>8,usb_dev->dev_desc->usb_version&0xFF,usb_dev->dev_desc->vendor_id,usb_dev->dev_desc->product_id,usb_dev->interface_desc->num_endpoints,usb_dev->interface_desc->interface_class,usb_dev->interface_desc->interface_subclass,usb_dev->interface_desc->interface_protocol,usb_dev->endpoint_desc[0]->max_packet_size);
 }
 
 //枚举usb设备
