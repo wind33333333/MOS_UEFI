@@ -490,6 +490,8 @@ INIT_TEXT void init_xhci(void) {
 
     timing();
 
+    list_head_init(&usb_dev_list);
+
     usb_dev_enum(xhci_controller);
 
     color_printk(GREEN,BLACK,"\nUSBcmd:%#x  USBsts:%#x",xhci_controller->op_reg->usbcmd, xhci_controller->op_reg->usbsts);
