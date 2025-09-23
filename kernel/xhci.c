@@ -391,6 +391,23 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
     list_add_head(&usb_dev_list,&usb_dev->list);
 }
 
+//枚举usb设备
+void usb_dev_enum (xhci_controller_t *xhci_controller) {
+    xhci_trb_t trb;
+    for (uint32 i = 0; i < xhci_controller->cap_reg->hcsparams1 >> 24; i++) {
+        if (xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_CCS) {
+            if ((xhci_controller->op_reg->portregs[i].portsc>>XHCI_PORTSC_PLS_SHIFT&XHCI_PORTSC_PLS_MASK) == XHCI_PLS_POLLING) { //usb2.0协议版本
+                xhci_controller->op_reg->portregs[i].portsc |= XHCI_PORTSC_PR;
+                timing();
+                xhci_ering_dequeue(xhci_controller,&trb);
+            }
+            //usb3.x以上协议版本
+            while (!(xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_PED)) pause();
+            create_usb_dev(xhci_controller,i);
+        }
+    }
+}
+
 
 INIT_TEXT void init_xhci(void) {
     pcie_dev_t *xhci_dev = pcie_dev_find(XHCI_CLASS_CODE); //查找xhci设备
@@ -469,21 +486,7 @@ INIT_TEXT void init_xhci(void) {
 
     timing();
 
-    xhci_trb_t trb;
-
-    //遍历初始化端口，分配插槽和设备地址
-    for (uint32 i = 0; i < xhci_controller->cap_reg->hcsparams1 >> 24; i++) {
-        if (xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_CCS) {
-            if ((xhci_controller->op_reg->portregs[i].portsc>>XHCI_PORTSC_PLS_SHIFT&XHCI_PORTSC_PLS_MASK) == XHCI_PLS_POLLING) { //usb2.0协议版本
-                xhci_controller->op_reg->portregs[i].portsc |= XHCI_PORTSC_PR;
-                timing();
-                xhci_ering_dequeue(xhci_controller,&trb);
-            }
-            //usb3.x以上协议版本
-            while (!(xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_PED)) pause();
-            create_usb_dev(xhci_controller,i);
-        }
-    }
+    usb_dev_enum(xhci_controller);
 
     color_printk(GREEN,BLACK,"\nUSBcmd:%#x  USBsts:%#x",xhci_controller->op_reg->usbcmd, xhci_controller->op_reg->usbsts);
     while (1);
