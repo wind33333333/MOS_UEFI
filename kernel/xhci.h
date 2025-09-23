@@ -777,6 +777,7 @@ typedef struct {
 typedef struct {
     uint32                          port_id;
     uint32                          slot_id;
+    xhci_device_context_t           *dev_context;
     xhci_ring_t                     trans_ring[31];
     usb_device_descriptor_t         *dev_desc;
     usb_config_descriptor_t         *config_desc;

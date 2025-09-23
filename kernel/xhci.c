@@ -118,7 +118,8 @@ void xhci_devctx_read(xhci_controller_t *xhci_controller,uint32 slot_id,uint32 c
 void xhci_address_device(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     //分配设备插槽上下文内存
-    xhci_controller->dcbaap[usb_dev->slot_id] = va_to_pa(kzalloc(align_up(sizeof(xhci_device_context_t),xhci_controller->align_size)));
+    usb_dev->dev_context = kzalloc(align_up(sizeof(xhci_device_context_t),xhci_controller->align_size));
+    xhci_controller->dcbaap[usb_dev->slot_id] = va_to_pa(usb_dev->dev_context);
 
     //分配传输环内存
     xhci_ring_init(&usb_dev->trans_ring[0],xhci_controller->align_size);
