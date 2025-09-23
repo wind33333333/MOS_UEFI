@@ -391,7 +391,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
     xhci_config_endpoint(usb_dev);
     list_add_head(&usb_dev_list,&usb_dev->list);
 
-    color_printk(GREEN,BLACK,"port_id:%d slot_id:%d portsc:%#x USB_vir:%x.%x VID:%#x PID:%#x ep_num:%d if_class:%#x if_subclass:%#x if_pro:%#x max_pack:%d\n",usb_dev->port_id,usb_dev->slot_id,xhci_controller->op_reg->portregs[usb_dev->port_id-1].portsc,usb_dev->dev_desc->usb_version>>8,usb_dev->dev_desc->usb_version&0xFF,usb_dev->dev_desc->vendor_id,usb_dev->dev_desc->product_id,usb_dev->interface_desc->num_endpoints,usb_dev->interface_desc->interface_class,usb_dev->interface_desc->interface_subclass,usb_dev->interface_desc->interface_protocol,usb_dev->endpoint_desc[0]->max_packet_size);
+    color_printk(GREEN,BLACK,"port_id:%d slot_id:%d portsc:%#x USB_vir:%x.%x VID:%#x PID:%#x if_num:%d ep_num:%d if_class:%#x if_subclass:%#x if_pro:%#x max_pack:%d\n",usb_dev->port_id,usb_dev->slot_id,xhci_controller->op_reg->portregs[usb_dev->port_id-1].portsc,usb_dev->dev_desc->usb_version>>8,usb_dev->dev_desc->usb_version&0xFF,usb_dev->dev_desc->vendor_id,usb_dev->dev_desc->product_id,usb_dev->config_desc->num_interfaces,usb_dev->interface_desc->num_endpoints,usb_dev->interface_desc->interface_class,usb_dev->interface_desc->interface_subclass,usb_dev->interface_desc->interface_protocol,usb_dev->endpoint_desc[0]->max_packet_size);
 }
 
 //枚举usb设备
@@ -478,11 +478,11 @@ INIT_TEXT void init_xhci(void) {
 
     color_printk(
         GREEN,BLACK,
-        "Xhci Version:%x.%x USB%x.%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d CTS:%d AC64:%d SPB:%d USBcmd:%#x USBsts:%#x AlignSize:%d iman:%#x imod:%#x crcr:%#lx dcbaap:%#lx erstba:%#lx erdp0:%#lx\n",
+        "Xhci Version:%x.%x USB%x.%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d Context_Size:%d AC64:%d SPB:%d USBcmd:%#x USBsts:%#x AlignSize:%d iman:%#x imod:%#x crcr:%#lx dcbaap:%#lx erstba:%#lx erdp0:%#lx\n",
         xhci_controller->cap_reg->hciversion >> 8, xhci_controller->cap_reg->hciversion & 0xFF,
         sp_cap->supported_protocol.protocol_ver >> 24, sp_cap->supported_protocol.protocol_ver >> 16 & 0xFF,
         va_to_pa(xhci_dev->bar[0]), xhci_dev->msi_x_flags, xhci_controller->cap_reg->hcsparams1 & 0xFF, xhci_controller->cap_reg->hcsparams1 >> 8 & 0x7FF,
-        xhci_controller->cap_reg->hcsparams1 >> 24, xhci_controller->cap_reg->hccparams1 >> 2 & 1, xhci_controller->cap_reg->hccparams1 & 1,spb_number,
+        xhci_controller->cap_reg->hcsparams1 >> 24, xhci_controller->cap_reg->hccparams1 >> 2 & 1, xhci_controller->context_size,spb_number,
         xhci_controller->op_reg->usbcmd, xhci_controller->op_reg->usbsts, xhci_controller->align_size, xhci_controller->rt_reg->intr_regs[0].iman,
         xhci_controller->rt_reg->intr_regs[0].imod,va_to_pa(xhci_controller->cmd_ring.ring_base), xhci_controller->op_reg->dcbaap, xhci_controller->rt_reg->intr_regs[0].erstba,
                  xhci_controller->rt_reg->intr_regs[0].erdp);
