@@ -393,6 +393,8 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
     get_usb_config_descriptor(usb_dev);
     xhci_config_endpoint(usb_dev);
     list_add_head(&usb_dev_list,&usb_dev->list);
+
+    color_printk(GREEN,BLACK,"USB_vir:%x.%x VID:%#x PID:%#x ep_num:%d if_class:%#x if_subclass:%#x if_pro:%#x max_pack:%d\n",usb_dev->dev_desc->usb_version>>8,usb_dev->dev_desc->usb_version&0xFF,usb_dev->dev_desc->vendor_id,usb_dev->dev_desc->product_id,usb_dev->interface_desc->num_endpoints,usb_dev->interface_desc->interface_class,usb_dev->interface_desc->interface_subclass,usb_dev->interface_desc->interface_protocol,usb_dev->endpoint_desc[0]->max_packet_size);
 }
 
 //枚举usb设备
