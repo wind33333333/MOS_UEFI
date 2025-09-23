@@ -765,7 +765,7 @@ typedef struct {
     xhci_rt_regs_t  *rt_reg;          // 运行时寄存器
     xhci_db_regs_t  *db_reg;          // 门铃寄存器
     xhci_ext_regs_t *ext_reg;         // 扩展寄存器
-    uint64          *dcbaap;          //设备上下文
+    uint64          *dcbaap;          //设备上下文插槽
     xhci_ring_t     cmd_ring;         //命令环
     xhci_ring_t     event_ring;       //事件环
     uint32          align_size;       //xhci内存分配对齐边界
