@@ -755,8 +755,10 @@ typedef struct {
 typedef struct {
     xhci_trb_t *ring_base;   //环起始地址
     uint32 index;            //trb索引
-    uint32 status_c;         //循环位
+    uint8  status_c;         //循环位
 } xhci_ring_t;
+
+#pragma pack(pop)
 
 //xhci控制器
 typedef struct {
@@ -769,16 +771,13 @@ typedef struct {
     xhci_ring_t     cmd_ring;         //命令环
     xhci_ring_t     event_ring;       //事件环
     uint32          align_size;       //xhci内存分配对齐边界
-    uint32          context_size;     //设备上下文字节数（32或64字节）
+    uint8           context_size;     //设备上下文字节数（32或64字节）
     pcie_dev_t      *pcie_dev;
 } xhci_controller_t;
 
 //USB设备
 typedef struct {
-    uint32                          port_id;
-    uint32                          slot_id;
     xhci_device_context_t           *dev_context;       //设备上下文
-    xhci_ring_t                     trans_ring[31];
     usb_device_descriptor_t         *dev_desc;
     usb_config_descriptor_t         *config_desc;
     usb_interface_descriptor_t      *interface_desc;
@@ -787,10 +786,11 @@ typedef struct {
     usb_hid_descriptor_t            *hid_desc;
     usb_hub_descriptor_t            *hub_desc;
     xhci_controller_t               *xhci_controller;
-    list_head_t list;
+    list_head_t                     list;
+    xhci_ring_t                     trans_ring[31];
+    uint8                           port_id;
+    uint8                           slot_id;
 }usb_dev_t;
-
-#pragma pack(pop)
 
 
 //定时

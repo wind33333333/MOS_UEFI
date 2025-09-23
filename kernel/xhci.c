@@ -66,7 +66,7 @@ int xhci_ering_dequeue(xhci_controller_t *xhci_controller, xhci_trb_t *evt_trb) 
 }
 
 //分配插槽
-uint32 xhci_enable_slot(xhci_controller_t *xhci_controller) {
+uint8 xhci_enable_slot(xhci_controller_t *xhci_controller) {
     xhci_trb_t trb = {
         0,
         0,
