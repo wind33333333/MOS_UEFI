@@ -758,6 +758,38 @@ typedef struct {
     uint8  status_c;         //循环位
 } xhci_ring_t;
 
+/* CBW 结构（31 字节） */
+typedef struct {
+    uint32 cbw_signature;       // 固定为 0x43425355 ('USBC')
+    uint32 cbw_tag;             // 命令标签，唯一标识
+    uint32 cbw_data_transfer_length; // 数据传输长度
+    uint8  cbw_flags;           // 传输方向（0x80=IN，0x00=OUT）
+    uint8  cbw_lun;             // 逻辑单元号（通常为 0）
+    uint8  cbw_cb_length;       // SCSI 命令长度（10 字节 for READ(10)）
+    uint8  cbw_cb[16];          // SCSI 命令块（READ(10) 命令）
+} usb_cbw_t;
+
+/* CSW 结构（13 字节） */
+typedef struct {
+    uint32 csw_signature;       // 固定为 0x53425355 ('USBS')
+    uint32 csw_tag;             // 匹配 CBW 的标签
+    uint32 csw_data_residue;    // 未传输的数据长度
+    uint8  csw_status;          // 命令状态（0=成功，1=失败，2=相位错误）
+} usb_csw_t;
+
+/* READ CAPACITY (10) 返回数据（8 字节） */
+typedef struct {
+    uint32 last_lba;            // 最后一个逻辑块地址（块数量 - 1）
+    uint32 block_size;          // 逻辑块大小（字节）
+} read_capacity_10_t;
+
+/* READ CAPACITY (16) 返回数据（32 字节） */
+typedef struct {
+    uint64 last_lba;            // 最后一个逻辑块地址（块数量 - 1，64 位）
+    uint32 block_size;          // 逻辑块大小（字节）
+    uint8  reserved[20];        // 保留字段（包括保护信息等）
+} read_capacity_16_t;
+
 #pragma pack(pop)
 
 //xhci控制器
