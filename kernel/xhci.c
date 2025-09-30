@@ -417,15 +417,6 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
 
         /* 填充 SCSI READ CAPACITY (10) 命令 */
         cbw->cbw_cb[0] = 0x25;          // 操作码：READ CAPACITY (10)
-        cbw->cbw_cb[1] = 0;
-        cbw->cbw_cb[2] = 0;
-        cbw->cbw_cb[3] = 0;
-        cbw->cbw_cb[4] = 0;
-        cbw->cbw_cb[5] = 0;
-        cbw->cbw_cb[6] = 0;
-        cbw->cbw_cb[7] = 0;
-        cbw->cbw_cb[8] = 0;
-        cbw->cbw_cb[9] = 0;
 
         /* 1. 发送 CBW（批量 OUT 端点） */
         xhci_trb_t trb;
