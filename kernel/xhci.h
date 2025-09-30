@@ -820,6 +820,10 @@ typedef struct {
     xhci_controller_t               *xhci_controller;
     list_head_t                     list;
     xhci_ring_t                     trans_ring[31];
+    xhci_ring_t                     in_ring;
+    xhci_ring_t                     out_ring;
+    uint8                           in_ep;
+    uint8                           out_ep;
     uint8                           port_id;
     uint8                           slot_id;
 }usb_dev_t;

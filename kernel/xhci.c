@@ -158,27 +158,27 @@ void xhci_config_endpoint(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t),xhci_controller->align_size));
     xhci_context_t ctx;
-    ctx.reg0 = (usb_dev->interface_desc->num_endpoints+1) << 27;
-    ctx.reg1 = usb_dev->port_id << 16;
-    ctx.reg2 = 0;
-    ctx.reg3 = 0;
-    xhci_input_context_add(input_ctx,xhci_controller->context_size,0,&ctx);    //更新slot
+    uint32 context_entries = 0;
 
+    //更新端点
     for (uint8 i=0;i<usb_dev->interface_desc->num_endpoints;i++) {
-        uint8 ac_shift = (usb_dev->endpoint_desc[i]->endpoint_address&0xF)<<1 | usb_dev->endpoint_desc[i]->endpoint_address>>7;
-        uint8 tr_idx = ac_shift - 1;
+        uint8 ep_num = (usb_dev->endpoint_desc[i]->endpoint_address&0xF)<<1 | usb_dev->endpoint_desc[i]->endpoint_address>>7;
+        if (ep_num > context_entries) context_entries = ep_num;
+        uint8 tr_idx = ep_num - 1;
         //分配传输环内存
         xhci_ring_init(&usb_dev->trans_ring[tr_idx],xhci_controller->align_size);
 
         //识别端点类型
         uint32 ep_type = 0;
-        if (ac_shift & 1) {
+        if (ep_num & 1) {
             switch (usb_dev->endpoint_desc[i]->attributes) {
                 case USB_EP_ISOCH:
                     ep_type = EP_TYPE_ISOCH_IN;
                     break;
                 case USB_EP_BULK:
                     ep_type = EP_TYPE_BULK_IN;
+                    usb_dev->in_ep = ep_num;
+                    usb_dev->in_ring = usb_dev->trans_ring[tr_idx];
                     break;
                 case USB_EP_INTERRUPT:
                     ep_type = EP_TYPE_INTERRUPT_IN;
@@ -190,6 +190,8 @@ void xhci_config_endpoint(usb_dev_t *usb_dev) {
                     break;
                 case USB_EP_BULK:
                     ep_type = EP_TYPE_BULK_OUT;
+                    usb_dev->out_ep = ep_num;
+                    usb_dev->out_ring = usb_dev->trans_ring[tr_idx];
                     break;
                 case USB_EP_INTERRUPT:
                     ep_type = EP_TYPE_INTERRUPT_OUT;
@@ -197,11 +199,18 @@ void xhci_config_endpoint(usb_dev_t *usb_dev) {
         }
 
         ctx.reg0 = 1;
-        ctx.reg1 = ep_type | usb_dev->endpoint_desc[i]->max_packet_size << 16;
+        ctx.reg1 = ep_type | usb_dev->endpoint_desc[i]->max_packet_size<<16;
         ctx.reg2 = va_to_pa(usb_dev->trans_ring[tr_idx].ring_base) | TRB_CYCLE;
         ctx.reg3 = 0;
-        xhci_input_context_add(input_ctx,xhci_controller->context_size,ac_shift,&ctx);
+        xhci_input_context_add(input_ctx,xhci_controller->context_size,ep_num,&ctx);
     }
+
+    //更新slot
+    ctx.reg0 = context_entries << 27;
+    ctx.reg1 = usb_dev->port_id << 16;
+    ctx.reg2 = 0;
+    ctx.reg3 = 0;
+    xhci_input_context_add(input_ctx,xhci_controller->context_size,0,&ctx);
 
     xhci_trb_t trb = {
         va_to_pa(input_ctx),
@@ -215,6 +224,7 @@ void xhci_config_endpoint(usb_dev_t *usb_dev) {
     timing();
 
     xhci_ering_dequeue(xhci_controller, &trb);
+    color_printk(GREEN,BLACK,"config_ep:%#x  \n",trb.status);
     kfree(input_ctx);
 
 }
@@ -393,63 +403,126 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
     list_add_head(&usb_dev_list,&usb_dev->list);
     color_printk(GREEN,BLACK,"port_id:%d slot_id:%d portsc:%#x USB_vir:%x.%x VID:%#x PID:%#x if_num:%d ep_num:%d if_class:%#x if_subclass:%#x if_pro:%#x max_pack:%d\n",usb_dev->port_id,usb_dev->slot_id,xhci_controller->op_reg->portregs[usb_dev->port_id-1].portsc,usb_dev->dev_desc->usb_version>>8,usb_dev->dev_desc->usb_version&0xFF,usb_dev->dev_desc->vendor_id,usb_dev->dev_desc->product_id,usb_dev->config_desc->num_interfaces,usb_dev->interface_desc->num_endpoints,usb_dev->interface_desc->interface_class,usb_dev->interface_desc->interface_subclass,usb_dev->interface_desc->interface_protocol,usb_dev->endpoint_desc[0]->max_packet_size);
 
-    /* 准备 CBW */
-    usb_cbw_t *cbw = kzalloc(sizeof(usb_cbw_t));
-    cbw->cbw_signature = 0x43425355; // 'USBC'
-    cbw->cbw_tag = 0x12345678;      // 唯一标签（示例）
-    cbw->cbw_data_transfer_length = 32; // READ CAPACITY (10) 返回 8 字节
-    cbw->cbw_flags = 0x80;           // IN 方向
-    cbw->cbw_lun = 0;                // 逻辑单元号
-    cbw->cbw_cb_length = 16;         // READ CAPACITY (10) 命令长度
+    if (usb_dev->interface_desc->interface_class == 0x8) {
+         color_printk(GREEN,BLACK,"out_ring:%#lx out_ep_num:%d in_ring%#lx in_ep_num:%d  \n",usb_dev->out_ring.ring_base,usb_dev->out_ep,usb_dev->in_ring.ring_base,usb_dev->in_ep);
 
-    /* 填充 SCSI READ CAPACITY (10) 命令 */
-    cbw->cbw_cb[0] = 0x9E;          // 操作码：READ CAPACITY (16)
-    cbw->cbw_cb[1] = 0x10;          // 服务动作：0x10
-    cbw->cbw_cb[2] = 0;             // LBA 高字节（未使用）
-    cbw->cbw_cb[3] = 0;
-    cbw->cbw_cb[4] = 0;
-    cbw->cbw_cb[5] = 0;
-    cbw->cbw_cb[6] = 0;
-    cbw->cbw_cb[7] = 0;
-    cbw->cbw_cb[8] = 0;
-    cbw->cbw_cb[9] = 0;             // LBA 低字节（未使用）
-    cbw->cbw_cb[10] = 0;            // 分配长度高字节
-    cbw->cbw_cb[11] = 0;
-    cbw->cbw_cb[12] = 0;
-    cbw->cbw_cb[13] = 32;           // 分配长度低字节（32 字节）
-    cbw->cbw_cb[14] = 0;            // 保留
-    cbw->cbw_cb[15] = 0;            // 控制字节
+        /* 准备 CBW */
+        usb_cbw_t *cbw = kzalloc(sizeof(usb_cbw_t));
+        cbw->cbw_signature = 0x43425355; // 'USBC'
+        cbw->cbw_tag = 0x12345678;      // 唯一标签（示例）
+        cbw->cbw_data_transfer_length = 8; // READ CAPACITY (10) 返回 8 字节
+        cbw->cbw_flags = 0x80;           // IN 方向
+        cbw->cbw_lun = 0;                // 逻辑单元号
+        cbw->cbw_cb_length = 10;         // READ CAPACITY (10) 命令长度
+
+        /* 填充 SCSI READ CAPACITY (10) 命令 */
+        cbw->cbw_cb[0] = 0x25;          // 操作码：READ CAPACITY (10)
+        cbw->cbw_cb[1] = 0;
+        cbw->cbw_cb[2] = 0;
+        cbw->cbw_cb[3] = 0;
+        cbw->cbw_cb[4] = 0;
+        cbw->cbw_cb[5] = 0;
+        cbw->cbw_cb[6] = 0;
+        cbw->cbw_cb[7] = 0;
+        cbw->cbw_cb[8] = 0;
+        cbw->cbw_cb[9] = 0;
+
+        /* 1. 发送 CBW（批量 OUT 端点） */
+        xhci_trb_t trb;
+        trb.parameter = va_to_pa(cbw);
+        trb.status = sizeof(usb_cbw_t);
+        trb.control = TRB_NORMAL | TRB_IOC;
+        xhci_ring_enqueue(&usb_dev->out_ring,&trb);
+        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->out_ep);
+        timing();
+        xhci_ering_dequeue(xhci_controller,&trb);
+        color_printk(GREEN,BLACK,"trb p:%#lx s:%#x c:%#x  \n",trb.parameter,trb.status,trb.control);
+
+        /* 2. 接收数据（批量 IN 端点） */
+        read_capacity_10_t *capacity_data = kzalloc(sizeof(read_capacity_10_t));
+        trb.parameter = va_to_pa(capacity_data);
+        trb.status = sizeof(read_capacity_10_t);
+        trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
+        xhci_ring_enqueue(&usb_dev->in_ring,&trb);
+        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->in_ep);
+        timing();
+        xhci_ering_dequeue(xhci_controller,&trb);
+        color_printk(GREEN,BLACK,"trb p:%#lx s:%#x c:%#x  \n",trb.parameter,trb.status,trb.control);
+
+        /* 3. 接收 CSW（批量 IN 端点） */
+        usb_csw_t *csw = kzalloc(sizeof(usb_csw_t));
+        trb.parameter = va_to_pa(csw);
+        trb.status = sizeof(usb_csw_t);
+        trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
+        xhci_ring_enqueue(&usb_dev->in_ring,&trb);
+        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->in_ep);
+        timing();
+        color_printk(GREEN,BLACK,"trb p:%#lx s:%#x c:%#x  \n",trb.parameter,trb.status,trb.control);
+        color_printk(GREEN,BLACK,"usb lba:%#lx block_size:%#x\n",big_to_little_endian_32(capacity_data->last_lba),big_to_little_endian_32(capacity_data->block_size));
+
+        /*
+        //准备 CBW
+        usb_cbw_t *cbw = kzalloc(sizeof(usb_cbw_t));
+        cbw->cbw_signature = 0x43425355; // 'USBC'
+        cbw->cbw_tag = 0x12345678;      // 唯一标签（示例）
+        cbw->cbw_data_transfer_length = 32; // READ CAPACITY (10) 返回 8 字节
+        cbw->cbw_flags = 0x80;           // IN 方向
+        cbw->cbw_lun = 0;                // 逻辑单元号
+        cbw->cbw_cb_length = 16;         // READ CAPACITY (10) 命令长度
+
+        //填充 SCSI READ CAPACITY (16) 命令 #2##1#
+        cbw->cbw_cb[0] = 0x9E;          // 操作码：READ CAPACITY (16)
+        cbw->cbw_cb[1] = 0x10;          // 服务动作：0x10
+        cbw->cbw_cb[2] = 0;             // LBA 高字节（未使用）
+        cbw->cbw_cb[3] = 0;
+        cbw->cbw_cb[4] = 0;
+        cbw->cbw_cb[5] = 0;
+        cbw->cbw_cb[6] = 0;
+        cbw->cbw_cb[7] = 0;
+        cbw->cbw_cb[8] = 0;
+        cbw->cbw_cb[9] = 0;             // LBA 低字节（未使用）
+        cbw->cbw_cb[10] = 0;            // 分配长度高字节
+        cbw->cbw_cb[11] = 0;
+        cbw->cbw_cb[12] = 0;
+        cbw->cbw_cb[13] = 32;           // 分配长度低字节（32 字节）
+        cbw->cbw_cb[14] = 0;            // 保留
+        cbw->cbw_cb[15] = 0;            // 控制字节
 
 
-    /* 1. 发送 CBW（批量 OUT 端点） */
-    xhci_trb_t trb;
-    trb.parameter = va_to_pa(cbw);
-    trb.status = sizeof(usb_cbw_t);
-    trb.control = TRB_NORMAL;
-    xhci_ring_enqueue(&usb_dev->trans_ring[3],&trb);
-    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,4);
-    xhci_ering_dequeue(xhci_controller,&trb);
+        /* 1. 发送 CBW（批量 OUT 端点） #2##1#
+        xhci_trb_t trb;
+        trb.parameter = va_to_pa(cbw);
+        trb.status = sizeof(usb_cbw_t);
+        trb.control = TRB_NORMAL | TRB_IOC;
+        xhci_ring_enqueue(&usb_dev->out_ring,&trb);
+        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->out_ep);
+        timing();
+        xhci_ering_dequeue(xhci_controller,&trb);
 
-    /* 2. 接收数据（批量 IN 端点） */
-    read_capacity_16_t *capacity_data = kzalloc(sizeof(read_capacity_16_t));
-    trb.parameter = va_to_pa(capacity_data);
-    trb.status = sizeof(read_capacity_16_t);
-    trb.control = TRB_NORMAL; // Normal TRB
-    xhci_ring_enqueue(&usb_dev->trans_ring[2],&trb);
-    // xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,3);
-    // xhci_ering_dequeue(xhci_controller,&trb);
+        /* 2. 接收数据（批量 IN 端点） #2##1#
+        read_capacity_16_t *capacity_data = kzalloc(sizeof(read_capacity_16_t));
+        trb.parameter = va_to_pa(capacity_data);
+        trb.status = sizeof(read_capacity_16_t);
+        trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
+        xhci_ring_enqueue(&usb_dev->in_ring,&trb);
+        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->in_ep);
+        timing();
+        xhci_ering_dequeue(xhci_controller,&trb);
 
-    /* 3. 接收 CSW（批量 IN 端点） */
-    usb_csw_t *csw = kzalloc(sizeof(usb_csw_t));
-    trb.parameter = va_to_pa(csw);
-    trb.status = sizeof(usb_csw_t);
-    trb.control = TRB_NORMAL; // Normal TRB
-    xhci_ring_enqueue(&usb_dev->trans_ring[2],&trb);
-    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,3);
-    xhci_ering_dequeue(xhci_controller,&trb);
+        /* 3. 接收 CSW（批量 IN 端点） #2##1#
+        usb_csw_t *csw = kzalloc(sizeof(usb_csw_t));
+        trb.parameter = va_to_pa(csw);
+        trb.status = sizeof(usb_csw_t);
+        trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
+        xhci_ring_enqueue(&usb_dev->in_ring,&trb);
+        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->in_ep);
+        timing();
+        xhci_ering_dequeue(xhci_controller,&trb);
 
-    uint32 result = big_to_little_endian_32(0x12345678);
-    uint64 x = big_to_little_endian_64(0x123456789ABCDEF0);
+        color_printk(GREEN,BLACK,"usb lba:%#lx block_size:%#x      trb.status:%#x \n",big_to_little_endian_64(capacity_data->last_lba),big_to_little_endian_32(capacity_data->block_size),trb.status);
+        */
+
+    }
 
 }
 
