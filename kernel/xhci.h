@@ -37,20 +37,13 @@
 #define TRB_DEVICE_NOTIFICATION     (38 << 10)  // 设备通知
 #define TRB_MFINDEX_WRAP            (39 << 10)  // 主框架索引回绕
 
-#define TRB_TYPE_NORMAL      (1 << 10)
-#define TRB_TYPE_SETUP       (2 << 10)
-#define TRB_TYPE_DATA        (3 << 10)
-#define TRB_TYPE_STATUS      (4 << 10)
-#define TRB_IOC              (1 << 5) // Interrupt on Completion
-#define TRB_TYPE_LINK        (0x06<<10) //连接trb
-#define TRB_CYCLE            (1UL << 0)
+#define TRB_CYCLE            (1 << 0)
 #define TRB_TOGGLE_CYCLE     (1 << 1)
-#define TRB_CHAIN            (1 << 9)
-// 建议增加宏
-#define TRB_IDT             (1 << 6)     // Immediate Data
-#define TRB_TRT_IN_DATA     (3 << 16)    // TRT=3: 有数据阶段，方向 IN
-#define TRB_DIR_IN          (1 << 16)    // Data/Status TRB 的方向位（对 Status 则相反）
-#define TRB_DIR             (1 << 16) // DIR for Data TRB
+#define TRB_CHAIN            (1 << 9)  //当 CH = 1，xHCI 将多个 TRB 视为一个逻辑传输，只有最后一个 TRB 的 IOC 触发中断。用于多段传输（如大数据块的 Normal TRB）。
+#define TRB_IDT              (1 << 6)  //含义：Immediate Data (IDT)，表示 TRB 的 parameter 字段直接包含数据（而非数据缓冲区指针）。 用于小型数据传输（如 Setup Packet，8 字节），直接嵌入 parameter 字段。 仅限 parameter 字段 ≤ 8 字节。
+#define TRB_TRT_IN_DATA      (3 << 16) //含义：Transfer Type (TRT)，特定于 Setup TRB（TRB Type = 2），表示控制传输的数据阶段方向。 Bit 16-17： 00：No Data Stage。 10：Data Out (Host to Device)。 11：Data In (Device to Host)。
+#define TRB_DIR_IN           (1 << 16) //
+#define TRB_DIR              (1 << 16)
 
 #pragma pack(push,1)
 
@@ -790,6 +783,19 @@ typedef struct {
     uint8  reserved[20];        // 保留字段（包括保护信息等）
 } read_capacity_16_t;
 
+//inquiry返回数据36字节
+typedef struct {
+    uint8 device_type;      // byte 0: Peripheral Device Type (0x00 = Block Device)
+    uint8 rmb;              // byte 1: Bit 7 = RMB (1 = Removable)
+    uint8 version;          // byte 2: SCSI 版本
+    uint8 response_format;  // byte 3: 响应格式（通常 2）
+    uint8 additional_len;   // byte 4: 附加数据长度（通常 31）
+    uint8 reserved[3];      // byte 5-7
+    char vendor_id[8];      // byte 8-15: 厂商 (ASCII)
+    char product_id[16];    // byte 16-31: 产品型号 (ASCII)
+    char revision[4];       // byte 32-35: 固件版本 (ASCII)
+}inquiry_data_t;
+
 #pragma pack(pop)
 
 //xhci控制器
@@ -831,8 +837,8 @@ typedef struct {
 
 //定时
 static inline void timing (void) {
-    // uint64 count = 20000000;
-    // while (count--) pause();
+    uint64 count = 20000000;
+    while (count--) pause();
 }
 
 void init_xhci(void);
