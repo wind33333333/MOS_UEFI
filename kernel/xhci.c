@@ -203,6 +203,7 @@ void xhci_config_endpoint(usb_dev_t *usb_dev) {
         ctx.reg2 = va_to_pa(usb_dev->trans_ring[tr_idx].ring_base) | TRB_CYCLE;
         ctx.reg3 = 0;
         xhci_input_context_add(input_ctx,xhci_controller->context_size,ep_num,&ctx);
+        color_printk(GREEN,BLACK,"max_pack:%#x  \n",usb_dev->endpoint_desc[i]->max_packet_size);
     }
 
     //更新slot
@@ -247,7 +248,7 @@ int get_usb_device_descriptor(usb_dev_t* usb_dev) {
     // Status TRB
     trb.parameter = 0;
     trb.status = 0;
-    trb.control = TRB_STATUS_STAGE | TRB_ISOCH;
+    trb.control = TRB_STATUS_STAGE | TRB_IOC;
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
     timing();
@@ -286,7 +287,7 @@ int get_usb_device_descriptor(usb_dev_t* usb_dev) {
     // Status TRB
     trb.parameter = 0;
     trb.status = 0;
-    trb.control = TRB_STATUS_STAGE;
+    trb.control = TRB_STATUS_STAGE | TRB_IOC;
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
     timing();
@@ -316,7 +317,7 @@ int get_usb_config_descriptor(usb_dev_t *usb_dev) {
     // Status TRB
     trb.parameter = 0;
     trb.status = 0;
-    trb.control = TRB_STATUS_STAGE | TRB_ISOCH;
+    trb.control = TRB_STATUS_STAGE | TRB_IOC;
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // 响铃
@@ -343,7 +344,7 @@ int get_usb_config_descriptor(usb_dev_t *usb_dev) {
     // Status TRB
     trb.parameter = 0;
     trb.status = 0;
-    trb.control = TRB_STATUS_STAGE | TRB_ISOCH;
+    trb.control = TRB_STATUS_STAGE | TRB_IOC;
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // 响铃
@@ -414,7 +415,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
 
         trb.parameter = 0;
         trb.status = 0;
-        trb.control = TRB_STATUS_STAGE | TRB_ISOCH | TRB_DIR_IN;
+        trb.control = TRB_STATUS_STAGE | TRB_IOC | TRB_DIR_IN;
         xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
         timing();
@@ -435,7 +436,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
         /* 1. 发送 CBW（批量 OUT 端点） #1#
         trb.parameter = va_to_pa(cbw);
         trb.status = sizeof(usb_cbw_t);
-        trb.control = TRB_NORMAL | TRB_ISOCH;
+        trb.control = TRB_NORMAL | TRB_IOC;
         xhci_ring_enqueue(&usb_dev->out_ring,&trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->out_ep);
         timing();
@@ -446,7 +447,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
         inquiry_data_t *inquiry_data = kzalloc(align_up(sizeof(inquiry_data_t),0x1000));
         trb.parameter = va_to_pa(inquiry_data);
         trb.status = sizeof(inquiry_data_t);
-        trb.control = TRB_NORMAL | TRB_ISOCH; // Normal TRB
+        trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
         xhci_ring_enqueue(&usb_dev->in_ring,&trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->in_ep);
         timing();
@@ -456,7 +457,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
         /* 3. 接收 CSW（批量 IN 端点） #1#
         trb.parameter = va_to_pa(csw);
         trb.status = sizeof(usb_csw_t);
-        trb.control = TRB_NORMAL | TRB_ISOCH; // Normal TRB
+        trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
         xhci_ring_enqueue(&usb_dev->in_ring,&trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->in_ep);
         timing();
@@ -475,7 +476,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
         /* 1. 发送 CBW（批量 OUT 端点） #1#
         trb.parameter = va_to_pa(cbw);
         trb.status = sizeof(usb_cbw_t);
-        trb.control = TRB_NORMAL | TRB_ISOCH;
+        trb.control = TRB_NORMAL | TRB_IOC;
         xhci_ring_enqueue(&usb_dev->out_ring,&trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->out_ep);
         timing();
@@ -485,7 +486,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
         /* 3. 接收 CSW（批量 IN 端点） #1#
         trb.parameter = va_to_pa(csw);
         trb.status = sizeof(usb_csw_t);
-        trb.control = TRB_NORMAL | TRB_ISOCH; // Normal TRB
+        trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
         xhci_ring_enqueue(&usb_dev->in_ring,&trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->in_ep);
         timing();
@@ -508,7 +509,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
         /* 1. 发送 CBW（批量 OUT 端点） */
         trb.parameter = va_to_pa(cbw);
         trb.status = sizeof(usb_cbw_t);
-        trb.control = TRB_NORMAL | TRB_ISOCH;
+        trb.control = TRB_NORMAL | TRB_IOC;
         xhci_ring_enqueue(&usb_dev->out_ring,&trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->out_ep);
         timing();
@@ -519,7 +520,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
         read_capacity_10_t *capacity_data = kzalloc(align_up(sizeof(read_capacity_10_t),0x1000));
         trb.parameter = va_to_pa(capacity_data);
         trb.status = sizeof(read_capacity_10_t);
-        trb.control = TRB_NORMAL | TRB_ISOCH; // Normal TRB
+        trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
         xhci_ring_enqueue(&usb_dev->in_ring,&trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->in_ep);
         timing();
@@ -529,7 +530,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
         /* 3. 接收 CSW（批量 IN 端点） */
         trb.parameter = va_to_pa(csw);
         trb.status = sizeof(usb_csw_t);
-        trb.control = TRB_NORMAL | TRB_ISOCH; // Normal TRB
+        trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
         xhci_ring_enqueue(&usb_dev->in_ring,&trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->in_ep);
         timing();
@@ -574,7 +575,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
         xhci_trb_t trb;
         trb.parameter = va_to_pa(cbw);
         trb.status = sizeof(usb_cbw_t);
-        trb.control = TRB_NORMAL | TRB_ISOCH;
+        trb.control = TRB_NORMAL | TRB_IOC;
         xhci_ring_enqueue(&usb_dev->out_ring,&trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->out_ep);
         timing();
@@ -584,7 +585,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
         read_capacity_16_t *capacity_data = kzalloc(sizeof(read_capacity_16_t));
         trb.parameter = va_to_pa(capacity_data);
         trb.status = sizeof(read_capacity_16_t);
-        trb.control = TRB_NORMAL | TRB_ISOCH; // Normal TRB
+        trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
         xhci_ring_enqueue(&usb_dev->in_ring,&trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->in_ep);
         timing();
@@ -594,7 +595,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
         usb_csw_t *csw = kzalloc(sizeof(usb_csw_t));
         trb.parameter = va_to_pa(csw);
         trb.status = sizeof(usb_csw_t);
-        trb.control = TRB_NORMAL | TRB_ISOCH; // Normal TRB
+        trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
         xhci_ring_enqueue(&usb_dev->in_ring,&trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,usb_dev->in_ep);
         timing();
