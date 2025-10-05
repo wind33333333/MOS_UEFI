@@ -368,6 +368,9 @@ int get_usb_config_descriptor(usb_dev_t *usb_dev) {
                 usb_dev->endpoint_desc[ep_idx] = config_desc;
                 ep_idx++;
                 break;
+            case USB_DESC_TYPE_SS_EP_COMP:
+                usb_dev->ep_comp_des[ep_idx] = config_desc;
+                ep_idx++;
             case USB_DESC_TYPE_HID:
                 usb_dev->hid_desc = config_desc;
                 break;
@@ -490,7 +493,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller,uint32 port_id) {
         timing();
         xhci_ering_dequeue(xhci_controller,&trb);
         color_printk(GREEN,BLACK,"test usb(in) trb p:%#lx s:%#x c:%#x  \n",trb.parameter,trb.status,trb.control);
-        color_printk(GREEN,BLACK,"csw.status:%#x \n",csw->csw_status);*/
+        color_printk(GREEN,BLACK,"csw.status:%#x \n",csw->csw_status);
 
         //获取容量
         mem_set(csw,0,0x1000);

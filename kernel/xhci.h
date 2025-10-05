@@ -709,6 +709,16 @@ typedef struct {
     uint8  interval;          // 轮询间隔（仅中断/同步传输有意义）
 } usb_endpoint_descriptor_t;
 
+/*  端点伴随描述符
+ *  uint8  bLength;            // 固定 6
+    uint8  bDescriptorType;    // 0x30 表示 SuperSpeed Endpoint Companion Descriptor*/
+typedef struct {
+    descriptor_head_t   head;
+    uint8  max_burst;           // 每次突发包数（0-15），实际表示突发数+1
+    uint8  attributes;          // 位 4:0 Streams 支持数 (Bulk)，或多事务机会 (Isoch)
+    uint16 bytes_per_interval;  // 对于 Isoch/Interrupt，最大字节数
+} usb_ss_ep_comp_descriptor_t;
+
 /*HID 类描述符（可选
 描述符长度
 描述符类型：0x21 = HID 描述符*/
@@ -738,6 +748,8 @@ typedef struct {
 #define USB_DESC_TYPE_STRING        0x03  /* 字符串描述符 String Descriptor */
 #define USB_DESC_TYPE_INTERFACE     0x04  /* 接口描述符 Interface Descriptor */
 #define USB_DESC_TYPE_ENDPOINT      0x05  /* 端点描述符 Endpoint Descriptor */
+#define USB_DESC_TYPE_SS_EP_COMP    0x30  /* USB3.x 新增突发和多流信息 */
+
 
 /* ---------------- USB HID 类相关描述符 ---------------- */
 #define USB_DESC_TYPE_HID           0x21  /* HID 类描述符 HID Descriptor */
@@ -822,6 +834,7 @@ typedef struct {
     usb_interface_descriptor_t      *interface_desc;
     usb_string_descriptor_t         *string_desc;
     usb_endpoint_descriptor_t       *endpoint_desc[30];
+    usb_ss_ep_comp_descriptor_t     *ep_comp_des[30];
     usb_hid_descriptor_t            *hid_desc;
     usb_hub_descriptor_t            *hub_desc;
     xhci_controller_t               *xhci_controller;
@@ -838,8 +851,8 @@ typedef struct {
 
 //定时
 static inline void timing (void) {
-    uint64 count = 20000000;
-    while (count--) pause();
+    // uint64 count = 20000000;
+    // while (count--) pause();
 }
 
 void init_xhci(void);
