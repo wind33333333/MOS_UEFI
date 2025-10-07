@@ -607,7 +607,6 @@ void usb_dev_enum(xhci_controller_t *xhci_controller) {
     }
 }
 
-
 INIT_TEXT void init_xhci(void) {
     pcie_dev_t *xhci_dev = pcie_dev_find(XHCI_CLASS_CODE); //查找xhci设备
     pcie_bar_set(xhci_dev, 0); //初始化bar0寄存器
