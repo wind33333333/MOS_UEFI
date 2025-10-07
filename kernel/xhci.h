@@ -512,7 +512,7 @@ typedef struct {
                                                 6=Bulk In 批量传输
                                                 7=Interrupt In 中断传输
                                  * 位 7 流传输（Streams）开关控制 0=启用流传输（默认）1=禁用主机发起的流选择（需手动管理流ID）
-                                 * 位 15:8 最大突发大小
+                                 * 位 15:8 Max Packet Size 最大突发大小(0-15)
                                  * 位 31:16 最大包大小（Max Packet Size）*/
 
         uint64 tr_dequeue_ptr;      /* 位 0：DCS（Dequeue Cycle State）。当DCS=1时，主机控制器从传输环中获取的TRB需要其Cycle Bit为1才会被处理；当RCS=0时，则处理Cycle Bit为0的TRB。
@@ -851,8 +851,8 @@ typedef struct {
 
 //定时
 static inline void timing (void) {
-    // uint64 count = 20000000;
-    // while (count--) pause();
+    uint64 count = 200000000;
+    while (count--) pause();
 }
 
 void init_xhci(void);
