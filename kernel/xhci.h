@@ -842,6 +842,7 @@ typedef struct {
     xhci_ring_t                     trans_ring[31];
     xhci_ring_t                     in_ring;
     xhci_ring_t                     out_ring;
+    uint32                          tag;
     uint8                           in_ep;
     uint8                           out_ep;
     uint8                           port_id;
@@ -851,7 +852,7 @@ typedef struct {
 
 //定时
 static inline void timing (void) {
-    uint64 count = 200000000;
+    uint64 count = 2000000;
     while (count--) pause();
 }
 
