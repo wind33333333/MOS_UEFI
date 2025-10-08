@@ -1,14 +1,9 @@
 #include "xhci.h"
-
-#include <time.h>
-#include <asm-generic/errno.h>
-
 #include "moslib.h"
 #include "pcie.h"
 #include "printk.h"
 #include "slub.h"
 #include "vmm.h"
-#include "usb.h"
 
 //usb设备全局链
 list_head_t usb_dev_list;
@@ -69,6 +64,121 @@ int xhci_ering_dequeue(xhci_controller_t *xhci_controller, xhci_trb_t *evt_trb) 
     }
     return 0;
 }
+
+/*
+ * 启用插槽命令trb
+ * uint64 member0 位0-63 = 0
+ *
+ * uint64 member1 位32    cycle
+ *                位42-47 TRB Type 类型
+ *                位48-52 slot type
+ */
+static inline void enable_slot_com_trb(trb_t *trb,uint8 trb_type,uint8 slot_type) {
+    trb->member0 = 0;
+    trb->member1 = (trb_type<<42) | (slot_type<<48);
+}
+
+/*
+ * 设置设备地址命令
+ * uint64 member0 位0-63 = input context pointer 物理地址
+ *
+ * uint64 member1 位32    cycle
+ *                位41    bsr 块地址请求命令 0=发送usb_set_address请求，1=不发送（一般设置0）
+ *                位42-47 TRB Type 类型
+ *                位56-63 slot id
+ */
+static inline void addr_dev_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint8 bsr,uint8 trb_type,uint8 slot_id) {
+    trb->member0 = 0;
+    trb->member1 = (bsr<<41)|(trb_type<<42) | (slot_id<<56);
+}
+
+
+/*  normal trb
+ *  uint64 member0 位0-63 data buffer pointer 数据区缓冲区物理地址指针
+ *
+ *  uint64 member1 位0-16  trb transfer length 传输长度
+ *                 位17-21 td size             剩余数据包
+ *                 位22-31 Interrupter Target 中断目标
+ *                 位32    cycle
+ *                 位33    ent     1=评估下一个trb
+ *                 位34    isp     1=短数据包中断
+ *                 位35    ns      1=禁止窥探
+ *                 位36    ch      1=链接 多个trb关联
+ *                 位37    IOC     1=完成时中断
+ *                 位38    IDT     1=数据包含在trb
+ *                 位41    bei     1=块事件中端，ioc=1 则传输事件在下一个中断阀值时，ioc产生的中断不应向主机发送中断。
+ *                 位42-47 TRB Type 类型
+ */
+static inline void normal_trb(trb_t *trb,uint64 data_buff_ptr,\
+    uint16 trb_tran_length,uint8 td_size,uint16 intr_target,uint8 ent,uint8 isp,uint8 ns,uint8 ch,uint8 ioc,uint8 idt,uint8 bei,uint8 trb_type) {
+    trb->member0 = data_buff_ptr;
+    trb->member1 = (trb_tran_length<<0)|(td_size<<17)|(intr_target<<22)|(ent<<33)|(isp<<34)|(ns<<35)|(ch<<36)|(ioc<<37)|(idt<<38)|(bei<<41)|(trb_type<<42);
+}
+
+/*设置阶段trb
+    uint64 member0;  *位0-7   RequestType请求类型
+                     *位8-15  Request    请求
+                     *位16-31 Value      值
+                     *位32-47 Index      下标
+                     *位48-63 Length     长度
+
+    uint64 member1;  *位0-15  TRB Transfer Length  传输长度
+                     *位22-31 Interrupter Target 中断目标
+                     *位32    cycle
+                     *位37    1=IOC 完成时中断
+                     *位38    1=IDT 数据包含在trb
+                     *位42-47 TRB Type 类型
+                     *位48-49 TRT 传输类型 0=无数据阶段 1=保留 2=输出数据阶段 3=输入数据阶段
+*/
+static inline void setup_stage_trb(trb_t *trb,uint8 req_type,uint8 req,uint16 value,uint16 index,uint16 length,\
+    uint16 trb_tran_length,uint16 intr_target,uint8 ioc,uint8 idt,uint8 trb_type,uint8 trt) {
+    trb->member0 = (req_type<<0) | (req<<8) | (value<<16) | (index<<32) | (length<<48);
+    trb->member1 = (trb_tran_length<<0) | (intr_target<<22) | (ioc<<37) | (idt<<38) | (trb_type<<42) | (trt<<48);
+}
+
+/*
+ * 数据阶段trb
+ * uint64 member0 位0-63 data buffer pointer 数据区缓冲区物理地址指针
+ *
+ *  uint64 member1 位0-16   trb transfer length 传输长度
+ *                 位17-21 td size             剩余数据包
+ *                 位22-31 Interrupter Target 中断目标
+ *                 位32    cycle
+ *                 位33    ent     1=评估下一个trb
+ *                 位34    isp     1=短数据包中断
+ *                 位35    ns      1=禁止窥探
+ *                 位36    ch      1=链接 多个trb关联
+ *                 位37    IOC     1=完成时中断
+ *                 位38    IDT     1=数据包含在trb
+ *                 位41    bei     1=块事件中端，ioc=1 则传输事件在下一个中断阀值时，ioc产生的中断不应向主机发送中断。
+ *                 位42-47 TRB Type 类型
+ *                 位48    dir     0=out(主机到设备) 1=in(设备到主机)
+ */
+static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,\
+    uint16 trb_tran_length,uint8 td_size,uint16 intr_target,uint8 ent,uint8 isp,uint8 ns,uint8 ch,uint8 ioc,uint8 idt,uint8 bei,uint8 trb_type,uint8 dir) {
+    trb->member0 = data_buff_ptr;
+    trb->member1 = (trb_tran_length<<0)|(td_size<<17)|(intr_target<<22)|(ent<<33)|(isp<<34)|(ns<<35)|(ch<<36)|(ioc<<37)|(idt<<38)|(bei<<41)|(trb_type<<42)|(dir<<48);
+}
+
+
+
+/*
+ * 状态阶段trb
+ * uint64 member0 位0-63 =0
+ *
+ * uint64 member1  位22-31 Interrupter Target 中断目标
+ *                 位32    cycle
+ *                 位33    ent     1=评估下一个trb
+ *                 位36    ch      1=链接 多个trb关联
+ *                 位37    IOC     1=完成时中断
+ *                 位42-47 TRB Type 类型
+ *                 位48    dir     0=out(主机到设备) 1=in(设备到主机)
+ */
+static inline void status_stage_trb(trb_t *trb,uint16 intr_target,uint8 ent,uint8 ch,uint8 ioc,uint8 trb_type,uint8 dir) {
+    trb->member0 = 0;
+    trb->member1 = (intr_target<<22)|(ent<<33)|(ch<<36)|(ioc<<37)|(trb_type<<42)|(dir<<48);
+}
+
 
 //分配插槽
 uint8 xhci_enable_slot(xhci_controller_t *xhci_controller) {
@@ -406,7 +516,7 @@ int usb_set_config(usb_dev_t *usb_dev) {
 
     trb.parameter = 0;
     trb.status = 0;
-    trb.control = TRB_STATUS_STAGE | TRB_IOC| (1 << 16);
+    trb.control = TRB_STATUS_STAGE | TRB_IOC;
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,1);
