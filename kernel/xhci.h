@@ -546,7 +546,7 @@ typedef struct {
 typedef struct {
     union {
         xhci_input_context32_t input_ctx32;
-        xhci_input_context32_t input_ctx64;
+        xhci_input_context64_t input_ctx64;
     };
 }xhci_input_context_t;
 /***********************************************************************/
@@ -852,8 +852,8 @@ typedef struct {
 
 //定时
 static inline void timing (void) {
-    uint64 count = 2000000;
-    while (count--) pause();
+    // uint64 count = 2000000;
+    // while (count--) pause();
 }
 
 void init_xhci(void);
