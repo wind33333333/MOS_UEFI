@@ -134,6 +134,11 @@ static inline void evaluate_context_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint
 #define TRB_TYPE_DATA_STAGE              (3UL << 42)   // 数据阶段
 #define TRB_TYPE_STATUS_STAGE            (4UL << 42)   // 状态阶段
 
+typedef enum {
+    disable_ioc=0,
+    enable_ioc=1,
+}config_ioc_e;
+
 /*设置阶段trb
     uint64 member0;  *位0-7   RequestType请求类型
                      *位8-15  Request    请求
@@ -155,7 +160,7 @@ typedef enum {
     in_data_stage  = 3,
 }trb_trt_e;
 static inline void setup_stage_trb(trb_t *trb,uint8 req_type,uint8 req,uint16 value,uint16 index,uint16 length,\
-    uint16 trb_tran_length,uint8 ioc,trb_trt_e trt) {
+    uint16 trb_tran_length,config_ioc_e ioc,trb_trt_e trt) {
     trb->member0 = (req_type<<0) | (req<<8) | (value<<16) | (index<<32) | (length<<48);
     trb->member1 = (trb_tran_length<<0) | (ioc<<37) | (1<<38) | TRB_TYPE_SETUP_STAGE | (trt<<48);
 }
@@ -182,9 +187,9 @@ typedef enum {
     out = 0,
     in  = 1,
 }trb_dir_e;
-static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,uint16 trb_tran_length,trb_trt_e dir) {
+static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,uint16 trb_tran_length,config_ioc_e ioc,trb_trt_e dir) {
     trb->member0 = data_buff_ptr;
-    trb->member1 = (trb_tran_length<<0)|TRB_TYPE_DATA_STAGE |(dir<<48);
+    trb->member1 = (trb_tran_length<<0)|TRB_TYPE_DATA_STAGE |(ioc<<37)|(dir<<48);
 }
 
 
@@ -200,7 +205,7 @@ static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,uint16 trb_tra
  *                 位42-47 TRB Type 类型
  *                 位48    dir     0=out(主机到设备) 1=in(设备到主机)
  */
-static inline void status_stage_trb(trb_t *trb,uint8 ioc,trb_dir_e dir) {
+static inline void status_stage_trb(trb_t *trb,config_ioc_e ioc,trb_dir_e dir) {
     trb->member0 = 0;
     trb->member1 = (ioc<<37)|TRB_TYPE_STATUS_STAGE|(dir<<48);
 }
