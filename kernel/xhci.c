@@ -65,6 +65,12 @@ int xhci_ering_dequeue(xhci_controller_t *xhci_controller, xhci_trb_t *evt_trb) 
     return 0;
 }
 
+//region 命令环trb
+#define TRB_TYPE_ENABLE_SLOT             (9UL << 42)   // 启用插槽
+#define TRB_TYPE_ADDRESS_DEVICE          (11UL << 42)  // 设备寻址
+#define TRB_TYPE_CONFIGURE_ENDPOINT      (12UL << 42)  // 配置端点
+#define TRB_TYPE_EVALUATE_CONTEXT        (13UL << 42)  // 评估上下文
+
 /*
  * 启用插槽命令trb
  * uint64 member0 位0-63 = 0
@@ -73,13 +79,13 @@ int xhci_ering_dequeue(xhci_controller_t *xhci_controller, xhci_trb_t *evt_trb) 
  *                位42-47 TRB Type 类型
  *                位48-52 slot type
  */
-static inline void enable_slot_com_trb(trb_t *trb,uint8 trb_type,uint8 slot_type) {
+static inline void enable_slot_com_trb(trb_t *trb,uint8 slot_type) {
     trb->member0 = 0;
-    trb->member1 = (trb_type<<42) | (slot_type<<48);
+    trb->member1 = TRB_TYPE_ENABLE_SLOT | (slot_type<<48);
 }
 
 /*
- * 设置设备地址命令
+ * 设置设备地址命令trb
  * uint64 member0 位0-63 = input context pointer 物理地址
  *
  * uint64 member1 位32    cycle
@@ -87,33 +93,46 @@ static inline void enable_slot_com_trb(trb_t *trb,uint8 trb_type,uint8 slot_type
  *                位42-47 TRB Type 类型
  *                位56-63 slot id
  */
-static inline void addr_dev_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint8 bsr,uint8 trb_type,uint8 slot_id) {
-    trb->member0 = 0;
-    trb->member1 = (bsr<<41)|(trb_type<<42) | (slot_id<<56);
+static inline void addr_dev_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint8 slot_id) {
+    trb->member0 = input_ctx_ptr;
+    trb->member1 = TRB_TYPE_ADDRESS_DEVICE|(slot_id<<56);
 }
 
-
-/*  normal trb
- *  uint64 member0 位0-63 data buffer pointer 数据区缓冲区物理地址指针
+/*
+ * 配置端点trb
+ * uint64 member0 位0-63 = input context pointer 物理地址
  *
- *  uint64 member1 位0-16  trb transfer length 传输长度
- *                 位17-21 td size             剩余数据包
- *                 位22-31 Interrupter Target 中断目标
- *                 位32    cycle
- *                 位33    ent     1=评估下一个trb
- *                 位34    isp     1=短数据包中断
- *                 位35    ns      1=禁止窥探
- *                 位36    ch      1=链接 多个trb关联
- *                 位37    IOC     1=完成时中断
- *                 位38    IDT     1=数据包含在trb
- *                 位41    bei     1=块事件中端，ioc=1 则传输事件在下一个中断阀值时，ioc产生的中断不应向主机发送中断。
- *                 位42-47 TRB Type 类型
+ * uint64 member1 位32    cycle
+ *                位41    dc    接触配置 1= xhci将忽略输入上下文指针字段，一般设置0
+ *                位42-47 TRB Type 类型
+ *                位56-63 slot id
  */
-static inline void normal_trb(trb_t *trb,uint64 data_buff_ptr,\
-    uint16 trb_tran_length,uint8 td_size,uint16 intr_target,uint8 ent,uint8 isp,uint8 ns,uint8 ch,uint8 ioc,uint8 idt,uint8 bei,uint8 trb_type) {
-    trb->member0 = data_buff_ptr;
-    trb->member1 = (trb_tran_length<<0)|(td_size<<17)|(intr_target<<22)|(ent<<33)|(isp<<34)|(ns<<35)|(ch<<36)|(ioc<<37)|(idt<<38)|(bei<<41)|(trb_type<<42);
+static inline void config_endpoint_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint8 slot_id) {
+    trb->member0 = input_ctx_ptr;
+    trb->member1 = TRB_TYPE_CONFIGURE_ENDPOINT | (slot_id<<56);
 }
+
+/*
+ * 评估上下文trb
+ * uint64 member0 位0-63 = input context pointer 物理地址
+ *
+ * uint64 member1 位32    cycle
+ *                位41    bsr 块地址请求命令 0=发送usb_set_address请求，1=不发送（一般设置0）
+ *                位42-47 TRB Type 类型
+ *                位56-63 slot id
+ */
+static inline void evaluate_context_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint8 slot_id) {
+    trb->member0 = input_ctx_ptr;
+    trb->member1 = TRB_TYPE_EVALUATE_CONTEXT  | (slot_id<<56);
+}
+
+//endregion
+
+//region 端点控制环trb
+
+#define TRB_TYPE_SETUP_STAGE             (2UL << 42)   // 设置阶段
+#define TRB_TYPE_DATA_STAGE              (3UL << 42)   // 数据阶段
+#define TRB_TYPE_STATUS_STAGE            (4UL << 42)   // 状态阶段
 
 /*设置阶段trb
     uint64 member0;  *位0-7   RequestType请求类型
@@ -128,12 +147,17 @@ static inline void normal_trb(trb_t *trb,uint64 data_buff_ptr,\
                      *位37    1=IOC 完成时中断
                      *位38    1=IDT 数据包含在trb
                      *位42-47 TRB Type 类型
-                     *位48-49 TRT 传输类型 0=无数据阶段 1=保留 2=输出数据阶段 3=输入数据阶段
+                     *位48-49 TRT 传输类型 0=无数据阶段 1=保留 2=out(主机到设备) 3=in(设备到主机)
 */
+typedef enum {
+    no_data_stage = 0,
+    out_data_stage = 2,
+    in_data_stage  = 3,
+}trb_trt_e;
 static inline void setup_stage_trb(trb_t *trb,uint8 req_type,uint8 req,uint16 value,uint16 index,uint16 length,\
-    uint16 trb_tran_length,uint16 intr_target,uint8 ioc,uint8 idt,uint8 trb_type,uint8 trt) {
+    uint16 trb_tran_length,uint8 ioc,trb_trt_e trt) {
     trb->member0 = (req_type<<0) | (req<<8) | (value<<16) | (index<<32) | (length<<48);
-    trb->member1 = (trb_tran_length<<0) | (intr_target<<22) | (ioc<<37) | (idt<<38) | (trb_type<<42) | (trt<<48);
+    trb->member1 = (trb_tran_length<<0) | (ioc<<37) | (1<<38) | TRB_TYPE_SETUP_STAGE | (trt<<48);
 }
 
 /*
@@ -154,12 +178,14 @@ static inline void setup_stage_trb(trb_t *trb,uint8 req_type,uint8 req,uint16 va
  *                 位42-47 TRB Type 类型
  *                 位48    dir     0=out(主机到设备) 1=in(设备到主机)
  */
-static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,\
-    uint16 trb_tran_length,uint8 td_size,uint16 intr_target,uint8 ent,uint8 isp,uint8 ns,uint8 ch,uint8 ioc,uint8 idt,uint8 bei,uint8 trb_type,uint8 dir) {
+typedef enum {
+    out = 0,
+    in  = 1,
+}trb_dir_e;
+static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,uint16 trb_tran_length,trb_trt_e dir) {
     trb->member0 = data_buff_ptr;
-    trb->member1 = (trb_tran_length<<0)|(td_size<<17)|(intr_target<<22)|(ent<<33)|(isp<<34)|(ns<<35)|(ch<<36)|(ioc<<37)|(idt<<38)|(bei<<41)|(trb_type<<42)|(dir<<48);
+    trb->member1 = (trb_tran_length<<0)|TRB_TYPE_DATA_STAGE |(dir<<48);
 }
-
 
 
 /*
@@ -174,10 +200,39 @@ static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,\
  *                 位42-47 TRB Type 类型
  *                 位48    dir     0=out(主机到设备) 1=in(设备到主机)
  */
-static inline void status_stage_trb(trb_t *trb,uint16 intr_target,uint8 ent,uint8 ch,uint8 ioc,uint8 trb_type,uint8 dir) {
+static inline void status_stage_trb(trb_t *trb,uint8 ioc,trb_dir_e dir) {
     trb->member0 = 0;
-    trb->member1 = (intr_target<<22)|(ent<<33)|(ch<<36)|(ioc<<37)|(trb_type<<42)|(dir<<48);
+    trb->member1 = (ioc<<37)|TRB_TYPE_STATUS_STAGE|(dir<<48);
 }
+//endregion
+
+//region 传输环trb
+/*  普通传输trb
+ *  uint64 member0 位0-63 data buffer pointer 数据区缓冲区物理地址指针
+ *
+ *  uint64 member1 位0-16  trb transfer length 传输长度
+ *                 位17-21 td size             剩余数据包
+ *                 位22-31 Interrupter Target 中断目标
+ *                 位32    cycle
+ *                 位33    ent     1=评估下一个trb
+ *                 位34    isp     1=短数据包中断
+ *                 位35    ns      1=禁止窥探
+ *                 位36    ch      1=链接 多个trb关联
+ *                 位37    IOC     1=完成时中断
+ *                 位38    IDT     1=数据包含在trb
+ *                 位41    bei     1=块事件中端，ioc=1 则传输事件在下一个中断阀值时，ioc产生的中断不应向主机发送中断。
+ *                 位42-47 TRB Type 类型
+ */
+static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,\
+    uint16 trb_tran_length,uint8 td_size,uint16 intr_target,uint8 ent,uint8 isp,uint8 ns,uint8 ch,uint8 ioc,uint8 idt,uint8 bei,uint8 trb_type) {
+    trb->member0 = data_buff_ptr;
+    trb->member1 = (trb_tran_length<<0)|(td_size<<17)|(intr_target<<22)|(ent<<33)|(isp<<34)|(ns<<35)|(ch<<36)|(ioc<<37)|(idt<<38)|(bei<<41)|(trb_type<<42);
+}
+//endregion
+
+//region 事件环trb
+
+//endregion
 
 
 //分配插槽
