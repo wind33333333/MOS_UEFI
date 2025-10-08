@@ -489,13 +489,13 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
             // 1. 发送 CBW（批量 OUT 端点）
             trb.parameter = va_to_pa(cbw);
             trb.status = sizeof(usb_cbw_t);
-            trb.control = TRB_NORMAL;
+            trb.control = TRB_NORMAL | TRB_IOC;
             xhci_ring_enqueue(&usb_dev->out_ring, &trb);
 
             // 3. 接收 CSW（批量 IN 端点）
             trb.parameter = va_to_pa(csw);
             trb.status = sizeof(usb_csw_t);
-            trb.control = TRB_NORMAL; // Normal TRB
+            trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
             xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
             xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, usb_dev->out_ep);
@@ -507,7 +507,6 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
             xhci_ering_dequeue(xhci_controller,&trb);
             color_printk(GREEN,BLACK,"test csw.status:%d trb p:%#lx s:%#x c%#x    \n",csw->csw_status,trb.parameter,trb.status,trb.control);
         }while (csw->csw_status);
-
 
         //获取u盘信息
         mem_set(csw, 0, 0x1000);
@@ -524,7 +523,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         // 1. 发送 CBW（批量 OUT 端点)
         trb.parameter = va_to_pa(cbw);
         trb.status = sizeof(usb_cbw_t);
-        trb.control = TRB_NORMAL;
+        trb.control = TRB_NORMAL| TRB_IOC;
         xhci_ring_enqueue(&usb_dev->out_ring, &trb);
 
         //2. 接收数据（批量 IN 端点）
@@ -537,7 +536,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         // 3. 接收 CSW（批量 IN 端点）
         trb.parameter = va_to_pa(csw);
         trb.status = sizeof(usb_csw_t);
-        trb.control = TRB_NORMAL; // Normal TRB
+        trb.control = TRB_NORMAL| TRB_IOC; // Normal TRB
         xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, usb_dev->out_ep);
@@ -573,7 +572,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         // 1. 发送 CBW（批量 OUT 端点）
         trb.parameter = va_to_pa(cbw);
         trb.status = sizeof(usb_cbw_t);
-        trb.control = TRB_NORMAL;
+        trb.control = TRB_NORMAL | TRB_IOC;
         xhci_ring_enqueue(&usb_dev->out_ring, &trb);
 
         //2. 接收数据（批量 IN 端点
@@ -587,25 +586,22 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         csw = kzalloc(sizeof(usb_csw_t));
         trb.parameter = va_to_pa(csw);
         trb.status = sizeof(usb_csw_t);
-        trb.control = TRB_NORMAL; // Normal TRB
+        trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
         xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, usb_dev->out_ep);
         timing();
+        xhci_ering_dequeue(xhci_controller,&trb);
+        color_printk(GREEN,BLACK,"get usb rongliang trb p:%#lx s:%#x c%#x    \n",trb.parameter,trb.status,trb.control);
+
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, usb_dev->in_ep);
         timing();
+        xhci_ering_dequeue(xhci_controller,&trb);
+        color_printk(GREEN,BLACK,"get usb rongliang trb p:%#lx s:%#x c%#x    \n",trb.parameter,trb.status,trb.control);
 
         color_printk(GREEN,BLACK, "cbw_ptr:%#lx cap16_ptr:%#lx csw_ptr:%#lx   \n", cbw, capacity_data, csw);
         color_printk(GREEN,BLACK, "usb lba:%#lx block_size:%#x    \n", big_to_little_endian_64(capacity_data->last_lba),
                      big_to_little_endian_32(capacity_data->block_size));
-
-        for (uint8 i = 0; i < 6; i++) {
-            color_printk(GREEN,BLACK, "ep_ctx%d ep_config:%#x ep_type_size:%#x tr_dequeue_ptr:%#lx trb_payload:%#x \n",
-                         i, usb_dev->dev_context->dev_ctx32.ep[i].ep_config,
-                         usb_dev->dev_context->dev_ctx32.ep[i].ep_type_size,
-                         usb_dev->dev_context->dev_ctx32.ep[i].tr_dequeue_ptr,
-                         usb_dev->dev_context->dev_ctx32.ep[i].trb_payload);
-        }
 
     }
 }
