@@ -231,7 +231,6 @@ typedef enum {
                      *位42-47 TRB Type 类型
                      *位48-49 TRT 传输类型 0=无数据阶段 1=保留 2=out(主机到设备) 3=in(设备到主机)
 */
-
 typedef enum {
     setup_stage_norm = 0,
     setup_stage_calss = 1,
@@ -276,9 +275,9 @@ static inline void setup_stage_trb(trb_t *trb,setup_stage_receiver_e setup_stage
  *                 位42-47 TRB Type 类型
  *                 位48    dir     0=out(主机到设备) 1=in(设备到主机)
  */
-static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,uint16 trb_tran_length,config_ioc_e ioc,trb_dir_e dir) {
+static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,uint16 trb_tran_length,trb_dir_e dir) {
     trb->member0 = data_buff_ptr;
-    trb->member1 = (trb_tran_length<<0)|TRB_TYPE_DATA_STAGE |(ioc<<37)|(dir<<48);
+    trb->member1 = (trb_tran_length<<0)|TRB_TYPE_DATA_STAGE |(1<<36)|(dir<<48);
 }
 
 
@@ -317,10 +316,9 @@ static inline void status_stage_trb(trb_t *trb,config_ioc_e ioc,trb_dir_e dir) {
  *                 位41    bei     1=块事件中端，ioc=1 则传输事件在下一个中断阀值时，ioc产生的中断不应向主机发送中断。
  *                 位42-47 TRB Type 类型
  */
-static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,\
-    uint16 trb_tran_length,uint8 td_size,uint16 intr_target,uint8 ent,uint8 isp,uint8 ns,uint8 ch,uint8 ioc,uint8 idt,uint8 bei,uint8 trb_type) {
+static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,uint16 trb_tran_length,uint8 ch,uint8 ioc,uint8 trb_type) {
     trb->member0 = data_buff_ptr;
-    trb->member1 = (trb_tran_length<<0)|(td_size<<17)|(intr_target<<22)|(ent<<33)|(isp<<34)|(ns<<35)|(ch<<36)|(ioc<<37)|(idt<<38)|(bei<<41)|(trb_type<<42);
+    trb->member1 = (trb_tran_length<<0)|(ch<<36)|(ioc<<37)|(trb_type<<42);
 }
 //endregion
 
