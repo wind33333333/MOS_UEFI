@@ -139,12 +139,89 @@ typedef enum {
     enable_ioc=1,
 }config_ioc_e;
 
+typedef enum {
+    out = 0,
+    in  = 1,
+}trb_dir_e;
+
+typedef enum {
+    usb_req_get_status    =    0x00,  /* 获取状态
+                                               - 接收者：设备、接口、端点
+                                               - 返回：设备/接口/端点的状态（如挂起、遥控唤醒）
+                                               - w_value: 0
+                                               - w_index: 设备=0，接口=接口号，端点=端点号
+                                               - w_length: 2（返回 2 字节状态） */
+    usb_req_clear_feature  =   0x01,  /* 清除特性
+                                               - 接收者：设备、接口、端点
+                                               - 用途：清除特定状态（如取消遥控唤醒或端点暂停）
+                                               - w_value: 特性选择（如 0=设备遥控唤醒，1=端点暂停）
+                                               - w_index: 设备=0，接口=接口号，端点=端点号
+                                               - w_length: 0 */
+    usb_req_set_feature    =   0x03,  /* 设置特性
+                                               - 接收者：设备、接口、端点
+                                               - 用途：启用特定特性（如遥控唤醒、测试模式）
+                                               - w_value: 特性选择（如 0=设备遥控唤醒，1=端点暂停）
+                                               - w_index: 设备=0，接口=接口号，端点=端点号
+                                               - w_length: 0 */
+    usb_req_set_address    =   0x05,  /* 设置设备地址
+                                               - 接收者：设备
+                                               - 用途：在枚举过程中分配设备地址（1-127）
+                                               - w_value: 新地址（低字节）
+                                               - w_index: 0
+                                               - w_length: 0 */
+    usb_req_get_descriptor  =  0x06,  /* 获取描述符
+                                               - 接收者：设备、接口
+                                               - 用途：获取设备、配置、接口、字符串等描述符
+                                               - w_value: 高字节=描述符类型（如 0x01=设备，0x02=配置），低字节=索引
+                                               - w_index: 0（设备/配置描述符）或语言 ID（字符串描述符）
+                                               - w_length: 请求的字节数 */
+    usb_req_set_descriptor  =  0x07,  /* 设置描述符
+                                               - 接收者：设备、接口
+                                               - 用途：更新设备描述符（较少使用）
+                                               - w_value: 高字节=描述符类型，低字节=索引
+                                               - w_index: 0 或语言 ID
+                                               - w_length: 数据长度 */
+    usb_req_get_config      = 0x08,  /* 获取当前配置
+                                               - 接收者：设备
+                                               - 用途：返回当前激活的配置值
+                                               - w_value: 0
+                                               - w_index: 0
+                                               - w_length: 1（返回 1 字节配置值） */
+    usb_req_set_config      = 0x09,  /* 设置配置
+                                               - 接收者：设备
+                                               - 用途：激活指定配置
+                                               - w_value: 配置值（来自配置描述符的 b_configuration_value）
+                                               - w_index: 0
+                                               - w_length: 0 */
+    usb_req_get_interface   = 0x0A,  /* 获取接口的备用设置
+                                               - 接收者：接口
+                                               - 用途：返回当前接口的备用设置编号
+                                               - w_value: 0
+                                               - w_index: 接口号
+                                               - w_length: 1（返回 1 字节备用设置值） */
+    usb_req_set_interface   = 0x0B,  /* 设置接口的备用设置
+                                               - 接收者：接口
+                                               - 用途：选择接口的备用设置
+                                               - w_value: 备用设置编号
+                                               - w_index: 接口号
+                                               - w_length: 0 */
+    usb_req_synch_frame     = 0x0C,  /* 同步帧
+                                               - 接收者：端点
+                                               - 用途：为同步端点（如音频设备）提供帧编号
+                                               - w_value: 0
+                                               - w_index: 端点号
+                                               - w_length: 2（返回 2 字节帧号） */
+
+}setup_stage_req_e;
+
 /*设置阶段trb
-    uint64 member0;  *位0-7   RequestType请求类型
-                     *位8-15  Request    请求
-                     *位16-31 Value      值
-                     *位32-47 Index      下标
-                     *位48-63 Length     长度
+    uint64 member0;  *位4-0：接收者（0=设备，1=接口，2=端点，3=其他）
+                     *位6-5：类型（0=标准，1=类，2=厂商，3=保留）
+                     *位7：方向（0=主机到设备，1=设备到主机）
+                     *位8-15  Request    请求代码，指定具体请求（如 GET_DESCRIPTOR、SET_ADDRESS）标准请求示例：0x06（GET_DESCRIPTOR）、0x05（SET_ADDRESS）
+                     *位16-31 Value      请求值，具体含义由 b_request 定义 例如：GET_DESCRIPTOR 中，w_value 高字节为描述符类型，低字节为索引
+                     *位32-47 Index      索引或偏移，具体含义由 b_request 定义 例如：接口号、端点号或字符串描述符索引
+                     *位48-63 Length     数据阶段的传输长度（字节）主机到设备：发送的数据长度 设备到主机：请求的数据长度
 
     uint64 member1;  *位0-15  TRB Transfer Length  传输长度
                      *位22-31 Interrupter Target 中断目标
@@ -154,14 +231,30 @@ typedef enum {
                      *位42-47 TRB Type 类型
                      *位48-49 TRT 传输类型 0=无数据阶段 1=保留 2=out(主机到设备) 3=in(设备到主机)
 */
+
+typedef enum {
+    setup_stage_norm = 0,
+    setup_stage_calss = 1,
+    setup_stage_firm = 2,
+    setup_stage_reserve = 2
+}setup_stage_type_e;
+typedef enum {
+    setup_stage_out = 0,
+    setup_stage_in = 1
+}setup_stage_dir_e;
 typedef enum {
     no_data_stage = 0,
     out_data_stage = 2,
-    in_data_stage  = 3,
+    in_data_stage  = 3
 }trb_trt_e;
-static inline void setup_stage_trb(trb_t *trb,uint8 req_type,uint8 req,uint16 value,uint16 index,uint16 length,\
-    uint16 trb_tran_length,config_ioc_e ioc,trb_trt_e trt) {
-    trb->member0 = (req_type<<0) | (req<<8) | (value<<16) | (index<<32) | (length<<48);
+typedef enum {
+    setup_stage_device = 0,
+    setup_stage_interface  = 1,
+    setup_stage_endpoint   = 2
+}setup_stage_receiver_e;
+static inline void setup_stage_trb(trb_t *trb,setup_stage_receiver_e setup_stage_receiver,setup_stage_type_e setup_stage_type,setup_stage_dir_e setup_stage_dir,\
+    setup_stage_req_e req,uint16 value,uint16 index,uint16 length,uint16 trb_tran_length,config_ioc_e ioc,trb_trt_e trt) {
+    trb->member0 = (setup_stage_receiver<<0) |(setup_stage_type<<5)|(setup_stage_dir<<7)| (req<<8) | (value<<16) | (index<<32) | (length<<48);
     trb->member1 = (trb_tran_length<<0) | (ioc<<37) | (1<<38) | TRB_TYPE_SETUP_STAGE | (trt<<48);
 }
 
@@ -183,11 +276,7 @@ static inline void setup_stage_trb(trb_t *trb,uint8 req_type,uint8 req,uint16 va
  *                 位42-47 TRB Type 类型
  *                 位48    dir     0=out(主机到设备) 1=in(设备到主机)
  */
-typedef enum {
-    out = 0,
-    in  = 1,
-}trb_dir_e;
-static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,uint16 trb_tran_length,config_ioc_e ioc,trb_trt_e dir) {
+static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,uint16 trb_tran_length,config_ioc_e ioc,trb_dir_e dir) {
     trb->member0 = data_buff_ptr;
     trb->member1 = (trb_tran_length<<0)|TRB_TYPE_DATA_STAGE |(ioc<<37)|(dir<<48);
 }
