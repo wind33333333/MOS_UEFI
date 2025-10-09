@@ -307,7 +307,7 @@ static inline void status_stage_trb(trb_t *trb,config_ioc_e ioc,trb_dir_e dir) {
  *                 位17-21 td size             剩余数据包
  *                 位22-31 Interrupter Target 中断目标
  *                 位32    cycle
- *                 位33    ent     1=评估下一个trb
+ *                 位33    ent     1=“评估下一个 TRB”，提示控制器：立即继续执行下一个 TRB，不必等事件或中断触发。
  *                 位34    isp     1=短数据包中断
  *                 位35    ns      1=禁止窥探
  *                 位36    ch      1=链接 多个trb关联
@@ -316,9 +316,9 @@ static inline void status_stage_trb(trb_t *trb,config_ioc_e ioc,trb_dir_e dir) {
  *                 位41    bei     1=块事件中端，ioc=1 则传输事件在下一个中断阀值时，ioc产生的中断不应向主机发送中断。
  *                 位42-47 TRB Type 类型
  */
-static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,uint16 trb_tran_length,uint8 ch,uint8 ioc,uint8 trb_type) {
+static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,uint8 ent,uint16 trb_tran_length,uint8 ch,uint8 ioc,uint8 trb_type) {
     trb->member0 = data_buff_ptr;
-    trb->member1 = (trb_tran_length<<0)|(ch<<36)|(ioc<<37)|(trb_type<<42);
+    trb->member1 = (ent<<33)|(trb_tran_length<<0)|(ch<<36)|(ioc<<37)|(trb_type<<42);
 }
 //endregion
 
