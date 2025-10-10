@@ -8,62 +8,6 @@
 //usb设备全局链
 list_head_t usb_dev_list;
 
-xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_reg, uint8 cap_id) {
-    uint32 offset = xhci_reg->cap_reg->hccparams1 >> 16;
-    while (offset) {
-        xhci_cap_t *xhci_cap = (void *) xhci_reg->cap_reg + (offset << 2);
-        if ((xhci_cap->cap_id & 0xFF) == cap_id) return xhci_cap;
-        offset = (xhci_cap->next_ptr >> 8) & 0xFF;
-    }
-    return NULL;
-}
-
-static inline uint8 get_sts_c(uint64 ptr) {
-    return ptr & TRB_CYCLE;
-}
-
-static inline xhci_trb_t *get_queue_ptr(uint64 ptr) {
-    return (xhci_trb_t *) (ptr & ~(TRB_CYCLE));
-}
-
-//响铃
-static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 db_number, uint32 value) {
-    xhci_controller->db_reg[db_number] = value;
-}
-
-//命令环/传输环入队列
-int xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb) {
-    if (ring->index >= TRB_COUNT - 1) {
-        ring->index = 0;
-        ring->status_c ^= TRB_CYCLE;
-        ring->ring_base[TRB_COUNT - 1].parameter = va_to_pa(ring->ring_base);
-        ring->ring_base[TRB_COUNT - 1].status = 0;
-        ring->ring_base[TRB_COUNT - 1].control = TRB_LINK | TRB_TOGGLE_CYCLE | ring->status_c;
-    }
-    ring->ring_base[ring->index].parameter = trb->parameter;
-    ring->ring_base[ring->index].status = trb->status;
-    ring->ring_base[ring->index].control = trb->control | ring->status_c;
-    ring->index++;
-    return 0;
-}
-
-//事件环出队列
-int xhci_ering_dequeue(xhci_controller_t *xhci_controller, xhci_trb_t *evt_trb) {
-    xhci_ring_t *event_ring = &xhci_controller->event_ring;
-    while ((event_ring->ring_base[event_ring->index].control & TRB_CYCLE) == event_ring->status_c) {
-        evt_trb->parameter = event_ring->ring_base[event_ring->index].parameter;
-        evt_trb->status = event_ring->ring_base[event_ring->index].status;
-        evt_trb->control = event_ring->ring_base[event_ring->index].control;
-        event_ring->index++;
-        if (event_ring->index >= TRB_COUNT) {
-            event_ring->index = 0;
-            event_ring->status_c ^= TRB_CYCLE;
-        }
-        xhci_controller->rt_reg->intr_regs[0].erdp =
-                va_to_pa(&event_ring->ring_base[event_ring->index]) | XHCI_ERDP_EHB;
-    }
-    return 0;
-}
 
 //region 命令环trb
 #define TRB_TYPE_ENABLE_SLOT             (9UL << 42)   // 启用插槽
@@ -77,11 +21,10 @@ int xhci_ering_dequeue(xhci_controller_t *xhci_controller, xhci_trb_t *evt_trb) 
  *
  * uint64 member1 位32    cycle
  *                位42-47 TRB Type 类型
- *                位48-52 slot type
  */
-static inline void enable_slot_com_trb(trb_t *trb,uint8 slot_type) {
+static inline void enable_slot_com_trb(trb_t *trb) {
     trb->member0 = 0;
-    trb->member1 = TRB_TYPE_ENABLE_SLOT | (slot_type<<48);
+    trb->member1 = TRB_TYPE_ENABLE_SLOT;
 }
 
 /*
@@ -327,24 +270,90 @@ static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,config_en
 }
 //endregion
 
-//region 事件环trb
+//region 其他trb
+#define TRB_TYPE_LINK                    (6 << 10)   // 链接
+/*  link trb
+ *  uint64 member0 位0-63  ring segment pointer 环起始物理地址指针
+ *
+ *  uint64 member1 位22-31 Interrupter Target 中断目标
+ *                 位32    cycle
+ *                 位33    tc      1=下个环周期切换 0=不切换
+ *                 位36    ch      1=链接 多个trb关联
+ *                 位37    IOC     1=完成时中断
+ *                 位42-47 TRB Type 类型
+ */
+static inline void link_trb(trb_t *trb,uint64 ring_base_ptr,uint8 cycle) {
+    trb->member0 = ring_base_ptr;
+    trb->member1 = (cycle<<32)|(1<<33)|(TRB_TYPE_LINK<<42);
+}
 
 //endregion
 
 
+xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_reg, uint8 cap_id) {
+    uint32 offset = xhci_reg->cap_reg->hccparams1 >> 16;
+    while (offset) {
+        xhci_cap_t *xhci_cap = (void *) xhci_reg->cap_reg + (offset << 2);
+        if ((xhci_cap->cap_id & 0xFF) == cap_id) return xhci_cap;
+        offset = (xhci_cap->next_ptr >> 8) & 0xFF;
+    }
+    return NULL;
+}
+
+static inline uint8 get_sts_c(uint64 ptr) {
+    return ptr & TRB_CYCLE;
+}
+
+static inline xhci_trb_t *get_queue_ptr(uint64 ptr) {
+    return (xhci_trb_t *) (ptr & ~(TRB_CYCLE));
+}
+
+//响铃
+static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 db_number, uint32 value) {
+    xhci_controller->db_reg[db_number] = value;
+}
+
+//命令环/传输环入队列
+int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb) {
+    if (ring->index >= TRB_COUNT - 1) {
+        link_trb(&ring->ring_base[TRB_COUNT-1],va_to_pa(ring->ring_base),ring->status_c);
+        ring->index = 0;
+        ring->status_c ^= TRB_CYCLE;
+    }
+
+    ring->ring_base[ring->index].member0 = trb->member0;
+    ring->ring_base[ring->index].member1 = trb->member1|ring->status_c;
+    ring->index++;
+    return 0;
+}
+
+//事件环出队列
+int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb) {
+    xhci_ring_t *event_ring = &xhci_controller->event_ring;
+    while ((event_ring->ring_base[event_ring->index].member1 & (TRB_CYCLE<<32)) == event_ring->status_c) {
+        evt_trb->member0 = event_ring->ring_base[event_ring->index].member0;
+        evt_trb->member1 = event_ring->ring_base[event_ring->index].member1;
+        event_ring->index++;
+        if (event_ring->index >= TRB_COUNT) {
+            event_ring->index = 0;
+            event_ring->status_c ^= TRB_CYCLE;
+        }
+        xhci_controller->rt_reg->intr_regs[0].erdp =
+                va_to_pa(&event_ring->ring_base[event_ring->index]) | XHCI_ERDP_EHB;
+    }
+    return 0;
+}
+
 //分配插槽
 uint8 xhci_enable_slot(xhci_controller_t *xhci_controller) {
-    xhci_trb_t trb = {
-        0,
-        0,
-        TRB_ENABLE_SLOT
-    };
+    trb_t trb;
+    enable_slot_com_trb(&trb);
     xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
     xhci_ring_doorbell(xhci_controller, 0, 0);
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
-    if ((trb.control >> 10 & 0x3F) == 33 && trb.control >> 24) {
-        return trb.control >> 24 & 0xFF;
+    if ((trb.member1 >> 42 & 0x3F) == 33 && trb.member1 >> 56) {
+        return trb.member1 >> 56;
     }
     return -1;
 }
@@ -905,8 +914,6 @@ void usb_dev_enum(xhci_controller_t *xhci_controller) {
         }
     }
 }
-
-
 
 INIT_TEXT void init_xhci(void) {
     pcie_dev_t *xhci_dev = pcie_dev_find(XHCI_CLASS_CODE); //查找xhci设备

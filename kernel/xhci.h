@@ -394,23 +394,9 @@ typedef struct {
 } xhci_trb_t;
 
 typedef struct {
-    uint64 member0; /*位0-7   RequestType请求类型
-                     *位8-15  Request    请求
-                     *位16-31 Value      值
-                     *位32-47 Index      下标
-                     *位48-63 Length     长度
-                     */
-    uint64 member1; /*位0-15  TRB Transfer Length  传输长度
-                     *位22-31 Interrupter Target 中断目标
-                     *位32    标志位C
-                     *位37    IOC 完成时中断
-                     *位38    IDT 数据包含在trb
-                     *位42-47 TRB Type 类型
-                     *位48-49 TRT 传输类型 0=无数据阶段 1=保留 2=输出数据阶段 3=输入数据阶段
-                     */
+    uint64 member0;
+    uint64 member1;
 } trb_t;
-
-
 
 /**********设备上下文结构************/
 /*设备下文条目结构*/
@@ -786,9 +772,9 @@ typedef struct {
 #define USB_DESC_TYPE_HUB           0x29  /* Hub 描述符 Hub Descriptor */
 
 typedef struct {
-    xhci_trb_t *ring_base; //环起始地址
+    trb_t  *ring_base; //环起始地址
     uint32 index; //trb索引
-    uint8 status_c; //循环位
+    uint8  status_c; //循环位
 } xhci_ring_t;
 
 /* CBW 结构（31 字节） */
@@ -885,6 +871,6 @@ static inline void timing(void) {
 
 void init_xhci(void);
 
-int xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb);
+int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);
 
-int xhci_ering_dequeue(xhci_controller_t *xhci_regs, xhci_trb_t *evt_trb);
+int xhci_ering_dequeue(xhci_controller_t *xhci_regs, trb_t *evt_trb);
