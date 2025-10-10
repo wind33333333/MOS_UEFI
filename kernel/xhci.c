@@ -145,6 +145,11 @@ typedef enum {
 }trb_dir_e;
 
 typedef enum {
+    disable_ent_ch = 0,
+    enable_ent_ch = (1<<33|(1<<36)),
+}config_ent_ch_e;
+
+typedef enum {
     usb_req_get_status    =    0x00,  /* 获取状态
                                                - 接收者：设备、接口、端点
                                                - 返回：设备/接口/端点的状态（如挂起、遥控唤醒）
@@ -277,7 +282,7 @@ static inline void setup_stage_trb(trb_t *trb,setup_stage_receiver_e setup_stage
  */
 static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,uint16 trb_tran_length,trb_dir_e dir) {
     trb->member0 = data_buff_ptr;
-    trb->member1 = (trb_tran_length<<0)|TRB_TYPE_DATA_STAGE |(1<<36)|(dir<<48);
+    trb->member1 = (trb_tran_length<<0)|TRB_TYPE_DATA_STAGE |enable_ent_ch|(dir<<48);
 }
 
 
@@ -316,9 +321,9 @@ static inline void status_stage_trb(trb_t *trb,config_ioc_e ioc,trb_dir_e dir) {
  *                 位41    bei     1=块事件中端，ioc=1 则传输事件在下一个中断阀值时，ioc产生的中断不应向主机发送中断。
  *                 位42-47 TRB Type 类型
  */
-static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,uint8 ent,uint16 trb_tran_length,uint8 ch,uint8 ioc,uint8 trb_type) {
+static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,config_ent_ch_e ent_ch,uint16 trb_tran_length,config_ioc_e ioc,uint8 trb_type) {
     trb->member0 = data_buff_ptr;
-    trb->member1 = (ent<<33)|(trb_tran_length<<0)|(ch<<36)|(ioc<<37)|(trb_type<<42);
+    trb->member1 = ent_ch |(trb_tran_length<<0)||(ioc<<37)|(trb_type<<42);
 }
 //endregion
 
@@ -658,12 +663,12 @@ int usb_set_config(usb_dev_t *usb_dev) {
 
     trb.parameter = *(uint64 *) &setup;
     trb.status = 8;
-    trb.control = TRB_SETUP_STAGE | TRB_IDT | (3 << 16);
+    trb.control = TRB_SETUP_STAGE | TRB_IDT | (0 << 16);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     trb.parameter = 0;
     trb.status = 0;
-    trb.control = TRB_STATUS_STAGE | TRB_IOC;
+    trb.control = TRB_STATUS_STAGE | TRB_IOC | ( 1<<16 );
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,1);
@@ -703,6 +708,25 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 0x1000));
         usb_setup_packet_t setup;
         xhci_trb_t trb;
+
+        //重置 USB 存储设备
+        setup.request_type = 0x21;
+        setup.request = 0xff;
+        setup.value = 0;
+        setup.index = 0;
+        setup.length = 0;
+        trb.parameter = *(uint64 *) &setup;
+        trb.status = 8;
+        trb.control = TRB_SETUP_STAGE  | TRB_IDT | (3 << 16);
+        xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
+
+        trb.parameter = 0;
+        trb.status = 0;
+        trb.control = TRB_STATUS_STAGE | TRB_DIR_IN;
+
+        xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
+        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
+        timing();
 
         //Get Max LUN
         setup.request_type = 0xA1;
