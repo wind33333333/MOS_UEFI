@@ -75,9 +75,6 @@ static inline void evaluate_context_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint
 #define TRB_TYPE_SETUP_STAGE             (2UL << 42)   // 设置阶段
 #define TRB_TYPE_DATA_STAGE              (3UL << 42)   // 数据阶段
 #define TRB_TYPE_STATUS_STAGE            (4UL << 42)   // 状态阶段
-
-#define TRB_FLAG_IDT    (1UL<<38)
-
 typedef enum {
     disable_ioc=0UL<<37,
     enable_ioc=1UL<<37,
@@ -205,6 +202,7 @@ typedef enum {
     setup_stage_interface  = 1UL<<0,
     setup_stage_endpoint   = 2UL<<0
 }setup_stage_receiver_e;
+#define TRB_FLAG_IDT    (1UL<<38)
 static inline void setup_stage_trb(trb_t *trb,setup_stage_receiver_e setup_stage_receiver,setup_stage_type_e setup_stage_type,setup_stage_dir_e setup_stage_dir,\
     setup_stage_req_e req,uint64 value,uint64 index,uint64 length,uint64 trb_tran_length,trb_trt_e trt) {
     trb->member0 = setup_stage_receiver |setup_stage_type|setup_stage_dir| req | (value<<16) | (index<<32) | (length<<48);
@@ -229,9 +227,10 @@ static inline void setup_stage_trb(trb_t *trb,setup_stage_receiver_e setup_stage
  *                 位42-47 TRB Type 类型
  *                 位48    dir     0=out(主机到设备) 1=in(设备到主机)
  */
+#define TRB_FLAG_ENT    (1UL<<33)
 static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,uint64 trb_tran_length,trb_dir_e dir) {
     trb->member0 = data_buff_ptr;
-    trb->member1 = (trb_tran_length<<0)|TRB_TYPE_DATA_STAGE |enable_ch|dir;
+    trb->member1 = (trb_tran_length<<0)|TRB_TYPE_DATA_STAGE | TRB_FLAG_ENT |enable_ch|dir;
 }
 
 
