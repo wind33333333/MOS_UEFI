@@ -278,7 +278,7 @@ static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,config_ch
 //endregion
 
 //region 其他trb
-#define TRB_TYPE_LINK                    (6UL << 10)   // 链接
+#define TRB_TYPE_LINK                    (6UL << 42)   // 链接
 #define TRB_FLAG_TC                      (1UL << 33)
 #define TRB_FLAG_CYCLE                   (1UL << 32)
 /*  link trb
@@ -293,7 +293,7 @@ static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,config_ch
  */
 static inline void link_trb(trb_t *trb,uint64 ring_base_ptr,uint64 cycle) {
     trb->member0 = ring_base_ptr;
-    trb->member1 = cycle|TRB_FLAG_TC|(TRB_TYPE_LINK<<42);
+    trb->member1 = cycle|TRB_FLAG_TC|TRB_TYPE_LINK;
 }
 
 //endregion
