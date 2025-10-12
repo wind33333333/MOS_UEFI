@@ -89,9 +89,9 @@ typedef enum {
 }trb_dir_e;
 
 typedef enum {
-    disable_ent_ch = (0UL<<33)|(0UL<<36),
-    enable_ent_ch = (1UL<<33)|(1UL<<36)
-}config_ent_ch_e;
+    disable_ch = (0UL<<33),
+    enable_ch = (1UL<<33)
+}config_ch_e;
 
 typedef enum {
     usb_req_get_status    =    0x00<<8,  /* 获取状态
@@ -231,7 +231,7 @@ static inline void setup_stage_trb(trb_t *trb,setup_stage_receiver_e setup_stage
  */
 static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,uint64 trb_tran_length,trb_dir_e dir) {
     trb->member0 = data_buff_ptr;
-    trb->member1 = (trb_tran_length<<0)|TRB_TYPE_DATA_STAGE |enable_ent_ch|dir;
+    trb->member1 = (trb_tran_length<<0)|TRB_TYPE_DATA_STAGE |enable_ch|dir;
 }
 
 
@@ -271,7 +271,7 @@ static inline void status_stage_trb(trb_t *trb,config_ioc_e ioc,trb_dir_e dir) {
  *                 位41    bei     1=块事件中端，ioc=1 则传输事件在下一个中断阀值时，ioc产生的中断不应向主机发送中断。
  *                 位42-47 TRB Type 类型
  */
-static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,config_ent_ch_e ent_ch,uint16 trb_tran_length,config_ioc_e ioc) {
+static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,config_ch_e ent_ch,uint16 trb_tran_length,config_ioc_e ioc) {
     trb->member0 = data_buff_ptr;
     trb->member1 = ent_ch |(trb_tran_length<<0)|ioc|TRB_TYPE_NORMAL;
 }
@@ -726,11 +726,11 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
             cbw->cbw_cb_length = 6;
 
             // 1. 发送 CBW（批量 OUT 端点）
-            normal_transfer_trb(&trb,va_to_pa(cbw),disable_ent_ch,sizeof(usb_cbw_t),disable_ioc);
+            normal_transfer_trb(&trb,va_to_pa(cbw),disable_ch,sizeof(usb_cbw_t),disable_ioc);
             xhci_ring_enqueue(&usb_dev->out_ring, &trb);
 
             // 3. 接收 CSW（批量 IN 端点）
-            normal_transfer_trb(&trb,va_to_pa(csw),disable_ent_ch,sizeof(usb_csw_t),enable_ioc);
+            normal_transfer_trb(&trb,va_to_pa(csw),disable_ch,sizeof(usb_csw_t),enable_ioc);
             xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
             xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, usb_dev->out_ep);
@@ -754,16 +754,16 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         cbw->cbw_cb[4] = sizeof(inquiry_data_t);
 
         // 1. 发送 CBW（批量 OUT 端点)
-        normal_transfer_trb(&trb,va_to_pa(cbw),disable_ent_ch,sizeof(usb_cbw_t),enable_ioc);
+        normal_transfer_trb(&trb,va_to_pa(cbw),disable_ch,sizeof(usb_cbw_t),enable_ioc);
         xhci_ring_enqueue(&usb_dev->out_ring, &trb);
 
         //2. 接收数据（批量 IN 端点）
         inquiry_data_t *inquiry_data = kzalloc(align_up(sizeof(inquiry_data_t), 0x1000));
-        normal_transfer_trb(&trb,va_to_pa(inquiry_data),disable_ent_ch,sizeof(inquiry_data_t),disable_ioc);
+        normal_transfer_trb(&trb,va_to_pa(inquiry_data),enable_ch,sizeof(inquiry_data_t),disable_ioc);
         xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
         // 3. 接收 CSW（批量 IN 端点）
-        normal_transfer_trb(&trb,va_to_pa(csw),disable_ent_ch,sizeof(usb_csw_t),enable_ioc);
+        normal_transfer_trb(&trb,va_to_pa(csw),disable_ch,sizeof(usb_csw_t),enable_ioc);
         xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, usb_dev->out_ep);
@@ -793,16 +793,16 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         cbw->cbw_cb[13] = 32; // 分配长度低字节（32 字节）
 
         // 1. 发送 CBW（批量 OUT 端点）
-        normal_transfer_trb(&trb,va_to_pa(cbw),disable_ent_ch,sizeof(usb_cbw_t),enable_ioc);
+        normal_transfer_trb(&trb,va_to_pa(cbw),disable_ch,sizeof(usb_cbw_t),enable_ioc);
         xhci_ring_enqueue(&usb_dev->out_ring, &trb);
 
         //2. 接收数据（批量 IN 端点
         read_capacity_16_t *capacity_data = kzalloc(sizeof(read_capacity_16_t));
-        normal_transfer_trb(&trb,va_to_pa(capacity_data),disable_ent_ch,sizeof(read_capacity_16_t),disable_ioc);
+        normal_transfer_trb(&trb,va_to_pa(capacity_data),enable_ch,sizeof(read_capacity_16_t),disable_ioc);
         xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
         // 3. 接收 CSW（批量 IN 端点
-        normal_transfer_trb(&trb,va_to_pa(csw),disable_ent_ch,sizeof(usb_csw_t),enable_ioc);
+        normal_transfer_trb(&trb,va_to_pa(csw),disable_ch,sizeof(usb_csw_t),enable_ioc);
         xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, usb_dev->out_ep);
