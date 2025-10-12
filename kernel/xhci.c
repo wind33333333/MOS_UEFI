@@ -8,7 +8,6 @@
 //usb设备全局链
 list_head_t usb_dev_list;
 
-
 //region 命令环trb
 #define TRB_TYPE_ENABLE_SLOT             (9UL << 42)   // 启用插槽
 #define TRB_TYPE_ADDRESS_DEVICE          (11UL << 42)  // 设备寻址
@@ -36,7 +35,7 @@ static inline void enable_slot_com_trb(trb_t *trb) {
  *                位42-47 TRB Type 类型
  *                位56-63 slot id
  */
-static inline void addr_dev_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint8 slot_id) {
+static inline void addr_dev_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint64 slot_id) {
     trb->member0 = input_ctx_ptr;
     trb->member1 = TRB_TYPE_ADDRESS_DEVICE|(slot_id<<56);
 }
@@ -50,7 +49,7 @@ static inline void addr_dev_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint8 slot_i
  *                位42-47 TRB Type 类型
  *                位56-63 slot id
  */
-static inline void config_endpoint_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint8 slot_id) {
+static inline void config_endpoint_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint64 slot_id) {
     trb->member0 = input_ctx_ptr;
     trb->member1 = TRB_TYPE_CONFIGURE_ENDPOINT | (slot_id<<56);
 }
@@ -64,7 +63,7 @@ static inline void config_endpoint_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint8
  *                位42-47 TRB Type 类型
  *                位56-63 slot id
  */
-static inline void evaluate_context_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint8 slot_id) {
+static inline void evaluate_context_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint64 slot_id) {
     trb->member0 = input_ctx_ptr;
     trb->member1 = TRB_TYPE_EVALUATE_CONTEXT  | (slot_id<<56);
 }
@@ -77,88 +76,95 @@ static inline void evaluate_context_com_trb(trb_t *trb,uint64 input_ctx_ptr,uint
 #define TRB_TYPE_DATA_STAGE              (3UL << 42)   // 数据阶段
 #define TRB_TYPE_STATUS_STAGE            (4UL << 42)   // 状态阶段
 
+#define TRB_FLAG_IDT    (1UL<<38)
+
 typedef enum {
-    disable_ioc=0,
-    enable_ioc=1,
+    disable_ioc=0UL<<37,
+    enable_ioc=1UL<<37,
 }config_ioc_e;
 
 typedef enum {
-    out = 0,
-    in  = 1,
+    trb_out = 0UL<<48,
+    trb_in  = 1UL<<48,
 }trb_dir_e;
 
 typedef enum {
-    disable_ent_ch = 0,
-    enable_ent_ch = (1<<33|(1<<36)),
+    disable_ent_ch = (0UL<<33)|(0UL<<36),
+    enable_ent_ch = (1UL<<33)|(1UL<<36)
 }config_ent_ch_e;
 
 typedef enum {
-    usb_req_get_status    =    0x00,  /* 获取状态
+    usb_req_get_status    =    0x00<<8,  /* 获取状态
                                                - 接收者：设备、接口、端点
                                                - 返回：设备/接口/端点的状态（如挂起、遥控唤醒）
                                                - w_value: 0
                                                - w_index: 设备=0，接口=接口号，端点=端点号
                                                - w_length: 2（返回 2 字节状态） */
-    usb_req_clear_feature  =   0x01,  /* 清除特性
+    usb_req_clear_feature  =   0x01UL<<8,  /* 清除特性
                                                - 接收者：设备、接口、端点
                                                - 用途：清除特定状态（如取消遥控唤醒或端点暂停）
                                                - w_value: 特性选择（如 0=设备遥控唤醒，1=端点暂停）
                                                - w_index: 设备=0，接口=接口号，端点=端点号
                                                - w_length: 0 */
-    usb_req_set_feature    =   0x03,  /* 设置特性
+    usb_req_set_feature    =   0x03UL<<8,  /* 设置特性
                                                - 接收者：设备、接口、端点
                                                - 用途：启用特定特性（如遥控唤醒、测试模式）
                                                - w_value: 特性选择（如 0=设备遥控唤醒，1=端点暂停）
                                                - w_index: 设备=0，接口=接口号，端点=端点号
                                                - w_length: 0 */
-    usb_req_set_address    =   0x05,  /* 设置设备地址
+    usb_req_set_address    =   0x05UL<<8,  /* 设置设备地址
                                                - 接收者：设备
                                                - 用途：在枚举过程中分配设备地址（1-127）
                                                - w_value: 新地址（低字节）
                                                - w_index: 0
                                                - w_length: 0 */
-    usb_req_get_descriptor  =  0x06,  /* 获取描述符
+    usb_req_get_descriptor  =  0x06UL<<8,  /* 获取描述符
                                                - 接收者：设备、接口
                                                - 用途：获取设备、配置、接口、字符串等描述符
                                                - w_value: 高字节=描述符类型（如 0x01=设备，0x02=配置），低字节=索引
                                                - w_index: 0（设备/配置描述符）或语言 ID（字符串描述符）
                                                - w_length: 请求的字节数 */
-    usb_req_set_descriptor  =  0x07,  /* 设置描述符
+    usb_req_set_descriptor  =  0x07UL<<8,  /* 设置描述符
                                                - 接收者：设备、接口
                                                - 用途：更新设备描述符（较少使用）
                                                - w_value: 高字节=描述符类型，低字节=索引
                                                - w_index: 0 或语言 ID
                                                - w_length: 数据长度 */
-    usb_req_get_config      = 0x08,  /* 获取当前配置
+    usb_req_get_config      = 0x08UL<<8,  /* 获取当前配置
                                                - 接收者：设备
                                                - 用途：返回当前激活的配置值
                                                - w_value: 0
                                                - w_index: 0
                                                - w_length: 1（返回 1 字节配置值） */
-    usb_req_set_config      = 0x09,  /* 设置配置
+    usb_req_set_config      = 0x09UL<<8,  /* 设置配置
                                                - 接收者：设备
                                                - 用途：激活指定配置
                                                - w_value: 配置值（来自配置描述符的 b_configuration_value）
                                                - w_index: 0
                                                - w_length: 0 */
-    usb_req_get_interface   = 0x0A,  /* 获取接口的备用设置
+    usb_req_get_interface   = 0x0AUL<<8,  /* 获取接口的备用设置
                                                - 接收者：接口
                                                - 用途：返回当前接口的备用设置编号
                                                - w_value: 0
                                                - w_index: 接口号
                                                - w_length: 1（返回 1 字节备用设置值） */
-    usb_req_set_interface   = 0x0B,  /* 设置接口的备用设置
+    usb_req_set_interface   = 0x0BUL<<8,  /* 设置接口的备用设置
                                                - 接收者：接口
                                                - 用途：选择接口的备用设置
                                                - w_value: 备用设置编号
                                                - w_index: 接口号
                                                - w_length: 0 */
-    usb_req_synch_frame     = 0x0C,  /* 同步帧
+    usb_req_synch_frame     = 0x0CUL<<8,  /* 同步帧
                                                - 接收者：端点
                                                - 用途：为同步端点（如音频设备）提供帧编号
                                                - w_value: 0
                                                - w_index: 端点号
                                                - w_length: 2（返回 2 字节帧号） */
+    usb_req_mass_storage_reset = 0xFFUL<<8,  /* Mass Storage 类请求 (BOT)
+                                      * - bRequestType=0x21 (Host→Interface)
+                                      * - wValue=0, wIndex=接口号
+                                      * - wLength=0
+                                      * - 用于复位 U 盘状态机 */
 
 }setup_stage_req_e;
 
@@ -180,29 +186,29 @@ typedef enum {
                      *位48-49 TRT 传输类型 0=无数据阶段 1=保留 2=out(主机到设备) 3=in(设备到主机)
 */
 typedef enum {
-    setup_stage_norm = 0,
-    setup_stage_calss = 1,
-    setup_stage_firm = 2,
-    setup_stage_reserve = 2
+    setup_stage_norm = 0<<5,
+    setup_stage_calss = 1UL<<5,
+    setup_stage_firm = 2UL<<5,
+    setup_stage_reserve = 3UL<<5
 }setup_stage_type_e;
 typedef enum {
-    setup_stage_out = 0,
-    setup_stage_in = 1
+    setup_stage_out = 0<<7,
+    setup_stage_in = 1UL<<7
 }setup_stage_dir_e;
 typedef enum {
-    no_data_stage = 0,
-    out_data_stage = 2,
-    in_data_stage  = 3
+    no_data_stage = 0<<48,
+    out_data_stage = 2UL<<48,
+    in_data_stage  = 3UL<<48
 }trb_trt_e;
 typedef enum {
-    setup_stage_device = 0,
-    setup_stage_interface  = 1,
-    setup_stage_endpoint   = 2
+    setup_stage_device = 0<<0,
+    setup_stage_interface  = 1UL<<0,
+    setup_stage_endpoint   = 2UL<<0
 }setup_stage_receiver_e;
 static inline void setup_stage_trb(trb_t *trb,setup_stage_receiver_e setup_stage_receiver,setup_stage_type_e setup_stage_type,setup_stage_dir_e setup_stage_dir,\
-    setup_stage_req_e req,uint16 value,uint16 index,uint16 length,uint16 trb_tran_length,config_ioc_e ioc,trb_trt_e trt) {
-    trb->member0 = (setup_stage_receiver<<0) |(setup_stage_type<<5)|(setup_stage_dir<<7)| (req<<8) | (value<<16) | (index<<32) | (length<<48);
-    trb->member1 = (trb_tran_length<<0) | (ioc<<37) | (1<<38) | TRB_TYPE_SETUP_STAGE | (trt<<48);
+    setup_stage_req_e req,uint64 value,uint64 index,uint64 length,uint64 trb_tran_length,trb_trt_e trt) {
+    trb->member0 = setup_stage_receiver |setup_stage_type|setup_stage_dir| req | (value<<16) | (index<<32) | (length<<48);
+    trb->member1 = (trb_tran_length<<0) | TRB_FLAG_IDT | TRB_TYPE_SETUP_STAGE | trt;
 }
 
 /*
@@ -223,9 +229,9 @@ static inline void setup_stage_trb(trb_t *trb,setup_stage_receiver_e setup_stage
  *                 位42-47 TRB Type 类型
  *                 位48    dir     0=out(主机到设备) 1=in(设备到主机)
  */
-static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,uint16 trb_tran_length,trb_dir_e dir) {
+static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,uint64 trb_tran_length,trb_dir_e dir) {
     trb->member0 = data_buff_ptr;
-    trb->member1 = (trb_tran_length<<0)|TRB_TYPE_DATA_STAGE |enable_ent_ch|(dir<<48);
+    trb->member1 = (trb_tran_length<<0)|TRB_TYPE_DATA_STAGE |enable_ent_ch|dir;
 }
 
 
@@ -243,11 +249,12 @@ static inline void data_stage_trb(trb_t *trb,uint64 data_buff_ptr,uint16 trb_tra
  */
 static inline void status_stage_trb(trb_t *trb,config_ioc_e ioc,trb_dir_e dir) {
     trb->member0 = 0;
-    trb->member1 = (ioc<<37)|TRB_TYPE_STATUS_STAGE|(dir<<48);
+    trb->member1 = ioc|TRB_TYPE_STATUS_STAGE|dir;
 }
 //endregion
 
 //region 传输环trb
+#define TRB_TYPE_NORMAL                  (1UL << 42)   // 普通传输
 /*  普通传输trb
  *  uint64 member0 位0-63 data buffer pointer 数据区缓冲区物理地址指针
  *
@@ -264,14 +271,16 @@ static inline void status_stage_trb(trb_t *trb,config_ioc_e ioc,trb_dir_e dir) {
  *                 位41    bei     1=块事件中端，ioc=1 则传输事件在下一个中断阀值时，ioc产生的中断不应向主机发送中断。
  *                 位42-47 TRB Type 类型
  */
-static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,config_ent_ch_e ent_ch,uint16 trb_tran_length,config_ioc_e ioc,uint8 trb_type) {
+static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,config_ent_ch_e ent_ch,uint16 trb_tran_length,config_ioc_e ioc) {
     trb->member0 = data_buff_ptr;
-    trb->member1 = ent_ch |(trb_tran_length<<0)||(ioc<<37)|(trb_type<<42);
+    trb->member1 = ent_ch |(trb_tran_length<<0)|ioc|TRB_TYPE_NORMAL;
 }
 //endregion
 
 //region 其他trb
-#define TRB_TYPE_LINK                    (6 << 10)   // 链接
+#define TRB_TYPE_LINK                    (6UL << 10)   // 链接
+#define TRB_FLAG_TC                      (1UL << 33)
+#define TRB_FLAG_CYCLE                   (1UL << 32)
 /*  link trb
  *  uint64 member0 位0-63  ring segment pointer 环起始物理地址指针
  *
@@ -282,9 +291,9 @@ static inline void normal_transfer_trb(trb_t *trb,uint64 data_buff_ptr,config_en
  *                 位37    IOC     1=完成时中断
  *                 位42-47 TRB Type 类型
  */
-static inline void link_trb(trb_t *trb,uint64 ring_base_ptr,uint8 cycle) {
+static inline void link_trb(trb_t *trb,uint64 ring_base_ptr,uint64 cycle) {
     trb->member0 = ring_base_ptr;
-    trb->member1 = (cycle<<32)|(1<<33)|(TRB_TYPE_LINK<<42);
+    trb->member1 = cycle|TRB_FLAG_TC|(TRB_TYPE_LINK<<42);
 }
 
 //endregion
@@ -300,14 +309,6 @@ xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_reg, uint8 cap_id) {
     return NULL;
 }
 
-static inline uint8 get_sts_c(uint64 ptr) {
-    return ptr & TRB_CYCLE;
-}
-
-static inline xhci_trb_t *get_queue_ptr(uint64 ptr) {
-    return (xhci_trb_t *) (ptr & ~(TRB_CYCLE));
-}
-
 //响铃
 static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 db_number, uint32 value) {
     xhci_controller->db_reg[db_number] = value;
@@ -318,11 +319,11 @@ int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb) {
     if (ring->index >= TRB_COUNT - 1) {
         link_trb(&ring->ring_base[TRB_COUNT-1],va_to_pa(ring->ring_base),ring->status_c);
         ring->index = 0;
-        ring->status_c ^= TRB_CYCLE;
+        ring->status_c ^= TRB_FLAG_CYCLE;
     }
 
     ring->ring_base[ring->index].member0 = trb->member0;
-    ring->ring_base[ring->index].member1 = trb->member1|ring->status_c;
+    ring->ring_base[ring->index].member1 = trb->member1|((uint64)ring->status_c);
     ring->index++;
     return 0;
 }
@@ -330,7 +331,7 @@ int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb) {
 //事件环出队列
 int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb) {
     xhci_ring_t *event_ring = &xhci_controller->event_ring;
-    while ((event_ring->ring_base[event_ring->index].member1 & (TRB_CYCLE<<32)) == event_ring->status_c) {
+    while ((event_ring->ring_base[event_ring->index].member1 & TRB_FLAG_CYCLE) == event_ring->status_c) {
         evt_trb->member0 = event_ring->ring_base[event_ring->index].member0;
         evt_trb->member1 = event_ring->ring_base[event_ring->index].member1;
         event_ring->index++;
@@ -359,13 +360,10 @@ uint8 xhci_enable_slot(xhci_controller_t *xhci_controller) {
 }
 
 //初始化环
-int xhci_ring_init(xhci_ring_t *ring, uint32 align_size) {
-    ring->ring_base = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t), align_size));
+static inline int xhci_ring_init(xhci_ring_t *ring, uint32 align_size) {
+    ring->ring_base = kzalloc(align_up(TRB_COUNT * sizeof(trb_t), align_size));
     ring->index = 0;
-    ring->status_c = TRB_CYCLE;
-    ring->ring_base[TRB_COUNT - 1].parameter = va_to_pa(ring->ring_base);
-    ring->ring_base[TRB_COUNT - 1].status = 0;
-    ring->ring_base[TRB_COUNT - 1].control = TRB_LINK | TRB_TOGGLE_CYCLE | TRB_CYCLE;
+    ring->status_c = TRB_FLAG_CYCLE;
 }
 
 //增加输入上下文
@@ -414,11 +412,8 @@ void xhci_address_device(usb_dev_t *usb_dev) {
     ctx.reg3 = 0;
     xhci_input_context_add(input_ctx, xhci_controller->context_size, 1, &ctx); //Endpoint 0 Context
 
-    xhci_trb_t trb = {
-        va_to_pa(input_ctx),
-        0,
-        TRB_ADDRESS_DEVICE | usb_dev->slot_id << 24
-    };
+    trb_t trb;
+    addr_dev_com_trb(&trb,va_to_pa(input_ctx),usb_dev->slot_id);
     xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
     xhci_ring_doorbell(xhci_controller, 0, 0);
     timing();
@@ -488,11 +483,8 @@ void xhci_config_endpoint(usb_dev_t *usb_dev) {
     ctx.reg3 = 0;
     xhci_input_context_add(input_ctx, xhci_controller->context_size, 0, &ctx);
 
-    xhci_trb_t trb = {
-        va_to_pa(input_ctx),
-        0,
-        TRB_CONFIGURE_ENDPOINT | usb_dev->slot_id << 24
-    };
+    trb_t trb;
+    config_endpoint_com_trb(&trb,va_to_pa(input_ctx),usb_dev->slot_id);
     xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
     xhci_ring_doorbell(xhci_controller, 0, 0);
     timing();
@@ -505,28 +497,22 @@ int usb_get_device_descriptor(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     usb_device_descriptor_t *dev_desc = kzalloc(sizeof(usb_device_descriptor_t));
     //第一次先获取设备描述符前8字节，拿到max_pack_size后更新端点1，再重新获取描述符。
-    xhci_trb_t trb;
+    trb_t trb;
     // Setup TRB
-    usb_setup_packet_t setup = {0x80, USB_REQ_GET_DESCRIPTOR, 0x0100, 0x0000, 8}; // 统一为8
-    trb.parameter = *(uint64 *) &setup; // 完整 8 字节
-    trb.status = 8; // TRB Length=8 (Setup 阶段长度)
-    trb.control = TRB_SETUP_STAGE | TRB_IDT | (3 << 16);
+    setup_stage_trb(&trb,setup_stage_device,setup_stage_norm,setup_stage_in,usb_req_get_descriptor,0x100,0,8,8,in_data_stage);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // Data TRB
-    trb.parameter = va_to_pa(dev_desc);
-    trb.status = 8; // 匹配 w_length
-    trb.control = TRB_DATA_STAGE | (1 << 16);
+    data_stage_trb(&trb,va_to_pa(dev_desc),8,trb_in);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // Status TRB
-    trb.parameter = 0;
-    trb.status = 0;
-    trb.control = TRB_STATUS_STAGE;
+    status_stage_trb(&trb,enable_ioc,trb_out);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
     timing();
+    xhci_ering_dequeue(xhci_controller, &trb);
 
     //更新端点0的最大包
     uint32 max_packe_size = dev_desc->usb_version >= 0x300
@@ -538,34 +524,28 @@ int usb_get_device_descriptor(usb_dev_t *usb_dev) {
     ctx.reg1 = EP_TYPE_CONTROL | max_packe_size << 16;
     xhci_input_context_add(input_ctx, xhci_controller->context_size, 1, &ctx);
 
-    trb.parameter = va_to_pa(input_ctx);
-    trb.status = 0;
-    trb.control = usb_dev->slot_id << 24 | TRB_EVALUATE_CONTEXT;
+    evaluate_context_com_trb(&trb,va_to_pa(input_ctx),usb_dev->slot_id);
     xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
     xhci_ring_doorbell(xhci_controller, 0, 0);
     timing();
+    xhci_ering_dequeue(xhci_controller, &trb);
     kfree(input_ctx);
 
     //第二次获取整个设备描述符
-    setup.length = 18;
-    trb.parameter = *(uint64 *) &setup; // 完整 8 字节
-    trb.status = 8; // TRB Length=8 (Setup 阶段长度)
-    trb.control = TRB_SETUP_STAGE | TRB_IDT | (3 << 16);
+    setup_stage_trb(&trb,setup_stage_device,setup_stage_norm,setup_stage_in,usb_req_get_descriptor,0x100,0,18,8,in_data_stage);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // Data TRB
-    trb.parameter = va_to_pa(dev_desc);
-    trb.status = 18; // 匹配 w_length
-    trb.control = TRB_DATA_STAGE | (1 << 16);
+    data_stage_trb(&trb,va_to_pa(dev_desc),18,trb_in);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // Status TRB
-    trb.parameter = 0;
-    trb.status = 0;
-    trb.control = TRB_STATUS_STAGE;
+    status_stage_trb(&trb,enable_ioc,trb_out);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
+
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
     timing();
+    xhci_ering_dequeue(xhci_controller, &trb);
 
     usb_dev->dev_desc = dev_desc;
 }
@@ -573,56 +553,45 @@ int usb_get_device_descriptor(usb_dev_t *usb_dev) {
 //获取usb配置描述符
 int usb_get_config_descriptor(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+    usb_config_descriptor_t *config_desc = kzalloc(64);
     //第一次先获取配置描述符前9字节
-    xhci_trb_t trb;
-    usb_config_descriptor_t *config_desc = kmalloc(9);
-    usb_setup_packet_t setup = {0x80, USB_REQ_GET_DESCRIPTOR, 0x0200, 0x0000, 9}; //9
-    trb.parameter = *(uint64 *) &setup;
-    trb.status = 8;
-    trb.control = TRB_SETUP_STAGE | TRB_IDT | (3 << 16);
+    trb_t trb;
+    setup_stage_trb(&trb,setup_stage_device,setup_stage_norm,setup_stage_in,usb_req_get_descriptor,0x200,0,9,8,in_data_stage);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // Data TRB
-    trb.parameter = va_to_pa(config_desc);
-    trb.status = 9;
-    trb.control = TRB_DATA_STAGE | (1 << 16);
+    data_stage_trb(&trb,va_to_pa(config_desc),9,trb_in);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // Status TRB
-    trb.parameter = 0;
-    trb.status = 0;
-    trb.control = TRB_STATUS_STAGE;
+    status_stage_trb(&trb,enable_ioc,trb_out);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // 响铃
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
     timing();
+    xhci_ering_dequeue(xhci_controller, &trb);
 
     //第二次从配置描述符中得到总长度获取整个配置描述符
-    setup.length = config_desc->total_length;
+    uint16 config_desc_length = config_desc->total_length;
     kfree(config_desc);
-    config_desc = kzalloc(setup.length);
+    config_desc = kzalloc(config_desc_length);
 
-    trb.parameter = *(uint64 *) &setup;
-    trb.status = 8;
-    trb.control = TRB_SETUP_STAGE | TRB_IDT | (3 << 16);
+    setup_stage_trb(&trb,setup_stage_device,setup_stage_norm,setup_stage_in,usb_req_get_descriptor,0x200,0,config_desc_length,8,in_data_stage);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // Data TRB
-    trb.parameter = va_to_pa(config_desc);
-    trb.status = setup.length;
-    trb.control = TRB_DATA_STAGE | (1 << 16);
+    data_stage_trb(&trb,va_to_pa(config_desc),config_desc_length,trb_in);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // Status TRB
-    trb.parameter = 0;
-    trb.status = 0;
-    trb.control = TRB_STATUS_STAGE;
+    status_stage_trb(&trb,enable_ioc,trb_out);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     // 响铃
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
     timing();
+    xhci_ering_dequeue(xhci_controller, &trb);
 
     usb_config_descriptor_t *config_desc_end = (usb_config_descriptor_t *) (
         (uint64) config_desc + config_desc->total_length);
@@ -661,29 +630,18 @@ int usb_get_config_descriptor(usb_dev_t *usb_dev) {
 //激活usb配置
 int usb_set_config(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
-    //设置配置
-    usb_setup_packet_t setup;
-    xhci_trb_t trb;
-    setup.request_type = 0;
-    setup.request = USB_REQ_SET_CONFIGURATION;
-    setup.value = usb_dev->config_desc->configuration_value;
-    setup.index = 0;
-    setup.length = 0;
 
-    trb.parameter = *(uint64 *) &setup;
-    trb.status = 8;
-    trb.control = TRB_SETUP_STAGE | TRB_IDT | (0 << 16);
+    trb_t trb;
+    setup_stage_trb(&trb,setup_stage_device,setup_stage_norm,setup_stage_out,usb_req_set_config,usb_dev->config_desc->configuration_value,0,0,8,no_data_stage);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
-    trb.parameter = 0;
-    trb.status = 0;
-    trb.control = TRB_STATUS_STAGE | TRB_IOC | ( 1<<16 );
+    status_stage_trb(&trb,enable_ioc,trb_in);
     xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
 
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,1);
     timing();
     xhci_ering_dequeue(xhci_controller,&trb);
-    color_printk(GREEN,BLACK,"set config trb p:%#lx s:%#x c%#x    \n",trb.parameter,trb.status,trb.control);
+    color_printk(GREEN,BLACK,"set config trb m0:%#lx m1:%#lx    \n",trb.member0,trb.member1);
     return 0;
 }
 
@@ -716,54 +674,45 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 0x1000));
         usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 0x1000));
         usb_setup_packet_t setup;
-        xhci_trb_t trb;
+        trb_t trb;
 
         //重置 USB 存储设备
-        setup.request_type = 0x21;
-        setup.request = 0xff;
-        setup.value = 0;
-        setup.index = 0;
-        setup.length = 0;
-        trb.parameter = *(uint64 *) &setup;
-        trb.status = 8;
-        trb.control = TRB_SETUP_STAGE  | TRB_IDT | (3 << 16);
+        setup_stage_trb(&trb,setup_stage_interface,setup_stage_calss,setup_stage_out,usb_req_mass_storage_reset,0,0,0,8,no_data_stage);
         xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
-
-        trb.parameter = 0;
-        trb.status = 0;
-        trb.control = TRB_STATUS_STAGE | TRB_DIR_IN;
-
+        status_stage_trb(&trb,enable_ioc,trb_in);
         xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
         timing();
+        xhci_ering_dequeue(xhci_controller,&trb);
+        color_printk(GREEN,BLACK,"test csw.status:%d trb m0:%#lx m1:%lx    \n",csw->csw_status,trb.member0,trb.member1);
 
         //Get Max LUN
-        setup.request_type = 0xA1;
-        setup.request = 0xfe;
-        setup.value = 0;
-        setup.index = 0;
-        setup.length = 1;
-
-        trb.parameter = *(uint64 *) &setup;
-        trb.status = 8;
-        trb.control = TRB_SETUP_STAGE  | TRB_IDT | (3 << 16);
-        xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
-
-        uint8 *max_lun = kmalloc(sizeof(uint8));
-        trb.parameter = va_to_pa(max_lun);
-        trb.status = 1;
-        trb.control = TRB_DATA_STAGE | (1 << 16);
-        xhci_ring_enqueue(&usb_dev->trans_ring[0],&trb);
-
-        trb.parameter = 0;
-        trb.status = 0;
-        trb.control = TRB_STATUS_STAGE | TRB_IOC;
-        xhci_ring_enqueue(&usb_dev->trans_ring[0],&trb);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,1);
-        timing();
-        xhci_ering_dequeue(xhci_controller,&trb);
-        color_printk(GREEN,BLACK,"get max lun:%d trb p:%#lx s:%#x c%#x    \n",*max_lun,trb.parameter,trb.status,trb.control);
+        // setup.request_type = 0xA1;
+        // setup.request = 0xfe;
+        // setup.value = 0;
+        // setup.index = 0;
+        // setup.length = 1;
+        //
+        // trb.parameter = *(uint64 *) &setup;
+        // trb.status = 8;
+        // trb.control = TRB_SETUP_STAGE  | TRB_IDT | (3 << 16);
+        // xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
+        //
+        // uint8 *max_lun = kmalloc(sizeof(uint8));
+        // trb.parameter = va_to_pa(max_lun);
+        // trb.status = 1;
+        // trb.control = TRB_DATA_STAGE | (1 << 16);
+        // xhci_ring_enqueue(&usb_dev->trans_ring[0],&trb);
+        //
+        // trb.parameter = 0;
+        // trb.status = 0;
+        // trb.control = TRB_STATUS_STAGE | TRB_IOC;
+        // xhci_ring_enqueue(&usb_dev->trans_ring[0],&trb);
+        //
+        // xhci_ring_doorbell(xhci_controller, usb_dev->slot_id,1);
+        // timing();
+        // xhci_ering_dequeue(xhci_controller,&trb);
+        // color_printk(GREEN,BLACK,"get max lun:%d trb p:%#lx s:%#x c%#x    \n",*max_lun,trb.parameter,trb.status,trb.control);
 
         //测试状态
         do{
@@ -777,25 +726,19 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
             cbw->cbw_cb_length = 6;
 
             // 1. 发送 CBW（批量 OUT 端点）
-            trb.parameter = va_to_pa(cbw);
-            trb.status = sizeof(usb_cbw_t);
-            trb.control = TRB_NORMAL | TRB_IOC;
+            normal_transfer_trb(&trb,va_to_pa(cbw),disable_ent_ch,sizeof(usb_cbw_t),disable_ioc);
             xhci_ring_enqueue(&usb_dev->out_ring, &trb);
 
             // 3. 接收 CSW（批量 IN 端点）
-            trb.parameter = va_to_pa(csw);
-            trb.status = sizeof(usb_csw_t);
-            trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
+            normal_transfer_trb(&trb,va_to_pa(csw),disable_ent_ch,sizeof(usb_csw_t),enable_ioc);
             xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
             xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, usb_dev->out_ep);
             timing();
-            xhci_ering_dequeue(xhci_controller,&trb);
-
             xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, usb_dev->in_ep);
             timing();
             xhci_ering_dequeue(xhci_controller,&trb);
-            color_printk(GREEN,BLACK,"test csw.status:%d trb p:%#lx s:%#x c%#x    \n",csw->csw_status,trb.parameter,trb.status,trb.control);
+            color_printk(GREEN,BLACK,"test csw.status:%d trb m0:%#lx m1:%lx    \n",csw->csw_status,trb.member0,trb.member1);
         }while (csw->csw_status);
 
         //获取u盘信息
@@ -811,33 +754,23 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         cbw->cbw_cb[4] = sizeof(inquiry_data_t);
 
         // 1. 发送 CBW（批量 OUT 端点)
-        trb.parameter = va_to_pa(cbw);
-        trb.status = sizeof(usb_cbw_t);
-        trb.control = TRB_NORMAL| TRB_IOC;
+        normal_transfer_trb(&trb,va_to_pa(cbw),disable_ent_ch,sizeof(usb_cbw_t),enable_ioc);
         xhci_ring_enqueue(&usb_dev->out_ring, &trb);
 
         //2. 接收数据（批量 IN 端点）
         inquiry_data_t *inquiry_data = kzalloc(align_up(sizeof(inquiry_data_t), 0x1000));
-        trb.parameter = va_to_pa(inquiry_data);
-        trb.status = sizeof(inquiry_data_t);
-        trb.control = TRB_NORMAL; // Normal TRB
+        normal_transfer_trb(&trb,va_to_pa(inquiry_data),disable_ent_ch,sizeof(inquiry_data_t),disable_ioc);
         xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
         // 3. 接收 CSW（批量 IN 端点）
-        trb.parameter = va_to_pa(csw);
-        trb.status = sizeof(usb_csw_t);
-        trb.control = TRB_NORMAL| TRB_IOC; // Normal TRB
+        normal_transfer_trb(&trb,va_to_pa(csw),disable_ent_ch,sizeof(usb_csw_t),enable_ioc);
         xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, usb_dev->out_ep);
-        timing();
-        xhci_ering_dequeue(xhci_controller,&trb);
-        color_printk(GREEN,BLACK,"get usb info0 trb p:%#lx s:%#x c%#x    \n",trb.parameter,trb.status,trb.control);
-
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, usb_dev->in_ep);
         timing();
         xhci_ering_dequeue(xhci_controller,&trb);
-        color_printk(GREEN,BLACK,"get usb info1 trb p:%#lx s:%#x c%#x    \n",trb.parameter,trb.status,trb.control);
+        color_printk(GREEN,BLACK,"get usb info1 trb m0:%#lx m1:%#lx    \n",trb.member0,trb.member1);
 
         color_printk(GREEN,BLACK, "dev_type:%#x rmb:%#x scsi_ver:%#x vid:%s pid:%s rev:%s     \n",
                      inquiry_data->device_type, inquiry_data->rmb, inquiry_data->version, inquiry_data->vendor_id,
@@ -860,34 +793,23 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         cbw->cbw_cb[13] = 32; // 分配长度低字节（32 字节）
 
         // 1. 发送 CBW（批量 OUT 端点）
-        trb.parameter = va_to_pa(cbw);
-        trb.status = sizeof(usb_cbw_t);
-        trb.control = TRB_NORMAL | TRB_IOC;
+        normal_transfer_trb(&trb,va_to_pa(cbw),disable_ent_ch,sizeof(usb_cbw_t),enable_ioc);
         xhci_ring_enqueue(&usb_dev->out_ring, &trb);
 
         //2. 接收数据（批量 IN 端点
         read_capacity_16_t *capacity_data = kzalloc(sizeof(read_capacity_16_t));
-        trb.parameter = va_to_pa(capacity_data);
-        trb.status = sizeof(read_capacity_16_t);
-        trb.control = TRB_NORMAL; // Normal TRB
+        normal_transfer_trb(&trb,va_to_pa(capacity_data),disable_ent_ch,sizeof(read_capacity_16_t),disable_ioc);
         xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
         // 3. 接收 CSW（批量 IN 端点
-        csw = kzalloc(sizeof(usb_csw_t));
-        trb.parameter = va_to_pa(csw);
-        trb.status = sizeof(usb_csw_t);
-        trb.control = TRB_NORMAL | TRB_IOC; // Normal TRB
+        normal_transfer_trb(&trb,va_to_pa(csw),disable_ent_ch,sizeof(usb_csw_t),enable_ioc);
         xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, usb_dev->out_ep);
-        timing();
-        xhci_ering_dequeue(xhci_controller,&trb);
-        color_printk(GREEN,BLACK,"get usb rongliang trb p:%#lx s:%#x c%#x    \n",trb.parameter,trb.status,trb.control);
-
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, usb_dev->in_ep);
         timing();
         xhci_ering_dequeue(xhci_controller,&trb);
-        color_printk(GREEN,BLACK,"get usb rongliang trb p:%#lx s:%#x c%#x    \n",trb.parameter,trb.status,trb.control);
+        color_printk(GREEN,BLACK,"get usb rongliang trb m0:%#lx m1:%lx    \n",trb.member0,trb.member1);
 
         color_printk(GREEN,BLACK, "cbw_ptr:%#lx cap16_ptr:%#lx csw_ptr:%#lx   \n", cbw, capacity_data, csw);
         color_printk(GREEN,BLACK, "usb lba:%#lx block_size:%#x    \n", big_to_little_endian_64(capacity_data->last_lba),
@@ -898,7 +820,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
 
 //枚举usb设备
 void usb_dev_enum(xhci_controller_t *xhci_controller) {
-    xhci_trb_t trb;
+    trb_t trb;
     for (uint32 i = 0; i < xhci_controller->cap_reg->hcsparams1 >> 24; i++) {
         if (xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_CCS) {
             if ((xhci_controller->op_reg->portregs[i].portsc >> XHCI_PORTSC_PLS_SHIFT & XHCI_PORTSC_PLS_MASK) ==
@@ -955,10 +877,7 @@ INIT_TEXT void init_xhci(void) {
     xhci_controller->op_reg->crcr = va_to_pa(xhci_controller->cmd_ring.ring_base) | TRB_CYCLE; //命令环物理地址写入crcr寄存器，置位rcs
 
     /*初始化事件环*/
-    xhci_controller->event_ring.ring_base = kzalloc(
-        align_up(TRB_COUNT * sizeof(xhci_trb_t), xhci_controller->align_size)); //分配事件环空间256* sizeof(xhci_trb_t) = 4K
-    xhci_controller->event_ring.index = 0;
-    xhci_controller->event_ring.status_c = TRB_CYCLE;
+    xhci_ring_init(&xhci_controller->event_ring,xhci_controller->align_size);
     xhci_erst_t *erstba = kmalloc(align_up(sizeof(xhci_erst_t), xhci_controller->align_size)); //分配单事件环段表内存64字节
     erstba->ring_seg_base = va_to_pa(xhci_controller->event_ring.ring_base); //段表中写入事件环物理地址
     erstba->ring_seg_size = TRB_COUNT; //事件环最大trb个数

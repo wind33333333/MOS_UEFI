@@ -387,11 +387,11 @@ typedef struct {
 } xhci_erst_t;
 
 /*trb 结构*/
-typedef struct {
-    uint64 parameter;
-    uint32 status;
-    uint32 control;
-} xhci_trb_t;
+// typedef struct {
+//     uint64 parameter;
+//     uint32 status;
+//     uint32 control;
+// } xhci_trb_t;
 
 typedef struct {
     uint64 member0;
@@ -772,9 +772,9 @@ typedef struct {
 #define USB_DESC_TYPE_HUB           0x29  /* Hub 描述符 Hub Descriptor */
 
 typedef struct {
-    trb_t  *ring_base; //环起始地址
-    uint32 index; //trb索引
-    uint8  status_c; //循环位
+    trb_t   *ring_base; //环起始地址
+    uint64  index; //trb索引
+    uint64  status_c; //循环位
 } xhci_ring_t;
 
 /* CBW 结构（31 字节） */
@@ -865,8 +865,8 @@ typedef struct {
 
 //定时
 static inline void timing(void) {
-    uint64 count = 20000000;
-    while (count--) pause();
+    // uint64 count = 20000000;
+    // while (count--) pause();
 }
 
 void init_xhci(void);
