@@ -405,7 +405,7 @@ void xhci_address_device(usb_dev_t *usb_dev) {
     ctx.reg3 = 0;
     xhci_input_context_add(input_ctx, xhci_controller->context_size, 0, &ctx); // 启用 Slot Context
 
-    ctx.reg0 = 1;
+    ctx.reg0 = 0;
     ctx.reg1 = EP_TYPE_CONTROL | (8 << 16) | (3 << 1);
     ctx.reg2 = va_to_pa(usb_dev->trans_ring[0].ring_base) | TRB_CYCLE;
     ctx.reg3 = 0;
@@ -466,7 +466,7 @@ void xhci_config_endpoint(usb_dev_t *usb_dev) {
             }
         }
 
-        ctx.reg0 = 1;
+        ctx.reg0 = 0;
         ctx.reg1 = ep_type | (usb_dev->endpoint_desc[i]->max_packet_size << 16) | (
                        usb_dev->ep_comp_des[i]->max_burst << 8) | (3 << 1);
         ctx.reg2 = va_to_pa(usb_dev->trans_ring[tr_idx].ring_base) | TRB_CYCLE;
@@ -813,6 +813,9 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         color_printk(GREEN,BLACK, "cbw_ptr:%#lx cap16_ptr:%#lx csw_ptr:%#lx   \n", cbw, capacity_data, csw);
         color_printk(GREEN,BLACK, "usb lba:%#lx block_size:%#x    \n", big_to_little_endian_64(capacity_data->last_lba),
                      big_to_little_endian_32(capacity_data->block_size));
+        for (uint8 i=0;i<6;i++) {
+            color_printk(GREEN,BLACK,"config:%x  \n",usb_dev->dev_context->dev_ctx32.ep[i].ep_config);
+        }
 
     }
 }
