@@ -746,7 +746,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         xhci_ring_enqueue(&usb_dev->out_ring, &trb);
 
         //2. 接收数据（批量 IN 端点）
-        inquiry_data_t *inquiry_data = kzalloc(align_up(sizeof(inquiry_data_t), 0x1000));
+        inquiry_data_t *inquiry_data = kzalloc(align_up(sizeof(inquiry_data_t), 64));
         normal_transfer_trb(&trb,va_to_pa(inquiry_data),enable_ch,sizeof(inquiry_data_t),disable_ioc);
         xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
@@ -785,7 +785,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         xhci_ring_enqueue(&usb_dev->out_ring, &trb);
 
         //2. 接收数据（批量 IN 端点
-        read_capacity_16_t *capacity_data = kzalloc(sizeof(read_capacity_16_t));
+        read_capacity_16_t *capacity_data = kzalloc(align_up(sizeof(read_capacity_16_t),64));
         normal_transfer_trb(&trb,va_to_pa(capacity_data),enable_ch,sizeof(read_capacity_16_t),disable_ioc);
         xhci_ring_enqueue(&usb_dev->in_ring, &trb);
 
