@@ -855,6 +855,9 @@ typedef struct {
     xhci_ring_t trans_ring[31];
     xhci_ring_t in_ring;
     xhci_ring_t out_ring;
+    inquiry_data_t *info;
+    uint64 last_lba; // 最后一个逻辑块地址（块数量 - 1，64 位）
+    uint32 block_size; // 逻辑块大小（字节）
     uint32 tag;
     uint8 in_ep;
     uint8 out_ep;
@@ -866,8 +869,8 @@ typedef struct {
 
 //定时
 static inline void timing(void) {
-    uint64 count = 20000000;
-    while (count--) pause();
+    // uint64 count = 20000000;
+    // while (count--) pause();
 }
 
 void init_xhci(void);
