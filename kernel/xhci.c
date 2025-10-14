@@ -775,7 +775,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         cbw->cbw_lun = 0; // 逻辑单元号
         cbw->cbw_cb_length = 16; // READ CAPACITY (16) 命令长度
 
-        //填充 SCSI READ CAPACITY (16) 命令 #2##1#
+        //填充 SCSI READ CAPACITY (16) 命令
         cbw->cbw_cb[0] = 0x9E; // 操作码：READ CAPACITY (16)
         cbw->cbw_cb[1] = 0x10; // 服务动作：0x10
         cbw->cbw_cb[13] = 32; // 分配长度低字节（32 字节）
