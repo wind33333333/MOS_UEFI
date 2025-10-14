@@ -863,7 +863,6 @@ typedef struct {
     uint8 out_ep;
     uint8 port_id;
     uint8 slot_id;
-    uint64
 } usb_dev_t;
 
 
