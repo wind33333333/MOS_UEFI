@@ -670,20 +670,9 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         color_printk(GREEN,BLACK, "out_ring:%#lx out_ep_num:%d in_ring%#lx in_ep_num:%d  \n",
                      usb_dev->out_ring.ring_base, usb_dev->out_ep, usb_dev->in_ring.ring_base, usb_dev->in_ep);
 
-        usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 0x1000));
-        usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 0x1000));
-        usb_setup_packet_t setup;
+        usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
+        usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 64));
         trb_t trb;
-
-        //重置 USB 存储设备
-        setup_stage_trb(&trb,setup_stage_interface,setup_stage_calss,setup_stage_out,usb_req_mass_storage_reset,0,0,0,8,no_data_stage);
-        xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
-        status_stage_trb(&trb,enable_ioc,trb_in);
-        xhci_ring_enqueue(&usb_dev->trans_ring[0], &trb);
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
-        timing();
-        xhci_ering_dequeue(xhci_controller,&trb);
-        color_printk(GREEN,BLACK,"test csw.status:%d trb m0:%#lx m1:%lx    \n",csw->csw_status,trb.member0,trb.member1);
 
         //Get Max LUN
         // setup.request_type = 0xA1;
@@ -715,8 +704,8 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
 
         //测试状态
         do{
-            mem_set(csw, 0, 0x1000);
-            mem_set(cbw, 0, 0x1000);
+            mem_set(csw, 0, sizeof(usb_csw_t));
+            mem_set(cbw, 0, sizeof(usb_cbw_t));
             cbw->cbw_signature = 0x43425355; // 'USBC'
             cbw->cbw_tag = ++usb_dev->tag; // 唯一标签（示例）
             cbw->cbw_data_transfer_length = 0;
@@ -741,8 +730,8 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
         }while (csw->csw_status);
 
         //获取u盘信息
-        mem_set(csw, 0, 0x1000);
-        mem_set(cbw, 0, 0x1000);
+        mem_set(csw, 0, sizeof(usb_csw_t));
+        mem_set(cbw, 0, sizeof(usb_cbw_t));
         cbw->cbw_signature = 0x43425355; // 'USBC'
         cbw->cbw_tag = ++usb_dev->tag; // 唯一标签（示例）
         cbw->cbw_data_transfer_length = sizeof(inquiry_data_t);
@@ -777,8 +766,8 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
 
 
         //获取u盘容量
-        mem_set(csw, 0, 0x1000);
-        mem_set(cbw, 0, 0x1000);
+        mem_set(csw, 0, sizeof(usb_csw_t));
+        mem_set(cbw, 0, sizeof(usb_cbw_t));
         cbw->cbw_signature = 0x43425355; // 'USBC'
         cbw->cbw_tag = ++usb_dev->tag; // 唯一标签（示例）
         cbw->cbw_data_transfer_length = 32; // READ CAPACITY (16) 返回32 字节
