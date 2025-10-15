@@ -735,14 +735,12 @@ void get_usb_disk_info(usb_dev_t *usb_dev) {
     cbw->cbw_cb[4] = sizeof(inquiry_data_t);
 
     // 1. 发送 CBW（批量 OUT 端点)
-    normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(usb_cbw_t), enable_ioc);
+    normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(usb_cbw_t), disable_ioc);
     xhci_ring_enqueue(&usb_dev->out_ring, &trb);
-
     //2. 接收数据（批量 IN 端点）
     inquiry_data_t *inquiry_data = kzalloc(align_up(sizeof(inquiry_data_t), 64));
     normal_transfer_trb(&trb, va_to_pa(inquiry_data), enable_ch, sizeof(inquiry_data_t), disable_ioc);
     xhci_ring_enqueue(&usb_dev->in_ring, &trb);
-
     // 3. 接收 CSW（批量 IN 端点）
     normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(usb_csw_t), enable_ioc);
     xhci_ring_enqueue(&usb_dev->in_ring, &trb);
@@ -774,14 +772,12 @@ void get_usb_disk_info(usb_dev_t *usb_dev) {
     cbw->cbw_cb[13] = 32; // 分配长度低字节（32 字节）
 
     // 1. 发送 CBW（批量 OUT 端点）
-    normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(usb_cbw_t), enable_ioc);
+    normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(usb_cbw_t), disable_ioc);
     xhci_ring_enqueue(&usb_dev->out_ring, &trb);
-
     //2. 接收数据（批量 IN 端点
     read_capacity_16_t *capacity_data = kzalloc(align_up(sizeof(read_capacity_16_t), 64));
     normal_transfer_trb(&trb, va_to_pa(capacity_data), enable_ch, sizeof(read_capacity_16_t), disable_ioc);
     xhci_ring_enqueue(&usb_dev->in_ring, &trb);
-
     // 3. 接收 CSW（批量 IN 端点
     normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(usb_csw_t), enable_ioc);
     xhci_ring_enqueue(&usb_dev->in_ring, &trb);
