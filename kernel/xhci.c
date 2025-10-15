@@ -348,7 +348,7 @@ int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb) {
         event_ring->index++;
         if (event_ring->index >= TRB_COUNT) {
             event_ring->index = 0;
-            event_ring->status_c ^= TRB_CYCLE;
+            event_ring->status_c ^= TRB_FLAG_CYCLE;
         }
         xhci_controller->rt_reg->intr_regs[0].erdp =
                 va_to_pa(&event_ring->ring_base[event_ring->index]) | XHCI_ERDP_EHB;
@@ -419,7 +419,7 @@ void xhci_address_device(usb_dev_t *usb_dev) {
 
     ctx.reg0 = 0;
     ctx.reg1 = EP_TYPE_CONTROL | (8 << 16) | (3 << 1);
-    ctx.reg2 = va_to_pa(usb_dev->trans_ring[0].ring_base) | TRB_CYCLE;
+    ctx.reg2 = va_to_pa(usb_dev->trans_ring[0].ring_base) | 1;
     ctx.reg3 = 0;
     xhci_input_context_add(input_ctx, xhci_controller->context_size, 1, &ctx); //Endpoint 0 Context
 
@@ -481,7 +481,7 @@ void xhci_config_endpoint(usb_dev_t *usb_dev) {
         ctx.reg0 = 0;
         ctx.reg1 = ep_type | (usb_dev->endpoint_desc[i]->max_packet_size << 16) | (
                        usb_dev->ep_comp_des[i]->max_burst << 8) | (3 << 1);
-        ctx.reg2 = va_to_pa(usb_dev->trans_ring[tr_idx].ring_base) | TRB_CYCLE;
+        ctx.reg2 = va_to_pa(usb_dev->trans_ring[tr_idx].ring_base) | 1;
         ctx.reg3 = 0;
         xhci_input_context_add(input_ctx, xhci_controller->context_size, ep_num, &ctx);
     }
@@ -859,7 +859,7 @@ INIT_TEXT void init_xhci(void) {
 
     /*初始化命令环*/
     xhci_ring_init(&xhci_controller->cmd_ring, xhci_controller->align_size);
-    xhci_controller->op_reg->crcr = va_to_pa(xhci_controller->cmd_ring.ring_base) | TRB_CYCLE; //命令环物理地址写入crcr寄存器，置位rcs
+    xhci_controller->op_reg->crcr = va_to_pa(xhci_controller->cmd_ring.ring_base) | 1; //命令环物理地址写入crcr寄存器，置位rcs
 
     /*初始化事件环*/
     xhci_ring_init(&xhci_controller->event_ring, xhci_controller->align_size);

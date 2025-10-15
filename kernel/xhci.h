@@ -37,17 +37,6 @@
 #define TRB_DEVICE_NOTIFICATION     (38 << 10)  // 设备通知
 #define TRB_MFINDEX_WRAP            (39 << 10)  // 主框架索引回绕
 
-#define TRB_CYCLE            (1 << 0)
-#define TRB_TOGGLE_CYCLE     (1 << 1)
-#define TRB_IOC              (1 << 5) // Interrupt on Completion
-#define TRB_CHAIN            (1 << 9)  //当 CH = 1，xHCI 将多个 TRB 视为一个逻辑传输，只有最后一个 TRB 的 IOC 触发中断。用于多段传输（如大数据块的 Normal TRB）。
-#define TRB_IDT              (1 << 6)  //含义：Immediate Data (IDT)，表示 TRB 的 parameter 字段直接包含数据（而非数据缓冲区指针）。 用于小型数据传输（如 Setup Packet，8 字节），直接嵌入 parameter 字段。 仅限 parameter 字段 ≤ 8 字节。
-
-#define TRB_TRT_IN_DATA      (3 << 16) //含义：Transfer Type (TRT)，特定于 Setup TRB（TRB Type = 2），表示控制传输的数据阶段方向。 Bit 16-17： 00：No Data Stage。 10：Data Out (Host to Device)。 11：Data In (Device to Host)。
-
-#define TRB_DIR_IN           (1 << 16) //
-#define TRB_DIR              (1 << 16)
-
 #pragma pack(push,1)
 
 // ===== 1. 能力寄存器 (Capability Registers) =====
