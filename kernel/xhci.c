@@ -334,7 +334,7 @@ int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb) {
     }
 
     ring->ring_base[ring->index].member0 = trb->member0;
-    ring->ring_base[ring->index].member1 = trb->member1 | ((uint64) ring->status_c);
+    ring->ring_base[ring->index].member1 = trb->member1 | ring->status_c;
     ring->index++;
     return 0;
 }
@@ -662,7 +662,7 @@ int usb_set_config(usb_dev_t *usb_dev) {
 }
 
 //获取u盘信息（u盘品牌,容量等）
-void get_usb_disk_info(usb_dev_t *usb_dev) {
+void usb_get_disk_info(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
     usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 64));
@@ -799,7 +799,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
     usb_get_config_descriptor(usb_dev);
     xhci_config_endpoint(usb_dev);
     usb_set_config(usb_dev);
-    get_usb_disk_info(usb_dev);
+    usb_get_disk_info(usb_dev);
     list_add_head(&usb_dev_list, &usb_dev->list);
 }
 
