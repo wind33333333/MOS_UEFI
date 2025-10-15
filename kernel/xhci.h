@@ -848,8 +848,6 @@ typedef struct {
     usb_string_descriptor_t *string_desc;
     usb_endpoint_descriptor_t *endpoint_desc[30];
     usb_ss_ep_comp_descriptor_t *ep_comp_des[30];
-    usb_hid_descriptor_t *hid_desc;
-    usb_hub_descriptor_t *hub_desc;
     xhci_controller_t *xhci_controller;
     list_head_t list;
     xhci_ring_t trans_ring[31];
