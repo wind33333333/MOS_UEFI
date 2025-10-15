@@ -797,8 +797,8 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
     xhci_address_device(usb_dev);
     usb_get_device_descriptor(usb_dev);
     usb_get_config_descriptor(usb_dev);
-    usb_set_config(usb_dev);
     xhci_config_endpoint(usb_dev);
+    usb_set_config(usb_dev);
     list_add_head(&usb_dev_list, &usb_dev->list);
     color_printk(
         GREEN,BLACK,
