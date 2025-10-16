@@ -432,6 +432,34 @@ static inline void xhci_address_device(usb_dev_t *usb_dev) {
 
 //配置端点
 static inline void xhci_config_endpoint(usb_dev_t *usb_dev,usb_config_descriptor_t* config_desc) {
+    usb_config_descriptor_t *config_desc_end = (usb_config_descriptor_t *) (
+    (uint64) config_desc + config_desc->total_length);
+    while (config_desc < config_desc_end) {
+        switch (config_desc->head.descriptor_type) {
+            case USB_DESC_TYPE_CONFIGURATION:
+                usb_dev->config_desc = config_desc;
+                break;
+            case USB_DESC_TYPE_STRING:
+                usb_dev->string_desc = config_desc;
+                break;
+            case USB_DESC_TYPE_INTERFACE:
+                usb_dev->interface_desc = config_desc;
+                break;
+            case USB_DESC_TYPE_ENDPOINT:
+                usb_dev->endpoint_desc[ep_idx] = config_desc;
+                break;
+            case USB_DESC_TYPE_SS_EP_COMP:
+                usb_dev->ep_comp_des[comp_idx] = config_desc;
+            case USB_DESC_TYPE_HID:
+                usb_dev->hid_desc = config_desc;
+                break;
+            case USB_DESC_TYPE_HUB:
+                usb_dev->hub_desc = config_desc;
+                break;
+        }
+        config_desc = (usb_config_descriptor_t *) ((uint64) config_desc + config_desc->head.length);
+    }
+
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
     xhci_context_t ctx;
