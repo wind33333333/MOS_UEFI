@@ -432,6 +432,7 @@ static inline void xhci_address_device(usb_dev_t *usb_dev) {
 
 //配置端点
 static inline void xhci_config_endpoint(usb_dev_t *usb_dev,usb_config_descriptor_t* config_desc) {
+
     usb_config_descriptor_t *config_desc_end = (usb_config_descriptor_t *) (
     (uint64) config_desc + config_desc->total_length);
     while (config_desc < config_desc_end) {
