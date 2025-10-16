@@ -772,6 +772,13 @@ typedef struct {
     uint32 tag;
     uint8 port_id;
     uint8 slot_id;
+    uint16 usb_version;     // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
+    uint8 device_class;     // 设备类代码，定义设备类别（如 0x00 表示类在接口描述符定义，0x03 表示 HID）
+    uint8 device_subclass;  // 设备子类代码，进一步细化设备类（如 HID 的子类）
+    uint8 device_protocol;  // 设备协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
+    uint16 vendor_id;       // 供应商 ID（VID），由 USB-IF 分配，标识制造商
+    uint16 product_id;      // 产品 ID（PID），由厂商分配，标识具体产品
+    uint16 device_version;  // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
 } usb_dev_t;
 
 
