@@ -751,26 +751,25 @@ typedef struct {
 
 //USB设备
 typedef struct {
-    xhci_device_context_t *dev_context; //设备上下文
-    usb_device_descriptor_t *dev_desc;
-    usb_config_descriptor_t *config_desc;
-    usb_interface_descriptor_t *interface_desc;
-    usb_string_descriptor_t *string_desc;
-    usb_endpoint_descriptor_t *endpoint_desc[30];
-    usb_ss_ep_comp_descriptor_t *ep_comp_des[30];
-    usb_hid_descriptor_t *hid_desc;
-    usb_hub_descriptor_t *hub_desc;
-    xhci_controller_t *xhci_controller;
+    // usb_device_descriptor_t *dev_desc;
+    // usb_config_descriptor_t *config_desc;
+    // usb_interface_descriptor_t *interface_desc;
+    // usb_string_descriptor_t *string_desc;
+    // usb_endpoint_descriptor_t *endpoint_desc[30];
+    // usb_ss_ep_comp_descriptor_t *ep_comp_des[30];
+    // usb_hid_descriptor_t *hid_desc;
+    // usb_hub_descriptor_t *hub_desc;
+    // xhci_ring_t trans_ring[31];
     list_head_t list;
-    xhci_ring_t trans_ring[31];
-    xhci_ring_t in_ring;
-    xhci_ring_t out_ring;
+    xhci_controller_t *xhci_controller;
+    xhci_device_context_t *dev_context; //设备上下文
+    xhci_ring_t control_ring;           //控制huan
+    xhci_ring_t in_ring;                //设备>主机
+    xhci_ring_t out_ring;               //主机>设备
     inquiry_data_t *info;
     uint64 last_lba; // 最后一个逻辑块地址（块数量 - 1，64 位）
     uint32 block_size; // 逻辑块大小（字节）
     uint32 tag;
-    uint8 in_ep;
-    uint8 out_ep;
     uint8 port_id;
     uint8 slot_id;
 } usb_dev_t;
