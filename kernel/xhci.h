@@ -692,10 +692,10 @@ typedef struct {
     uint32 cbw_signature; // 固定为 0x43425355 ('USBC')
     uint32 cbw_tag; // 命令标签，唯一标识
     uint32 cbw_data_transfer_length; // 数据传输长度
-    uint8 cbw_flags; // 传输方向（0x80=IN，0x00=OUT）
-    uint8 cbw_lun; // 逻辑单元号（通常为 0）
-    uint8 cbw_cb_length; // SCSI 命令长度（10 字节 for READ(10)）
-    uint8 cbw_cb[16]; // SCSI 命令块（READ(10) 命令）
+    uint8  cbw_flags; // 传输方向（0x80=IN，0x00=OUT）
+    uint8  cbw_lun; // 逻辑单元号（通常为 0）
+    uint8  cbw_cb_length; // SCSI 命令长度（10 字节 for READ(10)）
+    uint8  cbw_cb[16]; // SCSI 命令块（READ(10) 命令）
 } usb_cbw_t;
 
 /* CSW 结构（13 字节） */
@@ -703,7 +703,7 @@ typedef struct {
     uint32 csw_signature; // 固定为 0x53425355 ('USBS')
     uint32 csw_tag; // 匹配 CBW 的标签
     uint32 csw_data_residue; // 未传输的数据长度
-    uint8 csw_status; // 命令状态（0=成功，1=失败，2=相位错误）
+    uint8  csw_status; // 命令状态（0=成功，1=失败，2=相位错误）
 } usb_csw_t;
 
 /* READ CAPACITY (10) 返回数据（8 字节） */
@@ -716,7 +716,7 @@ typedef struct {
 typedef struct {
     uint64 last_lba; // 最后一个逻辑块地址（块数量 - 1，64 位）
     uint32 block_size; // 逻辑块大小（字节）
-    uint8 reserved[20]; // 保留字段（包括保护信息等）
+    uint8  reserved[20]; // 保留字段（包括保护信息等）
 } read_capacity_16_t;
 
 //inquiry返回数据36字节
@@ -727,9 +727,9 @@ typedef struct {
     uint8 response_format; // byte 3: 响应格式（通常 2）
     uint8 additional_len; // byte 4: 附加数据长度（通常 31）
     uint8 reserved[3]; // byte 5-7
-    char vendor_id[8]; // byte 8-15: 厂商 (ASCII)
-    char product_id[16]; // byte 16-31: 产品型号 (ASCII)
-    char revision[4]; // byte 32-35: 固件版本 (ASCII)
+    char  vendor_id[8]; // byte 8-15: 厂商 (ASCII)
+    char  product_id[16]; // byte 16-31: 产品型号 (ASCII)
+    char  revision[4]; // byte 32-35: 固件版本 (ASCII)
 } inquiry_data_t;
 
 #pragma pack(pop)
@@ -749,7 +749,11 @@ typedef struct {
     pcie_dev_t *pcie_dev;
 } xhci_controller_t;
 
+//usb接口
 typedef struct {
+    uint8           class;                  // 接口类代码，定义接口功能（如 0x03 表示 HID，0x08 表示 Mass Storage）
+    uint8           subclass;               // 接口子类代码，进一步细化接口类（如 HID 的子类）
+    uint8           protocol;               // 接口协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
     xhci_ring_t     in_ring;                //设备>主机
     xhci_ring_t     out_ring;               //主机>设备
     uint8           in_ep_num;              //设备>主机门铃号
@@ -761,24 +765,17 @@ typedef struct {
 
 //USB设备
 typedef struct {
-    // usb_device_descriptor_t *dev_desc;
-    // usb_config_descriptor_t *config_desc;
-    // usb_interface_descriptor_t *interface_desc;
-    // usb_string_descriptor_t *string_desc;
-    // usb_endpoint_descriptor_t *endpoint_desc[30];
-    // usb_ss_ep_comp_descriptor_t *ep_comp_des[30];
-    // usb_hid_descriptor_t *hid_desc;
-    // usb_hub_descriptor_t *hub_desc;
-    // xhci_ring_t trans_ring[31];
     list_head_t list;
     uint8 port_id;
     uint8 slot_id;
-    uint16 usb_version;     // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
-    uint16 vendor_id;       // 供应商 ID（VID），由 USB-IF 分配，标识制造商
-    uint16 product_id;      // 产品 ID（PID），由厂商分配，标识具体产品
-    uint16 device_version;  // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
+    uint16 usb_ver;         // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
+    uint16 vid;             // 供应商 ID（VID），由 USB-IF 分配，标识制造商
+    uint16 pid;             // 产品 ID（PID），由厂商分配，标识具体产品
+    uint16 dev_ver;         // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
     xhci_device_context_t *dev_context; //设备上下文
-    xhci_ring_t control_ring;           //控制huan
+    xhci_ring_t control_ring;           //控制环
+    uint8   num_interfaces; //接口数量
+    usb_interface_t* interfaces;    //接口指针根据接口数量动态分配
     uint32 tag;
     xhci_controller_t *xhci_controller;
 } usb_dev_t;
