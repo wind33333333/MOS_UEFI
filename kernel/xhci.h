@@ -760,7 +760,7 @@ typedef struct {
     uint8           class;                  // 接口类代码，定义接口功能（如 0x03 表示 HID，0x08 表示 Mass Storage）
     uint8           subclass;               // 接口子类代码，进一步细化接口类（如 HID 的子类）
     uint8           protocol;               // 接口协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
-    uint8           ep_num;                 // 端点数量
+    uint8           num_endpoints;          // 端点数量
     usb_endpoint_t* endpoint;               // 端点动态分配
     inquiry_data_t* info;
     uint64          last_lba;               // 最后一个逻辑块地址（块数量 - 1，64 位）
