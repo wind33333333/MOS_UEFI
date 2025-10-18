@@ -763,7 +763,7 @@ typedef struct {
     uint8           num_endpoints;          // 端点数量
     usb_endpoint_t* endpoint;               // 端点动态分配
     inquiry_data_t* info;
-    uint64          last_lba;               // 最后一个逻辑块地址（块数量 - 1，64 位）
+    uint64          block_num;              // 逻辑块数量
     uint32          block_size;             // 逻辑块大小（字节）
 }usb_interface_t;
 
