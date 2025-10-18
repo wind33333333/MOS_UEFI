@@ -765,19 +765,19 @@ typedef struct {
 
 //USB设备
 typedef struct {
-    list_head_t list;
-    uint8 port_id;
-    uint8 slot_id;
-    uint16 usb_ver;         // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
-    uint16 vid;             // 供应商 ID（VID），由 USB-IF 分配，标识制造商
-    uint16 pid;             // 产品 ID（PID），由厂商分配，标识具体产品
-    uint16 dev_ver;         // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
-    xhci_device_context_t *dev_context; //设备上下文
-    xhci_ring_t control_ring;           //控制环
-    uint8   num_interfaces; //接口数量
-    usb_interface_t* interfaces;    //接口指针根据接口数量动态分配
-    uint32 tag;
-    xhci_controller_t *xhci_controller;
+    list_head_t             list;
+    uint8                   port_id;
+    uint8                   slot_id;
+    uint16                  usb_ver;         // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
+    uint16                  vid;             // 供应商 ID（VID），由 USB-IF 分配，标识制造商
+    uint16                  pid;             // 产品 ID（PID），由厂商分配，标识具体产品
+    uint16                  dev_ver;         // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
+    xhci_device_context_t*  dev_context;     //设备上下文
+    xhci_ring_t             control_ring;    //控制环
+    uint8                   num_interfaces;  //接口数量
+    usb_interface_t*        interfaces;      //接口指针根据接口数量动态分配
+    uint32                  tag;
+    xhci_controller_t*      xhci_controller;
 } usb_dev_t;
 
 
