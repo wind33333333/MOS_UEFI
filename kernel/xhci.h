@@ -749,6 +749,16 @@ typedef struct {
     pcie_dev_t *pcie_dev;
 } xhci_controller_t;
 
+typedef struct {
+    xhci_ring_t     in_ring;                //设备>主机
+    xhci_ring_t     out_ring;               //主机>设备
+    uint8           in_ep_num;              //设备>主机门铃号
+    uint8           out_ep_num;             //主机>设备门铃号
+    inquiry_data_t  *info;
+    uint64          last_lba;               // 最后一个逻辑块地址（块数量 - 1，64 位）
+    uint32          block_size;             // 逻辑块大小（字节）
+}usb_interface_t;
+
 //USB设备
 typedef struct {
     // usb_device_descriptor_t *dev_desc;
@@ -761,26 +771,16 @@ typedef struct {
     // usb_hub_descriptor_t *hub_desc;
     // xhci_ring_t trans_ring[31];
     list_head_t list;
-    xhci_controller_t *xhci_controller;
-    xhci_device_context_t *dev_context; //设备上下文
-    xhci_ring_t control_ring;           //控制huan
-    xhci_ring_t in_ring;                //设备>主机
-    xhci_ring_t out_ring;               //主机>设备
-    uint8       in_ep_num;              //设备>主机门铃号
-    uint8       out_ep_num;             //主机>设备门铃号
-    inquiry_data_t *info;
-    uint64 last_lba; // 最后一个逻辑块地址（块数量 - 1，64 位）
-    uint32 block_size; // 逻辑块大小（字节）
-    uint32 tag;
     uint8 port_id;
     uint8 slot_id;
     uint16 usb_version;     // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
-    uint8 device_class;     // 设备类代码，定义设备类别（如 0x00 表示类在接口描述符定义，0x03 表示 HID）
-    uint8 device_subclass;  // 设备子类代码，进一步细化设备类（如 HID 的子类）
-    uint8 device_protocol;  // 设备协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
     uint16 vendor_id;       // 供应商 ID（VID），由 USB-IF 分配，标识制造商
     uint16 product_id;      // 产品 ID（PID），由厂商分配，标识具体产品
     uint16 device_version;  // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
+    xhci_device_context_t *dev_context; //设备上下文
+    xhci_ring_t control_ring;           //控制huan
+    uint32 tag;
+    xhci_controller_t *xhci_controller;
 } usb_dev_t;
 
 
