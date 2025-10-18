@@ -766,6 +766,8 @@ typedef struct {
     xhci_ring_t control_ring;           //控制huan
     xhci_ring_t in_ring;                //设备>主机
     xhci_ring_t out_ring;               //主机>设备
+    uint8       in_ep_num;              //设备>主机门铃号
+    uint8       out_ep_num;             //主机>设备门铃号
     inquiry_data_t *info;
     uint64 last_lba; // 最后一个逻辑块地址（块数量 - 1，64 位）
     uint32 block_size; // 逻辑块大小（字节）
