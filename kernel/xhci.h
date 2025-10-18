@@ -749,16 +749,20 @@ typedef struct {
     pcie_dev_t *pcie_dev;
 } xhci_controller_t;
 
+//usb端点
+typedef struct {
+    xhci_ring_t transfer_ring;
+    uint8       ep_num;
+}usb_endpoint_t;
+
 //usb接口
 typedef struct {
     uint8           class;                  // 接口类代码，定义接口功能（如 0x03 表示 HID，0x08 表示 Mass Storage）
     uint8           subclass;               // 接口子类代码，进一步细化接口类（如 HID 的子类）
     uint8           protocol;               // 接口协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
-    xhci_ring_t     in_ring;                //设备>主机
-    xhci_ring_t     out_ring;               //主机>设备
-    uint8           in_ep_num;              //设备>主机门铃号
-    uint8           out_ep_num;             //主机>设备门铃号
-    inquiry_data_t  *info;
+    uint8           ep_num;                 // 端点数量
+    usb_endpoint_t* endpoint;               // 端点动态分配
+    inquiry_data_t* info;
     uint64          last_lba;               // 最后一个逻辑块地址（块数量 - 1，64 位）
     uint32          block_size;             // 逻辑块大小（字节）
 }usb_interface_t;

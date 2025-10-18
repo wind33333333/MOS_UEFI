@@ -434,16 +434,21 @@ static inline void xhci_address_device(usb_dev_t *usb_dev) {
 static inline void xhci_config_endpoint(usb_dev_t *usb_dev,usb_config_descriptor_t* config_desc) {
     usb_config_descriptor_t *config_desc_end = (usb_config_descriptor_t *) (
     (uint64) config_desc + config_desc->total_length);
+    uint8 int_idx = 0;
     while (config_desc < config_desc_end) {
         switch (config_desc->head.descriptor_type) {
             case USB_DESC_TYPE_CONFIGURATION:
-                usb_dev->config_desc = config_desc;
+                usb_dev->num_interfaces = config_desc->num_interfaces;
+                usb_dev->interfaces = kzalloc(usb_dev->num_interfaces*sizeof(usb_interface_t));
                 break;
             case USB_DESC_TYPE_STRING:
-                usb_dev->string_desc = config_desc;
                 break;
             case USB_DESC_TYPE_INTERFACE:
-                usb_dev->interface_desc = config_desc;
+                usb_interface_descriptor_t* interface_desc = (usb_interface_descriptor_t*)config_desc;
+                usb_dev->interfaces[int_idx].class = interface_desc->interface_class;
+                usb_dev->interfaces[int_idx].subclass = interface_desc->interface_subclass;
+                usb_dev->interfaces[int_idx].protocol = interface_desc->interface_protocol;
+
                 break;
             case USB_DESC_TYPE_ENDPOINT:
                 usb_dev->endpoint_desc[ep_idx] = config_desc;
