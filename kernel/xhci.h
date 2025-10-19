@@ -755,17 +755,6 @@ typedef struct {
     uint8       ep_num;
 }usb_endpoint_t;
 
-//u盘
-typedef struct {
-    uint64          block_num;              // 逻辑块数量
-    uint32          block_size;             // 逻辑块大小（字节）
-    char8           vid[24];                // 厂商ascii码
-    uint8           ep_in;                  // 输入端点
-    uint8           ep_out;                 // 输出端点
-    uint8           lun;                    // 逻辑单元
-    uint32          tag;                    // 全局标签
-} usb_msc_t;
-
 //usb接口
 typedef struct {
     uint8           class;                  // 接口类代码，定义接口功能（如 0x03 表示 HID，0x08 表示 Mass Storage）
@@ -791,6 +780,18 @@ typedef struct {
     usb_interface_t*        interfaces;      //接口指针根据接口数量动态分配
     xhci_controller_t*      xhci_controller;
 } usb_dev_t;
+
+//u盘
+typedef struct {
+    uint64          block_num;              // 逻辑块数量
+    uint32          block_size;             // 逻辑块大小（字节）
+    char8           vid[24];                // 厂商ascii码
+    uint8           ep_in;                  // 输入端点
+    uint8           ep_out;                 // 输出端点
+    uint8           lun;                    // 逻辑单元
+    uint32          tag;                    // 全局标签
+} usb_msc_t;
+
 
 
 //定时
