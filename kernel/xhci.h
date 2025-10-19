@@ -760,6 +760,7 @@ typedef struct {
     uint8           class;                  // 接口类代码，定义接口功能（如 0x03 表示 HID，0x08 表示 Mass Storage）
     uint8           subclass;               // 接口子类代码，进一步细化接口类（如 HID 的子类）
     uint8           protocol;               // 接口协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
+    uint8           interface_number;       // 接口号
     uint8           num_endpoints;          // 端点数量
     usb_endpoint_t* endpoint;               // 端点动态分配
     void*           drive_data;             // 驱动数据相关
@@ -781,16 +782,22 @@ typedef struct {
     xhci_controller_t*      xhci_controller;
 } usb_dev_t;
 
-//u盘
+//逻辑单元
 typedef struct {
-    usb_dev_t*      dev;                    // 父设备指针
-    uint64          block_num;              // 逻辑块数量
-    uint32          block_size;             // 逻辑块大小（字节）
+    uint64          block_count;            // 块数量
+    uint32          block_size;             // 块大小
     char8           vid[24];                // 厂商ascii码
     uint8           ep_in;                  // 输入端点
     uint8           ep_out;                 // 输出端点
-    uint8           lun;                    // 逻辑单元
+    uint8           lun_id;                 // 逻辑单元
     uint32          tag;                    // 全局标签
+} usb_lun_t;
+
+//u盘
+typedef struct {
+    usb_dev_t*      dev;                    // 父设备指针
+    usb_lun_t       lun[8];                 // 最多8个单元
+    uint8           lun_count;              // 逻辑单元实际个数
 } usb_msc_t;
 
 
