@@ -654,6 +654,7 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
     if (interface->protocol != 0x50) return;
     usb_msc_t* drive_data = kzalloc(sizeof(usb_msc_t));
     interface->drive_data = drive_data;
+    drive_data->dev = usb_dev;
     usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
     usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 64));
     trb_t trb;

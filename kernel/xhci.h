@@ -783,6 +783,7 @@ typedef struct {
 
 //u盘
 typedef struct {
+    usb_dev_t*      dev;                    // 父设备指针
     uint64          block_num;              // 逻辑块数量
     uint32          block_size;             // 逻辑块大小（字节）
     char8           vid[24];                // 厂商ascii码
