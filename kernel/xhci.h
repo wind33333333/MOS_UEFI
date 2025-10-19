@@ -755,6 +755,16 @@ typedef struct {
     uint8       ep_num;
 }usb_endpoint_t;
 
+//u盘
+typedef struct {
+    uint8 ep_in;
+    uint8 ep_out;
+    uint8 lun;
+    uint64          block_num;              // 逻辑块数量
+    uint32          block_size;             // 逻辑块大小（字节）
+    char8           name[24];
+} usb_msc_t;
+
 //usb接口
 typedef struct {
     uint8           class;                  // 接口类代码，定义接口功能（如 0x03 表示 HID，0x08 表示 Mass Storage）
@@ -762,9 +772,7 @@ typedef struct {
     uint8           protocol;               // 接口协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
     uint8           num_endpoints;          // 端点数量
     usb_endpoint_t* endpoint;               // 端点动态分配
-    inquiry_data_t* info;
-    uint64          block_num;              // 逻辑块数量
-    uint32          block_size;             // 逻辑块大小（字节）
+    void*           drive_data;             // 驱动数据相关
 }usb_interface_t;
 
 //USB设备

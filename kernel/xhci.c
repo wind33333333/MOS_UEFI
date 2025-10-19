@@ -650,18 +650,24 @@ int usb_set_config(usb_dev_t *usb_dev,uint8 config_value) {
 //获取u盘信息（u盘品牌,容量等）
 void usb_get_disk_info(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+    usb_interface_t* interface = usb_dev->interfaces;
+    if (interface->protocol != 0x50) return;
+    usb_msc_t* drive_data = kzalloc(sizeof(usb_msc_t));
+    interface->drive_data = drive_data;
     usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
     usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 64));
     trb_t trb;
 
-    usb_endpoint_t *in_ep,*out_ep;
-    for (uint8 i=0;i<usb_dev->interfaces->num_endpoints;i++) {
+    for (uint8 i=0;i<interface->num_endpoints;i++) {
         if (usb_dev->interfaces->endpoint[i].ep_num & 1) {
-            in_ep = &usb_dev->interfaces->endpoint[i];
+            drive_data->ep_in = i;
         }else {
-            out_ep = &usb_dev->interfaces->endpoint[i];
+            drive_data->ep_out = i;
         }
     }
+
+    usb_endpoint_t *in_ep = &interface->endpoint[drive_data->ep_in];
+    usb_endpoint_t *out_ep = &interface->endpoint[drive_data->ep_out];
 
     //Get Max LUN
     // setup.request_type = 0xA1;
@@ -744,6 +750,8 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, in_ep->ep_num);
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
+
+
     color_printk(GREEN,BLACK, "get usb info1 trb m0:%#lx m1:%#lx    \n", trb.member0, trb.member1);
 
     color_printk(GREEN,BLACK, "dev_type:%#x rmb:%#x scsi_ver:%#x vid:%s pid:%s rev:%s     \n",
@@ -808,7 +816,10 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
     usb_set_config(usb_dev,config_des->configuration_value);                   //激活配置
     kfree(config_des);
 
-    usb_get_disk_info(usb_dev);                                                //获取u盘信息
+    uint16 class = *(uint16*)usb_dev->interfaces->class;
+    if (class == 0x0608) {
+        usb_get_disk_info(usb_dev);                                                //获取u盘信息
+    }
     list_add_head(&usb_dev_list, &usb_dev->list);
 }
 
