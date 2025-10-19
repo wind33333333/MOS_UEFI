@@ -787,17 +787,17 @@ typedef struct {
     uint64          block_count;            // 块数量
     uint32          block_size;             // 块大小
     char8           vid[24];                // 厂商ascii码
-    uint8           ep_in;                  // 输入端点
-    uint8           ep_out;                 // 输出端点
     uint8           lun_id;                 // 逻辑单元
-    uint32          tag;                    // 全局标签
 } usb_lun_t;
 
 //u盘
 typedef struct {
     usb_dev_t*      dev;                    // 父设备指针
+    uint8           ep_in;                  // 输入端点
+    uint8           ep_out;                 // 输出端点
     usb_lun_t       lun[8];                 // 最多8个单元
     uint8           lun_count;              // 逻辑单元实际个数
+    uint32          tag;                    // 全局标签
 } usb_msc_t;
 
 
