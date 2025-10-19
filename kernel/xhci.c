@@ -702,7 +702,7 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
         mem_set(csw, 0, sizeof(usb_csw_t));
         mem_set(cbw, 0, sizeof(usb_cbw_t));
         cbw->cbw_signature = 0x43425355; // 'USBC'
-        cbw->cbw_tag = ++usb_dev->tag; // 唯一标签（示例）
+        cbw->cbw_tag = ++drive_data->tag; // 唯一标签（示例）
         cbw->cbw_data_transfer_length = 0;
         cbw->cbw_flags = 0;
         cbw->cbw_lun = 0;
@@ -727,7 +727,7 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
     mem_set(csw, 0, sizeof(usb_csw_t));
     mem_set(cbw, 0, sizeof(usb_cbw_t));
     cbw->cbw_signature = 0x43425355; // 'USBC'
-    cbw->cbw_tag = ++usb_dev->tag; // 唯一标签（示例）
+    cbw->cbw_tag = ++drive_data->tag; // 唯一标签（示例）
     cbw->cbw_data_transfer_length = sizeof(inquiry_data_t);
     cbw->cbw_flags = 0x80; // IN 方向
     cbw->cbw_lun = 0; // 逻辑单元号
@@ -751,9 +751,10 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
 
+    mem_cpy(&inquiry_data->vendor_id,&drive_data->vid,24);
+    drive_data->vid[23] = 0;
 
     color_printk(GREEN,BLACK, "get usb info1 trb m0:%#lx m1:%#lx    \n", trb.member0, trb.member1);
-
     color_printk(GREEN,BLACK, "dev_type:%#x rmb:%#x scsi_ver:%#x vid:%s pid:%s rev:%s     \n",
                  inquiry_data->device_type, inquiry_data->rmb, inquiry_data->version, inquiry_data->vendor_id,
                  inquiry_data->product_id, inquiry_data->revision);
@@ -763,7 +764,7 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
     mem_set(csw, 0, sizeof(usb_csw_t));
     mem_set(cbw, 0, sizeof(usb_cbw_t));
     cbw->cbw_signature = 0x43425355; // 'USBC'
-    cbw->cbw_tag = ++usb_dev->tag; // 唯一标签（示例）
+    cbw->cbw_tag = ++drive_data->tag; // 唯一标签（示例）
     cbw->cbw_data_transfer_length = 32; // READ CAPACITY (16) 返回32 字节
     cbw->cbw_flags = 0x80; // IN 方向
     cbw->cbw_lun = 0; // 逻辑单元号
@@ -790,9 +791,9 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
 
-    usb_dev->interfaces->block_num = big_to_little_endian_64(capacity_data->last_lba)+1;
-    usb_dev->interfaces->block_size = big_to_little_endian_32(capacity_data->block_size);
-    color_printk(GREEN,BLACK,"block_num:%#lx block_size:%#x    \n",usb_dev->interfaces->block_num,usb_dev->interfaces->block_size);
+    drive_data->block_num = big_to_little_endian_64(capacity_data->last_lba)+1;
+    drive_data->block_size = big_to_little_endian_32(capacity_data->block_size);
+    color_printk(GREEN,BLACK,"block_num:%#lx block_size:%#x    \n",drive_data->block_num,drive_data->block_size);
 }
 
 //创建usb设备
@@ -816,7 +817,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
     usb_set_config(usb_dev,config_des->configuration_value);                   //激活配置
     kfree(config_des);
 
-    uint16 class = *(uint16*)usb_dev->interfaces->class;
+    uint16 class = *(uint16*)&usb_dev->interfaces->class;
     if (class == 0x0608) {
         usb_get_disk_info(usb_dev);                                                //获取u盘信息
     }

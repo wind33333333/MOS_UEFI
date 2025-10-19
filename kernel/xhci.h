@@ -757,12 +757,13 @@ typedef struct {
 
 //u盘
 typedef struct {
-    uint8 ep_in;
-    uint8 ep_out;
-    uint8 lun;
     uint64          block_num;              // 逻辑块数量
     uint32          block_size;             // 逻辑块大小（字节）
-    char8           name[24];
+    char8           vid[24];                // 厂商ascii码
+    uint8           ep_in;                  // 输入端点
+    uint8           ep_out;                 // 输出端点
+    uint8           lun;                    // 逻辑单元
+    uint32          tag;                    // 全局标签
 } usb_msc_t;
 
 //usb接口
@@ -788,7 +789,6 @@ typedef struct {
     xhci_ring_t             control_ring;    //控制环
     uint8                   num_interfaces;  //接口数量
     usb_interface_t*        interfaces;      //接口指针根据接口数量动态分配
-    uint32                  tag;
     xhci_controller_t*      xhci_controller;
 } usb_dev_t;
 
