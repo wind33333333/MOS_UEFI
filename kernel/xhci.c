@@ -538,7 +538,7 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
 //获取usb设备描述符
 static inline usb_device_descriptor_t *usb_get_device_descriptor(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
-    usb_device_descriptor_t *dev_desc = kzalloc(sizeof(usb_device_descriptor_t));
+    usb_device_descriptor_t *dev_desc = kzalloc(align_up(sizeof(usb_device_descriptor_t),64));
     //第一次先获取设备描述符前8字节，拿到max_pack_size后更新端点1，再重新获取描述符。
     trb_t trb;
     // Setup TRB
@@ -596,7 +596,7 @@ static inline usb_device_descriptor_t *usb_get_device_descriptor(usb_dev_t *usb_
 //获取usb配置描述符
 static inline usb_config_descriptor_t *usb_get_config_descriptor(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
-    usb_config_descriptor_t *config_desc = kzalloc(64);
+    usb_config_descriptor_t *config_desc = kzalloc(align_up(sizeof(usb_config_descriptor_t), 64));
     //第一次先获取配置描述符前9字节
     trb_t trb;
     setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x200, 0, 9, 8,
@@ -617,7 +617,7 @@ static inline usb_config_descriptor_t *usb_get_config_descriptor(usb_dev_t *usb_
     //第二次从配置描述符中得到总长度获取整个配置描述符
     uint16 config_desc_length = config_desc->total_length;
     kfree(config_desc);
-    config_desc = kzalloc(config_desc_length);
+    config_desc = kzalloc(align_up(config_desc_length,64));
 
     setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x200, 0,
                     config_desc_length, 8, in_data_stage);
@@ -815,10 +815,10 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
     usb_dev->dev_ver = dev_desc->device_version;
     kfree(dev_desc);
 
-    usb_config_descriptor_t *config_des = usb_get_config_descriptor(usb_dev); //获取配置描述符
-    xhci_config_endpoint(usb_dev, config_des); //配置端点
-    usb_set_config(usb_dev, config_des->configuration_value); //激活配置
-    kfree(config_des);
+    usb_config_descriptor_t *config_desc = usb_get_config_descriptor(usb_dev); //获取配置描述符
+    xhci_config_endpoint(usb_dev, config_desc); //配置端点
+    usb_set_config(usb_dev, config_desc->configuration_value); //激活配置
+    kfree(config_desc);
 
     uint16 class = *(uint16 *) &usb_dev->interfaces->class;
     if (class == 0x0608) {
