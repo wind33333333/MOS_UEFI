@@ -652,7 +652,6 @@ int usb_set_config(usb_dev_t *usb_dev, uint8 config_value) {
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
-    color_printk(GREEN,BLACK, "set config trb m0:%#lx m1:%#lx    \n", trb.member0, trb.member1);
     return 0;
 }
 
