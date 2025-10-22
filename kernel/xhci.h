@@ -563,18 +563,18 @@ typedef struct {
 描述符类型，固定为 0x01（设备描述符）*/
 typedef struct {
     descriptor_head_t head;
-    uint16 usb_version; // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
-    uint8 device_class; // 设备类代码，定义设备类别（如 0x00 表示类在接口描述符定义，0x03 表示 HID）
-    uint8 device_subclass; // 设备子类代码，进一步细化设备类（如 HID 的子类）
-    uint8 device_protocol; // 设备协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
-    uint8 max_packet_size0; // 端点 0 的最大数据包大小（字节），USB 2.0 为 8/16/32/64，USB 3.x 为 9（表示 2^9=512 字节）
-    uint16 vendor_id; // 供应商 ID（VID），由 USB-IF 分配，标识制造商
-    uint16 product_id; // 产品 ID（PID），由厂商分配，标识具体产品
-    uint16 device_version; // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
-    uint8 manufacturer_index; // 制造商字符串描述符索引（0 表示无）
-    uint8 product_index; // 产品字符串描述符索引（0 表示无）
-    uint8 serial_number_index; // 序列号字符串描述符索引（0 表示无，建议提供唯一序列号）
-    uint8 num_configurations; // 支持的配置描述符数量（通常为 1）
+    uint16 usb_version;         // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
+    uint8 device_class;         // 设备类代码，定义设备类别（如 0x00 表示类在接口描述符定义，0x03 表示 HID）
+    uint8 device_subclass;      // 设备子类代码，进一步细化设备类（如 HID 的子类）
+    uint8 device_protocol;      // 设备协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
+    uint8 max_packet_size0;     // 端点 0 的最大数据包大小（字节），USB 2.0 为 8/16/32/64，USB 3.x 为 9（表示 2^9=512 字节）
+    uint16 vendor_id;           // 供应商 ID（VID），由 USB-IF 分配，标识制造商
+    uint16 product_id;          // 产品 ID（PID），由厂商分配，标识具体产品
+    uint16 device_version;      // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
+    uint8 manufacturer_index;   // 制造商字符串描述符索引（0 表示无）
+    uint8 product_index;        // 产品字符串描述符索引（0 表示无）
+    uint8 serial_number_index;  // 序列号字符串描述符索引（0 表示无，建议提供唯一序列号）
+    uint8 num_configurations;   // 支持的配置描述符数量（通常为 1）
 } usb_device_descriptor_t;
 
 /*usb配置描述符
