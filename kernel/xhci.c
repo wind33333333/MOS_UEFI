@@ -449,7 +449,7 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
     uint8 if_idx = 0;
     uint32 context_entries = 0;
     while (config_desc < config_desc_end) {
-        switch (config_desc->head.descriptor_type) {
+        switch (config_desc->descriptor_type) {
             case USB_DESC_TYPE_CONFIGURATION:
                 usb_dev->num_interfaces = config_desc->num_interfaces;
                 usb_dev->interfaces = kzalloc(usb_dev->num_interfaces * sizeof(usb_interface_t));
@@ -516,7 +516,7 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
             case USB_DESC_TYPE_HUB:
                 break;
         }
-        config_desc = (usb_config_descriptor_t *) ((uint64) config_desc + config_desc->head.length);
+        config_desc = (usb_config_descriptor_t *) ((uint64) config_desc + config_desc->length);
     }
 
     //更新slot
