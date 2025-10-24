@@ -453,6 +453,7 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
             case USB_DESC_TYPE_CONFIGURATION:
                 usb_dev->num_interfaces = config_desc->num_interfaces;
                 usb_dev->interfaces = kzalloc(usb_dev->num_interfaces * sizeof(usb_interface_t));
+                color_printk(RED,BLACK,"vid:%#x pid:%#x interfaces_base:%#lx sizeof(usb_interface_t):%d  num_interfaces:%d  \n",usb_dev->vid,usb_dev->pid,usb_dev->interfaces,sizeof(usb_interface_t),usb_dev->num_interfaces);
                 break;
             case USB_DESC_TYPE_INTERFACE:
                 usb_interface_descriptor_t *interface_desc = (usb_interface_descriptor_t *) config_desc;
@@ -462,13 +463,25 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
                 usb_interface->protocol = interface_desc->interface_protocol;
                 usb_interface->interface_number = interface_desc->interface_number;
                 usb_interface->num_endpoints = interface_desc->num_endpoints;
-                usb_interface->endpoint = kzalloc(interface_desc->num_endpoints * sizeof(usb_endpoint_t));
+                usb_interface->endpoint = kzalloc(usb_interface->num_endpoints * sizeof(usb_endpoint_t));
+                color_printk(RED,BLACK,"vid:%#x pid:%#x interfaces[%d]:%#lx alternate_setting:%d endpoint_base:%#lx sizeof(usb_endpoint_t):%d num_endpoints:%d   \n",usb_dev->vid,usb_dev->pid,interface_desc->interface_number,usb_interface,interface_desc->alternate_setting,usb_interface->endpoint,sizeof(usb_endpoint_t),usb_interface->num_endpoints);
                 if_idx++;
                 uint8 ep_idx = 0;
                 break;
             case USB_DESC_TYPE_ENDPOINT:
                 usb_endpoint_descriptor_t *endpoint_desc = (usb_endpoint_t *) config_desc;
                 usb_endpoint_t *endpoint = &usb_interface->endpoint[ep_idx];
+                color_printk(RED,BLACK,"vid:%#x pid:%#x endpoint[%d]:%#lx   \n",usb_dev->vid,usb_dev->pid,ep_idx,endpoint);
+
+                uint32 max_burst;
+                usb_ss_ep_comp_descriptor_t* ss_ep_comp_desc = (usb_ss_ep_comp_descriptor_t*)((uint64)config_desc+config_desc->length);
+                if (ss_ep_comp_desc->descriptor_type == USB_DESC_TYPE_SS_EP_COMP) {
+                    max_burst = ss_ep_comp_desc->max_burst;
+                    config_desc = (usb_config_descriptor_t *) ((uint64) config_desc + config_desc->length);
+                }else {
+                    max_burst = 0;
+                }
+
                 //初始化端点传输环
                 xhci_ring_init(&endpoint->transfer_ring, xhci_controller->align_size);
 
@@ -503,7 +516,7 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
 
                 //增加端点
                 ctx.reg0 = 0;
-                ctx.reg1 = ep_type | (endpoint_desc->max_packet_size << 16) | (3 << 1);
+                ctx.reg1 = ep_type | endpoint_desc->max_packet_size << 16 | max_burst<<8 | 3<<1;
                 ctx.reg2 = va_to_pa(endpoint->transfer_ring.ring_base) | 1;
                 ctx.reg3 = 0;
                 xhci_input_context_add(input_ctx, xhci_controller->context_size, endpoint->ep_num, &ctx);
@@ -589,6 +602,8 @@ static inline usb_device_descriptor_t *usb_get_device_descriptor(usb_dev_t *usb_
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
+
+    color_printk(RED,BLACK,"vid:%#x pid:%#x num_configurations:%d    \n",dev_desc->vendor_id,dev_desc->product_id,dev_desc->num_configurations);
 
     return dev_desc;
 }
