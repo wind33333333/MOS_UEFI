@@ -474,6 +474,7 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
 
     usb_config_descriptor_t *config_desc_end = (usb_config_descriptor_t *) (
         (uint64) config_desc + config_desc->total_length);
+
     //计算接口备用配置数量
     uint8 alt_count[16]={0};
     usb_interface_descriptor_t *interface_desc = (usb_interface_descriptor_t *)config_desc;
@@ -481,42 +482,37 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
         if (interface_desc->descriptor_type == USB_DESC_TYPE_INTERFACE) {
             alt_count[interface_desc->interface_number]++;
         }
-        interface_desc  = (usb_interface_descriptor_t *)((uint64)interface_desc + interface_desc->length);
+        interface_desc = (usb_interface_descriptor_t*)((uint64)interface_desc + interface_desc->length);
     }
-    usb_interface_t* usb_interface =0;
+
     uint32 context_entries = 0;
-    uint8 ep_idx = 0;
     while (config_desc < config_desc_end) {
+        usb_interface_t* usb_interface;
+        uint8 ep_idx;
         switch (config_desc->descriptor_type) {
             case USB_DESC_TYPE_CONFIGURATION:
-                usb_dev->num_interfaces = config_desc->num_interfaces;
-                usb_dev->interfaces = kzalloc(usb_dev->num_interfaces * sizeof(usb_interface_t));
-
-                for (uint8 i = 0; i < usb_dev->num_interfaces; i++) {
-                    usb_dev->interfaces[i].alternate_setting = kzalloc(sizeof(usb_alt_setting_t)*alt_count[i]);
-                }
+                usb_dev->interfaces_count = config_desc->num_interfaces;
+                usb_dev->interfaces = kzalloc(usb_dev->interfaces_count * sizeof(usb_interface_t));
                 break;
             case USB_DESC_TYPE_INTERFACE:
-                interface_desc = (usb_interface_descriptor_t *)config_desc;
+                interface_desc = (usb_interface_descriptor_t*)config_desc;
                 usb_interface = &usb_dev->interfaces[interface_desc->interface_number];
-
                 if (interface_desc->alternate_setting == 0) {
                     usb_interface->class = interface_desc->interface_class;
                     usb_interface->subclass = interface_desc->interface_subclass;
                     usb_interface->protocol = interface_desc->interface_protocol;
                     usb_interface->interface_number = interface_desc->interface_number;
+                    usb_interface->alternate_setting = kzalloc(sizeof(usb_alt_setting_t)*alt_count[usb_interface->interface_number]);
                 }
-
                 usb_alt_setting_t* usb_alt_setting = &usb_interface->alternate_setting[interface_desc->alternate_setting];
                 usb_alt_setting->alt_setting_num = interface_desc->alternate_setting;
                 usb_alt_setting->endpoints_count = interface_desc->num_endpoints;
                 usb_alt_setting->endpoints = kzalloc(usb_alt_setting->endpoints_count*sizeof(usb_endpoint_t));
                 ep_idx = 0;
-
                 break;
             case USB_DESC_TYPE_ENDPOINT:
-                usb_endpoint_descriptor_t *endpoint_desc = (usb_endpoint_t *) config_desc;
-                usb_endpoint_t *endpoint = &usb_alt_setting->endpoints[ep_idx];
+                usb_endpoint_descriptor_t* endpoint_desc = (usb_endpoint_t *)config_desc;
+                usb_endpoint_t* endpoint = &usb_alt_setting->endpoints[ep_idx];
 
                 uint32 max_burst;
                 usb_ss_ep_comp_descriptor_t* ss_ep_comp_desc = (usb_ss_ep_comp_descriptor_t*)((uint64)config_desc+config_desc->length);
@@ -532,9 +528,8 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
 
                 endpoint->ep_num = (endpoint_desc->endpoint_address & 0xF) << 1 | endpoint_desc->endpoint_address >> 7;
                 if (endpoint->ep_num > context_entries) context_entries = endpoint->ep_num;
-
                 //获取端点类型
-                uint32 ep_transfer_type = get_ep_transfer_type(endpoint_desc->endpoint_address,endpoint_desc->descriptor_type);
+                uint32 ep_transfer_type = get_ep_transfer_type(endpoint_desc->endpoint_address,endpoint_desc->attributes);
 
                 //增加端点
                 ctx.reg0 = 0;
@@ -690,6 +685,7 @@ int usb_set_config(usb_dev_t *usb_dev, uint8 config_value) {
     return 0;
 }
 
+//测试逻辑单元是否有效
 static inline boolean msc_test_lun(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,uint8 lun_id) {
     //测试状态检测3次不成功则视为无效逻辑单元
     usb_msc_t *drive_data = usb_dev->interfaces->drive_data;
