@@ -849,30 +849,27 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
 //创建usb设备
 usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
     usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
-    color_printk(GREEN,BLACK,"usb_dev:%#lx   \n",usb_dev);
     usb_dev->xhci_controller = xhci_controller;
     usb_dev->port_id = port_id + 1;
-    usb_dev->slot_id = xhci_enable_slot(xhci_controller);
-
-    xhci_address_device(usb_dev); //设置设备地址
-
+    usb_dev->slot_id = xhci_enable_slot(xhci_controller);   //启用插槽
+    xhci_address_device(usb_dev);                           //设置设备地址
     usb_device_descriptor_t *dev_desc = usb_get_device_descriptor(usb_dev); //获取设备描述符
     usb_dev->usb_ver = dev_desc->usb_version;
     usb_dev->vid = dev_desc->vendor_id;
     usb_dev->pid = dev_desc->product_id;
     usb_dev->dev_ver = dev_desc->device_version;
-    kfree(dev_desc);
-
     usb_config_descriptor_t *config_desc = usb_get_config_descriptor(usb_dev); //获取配置描述符
     xhci_config_endpoint(usb_dev, config_desc); //配置端点
     usb_set_config(usb_dev, config_desc->configuration_value); //激活配置
+    kfree(dev_desc);
     kfree(config_desc);
-
-    // uint16 class = *(uint16 *) &usb_dev->interfaces->class;
-    // if (class == 0x0608) {
-    //     usb_get_disk_info(usb_dev); //获取u盘信息
-    // }
     list_add_head(&usb_dev_list, &usb_dev->list);
+
+    uint16 class = *(uint16 *) &usb_dev->interfaces->class;
+    if (class == 0x0608) {
+        usb_get_disk_info(usb_dev); //获取u盘信息
+    }
+
 }
 
 //枚举usb设备
