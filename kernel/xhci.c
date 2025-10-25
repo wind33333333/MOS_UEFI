@@ -858,9 +858,9 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
     usb_dev->vid = dev_desc->vendor_id;
     usb_dev->pid = dev_desc->product_id;
     usb_dev->dev_ver = dev_desc->device_version;
-    usb_config_descriptor_t *config_desc = usb_get_config_descriptor(usb_dev); //获取配置描述符
-    xhci_config_endpoint(usb_dev, config_desc); //配置端点
-    usb_set_config(usb_dev, config_desc->configuration_value); //激活配置
+    usb_config_descriptor_t *config_desc = usb_get_config_descriptor(usb_dev);  //获取配置描述符
+    xhci_config_endpoint(usb_dev, config_desc);                                 //配置端点
+    usb_set_config(usb_dev, config_desc->configuration_value);                  //激活配置
     kfree(dev_desc);
     kfree(config_desc);
     list_add_head(&usb_dev_list, &usb_dev->list);
