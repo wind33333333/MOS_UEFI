@@ -613,26 +613,24 @@ static inline boolean list_empty(list_head_t *head) {
     return 0;
 }
 
-//32位大端转小端
-uint32 big_to_little_endian_32 (uint32 var) {
-    uint32 result = 0;
-    result |= var>>24;
-    result |= (var>>8)&0xff00;
-    result |= (var<<8)&0xff0000;
-    result |= var<<24;
+// 32 位大小端序转换
+static inline uint32 bswap32(uint32 var) {
+    uint32 result;
+    __asm__ __volatile__ (
+        "bswap %0"
+        : "=r" (result)  // 输出：result 存储转换后的值
+        : "0" (var)      // 输入：var 作为初始值
+    );
     return result;
 }
 
-//64位大端转小端
-uint64 big_to_little_endian_64 (uint64 var) {
-    uint64 result = 0;
-    result |= var>>56;
-    result |= (var>>40)&0xff00UL;
-    result |= (var>>24)&0xff0000UL;
-    result |= (var>>8)&0xff000000UL;
-    result |= (var<<8)&0xff00000000UL;
-    result |= (var<<24)&0xff0000000000UL;
-    result |= (var<<40)&0xff000000000000UL;
-    result |= (var<<56)&0xff00000000000000UL;
+// 64 位大小端序转换
+static inline uint64 bswap64(uint64 var) {
+    uint64 result;
+    __asm__ __volatile__ (
+        "bswap %0"
+        : "=r" (result)  // 输出：result 存储转换后的值
+        : "0" (var)      // 输入：var 作为初始值
+    );
     return result;
 }

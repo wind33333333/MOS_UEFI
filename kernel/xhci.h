@@ -796,7 +796,7 @@ typedef struct {
 typedef struct {
     uint64          block_count;            // 块数量
     uint32          block_size;             // 块大小
-    char8           vid[24];                // 厂商ascii码
+    char8           vid[25];                // 厂商ascii码
     uint8           lun_id;                 // 逻辑单元
 } usb_lun_t;
 

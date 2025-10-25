@@ -688,6 +688,7 @@ int usb_set_config(usb_dev_t *usb_dev, uint8 config_value) {
 //测试逻辑单元是否有效
 static inline boolean bot_msc_test_lun(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,uint8 lun_id) {
     //测试状态检测3次不成功则视为无效逻辑单元
+    boolean flags = FALSE;
     usb_msc_t *drive_data = usb_dev->interfaces->drive_data;
     usb_alt_setting_t* alternate_setting = usb_dev->interfaces->alternate_setting;
     usb_endpoint_t *in_ep = &alternate_setting->endpoints[drive_data->ep_in_num];
@@ -717,37 +718,20 @@ static inline boolean bot_msc_test_lun(xhci_controller_t *xhci_controller,usb_de
         timing();
         xhci_ering_dequeue(xhci_controller, &trb);
 
-        if (!csw->csw_status) return TRUE;
-    }
-    return FALSE;
-}
-
-//获取u盘信息（u盘品牌,容量等）
-void usb_get_disk_info(usb_dev_t *usb_dev) {
-    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
-    usb_interface_t *interface = usb_dev->interfaces;
-    usb_alt_setting_t* alternate_setting = interface->alternate_setting;
-    if (interface->protocol != 0x50) return;
-    usb_msc_t *drive_data = kzalloc(sizeof(usb_msc_t));
-    interface->drive_data = drive_data;
-    drive_data->dev = usb_dev;
-    usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
-    usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 64));
-    trb_t trb;
-
-    //查找 in out端点
-    for (uint8 i = 0; i < alternate_setting->endpoints_count; i++) {
-        if (alternate_setting->endpoints[i].ep_num & 1) {
-            drive_data->ep_in_num = i;
-        } else {
-            drive_data->ep_out_num = i;
+        if (!csw->csw_status) {
+            flags = TRUE;
+            break;
         }
     }
-    usb_endpoint_t *in_ep = &alternate_setting->endpoints[drive_data->ep_in_num];
-    usb_endpoint_t *out_ep = &alternate_setting->endpoints[drive_data->ep_out_num];
+    kfree(cbw);
+    kfree(csw);
+    return flags;
+}
 
-    //获取最大逻辑单元
-    setup_stage_trb(&trb, setup_stage_interface, setup_stage_calss, setup_stage_in, usb_req_get_max_lun, 0, 0, interface->interface_number, 8,
+//获取最大逻辑单元
+static inline uint8 bot_msc_read_max_lun(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev) {
+    trb_t trb;
+    setup_stage_trb(&trb, setup_stage_interface, setup_stage_calss, setup_stage_in, usb_req_get_max_lun, 0, 0, usb_dev->interfaces->interface_number, 8,
                     in_data_stage);
     xhci_ring_enqueue(&usb_dev->control_ring, &trb);
 
@@ -762,83 +746,157 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
 
-    drive_data->lun_count = ++*max_lun;
+    uint8 lun_count = ++*max_lun;
     kfree(max_lun);
-    color_printk(GREEN,BLACK,"max_lun:%d   \n",drive_data->lun_count);
+    return lun_count;
+}
 
-    //枚举每个逻辑单元
+//获取u盘厂商信息
+static inline uint8 bot_msc_read_vid(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,uint8 lun_id) {
+    usb_msc_t *drive_data = usb_dev->interfaces->drive_data;
+    usb_alt_setting_t* alternate_setting = usb_dev->interfaces->alternate_setting;
+    usb_lun_t *lun = &drive_data->lun[lun_id];
+    usb_endpoint_t *in_ep = &alternate_setting->endpoints[drive_data->ep_in_num];
+    usb_endpoint_t *out_ep = &alternate_setting->endpoints[drive_data->ep_out_num];
+    usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
+    usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 64));
+    trb_t trb;
+    cbw->cbw_signature = 0x43425355; // 'USBC'
+    cbw->cbw_tag = ++drive_data->tag; // 唯一标签（示例）
+    cbw->cbw_data_transfer_length = sizeof(inquiry_data_t);
+    cbw->cbw_flags = 0x80; // IN 方向
+    cbw->cbw_lun = lun->lun_id; // 逻辑单元号
+    cbw->cbw_cb_length = 6; //
+    cbw->cbw_cb[0] = 0x12;
+    cbw->cbw_cb[4] = sizeof(inquiry_data_t);
+
+    // 1. 发送 CBW（批量 OUT 端点)
+    normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(usb_cbw_t), disable_ioc);
+    xhci_ring_enqueue(&out_ep->transfer_ring, &trb);
+    //2. 接收数据（批量 IN 端点）
+    inquiry_data_t *inquiry_data = kzalloc(align_up(sizeof(inquiry_data_t), 64));
+    normal_transfer_trb(&trb, va_to_pa(inquiry_data), enable_ch, sizeof(inquiry_data_t), disable_ioc);
+    xhci_ring_enqueue(&in_ep->transfer_ring, &trb);
+    // 3. 接收 CSW（批量 IN 端点）
+    normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(usb_csw_t), enable_ioc);
+    xhci_ring_enqueue(&in_ep->transfer_ring, &trb);
+
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, out_ep->ep_num);
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, in_ep->ep_num);
+    timing();
+    xhci_ering_dequeue(xhci_controller, &trb);
+
+    mem_cpy(&inquiry_data->vendor_id, &lun->vid, 24);
+    lun->vid[24] = 0;
+
+    kfree(cbw);
+    kfree(csw);
+    kfree(inquiry_data);
+    return 0;
+}
+
+//获取u盘容量信息
+static inline uint8  bot_msc_read_capacity(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,uint8 lun_id) {
+    usb_msc_t *drive_data = usb_dev->interfaces->drive_data;
+    usb_alt_setting_t* alternate_setting = usb_dev->interfaces->alternate_setting;
+    usb_lun_t *lun = &drive_data->lun[lun_id];
+    usb_endpoint_t *in_ep = &alternate_setting->endpoints[drive_data->ep_in_num];
+    usb_endpoint_t *out_ep = &alternate_setting->endpoints[drive_data->ep_out_num];
+    usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
+    usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 64));
+    trb_t trb;
+
+    cbw->cbw_signature = 0x43425355; // 'USBC'
+    cbw->cbw_tag = ++drive_data->tag; // 唯一标签（示例）
+    cbw->cbw_data_transfer_length = 32; // READ CAPACITY (16) 返回32 字节
+    cbw->cbw_flags = 0x80; // IN 方向
+    cbw->cbw_lun = lun->lun_id; // 逻辑单元号
+    cbw->cbw_cb_length = 16; // READ CAPACITY (16) 命令长度
+
+    //填充 SCSI READ CAPACITY (16) 命令
+    cbw->cbw_cb[0] = 0x9E; // 操作码：READ CAPACITY (16)
+    cbw->cbw_cb[1] = 0x10; // 服务动作：0x10
+    cbw->cbw_cb[13] = 32; // 分配长度低字节（32 字节）
+
+    // 1. 发送 CBW（批量 OUT 端点）
+    normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(usb_cbw_t), disable_ioc);
+    xhci_ring_enqueue(&out_ep->transfer_ring, &trb);
+    //2. 接收数据（批量 IN 端点
+    read_capacity_16_t *capacity_data = kzalloc(align_up(sizeof(read_capacity_16_t), 64));
+    normal_transfer_trb(&trb, va_to_pa(capacity_data), enable_ch, sizeof(read_capacity_16_t), disable_ioc);
+    xhci_ring_enqueue(&in_ep->transfer_ring, &trb);
+    // 3. 接收 CSW（批量 IN 端点
+    normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(usb_csw_t), enable_ioc);
+    xhci_ring_enqueue(&in_ep->transfer_ring, &trb);
+
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, out_ep->ep_num);
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, in_ep->ep_num);
+    timing();
+    xhci_ering_dequeue(xhci_controller, &trb);
+
+    lun->block_count = bswap64(capacity_data->last_lba) + 1;
+    lun->block_size = bswap32(capacity_data->block_size);
+
+    kfree(cbw);
+    kfree(csw);
+    return 0;
+}
+
+uint8 scsi_read(usb_dev_t *usb_dev, uint8 lun_id,uint64 lba, uint32 block_count,uint32 block_size, void *buf) {
+    usb_msc_t *drive_data = usb_dev->interfaces->drive_data;
+    usb_alt_setting_t* alternate_setting = usb_dev->interfaces->alternate_setting;
+    usb_lun_t *lun = &drive_data->lun[lun_id];
+    usb_endpoint_t *in_ep = &alternate_setting->endpoints[drive_data->ep_in_num];
+    usb_endpoint_t *out_ep = &alternate_setting->endpoints[drive_data->ep_out_num];
+    usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
+    usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 64));
+    trb_t trb;
+
+    cbw->cbw_signature = 0x43425355; // 'USBC'
+    cbw->cbw_tag = ++drive_data->tag; // 唯一标签（示例）
+    cbw->cbw_data_transfer_length = 32; // READ CAPACITY (16) 返回32 字节
+    cbw->cbw_flags = 0x80; // IN 方向
+    cbw->cbw_lun = lun->lun_id; // 逻辑单元号
+    cbw->cbw_cb_length = 16; // READ CAPACITY (16) 命令长度
+    // 构造 READ(16) 命令块
+    cbw->cbw_cb[0] = 0x88; //READ(16)
+
+
+}
+
+//获取u盘信息（u盘品牌,容量等）
+void usb_get_disk_info(usb_dev_t *usb_dev) {
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+    usb_interface_t *interface = usb_dev->interfaces;
+    usb_alt_setting_t* alternate_setting = interface->alternate_setting;
+
+    if (interface->protocol != 0x50) return;
+
+    usb_msc_t *drive_data = kzalloc(sizeof(usb_msc_t));
+    interface->drive_data = drive_data;
+    drive_data->dev = usb_dev;
+
+    //查找 in out端点
+    for (uint8 i = 0; i < alternate_setting->endpoints_count; i++) {
+        if (alternate_setting->endpoints[i].ep_num & 1) {
+            drive_data->ep_in_num = i;
+        } else {
+            drive_data->ep_out_num = i;
+        }
+    }
+
+    //获取最大逻辑单元
+    drive_data->lun_count = bot_msc_read_max_lun(xhci_controller, usb_dev);
+
+    //枚举逻辑单元
     for (uint8 i=0;i<drive_data->lun_count;i++) {
-        usb_lun_t *lun = &drive_data->lun[i];
-        if (bot_msc_test_lun(xhci_controller,usb_dev,i) == FALSE) break;
-
-        lun->lun_id = i;
-        //获取u盘信息
-        mem_set(csw, 0, sizeof(usb_csw_t));
-        mem_set(cbw, 0, sizeof(usb_cbw_t));
-        cbw->cbw_signature = 0x43425355; // 'USBC'
-        cbw->cbw_tag = ++drive_data->tag; // 唯一标签（示例）
-        cbw->cbw_data_transfer_length = sizeof(inquiry_data_t);
-        cbw->cbw_flags = 0x80; // IN 方向
-        cbw->cbw_lun = lun->lun_id; // 逻辑单元号
-        cbw->cbw_cb_length = 6; //
-        cbw->cbw_cb[0] = 0x12;
-        cbw->cbw_cb[4] = sizeof(inquiry_data_t);
-
-        // 1. 发送 CBW（批量 OUT 端点)
-        normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(usb_cbw_t), disable_ioc);
-        xhci_ring_enqueue(&out_ep->transfer_ring, &trb);
-        //2. 接收数据（批量 IN 端点）
-        inquiry_data_t *inquiry_data = kzalloc(align_up(sizeof(inquiry_data_t), 64));
-        normal_transfer_trb(&trb, va_to_pa(inquiry_data), enable_ch, sizeof(inquiry_data_t), disable_ioc);
-        xhci_ring_enqueue(&in_ep->transfer_ring, &trb);
-        // 3. 接收 CSW（批量 IN 端点）
-        normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(usb_csw_t), enable_ioc);
-        xhci_ring_enqueue(&in_ep->transfer_ring, &trb);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, out_ep->ep_num);
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, in_ep->ep_num);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &trb);
-
-        mem_cpy(&inquiry_data->vendor_id, &lun->vid, 24);
-        lun->vid[23] = 0;
-
-        //获取u盘容量
-        mem_set(csw, 0, sizeof(usb_csw_t));
-        mem_set(cbw, 0, sizeof(usb_cbw_t));
-        cbw->cbw_signature = 0x43425355; // 'USBC'
-        cbw->cbw_tag = ++drive_data->tag; // 唯一标签（示例）
-        cbw->cbw_data_transfer_length = 32; // READ CAPACITY (16) 返回32 字节
-        cbw->cbw_flags = 0x80; // IN 方向
-        cbw->cbw_lun = lun->lun_id; // 逻辑单元号
-        cbw->cbw_cb_length = 16; // READ CAPACITY (16) 命令长度
-
-        //填充 SCSI READ CAPACITY (16) 命令
-        cbw->cbw_cb[0] = 0x9E; // 操作码：READ CAPACITY (16)
-        cbw->cbw_cb[1] = 0x10; // 服务动作：0x10
-        cbw->cbw_cb[13] = 32; // 分配长度低字节（32 字节）
-
-        // 1. 发送 CBW（批量 OUT 端点）
-        normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(usb_cbw_t), disable_ioc);
-        xhci_ring_enqueue(&out_ep->transfer_ring, &trb);
-        //2. 接收数据（批量 IN 端点
-        read_capacity_16_t *capacity_data = kzalloc(align_up(sizeof(read_capacity_16_t), 64));
-        normal_transfer_trb(&trb, va_to_pa(capacity_data), enable_ch, sizeof(read_capacity_16_t), disable_ioc);
-        xhci_ring_enqueue(&in_ep->transfer_ring, &trb);
-        // 3. 接收 CSW（批量 IN 端点
-        normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(usb_csw_t), enable_ioc);
-        xhci_ring_enqueue(&in_ep->transfer_ring, &trb);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, out_ep->ep_num);
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, in_ep->ep_num);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &trb);
-
-        lun->block_count = big_to_little_endian_64(capacity_data->last_lba) + 1;
-        lun->block_size = big_to_little_endian_32(capacity_data->block_size);
+        drive_data->lun[i].lun_id = i;
+        if (bot_msc_test_lun(xhci_controller,usb_dev,i) == FALSE) break; //测试逻辑单元是否有效
+        bot_msc_read_vid(xhci_controller, usb_dev,i);        //获取u盘厂商信息
+        bot_msc_read_capacity(xhci_controller,usb_dev,i);        //获取u盘容量
 
         color_printk(GREEN,BLACK, "vid:%#x pid:%#x mode:%s block_num:%#lx block_size:%#x    \n", usb_dev->vid, usb_dev->pid,
-                     lun->vid, lun->block_count, lun->block_size);
+                     drive_data->lun[i].vid, drive_data->lun[i].block_count, drive_data->lun[i].block_size);
     }
 }
 
@@ -861,7 +919,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
     kfree(config_desc);
     list_add_head(&usb_dev_list, &usb_dev->list);
 
-    uint16 class = *(uint16 *) &usb_dev->interfaces->class;
+    uint16 class = *(uint16 *)&usb_dev->interfaces->class;
     if (class == 0x0608) {
         usb_get_disk_info(usb_dev); //获取u盘信息
     }
