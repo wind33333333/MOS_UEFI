@@ -800,11 +800,11 @@ typedef struct {
     uint8           lun_id;                 // 逻辑单元
 } usb_lun_t;
 
-//u盘
+//u盘bot协议
 typedef struct {
     usb_dev_t*      dev;                    // 父设备指针
-    uint8           ep_in;                  // 输入端点
-    uint8           ep_out;                 // 输出端点
+    uint8           ep_in_num;              // 输入端点
+    uint8           ep_out_num;             // 输出端点
     usb_lun_t       lun[8];                 // 最多8个单元
     uint8           lun_count;              // 逻辑单元实际个数
     uint32          tag;                    // 全局标签

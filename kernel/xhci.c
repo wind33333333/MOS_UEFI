@@ -686,12 +686,12 @@ int usb_set_config(usb_dev_t *usb_dev, uint8 config_value) {
 }
 
 //测试逻辑单元是否有效
-static inline boolean msc_test_lun(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,uint8 lun_id) {
+static inline boolean bot_msc_test_lun(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,uint8 lun_id) {
     //测试状态检测3次不成功则视为无效逻辑单元
     usb_msc_t *drive_data = usb_dev->interfaces->drive_data;
     usb_alt_setting_t* alternate_setting = usb_dev->interfaces->alternate_setting;
-    usb_endpoint_t *in_ep = &alternate_setting->endpoints[drive_data->ep_in];
-    usb_endpoint_t *out_ep = &alternate_setting->endpoints[drive_data->ep_out];
+    usb_endpoint_t *in_ep = &alternate_setting->endpoints[drive_data->ep_in_num];
+    usb_endpoint_t *out_ep = &alternate_setting->endpoints[drive_data->ep_out_num];
     usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
     usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 64));
     trb_t trb;
@@ -738,13 +738,13 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
     //查找 in out端点
     for (uint8 i = 0; i < alternate_setting->endpoints_count; i++) {
         if (alternate_setting->endpoints[i].ep_num & 1) {
-            drive_data->ep_in = i;
+            drive_data->ep_in_num = i;
         } else {
-            drive_data->ep_out = i;
+            drive_data->ep_out_num = i;
         }
     }
-    usb_endpoint_t *in_ep = &alternate_setting->endpoints[drive_data->ep_in];
-    usb_endpoint_t *out_ep = &alternate_setting->endpoints[drive_data->ep_out];
+    usb_endpoint_t *in_ep = &alternate_setting->endpoints[drive_data->ep_in_num];
+    usb_endpoint_t *out_ep = &alternate_setting->endpoints[drive_data->ep_out_num];
 
     //获取最大逻辑单元
     setup_stage_trb(&trb, setup_stage_interface, setup_stage_calss, setup_stage_in, usb_req_get_max_lun, 0, 0, interface->interface_number, 8,
@@ -769,7 +769,7 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
     //枚举每个逻辑单元
     for (uint8 i=0;i<drive_data->lun_count;i++) {
         usb_lun_t *lun = &drive_data->lun[i];
-        if (msc_test_lun(xhci_controller,usb_dev,i) == FALSE) break;
+        if (bot_msc_test_lun(xhci_controller,usb_dev,i) == FALSE) break;
 
         lun->lun_id = i;
         //获取u盘信息
