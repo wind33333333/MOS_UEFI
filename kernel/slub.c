@@ -196,7 +196,7 @@ int32 kmem_cache_destroy(kmem_cache_t *cache) {
 
 //通用内存分配器
 void *kmalloc(uint64 size) {
-    if (size > MAX_OBJECT_SIZE) return NULL;
+    if (size == 0 || size > MAX_OBJECT_SIZE) return NULL;
 
     uint32 index = 0;
     size = object_size_align(size) >> 4;
@@ -209,6 +209,7 @@ void *kmalloc(uint64 size) {
 
 //通用内存分配器(清零)
 inline void *kzalloc(uint64 size) {
+    if (size  == 0) return NULL;
     void *ptr = kmalloc(size);
     mem_set(ptr,0,size);
     return ptr;
