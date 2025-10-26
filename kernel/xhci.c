@@ -1070,49 +1070,53 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
 
     for (uint8 i = 0;i<interface->alternate_count;i++) {
         if (alternate_setting[i].protocol == 0x62) {
-            usb_set_interface(usb_dev,interface->interface_number,alternate_setting[i].alt_setting_num);
-        }
-        color_printk(RED,BLACK,"pid:%#x vid:%#x alt_num:%d class:%#x subclass:%#x protocol:%#x ep_count:%d  \n",usb_dev->pid,usb_dev->vid,alternate_setting[i].alt_setting_num,alternate_setting[i].class,alternate_setting[i].subclass,alternate_setting[i].protocol,alternate_setting[i].endpoints_count);
-    }
-
-    usb_msc_t *drive_data = kzalloc(sizeof(usb_msc_t));
-    interface->drive_data = drive_data;
-    drive_data->dev = usb_dev;
-
-    //查找 in out端点
-    for (uint8 i = 0; i < alternate_setting->endpoints_count; i++) {
-        if (alternate_setting->endpoints[i].ep_num & 1) {
-            drive_data->ep_in_num = i;
-        } else {
-            drive_data->ep_out_num = i;
+            alternate_setting = alternate_setting + i;
+            usb_set_interface(usb_dev,interface->interface_number,alternate_setting->alt_setting_num);
         }
     }
 
-    //获取最大逻辑单元
-    drive_data->lun_count = bot_msc_read_max_lun(xhci_controller, usb_dev);
+    if (alternate_setting->protocol == 0x62) {//uasp协议u盘
 
-    //枚举逻辑单元
-    for (uint8 i=0;i<drive_data->lun_count;i++) {
-        drive_data->lun[i].lun_id = i;
-        if (bot_msc_test_lun(xhci_controller,usb_dev,i) == FALSE) break; //测试逻辑单元是否有效
-        bot_msc_read_vid(xhci_controller, usb_dev,i);        //获取u盘厂商信息
-        bot_msc_read_capacity(xhci_controller,usb_dev,i);        //获取u盘容量
 
-        uint64* write = kzalloc(4096);
-        mem_set(write,0x23,4096);
-        //bot_scsi_write10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,write);
+    }else {//bot 协议u盘
+        usb_msc_t *drive_data = kzalloc(sizeof(usb_msc_t));
+        interface->drive_data = drive_data;
+        drive_data->dev = usb_dev;
 
-        uint64* buf = kzalloc(4096);
-        bot_scsi_read10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,buf);
-
-        color_printk(BLUE,BLACK,"buf:");
-        for (uint32 i=0;i<100;i++) {
-            color_printk(BLUE,BLACK,"%#lx",buf[i]);
+        //查找 in out端点
+        for (uint8 i = 0; i < alternate_setting->endpoints_count; i++) {
+            if (alternate_setting->endpoints[i].ep_num & 1) {
+                drive_data->ep_in_num = i;
+            } else {
+                drive_data->ep_out_num = i;
+            }
         }
-        color_printk(BLUE,BLACK,"\n");
-        color_printk(GREEN,BLACK, "vid:%#x pid:%#x mode:%s block_num:%#lx block_size:%#x    \n", usb_dev->vid, usb_dev->pid,
-                     drive_data->lun[i].vid, drive_data->lun[i].block_count, drive_data->lun[i].block_size);
+        //获取最大逻辑单元
+        drive_data->lun_count = bot_msc_read_max_lun(xhci_controller, usb_dev);
+        //枚举逻辑单元
+        for (uint8 i=0;i<drive_data->lun_count;i++) {
+            drive_data->lun[i].lun_id = i;
+            if (bot_msc_test_lun(xhci_controller,usb_dev,i) == FALSE) break; //测试逻辑单元是否有效
+            bot_msc_read_vid(xhci_controller, usb_dev,i);        //获取u盘厂商信息
+            bot_msc_read_capacity(xhci_controller,usb_dev,i);        //获取u盘容量
+
+            uint64* write = kzalloc(4096);
+            mem_set(write,0x23,4096);
+            //bot_scsi_write10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,write);
+
+            uint64* buf = kzalloc(4096);
+            bot_scsi_read10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,buf);
+
+            color_printk(BLUE,BLACK,"buf:");
+            for (uint32 i=0;i<100;i++) {
+                color_printk(BLUE,BLACK,"%#lx",buf[i]);
+            }
+            color_printk(BLUE,BLACK,"\n");
+            color_printk(GREEN,BLACK, "vid:%#x pid:%#x mode:%s block_num:%#lx block_size:%#x    \n", usb_dev->vid, usb_dev->pid,
+                         drive_data->lun[i].vid, drive_data->lun[i].block_count, drive_data->lun[i].block_size);
+        }
     }
+
 }
 
 //创建usb设备

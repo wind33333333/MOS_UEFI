@@ -67,22 +67,25 @@ debug-uefi: clean_uefi
 
 #-device amd-iommu \amd cpu启用iommu
 #-device intel-iommu,intremap=on,caching-mode=on \ intel cpu启用iommu
+#-device usb-uas,id=uas,bus=xhci.0 \  禁用这一行u盘为bot协议，启用这一行u盘为uas协议
 debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	cp $(BUILD)/kernel.bin esp/kernel.bin
 	-pkill udk-gdb-server
 	-pkill qemu-system-x86
-	qemu-system-x86_64 -monitor telnet:localhost:4444,server,nowait \
-					   -S -s \
-					   -net none \
-					   -M q35 \
-					   -device intel-iommu,intremap=on,caching-mode=on \
-					   -m 8G \
-					   -cpu max -smp sockets=2,cores=2,threads=2 \
-					   -bios OVMF.fd \
-					   -device qemu-xhci \
-                       -drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp \
-                       -device usb-storage,drive=usbdisk &
-
+	qemu-system-x86_64 \
+		-monitor telnet:localhost:4444,server,nowait \
+		-S -s \
+		-net none \
+		-M q35 \
+		-device intel-iommu,intremap=on,caching-mode=on \
+		-m 8G \
+		-cpu max \
+		-smp sockets=2,cores=2,threads=2 \
+		-bios OVMF.fd \
+		-device qemu-xhci,id=xhci \
+		-drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp \
+		-device usb-uas,id=uas,bus=xhci.0 \
+		-device usb-storage,drive=usbdisk &
 
 qemu-monitor:
 	telnet localhost 4444
