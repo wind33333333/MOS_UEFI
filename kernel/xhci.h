@@ -761,17 +761,18 @@ typedef struct {
 
 //usb备用设置
 typedef struct {
-    uint8 alt_setting_num;                       // 备用设置号
-    uint8 endpoints_count;                       // 端点数量
-    usb_endpoint_t* endpoints;                   // 端点动态分配
+    uint8            alt_setting_num;        // 备用设置号
+    uint8            class;                  // 接口类代码，定义接口功能（如 0x03 表示 HID，0x08 表示 Mass Storage）
+    uint8            subclass;               // 接口子类代码，进一步细化接口类（如 HID 的子类）
+    uint8            protocol;               // 接口协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
+    uint8            endpoints_count;        // 端点数量
+    usb_endpoint_t*  endpoints;              // 端点动态分配
 } usb_alt_setting_t;
 
 //usb接口
 typedef struct {
-    uint8               class;                  // 接口类代码，定义接口功能（如 0x03 表示 HID，0x08 表示 Mass Storage）
-    uint8               subclass;               // 接口子类代码，进一步细化接口类（如 HID 的子类）
-    uint8               protocol;               // 接口协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
     uint8               interface_number;       // 接口号
+    uint8               alternate_count;        // 备用设置数量
     usb_alt_setting_t*  alternate_setting;      // 备用设置
     void*               drive_data;             // 驱动数据相关
 }usb_interface_t;

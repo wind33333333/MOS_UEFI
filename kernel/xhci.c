@@ -475,8 +475,8 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
     usb_config_descriptor_t *config_desc_end = (usb_config_descriptor_t *) (
         (uint64) config_desc + config_desc->total_length);
 
-    //计算接口备用配置数量
-    uint8 alt_count[16]={0};
+    //计算接口备用设置数量，假设最多32个备用设置。
+    uint8 alt_count[32]={0};
     usb_interface_descriptor_t *interface_desc = (usb_interface_descriptor_t *)config_desc;
     while (interface_desc < (usb_interface_descriptor_t *)config_desc_end) {
         if (interface_desc->descriptor_type == USB_DESC_TYPE_INTERFACE) {
@@ -498,13 +498,14 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
                 interface_desc = (usb_interface_descriptor_t*)config_desc;
                 usb_interface = &usb_dev->interfaces[interface_desc->interface_number];
                 if (interface_desc->alternate_setting == 0) {
-                    usb_interface->class = interface_desc->interface_class;
-                    usb_interface->subclass = interface_desc->interface_subclass;
-                    usb_interface->protocol = interface_desc->interface_protocol;
                     usb_interface->interface_number = interface_desc->interface_number;
-                    usb_interface->alternate_setting = kzalloc(sizeof(usb_alt_setting_t)*alt_count[usb_interface->interface_number]);
+                    usb_interface->alternate_count = alt_count[usb_interface->interface_number];
+                    usb_interface->alternate_setting = kzalloc(sizeof(usb_alt_setting_t)*usb_interface->alternate_count);
                 }
                 usb_alt_setting_t* usb_alt_setting = &usb_interface->alternate_setting[interface_desc->alternate_setting];
+                usb_alt_setting->class = interface_desc->interface_class;
+                usb_alt_setting->subclass = interface_desc->interface_subclass;
+                usb_alt_setting->protocol = interface_desc->interface_protocol;
                 usb_alt_setting->alt_setting_num = interface_desc->alternate_setting;
                 usb_alt_setting->endpoints_count = interface_desc->num_endpoints;
                 usb_alt_setting->endpoints = kzalloc(usb_alt_setting->endpoints_count*sizeof(usb_endpoint_t));
@@ -1057,7 +1058,13 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
     usb_interface_t *interface = usb_dev->interfaces;
     usb_alt_setting_t* alternate_setting = interface->alternate_setting;
 
-    if (interface->protocol != 0x50) return;
+    for (uint8 i = 0;i<interface->alternate_count;i++) {
+            color_printk(RED,BLACK,"pid:%#x vid:%#x alt_num:%d class:%#x subclass:%#x protocol:%#x ep_count:%d  \n",usb_dev->pid,usb_dev->vid,alternate_setting[i].alt_setting_num,alternate_setting[i].class,alternate_setting[i].subclass,alternate_setting[i].protocol,alternate_setting[i].endpoints_count);
+    }
+
+    while (1);
+
+    if (alternate_setting->protocol != 0x50) return;
 
     usb_msc_t *drive_data = kzalloc(sizeof(usb_msc_t));
     interface->drive_data = drive_data;
@@ -1084,10 +1091,10 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
 
         uint64* write = kzalloc(4096);
         mem_set(write,0x23,4096);
-        bot_scsi_write10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,write);
+        //bot_scsi_write10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,write);
 
         uint64* buf = kzalloc(4096);
-        bot_scsi_read10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,buf);
+        bot_scsi_read16(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,buf);
 
         color_printk(BLUE,BLACK,"buf:");
         for (uint32 i=0;i<100;i++) {
@@ -1118,8 +1125,7 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
     kfree(config_desc);
     list_add_head(&usb_dev_list, &usb_dev->list);
 
-    uint16 class = *(uint16 *)&usb_dev->interfaces->class;
-    if (class == 0x0608) {
+    if (*(uint16 *)&usb_dev->interfaces->alternate_setting->class == 0x0608) {
         usb_get_disk_info(usb_dev); //获取u盘信息
     }
 
