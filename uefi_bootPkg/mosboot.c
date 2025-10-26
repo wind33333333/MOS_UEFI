@@ -2,7 +2,8 @@
 
 EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* SystemTable){
 
-    //CpuBreakpoint();
+    CpuBreakpoint();//启用调试模式
+
     EFI_STATUS Status;
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
     SystemTable->ConOut->EnableCursor(SystemTable->ConOut,TRUE); //显示光标
@@ -14,7 +15,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
 
     //region 文本模式
     UINTN Columns, Rows;
-    for(uint32 i=0;i<SystemTable->ConOut->Mode->MaxMode;i++){
+    for(UINT32 i=0;i<SystemTable->ConOut->Mode->MaxMode;i++){
         SystemTable->ConOut->QueryMode(SystemTable->ConOut,i,&Columns,&Rows);
         Print(L"TextMode:%2d    Columns:%4d    Rows:%4d\n",i,Columns,Rows);
     }
@@ -27,11 +28,11 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     Status=keyCountdown(30);
     if(Status){
         while(1){
-            char16 InputBuffer[5];
-            uint32 InputBufferLength = sizeof(InputBuffer)/sizeof(char16);
-            uint32 Mode = 0;
+            CHAR16 InputBuffer[5];
+            UINT32 InputBufferLength = sizeof(InputBuffer)/sizeof(CHAR16);
+            UINT32 Mode = 0;
             PrintInput(InputBuffer,&InputBufferLength);
-            for(uint32 i=0;i<InputBufferLength;i++){
+            for(UINT32 i=0;i<InputBufferLength;i++){
                 if(InputBuffer[i]<0x30 || InputBuffer[i]>0x39){
                     Mode = 0xFFFF;
                     break;
@@ -43,7 +44,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
             if(!EFI_ERROR(Status))
                 break;
 
-            for(uint32 i = 0;i<InputBufferLength;i++){
+            for(UINT32 i = 0;i<InputBufferLength;i++){
                     Print(L"\b");
             }
         }
@@ -57,7 +58,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     UINTN InfoSize = 0;
     SystemTable->ConOut->QueryMode(SystemTable->ConOut,SystemTable->ConOut->Mode->Mode,&Columns,&Rows);
     gBS->LocateProtocol(&gEfiGraphicsOutputProtocolGuid,NULL,(VOID **)&gGraphicsOutput);
-    for(uint32 i = 0;i < gGraphicsOutput->Mode->MaxMode;i++){
+    for(UINT32 i = 0;i < gGraphicsOutput->Mode->MaxMode;i++){
         gGraphicsOutput->QueryMode(gGraphicsOutput,i,&InfoSize,&Info);
         if((SystemTable->ConOut->Mode->CursorColumn+45)>Columns)
             Print(L"\n");
@@ -71,11 +72,11 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     Status=keyCountdown(30);
     if(Status){
         while(1){
-            char16 InputBuffer[5];
-            uint32 InputBufferLength = sizeof(InputBuffer) / sizeof(char16);
-            uint32 Mode = 0;
+            CHAR16 InputBuffer[5];
+            UINT32 InputBufferLength = sizeof(InputBuffer) / sizeof(CHAR16);
+            UINT32 Mode = 0;
             PrintInput(InputBuffer,&InputBufferLength);
-            for(uint32 i = 0;i<InputBufferLength;i++){
+            for(UINT32 i = 0;i<InputBufferLength;i++){
                 if(InputBuffer[i]<0x30 || InputBuffer[i]>0x39){
                     Mode = 0xFFFF;
                     break;
@@ -86,7 +87,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
             if(!EFI_ERROR(Status))
                 break;
 
-            for(uint32 i = 0;i<InputBufferLength;i++){
+            for(UINT32 i = 0;i<InputBufferLength;i++){
                 Print(L"\b");
             }
         }
@@ -120,7 +121,7 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     gBS->HandleProtocol(ImageHandle,&gEfiLoadedImageProtocolGuid,(VOID*)&LoadedImage);
     gBS->HandleProtocol(LoadedImage->DeviceHandle,&gEfiDevicePathProtocolGuid,(VOID*)&DevicePath);
 
-    char16* TextDevicePath = Device2TextProtocol->ConvertDevicePathToText(DevicePath,FALSE,TRUE);
+    CHAR16* TextDevicePath = Device2TextProtocol->ConvertDevicePathToText(DevicePath,FALSE,TRUE);
     Print(L"%s\n",TextDevicePath);
     if(TextDevicePath)
         gBS->FreePool(TextDevicePath);
@@ -129,13 +130,13 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
 
     gBS->HandleProtocol(LoadedImage->DeviceHandle,&gEfiSimpleFileSystemProtocolGuid,(VOID*)&Vol);
     Vol->OpenVolume(Vol,&RootFs);
-    RootFs->Open(RootFs,&FileHandle,(char16*)L"kernel.bin",EFI_FILE_MODE_READ,0);
+    RootFs->Open(RootFs,&FileHandle,(CHAR16*)L"kernel.bin",EFI_FILE_MODE_READ,0);
 
     EFI_FILE_INFO* FileInfo;
     UINTN BufferSize = 0;
     EFI_PHYSICAL_ADDRESS pages = KERNELSTARTADDR;
 
-    BufferSize = sizeof(EFI_FILE_INFO) + sizeof(char16) * 100;
+    BufferSize = sizeof(EFI_FILE_INFO) + sizeof(CHAR16) * 100;
     gBS->AllocatePool(EfiLoaderData,BufferSize,(VOID**)&FileInfo);
     FileHandle->GetInfo(FileHandle,&gEfiFileInfoGuid,&BufferSize,FileInfo);
     Print(L"\tFileName:%s\t Size:%d\t FileSize:%d\t Physical Size:%d\n",FileInfo->FileName,FileInfo->Size,FileInfo->FileSize,FileInfo->PhysicalSize);
@@ -159,14 +160,14 @@ EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* System
     EFI_MEMORY_DESCRIPTOR* MemMap = 0;
     UINTN MapKey = 0;
     UINTN DescriptorSize = 0;
-    uint32 DesVersion = 0;
+    UINT32 DesVersion = 0;
 
     Print(L"Get Memory Map\n");
     gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
     gBS->AllocatePool(EfiLoaderData,MemMapSize,(VOID**)&MemMap);
     gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);
-    /*for(uint32 i = 0; i< MemMapSize / DescriptorSize; i++){
-        EFI_MEMORY_DESCRIPTOR* MMap = (EFI_MEMORY_DESCRIPTOR*) (((char8*)MemMap) + i * DescriptorSize);
+    /*for(UINT32 i = 0; i< MemMapSize / DescriptorSize; i++){
+        EFI_MEMORY_DESCRIPTOR* MMap = (EFI_MEMORY_DESCRIPTOR*) (((CHAR8*)MemMap) + i * DescriptorSize);
         Print(L"%3d Type:%2d   Addr:0X%016lx   Length:0X%016lx\n",i,MMap->Type,MMap->PhysicalStart,MMap->NumberOfPages << 12);
     }*/
     gBS->GetMemoryMap(&MemMapSize,MemMap,&MapKey,&DescriptorSize,&DesVersion);

@@ -46,7 +46,9 @@ $(BUILD)/%.s: $(KERNEL)/%.S
 $(BUILD)/%.o: $(KERNEL)/%.c
 	gcc ${CFLAGS} -c $< -o $@
 
-	#编译正式版本把bash DEBUG改成RELEASE#
+#clion gdb uefi符号挂载
+#source /opt/intel/udkdebugger/script/udk_gdb_script
+#编译正式版本把bash DEBUG改成RELEASE#
 debug-uefi: clean_uefi
 	bash -c "cd .. && source edksetup.sh && build -p MOS_UEFI/uefi_bootPkg/mosboot.dsc -t GCC -a X64 -b DEBUG"
 	cp build/DEBUG_GCC/X64/bootx64.efi esp/efi/boot/bootx64.efi
@@ -100,6 +102,4 @@ clean_kernel:
 clean_uefi:
 	-rm -rf build/DEBUG_GCC build/RELEASE_GCC  esp/efi/boot/bootx64.efi
 
-#clion gdb uefi符号挂载
-#source /opt/intel/udkdebugger/script/udk_gdb_script
 

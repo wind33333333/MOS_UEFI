@@ -1,6 +1,6 @@
 #include "mosbootlib.h"
 
-EFI_STATUS EFIAPI keyCountdown (uint32 Times){
+EFI_STATUS EFIAPI keyCountdown (UINT32 Times){
     EFI_INPUT_KEY Key;
     while(Times){
         Print(L"%3ds",Times);
@@ -15,11 +15,11 @@ EFI_STATUS EFIAPI keyCountdown (uint32 Times){
 }
 
 
-EFI_STATUS EFIAPI PrintInput (IN OUT char16* InputBuffer,IN OUT uint32* InputBufferLength){
+EFI_STATUS EFIAPI PrintInput (IN OUT CHAR16* InputBuffer,IN OUT UINT32* InputBufferLength){
 
     EFI_INPUT_KEY Key;
     EFI_EVENT WaitList[1];  // 事件列表，可以包含多个事件
-    uint32 InputIndex=0;
+    UINT32 InputIndex=0;
 
     (*InputBufferLength)--;
     WaitList[0] = gST->ConIn->WaitForKey;
