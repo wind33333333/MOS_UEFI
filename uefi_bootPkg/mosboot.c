@@ -2,7 +2,7 @@
 
 EFI_STATUS EFIAPI UefiMain(IN EFI_HANDLE ImageHandle,IN EFI_SYSTEM_TABLE* SystemTable){
 
-    CpuBreakpoint();//启用调试模式
+    //CpuBreakpoint();  //启用调试模式
 
     EFI_STATUS Status;
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);   //清空屏幕
