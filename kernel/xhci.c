@@ -845,7 +845,7 @@ static inline uint8  bot_msc_read_capacity(xhci_controller_t *xhci_controller,us
 }
 
 //读u盘
-uint8 scsi_read16(xhci_controller_t* xhci_controller,usb_dev_t *usb_dev, uint8 lun_id,uint64 lba, uint32 block_count,uint32 block_size, void *buf) {
+uint8 bot_scsi_read16(xhci_controller_t* xhci_controller,usb_dev_t *usb_dev, uint8 lun_id,uint64 lba, uint32 block_count,uint32 block_size, void *buf) {
     usb_msc_t *drive_data = usb_dev->interfaces->drive_data;
     usb_alt_setting_t* alternate_setting = usb_dev->interfaces->alternate_setting;
     usb_lun_t *lun = &drive_data->lun[lun_id];
@@ -889,7 +889,7 @@ uint8 scsi_read16(xhci_controller_t* xhci_controller,usb_dev_t *usb_dev, uint8 l
     return 0;
 }
 
-uint8 scsi_write16(xhci_controller_t* xhci_controller,usb_dev_t *usb_dev, uint8 lun_id,uint64 lba, uint32 block_count,uint32 block_size, void *buf) {
+uint8 bot_scsi_write16(xhci_controller_t* xhci_controller,usb_dev_t *usb_dev, uint8 lun_id,uint64 lba, uint32 block_count,uint32 block_size, void *buf) {
     usb_msc_t *drive_data = usb_dev->interfaces->drive_data;
     usb_alt_setting_t* alternate_setting = usb_dev->interfaces->alternate_setting;
     usb_lun_t *lun = &drive_data->lun[lun_id];
@@ -933,7 +933,7 @@ uint8 scsi_write16(xhci_controller_t* xhci_controller,usb_dev_t *usb_dev, uint8 
     return 0;
 }
 
-uint8 scsi_read10(xhci_controller_t* xhci_controller,
+uint8 bot_scsi_read10(xhci_controller_t* xhci_controller,
                   usb_dev_t *usb_dev,
                   uint8 lun_id,
                   uint32 lba,
@@ -992,7 +992,7 @@ uint8 scsi_read10(xhci_controller_t* xhci_controller,
     return 0;
 }
 
-uint8 scsi_write10(xhci_controller_t* xhci_controller,
+uint8 bot_scsi_write10(xhci_controller_t* xhci_controller,
                    usb_dev_t *usb_dev,
                    uint8 lun_id,
                    uint32 lba,
@@ -1051,114 +1051,6 @@ uint8 scsi_write10(xhci_controller_t* xhci_controller,
     return 0;
 }
 
-uint8 scsi_read12(xhci_controller_t* xhci_controller, usb_dev_t *usb_dev,
-                  uint8 lun_id, uint32 lba, uint32 block_count,
-                  uint32 block_size, void *buf)
-{
-    usb_msc_t *drive_data = usb_dev->interfaces->drive_data;
-    usb_alt_setting_t* alt = usb_dev->interfaces->alternate_setting;
-    usb_lun_t *lun = &drive_data->lun[lun_id];
-
-    usb_endpoint_t *in_ep  = &alt->endpoints[drive_data->ep_in_num];
-    usb_endpoint_t *out_ep = &alt->endpoints[drive_data->ep_out_num];
-
-    usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
-    usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 64));
-    trb_t trb;
-
-    cbw->cbw_signature = 0x43425355;   // 'USBC'
-    cbw->cbw_tag = ++drive_data->tag;
-    cbw->cbw_data_transfer_length = block_count * block_size;
-    cbw->cbw_flags = 0x80;             // IN 方向
-    cbw->cbw_lun = lun->lun_id;
-    cbw->cbw_cb_length = 12;
-
-    // === 构造 READ(12) 命令 ===
-    cbw->cbw_cb[0] = 0xA8; // READ(12)
-    *(uint32*)&cbw->cbw_cb[2]  = bswap32(lba);
-    *(uint32*)&cbw->cbw_cb[6]  = bswap32(block_count);
-
-    // 1. 发送 CBW
-    normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(usb_cbw_t), disable_ioc);
-    xhci_ring_enqueue(&out_ep->transfer_ring, &trb);
-
-    // 2. 读取数据阶段（IN 端点）
-    normal_transfer_trb(&trb, va_to_pa(buf), enable_ch, block_count * block_size, disable_ioc);
-    xhci_ring_enqueue(&in_ep->transfer_ring, &trb);
-
-    // 3. 接收 CSW
-    normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(usb_csw_t), enable_ioc);
-    xhci_ring_enqueue(&in_ep->transfer_ring, &trb);
-
-    // Doorbell 通知
-    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, out_ep->ep_num);
-    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, in_ep->ep_num);
-
-    // 等待事件完成
-    timing();
-    xhci_ering_dequeue(xhci_controller, &trb);
-    color_printk(GREEN,BLACK,"read12 m1:%#lx m2:%#lx   \n",trb.member0,trb.member1);
-
-    kfree(cbw);
-    kfree(csw);
-    return 0;
-}
-
-uint8 scsi_write12(xhci_controller_t* xhci_controller, usb_dev_t *usb_dev,
-                   uint8 lun_id, uint32 lba, uint32 block_count,
-                   uint32 block_size, void *buf)
-{
-    usb_msc_t *drive_data = usb_dev->interfaces->drive_data;
-    usb_alt_setting_t* alt = usb_dev->interfaces->alternate_setting;
-    usb_lun_t *lun = &drive_data->lun[lun_id];
-
-    usb_endpoint_t *in_ep  = &alt->endpoints[drive_data->ep_in_num];
-    usb_endpoint_t *out_ep = &alt->endpoints[drive_data->ep_out_num];
-
-    usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
-    usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 64));
-    trb_t trb;
-
-    cbw->cbw_signature = 0x43425355;   // 'USBC'
-    cbw->cbw_tag = ++drive_data->tag;
-    cbw->cbw_data_transfer_length = block_count * block_size;
-    cbw->cbw_flags = 0x00;             // OUT 方向
-    cbw->cbw_lun = lun->lun_id;
-    cbw->cbw_cb_length = 12;
-
-    // === 构造 WRITE(12) 命令 ===
-    cbw->cbw_cb[0] = 0xAA; // WRITE(12)
-    *(uint32*)&cbw->cbw_cb[2] = bswap32(lba);
-    *(uint32*)&cbw->cbw_cb[6] = bswap32(block_count);
-
-    // 1. 发送 CBW
-    normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(usb_cbw_t), disable_ioc);
-    xhci_ring_enqueue(&out_ep->transfer_ring, &trb);
-
-    // 2. 发送数据（OUT 端点）
-    normal_transfer_trb(&trb, va_to_pa(buf), enable_ch, block_count * block_size, disable_ioc);
-    xhci_ring_enqueue(&out_ep->transfer_ring, &trb);
-
-    // 3. 接收 CSW（IN 端点）
-    normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(usb_csw_t), enable_ioc);
-    xhci_ring_enqueue(&in_ep->transfer_ring, &trb);
-
-    // Doorbell 通知
-    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, out_ep->ep_num);
-    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, in_ep->ep_num);
-
-    // 等待完成
-    timing();
-    xhci_ering_dequeue(xhci_controller, &trb);
-    color_printk(GREEN,BLACK,"wirte12 m1:%#lx m2:%#lx   \n",trb.member0,trb.member1);
-
-    kfree(cbw);
-    kfree(csw);
-    return 0;
-}
-
-
-
 //获取u盘信息（u盘品牌,容量等）
 void usb_get_disk_info(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
@@ -1192,10 +1084,10 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
 
         uint64* write = kzalloc(4096);
         mem_set(write,0x23,4096);
-        scsi_write10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,write);
+        bot_scsi_write10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,write);
 
         uint64* buf = kzalloc(4096);
-        scsi_read10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,buf);
+        bot_scsi_read10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,buf);
 
         color_printk(BLUE,BLACK,"buf:");
         for (uint32 i=0;i<100;i++) {
