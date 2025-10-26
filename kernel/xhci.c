@@ -287,7 +287,7 @@ static inline void status_stage_trb(trb_t *trb, config_ioc_e ioc, trb_dir_e dir)
  *                 位41    bei     1=块事件中端，ioc=1 则传输事件在下一个中断阀值时，ioc产生的中断不应向主机发送中断。
  *                 位42-47 TRB Type 类型
  */
-static inline void normal_transfer_trb(trb_t *trb, uint64 data_buff_ptr, config_ch_e ent_ch, uint16 trb_tran_length,
+static inline void normal_transfer_trb(trb_t *trb, uint64 data_buff_ptr, config_ch_e ent_ch, uint64 trb_tran_length,
                                        config_ioc_e ioc) {
     trb->member0 = data_buff_ptr;
     trb->member1 = ent_ch | (trb_tran_length << 0) | ioc | TRB_TYPE_NORMAL;
@@ -789,6 +789,8 @@ static inline uint8 bot_msc_read_vid(xhci_controller_t *xhci_controller,usb_dev_
     mem_cpy(&inquiry_data->vendor_id, &lun->vid, 24);
     lun->vid[24] = 0;
 
+    color_printk(GREEN,BLACK,"scsi-version:%d    \n",inquiry_data->version);
+
     kfree(cbw);
     kfree(csw);
     kfree(inquiry_data);
@@ -843,7 +845,7 @@ static inline uint8  bot_msc_read_capacity(xhci_controller_t *xhci_controller,us
 }
 
 //读u盘
-uint8 scsi_read(xhci_controller_t* xhci_controller,usb_dev_t *usb_dev, uint8 lun_id,uint64 lba, uint32 block_count,uint32 block_size, void *buf) {
+uint8 scsi_read16(xhci_controller_t* xhci_controller,usb_dev_t *usb_dev, uint8 lun_id,uint64 lba, uint32 block_count,uint32 block_size, void *buf) {
     usb_msc_t *drive_data = usb_dev->interfaces->drive_data;
     usb_alt_setting_t* alternate_setting = usb_dev->interfaces->alternate_setting;
     usb_lun_t *lun = &drive_data->lun[lun_id];
@@ -880,13 +882,14 @@ uint8 scsi_read(xhci_controller_t* xhci_controller,usb_dev_t *usb_dev, uint8 lun
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, in_ep->ep_num);
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
+    color_printk(GREEN,BLACK,"read16 m1:%#lx m2:%#lx   \n",trb.member0,trb.member1);
 
     kfree(cbw);
     kfree(csw);
     return 0;
 }
 
-uint8 scsi_write(xhci_controller_t* xhci_controller,usb_dev_t *usb_dev, uint8 lun_id,uint64 lba, uint32 block_count,uint32 block_size, void *buf) {
+uint8 scsi_write16(xhci_controller_t* xhci_controller,usb_dev_t *usb_dev, uint8 lun_id,uint64 lba, uint32 block_count,uint32 block_size, void *buf) {
     usb_msc_t *drive_data = usb_dev->interfaces->drive_data;
     usb_alt_setting_t* alternate_setting = usb_dev->interfaces->alternate_setting;
     usb_lun_t *lun = &drive_data->lun[lun_id];
@@ -923,6 +926,7 @@ uint8 scsi_write(xhci_controller_t* xhci_controller,usb_dev_t *usb_dev, uint8 lu
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, in_ep->ep_num);
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
+    color_printk(GREEN,BLACK,"wirte16 m1:%#lx m2:%#lx   \n",trb.member0,trb.member1);
 
     kfree(cbw);
     kfree(csw);
@@ -981,6 +985,7 @@ uint8 scsi_read10(xhci_controller_t* xhci_controller,
 
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
+    color_printk(GREEN,BLACK,"read10 m1:%#lx m2:%#lx   \n",trb.member0,trb.member1);
 
     kfree(cbw);
     kfree(csw);
@@ -1039,11 +1044,119 @@ uint8 scsi_write10(xhci_controller_t* xhci_controller,
 
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
+    color_printk(GREEN,BLACK,"wirte10 m1:%#lx m2:%#lx   \n",trb.member0,trb.member1);
 
     kfree(cbw);
     kfree(csw);
     return 0;
 }
+
+uint8 scsi_read12(xhci_controller_t* xhci_controller, usb_dev_t *usb_dev,
+                  uint8 lun_id, uint32 lba, uint32 block_count,
+                  uint32 block_size, void *buf)
+{
+    usb_msc_t *drive_data = usb_dev->interfaces->drive_data;
+    usb_alt_setting_t* alt = usb_dev->interfaces->alternate_setting;
+    usb_lun_t *lun = &drive_data->lun[lun_id];
+
+    usb_endpoint_t *in_ep  = &alt->endpoints[drive_data->ep_in_num];
+    usb_endpoint_t *out_ep = &alt->endpoints[drive_data->ep_out_num];
+
+    usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
+    usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 64));
+    trb_t trb;
+
+    cbw->cbw_signature = 0x43425355;   // 'USBC'
+    cbw->cbw_tag = ++drive_data->tag;
+    cbw->cbw_data_transfer_length = block_count * block_size;
+    cbw->cbw_flags = 0x80;             // IN 方向
+    cbw->cbw_lun = lun->lun_id;
+    cbw->cbw_cb_length = 12;
+
+    // === 构造 READ(12) 命令 ===
+    cbw->cbw_cb[0] = 0xA8; // READ(12)
+    *(uint32*)&cbw->cbw_cb[2]  = bswap32(lba);
+    *(uint32*)&cbw->cbw_cb[6]  = bswap32(block_count);
+
+    // 1. 发送 CBW
+    normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(usb_cbw_t), disable_ioc);
+    xhci_ring_enqueue(&out_ep->transfer_ring, &trb);
+
+    // 2. 读取数据阶段（IN 端点）
+    normal_transfer_trb(&trb, va_to_pa(buf), enable_ch, block_count * block_size, disable_ioc);
+    xhci_ring_enqueue(&in_ep->transfer_ring, &trb);
+
+    // 3. 接收 CSW
+    normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(usb_csw_t), enable_ioc);
+    xhci_ring_enqueue(&in_ep->transfer_ring, &trb);
+
+    // Doorbell 通知
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, out_ep->ep_num);
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, in_ep->ep_num);
+
+    // 等待事件完成
+    timing();
+    xhci_ering_dequeue(xhci_controller, &trb);
+    color_printk(GREEN,BLACK,"read12 m1:%#lx m2:%#lx   \n",trb.member0,trb.member1);
+
+    kfree(cbw);
+    kfree(csw);
+    return 0;
+}
+
+uint8 scsi_write12(xhci_controller_t* xhci_controller, usb_dev_t *usb_dev,
+                   uint8 lun_id, uint32 lba, uint32 block_count,
+                   uint32 block_size, void *buf)
+{
+    usb_msc_t *drive_data = usb_dev->interfaces->drive_data;
+    usb_alt_setting_t* alt = usb_dev->interfaces->alternate_setting;
+    usb_lun_t *lun = &drive_data->lun[lun_id];
+
+    usb_endpoint_t *in_ep  = &alt->endpoints[drive_data->ep_in_num];
+    usb_endpoint_t *out_ep = &alt->endpoints[drive_data->ep_out_num];
+
+    usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
+    usb_csw_t *csw = kzalloc(align_up(sizeof(usb_csw_t), 64));
+    trb_t trb;
+
+    cbw->cbw_signature = 0x43425355;   // 'USBC'
+    cbw->cbw_tag = ++drive_data->tag;
+    cbw->cbw_data_transfer_length = block_count * block_size;
+    cbw->cbw_flags = 0x00;             // OUT 方向
+    cbw->cbw_lun = lun->lun_id;
+    cbw->cbw_cb_length = 12;
+
+    // === 构造 WRITE(12) 命令 ===
+    cbw->cbw_cb[0] = 0xAA; // WRITE(12)
+    *(uint32*)&cbw->cbw_cb[2] = bswap32(lba);
+    *(uint32*)&cbw->cbw_cb[6] = bswap32(block_count);
+
+    // 1. 发送 CBW
+    normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(usb_cbw_t), disable_ioc);
+    xhci_ring_enqueue(&out_ep->transfer_ring, &trb);
+
+    // 2. 发送数据（OUT 端点）
+    normal_transfer_trb(&trb, va_to_pa(buf), enable_ch, block_count * block_size, disable_ioc);
+    xhci_ring_enqueue(&out_ep->transfer_ring, &trb);
+
+    // 3. 接收 CSW（IN 端点）
+    normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(usb_csw_t), enable_ioc);
+    xhci_ring_enqueue(&in_ep->transfer_ring, &trb);
+
+    // Doorbell 通知
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, out_ep->ep_num);
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, in_ep->ep_num);
+
+    // 等待完成
+    timing();
+    xhci_ering_dequeue(xhci_controller, &trb);
+    color_printk(GREEN,BLACK,"wirte12 m1:%#lx m2:%#lx   \n",trb.member0,trb.member1);
+
+    kfree(cbw);
+    kfree(csw);
+    return 0;
+}
+
 
 
 //获取u盘信息（u盘品牌,容量等）
@@ -1078,11 +1191,11 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
         bot_msc_read_capacity(xhci_controller,usb_dev,i);        //获取u盘容量
 
         uint64* write = kzalloc(4096);
-        mem_set(write,0x23,1024);
-        scsi_write10(xhci_controller, usb_dev, i,0,8,drive_data->lun[i].block_size,write);
+        mem_set(write,0x23,4096);
+        scsi_write10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,write);
 
         uint64* buf = kzalloc(4096);
-        scsi_read10(xhci_controller, usb_dev, i,0,8,drive_data->lun[i].block_size,buf);
+        scsi_read10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,buf);
 
         color_printk(BLUE,BLACK,"buf:");
         for (uint32 i=0;i<100;i++) {
