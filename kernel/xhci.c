@@ -671,10 +671,28 @@ static inline usb_config_descriptor_t *usb_get_config_descriptor(usb_dev_t *usb_
 //激活usb配置
 int usb_set_config(usb_dev_t *usb_dev, uint8 config_value) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
-
     trb_t trb;
+
     setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_out, usb_req_set_config,
                     config_value, 0, 0, 8, no_data_stage);
+    xhci_ring_enqueue(&usb_dev->control_ring, &trb);
+
+    status_stage_trb(&trb, enable_ioc, trb_in);
+    xhci_ring_enqueue(&usb_dev->control_ring, &trb);
+
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
+    timing();
+    xhci_ering_dequeue(xhci_controller, &trb);
+    return 0;
+}
+
+//设置备用设置
+int usb_set_interface(usb_dev_t* usb_dev, int64 if_num , int64 alt_num) {
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+    trb_t trb;
+
+    setup_stage_trb(&trb, setup_stage_interface, setup_stage_norm, setup_stage_out, usb_req_set_interface,
+                    alt_num, if_num, 0, 8, no_data_stage);
     xhci_ring_enqueue(&usb_dev->control_ring, &trb);
 
     status_stage_trb(&trb, enable_ioc, trb_in);
@@ -961,12 +979,8 @@ uint8 bot_scsi_read10(xhci_controller_t* xhci_controller,
 
     // READ(10) 命令格式
     cbw->cbw_cb[0] = 0x28;                            // 操作码：READ(10)
-    cbw->cbw_cb[2] = (lba >> 24) & 0xFF;              // LBA
-    cbw->cbw_cb[3] = (lba >> 16) & 0xFF;
-    cbw->cbw_cb[4] = (lba >> 8) & 0xFF;
-    cbw->cbw_cb[5] = (lba >> 0) & 0xFF;
-    cbw->cbw_cb[7] = (block_count >> 8) & 0xFF;       // 要读的块数
-    cbw->cbw_cb[8] = (block_count >> 0) & 0xFF;
+    *(uint32*)&cbw->cbw_cb[2] = bswap32(lba);
+    *(uint16*)&cbw->cbw_cb[7] = bswap16(block_count);  // 要读的块数
 
     // 1. 发送 CBW（Bulk OUT）
     normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(usb_cbw_t), disable_ioc);
@@ -1020,12 +1034,8 @@ uint8 bot_scsi_write10(xhci_controller_t* xhci_controller,
 
     // === 构造 WRITE(10) 命令块 ===
     cbw->cbw_cb[0] = 0x2A;                            // 操作码：READ(10)
-    cbw->cbw_cb[2] = (lba >> 24) & 0xFF;              // LBA
-    cbw->cbw_cb[3] = (lba >> 16) & 0xFF;
-    cbw->cbw_cb[4] = (lba >> 8) & 0xFF;
-    cbw->cbw_cb[5] = (lba >> 0) & 0xFF;
-    cbw->cbw_cb[7] = (block_count >> 8) & 0xFF;       // 要读的块数
-    cbw->cbw_cb[8] = (block_count >> 0) & 0xFF;
+    *(uint32*)&cbw->cbw_cb[2] = bswap32(lba);
+    *(uint16*)&cbw->cbw_cb[7] = bswap16(block_count);  // 要读的块数
 
     // 1. 发送 CBW（Bulk OUT）
     normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(usb_cbw_t), disable_ioc);
@@ -1059,12 +1069,11 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
     usb_alt_setting_t* alternate_setting = interface->alternate_setting;
 
     for (uint8 i = 0;i<interface->alternate_count;i++) {
-            color_printk(RED,BLACK,"pid:%#x vid:%#x alt_num:%d class:%#x subclass:%#x protocol:%#x ep_count:%d  \n",usb_dev->pid,usb_dev->vid,alternate_setting[i].alt_setting_num,alternate_setting[i].class,alternate_setting[i].subclass,alternate_setting[i].protocol,alternate_setting[i].endpoints_count);
+        if (alternate_setting[i].protocol == 0x62) {
+            usb_set_interface(usb_dev,interface->interface_number,alternate_setting[i].alt_setting_num);
+        }
+        color_printk(RED,BLACK,"pid:%#x vid:%#x alt_num:%d class:%#x subclass:%#x protocol:%#x ep_count:%d  \n",usb_dev->pid,usb_dev->vid,alternate_setting[i].alt_setting_num,alternate_setting[i].class,alternate_setting[i].subclass,alternate_setting[i].protocol,alternate_setting[i].endpoints_count);
     }
-
-    while (1);
-
-    if (alternate_setting->protocol != 0x50) return;
 
     usb_msc_t *drive_data = kzalloc(sizeof(usb_msc_t));
     interface->drive_data = drive_data;
@@ -1094,7 +1103,7 @@ void usb_get_disk_info(usb_dev_t *usb_dev) {
         //bot_scsi_write10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,write);
 
         uint64* buf = kzalloc(4096);
-        bot_scsi_read16(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,buf);
+        bot_scsi_read10(xhci_controller, usb_dev, i,0,2,drive_data->lun[i].block_size,buf);
 
         color_printk(BLUE,BLACK,"buf:");
         for (uint32 i=0;i<100;i++) {

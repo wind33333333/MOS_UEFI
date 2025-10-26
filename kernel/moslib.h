@@ -613,6 +613,17 @@ static inline boolean list_empty(list_head_t *head) {
     return 0;
 }
 
+// 16 位大小端序转换
+static inline uint16 bswap16(uint16 var) {
+    uint16 result;
+    __asm__ __volatile__ (
+        "rol $8,%0"
+        : "=r" (result)  // 输出：result 存储转换后的值
+        : "0" (var)      // 输入：var 作为初始值
+    );
+    return result;
+}
+
 // 32 位大小端序转换
 static inline uint32 bswap32(uint32 var) {
     uint32 result;
