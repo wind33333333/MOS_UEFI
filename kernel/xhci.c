@@ -497,7 +497,6 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
                     }
                     usb_interface->interface_number = interface_desc->interface_number;
                     usb_interface->alternate_setting = kzalloc(sizeof(usb_alt_setting_t) * usb_interface->alternate_count);
-                    color_printk(RED,BLACK,"pid:%#x vid:%#x if_num:%d alt_count:%d alt_addr:%#lx   \n",usb_dev->pid,usb_dev->vid,usb_interface->interface_number,usb_interface->alternate_count,usb_interface->alternate_setting);
                 }
                 usb_alt_setting_t* usb_alt_setting = &usb_interface->alternate_setting[interface_desc->alternate_setting];
                 usb_alt_setting->class = interface_desc->interface_class;
