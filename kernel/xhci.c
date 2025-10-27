@@ -487,7 +487,7 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
                 interface_desc = (usb_interface_descriptor_t*)config_desc;
                 usb_interface = &usb_dev->interfaces[interface_desc->interface_number];
                 if (interface_desc->alternate_setting == 0) {
-                    //检查备用设置数量
+                    //检测备用设置数量
                     usb_interface_descriptor_t *tmp_if_desc = interface_desc;
                     while (tmp_if_desc<desc_end){
                          if (tmp_if_desc->descriptor_type == USB_DESC_TYPE_INTERFACE && tmp_if_desc->interface_number == interface_desc->interface_number) {
