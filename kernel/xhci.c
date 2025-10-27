@@ -472,21 +472,10 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
     xhci_context_t ctx;
     trb_t trb;
 
-    usb_config_descriptor_t *config_desc_end = (usb_config_descriptor_t *) (
-        (uint64) config_desc + config_desc->total_length);
-
-    //计算接口备用设置数量，假设最多32个备用设置。
-    uint8 alt_count[32]={0};
-    usb_interface_descriptor_t *interface_desc = (usb_interface_descriptor_t *)config_desc;
-    while (interface_desc < (usb_interface_descriptor_t *)config_desc_end) {
-        if (interface_desc->descriptor_type == USB_DESC_TYPE_INTERFACE) {
-            alt_count[interface_desc->interface_number]++;
-        }
-        interface_desc = (usb_interface_descriptor_t*)((uint64)interface_desc + interface_desc->length);
-    }
-
     uint32 context_entries = 0;
-    while (config_desc < config_desc_end) {
+    void* desc_end = (usb_config_descriptor_t *)((uint64)config_desc+config_desc->total_length);
+    while (config_desc < desc_end) {
+        usb_interface_descriptor_t *interface_desc;
         usb_interface_t* usb_interface;
         uint8 ep_idx;
         switch (config_desc->descriptor_type) {
@@ -498,9 +487,17 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
                 interface_desc = (usb_interface_descriptor_t*)config_desc;
                 usb_interface = &usb_dev->interfaces[interface_desc->interface_number];
                 if (interface_desc->alternate_setting == 0) {
+                    //检查备用设置数量
+                    usb_interface_descriptor_t *tmp_if_desc = interface_desc;
+                    while (tmp_if_desc<desc_end){
+                         if (tmp_if_desc->descriptor_type == USB_DESC_TYPE_INTERFACE && tmp_if_desc->interface_number == interface_desc->interface_number) {
+                             usb_interface->alternate_count++;
+                         }
+                        tmp_if_desc = (usb_interface_descriptor_t*)((uint64)tmp_if_desc + tmp_if_desc->length);
+                    }
                     usb_interface->interface_number = interface_desc->interface_number;
-                    usb_interface->alternate_count = alt_count[usb_interface->interface_number];
-                    usb_interface->alternate_setting = kzalloc(sizeof(usb_alt_setting_t)*usb_interface->alternate_count);
+                    usb_interface->alternate_setting = kzalloc(sizeof(usb_alt_setting_t) * usb_interface->alternate_count);
+                    color_printk(RED,BLACK,"pid:%#x vid:%#x if_num:%d alt_count:%d alt_addr:%#lx   \n",usb_dev->pid,usb_dev->vid,usb_interface->interface_number,usb_interface->alternate_count,usb_interface->alternate_setting);
                 }
                 usb_alt_setting_t* usb_alt_setting = &usb_interface->alternate_setting[interface_desc->alternate_setting];
                 usb_alt_setting->class = interface_desc->interface_class;
@@ -1138,9 +1135,9 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
     kfree(config_desc);
     list_add_head(&usb_dev_list, &usb_dev->list);
 
-    if (*(uint16 *)&usb_dev->interfaces->alternate_setting->class == 0x0608) {
-        usb_get_disk_info(usb_dev); //获取u盘信息
-    }
+    // if (*(uint16 *)&usb_dev->interfaces->alternate_setting->class == 0x0608) {
+    //     usb_get_disk_info(usb_dev); //获取u盘信息
+    // }
 
 }
 
