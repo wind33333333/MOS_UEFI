@@ -475,6 +475,7 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
     uint32 context_entries = 0;
     void* desc_end = (usb_config_descriptor_t *)((uint64)config_desc+config_desc->total_length);
     while (config_desc < desc_end) {
+        if (usb_dev->pid == 0x55a9 && usb_dev->vid == 0x781)color_printk(RED,BLACK," type:%#x \n",config_desc->descriptor_type);
         usb_interface_descriptor_t *interface_desc;
         usb_interface_t* usb_interface;
         uint8 ep_idx;
@@ -535,6 +536,9 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
                 ctx.reg3 = 0;
                 xhci_input_context_add(input_ctx, xhci_controller->context_size, endpoint->ep_num, &ctx);
                 ep_idx++;
+                break;
+            case USB_DESC_TYPE_PIPE_USGAGE:
+                usb_pipe_usage_descriptor_t* pipe_usage_desc = (usb_pipe_usage_descriptor_t*)config_desc;
                 break;
             case USB_DESC_TYPE_STRING:
                 break;

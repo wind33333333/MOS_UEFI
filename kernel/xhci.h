@@ -667,12 +667,20 @@ typedef struct {
     // 之后还会跟一个可变长度的 DeviceRemovable 和 PortPwrCtrlMask
 } usb_hub_descriptor_t;
 
+typedef struct {
+    uint8  length;               // 描述符总长度（字节数）
+    uint8  descriptor_type;      // 描述符类型 = 0x24 (CS_INTERFACE)
+    uint8  pipe_usage;           // 端点用途标识 1=command_out 2=status_in 3=bulk_in 4=bulk_out
+    uint8  reserved;
+} usb_pipe_usage_descriptor_t;
+
 /* ---------------- USB 标准描述符类型 ---------------- */
 #define USB_DESC_TYPE_DEVICE        0x01  /* 设备描述符 Device Descriptor */
 #define USB_DESC_TYPE_CONFIGURATION 0x02  /* 配置描述符 Configuration Descriptor */
 #define USB_DESC_TYPE_STRING        0x03  /* 字符串描述符 String Descriptor */
 #define USB_DESC_TYPE_INTERFACE     0x04  /* 接口描述符 Interface Descriptor */
 #define USB_DESC_TYPE_ENDPOINT      0x05  /* 端点描述符 Endpoint Descriptor */
+#define USB_DESC_TYPE_PIPE_USGAGE   0x24  /*  */
 #define USB_DESC_TYPE_SS_EP_COMP    0x30  /* USB3.x 新增突发和多流信息 */
 
 
@@ -815,8 +823,8 @@ typedef struct {
 
 //定时
 static inline void timing(void) {
-    uint64 count = 20000000;
-    while (count--) pause();
+    // uint64 count = 20000000;
+    // while (count--) pause();
 }
 
 void init_xhci(void);
