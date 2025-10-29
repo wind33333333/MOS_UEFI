@@ -670,7 +670,7 @@ typedef struct {
 typedef struct {
     uint8  length;               // 描述符总长度（字节数）
     uint8  descriptor_type;      // 描述符类型 = 0x24 (CS_INTERFACE)
-    uint8  pipe_usage;           // 端点用途标识 1=command_out 2=status_in 3=bulk_in 4=bulk_out
+    uint8  pipe_id;              // 端点用途标识 1=command_out 2=status_in 3=bulk_in 4=bulk_out
     uint8  reserved;
 } usb_pipe_usage_descriptor_t;
 
