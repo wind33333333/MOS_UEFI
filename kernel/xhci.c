@@ -466,8 +466,9 @@ static inline uint32 get_ep_transfer_type(uint8 endpoint_addr,uint8 attributes) 
 }
 
 //配置端点
-static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descriptor_t *config_desc) {
+static inline void xhci_config_endpoint(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+    usb_config_descriptor_t *config_desc = usb_dev->config_desc;
     xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
     xhci_context_t ctx;
     trb_t trb;
@@ -570,7 +571,7 @@ static inline void xhci_config_endpoint(usb_dev_t *usb_dev, usb_config_descripto
 }
 
 //获取usb设备描述符
-static inline usb_device_descriptor_t *usb_get_device_descriptor(usb_dev_t *usb_dev) {
+static inline int32 usb_get_device_descriptor(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     usb_device_descriptor_t *dev_desc = kzalloc(align_up(sizeof(usb_device_descriptor_t),64));
 
@@ -600,7 +601,6 @@ static inline usb_device_descriptor_t *usb_get_device_descriptor(usb_dev_t *usb_
     xhci_devctx_read(xhci_controller, usb_dev->slot_id, 1, &ctx);
     ctx.reg1 = EP_TYPE_CONTROL | max_packe_size << 16;
     xhci_input_context_add(input_ctx, xhci_controller->context_size, 1, &ctx);
-
     evaluate_context_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
     xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
     xhci_ring_doorbell(xhci_controller, 0, 0);
@@ -623,11 +623,17 @@ static inline usb_device_descriptor_t *usb_get_device_descriptor(usb_dev_t *usb_
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
 
-    return dev_desc;
+    usb_dev->usb_ver = dev_desc->usb_version;
+    usb_dev->vid = dev_desc->vendor_id;
+    usb_dev->pid = dev_desc->product_id;
+    usb_dev->dev_ver = dev_desc->device_version;
+
+    kfree(dev_desc);
+    return 0;
 }
 
 //获取usb配置描述符
-static inline usb_config_descriptor_t *usb_get_config_descriptor(usb_dev_t *usb_dev) {
+static inline uint32 usb_get_config_descriptor(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     usb_config_descriptor_t *config_desc = kzalloc(align_up(sizeof(usb_config_descriptor_t), 64));
 
@@ -668,7 +674,8 @@ static inline usb_config_descriptor_t *usb_get_config_descriptor(usb_dev_t *usb_
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
 
-    return config_desc;
+    usb_dev->config_desc = config_desc;
+    return 0;
 }
 
 //激活usb配置
@@ -706,6 +713,7 @@ int usb_set_interface(usb_dev_t* usb_dev, int64 if_num , int64 alt_num) {
     xhci_ering_dequeue(xhci_controller, &trb);
     return 0;
 }
+
 
 //测试逻辑单元是否有效
 static inline boolean bot_msc_test_lun(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,uint8 lun_id) {
@@ -1127,18 +1135,12 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
     usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
     usb_dev->xhci_controller = xhci_controller;
     usb_dev->port_id = port_id + 1;
-    usb_dev->slot_id = xhci_enable_slot(xhci_controller);   //启用插槽
-    xhci_address_device(usb_dev);                           //设置设备地址
-    usb_device_descriptor_t *dev_desc = usb_get_device_descriptor(usb_dev); //获取设备描述符
-    usb_dev->usb_ver = dev_desc->usb_version;
-    usb_dev->vid = dev_desc->vendor_id;
-    usb_dev->pid = dev_desc->product_id;
-    usb_dev->dev_ver = dev_desc->device_version;
-    usb_config_descriptor_t *config_desc = usb_get_config_descriptor(usb_dev);  //获取配置描述符
-    xhci_config_endpoint(usb_dev, config_desc);                                 //配置端点
-    usb_set_config(usb_dev, config_desc->configuration_value);                  //激活配置
-    kfree(dev_desc);
-    kfree(config_desc);
+    usb_dev->slot_id = xhci_enable_slot(xhci_controller);                   //启用插槽
+    xhci_address_device(usb_dev);                                           //设置设备地址
+    usb_get_device_descriptor(usb_dev);                                     //获取设备描述符
+    usb_get_config_descriptor(usb_dev);                                     //获取配置描述符
+    xhci_config_endpoint(usb_dev);                                          //配置端点
+    usb_set_config(usb_dev, usb_dev->config_desc->configuration_value);     //激活配置
     list_add_head(&usb_dev_list, &usb_dev->list);
 
     if (*(uint16 *)&usb_dev->interfaces->alternate_setting->class == 0x0608) {

@@ -789,6 +789,7 @@ typedef struct {
     uint16                  pid;               // 产品 ID（PID），由厂商分配，标识具体产品
     uint16                  dev_ver;           // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
     xhci_device_context_t*  dev_context;       //设备上下文
+    usb_config_descriptor_t* config_desc;
     xhci_ring_t             control_ring;      //控制环
     uint8                   interfaces_count;  //接口数量
     usb_interface_t*        interfaces;        //接口指针根据接口数量动态分配
