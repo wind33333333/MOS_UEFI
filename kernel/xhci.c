@@ -633,7 +633,7 @@ static inline int32 usb_get_device_descriptor(usb_dev_t *usb_dev) {
 }
 
 //获取usb配置描述符
-static inline uint32 usb_get_config_descriptor(usb_dev_t *usb_dev) {
+static inline usb_config_descriptor_t* usb_get_config_descriptor(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     usb_config_descriptor_t *config_desc = kzalloc(align_up(sizeof(usb_config_descriptor_t), 64));
 
@@ -674,8 +674,7 @@ static inline uint32 usb_get_config_descriptor(usb_dev_t *usb_dev) {
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
 
-    usb_dev->config_desc = config_desc;
-    return 0;
+    return  config_desc;
 }
 
 //激活usb配置
@@ -714,6 +713,41 @@ int usb_set_interface(usb_dev_t* usb_dev, int64 if_num , int64 alt_num) {
     return 0;
 }
 
+list_head_t usb_driver_list;
+
+typedef struct {
+    const char *name;
+    uint8 class;
+    uint8 subclass;
+    int (*probe)(struct usb_device *dev, struct usb_interface *intf);
+    int (*disconnect)(struct usb_device *dev, struct usb_interface *intf);
+    list_head_t list;
+}usb_driver;
+
+
+static inline int32 adaptation_driver(usb_dev_t *usb_dev,usb_config_descriptor_t* config_desc) {
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+
+    if (config_desc->descriptor_type != USB_DESC_TYPE_CONFIGURATION) return -1;
+
+    if (usb_dev->interfaces_count==0 || usb_dev->interfaces == NULL) {
+        usb_dev->interfaces_count = config_desc->num_interfaces;
+        usb_dev->interfaces = kzalloc(usb_dev->interfaces_count * sizeof(usb_interface_t));
+    }
+
+    uint8 if_count=0;
+    usb_interface_descriptor_t *interface_desc = (usb_interface_descriptor_t *)config_desc;
+    while (if_count < usb_dev->interfaces_count) {
+        interface_desc = (usb_interface_descriptor_t *) ((uint64)interface_desc + interface_desc->length);
+        if (interface_desc->descriptor_type == USB_DESC_TYPE_INTERFACE && interface_desc->alternate_setting == 0){
+            list_head_t* next = usb_dev_list.next;
+            while (next != &usb_dev_list) {
+
+            }
+            if_count++;
+        }
+    }
+}
 
 //测试逻辑单元是否有效
 static inline boolean bot_msc_test_lun(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,uint8 lun_id) {
@@ -1135,18 +1169,15 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
     usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
     usb_dev->xhci_controller = xhci_controller;
     usb_dev->port_id = port_id + 1;
-    usb_dev->slot_id = xhci_enable_slot(xhci_controller);                   //启用插槽
-    xhci_address_device(usb_dev);                                           //设置设备地址
-    usb_get_device_descriptor(usb_dev);                                     //获取设备描述符
-    usb_get_config_descriptor(usb_dev);                                     //获取配置描述符
-    xhci_config_endpoint(usb_dev);                                          //配置端点
-    usb_set_config(usb_dev, usb_dev->config_desc->configuration_value);     //激活配置
+    usb_dev->slot_id = xhci_enable_slot(xhci_controller);                      //启用插槽
+    xhci_address_device(usb_dev);                                              //设置设备地址
+    usb_get_device_descriptor(usb_dev);                                        //获取设备描述符
+    usb_config_descriptor_t* config_desc = usb_get_config_descriptor(usb_dev); //获取配置描述符
+    adaptation_driver(usb_dev,config_desc);                                    //适配驱动
+    xhci_config_endpoint(usb_dev);                                             //配置端点
+    usb_set_config(usb_dev, config_desc->configuration_value);                 //激活配置
     list_add_head(&usb_dev_list, &usb_dev->list);
-
-    if (*(uint16 *)&usb_dev->interfaces->alternate_setting->class == 0x0608) {
-        usb_get_disk_info(usb_dev); //获取u盘信息
-    }
-
+    kfree(config_desc);
 }
 
 //枚举usb设备
