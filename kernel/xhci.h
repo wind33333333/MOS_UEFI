@@ -387,14 +387,7 @@ typedef struct {
     uint64 member1;
 } trb_t;
 
-/**********设备上下文结构************/
-/*设备下文条目结构*/
-typedef struct {
-    uint32 reg0;
-    uint32 reg1;
-    uint32 reg2;
-    uint32 reg3;
-} xhci_context_t;
+//region 设备上下文结构
 
 /* xHCI 设备上下文结构（64 字节版本，CSZ=1） */
 typedef struct {
@@ -550,6 +543,8 @@ typedef struct {
         xhci_input_context64_t input_ctx64;
     };
 } xhci_input_context_t;
+
+//endregion
 
 //region usb描述符
 /*usb设备描述符
@@ -755,29 +750,6 @@ typedef struct {
     pcie_dev_t *pcie_dev;
 } xhci_controller_t;
 
-//usb端点
-typedef struct {
-    xhci_ring_t transfer_ring;
-    uint8       ep_num;
-}usb_endpoint_t;
-
-//usb备用设置
-typedef struct {
-    uint8            alt_setting_num;        // 备用设置号
-    uint8            class;                  // 接口类代码，定义接口功能（如 0x03 表示 HID，0x08 表示 Mass Storage）
-    uint8            subclass;               // 接口子类代码，进一步细化接口类（如 HID 的子类）
-    uint8            protocol;               // 接口协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
-    uint8            endpoints_count;        // 端点数量
-    usb_endpoint_t*  endpoints;              // 端点动态分配
-} usb_alt_setting_t;
-
-//usb接口
-typedef struct {
-    uint8               interface_number;       // 接口号
-    uint8               alternate_count;        // 备用设置数量
-    usb_alt_setting_t*  alternate_setting;      // 备用设置
-    void*               drive_data;             // 驱动数据相关
-}usb_interface_t;
 
 //USB设备
 typedef struct {
@@ -791,9 +763,15 @@ typedef struct {
     xhci_device_context_t*  dev_context;       //设备上下文
     xhci_ring_t             control_ring;      //控制环
     uint8                   interfaces_count;  //接口数量
-    usb_interface_t*        interfaces;        //接口指针根据接口数量动态分配
+    void*                   interfaces;        //接口指针根据接口数量动态分配
     xhci_controller_t*      xhci_controller;
 } usb_dev_t;
+
+//usb端点
+typedef struct {
+    xhci_ring_t transfer_ring;
+    uint8       ep_num;
+}usb_endpoint_t;
 
 //逻辑单元
 typedef struct {
@@ -803,16 +781,28 @@ typedef struct {
     uint8           lun_id;                 // 逻辑单元
 } usb_lun_t;
 
-//u盘bot协议
+//bot协议u盘
 typedef struct {
-    usb_dev_t*      dev;                    // 父设备指针
-    uint8           ep_in_num;              // 输入端点
-    uint8           ep_out_num;             // 输出端点
-    usb_lun_t       lun[8];                 // 最多8个单元
+    usb_dev_t*      usb_dev;                // 父设备指针
+    usb_endpoint_t  in_ep;                  // 输入端点
+    usb_endpoint_t  out_ep;                 // 输出端点
+    uint8           interface_num;          // 接口号
+    usb_lun_t*      lun;                    // 逻辑单元组
     uint8           lun_count;              // 逻辑单元实际个数
     uint32          tag;                    // 全局标签
-} usb_msc_t;
+} usb_bot_msc_t;
 
+//uas协议u盘
+typedef struct {
+    usb_dev_t*      usb_dev;                // 父设备指针
+    usb_endpoint_t  com_out_ep;             // 命令输出端点
+    usb_endpoint_t  sta_in_ep;              // 状态输入端点
+    usb_endpoint_t  data_in_ep;             // 数据输入端点
+    usb_endpoint_t  data_out_ep;            // 数据输出端点
+    usb_lun_t*      lun;                    // 逻辑单元组
+    uint8           lun_count;              // 逻辑单元实际个数
+    uint32          tag;                    // 全局标签
+} usb_uas_msc_t;
 
 
 //定时

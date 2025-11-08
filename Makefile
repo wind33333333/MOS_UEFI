@@ -86,7 +86,6 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 		-bios OVMF.fd \
 		-drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp \
 		-device qemu-xhci,id=xhci \
-		-device usb-uas,id=uas,bus=xhci.0 \
 		-device usb-storage,drive=usbdisk &
 
 qemu-monitor:
