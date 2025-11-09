@@ -782,10 +782,12 @@ typedef struct {
 } usb_lun_t;
 
 //bot协议u盘
-typedef struct {
+typedef struct usb_bot_msc_t{
     usb_dev_t*      usb_dev;                // 父设备指针
     usb_endpoint_t  in_ep;                  // 输入端点
     usb_endpoint_t  out_ep;                 // 输出端点
+    int32 (*scsi_read)(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,struct usb_bot_msc_t *bot_msc,uint8 lun_id,uint64 lba,uint32 block_count,uint32 block_size,void *buf);
+    int32 (*scsi_write)(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,struct usb_bot_msc_t *bot_msc,uint8 lun_id,uint64 lba,uint32 block_count,uint32 block_size,void *buf);
     uint8           interface_num;          // 接口号
     usb_lun_t*      lun;                    // 逻辑单元组
     uint8           lun_count;              // 逻辑单元实际个数

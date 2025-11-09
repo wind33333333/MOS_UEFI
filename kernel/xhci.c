@@ -849,7 +849,7 @@ static inline uint8 bot_msc_read_capacity(xhci_controller_t *xhci_controller, us
 }
 
 //读u盘
-uint8 bot_scsi_read16(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc, uint8 lun_id,
+int32 bot_scsi_read16(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc, uint8 lun_id,
                       uint64 lba, uint32 block_count, uint32 block_size, void *buf) {
     usb_lun_t *lun = &bot_msc->lun[lun_id];
     usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
@@ -890,7 +890,7 @@ uint8 bot_scsi_read16(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev, us
     return 0;
 }
 
-uint8 bot_scsi_write16(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc, uint8 lun_id,
+int32 bot_scsi_write16(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc, uint8 lun_id,
                        uint64 lba, uint32 block_count, uint32 block_size, void *buf) {
     usb_lun_t *lun = &bot_msc->lun[lun_id];
     usb_cbw_t *cbw = kzalloc(align_up(sizeof(usb_cbw_t), 64));
@@ -931,12 +931,12 @@ uint8 bot_scsi_write16(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev, u
     return 0;
 }
 
-uint8 bot_scsi_read10(xhci_controller_t *xhci_controller,
+int32 bot_scsi_read10(xhci_controller_t *xhci_controller,
                       usb_dev_t *usb_dev,
                       usb_bot_msc_t *bot_msc,
                       uint8 lun_id,
-                      uint32 lba,
-                      uint16 block_count,
+                      uint64 lba,
+                      uint32 block_count,
                       uint32 block_size,
                       void *buf) {
     usb_lun_t *lun = &bot_msc->lun[lun_id];
@@ -982,12 +982,12 @@ uint8 bot_scsi_read10(xhci_controller_t *xhci_controller,
     return 0;
 }
 
-uint8 bot_scsi_write10(xhci_controller_t *xhci_controller,
+int32 bot_scsi_write10(xhci_controller_t *xhci_controller,
                        usb_dev_t *usb_dev,
                        usb_bot_msc_t *bot_msc,
                        uint8 lun_id,
-                       uint32 lba,
-                       uint16 block_count,
+                       uint64 lba,
+                       uint32 block_count,
                        uint32 block_size,
                        void *buf) {
     usb_lun_t *lun = &bot_msc->lun[lun_id];
@@ -1133,10 +1133,12 @@ int32 mass_storage_probe(usb_dev_t *usb_dev, usb_interface_descriptor_t *interfa
         timing();
         xhci_ering_dequeue(xhci_controller, &trb);
 
-
-
         //获取u盘基本信息
         bot_get_msc_info(usb_dev,bot_msc);
+
+        //设置u盘读写驱动
+        bot_msc->scsi_read = bot_scsi_read10;
+        bot_msc->scsi_write = bot_scsi_write10;
     }
     kfree(input_ctx);
 }
