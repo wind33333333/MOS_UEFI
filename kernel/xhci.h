@@ -416,10 +416,11 @@ typedef struct {
     struct {
         uint32 ep_config;
         /* 位 31-24: Max Endpoint Service Time Interval Payload High (Max ESIT Payload Hi) - 如果 LEC = '1'，表示 Max ESIT Payload 值的较高 8 位；如果 LEC = '0'，保留 (RsvdZ)。
-                                    * 位 23-16: Interval - 请求发送或接收数据的周期，单位为 125 μs，值为 2^(n-1) * 125 μs，参考 Table 6-12。
-                                    * 位 15: Linear Stream Array (LSA) - 标识 Stream ID 的解释方式，'0' 表示线性索引，'1' 表示二级 Stream Array 索引。
-                                    * 位 9-8: Mult - 如果 LEC = '0'，表示突发数范围 (0-3)；如果 LEC = '1'，计算为 ROUNDUP(Max Exit Payload / (Max Packet Size * (Max Burst Size + 1)) - 1)。
-                                    * 位 2-0: Endpoint State (EP State) - 端点状态 (0=已禁用，1=运行中，2=暂停，3=停止，4=错误)。 */
+         * 位 23-16: Interval - 请求发送或接收数据的周期，单位为 125 μs，值为 2^(n-1) * 125 μs，参考 Table 6-12。
+         * 位 15: Linear Stream Array (LSA) - 标识 Stream ID 的解释方式，'0' 表示线性索引，'1' 表示二级 Stream Array 索引。
+         * 位 14-10：MAXPStreams 主数据流最大值
+         * 位 9-8: Mult - 如果 LEC = '0'，表示突发数范围 (0-3)；如果 LEC = '1'，计算为 ROUNDUP(Max Exit Payload / (Max Packet Size * (Max Burst Size + 1)) - 1)。
+         * 位 2-0: Endpoint State (EP State) - 端点状态 (0=已禁用，1=运行中，2=暂停，3=停止，4=错误)。 */
 
         uint32 ep_type_size; /* 位 2:1 错误计数
                                  * 位 5:3 端点类型
@@ -490,10 +491,11 @@ typedef struct {
     struct {
         uint32 ep_config;
         /* 位 31-24: Max Endpoint Service Time Interval Payload High (Max ESIT Payload Hi) - 如果 LEC = '1'，表示 Max ESIT Payload 值的较高 8 位；如果 LEC = '0'，保留 (RsvdZ)。
-                                    * 位 23-16: Interval - 请求发送或接收数据的周期，单位为 125 μs，值为 2^(n-1) * 125 μs，参考 Table 6-12。
-                                    * 位 15: Linear Stream Array (LSA) - 标识 Stream ID 的解释方式，'0' 表示线性索引，'1' 表示二级 Stream Array 索引。
-                                    * 位 9-8: Mult - 如果 LEC = '0'，表示突发数范围 (0-3)；如果 LEC = '1'，计算为 ROUNDUP(Max Exit Payload / (Max Packet Size * (Max Burst Size + 1)) - 1)。
-                                    * 位 2-0: Endpoint State (EP State) - 端点状态 (0=已禁用，1=运行中，2=暂停，3=停止，4=错误)。 */
+         * 位 23-16: Interval - 请求发送或接收数据的周期，单位为 125 μs，值为 2^(n-1) * 125 μs，参考 Table 6-12。
+         * 位 15: Linear Stream Array (LSA) - 标识 Stream ID 的解释方式，'0' 表示线性索引，'1' 表示二级 Stream Array 索引。
+         * 位 14-10：MAXPStreams 主数据流最大值
+         * 位 9-8: Mult - 如果 LEC = '0'，表示突发数范围 (0-3)；如果 LEC = '1'，计算为 ROUNDUP(Max Exit Payload / (Max Packet Size * (Max Burst Size + 1)) - 1)。
+         * 位 2-0: Endpoint State (EP State) - 端点状态 (0=已禁用，1=运行中，2=暂停，3=停止，4=错误)。 */
 
         uint32 ep_type_size; /* 位 2:1 错误计数
                                  * 位 5:3 端点类型
@@ -637,6 +639,17 @@ typedef struct {
     uint16 bytes_per_interval; // 对于 Isoch/Interrupt，最大字节数
 } usb_ss_ep_comp_descriptor_t;
 
+typedef struct {
+    uint8  length;               // 描述符总长度（字节数）
+    uint8  descriptor_type;      // 描述符类型 = 0x24 (CS_INTERFACE)
+    uint8  pipe_id;              // 端点用途标识 1=command_out 2=status_in 3=bulk_in 4=bulk_out
+#define USB_PIPE_COMMAND_OUT    1
+#define USB_PIPE_STATUS_IN      2
+#define USB_PIPE_BULK_IN        3
+#define USB_PIPE_BULK_OUT       4
+    uint8  reserved;
+} usb_pipe_usage_descriptor_t;
+
 /*HID 类描述符（可选
 描述符长度
 描述符类型：0x21 = HID 描述符*/
@@ -661,13 +674,6 @@ typedef struct {
     uint8 hub_control_current; // hub 控制器所需电流
     // 之后还会跟一个可变长度的 DeviceRemovable 和 PortPwrCtrlMask
 } usb_hub_descriptor_t;
-
-typedef struct {
-    uint8  length;               // 描述符总长度（字节数）
-    uint8  descriptor_type;      // 描述符类型 = 0x24 (CS_INTERFACE)
-    uint8  pipe_id;              // 端点用途标识 1=command_out 2=status_in 3=bulk_in 4=bulk_out
-    uint8  reserved;
-} usb_pipe_usage_descriptor_t;
 
 /* ---------------- USB 标准描述符类型 ---------------- */
 #define USB_DESC_TYPE_DEVICE        0x01  /* 设备描述符 Device Descriptor */
@@ -733,6 +739,24 @@ typedef struct {
     char  revision[4]; // byte 32-35: 固件版本 (ASCII)
 } inquiry_data_t;
 
+// 定义UASP IU ID
+#define UASP_IU_COMMAND 0x01  // 命令IU ID
+#define UASP_IU_SENSE   0x03  // 感测IU ID (用于命令完成状态)
+
+// 定义SCSI命令代码
+#define SCSI_REPORT_LUNS 0xA0
+
+typedef struct {
+    uint8   iu_id;           /* 0x01 = Command IU */
+    uint16  tag;        /* host tag (big-endian representation across 2 bytes) */
+    uint8   prio_attr;      /* bits: priority/attrs (vendor specific bits) */
+    uint8   reserved1;
+    uint8   task_attr;      /* task attribute (simple/ordered/head) */
+    uint8   reserved2[2];
+    uint8   add_cdb_len;    /* additional CDB length (usually 0) */
+    uint8   cdb[16];        /* up to 16-byte CDB */
+    uint8   pad[6];         /* pad to 32 bytes total */
+} uas_cmd_iu_t;
 #pragma pack(pop)
 
 //xhci控制器
@@ -794,16 +818,24 @@ typedef struct usb_bot_msc_t{
     uint32          tag;                    // 全局标签
 } usb_bot_msc_t;
 
+typedef struct {
+    xhci_ring_t  transfer_ring;
+    uint8        ep_num;
+    xhci_ring_t* stream_rings;   // per-stream rings数组 (如果启用流)
+    uint32 streams_count;        // 2^max_streams_exp
+}usb_uas_endpoint_t;
+
 //uas协议u盘
 typedef struct {
     usb_dev_t*      usb_dev;                // 父设备指针
-    usb_endpoint_t  com_out_ep;             // 命令输出端点
-    usb_endpoint_t  sta_in_ep;              // 状态输入端点
-    usb_endpoint_t  data_in_ep;             // 数据输入端点
-    usb_endpoint_t  data_out_ep;            // 数据输出端点
+    usb_uas_endpoint_t cmd_out_ep;
+    usb_uas_endpoint_t sta_in_ep;
+    usb_uas_endpoint_t bluk_in_ep;
+    usb_uas_endpoint_t bluk_out_ep;
+    uint8           interface_num;          // 接口号
     usb_lun_t*      lun;                    // 逻辑单元组
     uint8           lun_count;              // 逻辑单元实际个数
-    uint32          tag;                    // 全局标签
+    uint16          tag;                    // 全局标签
 } usb_uas_msc_t;
 
 
