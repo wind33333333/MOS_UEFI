@@ -546,6 +546,11 @@ typedef struct {
     };
 } xhci_input_context_t;
 
+typedef struct {
+    uint64 tr_dequeue; // TR Dequeue Ptr+ DCS(位0)
+    uint64 reserved;
+} xhci_stream_ctx_t;
+
 //endregion
 
 //region usb描述符
@@ -872,8 +877,8 @@ typedef struct {
 
 //定时
 static inline void timing(void) {
-    uint64 count = 20000000;
-    while (count--) pause();
+    // uint64 count = 20000000;
+    // while (count--) pause();
 }
 
 void init_xhci(void);
