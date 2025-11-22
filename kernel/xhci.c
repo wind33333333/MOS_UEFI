@@ -1133,8 +1133,8 @@ int32 mass_storage_probe(usb_dev_t *usb_dev, usb_interface_descriptor_t *interfa
                     stream_array[s].reserved = 0;
                 }
                 // Stream ID 0保留，通常设为0或无效
-                // stream_array[0].tr_dequeue = 0;
-                // stream_array[0].reserved = 0;
+                stream_array[0].tr_dequeue = 0;
+                stream_array[0].reserved = 0;
                 ep_ctx.reg2 = va_to_pa(stream_array);
             }
             ep_ctx.reg3 = 0;
@@ -1158,7 +1158,7 @@ int32 mass_storage_probe(usb_dev_t *usb_dev, usb_interface_descriptor_t *interfa
         // 1) Command IU
         uas_cmd_iu_t* ciu = kzalloc(sizeof(uas_cmd_iu_t));
         ciu->iu_id = 1;
-        ciu->tag   = bswap16(1);
+        ciu->tag   = bswap16(uas_msc->bluk_in_ep.streams_count);
         ciu->len   = 0;
         mem_set(ciu->lun, 0, 8);        // LUN0
         mem_set(ciu->cdb, 0, 16);
@@ -1169,30 +1169,31 @@ int32 mass_storage_probe(usb_dev_t *usb_dev, usb_interface_descriptor_t *interfa
 
         uas_status_iu_t* status_buf = kzalloc(128);
         normal_transfer_trb(&sta_trb, va_to_pa(status_buf), disable_ch, 128, enable_ioc);
-        xhci_ring_enqueue(&uas_msc->sta_in_ep.stream_rings[1], &sta_trb);
+        xhci_ring_enqueue(&uas_msc->sta_in_ep.stream_rings[uas_msc->bluk_in_ep.streams_count], &sta_trb);
 
         scsi_inquiry_std_t* inquiry = kzalloc(128);        // 足够放 Data-In IU + 36B payload
         mem_set(inquiry, 0xFF, 128);
         normal_transfer_trb(&in_trb, va_to_pa(inquiry), disable_ch, 36, enable_ioc);
-        xhci_ring_enqueue(&uas_msc->bluk_in_ep.stream_rings[1], &in_trb);
+        xhci_ring_enqueue(&uas_msc->bluk_in_ep.stream_rings[uas_msc->bluk_in_ep.streams_count], &in_trb);
 
         normal_transfer_trb(&cmd_trb, va_to_pa(ciu), disable_ch,sizeof(uas_cmd_iu_t), enable_ioc);
         xhci_ring_enqueue(&uas_msc->cmd_out_ep.transfer_ring, &cmd_trb);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->sta_in_ep.ep_num | 1<<16);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &sta_trb);
-        color_printk(RED,BLACK,"sta_trb m0:%#lx m1:%#lx   \n",sta_trb.member0,sta_trb.member1);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->bluk_in_ep.ep_num| 1<<16);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &in_trb);
-        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);
 
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->cmd_out_ep.ep_num);
         timing();
         xhci_ering_dequeue(xhci_controller, &cmd_trb);
         color_printk(RED,BLACK,"cmd_trb m0:%#lx m1:%#lx   \n",cmd_trb.member0,cmd_trb.member1);
+
+        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->sta_in_ep.ep_num | uas_msc->bluk_in_ep.streams_count<<16);
+        timing();
+        xhci_ering_dequeue(xhci_controller, &sta_trb);
+        color_printk(RED,BLACK,"sta_trb m0:%#lx m1:%#lx   \n",sta_trb.member0,sta_trb.member1);
+
+
+        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->bluk_in_ep.ep_num | uas_msc->bluk_in_ep.streams_count<<16);
+        timing();
+        xhci_ering_dequeue(xhci_controller, &in_trb);
+        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);
 
 
         color_printk(RED,BLACK,"sense_iu iu_id:%d tag:%d status:%d   \n",status_buf->iu_id,status_buf->tag,status_buf->status);
