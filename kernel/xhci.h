@@ -739,24 +739,55 @@ typedef struct {
     char  revision[4]; // byte 32-35: 固件版本 (ASCII)
 } inquiry_data_t;
 
-// 定义UASP IU ID
-#define UASP_IU_COMMAND 0x01  // 命令IU ID
-#define UASP_IU_SENSE   0x03  // 感测IU ID (用于命令完成状态)
 
-// 定义SCSI命令代码
-#define SCSI_REPORT_LUNS 0xA0
+/*typedef struct{
+    uint8  iu_id;          // 0x01 = Command IU
+    uint8  reserved1;
+    uint16 tag;            // 大端序
+    uint16 len;            // 大端序，长度，通常 16
+    uint8  priority_attr;  // 优先级 / 属性（一般填 0）
+    uint8  reserved2;
+    uint8  lun[8];
+    uint8  cdb[16];        // 完整 16 字节 SCSI CDB
+}uas_cmd_iu_t;*/
 
 typedef struct {
-    uint8   iu_id;           /* 0x01 = Command IU */
-    uint16  tag;        /* host tag (big-endian representation across 2 bytes) */
-    uint8   prio_attr;      /* bits: priority/attrs (vendor specific bits) */
-    uint8   reserved1;
-    uint8   task_attr;      /* task attribute (simple/ordered/head) */
-    uint8   reserved2[2];
-    uint8   add_cdb_len;    /* additional CDB length (usually 0) */
-    uint8   cdb[16];        /* up to 16-byte CDB */
-    uint8   pad[6];         /* pad to 32 bytes total */
-} uas_cmd_iu_t;
+    uint8  iu_id;       // 0x01
+    uint8  reserved1;
+    uint16 tag;         // 大端
+    uint8  priority_attr;  // 任务属性 + 优先级，0 = SIMPLE
+    uint8  reserved5;
+    uint8  len;         // 额外 CDB 字节数（4 字节对齐），通常 0
+    uint8  reserved7;
+    uint8  lun[8];      // SAM-4 LUN 编码
+    uint8  cdb[16];     // 固定 16 字节 CDB 区
+}uas_cmd_iu_t;
+
+typedef struct{
+    uint8   pdt_pq;
+    uint8   rmb;
+    uint8   version;
+    uint8   resp_fmt;
+    uint8   add_len;
+    uint8   flags[3];
+    char    vendor[8];
+    char    product[16];
+    char    revision[4];
+} scsi_inquiry_std_t;
+
+
+/* Status(Sense) IU：见 UAS 规范 Table 13 */
+typedef struct {
+    uint8  iu_id;       /* 0x03 = Sense IU (Status IU) */
+    uint8  reserved1;
+    uint16 tag;         /* COMMAND IDENTIFIER，大端 */
+    uint16 length;      /* LENGTH，大端；本字段之后的字节数 */
+    uint8  status;      /* SCSI Status，例如 0x00 GOOD，0x02 CHECK CONDITION */
+    uint8  reserved2;
+    /* 简单预留一点空间放 Sense Data；真的要用可以再扩展 */
+    uint8  sense_data[18];
+} uas_status_iu_t;
+
 #pragma pack(pop)
 
 //xhci控制器
@@ -841,8 +872,8 @@ typedef struct {
 
 //定时
 static inline void timing(void) {
-    // uint64 count = 20000000;
-    // while (count--) pause();
+    uint64 count = 20000000;
+    while (count--) pause();
 }
 
 void init_xhci(void);

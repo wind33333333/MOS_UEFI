@@ -84,10 +84,12 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 		-cpu max \
 		-smp sockets=2,cores=2,threads=2 \
 		-bios OVMF.fd \
-		-drive if=none,id=usbdisk,format=raw,file=fat:rw:./esp \
-		-device qemu-xhci,id=xhci \
-		-device usb-uas,id=uas,bus=xhci.0 \
-		-device usb-storage,drive=usbdisk &
+	  -drive if=none,id=bootdisk,format=raw,file=fat:rw:./esp \
+	  -device qemu-xhci,id=xhci \
+	  -device usb-storage,drive=bootdisk,bus=xhci.0,bootindex=1 \
+	  -drive if=none,id=uasdisk,file=/home/wind3/disk-uas.img,format=raw \
+	  -device usb-uas,id=uas,bus=xhci.0 \
+	  -device scsi-hd,drive=uasdisk,bus=uas.0,lun=0 &
 
 qemu-monitor:
 	telnet localhost 4444
