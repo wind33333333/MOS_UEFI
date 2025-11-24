@@ -573,6 +573,7 @@ typedef struct {
     uint8 serial_number_index;  // 序列号字符串描述符索引（0 表示无，建议提供唯一序列号）
     uint8 num_configurations;   // 支持的配置描述符数量（通常为 1）
 } usb_device_descriptor_t;
+#define USB_DEVICE_DESCRIPTOR 0x1
 
 /*usb配置描述符
 描述符长度，固定为 9 字节（0x09）
@@ -591,6 +592,7 @@ typedef struct {
                                 位4-0：保留，置 0*/
     uint8 max_power; // 最大功耗，单位为 2mA（USB 2.0）或 8mA（USB 3.x）例如：50 表示 USB 2.0 的 100mA 或 USB 3.x 的 400mA
 } usb_config_descriptor_t;
+#define USB_CONFIG_DESCRIPTOR 0x2
 
 
 /*USB 字符串描述符
@@ -601,6 +603,7 @@ typedef struct {
     uint8 descriptor_type; // 描述符类型
     uint16 string[]; // UTF-16LE 编码的字符串内容（变长数组）
 } usb_string_descriptor_t;
+#define USB_STRING_DESCRIPTOR 0x3
 
 /*接口描述符
 描述符长度，固定为 9 字节（0x09）
@@ -616,6 +619,7 @@ typedef struct {
     uint8 interface_protocol; // 接口协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
     uint8 interface_index; // 接口字符串描述符索引（0 表示无）
 } usb_interface_descriptor_t;
+#define USB_INTERFACE_DESCRIPTOR 0x4
 
 /*端点描述符
 描述符长度（固定7字节）
@@ -632,8 +636,9 @@ typedef struct {
     uint16 max_packet_size; // 该端点的最大包长（不同速度有不同限制）
     uint8 interval; // 轮询间隔（仅中断/同步传输有意义）
 } usb_endpoint_descriptor_t;
+#define USB_ENDPOINT_DESCRIPTOR 0x5
 
-/*  端点伴随描述符
+/*  超高速端点伴随描述符
  *  uint8  bLength;            // 固定 6
     uint8  bDescriptorType;    // 0x30 表示 SuperSpeed Endpoint Companion Descriptor*/
 typedef struct {
@@ -642,8 +647,13 @@ typedef struct {
     uint8 max_burst; // 每次突发包数（0-15），实际表示突发数+1
     uint8 attributes; // 位 4:0 Streams 支持数 (Bulk)，或多事务机会 (Isoch)
     uint16 bytes_per_interval; // 对于 Isoch/Interrupt，最大字节数
-} usb_ss_ep_comp_descriptor_t;
+} usb_superspeed_endpint_companion_descriptor_t;
+#define USB_SUPERSPEED_ENDPOINT_COMPANION_descriptor 0x30
 
+/* USA 管道情况描述符
+ * uint8  bLength;            // 固定 4
+ * uint8  bDescriptorType;    // 0x24
+ */
 typedef struct {
     uint8  length;               // 描述符总长度（字节数）
     uint8  descriptor_type;      // 描述符类型 = 0x24 (CS_INTERFACE)
@@ -653,7 +663,8 @@ typedef struct {
 #define USB_PIPE_BULK_IN        3
 #define USB_PIPE_BULK_OUT       4
     uint8  reserved;
-} usb_pipe_usage_descriptor_t;
+} usb_usa_pipe_usage_descriptor_t;
+#define USB_USA_PIPE_USAGE_DESCTIPTOR 0x24
 
 /*HID 类描述符（可选
 描述符长度
@@ -666,6 +677,7 @@ typedef struct {
     uint8 num_descriptors; // 后面跟随的子描述符数量
     // 后面通常跟 HID 报告描述符（类型0x22）等
 } usb_hid_descriptor_t;
+#define USB_HID_DESCRIPTOR 0x21
 
 /*HUB 类描述符（可选）
 描述符长度
@@ -679,20 +691,6 @@ typedef struct {
     uint8 hub_control_current; // hub 控制器所需电流
     // 之后还会跟一个可变长度的 DeviceRemovable 和 PortPwrCtrlMask
 } usb_hub_descriptor_t;
-
-/* ---------------- USB 标准描述符类型 ---------------- */
-#define USB_DESC_TYPE_DEVICE        0x01  /* 设备描述符 Device Descriptor */
-#define USB_DESC_TYPE_CONFIGURATION 0x02  /* 配置描述符 Configuration Descriptor */
-#define USB_DESC_TYPE_STRING        0x03  /* 字符串描述符 String Descriptor */
-#define USB_DESC_TYPE_INTERFACE     0x04  /* 接口描述符 Interface Descriptor */
-#define USB_DESC_TYPE_ENDPOINT      0x05  /* 端点描述符 Endpoint Descriptor */
-#define USB_DESC_TYPE_PIPE_USGAGE   0x24  /*  */
-#define USB_DESC_TYPE_SS_EP_COMP    0x30  /* USB3.x 新增突发和多流信息 */
-
-
-/* ---------------- USB HID 类相关描述符 ---------------- */
-#define USB_DESC_TYPE_HID           0x21  /* HID 类描述符 HID Descriptor */
-#define USB_DESC_TYPE_REPORT        0x22  /* HID 报告描述符 Report Descriptor */
 
 /* ---------------- USB Hub 相关描述符 ---------------- */
 #define USB_DESC_TYPE_HUB           0x29  /* Hub 描述符 Hub Descriptor */
