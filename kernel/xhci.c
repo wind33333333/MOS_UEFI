@@ -14,6 +14,7 @@ xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_reg, uint8 cap_id) {
     return NULL;
 }
 
+
 //xhci设备初始化
 INIT_TEXT void init_xhci(void) {
     pcie_dev_t *xhci_dev = pcie_dev_find(XHCI_CLASS_CODE); //查找xhci设备
