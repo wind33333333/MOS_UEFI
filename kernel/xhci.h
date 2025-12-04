@@ -1,6 +1,8 @@
 #pragma once
 #include "moslib.h"
 #include "pcie.h"
+#include "slub.h"
+#include "vmm.h"
 
 #define TRB_COUNT 256        //trb个数
 
@@ -375,13 +377,6 @@ typedef struct {
     uint32 reserved; // 保留位，初始化为0
 } xhci_erst_t;
 
-/*trb 结构*/
-// typedef struct {
-//     uint64 parameter;
-//     uint32 status;
-//     uint32 control;
-// } xhci_trb_t;
-
 typedef struct {
     uint64 member0;
     uint64 member1;
@@ -553,243 +548,13 @@ typedef struct {
 
 //endregion
 
-//region usb描述符
-/*usb设备描述符
-描述符长度，固定为 18 字节（0x12）
-描述符类型，固定为 0x01（设备描述符）*/
-typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
-    uint16 usb_version;         // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
-    uint8 device_class;         // 设备类代码，定义设备类别（如 0x00 表示类在接口描述符定义，0x03 表示 HID）
-    uint8 device_subclass;      // 设备子类代码，进一步细化设备类（如 HID 的子类）
-    uint8 device_protocol;      // 设备协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
-    uint8 max_packet_size0;     // 端点 0 的最大数据包大小（字节），USB 2.0 为 8/16/32/64，USB 3.x 为 9（表示 2^9=512 字节）
-    uint16 vendor_id;           // 供应商 ID（VID），由 USB-IF 分配，标识制造商
-    uint16 product_id;          // 产品 ID（PID），由厂商分配，标识具体产品
-    uint16 device_version;      // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
-    uint8 manufacturer_index;   // 制造商字符串描述符索引（0 表示无）
-    uint8 product_index;        // 产品字符串描述符索引（0 表示无）
-    uint8 serial_number_index;  // 序列号字符串描述符索引（0 表示无，建议提供唯一序列号）
-    uint8 num_configurations;   // 支持的配置描述符数量（通常为 1）
-} usb_device_descriptor_t;
-#define USB_DEVICE_DESCRIPTOR 0x1
-
-/*usb配置描述符
-描述符长度，固定为 9 字节（0x09）
-描述符类型，固定为 0x02（配置描述符）*/
-typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
-    uint16 total_length; // 配置描述符总长度（包括所有子描述符，如接口、端点等），单位为字节
-    uint8 num_interfaces; // 该配置支持的接口数量
-    uint8 configuration_value; // 配置值，用于 SET_CONFIGURATION 请求（通常从 1 开始）
-    uint8 configuration_index; // 配置字符串描述符索引（0 表示无）
-    uint8 attributes; /*配置属性
-                                位7：固定为 1（保留）
-                                位6：1=自供电，0=总线供电
-                                位5：1=支持远程唤醒，0=不支持
-                                位4-0：保留，置 0*/
-    uint8 max_power; // 最大功耗，单位为 2mA（USB 2.0）或 8mA（USB 3.x）例如：50 表示 USB 2.0 的 100mA 或 USB 3.x 的 400mA
-} usb_config_descriptor_t;
-#define USB_CONFIG_DESCRIPTOR 0x2
-
-
-/*USB 字符串描述符
-描述符长度（含头部和字符串）
-描述符类型 = 0x03*/
-typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
-    uint16 string[]; // UTF-16LE 编码的字符串内容（变长数组）
-} usb_string_descriptor_t;
-#define USB_STRING_DESCRIPTOR 0x3
-
-/*接口描述符
-描述符长度，固定为 9 字节（0x09）
-描述符类型，固定为 0x04（接口描述符）*/
-typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
-    uint8 interface_number; // 接口编号，从 0 开始，标识该接口
-    uint8 alternate_setting; // 备用设置编号，同一接口的不同配置（通常为 0）
-    uint8 num_endpoints; // 该接口使用的端点数量（不包括端点 0）
-    uint8 interface_class; // 接口类代码，定义接口功能（如 0x03 表示 HID，0x08 表示 Mass Storage）
-    uint8 interface_subclass; // 接口子类代码，进一步细化接口类（如 HID 的子类）
-    uint8 interface_protocol; // 接口协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
-    uint8 interface_index; // 接口字符串描述符索引（0 表示无）
-} usb_interface_descriptor_t;
-#define USB_INTERFACE_DESCRIPTOR 0x4
-
-/*端点描述符
-描述符长度（固定7字节）
-描述符类型：0x05 = 端点描述符*/
-typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
-    uint8 endpoint_address; // 端点地址：位7方向(0=OUT,主机→设备 1=IN，设备→主机)，位3-0端点号
-    uint8 attributes; // 传输类型：0x00=控制，0x01=Isochronous，0x02=Bulk，0x03=Interrupt
-#define USB_EP_CONTROL   0x0   //ep0端点
-#define USB_EP_ISOCH     0x1   //等时传输（实时音视频流，带带宽保证，不保证重传）
-#define USB_EP_BULK      0x2   //批量传输（大容量数据，可靠，有重传机制，如 U 盘数据块）
-#define USB_EP_INTERRUPT 0x3   //中断传输（小包，低延迟，周期性轮询，如键盘鼠标 HID 报告)
-    uint16 max_packet_size; // 该端点的最大包长（不同速度有不同限制）
-    uint8 interval; // 轮询间隔（仅中断/同步传输有意义）
-} usb_endpoint_descriptor_t;
-#define USB_ENDPOINT_DESCRIPTOR 0x5
-
-/*  超高速端点伴随描述符
- *  uint8  bLength;            // 固定 6
-    uint8  bDescriptorType;    // 0x30 表示 SuperSpeed Endpoint Companion Descriptor*/
-typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
-    uint8 max_burst; // 每次突发包数（0-15），实际表示突发数+1
-    uint8 attributes; // 位 4:0 Streams 支持数 (Bulk)，或多事务机会 (Isoch)
-    uint16 bytes_per_interval; // 对于 Isoch/Interrupt，最大字节数
-} usb_superspeed_endpint_companion_descriptor_t;
-#define USB_SUPERSPEED_ENDPOINT_COMPANION_descriptor 0x30
-
-/* USA 管道情况描述符
- * uint8  bLength;            // 固定 4
- * uint8  bDescriptorType;    // 0x24
- */
-typedef struct {
-    uint8  length;               // 描述符总长度（字节数）
-    uint8  descriptor_type;      // 描述符类型 = 0x24 (CS_INTERFACE)
-    uint8  pipe_id;              // 端点用途标识 1=command_out 2=status_in 3=bulk_in 4=bulk_out
-#define USB_PIPE_COMMAND_OUT    1
-#define USB_PIPE_STATUS_IN      2
-#define USB_PIPE_BULK_IN        3
-#define USB_PIPE_BULK_OUT       4
-    uint8  reserved;
-} usb_usa_pipe_usage_descriptor_t;
-#define USB_USA_PIPE_USAGE_DESCTIPTOR 0x24
-
-/*HID 类描述符（可选
-描述符长度
-描述符类型：0x21 = HID 描述符*/
-typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
-    uint16 hid; // HID 版本号
-    uint8 country_code; // 国家代码（0=无）
-    uint8 num_descriptors; // 后面跟随的子描述符数量
-    // 后面通常跟 HID 报告描述符（类型0x22）等
-} usb_hid_descriptor_t;
-#define USB_HID_DESCRIPTOR 0x21
-
-/*HUB 类描述符（可选）
-描述符长度
-描述符类型：0x29 = HUB 描述符*/
-typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
-    uint8 num_ports; // hub 下行端口数量
-    uint16 hub_characteristics; // hub 特性位（供电方式、过流保护等）
-    uint8 power_on_to_power_good; // 端口上电到电源稳定的时间（单位2ms）
-    uint8 hub_control_current; // hub 控制器所需电流
-    // 之后还会跟一个可变长度的 DeviceRemovable 和 PortPwrCtrlMask
-} usb_hub_descriptor_t;
-
-/* ---------------- USB Hub 相关描述符 ---------------- */
-#define USB_DESC_TYPE_HUB           0x29  /* Hub 描述符 Hub Descriptor */
-
-//endregion
-
 typedef struct {
     trb_t   *ring_base; //环起始地址
     uint64  index; //trb索引
     uint64  status_c; //循环位
 } xhci_ring_t;
 
-/* CBW 结构（31 字节） */
-typedef struct {
-    uint32 cbw_signature; // 固定为 0x43425355 ('USBC')
-    uint32 cbw_tag; // 命令标签，唯一标识
-    uint32 cbw_data_transfer_length; // 数据传输长度
-    uint8  cbw_flags; // 传输方向（0x80=IN，0x00=OUT）
-    uint8  cbw_lun; // 逻辑单元号（通常为 0）
-    uint8  cbw_cb_length; // SCSI 命令长度（10 字节 for READ(10)）
-    uint8  cbw_cb[16]; // SCSI 命令块（READ(10) 命令）
-} usb_cbw_t;
 
-/* CSW 结构（13 字节） */
-typedef struct {
-    uint32 csw_signature; // 固定为 0x53425355 ('USBS')
-    uint32 csw_tag; // 匹配 CBW 的标签
-    uint32 csw_data_residue; // 未传输的数据长度
-    uint8  csw_status; // 命令状态（0=成功，1=失败，2=相位错误）
-} usb_csw_t;
-
-/* READ CAPACITY (16) 返回数据（32 字节） */
-typedef struct {
-    uint64 last_lba; // 最后一个逻辑块地址（块数量 - 1，64 位）
-    uint32 block_size; // 逻辑块大小（字节）
-    uint8  reserved[20]; // 保留字段（包括保护信息等）
-} read_capacity_16_t;
-
-//inquiry返回数据36字节
-typedef struct {
-    uint8 device_type; // byte 0: Peripheral Device Type (0x00 = Block Device)
-    uint8 rmb; // byte 1: Bit 7 = RMB (1 = Removable)
-    uint8 version; // byte 2: SCSI 版本
-    uint8 response_format; // byte 3: 响应格式（通常 2）
-    uint8 additional_len; // byte 4: 附加数据长度（通常 31）
-    uint8 reserved[3]; // byte 5-7
-    char  vendor_id[8]; // byte 8-15: 厂商 (ASCII)
-    char  product_id[16]; // byte 16-31: 产品型号 (ASCII)
-    char  revision[4]; // byte 32-35: 固件版本 (ASCII)
-} inquiry_data_t;
-
-
-/*typedef struct{
-    uint8  iu_id;          // 0x01 = Command IU
-    uint8  reserved1;
-    uint16 tag;            // 大端序
-    uint16 len;            // 大端序，长度，通常 16
-    uint8  priority_attr;  // 优先级 / 属性（一般填 0）
-    uint8  reserved2;
-    uint8  lun[8];
-    uint8  cdb[16];        // 完整 16 字节 SCSI CDB
-}uas_cmd_iu_t;*/
-
-typedef struct {
-    uint8  iu_id;       // 0x01
-    uint8  reserved1;
-    uint16 tag;         // 大端
-    uint8  priority_attr;  // 任务属性 + 优先级，0 = SIMPLE
-    uint8  reserved5;
-    uint8  len;         // 额外 CDB 字节数（4 字节对齐），通常 0
-    uint8  reserved7;
-    uint8  lun[8];      // SAM-4 LUN 编码
-    uint8  cdb[16];     // 固定 16 字节 CDB 区
-}uas_cmd_iu_t;
-
-typedef struct{
-    uint8   pdt_pq;
-    uint8   rmb;
-    uint8   version;
-    uint8   resp_fmt;
-    uint8   add_len;
-    uint8   flags[3];
-    char    vendor[8];
-    char    product[16];
-    char    revision[4];
-} scsi_inquiry_std_t;
-
-
-/* Status(Sense) IU：见 UAS 规范 Table 13 */
-typedef struct {
-    uint8  iu_id;       /* 0x03 = Sense IU (Status IU) */
-    uint8  reserved1;
-    uint16 tag;         /* COMMAND IDENTIFIER，大端 */
-    uint16 length;      /* LENGTH，大端；本字段之后的字节数 */
-    uint8  status;      /* SCSI Status，例如 0x00 GOOD，0x02 CHECK CONDITION */
-    uint8  reserved2;
-    /* 简单预留一点空间放 Sense Data；真的要用可以再扩展 */
-    uint8  sense_data[18];
-} uas_status_iu_t;
 
 #pragma pack(pop)
 
@@ -809,75 +574,463 @@ typedef struct {
 } xhci_controller_t;
 
 
-//USB设备
-typedef struct {
-    list_head_t             list;
-    uint8                   port_id;
-    uint8                   slot_id;
-    uint16                  usb_ver;           // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
-    uint16                  vid;               // 供应商 ID（VID），由 USB-IF 分配，标识制造商
-    uint16                  pid;               // 产品 ID（PID），由厂商分配，标识具体产品
-    uint16                  dev_ver;           // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
-    xhci_device_context_t*  dev_context;       //设备上下文
-    xhci_ring_t             control_ring;      //控制环
-    uint8                   interfaces_count;  //接口数量
-    void*                   interfaces;        //接口指针根据接口数量动态分配
-    xhci_controller_t*      xhci_controller;
-} usb_dev_t;
-
-//usb端点
-typedef struct {
-    xhci_ring_t transfer_ring;
-    uint8       ep_num;
-}usb_endpoint_t;
-
-//逻辑单元
-typedef struct {
-    uint64          block_count;            // 块数量
-    uint32          block_size;             // 块大小
-    char8           vid[25];                // 厂商ascii码
-    uint8           lun_id;                 // 逻辑单元
-} usb_lun_t;
-
-//bot协议u盘
-typedef struct usb_bot_msc_t{
-    usb_dev_t*      usb_dev;                // 父设备指针
-    usb_endpoint_t  in_ep;                  // 输入端点
-    usb_endpoint_t  out_ep;                 // 输出端点
-    int32 (*scsi_read)(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,struct usb_bot_msc_t *bot_msc,uint8 lun_id,uint64 lba,uint32 block_count,uint32 block_size,void *buf);
-    int32 (*scsi_write)(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,struct usb_bot_msc_t *bot_msc,uint8 lun_id,uint64 lba,uint32 block_count,uint32 block_size,void *buf);
-    uint8           interface_num;          // 接口号
-    usb_lun_t*      lun;                    // 逻辑单元组
-    uint8           lun_count;              // 逻辑单元实际个数
-    uint32          tag;                    // 全局标签
-} usb_bot_msc_t;
-
-typedef struct {
-    xhci_ring_t  transfer_ring;
-    uint8        ep_num;
-    xhci_ring_t* stream_rings;   // per-stream rings数组 (如果启用流)
-    uint32 streams_count;        // 2^max_streams_exp
-}usb_uas_endpoint_t;
-
-//uas协议u盘
-typedef struct {
-    usb_dev_t*      usb_dev;                // 父设备指针
-    usb_uas_endpoint_t cmd_out_ep;
-    usb_uas_endpoint_t sta_in_ep;
-    usb_uas_endpoint_t bluk_in_ep;
-    usb_uas_endpoint_t bluk_out_ep;
-    uint8           interface_num;          // 接口号
-    usb_lun_t*      lun;                    // 逻辑单元组
-    uint8           lun_count;              // 逻辑单元实际个数
-    uint16          tag;                    // 全局标签
-} usb_uas_msc_t;
-
-
 //定时
 static inline void timing(void) {
     // uint64 count = 20000000;
     // while (count--) pause();
 }
+
+//region 命令环trb
+#define TRB_TYPE_ENABLE_SLOT             (9UL << 42)   // 启用插槽
+#define TRB_TYPE_ADDRESS_DEVICE          (11UL << 42)  // 设备寻址
+#define TRB_TYPE_CONFIGURE_ENDPOINT      (12UL << 42)  // 配置端点
+#define TRB_TYPE_EVALUATE_CONTEXT        (13UL << 42)  // 评估上下文
+
+/*
+ * 启用插槽命令trb
+ * uint64 member0 位0-63 = 0
+ *
+ * uint64 member1 位32    cycle
+ *                位42-47 TRB Type 类型
+ */
+static inline void enable_slot_com_trb(trb_t *trb) {
+    trb->member0 = 0;
+    trb->member1 = TRB_TYPE_ENABLE_SLOT;
+}
+
+/*
+ * 设置设备地址命令trb
+ * uint64 member0 位0-63 = input context pointer 物理地址
+ *
+ * uint64 member1 位32    cycle
+ *                位41    bsr 块地址请求命令 0=发送usb_set_address请求，1=不发送（一般设置0）
+ *                位42-47 TRB Type 类型
+ *                位56-63 slot id
+ */
+static inline void addr_dev_com_trb(trb_t *trb, uint64 input_ctx_ptr, uint64 slot_id) {
+    trb->member0 = input_ctx_ptr;
+    trb->member1 = TRB_TYPE_ADDRESS_DEVICE | (slot_id << 56);
+}
+
+/*
+ * 配置端点trb
+ * uint64 member0 位0-63 = input context pointer 物理地址
+ *
+ * uint64 member1 位32    cycle
+ *                位41    dc    接触配置 1= xhci将忽略输入上下文指针字段，一般设置0
+ *                位42-47 TRB Type 类型
+ *                位56-63 slot id
+ */
+static inline void config_endpoint_com_trb(trb_t *trb, uint64 input_ctx_ptr, uint64 slot_id) {
+    trb->member0 = input_ctx_ptr;
+    trb->member1 = TRB_TYPE_CONFIGURE_ENDPOINT | (slot_id << 56);
+}
+
+/*
+ * 评估上下文trb
+ * uint64 member0 位0-63 = input context pointer 物理地址
+ *
+ * uint64 member1 位32    cycle
+ *                位41    bsr 块地址请求命令 0=发送usb_set_address请求，1=不发送（一般设置0）
+ *                位42-47 TRB Type 类型
+ *                位56-63 slot id
+ */
+static inline void evaluate_context_com_trb(trb_t *trb, uint64 input_ctx_ptr, uint64 slot_id) {
+    trb->member0 = input_ctx_ptr;
+    trb->member1 = TRB_TYPE_EVALUATE_CONTEXT | (slot_id << 56);
+}
+
+//endregion
+
+//region 端点控制环trb
+
+#define TRB_TYPE_SETUP_STAGE             (2UL << 42)   // 设置阶段
+#define TRB_TYPE_DATA_STAGE              (3UL << 42)   // 数据阶段
+#define TRB_TYPE_STATUS_STAGE            (4UL << 42)   // 状态阶段
+
+typedef enum {
+    disable_ioc = 0UL << 37,
+    enable_ioc = 1UL << 37,
+} config_ioc_e;
+
+typedef enum {
+    trb_out = 0UL << 48,
+    trb_in = 1UL << 48,
+} trb_dir_e;
+
+typedef enum {
+    disable_ch = (0UL << 33),
+    enable_ch = (1UL << 33)
+} config_ch_e;
+
+typedef enum {
+    usb_req_get_status = 0x00 << 8, /* 获取状态
+                                               - 接收者：设备、接口、端点
+                                               - 返回：设备/接口/端点的状态（如挂起、遥控唤醒）
+                                               - w_value: 0
+                                               - w_index: 设备=0，接口=接口号，端点=端点号
+                                               - w_length: 2（返回 2 字节状态） */
+    usb_req_clear_feature = 0x01UL << 8, /* 清除特性
+                                               - 接收者：设备、接口、端点
+                                               - 用途：清除特定状态（如取消遥控唤醒或端点暂停）
+                                               - w_value: 特性选择（如 0=设备遥控唤醒，1=端点暂停）
+                                               - w_index: 设备=0，接口=接口号，端点=端点号
+                                               - w_length: 0 */
+    usb_req_set_feature = 0x03UL << 8, /* 设置特性
+                                               - 接收者：设备、接口、端点
+                                               - 用途：启用特定特性（如遥控唤醒、测试模式）
+                                               - w_value: 特性选择（如 0=设备遥控唤醒，1=端点暂停）
+                                               - w_index: 设备=0，接口=接口号，端点=端点号
+                                               - w_length: 0 */
+    usb_req_set_address = 0x05UL << 8, /* 设置设备地址
+                                               - 接收者：设备
+                                               - 用途：在枚举过程中分配设备地址（1-127）
+                                               - w_value: 新地址（低字节）
+                                               - w_index: 0
+                                               - w_length: 0 */
+    usb_req_get_descriptor = 0x06UL << 8, /* 获取描述符
+                                               - 接收者：设备、接口
+                                               - 用途：获取设备、配置、接口、字符串等描述符
+                                               - w_value: 高字节=描述符类型（如 0x01=设备，0x02=配置），低字节=索引
+                                               - w_index: 0（设备/配置描述符）或语言 ID（字符串描述符）
+                                               - w_length: 请求的字节数 */
+    usb_req_set_descriptor = 0x07UL << 8, /* 设置描述符
+                                               - 接收者：设备、接口
+                                               - 用途：更新设备描述符（较少使用）
+                                               - w_value: 高字节=描述符类型，低字节=索引
+                                               - w_index: 0 或语言 ID
+                                               - w_length: 数据长度 */
+    usb_req_get_config = 0x08UL << 8, /* 获取当前配置
+                                               - 接收者：设备
+                                               - 用途：返回当前激活的配置值
+                                               - w_value: 0
+                                               - w_index: 0
+                                               - w_length: 1（返回 1 字节配置值） */
+    usb_req_set_config = 0x09UL << 8, /* 设置配置
+                                               - 接收者：设备
+                                               - 用途：激活指定配置
+                                               - w_value: 配置值（来自配置描述符的 b_configuration_value）
+                                               - w_index: 0
+                                               - w_length: 0 */
+    usb_req_get_interface = 0x0AUL << 8, /* 获取接口的备用设置
+                                               - 接收者：接口
+                                               - 用途：返回当前接口的备用设置编号
+                                               - w_value: 0
+                                               - w_index: 接口号
+                                               - w_length: 1（返回 1 字节备用设置值） */
+    usb_req_set_interface = 0x0BUL << 8, /* 设置接口的备用设置
+                                               - 接收者：接口
+                                               - 用途：选择接口的备用设置
+                                               - w_value: 备用设置编号
+                                               - w_index: 接口号
+                                               - w_length: 0 */
+    usb_req_synch_frame = 0x0CUL << 8, /* 同步帧
+                                               - 接收者：端点
+                                               - 用途：为同步端点（如音频设备）提供帧编号
+                                               - w_value: 0
+                                               - w_index: 端点号
+                                               - w_length: 2（返回 2 字节帧号） */
+
+    usb_req_get_max_lun = 0xFEUL << 8, /* Mass Storage 类请求 (BOT)
+                                      * - bRequestType=0xFE (Host→Interface)
+                                      * - wValue=0, wIndex=接口号
+                                      * - wLength=1
+                                      * - 获取最大逻辑单元 返回最大 LUN 编号（0 = 1个LUN） */
+
+    usb_req_mass_storage_reset = 0xFFUL << 8, /* Mass Storage 类请求 (BOT)
+                                      * - bRequestType=0x21 (Host→Interface)
+                                      * - wValue=0, wIndex=接口号
+                                      * - wLength=0
+                                      * - 用于复位 U 盘状态机 */
+} setup_stage_req_e;
+
+/*设置阶段trb
+    uint64 member0;  *位4-0：接收者（0=设备，1=接口，2=端点，3=其他）
+                     *位6-5：类型（0=标准，1=类，2=厂商，3=保留）
+                     *位7：方向（0=主机到设备，1=设备到主机）
+                     *位8-15  Request    请求代码，指定具体请求（如 GET_DESCRIPTOR、SET_ADDRESS）标准请求示例：0x06（GET_DESCRIPTOR）、0x05（SET_ADDRESS）
+                     *位16-31 Value      请求值，具体含义由 b_request 定义 例如：GET_DESCRIPTOR 中，w_value 高字节为描述符类型，低字节为索引
+                     *位32-47 Index      索引或偏移，具体含义由 b_request 定义 例如：接口号、端点号或字符串描述符索引
+                     *位48-63 Length     数据阶段的传输长度（字节）主机到设备：发送的数据长度 设备到主机：请求的数据长度
+
+    uint64 member1;  *位0-15  TRB Transfer Length  传输长度
+                     *位22-31 Interrupter Target 中断目标
+                     *位32    cycle
+                     *位37    1=IOC 完成时中断
+                     *位38    1=IDT 数据包含在trb
+                     *位42-47 TRB Type 类型
+                     *位48-49 TRT 传输类型 0=无数据阶段 1=保留 2=out(主机到设备) 3=in(设备到主机)
+*/
+typedef enum {
+    setup_stage_norm = 0 << 5,
+    setup_stage_calss = 1UL << 5,
+    setup_stage_firm = 2UL << 5,
+    setup_stage_reserve = 3UL << 5
+} setup_stage_type_e;
+
+typedef enum {
+    setup_stage_out = 0 << 7,
+    setup_stage_in = 1UL << 7
+} setup_stage_dir_e;
+
+typedef enum {
+    no_data_stage = 0 << 48,
+    out_data_stage = 2UL << 48,
+    in_data_stage = 3UL << 48
+} trb_trt_e;
+
+typedef enum {
+    setup_stage_device = 0 << 0,
+    setup_stage_interface = 1UL << 0,
+    setup_stage_endpoint = 2UL << 0
+} setup_stage_receiver_e;
+
+#define TRB_FLAG_IDT    (1UL<<38)
+
+static inline void setup_stage_trb(trb_t *trb, setup_stage_receiver_e setup_stage_receiver,
+                                   setup_stage_type_e setup_stage_type, setup_stage_dir_e setup_stage_dir,\
+                                   setup_stage_req_e req, uint64 value, uint64 index, uint64 length,
+                                   uint64 trb_tran_length, trb_trt_e trt) {
+    trb->member0 = setup_stage_receiver | setup_stage_type | setup_stage_dir | req | (value << 16) | (index << 32) | (
+                       length << 48);
+    trb->member1 = (trb_tran_length << 0) | TRB_FLAG_IDT | TRB_TYPE_SETUP_STAGE | trt;
+}
+
+/*
+ * 数据阶段trb
+ * uint64 member0 位0-63 data buffer pointer 数据区缓冲区物理地址指针
+ *
+ *  uint64 member1 位0-16   trb transfer length 传输长度
+ *                 位17-21 td size             剩余数据包
+ *                 位22-31 Interrupter Target 中断目标
+ *                 位32    cycle
+ *                 位33    ent     1=评估下一个trb
+ *                 位34    isp     1=短数据包中断
+ *                 位35    ns      1=禁止窥探
+ *                 位36    ch      1=链接 多个trb关联
+ *                 位37    IOC     1=完成时中断
+ *                 位38    IDT     1=数据包含在trb
+ *                 位41    bei     1=块事件中端，ioc=1 则传输事件在下一个中断阀值时，ioc产生的中断不应向主机发送中断。
+ *                 位42-47 TRB Type 类型
+ *                 位48    dir     0=out(主机到设备) 1=in(设备到主机)
+ */
+#define TRB_FLAG_ENT    (1UL<<33)
+
+static inline void data_stage_trb(trb_t *trb, uint64 data_buff_ptr, uint64 trb_tran_length, trb_dir_e dir) {
+    trb->member0 = data_buff_ptr;
+    trb->member1 = (trb_tran_length << 0) | TRB_TYPE_DATA_STAGE | TRB_FLAG_ENT | enable_ch | dir;
+}
+
+
+/*
+ * 状态阶段trb
+ * uint64 member0 位0-63 =0
+ *
+ * uint64 member1  位22-31 Interrupter Target 中断目标
+ *                 位32    cycle
+ *                 位33    ent     1=评估下一个trb
+ *                 位36    ch      1=链接 多个trb关联
+ *                 位37    IOC     1=完成时中断
+ *                 位42-47 TRB Type 类型
+ *                 位48    dir     0=out(主机到设备) 1=in(设备到主机)
+ */
+static inline void status_stage_trb(trb_t *trb, config_ioc_e ioc, trb_dir_e dir) {
+    trb->member0 = 0;
+    trb->member1 = ioc | TRB_TYPE_STATUS_STAGE | dir;
+}
+
+//endregion
+
+//region 传输环trb
+#define TRB_TYPE_NORMAL                  (1UL << 42)   // 普通传输
+/*  普通传输trb
+ *  uint64 member0 位0-63 data buffer pointer 数据区缓冲区物理地址指针
+ *
+ *  uint64 member1 位0-16  trb transfer length 传输长度
+ *                 位17-21 td size             剩余数据包
+ *                 位22-31 Interrupter Target 中断目标
+ *                 位32    cycle
+ *                 位33    ent     1=“评估下一个 TRB”，提示控制器：立即继续执行下一个 TRB，不必等事件或中断触发。
+ *                 位34    isp     1=短数据包中断
+ *                 位35    ns      1=禁止窥探
+ *                 位36    ch      1=链接 多个trb关联
+ *                 位37    IOC     1=完成时中断
+ *                 位38    IDT     1=数据包含在trb
+ *                 位41    bei     1=块事件中端，ioc=1 则传输事件在下一个中断阀值时，ioc产生的中断不应向主机发送中断。
+ *                 位42-47 TRB Type 类型
+ */
+static inline void normal_transfer_trb(trb_t *trb, uint64 data_buff_ptr, config_ch_e ent_ch, uint64 trb_tran_length,
+                                       config_ioc_e ioc) {
+    trb->member0 = data_buff_ptr;
+    trb->member1 = ent_ch | (trb_tran_length << 0) | ioc | TRB_TYPE_NORMAL;
+}
+
+//endregion
+
+//region 其他trb
+#define TRB_TYPE_LINK                    (6UL << 42)   // 链接
+#define TRB_FLAG_TC                      (1UL << 33)
+#define TRB_FLAG_CYCLE                   (1UL << 32)
+/*  link trb
+ *  uint64 member0 位0-63  ring segment pointer 环起始物理地址指针
+ *
+ *  uint64 member1 位22-31 Interrupter Target 中断目标
+ *                 位32    cycle
+ *                 位33    tc      1=下个环周期切换 0=不切换
+ *                 位36    ch      1=链接 多个trb关联
+ *                 位37    IOC     1=完成时中断
+ *                 位42-47 TRB Type 类型
+ */
+static inline void link_trb(trb_t *trb, uint64 ring_base_ptr, uint64 cycle) {
+    trb->member0 = ring_base_ptr;
+    trb->member1 = cycle | TRB_FLAG_TC | TRB_TYPE_LINK;
+}
+
+//endregion
+
+//响铃
+static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 db_number, uint32 value) {
+    xhci_controller->db_reg[db_number] = value;
+}
+
+//命令环/传输环入队列
+int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb) {
+    if (ring->index >= TRB_COUNT - 1) {
+        link_trb(&ring->ring_base[TRB_COUNT - 1], va_to_pa(ring->ring_base), ring->status_c);
+        ring->index = 0;
+        ring->status_c ^= TRB_FLAG_CYCLE;
+    }
+
+    ring->ring_base[ring->index].member0 = trb->member0;
+    ring->ring_base[ring->index].member1 = trb->member1 | ring->status_c;
+    ring->index++;
+    return 0;
+}
+
+//事件环出队列
+int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb) {
+    xhci_ring_t *event_ring = &xhci_controller->event_ring;
+    while ((event_ring->ring_base[event_ring->index].member1 & TRB_FLAG_CYCLE) == event_ring->status_c) {
+        evt_trb->member0 = event_ring->ring_base[event_ring->index].member0;
+        evt_trb->member1 = event_ring->ring_base[event_ring->index].member1;
+        event_ring->index++;
+        if (event_ring->index >= TRB_COUNT) {
+            event_ring->index = 0;
+            event_ring->status_c ^= TRB_FLAG_CYCLE;
+        }
+        xhci_controller->rt_reg->intr_regs[0].erdp =
+                va_to_pa(&event_ring->ring_base[event_ring->index]) | XHCI_ERDP_EHB;
+    }
+    return 0;
+}
+
+//分配插槽
+uint8 xhci_enable_slot(xhci_controller_t *xhci_controller) {
+    trb_t trb;
+    enable_slot_com_trb(&trb);
+    xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
+    xhci_ring_doorbell(xhci_controller, 0, 0);
+    timing();
+    xhci_ering_dequeue(xhci_controller, &trb);
+    if ((trb.member1 >> 42 & 0x3F) == 33 && trb.member1 >> 56) {
+        return trb.member1 >> 56;
+    }
+    return -1;
+}
+
+//初始化环
+static inline int xhci_ring_init(xhci_ring_t *ring, uint32 align_size) {
+    ring->ring_base = kzalloc(align_up(TRB_COUNT * sizeof(trb_t), align_size));
+    ring->index = 0;
+    ring->status_c = TRB_FLAG_CYCLE;
+}
+
+typedef struct {
+    uint32 reg0;
+    uint32 reg1;
+    uint32 reg2;
+    uint32 reg3;
+} xhci_slot_context_t;
+
+//增加输入插槽上下文
+void xhci_input_slot_context_add(xhci_input_context_t *input_ctx, uint32 ctx_size, xhci_slot_context_t *from_slot_ctx) {
+    xhci_slot_context_t *to_slot_ctx = (xhci_slot_context_t *) ((uint64) input_ctx + ctx_size);
+    to_slot_ctx->reg0 = from_slot_ctx->reg0;
+    to_slot_ctx->reg1 = from_slot_ctx->reg1;
+    to_slot_ctx->reg2 = from_slot_ctx->reg2;
+    to_slot_ctx->reg3 = from_slot_ctx->reg3;
+    input_ctx->input_ctx32.control.add_context |= 1;
+}
+
+typedef struct {
+    uint32 reg0;
+    uint32 reg1;
+    uint64 reg2;
+    uint32 reg3;
+} xhci_endpoint_context_t;
+
+//增加输入端点上下文
+void xhci_input_endpoint_context_add(xhci_input_context_t *input_ctx, uint32 ctx_size, uint32 ep_num,
+                                     xhci_endpoint_context_t *from_ep_ctx) {
+    xhci_endpoint_context_t *to_ep_ctx = (xhci_endpoint_context_t *) ((uint64) input_ctx + ctx_size * (ep_num + 1));
+    to_ep_ctx->reg0 = from_ep_ctx->reg0;
+    to_ep_ctx->reg1 = from_ep_ctx->reg1;
+    to_ep_ctx->reg2 = from_ep_ctx->reg2;
+    to_ep_ctx->reg3 = from_ep_ctx->reg3;
+    input_ctx->input_ctx32.control.add_context |= 1 << ep_num;
+}
+
+//读取插槽上下文
+void xhci_slot_context_read(xhci_device_context_t *dev_context, xhci_slot_context_t *to_slot_ctx) {
+    to_slot_ctx->reg0 = dev_context->dev_ctx32.slot.route_speed;
+    to_slot_ctx->reg1 = dev_context->dev_ctx32.slot.latency_hub;
+    to_slot_ctx->reg2 = dev_context->dev_ctx32.slot.parent_info;
+    to_slot_ctx->reg3 = dev_context->dev_ctx32.slot.addr_status;
+}
+
+//读取端点上下文
+void xhci_endpoint_context_read(xhci_device_context_t *dev_context, uint32 ctx_size, uint32 ep_num,
+                                xhci_endpoint_context_t *to_ep_ctx) {
+    xhci_endpoint_context_t *from_ep_ctx = (xhci_endpoint_context_t *) ((uint64) dev_context + ctx_size * (ep_num + 1));
+    to_ep_ctx->reg0 = from_ep_ctx->reg0;
+    to_ep_ctx->reg1 = from_ep_ctx->reg1;
+    to_ep_ctx->reg2 = from_ep_ctx->reg2;
+    to_ep_ctx->reg3 = from_ep_ctx->reg3;
+}
+
+//设置设备地址
+static inline void xhci_address_device(usb_dev_t *usb_dev) {
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+    //分配设备插槽上下文内存
+    usb_dev->dev_context = kzalloc(align_up(sizeof(xhci_device_context_t), xhci_controller->align_size));
+    xhci_controller->dcbaap[usb_dev->slot_id] = va_to_pa(usb_dev->dev_context);
+    //初始化控制
+    xhci_ring_init(&usb_dev->control_ring, xhci_controller->align_size);
+    //配置设备上下文
+    xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
+    xhci_slot_context_t slot_ctx;
+    slot_ctx.reg0 = 1 << 27 | (xhci_controller->op_reg->portregs[usb_dev->port_id - 1].portsc & 0x3C00) << 10;
+    slot_ctx.reg1 = usb_dev->port_id << 16;
+    slot_ctx.reg2 = 0;
+    slot_ctx.reg3 = 0;
+    xhci_input_slot_context_add(input_ctx, xhci_controller->context_size, &slot_ctx); // 启用 Slot Context
+
+    xhci_endpoint_context_t ep_ctx;
+    ep_ctx.reg0 = 0;
+    ep_ctx.reg1 = EP_TYPE_CONTROL | 8 << 16 | 3 << 1;
+    ep_ctx.reg2 = va_to_pa(usb_dev->control_ring.ring_base) | 1;
+    ep_ctx.reg3 = 0;
+    xhci_input_endpoint_context_add(input_ctx, xhci_controller->context_size, 1, &ep_ctx); //Endpoint 0 Context
+
+    trb_t trb;
+    addr_dev_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
+    xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
+    xhci_ring_doorbell(xhci_controller, 0, 0);
+    timing();
+    xhci_ering_dequeue(xhci_controller, &trb);
+    kfree(input_ctx);
+}
+
 
 void init_xhci(void);
 
