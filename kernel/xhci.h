@@ -554,8 +554,6 @@ typedef struct {
     uint64  status_c; //循环位
 } xhci_ring_t;
 
-
-
 #pragma pack(pop)
 
 //xhci控制器
@@ -1030,9 +1028,6 @@ static inline void xhci_address_device(usb_dev_t *usb_dev) {
     xhci_ering_dequeue(xhci_controller, &trb);
     kfree(input_ctx);
 }
-
-
-void init_xhci(void);
 
 int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);
 

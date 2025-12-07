@@ -1,6 +1,8 @@
 #pragma once
 #include "xhci.h"
 
+#pragma pack(push,1)
+
 //region usb描述符
 /*usb设备描述符
 描述符长度，固定为 18 字节（0x12）

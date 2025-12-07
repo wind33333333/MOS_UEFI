@@ -14,22 +14,20 @@ xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_reg, uint8 cap_id) {
     return NULL;
 }
 
+//xhci设备初始化驱动
+int xhci_init_driver(pcie_device_t *xhci_device) {
+    pcie_bar_set(xhci_device, 0); //初始化bar0寄存器
+    pcie_msi_intrpt_set(xhci_device); //初始化xhci msi中断
+    xhci_device->private = kzalloc(sizeof(xhci_controller_t)); //设备私有数据空间申请一块内存，存放xhci相关信息
 
-//xhci设备初始化
-INIT_TEXT void init_xhci(void) {
-    pcie_device_t *xhci_dev = pcie_device_find(XHCI_CLASS_CODE); //查找xhci设备
-    pcie_bar_set(xhci_dev, 0); //初始化bar0寄存器
-    pcie_msi_intrpt_set(xhci_dev); //初始化xhci msi中断
-    xhci_dev->private = kzalloc(sizeof(xhci_controller_t)); //设备私有数据空间申请一块内存，存放xhci相关信息
-
-    xhci_controller_t *xhci_controller = xhci_dev->private;
-    xhci_controller->pcie_dev = xhci_dev;
+    xhci_controller_t *xhci_controller = xhci_device->private;
+    xhci_controller->pcie_dev = xhci_device;
 
     /*初始化xhci寄存器*/
-    xhci_controller->cap_reg = xhci_dev->bar[0]; //xhci能力寄存器基地址
-    xhci_controller->op_reg = xhci_dev->bar[0] + xhci_controller->cap_reg->cap_length; //xhci操作寄存器基地址
-    xhci_controller->rt_reg = xhci_dev->bar[0] + xhci_controller->cap_reg->rtsoff; //xhci运行时寄存器基地址
-    xhci_controller->db_reg = xhci_dev->bar[0] + xhci_controller->cap_reg->dboff; //xhci门铃寄存器基地址
+    xhci_controller->cap_reg = xhci_device->bar[0]; //xhci能力寄存器基地址
+    xhci_controller->op_reg = xhci_device->bar[0] + xhci_controller->cap_reg->cap_length; //xhci操作寄存器基地址
+    xhci_controller->rt_reg = xhci_device->bar[0] + xhci_controller->cap_reg->rtsoff; //xhci运行时寄存器基地址
+    xhci_controller->db_reg = xhci_device->bar[0] + xhci_controller->cap_reg->dboff; //xhci门铃寄存器基地址
 
     /*停止复位xhci*/
     xhci_controller->op_reg->usbcmd &= ~XHCI_CMD_RS; //停止xhci
@@ -86,7 +84,7 @@ INIT_TEXT void init_xhci(void) {
         "Xhci Version:%x.%x USB%x.%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d Context_Size:%d AC64:%d SPB:%d USBcmd:%#x USBsts:%#x AlignSize:%d iman:%#x imod:%#x crcr:%#lx dcbaap:%#lx erstba:%#lx erdp0:%#lx\n",
         xhci_controller->cap_reg->hciversion >> 8, xhci_controller->cap_reg->hciversion & 0xFF,
         sp_cap->supported_protocol.protocol_ver >> 24, sp_cap->supported_protocol.protocol_ver >> 16 & 0xFF,
-        va_to_pa(xhci_dev->bar[0]), xhci_dev->msi_x_flags, xhci_controller->cap_reg->hcsparams1 & 0xFF,
+        va_to_pa(xhci_device->bar[0]), xhci_device->msi_x_flags, xhci_controller->cap_reg->hcsparams1 & 0xFF,
         xhci_controller->cap_reg->hcsparams1 >> 8 & 0x7FF,
         xhci_controller->cap_reg->hcsparams1 >> 24, xhci_controller->cap_reg->hccparams1 >> 2 & 1,
         xhci_controller->context_size, spb_number,
@@ -105,4 +103,14 @@ INIT_TEXT void init_xhci(void) {
     color_printk(GREEN,BLACK, "\nUSBcmd:%#x  USBsts:%#x", xhci_controller->op_reg->usbcmd,
                  xhci_controller->op_reg->usbsts);
     while (1);
+}
+
+//注册xhci驱动程序
+INIT_TEXT void xhci_driver_register(void) {
+    pcie_driver_t *xhci_driver = kmalloc(sizeof(pcie_driver_t));
+    xhci_driver->name = "xhci_driver";
+    xhci_driver->class_code = XHCI_CLASS_CODE;
+    xhci_driver->init_driver = xhci_init_driver;
+    xhci_driver->remove_driver = NULL;
+    pcie_driver_register(xhci_driver);
 }

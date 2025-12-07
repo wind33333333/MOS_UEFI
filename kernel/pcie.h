@@ -2,6 +2,7 @@
 #include "moslib.h"
 
 #pragma pack(push,1)
+
 typedef struct {
     /* PCI 通用配置头（前 64 字节）*/
     /* 设备标识区 (0x00 - 0x0F) */
@@ -179,12 +180,12 @@ typedef struct {
     list_head_t list; /* 全局 PCI 设备链表节点 */
 } pcie_device_t;
 
-//pcie驱动
+//pcie设备驱动
 typedef struct {
     char* name;
     uint32 class_code;
-    int  (*probe)(pcie_device_t *pdev);   // 绑定时调用
-    void (*remove)(pcie_device_t *pdev);  // 卸载/关机时调用
+    int  (*init_driver)(pcie_device_t *pcie_device);   // 设备初始化驱动
+    void (*remove_driver)(pcie_device_t *pcie_device);  // 设备卸载/关机时驱动
     list_head_t list;
 }pcie_driver_t;
 
@@ -237,4 +238,5 @@ void pcie_bar_set(pcie_device_t *pcie_dev,uint8 bir);
 void pcie_msi_intrpt_set(pcie_device_t *pcie_dev) ;
 void pcie_enable_msi_intrs(pcie_device_t *pcie_dev);
 void pcie_disable_msi_intrs(pcie_device_t *pcie_dev);
+static inline void pcie_driver_register(pcie_driver_t *pcie_driver);
 

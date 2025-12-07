@@ -9,7 +9,7 @@
 struct {
     uint32 class_code;
     char *name;
-} pcie_device_classnames[] = {
+} pcie_classnames[] = {
     {UNCLASSIFIED_CLASS_CODE, "Unclassified Device"},
     {SCSI_CLASS_CODE, "SCSI Controller"},
     {AHCI_CLASS_CODE, "AHCI Controller (SATA)"},
@@ -51,11 +51,11 @@ struct {
 list_head_t pcie_device_list;
 
 //pcie设备驱动全局链表
-list_head_t pcie_device_driver_list;
+list_head_t pcie_driver_list;
 
 //pcie设备驱动注册
-static inline void pcie_device_driver_register(pcie_driver_t *pcie_driver) {
-    list_add_head(&pcie_device_driver_list, &pcie_driver->list);
+static inline void pcie_driver_register(pcie_driver_t *pcie_driver) {
+    list_add_head(&pcie_driver_list, &pcie_driver->list);
 };
 
 //获取pice设备的class_code
@@ -67,22 +67,23 @@ static inline uint32 get_pcie_classcode(pcie_device_t *pcie_device) {
 //查找pcie的类名
 static inline char *pcie_clasename_find(pcie_device_t *pcie_device) {
     uint32 class_code = get_pcie_classcode(pcie_device);
-    for (int i = 0; pcie_device_classnames[i].name != NULL; i++) {
-        if (class_code == pcie_device_classnames[i].class_code) return pcie_device_classnames[i].name;
+    for (int i = 0; pcie_classnames[i].name != NULL; i++) {
+        if (class_code == pcie_classnames[i].class_code) return pcie_classnames[i].name;
     }
 }
 
 /*
  * 创建pcie_dev结构，添加到链表
  */
-static inline void create_pcie_dev(pcie_config_space_t *pcie_config_space, uint8 bus, uint8 dev, uint8 func) {
-    pcie_device_t *pcie_dev = kzalloc(sizeof(pcie_device_t));
-    pcie_dev->bus = bus;
-    pcie_dev->dev = dev;
-    pcie_dev->func = func;
-    pcie_dev->pcie_config_space = iomap(pcie_config_space,PAGE_4K_SIZE,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
-    pcie_dev->name = pcie_clasename_find(pcie_dev);
-    list_add_head(&pcie_device_list, &pcie_dev->list);
+static inline void create_pcie_device(pcie_config_space_t *pcie_config_space, uint8 bus, uint8 dev, uint8 func) {
+    pcie_device_t *pcie_device = kzalloc(sizeof(pcie_device_t));
+    pcie_device->bind_driver = 0;  //初始化未绑定驱动
+    pcie_device->bus = bus;
+    pcie_device->dev = dev;
+    pcie_device->func = func;
+    pcie_device->pcie_config_space = iomap((uint64)pcie_config_space,PAGE_4K_SIZE,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+    pcie_device->name = pcie_clasename_find(pcie_device);
+    list_add_head(&pcie_device_list, &pcie_device->list);
 }
 
 /*
@@ -111,7 +112,7 @@ static inline void pcie_enmu(uint64 ecam_base, uint8 bus) {
                 continue;
             }
             //创建pcie_dev
-            create_pcie_dev(pcie_config_space, bus, dev, func);
+            create_pcie_device(pcie_config_space, bus, dev, func);
             //type1 为pcie桥优先扫描下游设备（深度优先）
             if (pcie_config_space->header_type & 1) pcie_enmu(ecam_base, pcie_config_space->type1.secondary_bus);
             //如果功能0不是多功能设备，则跳过该设备的后续功能
@@ -286,13 +287,13 @@ void pcie_msi_intrpt_set(pcie_device_t *pcie_dev) {
 INIT_TEXT void pcie_init(void) {
     //初始化pcie设备链表
     list_head_init(&pcie_device_list);
-    //初始化pcie驱动链表
-    list_head_init(&pcie_device_driver_list);
+
     //查找mcfg表
     mcfg_t *mcfg = acpi_get_table('GFCM');
     mcfg_entry_t *mcfg_entry = &mcfg->entry;
     uint32 mcfg_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
                             mcfg_entry_t);
+
     //扫描pcie设备，初始化并添加到链表
     for (uint32 i = 0; i < mcfg_count; i++) {
         color_printk(GREEN,BLACK, "ECAM base:%#lX Segment:%d StartBus:%d EndBus:%d\n",
@@ -300,6 +301,7 @@ INIT_TEXT void pcie_init(void) {
                      mcfg_entry[i].end_bus);
         pcie_enmu(mcfg_entry[i].base_address, mcfg_entry[i].start_bus);
     }
+
     //打印pcie设备
     list_head_t *next = pcie_device_list.next;
     while (next != &pcie_device_list) {
@@ -309,4 +311,8 @@ INIT_TEXT void pcie_init(void) {
                      pcie_dev->pcie_config_space->device_id, get_pcie_classcode(pcie_dev), pcie_dev->name);
         next = next->next;
     }
+
+    //初始化pcie驱动链表
+    list_head_init(&pcie_driver_list);
+
 }

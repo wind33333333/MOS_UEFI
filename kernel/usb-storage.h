@@ -1,5 +1,7 @@
 #pragma once
 
+#pragma pack(push,1)
+
 /* CBW 结构（31 字节） */
 typedef struct {
     uint32 cbw_signature; // 固定为 0x43425355 ('USBC')
