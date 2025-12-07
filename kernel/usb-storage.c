@@ -495,7 +495,6 @@ int32 usb_mass_storage(usb_dev_t *usb_dev, usb_interface_descriptor_t *interface
             if (!status_buf->status) break;
         }
 
-
         // INQUIRY 获取u盘基本信息
         ciu->iu_id = 1;
         ciu->tag   = bswap16(1);

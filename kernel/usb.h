@@ -171,7 +171,7 @@ typedef struct {
 
 //usb驱动结构
 typedef struct {
-    const char *name;
+    char *name;
     uint8 class;
     uint8 subclass;
     int32 (*usb_init)(usb_dev_t *usb_dev, usb_interface_descriptor_t *interface_desc, void *desc_end);

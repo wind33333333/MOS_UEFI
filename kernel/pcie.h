@@ -145,12 +145,13 @@ typedef struct {
 
 #pragma pack(pop)
 
+//pcie设备
 typedef struct {
-    list_head_t list; /* 全局 PCI 设备链表节点 */
+    char  *name; /* 设备名 */
     uint8 func; /* 功能号 */
     uint8 dev; /* 设备号 */
     uint8 bus; /* 总线号 */
-    uint8 *name; /* 设备名 */
+    uint8 bind_driver; /* 绑定驱动 0=未绑定 1=已绑定*/
     pcie_config_space_t *pcie_config_space; /* pcie配置空间 */
     void *bar[6]; /*bar*/
     uint8 msi_x_flags;    // 1 = 支持msi_x 0 = 不支持msi_x
@@ -175,7 +176,17 @@ typedef struct {
         } msi_x;
     };
     void *private;                      //设备私有数据指针
-} pcie_dev_t;
+    list_head_t list; /* 全局 PCI 设备链表节点 */
+} pcie_device_t;
+
+//pcie驱动
+typedef struct {
+    char* name;
+    uint32 class_code;
+    int  (*probe)(pcie_device_t *pdev);   // 绑定时调用
+    void (*remove)(pcie_device_t *pdev);  // 卸载/关机时调用
+    list_head_t list;
+}pcie_driver_t;
 
 typedef enum {
     power_mgmt_e = 1,
@@ -183,12 +194,6 @@ typedef enum {
     pcie_cap_e   = 0x10,
     msi_x_e      = 0x11
 } cap_id_e;
-
-//获取pice设备的class_code
-static inline uint32 get_pcie_classcode(pcie_dev_t *pcie_dev) {
-    uint32 *class_code = (uint32*)&pcie_dev->pcie_config_space->revision_id;
-    return *class_code >> 8;
-}
 
 /*pcie设备class_code*/
 #define UNCLASSIFIED_CLASS_CODE        0x000000  // 未分类设备
@@ -226,10 +231,10 @@ static inline uint32 get_pcie_classcode(pcie_dev_t *pcie_dev) {
 #define SERIAL_BUS_OTHER_CLASS_CODE    0x0C8000  // 其他串行总线控制器
 
 void pcie_init(void);
-pcie_dev_t *pcie_dev_find(uint32 class_code);
-cap_t *pcie_cap_find(pcie_dev_t *pcie_dev, cap_id_e cap_id);
-void pcie_bar_set(pcie_dev_t *pcie_dev,uint8 bir);
-void pcie_msi_intrpt_set(pcie_dev_t *pcie_dev) ;
-void pcie_enable_msi_intrs(pcie_dev_t *pcie_dev);
-void pcie_disable_msi_intrs(pcie_dev_t *pcie_dev);
+pcie_device_t *pcie_device_find(uint32 class_code);
+cap_t *pcie_cap_find(pcie_device_t *pcie_dev, cap_id_e cap_id);
+void pcie_bar_set(pcie_device_t *pcie_dev,uint8 bir);
+void pcie_msi_intrpt_set(pcie_device_t *pcie_dev) ;
+void pcie_enable_msi_intrs(pcie_device_t *pcie_dev);
+void pcie_disable_msi_intrs(pcie_device_t *pcie_dev);
 
