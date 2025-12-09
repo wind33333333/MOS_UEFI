@@ -5,6 +5,7 @@
 #include "slub.h"
 #include "vmalloc.h"
 #include "vmm.h"
+#include "xhci.h"
 
 struct {
     uint32 class_code;
@@ -77,12 +78,12 @@ static inline char *pcie_clasename_find(pcie_device_t *pcie_device) {
  */
 static inline void create_pcie_device(pcie_config_space_t *pcie_config_space, uint8 bus, uint8 dev, uint8 func) {
     pcie_device_t *pcie_device = kzalloc(sizeof(pcie_device_t));
-    pcie_device->bind_driver = 0;  //初始化未绑定驱动
     pcie_device->bus = bus;
     pcie_device->dev = dev;
     pcie_device->func = func;
     pcie_device->pcie_config_space = iomap((uint64)pcie_config_space,PAGE_4K_SIZE,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
     pcie_device->name = pcie_clasename_find(pcie_device);
+    pcie_device->driver = NULL;
     list_add_head(&pcie_device_list, &pcie_device->list);
 }
 
@@ -283,6 +284,23 @@ void pcie_msi_intrpt_set(pcie_device_t *pcie_dev) {
     pcie_disable_msi_intrs(pcie_dev);
 }
 
+//pcie驱动绑定
+void pcie_driver_bind(void) {
+    list_head_t *next_pcie_device = pcie_driver_list.next;
+    while (next_pcie_device != &pcie_driver_list) {
+        pcie_device_t *pcie_device = CONTAINER_OF(next_pcie_device,pcie_device_t,list);
+        list_head_t *next_pcie_driver = next_pcie_driver->next;
+        while (next_pcie_driver != &pcie_driver_list) {
+            pcie_driver_t *pcie_driver = CONTAINER_OF(next_pcie_driver,pcie_driver_t,list);
+            if (get_pcie_classcode(pcie_device) == pcie_driver->class_code) {
+                pcie_driver->probe(pcie_device);
+                pcie_device->driver = pcie_driver;
+                break;
+            }
+        }
+    }
+
+}
 
 INIT_TEXT void pcie_init(void) {
     //初始化pcie设备链表
@@ -314,5 +332,9 @@ INIT_TEXT void pcie_init(void) {
 
     //初始化pcie驱动链表
     list_head_init(&pcie_driver_list);
+    xhci_driver_register();     //注册xhci驱动程序
+
+    //pcie设备绑定驱动程序
+    pcie_driver_bind();
 
 }

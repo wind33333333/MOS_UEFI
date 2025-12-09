@@ -1032,3 +1032,5 @@ static inline void xhci_address_device(usb_dev_t *usb_dev) {
 int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);
 
 int xhci_ering_dequeue(xhci_controller_t *xhci_regs, trb_t *evt_trb);
+
+void xhci_driver_register(void);

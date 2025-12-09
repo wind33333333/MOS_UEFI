@@ -146,13 +146,14 @@ typedef struct {
 
 #pragma pack(pop)
 
+struct pcie_driver_t;
+
 //pcie设备
 typedef struct {
     char  *name; /* 设备名 */
     uint8 func; /* 功能号 */
     uint8 dev; /* 设备号 */
     uint8 bus; /* 总线号 */
-    uint8 bind_driver; /* 绑定驱动 0=未绑定 1=已绑定*/
     pcie_config_space_t *pcie_config_space; /* pcie配置空间 */
     void *bar[6]; /*bar*/
     uint8 msi_x_flags;    // 1 = 支持msi_x 0 = 不支持msi_x
@@ -176,6 +177,7 @@ typedef struct {
             uint64        *pba_table;     //中断挂起表
         } msi_x;
     };
+    struct pcie_driver_t *driver;
     void *private;                      //设备私有数据指针
     list_head_t list; /* 全局 PCI 设备链表节点 */
 } pcie_device_t;
@@ -184,8 +186,8 @@ typedef struct {
 typedef struct {
     char* name;
     uint32 class_code;
-    int  (*init_driver)(pcie_device_t *pcie_device);   // 设备初始化驱动
-    void (*remove_driver)(pcie_device_t *pcie_device);  // 设备卸载/关机时驱动
+    int  (*probe)(pcie_device_t *pcie_device);   // 绑定时回调
+    void (*remove)(pcie_device_t *pcie_device);  // 卸载/移除时回调
     list_head_t list;
 }pcie_driver_t;
 
