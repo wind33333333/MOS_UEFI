@@ -146,11 +146,10 @@ typedef struct {
 
 #pragma pack(pop)
 
-struct pcie_driver_t;
+struct device_t;
 
 //pcie设备
 typedef struct {
-    char  *name; /* 设备名 */
     uint8 func; /* 功能号 */
     uint8 dev; /* 设备号 */
     uint8 bus; /* 总线号 */
@@ -177,9 +176,8 @@ typedef struct {
             uint64        *pba_table;     //中断挂起表
         } msi_x;
     };
-    struct pcie_driver_t *driver;
+    struct device_t;                    //内嵌设备通用结构
     void *private;                      //设备私有数据指针
-    list_head_t list; /* 全局 PCI 设备链表节点 */
 } pcie_device_t;
 
 //pcie设备驱动

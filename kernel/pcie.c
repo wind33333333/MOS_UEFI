@@ -83,7 +83,7 @@ static inline void create_pcie_device(pcie_config_space_t *pcie_config_space, ui
     pcie_device->func = func;
     pcie_device->pcie_config_space = iomap((uint64)pcie_config_space,PAGE_4K_SIZE,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
     pcie_device->name = pcie_clasename_find(pcie_device);
-    pcie_device->driver = NULL;
+    pcie_device->dev = NULL;
     list_add_head(&pcie_device_list, &pcie_device->list);
 }
 
@@ -294,7 +294,7 @@ void pcie_driver_bind(void) {
             pcie_driver_t *pcie_driver = CONTAINER_OF(next_pcie_driver,pcie_driver_t,list);
             if (get_pcie_classcode(pcie_device) == pcie_driver->class_code) {
                 pcie_driver->probe(pcie_device);
-                pcie_device->driver = pcie_driver;
+                pcie_device->dev = pcie_driver;
                 break;
             }
         }

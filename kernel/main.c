@@ -13,7 +13,7 @@
 #include "rbtree.h"
 #include "uefi.h"
 #include "pcie.h"
-#include "xhci.h"
+#include "bus.h"
 
 INIT_TEXT void init_kernel(void) {
     mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
@@ -30,6 +30,7 @@ INIT_TEXT void init_kernel(void) {
     init_ioapic();                             //初始化ioapic
     init_bsp();                                //初始化bsp核心
     init_hpet();                               //初始化hpet
+    bus_init();                                //总线初始化
     pcie_init();                               //初始化pcie
 
     while (1);
