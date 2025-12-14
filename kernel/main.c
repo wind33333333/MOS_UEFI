@@ -31,7 +31,6 @@ INIT_TEXT void init_kernel(void) {
     init_bsp();                                //初始化bsp核心
     init_hpet();                               //初始化hpet
     pcie_init();                               //初始化pcie
-    xhci_device_init();                               //初始化xhci
 
     while (1);
 

@@ -1,14 +1,14 @@
 #pragma once
 #include "moslib.h"
 
-typedef struct bus_type_t;
-typedef struct device_driver_t;
+struct bus_type_t;
+struct driver_t;
 
-typedef struct device{
-    device               *parent;   // 父设备：USB设备的父是Hub/控制器；xHCI 的父通常是 PCI 设备
-    bus_type_t           *bus;      // 设备属于哪个 bus
-    driver_t             *driver;   // 当前绑定的 driver；未绑定则为 NULL
-    list_head_t          bus_node;  // 挂到 bus->dev_list
+typedef struct device_t{
+    struct device       *parent;   // 父设备：USB设备的父是Hub/控制器；xHCI 的父通常是 PCI 设备
+    struct bus_type_t   *bus;      // 设备属于哪个 bus
+    struct driver_t     *driver;   // 当前绑定的 driver；未绑定则为 NULL
+    list_head_t         bus_node;  // 挂到 bus->dev_list
 } device_t;
 
 void device_register(device_t *dev);
