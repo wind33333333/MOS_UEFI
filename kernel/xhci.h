@@ -568,7 +568,7 @@ typedef struct {
     xhci_ring_t event_ring; //事件环
     uint32 align_size; //xhci内存分配对齐边界
     uint8 context_size; //设备上下文字节数（32或64字节）
-    pcie_device_t *pcie_dev;
+    pcie_device_t *pcie_device;
 } xhci_controller_t;
 
 

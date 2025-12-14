@@ -21,7 +21,7 @@ int xhci_probe(pcie_device_t *xhci_device) {
     xhci_device->private = kzalloc(sizeof(xhci_controller_t)); //设备私有数据空间申请一块内存，存放xhci相关信息
 
     xhci_controller_t *xhci_controller = xhci_device->private;
-    xhci_controller->pcie_dev = xhci_device;
+    xhci_controller->pcie_device = xhci_device;
 
     /*初始化xhci寄存器*/
     xhci_controller->cap_reg = xhci_device->bar[0]; //xhci能力寄存器基地址
