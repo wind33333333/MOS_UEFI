@@ -150,6 +150,7 @@ struct device_t;
 
 //pcie设备
 typedef struct {
+    uint32 class_code;
     uint8 func; /* 功能号 */
     uint8 dev; /* 设备号 */
     uint8 bus; /* 总线号 */
@@ -178,16 +179,17 @@ typedef struct {
     };
     struct device_t;                    //内嵌设备通用结构
     void *private;                      //设备私有数据指针
-} pcie_device_t;
+} pcie_dev_t;
+
+struct driver_t;
 
 //pcie设备驱动
 typedef struct {
-    char* name;
     uint32 class_code;
-    int  (*probe)(pcie_device_t *pcie_device);   // 绑定时回调
-    void (*remove)(pcie_device_t *pcie_device);  // 卸载/移除时回调
-    list_head_t list;
-}pcie_driver_t;
+    int  (*probe)(pcie_dev_t *pcie_dev);   // 绑定时回调
+    void (*remove)(pcie_dev_t *pcie_dev);  // 卸载/移除时回调
+    struct driver_t;
+}pcie_drv_t;
 
 typedef enum {
     power_mgmt_e = 1,
