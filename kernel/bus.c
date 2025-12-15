@@ -1,4 +1,5 @@
 #include "bus.h"
+#include "pcie.h"
 
 //pcie总线
 bus_type_t pcie_bus;
@@ -11,7 +12,7 @@ bus_type_t usb_bus;
 //创建一个pcie总线和usb总线
 void bus_init(void) {
     pcie_bus.name = "PCIe Bus";
-    pcie_bus.match = NULL;
+    pcie_bus.match = pcie_bus_match;
     pcie_bus.probe = NULL;
     pcie_bus.remove = NULL;
     pcie_bus.shutdown = NULL;

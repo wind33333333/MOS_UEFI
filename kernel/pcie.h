@@ -1,5 +1,7 @@
 #pragma once
 #include "moslib.h"
+#include "device.h"
+#include "driver.h"
 
 #pragma pack(push,1)
 
@@ -146,10 +148,8 @@ typedef struct {
 
 #pragma pack(pop)
 
-struct device_t;
-
 //pcie设备
-typedef struct {
+typedef struct pcie_dev_t{
     uint32 class_code;
     uint8 func; /* 功能号 */
     uint8 dev; /* 设备号 */
@@ -177,18 +177,16 @@ typedef struct {
             uint64        *pba_table;     //中断挂起表
         } msi_x;
     };
-    struct device_t;                    //内嵌设备通用结构
+    device_t device;                    //内嵌设备通用结构
     void *private;                      //设备私有数据指针
 } pcie_dev_t;
-
-struct driver_t;
 
 //pcie设备驱动
 typedef struct {
     uint32 class_code;
     int  (*probe)(pcie_dev_t *pcie_dev);   // 绑定时回调
     void (*remove)(pcie_dev_t *pcie_dev);  // 卸载/移除时回调
-    struct driver_t;
+    driver_t driver;
 }pcie_drv_t;
 
 typedef enum {
@@ -233,12 +231,14 @@ typedef enum {
 #define CANBUS_CLASS_CODE              0x0C0900  // CANbus 控制器
 #define SERIAL_BUS_OTHER_CLASS_CODE    0x0C8000  // 其他串行总线控制器
 
+
+int pcie_bus_match(device_t *dev,driver_t *drv);
 void pcie_init(void);
-pcie_device_t *pcie_device_find(uint32 class_code);
-cap_t *pcie_cap_find(pcie_device_t *pcie_dev, cap_id_e cap_id);
-void pcie_bar_set(pcie_device_t *pcie_dev,uint8 bir);
-void pcie_msi_intrpt_set(pcie_device_t *pcie_dev) ;
-void pcie_enable_msi_intrs(pcie_device_t *pcie_dev);
-void pcie_disable_msi_intrs(pcie_device_t *pcie_dev);
-static inline void pcie_driver_register(pcie_driver_t *pcie_driver);
+pcie_dev_t *pcie_device_find(uint32 class_code);
+cap_t *pcie_cap_find(pcie_dev_t *pcie_dev, cap_id_e cap_id);
+void pcie_bar_set(pcie_dev_t *pcie_dev,uint8 bir);
+void pcie_msi_intrpt_set(pcie_dev_t *pcie_dev) ;
+void pcie_enable_msi_intrs(pcie_dev_t *pcie_dev);
+void pcie_disable_msi_intrs(pcie_dev_t *pcie_dev);
+static inline void pcie_driver_register(pcie_drv_t *pcie_drv);
 
