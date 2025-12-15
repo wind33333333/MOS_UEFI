@@ -1,8 +1,19 @@
 #include "device.h"
-
+#include "driver.h"
 #include "bus.h"
 
 //向总线注册设备
 void device_register(device_t *dev) {
-    list_add_head(&dev->bus->dev_list, &dev->bus_node);
+    bus_type_t *bus = dev->bus;
+    list_add_head(&bus->dev_list, &dev->bus_node);
+    list_head_t *next_drv_node = bus->drv_list.next;
+    while (next_drv_node != &bus->drv_list) {
+        driver_t *drv = CONTAINER_OF(next_drv_node,driver_t,bus_node);
+        if (bus->match(dev,drv)) {
+            dev->driver = drv;
+            drv->probe(dev);
+            break;
+        }
+        next_drv_node = next_drv_node->next;
+    }
 }
