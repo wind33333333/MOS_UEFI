@@ -73,9 +73,7 @@ int pcie_bus_match(device_t *dev,driver_t *drv) {
 
 //pcie设备探测
 int pcie_bus_probe(device_t *dev) {
-    pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,device);
-
-    device_register(dev);
+    dev->driver->probe(dev);
 }
 
 extern bus_type_t pcie_bus;
@@ -93,6 +91,7 @@ static inline void create_pcie_device(pcie_config_space_t *pcie_config_space, ui
     pcie_dev->device.name = pcie_clasename_find(pcie_dev);
     pcie_dev->device.bus = &pcie_bus;
     pcie_dev->device.parent = NULL;
+    device_register(&pcie_dev->device);
 }
 
 /*
