@@ -186,7 +186,7 @@ typedef struct {
     uint32 class_code;
     int  (*probe)(pcie_dev_t *pcie_dev);   // 绑定时回调
     void (*remove)(pcie_dev_t *pcie_dev);  // 卸载/移除时回调
-    driver_t driver;
+    driver_t drv;
 }pcie_drv_t;
 
 typedef enum {

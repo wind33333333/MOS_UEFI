@@ -1,5 +1,6 @@
 #include "xhci.h"
 #include "printk.h"
+#include "pcie.h"
 
 //usb设备全局链
 list_head_t usb_dev_list;
@@ -15,19 +16,18 @@ xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_reg, uint8 cap_id) {
 }
 
 //xhci设备初始化驱动
-int xhci_probe(pcie_device_t *xhci_device) {
-    pcie_bar_set(xhci_device, 0); //初始化bar0寄存器
-    pcie_msi_intrpt_set(xhci_device);
-    xhci_device->private = kzalloc(sizeof(xhci_controller_t)); //设备私有数据空间申请一块内存，存放xhci相关信息
+int xhci_probe(pcie_dev_t *xhci_dev) {
+    pcie_bar_set(xhci_dev, 0); //初始化bar0寄存器
+    pcie_msi_intrpt_set(xhci_dev);
+    xhci_dev->private = kzalloc(sizeof(xhci_controller_t)); //设备私有数据空间申请一块内存，存放xhci相关信息
 
-    xhci_controller_t *xhci_controller = xhci_device->private;
-    xhci_controller->pcie_device = xhci_device;
+    xhci_controller_t *xhci_controller = xhci_dev->private;
 
     /*初始化xhci寄存器*/
-    xhci_controller->cap_reg = xhci_device->bar[0]; //xhci能力寄存器基地址
-    xhci_controller->op_reg = xhci_device->bar[0] + xhci_controller->cap_reg->cap_length; //xhci操作寄存器基地址
-    xhci_controller->rt_reg = xhci_device->bar[0] + xhci_controller->cap_reg->rtsoff; //xhci运行时寄存器基地址
-    xhci_controller->db_reg = xhci_device->bar[0] + xhci_controller->cap_reg->dboff; //xhci门铃寄存器基地址
+    xhci_controller->cap_reg = xhci_dev->bar[0]; //xhci能力寄存器基地址
+    xhci_controller->op_reg = xhci_dev->bar[0] + xhci_controller->cap_reg->cap_length; //xhci操作寄存器基地址
+    xhci_controller->rt_reg = xhci_dev->bar[0] + xhci_controller->cap_reg->rtsoff; //xhci运行时寄存器基地址
+    xhci_controller->db_reg = xhci_dev->bar[0] + xhci_controller->cap_reg->dboff; //xhci门铃寄存器基地址
 
     /*停止复位xhci*/
     xhci_controller->op_reg->usbcmd &= ~XHCI_CMD_RS; //停止xhci
@@ -84,7 +84,7 @@ int xhci_probe(pcie_device_t *xhci_device) {
         "Xhci Version:%x.%x USB%x.%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d Context_Size:%d AC64:%d SPB:%d USBcmd:%#x USBsts:%#x AlignSize:%d iman:%#x imod:%#x crcr:%#lx dcbaap:%#lx erstba:%#lx erdp0:%#lx\n",
         xhci_controller->cap_reg->hciversion >> 8, xhci_controller->cap_reg->hciversion & 0xFF,
         sp_cap->supported_protocol.protocol_ver >> 24, sp_cap->supported_protocol.protocol_ver >> 16 & 0xFF,
-        va_to_pa(xhci_device->bar[0]), xhci_device->msi_x_flags, xhci_controller->cap_reg->hcsparams1 & 0xFF,
+        va_to_pa(xhci_dev->bar[0]), xhci_dev->msi_x_flags, xhci_controller->cap_reg->hcsparams1 & 0xFF,
         xhci_controller->cap_reg->hcsparams1 >> 8 & 0x7FF,
         xhci_controller->cap_reg->hcsparams1 >> 24, xhci_controller->cap_reg->hccparams1 >> 2 & 1,
         xhci_controller->context_size, spb_number,

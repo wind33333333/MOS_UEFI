@@ -1,10 +1,8 @@
 #pragma once
 #include "moslib.h"
-#include "pcie.h"
 #include "slub.h"
 #include "vmm.h"
-#include "device.h"
-#include "driver.h"
+#include "usb.h"
 
 #define TRB_COUNT 256        //trb个数
 
@@ -998,7 +996,7 @@ void xhci_endpoint_context_read(xhci_device_context_t *dev_context, uint32 ctx_s
 }
 
 //设置设备地址
-/*static inline void xhci_address_device(usb_dev_t *usb_dev) {
+static inline void xhci_address_device(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     //分配设备插槽上下文内存
     usb_dev->dev_context = kzalloc(align_up(sizeof(xhci_device_context_t), xhci_controller->align_size));
@@ -1028,10 +1026,8 @@ void xhci_endpoint_context_read(xhci_device_context_t *dev_context, uint32 ctx_s
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
     kfree(input_ctx);
-}*/
+}
 
 int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);
 
 int xhci_ering_dequeue(xhci_controller_t *xhci_regs, trb_t *evt_trb);
-
-void xhci_driver_register(void);

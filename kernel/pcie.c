@@ -71,10 +71,15 @@ int pcie_bus_match(device_t *dev,driver_t *drv) {
     return 0;
 }
 
+//pcie探测程序
+int pcie_probe(device_t *dev) {
+    dev->driver
+}
+
 /*
  * 创建pcie_dev结构
  */
-static inline void create_pcie_device(pcie_config_space_t *pcie_config_space, uint8 bus, uint8 dev, uint8 func) {
+static inline void create_pcie_dev(pcie_config_space_t *pcie_config_space, uint8 bus, uint8 dev, uint8 func) {
     pcie_dev_t *pcie_dev = kzalloc(sizeof(pcie_dev_t));
     pcie_dev->bus_num = bus;
     pcie_dev->dev_num = dev;
@@ -113,7 +118,7 @@ static inline void pcie_enmu(uint64 ecam_base, uint8 bus) {
                 continue;
             }
             //创建pcie_dev
-            create_pcie_device(pcie_config_space, bus, dev, func);
+            create_pcie_dev(pcie_config_space, bus, dev, func);
             //type1 为pcie桥优先扫描下游设备（深度优先）
             if (pcie_config_space->header_type & 1) pcie_enmu(ecam_base, pcie_config_space->type1.secondary_bus);
             //如果功能0不是多功能设备，则跳过该设备的后续功能
