@@ -151,9 +151,9 @@ typedef struct {
 //pcie设备
 typedef struct pcie_dev_t{
     uint32 class_code;
-    uint8 func; /* 功能号 */
-    uint8 dev; /* 设备号 */
-    uint8 bus; /* 总线号 */
+    uint8 func_num; /* 功能号 */
+    uint8 dev_num; /* 设备号 */
+    uint8 bus_num; /* 总线号 */
     pcie_config_space_t *pcie_config_space; /* pcie配置空间 */
     void *bar[6]; /*bar*/
     uint8 msi_x_flags;    // 1 = 支持msi_x 0 = 不支持msi_x
@@ -177,8 +177,8 @@ typedef struct pcie_dev_t{
             uint64        *pba_table;     //中断挂起表
         } msi_x;
     };
-    device_t device;                    //内嵌设备通用结构
-    void *private;                      //设备私有数据指针
+    device_t dev;                    //内嵌设备通用结构
+    void *private;                   //设备私有数据指针
 } pcie_dev_t;
 
 //pcie设备驱动
@@ -233,6 +233,7 @@ typedef enum {
 
 
 int pcie_bus_match(device_t *dev,driver_t *drv);
+int pcie_bus_probe(device_t *dev);
 void pcie_init(void);
 pcie_dev_t *pcie_device_find(uint32 class_code);
 cap_t *pcie_cap_find(pcie_dev_t *pcie_dev, cap_id_e cap_id);
@@ -240,5 +241,4 @@ void pcie_bar_set(pcie_dev_t *pcie_dev,uint8 bir);
 void pcie_msi_intrpt_set(pcie_dev_t *pcie_dev) ;
 void pcie_enable_msi_intrs(pcie_dev_t *pcie_dev);
 void pcie_disable_msi_intrs(pcie_dev_t *pcie_dev);
-static inline void pcie_driver_register(pcie_drv_t *pcie_drv);
 

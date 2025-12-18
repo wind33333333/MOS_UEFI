@@ -17,7 +17,7 @@ xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_reg, uint8 cap_id) {
 //xhci设备初始化驱动
 int xhci_probe(pcie_device_t *xhci_device) {
     pcie_bar_set(xhci_device, 0); //初始化bar0寄存器
-    pcie_msi_intrpt_set(xhci_device); //初始化xhci msi中断
+    pcie_msi_intrpt_set(xhci_device);
     xhci_device->private = kzalloc(sizeof(xhci_controller_t)); //设备私有数据空间申请一块内存，存放xhci相关信息
 
     xhci_controller_t *xhci_controller = xhci_device->private;

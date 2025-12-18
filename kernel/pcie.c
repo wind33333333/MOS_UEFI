@@ -5,7 +5,6 @@
 #include "slub.h"
 #include "vmalloc.h"
 #include "vmm.h"
-#include "xhci.h"
 #include "bus.h"
 
 struct {
@@ -45,9 +44,10 @@ struct {
     {SERCOS_CLASS_CODE, "SERCOS Interface (IEC 61491)"},
     {CANBUS_CLASS_CODE, "CANbus Controller"},
     {SERIAL_BUS_OTHER_CLASS_CODE, "Other Serial Bus Controller"},
-
     {0x000000, NULL}
 };
+
+extern bus_type_t pcie_bus;
 
 //获取pice设备的class_code
 static inline uint32 get_pcie_classcode(pcie_dev_t *pcie_dev) {
@@ -65,33 +65,26 @@ static inline char *pcie_clasename_find(pcie_dev_t *pcie_dev) {
 
 //pcie设备驱动匹配
 int pcie_bus_match(device_t *dev,driver_t *drv) {
-    pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,device);
+    pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
     pcie_drv_t *pcie_drv = CONTAINER_OF(drv,pcie_drv_t,driver);
     if (pcie_dev->class_code = pcie_drv->class_code) return 1;
     return 0;
 }
-
-//pcie设备探测
-int pcie_bus_probe(device_t *dev) {
-    dev->driver->probe(dev);
-}
-
-extern bus_type_t pcie_bus;
 
 /*
  * 创建pcie_dev结构
  */
 static inline void create_pcie_device(pcie_config_space_t *pcie_config_space, uint8 bus, uint8 dev, uint8 func) {
     pcie_dev_t *pcie_dev = kzalloc(sizeof(pcie_dev_t));
-    pcie_dev->bus = bus;
-    pcie_dev->dev = dev;
-    pcie_dev->func = func;
+    pcie_dev->bus_num = bus;
+    pcie_dev->dev_num = dev;
+    pcie_dev->func_num = func;
     pcie_dev->pcie_config_space = iomap((uint64)pcie_config_space,PAGE_4K_SIZE,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
     pcie_dev->class_code = get_pcie_classcode(pcie_dev);
-    pcie_dev->device.name = pcie_clasename_find(pcie_dev);
-    pcie_dev->device.bus = &pcie_bus;
-    pcie_dev->device.parent = NULL;
-    device_register(&pcie_dev->device);
+    pcie_dev->dev.name = pcie_clasename_find(pcie_dev);
+    pcie_dev->dev.bus = &pcie_bus;
+    pcie_dev->dev.parent = NULL;
+    device_register(&pcie_dev->dev);
 }
 
 /*
@@ -275,24 +268,6 @@ void pcie_msi_intrpt_set(pcie_dev_t *pcie_dev) {
     pcie_disable_msi_intrs(pcie_dev);
 }
 
-//pcie驱动绑定
-void pcie_driver_bind(void) {
-    list_head_t *next_pcie_device = pcie_driver_list.next;
-    while (next_pcie_device != &pcie_driver_list) {
-        pcie_device_t *pcie_device = CONTAINER_OF(next_pcie_device,pcie_device_t,list);
-        list_head_t *next_pcie_driver = next_pcie_driver->next;
-        while (next_pcie_driver != &pcie_driver_list) {
-            pcie_driver_t *pcie_driver = CONTAINER_OF(next_pcie_driver,pcie_driver_t,list);
-            if (get_pcie_classcode(pcie_device) == pcie_driver->class_code) {
-                pcie_driver->probe(pcie_device);
-                pcie_device->dev = pcie_driver;
-                break;
-            }
-        }
-    }
-
-}
-
 INIT_TEXT void pcie_init(void) {
     //查找mcfg表
     mcfg_t *mcfg = acpi_get_table('GFCM');
@@ -309,12 +284,13 @@ INIT_TEXT void pcie_init(void) {
     }
 
     //打印pcie设备
-    list_head_t *next = pcie_device_list.next;
-    while (next != &pcie_device_list) {
-        pcie_device_t *pcie_dev = CONTAINER_OF(next, pcie_device_t, list);
+    list_head_t *next = pcie_bus.dev_list.next;
+    while (next != &pcie_bus.dev_list) {
+        device_t *dev = CONTAINER_OF(next, device_t,bus_node );
+        pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
         color_printk(GREEN,BLACK, "bus:%d dev:%d func:%d vendor_id:%#lx device_id:%#lx class_code:%#lx %s\n",
-                     pcie_dev->bus, pcie_dev->dev, pcie_dev->func, pcie_dev->pcie_config_space->vendor_id,
-                     pcie_dev->pcie_config_space->device_id, get_pcie_classcode(pcie_dev), pcie_dev->name);
+                     pcie_dev->bus_num, pcie_dev->dev_num, pcie_dev->func_num, pcie_dev->pcie_config_space->vendor_id,
+                     pcie_dev->pcie_config_space->device_id, pcie_dev->class_code, dev->name);
         next = next->next;
     }
 

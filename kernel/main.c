@@ -1,6 +1,5 @@
 #include "moslib.h"
 #include "printk.h"
-#include "acpi.h"
 #include "ioapic.h"
 #include "buddy_system.h"
 #include "slub.h"
@@ -8,11 +7,9 @@
 #include "hpet.h"
 #include "kernel_page_table.h"
 #include "memblock.h"
-#include "vmm.h"
 #include "vmalloc.h"
 #include "rbtree.h"
 #include "uefi.h"
-#include "pcie.h"
 #include "bus.h"
 
 INIT_TEXT void init_kernel(void) {
@@ -31,7 +28,6 @@ INIT_TEXT void init_kernel(void) {
     init_bsp();                                //初始化bsp核心
     init_hpet();                               //初始化hpet
     bus_init();                                //总线初始化
-    pcie_init();                               //初始化pcie
 
     while (1);
 

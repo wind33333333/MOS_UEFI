@@ -9,9 +9,9 @@ void driver_register(driver_t *drv) {
     list_add_head(&bus->drv_list,&drv->bus_node);
     list_head_t *next_dev_node = bus->dev_list.next;
     while (next_dev_node != &bus->drv_list) {
-        device_t dev = CONTAINER_OF(next_dev_node,device_t,bus_node);
-        if (bus->match(dev,drv) && !dev.driver) {
-            dev.driver = drv;
+        device_t *dev = CONTAINER_OF(next_dev_node,device_t,bus_node);
+        if (bus->match(dev,drv) && !dev->driver) {
+            dev->driver = drv;
             drv->probe(dev);
         }
         next_dev_node = next_dev_node->next;

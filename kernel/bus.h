@@ -15,5 +15,3 @@ typedef struct bus_type_t{
 } bus_type_t;
 
 void bus_init(void);
-void bus_register(bus_type_t *bus);
-void bus_rescan(bus_type_t *bus);
