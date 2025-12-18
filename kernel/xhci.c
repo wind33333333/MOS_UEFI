@@ -1,6 +1,7 @@
 #include "xhci.h"
 #include "printk.h"
 #include "pcie.h"
+#include "bus.h"
 
 //usb设备全局链
 list_head_t usb_dev_list;
@@ -14,6 +15,8 @@ xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_reg, uint8 cap_id) {
     }
     return NULL;
 }
+
+
 
 //xhci设备初始化驱动
 int xhci_probe(pcie_dev_t *xhci_dev) {
@@ -104,3 +107,18 @@ int xhci_probe(pcie_dev_t *xhci_dev) {
                  xhci_controller->op_reg->usbsts);
     while (1);
 }
+
+extern bus_type_t pcie_bus;
+
+pcie_drv_t xhci_drv = {
+    XHCI_CLASS_CODE,
+    xhci_probe,
+    NULL,
+    "XHCI-driver",
+              &pcie_bus,
+    pcie_probe,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+};
