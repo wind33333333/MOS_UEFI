@@ -2,6 +2,7 @@
 #include "printk.h"
 #include "pcie.h"
 #include "bus.h"
+#include "driver.h"
 
 //usb设备全局链
 list_head_t usb_dev_list;
@@ -110,15 +111,14 @@ int xhci_probe(pcie_dev_t *xhci_dev) {
 
 extern bus_type_t pcie_bus;
 
-pcie_drv_t xhci_drv = {
-    XHCI_CLASS_CODE,
-    xhci_probe,
-    NULL,
-    "XHCI-driver",
-              &pcie_bus,
-    pcie_probe,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-};
+void xhci_drv_register(void) {
+    pcie_drv_t *xhci_drv = kmalloc(sizeof(pcie_drv_t));
+    xhci_drv->drv.name = "XHCI-driver";
+    xhci_drv->drv.bus = &pcie_bus;
+    xhci_drv->drv.probe = pcie_probe;
+    xhci_drv->drv.remove = NULL;
+    xhci_drv->class_code = XHCI_CLASS_CODE;
+    xhci_drv->probe = xhci_probe;
+    xhci_drv->remove = 0;
+    driver_register(&xhci_drv->drv);
+}

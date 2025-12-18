@@ -276,20 +276,24 @@ void pcie_msi_intrpt_set(pcie_dev_t *pcie_dev) {
     pcie_disable_msi_intrs(pcie_dev);
 }
 
-INIT_TEXT void pcie_init(void) {
+INIT_TEXT void pcie_bus_init(void) {
     //查找mcfg表
     mcfg_t *mcfg = acpi_get_table('GFCM');
     mcfg_entry_t *mcfg_entry = &mcfg->entry;
     uint32 mcfg_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
                             mcfg_entry_t);
 
-    //扫描pcie设备，初始化并添加到链表
+    //扫描pcie总线，把pcie设备挂在到系统总线
     for (uint32 i = 0; i < mcfg_count; i++) {
         color_printk(GREEN,BLACK, "ECAM base:%#lX Segment:%d StartBus:%d EndBus:%d\n",
                      mcfg_entry[i].base_address, mcfg_entry[i].pci_segment, mcfg_entry[i].start_bus,
                      mcfg_entry[i].end_bus);
         pcie_scan_dev(mcfg_entry[i].base_address, mcfg_entry[i].start_bus);
     }
+
+    extern void xhci_drv_register(void);
+    //注册驱动程序
+    xhci_drv_register();
 
     //打印pcie设备
     list_head_t *next = pcie_bus.dev_list.next;
