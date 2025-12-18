@@ -66,14 +66,17 @@ static inline char *pcie_clasename_find(pcie_dev_t *pcie_dev) {
 //pcie设备驱动匹配
 int pcie_bus_match(device_t *dev,driver_t *drv) {
     pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
-    pcie_drv_t *pcie_drv = CONTAINER_OF(drv,pcie_drv_t,driver);
+    pcie_drv_t *pcie_drv = CONTAINER_OF(drv,pcie_drv_t,drv);
     if (pcie_dev->class_code = pcie_drv->class_code) return 1;
     return 0;
 }
 
 //pcie探测程序
 int pcie_probe(device_t *dev) {
-    dev->driver
+    pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
+    pcie_drv_t *pcie_drv = CONTAINER_OF(dev->drv,pcie_drv_t,drv);
+    pcie_drv->probe(pcie_dev);
+    return 0;
 }
 
 /*
@@ -103,7 +106,7 @@ static inline pcie_config_space_t *ecam_bdf_to_pcie_config_space_addr(uint64 eca
 /*
  * pcie总线枚举
  */
-static inline void pcie_enmu(uint64 ecam_base, uint8 bus) {
+static inline void pcie_scan_dev(uint64 ecam_base, uint8 bus) {
     // 遍历当前总线上的32个设备(0-31)
     for (uint8 dev = 0; dev < 32; dev++) {
         // 遍历设备上的8个功能(0-7)
@@ -120,7 +123,7 @@ static inline void pcie_enmu(uint64 ecam_base, uint8 bus) {
             //创建pcie_dev
             create_pcie_dev(pcie_config_space, bus, dev, func);
             //type1 为pcie桥优先扫描下游设备（深度优先）
-            if (pcie_config_space->header_type & 1) pcie_enmu(ecam_base, pcie_config_space->type1.secondary_bus);
+            if (pcie_config_space->header_type & 1) pcie_scan_dev(ecam_base, pcie_config_space->type1.secondary_bus);
             //如果功能0不是多功能设备，则跳过该设备的后续功能
             if (!func && !(pcie_config_space->header_type & 0x80)) break;
         }
@@ -285,7 +288,7 @@ INIT_TEXT void pcie_init(void) {
         color_printk(GREEN,BLACK, "ECAM base:%#lX Segment:%d StartBus:%d EndBus:%d\n",
                      mcfg_entry[i].base_address, mcfg_entry[i].pci_segment, mcfg_entry[i].start_bus,
                      mcfg_entry[i].end_bus);
-        pcie_enmu(mcfg_entry[i].base_address, mcfg_entry[i].start_bus);
+        pcie_scan_dev(mcfg_entry[i].base_address, mcfg_entry[i].start_bus);
     }
 
     //打印pcie设备

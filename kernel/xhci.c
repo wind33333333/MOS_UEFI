@@ -104,13 +104,3 @@ int xhci_probe(pcie_dev_t *xhci_dev) {
                  xhci_controller->op_reg->usbsts);
     while (1);
 }
-
-//注册xhci驱动程序
-INIT_TEXT void xhci_driver_register(void) {
-    pcie_driver_t *xhci_driver = kmalloc(sizeof(pcie_driver_t));
-    xhci_driver->name = "xhci_driver";
-    xhci_driver->class_code = XHCI_CLASS_CODE;
-    xhci_driver->probe = xhci_probe;
-    xhci_driver->remove = NULL;
-    pcie_driver_register(xhci_driver);
-}
