@@ -107,7 +107,6 @@ int xhci_probe(pcie_dev_t *xhci_dev) {
 }
 
 extern bus_type_t pcie_bus;
-
 void xhci_drv_register(void) {
     pcie_drv_t *xhci_drv = kmalloc(sizeof(pcie_drv_t));
     xhci_drv->drv.name = "XHCI-driver";

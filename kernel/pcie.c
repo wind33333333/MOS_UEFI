@@ -67,7 +67,7 @@ static inline char *pcie_clasename_find(pcie_dev_t *pcie_dev) {
 int pcie_bus_match(device_t *dev,driver_t *drv) {
     pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
     pcie_drv_t *pcie_drv = CONTAINER_OF(drv,pcie_drv_t,drv);
-    if (pcie_dev->class_code = pcie_drv->class_code) return 1;
+    if (pcie_dev->class_code == pcie_drv->class_code) return 1;
     return 0;
 }
 
@@ -291,11 +291,6 @@ INIT_TEXT void pcie_bus_init(void) {
         pcie_scan_dev(mcfg_entry[i].base_address, mcfg_entry[i].start_bus);
     }
 
-
-    //注册驱动程序
-    extern void xhci_drv_register(void);
-    xhci_drv_register();
-
     //打印pcie设备
     list_head_t *next = pcie_bus.dev_list.next;
     while (next != &pcie_bus.dev_list) {
@@ -306,6 +301,10 @@ INIT_TEXT void pcie_bus_init(void) {
                      pcie_dev->pcie_config_space->device_id, pcie_dev->class_code, dev->name);
         next = next->next;
     }
+
+    //注册驱动程序
+    extern void xhci_drv_register(void);
+    xhci_drv_register();
 
 
 }
