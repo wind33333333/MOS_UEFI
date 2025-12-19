@@ -178,7 +178,6 @@ typedef struct pcie_dev_t{
         } msi_x;
     };
     device_t dev;                    //内嵌设备通用结构
-    void *private;                   //设备私有数据指针
 } pcie_dev_t;
 
 //pcie设备驱动
