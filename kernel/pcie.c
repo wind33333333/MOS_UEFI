@@ -291,8 +291,9 @@ INIT_TEXT void pcie_bus_init(void) {
         pcie_scan_dev(mcfg_entry[i].base_address, mcfg_entry[i].start_bus);
     }
 
-    extern void xhci_drv_register(void);
+
     //注册驱动程序
+    extern void xhci_drv_register(void);
     xhci_drv_register();
 
     //打印pcie设备

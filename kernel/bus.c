@@ -13,7 +13,6 @@ INIT_TEXT void bus_init(void){
     pcie_bus.match = pcie_bus_match;
     pcie_bus.probe = NULL;
     pcie_bus.remove = NULL;
-    pcie_bus.shutdown = NULL;
     list_head_init(&pcie_bus.dev_list);
     list_head_init(&pcie_bus.drv_list);   //创建pcie总线
     pcie_bus_init();                      //pcie总线初始化
@@ -22,7 +21,6 @@ INIT_TEXT void bus_init(void){
     usb_bus.match = NULL;
     usb_bus.probe = NULL;
     usb_bus.remove = NULL;
-    usb_bus.shutdown = NULL;
     list_head_init(&usb_bus.dev_list);
     list_head_init(&usb_bus.drv_list);   //创建usb总线
 }

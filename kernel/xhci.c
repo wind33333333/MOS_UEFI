@@ -17,15 +17,12 @@ xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_reg, uint8 cap_id) {
     return NULL;
 }
 
-
-
 //xhci设备初始化驱动
 int xhci_probe(pcie_dev_t *xhci_dev) {
     pcie_bar_set(xhci_dev, 0); //初始化bar0寄存器
     pcie_msi_intrpt_set(xhci_dev);
-    xhci_dev->private = kzalloc(sizeof(xhci_controller_t)); //设备私有数据空间申请一块内存，存放xhci相关信息
-
-    xhci_controller_t *xhci_controller = xhci_dev->private;
+    xhci_dev->dev.private = kzalloc(sizeof(xhci_controller_t)); //设备私有数据空间申请一块内存，存放xhci相关信息
+    xhci_controller_t *xhci_controller = xhci_dev->dev.private;
 
     /*初始化xhci寄存器*/
     xhci_controller->cap_reg = xhci_dev->bar[0]; //xhci能力寄存器基地址
@@ -102,7 +99,7 @@ int xhci_probe(pcie_dev_t *xhci_dev) {
 
     list_head_init(&usb_dev_list);
 
-    usb_dev_enum(xhci_controller);
+    //usb_dev_enum(xhci_controller);
 
     color_printk(GREEN,BLACK, "\nUSBcmd:%#x  USBsts:%#x", xhci_controller->op_reg->usbcmd,
                  xhci_controller->op_reg->usbsts);
