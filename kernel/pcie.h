@@ -17,9 +17,9 @@ typedef struct {
                          * bit1 Memory Space Enable启用设备响应 Memory 空间访问（包括 BAR 映射的寄存器）
                          * bit2 Bus Master Enable启用设备作为总线主控发起事务（DMA 等必须设置此位）
                          * bit10 Interrupt Disable禁用传统 INTx 中断（1 = 禁用，推荐使用 MSI/MSI-X）*/
-#define PCIE_ENABLE_MEM_SPACE 1<<1
-#define PCIE_ENABLE_BUS_MASTER 1<<2
-#define PCIE_DISABLE_INTER 1<<10
+#define PCIE_ENABLE_MEM_SPACE   1<<1
+#define PCIE_ENABLE_BUS_MASTER  1<<2
+#define PCIE_DISABLE_INTER      1<<10
     uint16 status;      // 状态寄存器 (0x06)
     // 偏移 0x08
     uint8 revision_id;  // 修订ID (0x08) - 硬件版本号
@@ -155,14 +155,21 @@ typedef struct {
 
 #pragma pack(pop)
 
+/* BAR 信息 */
+typedef struct pcie_bar {
+    uint64  paddr;
+    void    *vaddr;               /* 映射后的虚拟地址（若你的环境支持 MMU/ioremap） */
+    uint64  size;                 /* BAR 大小（探测得到） */
+} pcie_bar_t;
+
 //pcie设备
 typedef struct pcie_dev_t{
-    uint32 class_code;
-    uint8 func_num; /* 功能号 */
-    uint8 dev_num; /* 设备号 */
-    uint8 bus_num; /* 总线号 */
+    uint32      class_code;
+    uint8       func_num; /* 功能号 */
+    uint8       dev_num; /* 设备号 */
+    uint8       bus_num; /* 总线号 */
     pcie_config_space_t *pcie_config_space; /* pcie配置空间 */
-    void *bar[6]; /*bar*/
+    pcie_bar_t   bar[6]; /*bar*/
     uint8 msi_x_flags;    // 1 = 支持msi_x 0 = 不支持msi_x
     union {
         struct {
