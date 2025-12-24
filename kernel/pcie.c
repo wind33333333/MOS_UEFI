@@ -152,16 +152,17 @@ void pcie_bar_init(pcie_dev_t *pcie_dev) {
             *bar = (uint32)addr_h;
             size |= size_h << 32;
             addr |= addr_h << 32;
+            size &= 0xFFFFFFFFFFFFFFF0UL;
+            size = -size;
             bir++;
         }else {
-            size |= 0xFFFFFFFF00000000UL;
+            size &= 0xFFFFFFFFFFFFFFF0UL;
+            size = -(uint32)size;
         }
-        bir++;
         addr &= 0xFFFFFFFFFFFFFFF0UL;
-        size &= 0xFFFFFFFFFFFFFFF0UL;
-        size = -size;
         pcie_dev->bar[bir].paddr = addr;
         pcie_dev->bar[bir].size = size;
+        bir++;
     }
 }
 
