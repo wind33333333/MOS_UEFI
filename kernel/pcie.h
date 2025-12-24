@@ -12,7 +12,14 @@ typedef struct {
     uint16 vendor_id; // 厂商ID (0x00) - 由 PCI-SIG 分配
     uint16 device_id; // 设备ID (0x02) - 厂商自定义型号
     // 偏移 0x04
-    uint16 command;     // 命令寄存器 (0x04)
+    uint16 command;     /* 命令寄存器 (0x04)
+                         * bit0 I/O Space Enable启用设备响应 I/O 空间访问
+                         * bit1 Memory Space Enable启用设备响应 Memory 空间访问（包括 BAR 映射的寄存器）
+                         * bit2 Bus Master Enable启用设备作为总线主控发起事务（DMA 等必须设置此位）
+                         * bit10 Interrupt Disable禁用传统 INTx 中断（1 = 禁用，推荐使用 MSI/MSI-X）*/
+#define PCIE_ENABLE_MEM_SPACE 1<<1
+#define PCIE_ENABLE_BUS_MASTER 1<<2
+#define PCIE_DISABLE_INTER 1<<10
     uint16 status;      // 状态寄存器 (0x06)
     // 偏移 0x08
     uint8 revision_id;  // 修订ID (0x08) - 硬件版本号
@@ -232,7 +239,7 @@ typedef enum {
 
 
 int pcie_bus_match(device_t *dev,driver_t *drv);
-int pcie_probe(device_t *dev);
+int pcie_bus_probe(device_t *dev);
 void pcie_bus_init(void);
 pcie_dev_t *pcie_device_find(uint32 class_code);
 cap_t *pcie_cap_find(pcie_dev_t *pcie_dev, cap_id_e cap_id);

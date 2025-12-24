@@ -106,15 +106,11 @@ int xhci_probe(pcie_dev_t *xhci_dev) {
     while (1);
 }
 
-extern bus_type_t pcie_bus;
-void xhci_drv_register(void) {
+pcie_drv_t *xhci_drv_init(void) {
     pcie_drv_t *xhci_drv = kmalloc(sizeof(pcie_drv_t));
     xhci_drv->drv.name = "XHCI-driver";
-    xhci_drv->drv.bus = &pcie_bus;
-    xhci_drv->drv.probe = pcie_probe;
-    xhci_drv->drv.remove = NULL;
     xhci_drv->class_code = XHCI_CLASS_CODE;
     xhci_drv->probe = xhci_probe;
     xhci_drv->remove = 0;
-    driver_register(&xhci_drv->drv);
+    return xhci_drv;
 }

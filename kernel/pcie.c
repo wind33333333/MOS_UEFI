@@ -63,6 +63,7 @@ static inline char *pcie_clasename_find(pcie_dev_t *pcie_dev) {
     }
 }
 
+
 //pcie设备驱动匹配
 int pcie_bus_match(device_t *dev,driver_t *drv) {
     pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
@@ -72,10 +73,11 @@ int pcie_bus_match(device_t *dev,driver_t *drv) {
 }
 
 //pcie探测程序
-int pcie_probe(device_t *dev) {
+int pcie_bus_probe(device_t *dev) {
     pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
-    pcie_drv_t *pcie_drv = CONTAINER_OF(dev->drv,pcie_drv_t,drv);
-    pcie_drv->probe(pcie_dev);
+    pcie_dev->pcie_config_space->command = PCIE_ENABLE_MEM_SPACE|PCIE_ENABLE_BUS_MASTER|PCIE_DISABLE_INTER;
+
+    dev->drv->probe(dev);
     return 0;
 }
 
@@ -276,6 +278,13 @@ void pcie_msi_intrpt_set(pcie_dev_t *pcie_dev) {
     pcie_disable_msi_intrs(pcie_dev);
 }
 
+void pcie_drv_register(pcie_drv_t *pcie_drv) {
+    pcie_drv->drv.bus = &pcie_bus;
+    pcie_drv->drv.probe = pcie_bus_probe;
+    pcie_drv->drv.remove = NULL;
+    device_register(&pcie_drv->drv);
+}
+
 INIT_TEXT void pcie_bus_init(void) {
     //查找mcfg表
     mcfg_t *mcfg = acpi_get_table('GFCM');
@@ -303,8 +312,8 @@ INIT_TEXT void pcie_bus_init(void) {
     }
 
     //注册驱动程序
-    extern void xhci_drv_register(void);
-    xhci_drv_register();
+    pcie_drv_t *xhci_drv_init(void);
+    pcie_drv_register(xhci_drv_init());
 
 
 }
