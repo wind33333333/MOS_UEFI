@@ -138,6 +138,7 @@ void pcie_bar_set(pcie_dev_t *pcie_dev,uint8 bir) {
 void pcie_bar_init(pcie_dev_t *pcie_dev) {
     pcie_config_space_t *pcie_config_space = pcie_dev->pcie_config_space;
     uint8 bir = 0;
+    uint8 i = 0;
     while (bir < 6){
         uint32 *bar = &pcie_config_space->type0.bar[bir];
         uint64 addr = *bar;
@@ -156,16 +157,16 @@ void pcie_bar_init(pcie_dev_t *pcie_dev) {
             size = -size;
             bir++;
         }else {
-            size &= 0xFFFFFFFFFFFFFFF0UL;
+            size &= 0xFFFFFFF0UL;
             size = -(uint32)size;
         }
         addr &= 0xFFFFFFFFFFFFFFF0UL;
-        pcie_dev->bar[bir].paddr = addr;
-        pcie_dev->bar[bir].size = size;
+        pcie_dev->bar[i].paddr = addr;
+        pcie_dev->bar[i].size = size;
+        i++;
         bir++;
     }
 }
-
 
 /*
  * 创建pcie_dev结构
