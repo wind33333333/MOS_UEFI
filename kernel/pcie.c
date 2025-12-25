@@ -63,27 +63,6 @@ static inline char *pcie_clasename_find(pcie_dev_t *pcie_dev) {
     }
 }
 
-
-//pcie设备驱动匹配
-int pcie_bus_match(device_t *dev,driver_t *drv) {
-    pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
-    pcie_drv_t *pcie_drv = CONTAINER_OF(drv,pcie_drv_t,drv);
-    if (pcie_dev->class_code == pcie_drv->class_code) return 1;
-    return 0;
-}
-
-//pcie探测程序
-int pcie_bus_probe(device_t *dev) {
-    pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
-    // 1) enable memory/io/bus mastering
-    pcie_dev->pcie_config_space->command = PCIE_ENABLE_MEM_SPACE|PCIE_ENABLE_BUS_MASTER|PCIE_DISABLE_INTER;
-    // 2) 读取/分配 BAR（你 OS 里也许固定映射或自己分配）
-
-
-    dev->drv->probe(dev);
-    return 0;
-}
-
 //搜索能力链表
 //参数capability_id
 //返回一个capability_t* 指针
@@ -168,66 +147,13 @@ void pcie_bar_init(pcie_dev_t *pcie_dev) {
     }
 }
 
-/*
- * 创建pcie_dev结构
- */
-static inline void create_pcie_dev(pcie_config_space_t *pcie_config_space, uint8 bus, uint8 dev, uint8 func) {
-    pcie_dev_t *pcie_dev = kzalloc(sizeof(pcie_dev_t));
-    pcie_dev->bus_num = bus;
-    pcie_dev->dev_num = dev;
-    pcie_dev->func_num = func;
-    pcie_dev->pcie_config_space = iomap((uint64)pcie_config_space,PAGE_4K_SIZE,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
-    pcie_dev->class_code = get_pcie_classcode(pcie_dev);
-    pcie_dev->dev.name = pcie_clasename_find(pcie_dev);
-    pcie_dev->dev.bus = &pcie_bus;
-    pcie_dev->dev.parent = NULL;
-    pcie_bar_init(pcie_dev);
-    device_register(&pcie_dev->dev);
-}
-
-/*
- * pcie配置空间地址计算
- */
-static inline pcie_config_space_t *ecam_bdf_to_pcie_config_space_addr(uint64 ecam_base, uint8 bus, uint8 dev,
-                                                                      uint8 func) {
-    return (pcie_config_space_t *) (ecam_base + (bus << 20) + (dev << 15) + (func << 12));
-}
-
-/*
- * pcie总线枚举
- */
-static inline void pcie_scan_dev(uint64 ecam_base, uint8 bus) {
-    // 遍历当前总线上的32个设备(0-31)
-    for (uint8 dev = 0; dev < 32; dev++) {
-        // 遍历设备上的8个功能(0-7)
-        for (uint8 func = 0; func < 8; func++) {
-            // 将BDF(总线-设备-功能)转换为配置空间地址
-            pcie_config_space_t *pcie_config_space = ecam_bdf_to_pcie_config_space_addr(ecam_base, bus, dev, func);
-            // 检查设备是否存在 (无效设备的vendor_id=0xFFFF)
-            if (pcie_config_space->vendor_id == 0xFFFF) {
-                // 功能0不存在意味着整个设备不存在， 跳过该设备的后续功能
-                if (func == 0) break;
-                // 继续检查下一个功能
-                continue;
-            }
-            //创建pcie_dev
-            create_pcie_dev(pcie_config_space, bus, dev, func);
-            //type1 为pcie桥优先扫描下游设备（深度优先）
-            if (pcie_config_space->header_type & 1) pcie_scan_dev(ecam_base, pcie_config_space->type1.secondary_bus);
-            //如果功能0不是多功能设备，则跳过该设备的后续功能
-            if (!func && !(pcie_config_space->header_type & 0x80)) break;
-        }
-    }
-}
-
-
 //启用msi中断
 void pcie_enable_msi_intrs(pcie_dev_t *pcie_dev) {
     if (pcie_dev->msi_x_flags) {
         *pcie_dev->msi_x.msg_control |= 0x8000;
         *pcie_dev->msi_x.msg_control &= ~0x4000;
     }else {
-        *pcie_dev->msi.msg_control |= 1;
+        pcie_dev->msi->msg_control |= 1;
     }
 }
 
@@ -236,17 +162,9 @@ void pcie_disable_msi_intrs(pcie_dev_t *pcie_dev) {
     if (pcie_dev->msi_x_flags) {
         *pcie_dev->msi_x.msg_control |= 0x4000;
     }else {
-        *pcie_dev->msi.msg_control &= ~1;
+        pcie_dev->msi->msg_control &= ~1;
     }
 
-}
-
-//获取msi-x终端数量
-//参数pcie_config_space_t
-//数量
-uint32 get_msi_x_irq_number(pcie_dev_t *pcie_dev) {
-    cap_t *cap= pcie_cap_find(pcie_dev,msi_x_e);
-    return (cap->msi_x.msg_control & 0x7FF)+1;
 }
 
 /*
@@ -285,36 +203,106 @@ static inline uint32 get_pda_offset(cap_t *cap) {
     return table_offset & ~0x7;
 }
 
-void pcie_msi_intrpt_set(pcie_dev_t *pcie_dev) {
+void pcie_msi_intrpt_init(pcie_dev_t *pcie_dev) {
     cap_t *cap = pcie_cap_find(pcie_dev,msi_x_e);
-    uint64 msg_addr = rdmsr(IA32_APIC_BASE_MSR) & ~0xFFFUL;
     //优先启用msi-x中断
     if (cap) {
         //初始化msi-x中断表
         pcie_dev->msi_x_flags = 1;
         pcie_dev->msi_x.msg_control = &cap->msi_x.msg_control;
-        // pcie_dev->msi_x.msi_x_table = (msi_x_table_t*)(pcie_dev->bar[get_msi_x_bir(cap)] + get_msi_x_offset(cap));
-        // pcie_dev->msi_x.pba_table = (uint64*)(pcie_dev->bar[get_pda_bir(cap)] + get_pda_offset(cap));
-        //设置中断
-        pcie_dev->msi_x.msi_x_table[0].msg_addr_lo = (uint32)msg_addr;
-        pcie_dev->msi_x.msi_x_table[0].msg_addr_hi = (uint32)(msg_addr >> 32);
-        pcie_dev->msi_x.msi_x_table[0].msg_data = 0x40;
-        pcie_dev->msi_x.msi_x_table[0].vector_control = 0;
-
+        pcie_dev->msi_x.table_bir = get_msi_x_bir(cap);
+        pcie_dev->msi_x.table_offset = get_msi_x_offset(cap);
+        pcie_dev->msi_x.pba_bir = get_pda_bir(cap);
+        pcie_dev->msi_x.pba_offset = get_pda_offset(cap);
     }else {
-        pcie_dev->msi_x_flags = 0;
         //启用msi中断
+        pcie_dev->msi_x_flags = 0;
         cap = pcie_cap_find(pcie_dev,msi_e);
-        pcie_dev->msi.msg_control = &cap->msi.msg_control;
-        pcie_dev->msi.msg_addr_lo = &cap->msi.msg_addr_lo;
-        pcie_dev->msi.msg_addr_hi = &cap->msi.msg_addr_hi;
-        //设置中断
-        *pcie_dev->msi.msg_addr_lo = (uint32)msg_addr;
-        *pcie_dev->msi.msg_addr_hi = (uint32)msg_addr >> 32;
-        *pcie_dev->msi.msg_data = 0x40;
+        pcie_dev->msi = &cap->msi;
     }
-    pcie_disable_msi_intrs(pcie_dev);
 }
+
+//pcie设备驱动匹配
+int pcie_bus_match(device_t *dev,driver_t *drv) {
+    pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
+    pcie_drv_t *pcie_drv = CONTAINER_OF(drv,pcie_drv_t,drv);
+    if (pcie_dev->class_code == pcie_drv->class_code) return 1;
+    return 0;
+}
+
+//pcie探测程序
+int pcie_bus_probe(device_t *dev) {
+    pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
+    // 1) enable memory/io/bus mastering
+    pcie_dev->pcie_config_space->command = PCIE_ENABLE_MEM_SPACE|PCIE_ENABLE_BUS_MASTER|PCIE_DISABLE_INTER;
+    // 2) 读取/分配 BAR（你 OS 里也许固定映射或自己分配）
+    pcie_bar_init(pcie_dev);
+    // 3) 初始化msi/msi-x
+    pcie_msi_intrpt_init(pcie_dev);
+    // 4）回调驱动
+    dev->drv->probe(dev);
+    return 0;
+}
+
+int pcie_drv_probe_wrapper(device_t *dev) {
+    pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
+    pcie_drv_t *pcie_drv = CONTAINER_OF(dev->drv,pcie_drv_t,drv);
+    pcie_drv->probe(pcie_dev);
+    return 0;
+}
+
+/*
+ * 创建pcie_dev结构
+ */
+static inline void create_pcie_dev(pcie_config_space_t *pcie_config_space, uint8 bus, uint8 dev, uint8 func) {
+    pcie_dev_t *pcie_dev = kzalloc(sizeof(pcie_dev_t));
+    pcie_dev->bus_num = bus;
+    pcie_dev->dev_num = dev;
+    pcie_dev->func_num = func;
+    pcie_dev->pcie_config_space = iomap((uint64)pcie_config_space,PAGE_4K_SIZE,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+    pcie_dev->class_code = get_pcie_classcode(pcie_dev);
+    pcie_dev->dev.name = pcie_clasename_find(pcie_dev);
+    pcie_dev->dev.bus = &pcie_bus;
+    pcie_dev->dev.parent = NULL;
+    pcie_bus_probe(&pcie_dev->dev);
+    device_register(&pcie_dev->dev);
+}
+
+/*
+ * pcie配置空间地址计算
+ */
+static inline pcie_config_space_t *ecam_bdf_to_pcie_config_space_addr(uint64 ecam_base, uint8 bus, uint8 dev,
+                                                                      uint8 func) {
+    return (pcie_config_space_t *) (ecam_base + (bus << 20) + (dev << 15) + (func << 12));
+}
+
+/*
+ * pcie总线枚举
+ */
+static inline void pcie_scan_dev(uint64 ecam_base, uint8 bus) {
+    // 遍历当前总线上的32个设备(0-31)
+    for (uint8 dev = 0; dev < 32; dev++) {
+        // 遍历设备上的8个功能(0-7)
+        for (uint8 func = 0; func < 8; func++) {
+            // 将BDF(总线-设备-功能)转换为配置空间地址
+            pcie_config_space_t *pcie_config_space = ecam_bdf_to_pcie_config_space_addr(ecam_base, bus, dev, func);
+            // 检查设备是否存在 (无效设备的vendor_id=0xFFFF)
+            if (pcie_config_space->vendor_id == 0xFFFF) {
+                // 功能0不存在意味着整个设备不存在， 跳过该设备的后续功能
+                if (func == 0) break;
+                // 继续检查下一个功能
+                continue;
+            }
+            //创建pcie_dev
+            create_pcie_dev(pcie_config_space, bus, dev, func);
+            //type1 为pcie桥优先扫描下游设备（深度优先）
+            if (pcie_config_space->header_type & 1) pcie_scan_dev(ecam_base, pcie_config_space->type1.secondary_bus);
+            //如果功能0不是多功能设备，则跳过该设备的后续功能
+            if (!func && !(pcie_config_space->header_type & 0x80)) break;
+        }
+    }
+}
+
 
 void pcie_drv_register(pcie_drv_t *pcie_drv) {
     pcie_drv->drv.bus = &pcie_bus;

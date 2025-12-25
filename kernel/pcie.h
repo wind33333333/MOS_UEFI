@@ -83,23 +83,24 @@ typedef struct {
     uint8 extended_config[4096 - 256]; // 0x100 - 0xFFF: 扩展配置空间
 } pcie_config_space_t;
 
+typedef struct {
+    uint16 msg_control;/*- 位0：MSI Enable（1=启用，0=禁用）。
+                     - 位1-3：Multiple Message Capable（支持的向量数：0=1，1=2，2=4，3=8，4=16，5=32）。
+                     - 位4-6：Multiple Message Enable（启用的向量数）。
+                     - 位7：64-bit Address Capable（1=支持64位地址）。
+                     - 位8-15：保留。*/
+    uint32 msg_addr_lo;  //32位消息地址（MSI中断写入的内存地址）,位12-19 指向local apic。
+    uint32 msg_addr_hi;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
+    uint16 msg_data;     //中断消息数据（写入Message Address的值，用于触发中断）。
+}msi_t;
+
 // 通用能力结构
 typedef struct {
     uint8 cap_id; // Capability ID
     uint8 next_ptr; // Next Pointer
     union {
         //MSI 能力结构（ID 0x5）
-        struct {
-            uint16 msg_control;/*- 位0：MSI Enable（1=启用，0=禁用）。
-                             - 位1-3：Multiple Message Capable（支持的向量数：0=1，1=2，2=4，3=8，4=16，5=32）。
-                             - 位4-6：Multiple Message Enable（启用的向量数）。
-                             - 位7：64-bit Address Capable（1=支持64位地址）。
-                             - 位8-15：保留。*/
-            uint32 msg_addr_lo;  //32位消息地址（MSI中断写入的内存地址）,位12-19 指向local apic。
-            uint32 msg_addr_hi;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
-            uint16 msg_data;     //中断消息数据（写入Message Address的值，用于触发中断）。
-        }msi;
-
+        msi_t msi;
         // MSI-X能力结构（ID 0x11）
         struct {
             uint16 msg_control; // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
@@ -157,7 +158,7 @@ typedef struct {
 
 /* BAR 信息 */
 typedef struct pcie_bar {
-    uint64  paddr;
+    uint64  paddr;                /* bar物理地址 */
     void    *vaddr;               /* 映射后的虚拟地址（若你的环境支持 MMU/ioremap） */
     uint64  size;                 /* BAR 大小（探测得到） */
 } pcie_bar_t;
@@ -172,23 +173,17 @@ typedef struct pcie_dev_t{
     pcie_bar_t   bar[6]; /*bar*/
     uint8 msi_x_flags;    // 1 = 支持msi_x 0 = 不支持msi_x
     union {
-        struct {
-            uint16 *msg_control;/*- 位0：MSI Enable（1=启用，0=禁用）。
-                                  - 位1-3：Multiple Message Capable（支持的向量数：0=1，1=2，2=4，3=8，4=16，5=32）。
-                                  - 位4-6：Multiple Message Enable（启用的向量数）。
-                                  - 位7：64-bit Address Capable（1=支持64位地址）。
-                                  - 位8-15：保留。*/
-            uint32 *msg_addr_lo;  //32位消息地址（MSI中断写入的内存地址,位12-19 指向local apic。
-            uint32 *msg_addr_hi;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
-            uint16 *msg_data;     //中断消息数据（写入Message Address的值，用于触发中断）。
-        } msi;
+        msi_t *msi;
 
         struct {
-            uint16        *msg_control;   // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
-                                          // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
-                                          // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
-            msi_x_table_t *msi_x_table;   //msi-x中断配置表
-            uint64        *pba_table;     //中断挂起表
+            /* MSI-X 向量信息（可按需精简） */
+            uint16  *msg_control;   // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
+                                    // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
+                                    // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
+            uint8   table_bir;        /* table 在哪个 BAR（BIR） */
+            uint32  table_offset;     /* table 偏移 */
+            uint8   pba_bir;          /* PBA 在哪个 BAR（BIR） */
+            uint32  pba_offset;       /* PBA 偏移 */
         } msi_x;
     };
     device_t dev;                    //内嵌设备通用结构
@@ -251,7 +246,7 @@ void pcie_bus_init(void);
 pcie_dev_t *pcie_device_find(uint32 class_code);
 cap_t *pcie_cap_find(pcie_dev_t *pcie_dev, cap_id_e cap_id);
 void pcie_bar_set(pcie_dev_t *pcie_dev,uint8 bir);
-void pcie_msi_intrpt_set(pcie_dev_t *pcie_dev) ;
+
 void pcie_enable_msi_intrs(pcie_dev_t *pcie_dev);
 void pcie_disable_msi_intrs(pcie_dev_t *pcie_dev);
 
