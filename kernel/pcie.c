@@ -222,12 +222,21 @@ void pcie_msi_intrpt_init(pcie_dev_t *pcie_dev) {
     }
 }
 
+//匹配驱动id
+pcie_id_t *pcie_match_id(pcie_id_t* id_table,pcie_dev_t *pcie_dev) {
+    for (;(id_table->vendor&&id_table->device)||id_table->class_code;id_table++) {
+        if ((id_table->vendor==pcie_dev->vendor&&id_table->device==pcie_dev->device) || id_table->class_code==pcie_dev->class_code)
+            return id_table;
+    }
+    return NULL;
+}
+
 //pcie设备驱动匹配
 int pcie_bus_match(device_t *dev,driver_t *drv) {
     pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
     pcie_drv_t *pcie_drv = CONTAINER_OF(drv,pcie_drv_t,drv);
-    if (pcie_dev->class_code == pcie_drv->class_code) return 1;
-    return 0;
+    pcie_id_t *id = pcie_match_id(pcie_drv->id_table,pcie_dev);
+    return id ? 1 : 0;
 }
 
 //pcie探测程序
@@ -244,10 +253,12 @@ int pcie_bus_probe(device_t *dev) {
     return 0;
 }
 
+//pcie外壳转换
 int pcie_drv_probe_wrapper(device_t *dev) {
     pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
     pcie_drv_t *pcie_drv = CONTAINER_OF(dev->drv,pcie_drv_t,drv);
-    pcie_drv->probe(pcie_dev);
+    pcie_id_t *id = pcie_match_id(pcie_drv->id_table,pcie_dev);
+    pcie_drv->probe(pcie_dev,id);
     return 0;
 }
 

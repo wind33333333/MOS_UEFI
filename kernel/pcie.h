@@ -165,6 +165,8 @@ typedef struct pcie_bar {
 
 //pcie设备
 typedef struct pcie_dev_t{
+    uint16      vendor;
+    uint16      device;
     uint32      class_code;
     uint8       func_num; /* 功能号 */
     uint8       dev_num; /* 设备号 */
@@ -189,10 +191,17 @@ typedef struct pcie_dev_t{
     device_t dev;                    //内嵌设备通用结构
 } pcie_dev_t;
 
+//驱动匹配表
+typedef struct pcie_id_t {
+    uint16 vendor;      //厂商id
+    uint16 device;      //设备id
+    uint32 class_code;  //类代码    优先匹配厂商id和设备id,匹配失败在匹配类代码
+} pcie_id_t;
+
 //pcie设备驱动
 typedef struct {
-    uint32 class_code;
-    int  (*probe)(pcie_dev_t *pcie_dev);   // 绑定时回调
+    pcie_id_t *id_table;
+    int  (*probe)(pcie_dev_t *pcie_dev,pcie_id_t* id);   // 绑定时回调
     void (*remove)(pcie_dev_t *pcie_dev);  // 卸载/移除时回调
     driver_t drv;
 }pcie_drv_t;
