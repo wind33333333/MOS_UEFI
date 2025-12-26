@@ -9,6 +9,7 @@ void device_register(device_t *dev) {
     for (list_head_t *next_drv_node = bus->drv_list.next;next_drv_node != &bus->drv_list;next_drv_node = next_drv_node->next){
         driver_t *drv = CONTAINER_OF(next_drv_node,driver_t,bus_node);
         if (bus->match(dev,drv)) {
+            dev->drv = drv;
             bus->probe(dev);
             break;
         }
