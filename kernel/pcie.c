@@ -253,6 +253,10 @@ int pcie_bus_probe(device_t *dev) {
     return 0;
 }
 
+//pcie卸载
+void pcie_bus_remove(device_t *dev) {
+}
+
 //pcie外壳转换
 int pcie_drv_probe_wrapper(device_t *dev) {
     pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
@@ -260,6 +264,9 @@ int pcie_drv_probe_wrapper(device_t *dev) {
     pcie_id_t *id = pcie_match_id(pcie_drv->id_table,pcie_dev);
     pcie_drv->probe(pcie_dev,id);
     return 0;
+}
+
+void pcie_drv_remove_wrapper(device_t *dev) {
 }
 
 /*
@@ -352,7 +359,7 @@ INIT_TEXT void pcie_bus_init(void) {
 
     //注册驱动程序
     pcie_drv_t *xhci_drv_init(void);
-    pcie_drv_register(xhci_drv_init());
+    //pcie_drv_register(xhci_drv_init());
 
 
 }
