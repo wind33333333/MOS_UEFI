@@ -261,7 +261,7 @@ void pcie_drv_register(pcie_drv_t *pcie_drv) {
     pcie_drv->drv.bus = &pcie_bus;
     pcie_drv->drv.probe = pcie_drv_probe_wrapper;
     pcie_drv->drv.remove = pcie_drv_remove_wrapper;
-    device_register(&pcie_drv->drv);
+    driver_register(&pcie_drv->drv);
 }
 
 /*
