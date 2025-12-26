@@ -275,6 +275,8 @@ static inline void create_pcie_dev(pcie_config_space_t *pcie_config_space, uint8
     pcie_dev->dev.name = pcie_clasename_find(pcie_dev);
     pcie_dev->dev.bus = &pcie_bus;
     pcie_dev->dev.parent = NULL;
+    pcie_dev->vendor = pcie_dev->pcie_config_space->vendor_id;
+    pcie_dev->device = pcie_dev->pcie_config_space->device_id;
     pcie_bus_probe(&pcie_dev->dev);
     device_register(&pcie_dev->dev);
 }
@@ -317,7 +319,7 @@ static inline void pcie_scan_dev(uint64 ecam_base, uint8 bus) {
 
 void pcie_drv_register(pcie_drv_t *pcie_drv) {
     pcie_drv->drv.bus = &pcie_bus;
-    pcie_drv->drv.probe = pcie_bus_probe;
+    pcie_drv->drv.probe = pcie_drv_probe_wrapper;
     pcie_drv->drv.remove = NULL;
     device_register(&pcie_drv->drv);
 }
@@ -350,7 +352,7 @@ INIT_TEXT void pcie_bus_init(void) {
 
     //注册驱动程序
     pcie_drv_t *xhci_drv_init(void);
-    //pcie_drv_register(xhci_drv_init());
+    pcie_drv_register(xhci_drv_init());
 
 
 }

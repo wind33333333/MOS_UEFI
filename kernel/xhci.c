@@ -18,7 +18,7 @@ xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_reg, uint8 cap_id) {
 }
 
 //xhci设备初始化驱动
-int xhci_probe(pcie_dev_t *xhci_dev) {
+int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
     pcie_bar_set(xhci_dev, 0); //初始化bar0寄存器
     pcie_msi_intrpt_set(xhci_dev);
     xhci_dev->dev.private = kzalloc(sizeof(xhci_controller_t)); //设备私有数据空间申请一块内存，存放xhci相关信息
@@ -108,8 +108,9 @@ int xhci_probe(pcie_dev_t *xhci_dev) {
 
 pcie_drv_t *xhci_drv_init(void) {
     pcie_drv_t *xhci_drv = kmalloc(sizeof(pcie_drv_t));
+    xhci_drv->id_table = kzalloc(sizeof(pcie_id_t)*2);
+    xhci_drv->id_table->class_code = XHCI_CLASS_CODE;
     xhci_drv->drv.name = "XHCI-driver";
-    xhci_drv->class_code = XHCI_CLASS_CODE;
     xhci_drv->probe = xhci_probe;
     xhci_drv->remove = 0;
     return xhci_drv;
