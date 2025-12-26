@@ -205,8 +205,6 @@ int pcie_bus_probe(device_t *dev) {
     pcie_bar_init(pcie_dev);
     // 3) 初始化msi/msi-x
     pcie_msi_intrpt_init(pcie_dev);
-    // 4）回调驱动
-    dev->drv->probe(dev);
     return 0;
 }
 

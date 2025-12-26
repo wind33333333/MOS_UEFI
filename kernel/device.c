@@ -11,6 +11,7 @@ void device_register(device_t *dev) {
         if (bus->match(dev,drv)) {
             dev->drv = drv;
             bus->probe(dev);
+            drv->probe(dev);
             break;      //驱动匹配成功结束
         }
     }

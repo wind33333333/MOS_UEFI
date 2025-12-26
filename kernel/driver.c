@@ -13,6 +13,7 @@ void driver_register(driver_t *drv) {
         if (bus->match(dev,drv)) {
             dev->drv = drv;
             bus->probe(dev);
+            drv->probe(dev);
         }
     }
 }
