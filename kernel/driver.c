@@ -9,6 +9,7 @@ void driver_register(driver_t *drv) {
     list_add_head(&bus->drv_list,&drv->bus_node);
     for (list_head_t *next_dev_node = bus->dev_list.next;next_dev_node != &bus->dev_list;next_dev_node = next_dev_node->next){
         device_t *dev = CONTAINER_OF(next_dev_node,device_t,bus_node);
+        if (dev->drv) continue;  //设备驱动存，跳过设备。
         if (bus->match(dev,drv)) {
             dev->drv = drv;
             bus->probe(dev);
