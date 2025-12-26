@@ -12,7 +12,7 @@ INIT_TEXT void bus_init(void){
     pcie_bus.name = "PCIe Bus";
     pcie_bus.match = pcie_bus_match;
     pcie_bus.probe = pcie_bus_probe;
-    pcie_bus.remove = NULL;
+    pcie_bus.remove = pcie_bus_remove;
     list_head_init(&pcie_bus.dev_list);
     list_head_init(&pcie_bus.drv_list);   //创建pcie总线
     pcie_bus_init();                      //pcie总线初始化

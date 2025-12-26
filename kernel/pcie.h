@@ -251,6 +251,7 @@ typedef enum {
 
 int pcie_bus_match(device_t *dev,driver_t *drv);
 int pcie_bus_probe(device_t *dev);
+void pcie_bus_remove(device_t *dev);
 void pcie_bus_init(void);
 pcie_dev_t *pcie_device_find(uint32 class_code);
 cap_t *pcie_cap_find(pcie_dev_t *pcie_dev, cap_id_e cap_id);
