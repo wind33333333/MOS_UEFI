@@ -228,14 +228,14 @@ void pcie_drv_remove_wrapper(device_t *dev) {
 }
 
 //获取pice设备的class_code
-static inline uint32 get_pcie_classcode(pcie_dev_t *pcie_dev) {
+static inline uint32 pcie_get_classcode(pcie_dev_t *pcie_dev) {
     uint32 *class_code = (uint32*)&pcie_dev->pcie_config_space->revision_id;
     return *class_code >> 8;
 }
 
 //查找pcie的类名
 static inline char *pcie_clasename_find(pcie_dev_t *pcie_dev) {
-    uint32 class_code = get_pcie_classcode(pcie_dev);
+    uint32 class_code = pcie_get_classcode(pcie_dev);
     for (int i = 0; pcie_classnames[i].name != NULL; i++) {
         if (class_code == pcie_classnames[i].class_code) return pcie_classnames[i].name;
     }
@@ -249,7 +249,7 @@ static inline void pcie_dev_register(pcie_config_space_t *pcie_config_space, uin
     pcie_dev->dev_num = dev;
     pcie_dev->func_num = func;
     pcie_dev->pcie_config_space = iomap((uint64)pcie_config_space,PAGE_4K_SIZE,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
-    pcie_dev->class_code = get_pcie_classcode(pcie_dev);
+    pcie_dev->class_code = pcie_get_classcode(pcie_dev);
     pcie_dev->dev.name = pcie_clasename_find(pcie_dev);
     pcie_dev->dev.bus = &pcie_bus;
     pcie_dev->dev.parent = NULL;
