@@ -7,6 +7,11 @@ bus_type_t pcie_bus;
 //usb总线
 bus_type_t usb_bus;
 
+int pcie_bus_match(device_t *dev,driver_t *drv);
+int pcie_bus_probe(device_t *dev);
+void pcie_bus_remove(device_t *dev);
+void pcie_bus_init(void);
+
 //创建一个pcie总线和usb总线
 INIT_TEXT void bus_init(void){
     pcie_bus.name = "PCIe Bus";

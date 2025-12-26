@@ -191,6 +191,7 @@ typedef struct pcie_dev_t{
     device_t dev;                    //内嵌设备通用结构
 } pcie_dev_t;
 
+
 //驱动匹配表
 typedef struct pcie_id_t {
     uint16 vendor;      //厂商id
@@ -247,15 +248,6 @@ typedef enum {
 #define SERCOS_CLASS_CODE              0x0C0800  // SERCOS 接口（IEC 61491）
 #define CANBUS_CLASS_CODE              0x0C0900  // CANbus 控制器
 #define SERIAL_BUS_OTHER_CLASS_CODE    0x0C8000  // 其他串行总线控制器
-
-
-int pcie_bus_match(device_t *dev,driver_t *drv);
-int pcie_bus_probe(device_t *dev);
-void pcie_bus_remove(device_t *dev);
-void pcie_bus_init(void);
-pcie_dev_t *pcie_device_find(uint32 class_code);
-cap_t *pcie_cap_find(pcie_dev_t *pcie_dev, cap_id_e cap_id);
-void pcie_bar_set(pcie_dev_t *pcie_dev,uint8 bir);
 
 void pcie_enable_msi_intrs(pcie_dev_t *pcie_dev);
 void pcie_disable_msi_intrs(pcie_dev_t *pcie_dev);
