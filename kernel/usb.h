@@ -167,7 +167,6 @@ typedef struct {
     uint8 if_protocol;  // bInterfaceProtocol
     uint8 ep_count;
     usb_endpoint_t *ep;         // 可动态分配
-    struct usb_driver *drv;     // 绑定到该接口的驱动
 } usb_interface_t;
 
 //USB设备
@@ -197,11 +196,8 @@ typedef struct {
 typedef struct{
     const char *name;
     usb_id_t *id_table;
-
-    // 绑定的是“接口”
     int  (*probe)(usb_dev_t *usb_dev, usb_interface_t *ifc, usb_id_t *id);
     void (*remove)(usb_dev_t *usb_dev, usb_interface_t *ifc);
-
     driver_t drv; // 复用你的通用 driver_t
 } usb_driver_t;
 
