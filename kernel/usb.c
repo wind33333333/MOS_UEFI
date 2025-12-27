@@ -5,9 +5,6 @@
 #include "printk.h"
 #include "pcie.h"
 
-//usb驱动链表
-list_head_t usb_driver_list;
-
 //获取usb设备描述符
 static inline int32 usb_get_device_descriptor(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
@@ -186,15 +183,8 @@ static inline int32 adaptation_driver(usb_dev_t *usb_dev, usb_config_descriptor_
 }
 
 //创建usb设备
-usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
-    list_head_init(&usb_driver_list);
-    usb_driver_t *msc_driver = kzalloc(sizeof(usb_driver_t));
-    msc_driver->name = "msc-driver";
-    msc_driver->class = 0x8;
-    msc_driver->subclass = 0x6;
-    msc_driver->usb_init = mass_storage_probe;
-    usb_driver_register(msc_driver);
-
+usb_dev_t *usb_dev_register(pcie_dev_t *xhci_dev, uint32 port_id) {
+    xhci_controller_t *xhci_controller = xhci_dev->dev.private;
     usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
     usb_dev->xhci_controller = xhci_controller;
     usb_dev->port_id = port_id + 1;
@@ -216,14 +206,14 @@ void usb_dev_scan(pcie_dev_t *xhci_dev) {
     for (uint32 i = 0; i < max_ports; i++) {
         if (xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_CCS) { //检测端口是否有设备
             if ((xhci_controller->op_reg->portregs[i].portsc>>XHCI_PORTSC_SPEED_SHIFT&XHCI_PORTSC_SPEED_MASK) < XHCI_PORTSC_SPEED_SUPER) {
-                //usb2.0协议版本
+                //usb2.0
                 xhci_controller->op_reg->portregs[i].portsc |= XHCI_PORTSC_PR;
                 timing();
                 xhci_ering_dequeue(xhci_controller, &trb);
                 }
-            //usb3.x以上协议版本
+            //usb3.x
             while (!(xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_PED)) pause();
-            create_usb_dev(xhci_controller, i);
+            usb_dev_register(xhci_controller, i);
         }
     }
 }

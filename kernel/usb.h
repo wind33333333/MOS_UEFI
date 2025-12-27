@@ -1,5 +1,7 @@
 #pragma once
 #include "moslib.h"
+#include "device.h"
+#include "driver.h"
 
 #pragma pack(push,1)
 
@@ -151,6 +153,7 @@ typedef struct {
 
 //USB设备
 typedef struct {
+    device_t                dev;
     list_head_t             list;
     uint8                   port_id;
     uint8                   slot_id;
