@@ -303,13 +303,12 @@ static inline void pcie_scan_dev(void *ecam_base, uint8 bus) {
 INIT_TEXT void pcie_bus_init(void) {
     //查找mcfg表
     mcfg_t *mcfg = acpi_get_table('GFCM');
-    mcfg_entry_t *mcfg_entry = &mcfg->entry;
-    uint32 mcfg_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
+    uint32 ecma_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
                             mcfg_entry_t);
-    ecma_t *ecma = kmalloc(sizeof(ecma_t)*mcfg_count);
+    ecma_t *ecma = kmalloc(sizeof(ecma_t)*ecma_count);
 
     //扫描pcie总线，把pcie设备挂在到系统总线
-    for (uint32 i = 0; i < mcfg_count; i++) {
+    for (uint32 i = 0; i < ecma_count; i++) {
         ecma[i].paddr = mcfg->entry->base_address;
         ecma[i].pci_segment = mcfg->entry->pci_segment;
         ecma[i].start_bus = mcfg->entry->start_bus;
