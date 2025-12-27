@@ -151,10 +151,28 @@ typedef struct {
 
 #pragma pack(pop)
 
+//usb端点
+typedef struct {
+    xhci_ring_t transfer_ring;
+    uint8       ep_num;
+}usb_endpoint_t;
+
+struct usb_driver;
+//usb接口
+typedef struct {
+    uint8 if_num;       // bInterfaceNumber
+    uint8 alt_setting;  // bAlternateSetting
+    uint8 if_class;     // bInterfaceClass
+    uint8 if_subclass;  // bInterfaceSubClass
+    uint8 if_protocol;  // bInterfaceProtocol
+    uint8 ep_count;
+    usb_endpoint_t *ep;         // 可动态分配
+    struct usb_driver *drv;     // 绑定到该接口的驱动
+} usb_interface_t;
+
 //USB设备
 typedef struct {
     device_t                dev;
-    list_head_t             list;
     uint8                   port_id;
     uint8                   slot_id;
     uint16                  usb_ver;           // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
@@ -164,23 +182,27 @@ typedef struct {
     xhci_device_context_t*  dev_context;       //设备上下文
     xhci_ring_t             control_ring;      //控制环
     uint8                   interfaces_count;  //接口数量
-    void*                   interfaces;        //接口指针根据接口数量动态分配
-    xhci_controller_t*      xhci_controller;
+    usb_interface_t         *interfaces;       //接口指针根据接口数量动态分配
 } usb_dev_t;
 
-//usb端点
+//usb驱动id表
 typedef struct {
-    xhci_ring_t transfer_ring;
-    uint8       ep_num;
-}usb_endpoint_t;
+    // interface class 匹配（最常用）
+    uint8  if_class;
+    uint8  if_subclass;
+    uint8  if_protocol;
+} usb_id_t;
 
-//usb驱动结构
-typedef struct {
-    char *name;
-    uint8 class;
-    uint8 subclass;
-    int32 (*usb_init)(usb_dev_t *usb_dev, usb_interface_descriptor_t *interface_desc, void *desc_end);
-    list_head_t list;
+//usb驱动
+typedef struct{
+    const char *name;
+    usb_id_t *id_table;
+
+    // 绑定的是“接口”
+    int  (*probe)(usb_dev_t *usb_dev, usb_interface_t *ifc, usb_id_t *id);
+    void (*remove)(usb_dev_t *usb_dev, usb_interface_t *ifc);
+
+    driver_t drv; // 复用你的通用 driver_t
 } usb_driver_t;
 
 //获取下一个描述符
