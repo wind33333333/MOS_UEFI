@@ -1,5 +1,5 @@
 #pragma once
-#include "xhci.h"
+#include "moslib.h"
 
 #pragma pack(push,1)
 
@@ -185,4 +185,4 @@ static inline void *get_next_desc(usb_config_descriptor_t *config_desc) {
     return (void *) ((uint64) config_desc + config_desc->length);
 }
 
-void usb_init(xhci_controller_t *xhci_regs);
+void usb_dev_scan(xhci_controller_t *xhci_regs);

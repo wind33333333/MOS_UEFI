@@ -5,9 +5,6 @@
 #include "driver.h"
 #include "vmalloc.h"
 
-//usb设备全局链
-list_head_t usb_dev_list;
-
 xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_reg, uint8 cap_id) {
     uint32 offset = xhci_reg->cap_reg->hccparams1 >> 16;
     while (offset) {
@@ -96,8 +93,6 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
         xhci_controller->rt_reg->intr_regs[0].erdp);
 
     timing();
-
-    list_head_init(&usb_dev_list);
 
     //usb_dev_enum(xhci_controller);
 

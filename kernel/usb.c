@@ -207,10 +207,13 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
     kfree(config_desc);
 }
 
+
+
 //usb设备初始化
-void usb_init(xhci_controller_t *xhci_regs) {
+void usb_dev_scan(xhci_controller_t *xhci_controller) {
     trb_t trb;
-    for (uint32 i = 0; i < xhci_controller->cap_reg->hcsparams1 >> 24; i++) {
+    uint8 max_ports = xhci_controller->cap_reg->hcsparams1>>24; //支持的端口数
+    for (uint32 i = 0; i < max_ports; i++) {
         if (xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_CCS) {
             if ((xhci_controller->op_reg->portregs[i].portsc >> XHCI_PORTSC_PLS_SHIFT & XHCI_PORTSC_PLS_MASK) ==
                 XHCI_PLS_POLLING) {
