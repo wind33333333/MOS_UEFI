@@ -333,7 +333,7 @@ INIT_TEXT void pcie_bus_init(void) {
 
     //注册驱动程序
     pcie_drv_t *xhci_drv_init(void);
-    //pcie_drv_register(xhci_drv_init());
+    pcie_drv_register(xhci_drv_init());
 
 
 }
