@@ -4,6 +4,7 @@
 #include "bus.h"
 #include "driver.h"
 #include "vmalloc.h"
+#include "usb.h"
 
 xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_reg, uint8 cap_id) {
     uint32 offset = xhci_reg->cap_reg->hccparams1 >> 16;
@@ -94,7 +95,7 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
 
     timing();
 
-    //usb_dev_enum(xhci_controller);
+    usb_dev_scan(xhci_dev);
 
     color_printk(GREEN,BLACK, "\nUSBcmd:%#x  USBsts:%#x", xhci_controller->op_reg->usbcmd,
                  xhci_controller->op_reg->usbsts);

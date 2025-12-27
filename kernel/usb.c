@@ -3,6 +3,7 @@
 #include "slub.h"
 #include "vmm.h"
 #include "printk.h"
+#include "pcie.h"
 
 //usb驱动链表
 list_head_t usb_driver_list;
@@ -208,7 +209,8 @@ usb_dev_t *create_usb_dev(xhci_controller_t *xhci_controller, uint32 port_id) {
 }
 
 //usb设备初始化
-void usb_dev_scan(xhci_controller_t *xhci_controller) {
+void usb_dev_scan(pcie_dev_t *xhci_dev) {
+    xhci_controller_t *xhci_controller = xhci_dev->dev.private;
     trb_t trb;
     uint8 max_ports = xhci_controller->cap_reg->hcsparams1>>24; //支持的端口数
     for (uint32 i = 0; i < max_ports; i++) {

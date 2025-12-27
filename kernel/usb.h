@@ -185,4 +185,5 @@ static inline void *get_next_desc(usb_config_descriptor_t *config_desc) {
     return (void *) ((uint64) config_desc + config_desc->length);
 }
 
-void usb_dev_scan(xhci_controller_t *xhci_regs);
+struct pcie_dev_t;
+void usb_dev_scan(struct pcie_dev_t *xhci_dev);
