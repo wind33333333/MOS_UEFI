@@ -246,7 +246,7 @@ static inline void pcie_dev_register(pcie_config_space_t *pcie_config_space, uin
     pcie_dev->bus_num = bus;
     pcie_dev->dev_num = dev;
     pcie_dev->func_num = func;
-    pcie_dev->pcie_config_space = iomap((uint64)pcie_config_space,PAGE_4K_SIZE,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+    pcie_dev->pcie_config_space = pcie_config_space;
     pcie_dev->class_code = pcie_get_classcode(pcie_dev);
     pcie_dev->dev.name = pcie_clasename_find(pcie_dev);
     pcie_dev->dev.bus = &pcie_bus;
@@ -267,15 +267,15 @@ void pcie_drv_register(pcie_drv_t *pcie_drv) {
 /*
  * pcie配置空间地址计算
  */
-static inline pcie_config_space_t *ecam_bdf_to_pcie_config_space_addr(uint64 ecam_base, uint8 bus, uint8 dev,
+static inline pcie_config_space_t *ecam_bdf_to_pcie_config_space_addr(void *ecam_base, uint8 bus, uint8 dev,
                                                                       uint8 func) {
-    return (pcie_config_space_t *) (ecam_base + (bus << 20) + (dev << 15) + (func << 12));
+    return (pcie_config_space_t *) ((uint64)ecam_base + (bus << 20) + (dev << 15) + (func << 12));
 }
 
 /*
  * pcie总线扫描
  */
-static inline void pcie_scan_dev(uint64 ecam_base, uint8 bus) {
+static inline void pcie_scan_dev(void *ecam_base, uint8 bus) {
     // 遍历当前总线上的32个设备(0-31)
     for (uint8 dev = 0; dev < 32; dev++) {
         // 遍历设备上的8个功能(0-7)
@@ -306,24 +306,29 @@ INIT_TEXT void pcie_bus_init(void) {
     mcfg_entry_t *mcfg_entry = &mcfg->entry;
     uint32 mcfg_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
                             mcfg_entry_t);
+    ecma_t *ecma = kmalloc(sizeof(ecma_t)*mcfg_count);
 
     //扫描pcie总线，把pcie设备挂在到系统总线
     for (uint32 i = 0; i < mcfg_count; i++) {
-        color_printk(GREEN,BLACK, "ECAM base:%#lX Segment:%d StartBus:%d EndBus:%d\n",
-                     mcfg_entry[i].base_address, mcfg_entry[i].pci_segment, mcfg_entry[i].start_bus,
-                     mcfg_entry[i].end_bus);
-        pcie_scan_dev(mcfg_entry[i].base_address, mcfg_entry[i].start_bus);
+        ecma[i].paddr = mcfg->entry->base_address;
+        ecma[i].pci_segment = mcfg->entry->pci_segment;
+        ecma[i].start_bus = mcfg->entry->start_bus;
+        ecma[i].end_bus = mcfg->entry->end_bus;
+        uint64 ecma_size = (ecma->end_bus - ecma->start_bus + 1)*32*8*4096;
+        ecma->vaddr = iomap(ecma->paddr,ecma_size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+
+        color_printk(GREEN,BLACK, "ECAM Paddr:%#lx -> Vaddr:%#lx Segment:%d StartBus:%d EndBus:%d\n",
+                     ecma[i].paddr,ecma[i].vaddr, ecma[i].pci_segment, ecma[i].start_bus,ecma[i].end_bus);
+        pcie_scan_dev(ecma[i].vaddr, ecma[i].start_bus);
     }
 
     //打印pcie设备
-    list_head_t *next = pcie_bus.dev_list.next;
-    while (next != &pcie_bus.dev_list) {
+    for (list_head_t *next = pcie_bus.dev_list.next;next != &pcie_bus.dev_list;next = next->next){
         device_t *dev = CONTAINER_OF(next, device_t,bus_node );
         pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
         color_printk(GREEN,BLACK, "bus:%d dev:%d func:%d vendor_id:%#lx device_id:%#lx class_code:%#lx %s\n",
                      pcie_dev->bus_num, pcie_dev->dev_num, pcie_dev->func_num, pcie_dev->pcie_config_space->vendor_id,
                      pcie_dev->pcie_config_space->device_id, pcie_dev->class_code, dev->name);
-        next = next->next;
     }
 
     //注册驱动程序

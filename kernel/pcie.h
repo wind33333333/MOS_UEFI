@@ -214,6 +214,15 @@ typedef enum {
     msi_x_e      = 0x11
 } cap_id_e;
 
+//ecma表
+typedef struct {
+    uint64 paddr;
+    void   *vaddr;
+    uint16 pci_segment;
+    uint8  start_bus;
+    uint8  end_bus;
+}ecma_t;
+
 /*pcie设备class_code*/
 #define UNCLASSIFIED_CLASS_CODE        0x000000  // 未分类设备
 #define SCSI_CLASS_CODE                0x010000  // SCSI 控制器
