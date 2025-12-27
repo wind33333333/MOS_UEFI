@@ -1,7 +1,5 @@
 #pragma once
 #include "moslib.h"
-#include "slub.h"
-#include "vmm.h"
 
 #define TRB_COUNT 256        //trb个数
 
