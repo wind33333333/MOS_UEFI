@@ -157,7 +157,6 @@ typedef struct {
     uint8       ep_num;
 }usb_endpoint_t;
 
-struct usb_driver;
 //usb接口
 typedef struct {
     uint8 if_num;       // bInterfaceNumber
@@ -165,6 +164,7 @@ typedef struct {
     uint8 if_class;     // bInterfaceClass
     uint8 if_subclass;  // bInterfaceSubClass
     uint8 if_protocol;  // bInterfaceProtocol
+    device_t dev;
     uint8 ep_count;
     usb_endpoint_t *ep;         // 可动态分配
 } usb_interface_t;
@@ -199,7 +199,7 @@ typedef struct{
     int  (*probe)(usb_dev_t *usb_dev, usb_interface_t *ifc, usb_id_t *id);
     void (*remove)(usb_dev_t *usb_dev, usb_interface_t *ifc);
     driver_t drv; // 复用你的通用 driver_t
-} usb_driver_t;
+} usb_drv_t;
 
 //获取下一个描述符
 static inline void *get_next_desc(usb_config_descriptor_t *config_desc) {
