@@ -305,6 +305,7 @@ INIT_TEXT void pcie_bus_init(void) {
     mcfg_t *mcfg = acpi_get_table('GFCM');
     uint32 ecma_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
                             mcfg_entry_t);
+    //创建pcie根复合体
     pcie_root_complex_t *pcie_rc = kzalloc(sizeof(pcie_root_complex_t)*ecma_count);
 
     //扫描pcie总线，把pcie设备挂在到系统总线
