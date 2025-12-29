@@ -216,8 +216,7 @@ typedef enum {
 
 //pcie根复合体
 typedef struct pcie_root_complex {
-    /* ===== 基本标识 ===== */
-    const char *name;              // 例如 "pcie0"
+    uint8  num; //编号
     /* ===== ECAM 配置空间 ===== */
     uint16 pcie_segment;               // PCI segment（ACPI MCFG 的 Segment）
     uint64 ecam_phy_base;          // ECAM 物理地址
