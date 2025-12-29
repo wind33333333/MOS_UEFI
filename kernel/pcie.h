@@ -214,14 +214,25 @@ typedef enum {
     msi_x_e      = 0x11
 } cap_id_e;
 
-//ecma表
-typedef struct {
-    uint64 paddr;
-    void   *vaddr;
-    uint16 pci_segment;
-    uint8  start_bus;
-    uint8  end_bus;
-}ecma_t;
+//pcie根复合体
+typedef struct pcie_root_complex {
+    /* ===== 基本标识 ===== */
+    const char *name;              // 例如 "pcie0"
+    /* ===== ECAM 配置空间 ===== */
+    uint16 pcie_segment;               // PCI segment（ACPI MCFG 的 Segment）
+    uint64 ecam_phy_base;          // ECAM 物理地址
+    void   *ecam_vir_base;         //ecam 虚拟地址
+    uint8  start_bus;              // 起始 bus number
+    uint8  end_bus;                // 结束 bus number
+
+    /* ===== 拓扑关系 ===== */
+    device_t dev;                  // ★作为 device 树根节点（非常推荐）
+    // 所有 pci_dev_t 的 parent 最终指向这里
+
+    /* ===== 扫描/管理 ===== */
+    list_head_t pcie_dev_list;       // 该 Root Complex 下的所有 PCIe 设备
+    // （可选：便于遍历/调试）
+} pcie_root_complex_t;
 
 /*pcie设备class_code*/
 #define UNCLASSIFIED_CLASS_CODE        0x000000  // 未分类设备

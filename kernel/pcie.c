@@ -305,20 +305,21 @@ INIT_TEXT void pcie_bus_init(void) {
     mcfg_t *mcfg = acpi_get_table('GFCM');
     uint32 ecma_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
                             mcfg_entry_t);
-    ecma_t *ecma = kmalloc(sizeof(ecma_t)*ecma_count);
+    pcie_root_complex_t *pcie_rc = kzalloc(sizeof(pcie_root_complex_t)*ecma_count);
 
     //扫描pcie总线，把pcie设备挂在到系统总线
     for (uint32 i = 0; i < ecma_count; i++) {
-        ecma[i].paddr = mcfg->entry->base_address;
-        ecma[i].pci_segment = mcfg->entry->pci_segment;
-        ecma[i].start_bus = mcfg->entry->start_bus;
-        ecma[i].end_bus = mcfg->entry->end_bus;
-        uint64 ecma_size = (ecma->end_bus - ecma->start_bus + 1)*32*8*4096;
-        ecma->vaddr = iomap(ecma->paddr,ecma_size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+        pcie_rc[i].ecam_phy_base = mcfg->entry->base_address;
+        pcie_rc[i].pcie_segment = mcfg->entry->pci_segment;
+        pcie_rc[i].start_bus = mcfg->entry->start_bus;
+        pcie_rc[i].end_bus = mcfg->entry->end_bus;
+        uint64 ecma_size = (pcie_rc[i].end_bus - pcie_rc[i].start_bus + 1)*32*8*4096;
+        pcie_rc[i].ecam_vir_base = iomap(pcie_rc[i].ecam_phy_base,ecma_size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+        list_head_init(&pcie_rc->pcie_dev_list);
 
         color_printk(GREEN,BLACK, "ECAM Paddr:%#lx -> Vaddr:%#lx Segment:%d StartBus:%d EndBus:%d\n",
-                     ecma[i].paddr,ecma[i].vaddr, ecma[i].pci_segment, ecma[i].start_bus,ecma[i].end_bus);
-        pcie_scan_dev(ecma[i].vaddr, ecma[i].start_bus);
+                     pcie_rc[i].ecam_phy_base,pcie_rc[i].ecam_vir_base, pcie_rc[i].pcie_segment, pcie_rc[i].start_bus,pcie_rc[i].end_bus);
+        pcie_scan_dev(pcie_rc[i].ecam_vir_base, pcie_rc[i].start_bus);
     }
 
     //打印pcie设备

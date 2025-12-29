@@ -151,6 +151,8 @@ typedef struct {
 
 #pragma pack(pop)
 
+struct usb_dev_t;
+
 //usb端点
 typedef struct {
     xhci_ring_t transfer_ring;
@@ -164,6 +166,7 @@ typedef struct {
     uint8 if_class;     // bInterfaceClass
     uint8 if_subclass;  // bInterfaceSubClass
     uint8 if_protocol;  // bInterfaceProtocol
+    struct usb_dev_t *usb_dev;
     device_t dev;
     uint8 ep_count;
     usb_endpoint_t *ep;         // 可动态分配
@@ -171,7 +174,6 @@ typedef struct {
 
 //USB设备
 typedef struct {
-    device_t                dev;
     uint8                   port_id;
     uint8                   slot_id;
     uint16                  usb_ver;           // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
