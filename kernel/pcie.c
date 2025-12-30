@@ -254,7 +254,7 @@ static inline void pcie_dev_register(pcie_root_complex_t *pcie_rc,pcie_config_sp
     pcie_dev->vendor = pcie_dev->pcie_config_space->vendor_id;
     pcie_dev->device = pcie_dev->pcie_config_space->device_id;
     pcie_dev->rc = pcie_rc;
-    list_add_head(&pcie_rc->rc_list,pcie_dev.);
+    list_add_head(&pcie_rc->rc_list,&pcie_dev->rc_node);
     device_register(&pcie_dev->dev);
 }
 
@@ -320,7 +320,11 @@ INIT_TEXT void pcie_bus_init(void) {
         uint64 ecma_size = (pcie_rc[i].end_bus - pcie_rc[i].start_bus + 1)*32*8*4096;
         pcie_rc[i].ecam_vir_base = iomap(pcie_rc[i].ecam_phy_base,ecma_size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
         pcie_rc[i].dev.name = "pcie-root";
-        list_head_init(&pcie_rc->rc_list);
+        pcie_rc[i].dev.type = pcie_rc_e;
+        pcie_rc[i].dev.parent = &pcie_rc[1].dev;
+        list_head_init(&pcie_rc[i].rc_list);
+        list_head_init(&pcie_rc[i].dev.sibling_node);
+        list_head_init(&pcie_rc[i].dev.children);
 
         color_printk(GREEN,BLACK, "ECAM Paddr:%#lx -> Vaddr:%#lx Segment:%d StartBus:%d EndBus:%d\n",
                      pcie_rc[i].ecam_phy_base,pcie_rc[i].ecam_vir_base, pcie_rc[i].pcie_segment, pcie_rc[i].start_bus,pcie_rc[i].end_bus);
