@@ -2,6 +2,7 @@
 #include "moslib.h"
 #include "device.h"
 #include "driver.h"
+#include "xhci.h"
 
 #pragma pack(push,1)
 
@@ -173,7 +174,7 @@ typedef struct {
 } usb_interface_t;
 
 //USB设备
-typedef struct {
+typedef struct usb_dev_t {
     uint8                   port_id;
     uint8                   slot_id;
     uint16                  usb_ver;           // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）

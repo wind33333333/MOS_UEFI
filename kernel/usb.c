@@ -1,4 +1,3 @@
-#include "xhci.h"
 #include "usb.h"
 #include "slub.h"
 #include "vmm.h"
@@ -7,7 +6,7 @@
 
 //获取usb设备描述符
 static inline int32 usb_get_device_descriptor(usb_dev_t *usb_dev) {
-    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+    xhci_controller_t *xhci_controller = usb_dev->dev.private;
     usb_device_descriptor_t *dev_desc = kzalloc(align_up(sizeof(usb_device_descriptor_t), 64));
 
     //第一次先获取设备描述符前8字节，拿到max_pack_size后更新端点1，再重新获取描述符。
