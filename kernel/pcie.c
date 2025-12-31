@@ -260,6 +260,7 @@ static inline void pcie_dev_register(pcie_dev_t *pcie_dev,device_t *parent) {
     pcie_dev->dev.name = pcie_clasename_find(pcie_dev);
     pcie_dev->dev.bus = &pcie_bus;
     pcie_dev->dev.parent = parent;
+    pcie_dev->dev.type = pcie_dev_e;
     device_register(&pcie_dev->dev);
 }
 
