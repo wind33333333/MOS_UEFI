@@ -251,7 +251,6 @@ static inline pcie_dev_t *pcie_dev_create(pcie_root_complex_t *pcie_rc,pcie_conf
     pcie_dev->vendor = pcie_dev->pcie_config_space->vendor_id;
     pcie_dev->device = pcie_dev->pcie_config_space->device_id;
     pcie_dev->rc = pcie_rc;
-    list_add_head(&pcie_rc->rc_list,&pcie_dev->rc_node);
     return pcie_dev;
 }
 
@@ -309,45 +308,34 @@ static inline void pcie_scan_dev(pcie_root_complex_t *pcie_rc,uint8 bus,device_t
 }
 
 
-extern bus_type_t system_bus;
-//创建pcie根设备
-pcie_root_complex_t *pcie_rc_create(mcfg_entry_t *mcfg_entry) {
-    pcie_root_complex_t *pcie_rc = kzalloc(sizeof(pcie_root_complex_t));
-    pcie_rc->ecam_phy_base = mcfg_entry->base_address;
-    pcie_rc->pcie_segment = mcfg_entry->pci_segment;
-    pcie_rc->start_bus = mcfg_entry->start_bus;
-    pcie_rc->end_bus = mcfg_entry->end_bus;
-    uint64 ecma_size = (pcie_rc->end_bus - pcie_rc->start_bus + 1)*32*8*4096;
-    pcie_rc->ecam_vir_base = iomap(pcie_rc->ecam_phy_base,ecma_size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
-    return pcie_rc;
-}
-
-//注册pcie根设备到总线
-void pcie_rc_register(pcie_root_complex_t *pcie_rc) {
-    pcie_rc->dev.name = "pcie-root";
-    pcie_rc->dev.type = pcie_rc_e;
-    pcie_rc->dev.parent = NULL;
-    pcie_rc->dev.bus = &system_bus;
-    list_head_init(&pcie_rc->rc_list);
-    list_head_init(&pcie_rc->dev.child_node);
-    list_head_init(&pcie_rc->dev.child_list);
-    device_register(&pcie_rc->dev);
-}
-
 //pcie总线初始化
 INIT_TEXT void pcie_bus_init(void) {
     //查找mcfg表
     mcfg_t *mcfg = acpi_get_table('GFCM');
     uint32 ecma_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
                             mcfg_entry_t);
+    //创建pcie根复合体
+    pcie_root_complex_t *pcie_rc = kzalloc(sizeof(pcie_root_complex_t)*ecma_count);
 
     //扫描pcie总线，把pcie设备挂在到系统总线
     for (uint32 i = 0; i < ecma_count; i++) {
-        pcie_root_complex_t *pcie_rc = pcie_rc_create(&mcfg->entry[i]);
-        pcie_rc_register(pcie_rc);
+        pcie_rc[i].num = i;
+        pcie_rc[i].ecam_phy_base = mcfg[i].entry->base_address;
+        pcie_rc[i].pcie_segment = mcfg[i].entry->pci_segment;
+        pcie_rc[i].start_bus = mcfg[i].entry->start_bus;
+        pcie_rc[i].end_bus = mcfg[i].entry->end_bus;
+        uint64 ecma_size = (pcie_rc[i].end_bus - pcie_rc[i].start_bus + 1)*32*8*4096;
+        pcie_rc[i].ecam_vir_base = iomap(pcie_rc[i].ecam_phy_base,ecma_size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+        pcie_rc[i].dev.name = "pcie-root";
+        pcie_rc[i].dev.type = pcie_rc_e;
+        pcie_rc[i].dev.parent = NULL;
+        list_head_init(&pcie_rc[i].dev.child_node);
+        list_head_init(&pcie_rc[i].dev.child_list);
+
         color_printk(GREEN,BLACK, "ECAM Pbase:%#lx -> Vbase:%#lx Segment:%d StartBus:%d EndBus:%d\n",
-                     pcie_rc->ecam_phy_base,pcie_rc->ecam_vir_base, pcie_rc->pcie_segment, pcie_rc->start_bus,pcie_rc->end_bus);
-        pcie_scan_dev(pcie_rc, pcie_rc->start_bus,&pcie_rc->dev);
+                     pcie_rc[i].ecam_phy_base,pcie_rc[i].ecam_vir_base, pcie_rc[i].pcie_segment, pcie_rc[i].start_bus,pcie_rc[i].end_bus);
+
+        pcie_scan_dev(&pcie_rc[i], pcie_rc[i].start_bus,&pcie_rc[i].dev);
     }
 
     //打印pcie设备

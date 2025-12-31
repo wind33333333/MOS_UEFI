@@ -165,14 +165,9 @@ typedef struct pcie_root_complex_t {
     void   *ecam_vir_base;         //ecam 虚拟地址
     uint8  start_bus;              // 起始 bus number
     uint8  end_bus;                // 结束 bus number
-
     /* ===== 拓扑关系 ===== */
     device_t dev;                  // ★作为 device 树根节点（非常推荐）
     // 所有 pci_dev_t 的 parent 最终指向这里
-
-    /* ===== 扫描/管理 ===== */
-    list_head_t rc_list;       // 该 Root Complex 下的所有 PCIe 设备
-    // （可选：便于遍历/调试）
 } pcie_root_complex_t;
 
 /* BAR 信息 */
@@ -208,7 +203,6 @@ typedef struct pcie_dev_t{
         } msi_x;
     };
     device_t dev;                    //内嵌设备通用结构
-    list_head_t rc_node;
     pcie_root_complex_t *rc;
 } pcie_dev_t;
 

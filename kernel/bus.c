@@ -1,9 +1,6 @@
 #include "bus.h"
 #include "pcie.h"
 
-//系统总线
-bus_type_t system_bus;
-
 //pcie总线
 bus_type_t pcie_bus;
 
@@ -17,13 +14,6 @@ void pcie_bus_init(void);
 
 //创建一个pcie总线和usb总线
 INIT_TEXT void bus_init(void){
-    system_bus.name = "System Bus";
-    system_bus.match = NULL;
-    system_bus.probe = NULL;
-    system_bus.remove = NULL;
-    list_head_init(&system_bus.dev_list);
-    list_head_init(&system_bus.drv_list);
-
     pcie_bus.name = "PCIe Bus";
     pcie_bus.match = pcie_bus_match;
     pcie_bus.probe = pcie_bus_probe;
