@@ -428,8 +428,8 @@ void xhci_endpoint_context_read(xhci_device_context_t *dev_context, uint32 ctx_s
 }
 
 //设置设备地址
-static inline void xhci_address_device(struct usb_dev_t *usb_dev) {
-    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+static inline void xhci_address_device(usb_dev_t *usb_dev) {
+    xhci_controller_t *xhci_controller = usb_dev->dev.parent->private;
     //分配设备插槽上下文内存
     usb_dev->dev_context = kzalloc(align_up(sizeof(xhci_device_context_t), xhci_controller->align_size));
     xhci_controller->dcbaap[usb_dev->slot_id] = va_to_pa(usb_dev->dev_context);

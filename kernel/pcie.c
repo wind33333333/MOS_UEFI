@@ -263,7 +263,7 @@ static inline void pcie_dev_register(pcie_dev_t *pcie_dev,device_t *parent) {
     device_register(&pcie_dev->dev);
 }
 
-//pcie设备类驱动注册
+//pcie设备驱动注册
 void pcie_drv_register(pcie_drv_t *pcie_drv) {
     pcie_drv->drv.bus = &pcie_bus;
     pcie_drv->drv.probe = pcie_drv_probe_wrapper;
@@ -356,7 +356,7 @@ INIT_TEXT void pcie_bus_init(void) {
 
     //注册驱动程序
     pcie_drv_t *xhci_drv_init(void);
-    //pcie_drv_register(xhci_drv_init());
+    pcie_drv_register(xhci_drv_init());
 
 
 }
