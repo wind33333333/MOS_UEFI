@@ -19,7 +19,7 @@ typedef struct device_t{
     list_head_t         bus_node;       // 挂到 bus->dev_list 在总线上的及节点
     list_head_t         child_node;     // 挂到 parent->child_list
     list_head_t         child_list;     // 子设备链表
-    struct device       *parent;        // 父设备：USB设备的父是Hub/控制器；xHCI 的父通常是 PCI 设备
+    struct device_t     *parent;        // 父设备：USB设备的父是Hub/控制器；xHCI 的父通常是 PCI 设备
     struct bus_type_t   *bus;           // 设备属于哪个 bus
     struct driver_t     *drv;           // 当前绑定的 driver；未绑定则为 NULL
     void *private;                      //设备私有数据指针
