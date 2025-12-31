@@ -296,10 +296,11 @@ static inline void pcie_scan_dev(pcie_root_complex_t *pcie_rc,uint8 bus,device_t
                 // 继续检查下一个功能
                 continue;
             }
-            //pcie_dev注册
+            //pcie_dev创建
             pcie_dev_t *pcie_dev = pcie_dev_create(pcie_rc,pcie_config_space, bus, dev, func);
+            //pcie_dev注册
             pcie_dev_register(pcie_dev,parent);
-            //type1 为pcie桥优先扫描下游设备（深度优先）
+            //type1==pcie桥优先扫描下游设备（深度优先）
             if (pcie_config_space->header_type & 1) pcie_scan_dev(pcie_rc, pcie_config_space->type1.secondary_bus,&pcie_dev->dev);
             //如果功能0不是多功能设备，则跳过该设备的后续功能
             if (!func && !(pcie_config_space->header_type & 0x80)) break;
