@@ -157,7 +157,7 @@ typedef struct {
 #pragma pack(pop)
 
 //pcie根复合体
-typedef struct pcie_root_complex {
+typedef struct pcie_root_complex_t {
     uint8  num; //编号
     /* ===== ECAM 配置空间 ===== */
     uint16 pcie_segment;               // PCI segment（ACPI MCFG 的 Segment）
