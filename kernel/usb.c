@@ -6,7 +6,7 @@
 
 //获取usb设备描述符
 static inline int32 usb_get_device_descriptor(usb_dev_t *usb_dev) {
-    xhci_controller_t *xhci_controller = usb_dev->dev.private;
+    xhci_controller_t *xhci_controller = usb_dev->dev.drv_data;
     usb_device_descriptor_t *dev_desc = kzalloc(align_up(sizeof(usb_device_descriptor_t), 64));
 
     //第一次先获取设备描述符前8字节，拿到max_pack_size后更新端点1，再重新获取描述符。
@@ -68,7 +68,7 @@ static inline int32 usb_get_device_descriptor(usb_dev_t *usb_dev) {
 
 //获取usb配置描述符
 static inline usb_config_descriptor_t *usb_get_config_descriptor(usb_dev_t *usb_dev) {
-    xhci_controller_t *xhci_controller = usb_dev->dev.parent->private;
+    xhci_controller_t *xhci_controller = usb_dev->dev.parent->drv_data;
     usb_config_descriptor_t *config_desc = kzalloc(align_up(sizeof(usb_config_descriptor_t), 64));
 
     //第一次先获取配置描述符前9字节
@@ -113,7 +113,7 @@ static inline usb_config_descriptor_t *usb_get_config_descriptor(usb_dev_t *usb_
 
 //激活usb配置
 int usb_set_config(usb_dev_t *usb_dev, uint8 config_value) {
-    xhci_controller_t *xhci_controller = usb_dev->dev.parent->private;
+    xhci_controller_t *xhci_controller = usb_dev->dev.parent->drv_data;
     trb_t trb;
 
     setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_out, usb_req_set_config,
@@ -131,7 +131,7 @@ int usb_set_config(usb_dev_t *usb_dev, uint8 config_value) {
 
 //设置备用设置
 int usb_set_interface(usb_dev_t *usb_dev, int64 if_num, int64 alt_num) {
-    xhci_controller_t *xhci_controller = usb_dev->dev.parent->private;
+    xhci_controller_t *xhci_controller = usb_dev->dev.parent->drv_data;
     trb_t trb;
 
     setup_stage_trb(&trb, setup_stage_interface, setup_stage_norm, setup_stage_out, usb_req_set_interface,
@@ -151,7 +151,7 @@ int usb_set_interface(usb_dev_t *usb_dev, int64 if_num, int64 alt_num) {
 
 //创建usb设备
 usb_dev_t *usb_dev_create(pcie_dev_t *xhci_dev, uint32 port_id) {
-    xhci_controller_t *xhci_controller = xhci_dev->dev.private;
+    xhci_controller_t *xhci_controller = xhci_dev->dev.drv_data;
     usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
     usb_dev->port_id = port_id + 1;
     usb_dev->slot_id = xhci_enable_slot(xhci_controller); //启用插槽
@@ -166,7 +166,7 @@ usb_dev_t *usb_dev_create(pcie_dev_t *xhci_dev, uint32 port_id) {
 
 //注册usb设备
 usb_dev_t *usb_dev_register(pcie_dev_t *xhci_dev, uint32 port_id) {
-    xhci_controller_t *xhci_controller = xhci_dev->dev.private;
+    xhci_controller_t *xhci_controller = xhci_dev->dev.drv_data;
     usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
     usb_dev->xhci_controller = xhci_controller;
     usb_dev->port_id = port_id + 1;
@@ -182,7 +182,7 @@ usb_dev_t *usb_dev_register(pcie_dev_t *xhci_dev, uint32 port_id) {
 
 //usb设备初始化
 void usb_dev_scan(pcie_dev_t *xhci_dev) {
-    xhci_controller_t *xhci_controller = xhci_dev->dev.private;
+    xhci_controller_t *xhci_controller = xhci_dev->dev.drv_data;
     trb_t trb;
     uint8 max_ports = xhci_controller->cap_reg->hcsparams1>>24; //支持的端口数
     for (uint32 i = 0; i < max_ports; i++) {

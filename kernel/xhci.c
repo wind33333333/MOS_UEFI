@@ -12,7 +12,7 @@
 
 //设置设备地址
 void xhci_address_device(usb_dev_t *usb_dev) {
-    xhci_controller_t *xhci_controller = usb_dev->dev.parent->private;
+    xhci_controller_t *xhci_controller = usb_dev->dev.parent->drv_data;
     //分配设备插槽上下文内存
     usb_dev->dev_context = kzalloc(align_up(sizeof(xhci_device_context_t), xhci_controller->align_size));
     xhci_controller->dcbaap[usb_dev->slot_id] = va_to_pa(usb_dev->dev_context);
@@ -60,8 +60,8 @@ xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_reg, uint8 cap_id) {
 
 //xhci设备初始化驱动
 int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
-    xhci_dev->dev.private = kzalloc(sizeof(xhci_controller_t)); //设备私有数据空间申请一块内存，存放xhci相关信息
-    xhci_controller_t *xhci_controller = xhci_dev->dev.private;
+    xhci_dev->dev.drv_data = kzalloc(sizeof(xhci_controller_t)); //存放xhci相关信息
+    xhci_controller_t *xhci_controller = xhci_dev->dev.drv_data;
     xhci_dev->bar[0].vaddr = iomap(xhci_dev->bar[0].paddr,xhci_dev->bar[0].size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
 
     /*初始化xhci寄存器*/

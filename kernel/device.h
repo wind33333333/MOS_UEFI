@@ -22,7 +22,7 @@ typedef struct device_t{
     struct device_t     *parent;        // 父设备：USB设备的父是Hub/控制器；xHCI 的父通常是 PCI 设备
     struct bus_type_t   *bus;           // 设备属于哪个 bus
     struct driver_t     *drv;           // 当前绑定的 driver；未绑定则为 NULL
-    void                *private;       // 驱动私有数据指针
+    void                *drv_data;       // 驱动私有数据指针
 } device_t;
 
 void device_register(device_t *dev);
