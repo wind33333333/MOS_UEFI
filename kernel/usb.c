@@ -159,8 +159,6 @@ usb_dev_t *usb_dev_create(pcie_dev_t *xhci_dev, uint32 port_id) {
     usb_get_device_descriptor(usb_dev); //获取设备描述符
     usb_config_descriptor_t *config_desc = usb_get_config_descriptor(usb_dev); //获取配置描述符
     usb_set_config(usb_dev, config_desc->configuration_value); //激活配置
-    adaptation_driver(usb_dev, config_desc); //适配驱动
-    list_add_head(&usb_dev_list, &usb_dev->list);
     kfree(config_desc);
 }
 
