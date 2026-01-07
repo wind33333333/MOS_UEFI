@@ -180,7 +180,8 @@ void pcie_msi_intrpt_init(pcie_dev_t *pcie_dev) {
 }
 
 //匹配驱动id
-pcie_id_t *pcie_match_id(pcie_id_t* id_table,pcie_dev_t *pcie_dev) {
+static inline pcie_id_t *pcie_match_id(pcie_dev_t *pcie_dev,pcie_drv_t *pcie_drv) {
+    pcie_id_t *id_table = pcie_drv->drv.id_table;
     for (;(id_table->vendor&&id_table->device)||id_table->class_code;id_table++) {
         if ((id_table->vendor==pcie_dev->vendor&&id_table->device==pcie_dev->device) || id_table->class_code==pcie_dev->class_code)
             return id_table;
@@ -192,7 +193,7 @@ pcie_id_t *pcie_match_id(pcie_id_t* id_table,pcie_dev_t *pcie_dev) {
 int pcie_bus_match(device_t *dev,driver_t *drv) {
     pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
     pcie_drv_t *pcie_drv = CONTAINER_OF(drv,pcie_drv_t,drv);
-    pcie_id_t *id = pcie_match_id(pcie_drv->id_table,pcie_dev);
+    pcie_id_t *id = pcie_match_id(pcie_dev,pcie_drv);
     return id ? 1 : 0;
 }
 
@@ -216,7 +217,7 @@ void pcie_bus_remove(device_t *dev) {
 int pcie_drv_probe_wrapper(device_t *dev) {
     pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
     pcie_drv_t *pcie_drv = CONTAINER_OF(dev->drv,pcie_drv_t,drv);
-    pcie_id_t *id = pcie_match_id(pcie_drv->id_table,pcie_dev);
+    pcie_id_t *id = pcie_match_id(pcie_dev,pcie_drv);
     pcie_drv->probe(pcie_dev,id); //加载pcie设备专属驱动初
     return 0;
 }
@@ -239,9 +240,9 @@ static inline char *pcie_clasename_find(pcie_dev_t *pcie_dev) {
     }
 }
 
-extern bus_type_t pcie_bus;
+extern bus_type_t pcie_bus_type;
 //创建pcie设备
-static inline pcie_dev_t *pcie_dev_create(pcie_root_complex_t *pcie_rc,pcie_config_space_t *pcie_config_space, uint8 bus, uint8 dev, uint8 func) {
+static inline pcie_dev_t *pcie_dev_create(pcie_config_space_t *pcie_config_space, uint8 bus, uint8 dev, uint8 func,device_t *parent) {
     pcie_dev_t *pcie_dev = kzalloc(sizeof(pcie_dev_t));
     pcie_dev->bus_num = bus;
     pcie_dev->dev_num = dev;
@@ -250,22 +251,21 @@ static inline pcie_dev_t *pcie_dev_create(pcie_root_complex_t *pcie_rc,pcie_conf
     pcie_dev->class_code = pcie_get_classcode(pcie_dev);
     pcie_dev->vendor = pcie_dev->pcie_config_space->vendor_id;
     pcie_dev->device = pcie_dev->pcie_config_space->device_id;
-    pcie_dev->rc = pcie_rc;
+
+    pcie_dev->dev.name = pcie_clasename_find(pcie_dev);
+    pcie_dev->dev.bus = &pcie_bus_type;
+    pcie_dev->dev.parent = parent;
     return pcie_dev;
 }
 
 //pcie设备注册
-static inline void pcie_dev_register(pcie_dev_t *pcie_dev,device_t *parent) {
-    pcie_dev->dev.name = pcie_clasename_find(pcie_dev);
-    pcie_dev->dev.bus = &pcie_bus;
-    pcie_dev->dev.parent = parent;
-    pcie_dev->dev.type = pcie_dev_e;
+static inline void pcie_dev_register(pcie_dev_t *pcie_dev) {
     device_register(&pcie_dev->dev);
 }
 
 //pcie设备驱动注册
 void pcie_drv_register(pcie_drv_t *pcie_drv) {
-    pcie_drv->drv.bus = &pcie_bus;
+    pcie_drv->drv.bus = &pcie_bus_type;
     pcie_drv->drv.probe = pcie_drv_probe_wrapper;
     pcie_drv->drv.remove = pcie_drv_remove_wrapper;
     driver_register(&pcie_drv->drv);
@@ -282,13 +282,13 @@ static inline pcie_config_space_t *ecam_bdf_to_pcie_config_space_addr(void *ecam
 /*
  * pcie总线扫描
  */
-static inline void pcie_scan_dev(pcie_root_complex_t *pcie_rc,uint8 bus,device_t* parent) {
+static inline void pcie_scan_dev(void* ecam_base,uint8 bus,device_t* parent) {
     // 遍历当前总线上的32个设备(0-31)
     for (uint8 dev = 0; dev < 32; dev++) {
         // 遍历设备上的8个功能(0-7)
         for (uint8 func = 0; func < 8; func++) {
             // 将BDF(总线-设备-功能)转换为配置空间地址
-            pcie_config_space_t *pcie_config_space = ecam_bdf_to_pcie_config_space_addr(pcie_rc->ecam_vir_base, bus, dev, func);
+            pcie_config_space_t *pcie_config_space = ecam_bdf_to_pcie_config_space_addr(ecam_base, bus, dev, func);
             // 检查设备是否存在 (无效设备的vendor_id=0xFFFF)
             if (pcie_config_space->vendor_id == 0xFFFF) {
                 // 功能0不存在意味着整个设备不存在， 跳过该设备的后续功能
@@ -297,11 +297,11 @@ static inline void pcie_scan_dev(pcie_root_complex_t *pcie_rc,uint8 bus,device_t
                 continue;
             }
             //pcie_dev创建
-            pcie_dev_t *pcie_dev = pcie_dev_create(pcie_rc,pcie_config_space, bus, dev, func);
+            pcie_dev_t *pcie_dev = pcie_dev_create(pcie_config_space, bus, dev, func,parent);
             //pcie_dev注册
-            pcie_dev_register(pcie_dev,parent);
+            pcie_dev_register(pcie_dev);
             //type1==pcie桥优先扫描下游设备（深度优先）
-            if (pcie_config_space->header_type & 1) pcie_scan_dev(pcie_rc, pcie_config_space->type1.secondary_bus,&pcie_dev->dev);
+            if (pcie_config_space->header_type & 1) pcie_scan_dev(ecam_base,pcie_config_space->type1.secondary_bus,&pcie_dev->dev);
             //如果功能0不是多功能设备，则跳过该设备的后续功能
             if (!func && !(pcie_config_space->header_type & 0x80)) break;
         }
@@ -318,7 +318,6 @@ pcie_root_complex_t *pcie_rc_create(mcfg_entry_t* mcfg_entry) {
     uint64 ecma_size = (pcie_rc->end_bus - pcie_rc->start_bus + 1)*32*8*4096;
     pcie_rc->ecam_vir_base = iomap(pcie_rc->ecam_phy_base,ecma_size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
     pcie_rc->dev.name = "pcie-root";
-    pcie_rc->dev.type = pcie_rc_e;
     pcie_rc->dev.parent = NULL;
     list_head_init(&pcie_rc->dev.child_node);
     list_head_init(&pcie_rc->dev.child_list);
@@ -342,11 +341,11 @@ INIT_TEXT void pcie_bus_init(void) {
         color_printk(GREEN,BLACK, "ECAM Pbase:%#lx -> Vbase:%#lx Segment:%d StartBus:%d EndBus:%d\n",
                      pcie_rc[i]->ecam_phy_base,pcie_rc[i]->ecam_vir_base, pcie_rc[i]->pcie_segment, pcie_rc[i]->start_bus,pcie_rc[i]->end_bus);
 
-        pcie_scan_dev(pcie_rc[i], pcie_rc[i]->start_bus,&pcie_rc[i]->dev);
+        pcie_scan_dev(pcie_rc[i]->ecam_vir_base, pcie_rc[i]->start_bus,&pcie_rc[i]->dev);
     }
 
     //打印pcie设备
-    for (list_head_t *next = pcie_bus.dev_list.next;next != &pcie_bus.dev_list;next = next->next){
+    for (list_head_t *next = pcie_bus_type.dev_list.next;next != &pcie_bus_type.dev_list;next = next->next){
         device_t *dev = CONTAINER_OF(next, device_t,bus_node );
         pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
         color_printk(GREEN,BLACK, "bus:%d dev:%d func:%d vendor_id:%#lx device_id:%#lx class_code:%#lx %s\n",
@@ -355,8 +354,8 @@ INIT_TEXT void pcie_bus_init(void) {
     }
 
     //注册驱动程序
-    pcie_drv_t *xhci_drv_init(void);
-    pcie_drv_register(xhci_drv_init());
+    // pcie_drv_t *xhci_drv_init(void);
+    // pcie_drv_register(xhci_drv_init());
 
 
 }

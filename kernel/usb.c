@@ -160,22 +160,17 @@ usb_dev_t *usb_dev_create(pcie_dev_t *xhci_dev, uint32 port_id) {
     usb_config_descriptor_t *config_desc = usb_get_config_descriptor(usb_dev); //获取配置描述符
     usb_set_config(usb_dev, config_desc->configuration_value); //激活配置
     kfree(config_desc);
+
+    usb_dev->dev.name = "USB-dev";
+    usb_dev->dev.parent = &xhci_dev->dev;
+    usb_dev->dev.bus = &usb_bus_type;
+    usb_dev->dev.type = usb_dev_e;
+    return usb_dev;
 }
 
 //注册usb设备
-usb_dev_t *usb_dev_register(pcie_dev_t *xhci_dev, uint32 port_id) {
-    xhci_controller_t *xhci_controller = xhci_dev->dev.drv_data;
-    usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
-    usb_dev->xhci_controller = xhci_controller;
-    usb_dev->port_id = port_id + 1;
-    usb_dev->slot_id = xhci_enable_slot(xhci_controller); //启用插槽
-    xhci_address_device(usb_dev); //设置设备地址
-    usb_get_device_descriptor(usb_dev); //获取设备描述符
-    usb_config_descriptor_t *config_desc = usb_get_config_descriptor(usb_dev); //获取配置描述符
-    usb_set_config(usb_dev, config_desc->configuration_value); //激活配置
-    adaptation_driver(usb_dev, config_desc); //适配驱动
-    list_add_head(&usb_dev_list, &usb_dev->list);
-    kfree(config_desc);
+void usb_dev_register(usb_dev_t *usb_dev) {
+    device_register(&usb_dev->dev);
 }
 
 //usb设备初始化
@@ -193,7 +188,8 @@ void usb_dev_scan(pcie_dev_t *xhci_dev) {
                 }
             //usb3.x
             while (!(xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_PED)) pause();
-            usb_dev_register(xhci_dev, i);
+            usb_dev_t *usb_dev = usb_dev_create(xhci_dev, i);
+            usb_dev_register(usb_dev);
         }
     }
 }

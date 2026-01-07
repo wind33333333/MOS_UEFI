@@ -6,23 +6,16 @@
 struct bus_type_t;
 struct driver_t;
 
-typedef enum {
-    pcie_rc_e = 1,
-    pcie_dev_e = 2,
-    usb_dev_e = 3,
-    usb_iface_e = 4,
-}dev_type_e;
-
+/* 设备对象：所有具体设备（pcie_dev/usb_device/usb_interface）都嵌入它 */
 typedef struct device_t{
-    char                *name;                        // 设备名
-    dev_type_e          type;
-    list_head_t         bus_node;       // 挂到 bus->dev_list 在总线上的及节点
-    list_head_t         child_node;     // 挂到 parent->child_list
-    list_head_t         child_list;     // 子设备链表
-    struct device_t     *parent;        // 父设备：USB设备的父是Hub/控制器；xHCI 的父通常是 PCI 设备
-    struct bus_type_t   *bus;           // 设备属于哪个 bus
-    struct driver_t     *drv;           // 当前绑定的 driver；未绑定则为 NULL
-    void                *drv_data;       // 驱动私有数据指针
+    char                *name;          /* 设备名：用于日志与调试（可带路径信息） */
+    list_head_t         bus_node;       /* 挂到 bus->devices 链表 */
+    list_head_t         child_node;     /* 挂到 parent->children 链表 */
+    list_head_t         child_list;     /* 子设备链表（用于向下遍历拓扑） */
+    struct device_t     *parent;        /* 物理拓扑父设备（桥、Hub、控制器等） */
+    struct bus_type_t   *bus;           /* 所属总线 */
+    struct driver_t     *drv;           /* 绑定的驱动（已 probe 成功） */
+    void                *drv_data;      /* 驱动私有数据（probe 里设置） */
 } device_t;
 
 void device_register(device_t *dev);

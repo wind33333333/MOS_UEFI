@@ -181,12 +181,43 @@ typedef struct usb_dev_t {
     uint16                  vid;               // 供应商 ID（VID），由 USB-IF 分配，标识制造商
     uint16                  pid;               // 产品 ID（PID），由厂商分配，标识具体产品
     uint16                  dev_ver;           // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
-    xhci_device_context_t*  dev_context;       //设备上下文
-    xhci_ring_t             control_ring;      //控制环
+    xhci_device_context_t*  dev_context;       // 设备上下文
+    xhci_ring_t             control_ring;      // 控制环
     device_t                dev;
-    uint8                   interfaces_count;  //接口数量
-    usb_interface_t         *interfaces;       //接口指针根据接口数量动态分配
+    struct usb_dev_t        *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
+    uint8_t                 parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
+    uint8                   interfaces_count;  // 接口数量
+    usb_interface_t         *interfaces;       // 接口指针根据接口数量动态分配
 } usb_dev_t;
+
+typedef struct usb_port {
+    uint8_t port_id;              // 1..N
+    uint8_t connected:1;
+    uint8_t enabled:1;
+    uint8_t resetting:1;
+
+    usb_dev_t *child;             // 端口当前挂的子设备（NULL 表示空）
+} usb_port_t;
+
+typedef enum {
+    HUB_KIND_ROOT,                // roothub（端口变化来自 HCD/xHCI）
+    HUB_KIND_EXTERNAL,            // 外部 hub（端口变化来自 hub interrupt endpoint）
+} hub_kind_t;
+
+typedef struct usb_hub {
+    hub_kind_t kind;
+
+    /* 归属：哪个 hub interface 管理这份 hub 状态 */
+    usb_interface_t *intf;        // 注意：归属到 interface（Linux 风格）
+    usb_dev_t *hdev;              // hub 对应的物理设备（便于访问拓扑/HCD）
+
+    /* 端口管理 */
+    uint8_t port_count;
+    usb_port_t *ports;
+
+    /* 事件与并发（精简版） */
+    uint32_t pending_bitmap;      // 哪些端口有变化待处理（可选但很有用）
+} usb_hub_t;
 
 //usb驱动id表
 typedef struct {
@@ -209,6 +240,8 @@ typedef struct{
 static inline void *get_next_desc(usb_config_descriptor_t *config_desc) {
     return (void *) ((uint64) config_desc + config_desc->length);
 }
+
+extern struct bus_type_t usb_bus_type;
 
 struct pcie_dev_t;
 void usb_dev_scan(struct pcie_dev_t *xhci_dev);

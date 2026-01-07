@@ -179,6 +179,7 @@ typedef struct pcie_bar {
 
 //pcie设备
 typedef struct pcie_dev_t{
+    device_t dev;                    //内嵌设备通用结构
     uint16      vendor;
     uint16      device;
     uint32      class_code;
@@ -202,8 +203,6 @@ typedef struct pcie_dev_t{
             uint32  pba_offset;       /* PBA 偏移 */
         } msi_x;
     };
-    device_t dev;                    //内嵌设备通用结构
-    pcie_root_complex_t *rc;
 } pcie_dev_t;
 
 
@@ -216,10 +215,9 @@ typedef struct pcie_id_t {
 
 //pcie设备驱动
 typedef struct {
-    pcie_id_t *id_table;
-    int  (*probe)(pcie_dev_t *pcie_dev,pcie_id_t* id);   // 绑定时回调
-    void (*remove)(pcie_dev_t *pcie_dev);  // 卸载/移除时回调
-    driver_t drv;
+    driver_t    drv;
+    int         (*probe)(pcie_dev_t *pcie_dev,pcie_id_t* id);   // 绑定时回调
+    void        (*remove)(pcie_dev_t *pcie_dev);  // 卸载/移除时回调
 }pcie_drv_t;
 
 typedef enum {
