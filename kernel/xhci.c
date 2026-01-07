@@ -137,7 +137,7 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
 
     timing();
 
-    usb_dev_scan(xhci_dev);
+    //usb_dev_scan(xhci_dev);
 
     color_printk(GREEN,BLACK, "\nUSBcmd:%#x  USBsts:%#x", xhci_controller->op_reg->usbcmd,
                  xhci_controller->op_reg->usbsts);
@@ -150,9 +150,10 @@ void xhci_remove(pcie_dev_t *xhci_dev) {
 
 pcie_drv_t *xhci_drv_init(void) {
     pcie_drv_t *xhci_drv = kmalloc(sizeof(pcie_drv_t));
-    xhci_drv->id_table = kzalloc(sizeof(pcie_id_t)*2);
-    xhci_drv->id_table->class_code = XHCI_CLASS_CODE;
+    pcie_id_t *id_table = kzalloc(sizeof(pcie_id_t)*2);
+    id_table->class_code = XHCI_CLASS_CODE;
     xhci_drv->drv.name = "XHCI-driver";
+    xhci_drv->drv.id_table = id_table;
     xhci_drv->probe = xhci_probe;
     xhci_drv->remove = xhci_remove;
     return xhci_drv;
