@@ -137,7 +137,7 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
 
     timing();
 
-    //usb_dev_scan(xhci_dev);
+    usb_dev_scan(xhci_dev);
 
     color_printk(GREEN,BLACK, "\nUSBcmd:%#x  USBsts:%#x", xhci_controller->op_reg->usbcmd,
                  xhci_controller->op_reg->usbsts);
