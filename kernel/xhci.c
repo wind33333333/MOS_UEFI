@@ -149,7 +149,7 @@ xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_controller, uint8 cap_id) {
     return NULL;
 }
 
-//xhci设备初始化驱动
+//xhci设备探测初始化驱动
 int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
     xhci_dev->dev.drv_data = kzalloc(sizeof(xhci_controller_t)); //存放xhci相关信息
     xhci_controller_t *xhci_controller = xhci_dev->dev.drv_data;
@@ -239,6 +239,7 @@ void xhci_remove(pcie_dev_t *xhci_dev) {
 
 }
 
+//xhci驱动初始化
 pcie_drv_t *xhci_drv_init(void) {
     pcie_drv_t *xhci_drv = kmalloc(sizeof(pcie_drv_t));
     pcie_id_t *id_table = kzalloc(sizeof(pcie_id_t)*2);
