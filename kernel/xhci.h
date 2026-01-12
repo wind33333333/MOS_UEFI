@@ -383,31 +383,29 @@ typedef struct {
 
 //region 设备上下文结构
 
-/* xHCI 设备上下文结构（64 字节版本，CSZ=1） */
+/* Slot Context（64 字节） */
 typedef struct {
-    /* Slot Context（64 字节） */
-    struct {
-        uint32 route_speed; /* 位 19:0 Route String[19:8] - 路由字符串的高 12 位，描述设备在 USB 拓扑中的路径。
-                             * 位 23:20 portsc速度
-                             * 位 25 MTT 多重验证。
-                             * 位 26 1=集线器 0=usb。
-                             * 位 31:27 端点上下文条目数量1-31 */
+    uint32 route_speed; /* 位 19:0 Route String[19:8] - 路由字符串的高 12 位，描述设备在 USB 拓扑中的路径。
+                         * 位 23:20 portsc速度
+                         * 位 25 MTT 多重验证。
+                         * 位 26 1=集线器 0=usb。
+                         * 位 31:27 端点上下文条目数量1-31 */
 
-        uint32 latency_hub; /* 位 15:0  最大退出延迟微妙
-                                   * 位 23:16 根集线器端口号 1 - MaxPorts。
-                                   * 位 31:24 端口数量 */
+    uint32 latency_hub; /* 位 15:0  最大退出延迟微妙
+                               * 位 23:16 根集线器端口号 1 - MaxPorts。
+                               * 位 31:24 端口数量 */
 
-        uint32 parent_info; /* 位 7:0 父集线器插槽id
-                                   * 位 15:8 父端口号
-                                   * 位 17:16 事务转换器端口号 */
+    uint32 parent_info; /* 位 7:0 父集线器插槽id
+                               * 位 15:8 父端口号
+                               * 位 17:16 事务转换器端口号 */
 
-        uint32 addr_status; /* 位 7:0 usb地址
-                                * 位 31:27 插槽状态 0=禁用/启用 1=默认值 2=地址 3=配置*/
-        uint32 reserved[12]; /* 保留字段：填充至 64 字节 */
-    } slot;
+    uint32 addr_status; /* 位 7:0 usb地址
+                            * 位 31:27 插槽状态 0=禁用/启用 1=默认值 2=地址 3=配置*/
+    uint32 reserved[12]; /* 保留字段：填充至 64 字节 */
+    } slot64_t;
 
     /* Endpoint 0 Context（默认控制端点，64 字节） */
-    struct {
+typedef struct {
         uint32 ep_config;
         /* 位 31-24: Max Endpoint Service Time Interval Payload High (Max ESIT Payload Hi) - 如果 LEC = '1'，表示 Max ESIT Payload 值的较高 8 位；如果 LEC = '0'，保留 (RsvdZ)。
          * 位 23-16: Interval - 请求发送或接收数据的周期，单位为 125 μs，值为 2^(n-1) * 125 μs，参考 Table 6-12。
@@ -443,7 +441,12 @@ typedef struct {
                                      * 位 15:0 trb平均长度
                                      * 位 31:16  最大ESIT有效载荷低16位（Max ESIT Payload Lo)*/
         uint32 reserved[11]; /* 保留字段：填充至 64 字节 */
-    } ep[31];
+    }ep64_t;
+
+/* xHCI 设备上下文结构（64 字节版本，CSZ=1） */
+typedef struct {
+    slot64_t slot;
+    ep64_t ep[31];
 } xhci_device_context64_t;
 
 typedef struct {
@@ -458,31 +461,30 @@ typedef struct {
     xhci_device_context64_t dev_ctx; // 需要修改的设备上下文
 } xhci_input_context64_t;
 
-/* xHCI 设备上下文结构（32 字节版本，CSZ=0） */
+
+/* Slot Context（32 字节） */
 typedef struct {
-    /* Slot Context（32 字节） */
-    struct {
-        uint32 route_speed; /* 位 19:0 Route String[19:8] - 路由字符串的高 12 位，描述设备在 USB 拓扑中的路径。
-                             * 位 23:20 portsc速度
-                             * 位 25 MTT 多重验证。
-                             * 位 26 1=集线器 0=usb。
-                             * 位 31:27 端点上下文条目数量1-31 */
+    uint32 route_speed; /* 位 19:0 Route String[19:8] - 路由字符串的高 12 位，描述设备在 USB 拓扑中的路径。
+                         * 位 23:20 portsc速度
+                         * 位 25 MTT 多重验证。
+                         * 位 26 1=集线器 0=usb。
+                         * 位 31:27 端点上下文条目数量1-31 */
 
-        uint32 latency_hub; /* 位 15:0  最大退出延迟微妙
-                                   * 位 23:16 根集线器端口号 1 - MaxPorts。
-                                   * 位 31:24 端口数量 */
+    uint32 latency_hub; /* 位 15:0  最大退出延迟微妙
+                               * 位 23:16 根集线器端口号 1 - MaxPorts。
+                               * 位 31:24 端口数量 */
 
-        uint32 parent_info; /* 位 7:0 父集线器插槽id
-                                   * 位 15:8 父端口号
-                                   * 位 17:16 事务转换器端口号 */
+    uint32 parent_info; /* 位 7:0 父集线器插槽id
+                               * 位 15:8 父端口号
+                               * 位 17:16 事务转换器端口号 */
 
-        uint32 addr_status; /* 位 7:0 usb地址
-                                * 位 31:27 插槽状态 0=禁用/启用 1=默认值 2=地址 3=配置*/
-        uint32 reserved[4]; /* 保留字段：填充至 32 字节 */
-    } slot;
+    uint32 addr_status; /* 位 7:0 usb地址
+                            * 位 31:27 插槽状态 0=禁用/启用 1=默认值 2=地址 3=配置*/
+    uint32 reserved[4]; /* 保留字段：填充至 32 字节 */
+} slot32_t;
 
-    /* Endpoint 0 Context（默认控制端点，32 字节） */
-    struct {
+/* Endpoint 0 Context（默认控制端点，32 字节） */
+typedef struct {
         uint32 ep_config;
         /* 位 31-24: Max Endpoint Service Time Interval Payload High (Max ESIT Payload Hi) - 如果 LEC = '1'，表示 Max ESIT Payload 值的较高 8 位；如果 LEC = '0'，保留 (RsvdZ)。
          * 位 23-16: Interval - 请求发送或接收数据的周期，单位为 125 μs，值为 2^(n-1) * 125 μs，参考 Table 6-12。
@@ -511,7 +513,12 @@ typedef struct {
                                      * 位 15:0 trb平均长度
                                      * 位 31:16  最大ESIT有效载荷低16位（Max ESIT Payload Lo)*/
         uint32 reserved[3]; /* 保留字段：填充至 32 字节 */
-    } ep[31];
+    }ep32_t;
+
+/* xHCI 设备上下文结构（32 字节版本，CSZ=0） */
+typedef struct {
+    slot32_t slot;
+    ep32_t ep[31];
 } xhci_device_context32_t;
 
 typedef struct {
@@ -520,7 +527,7 @@ typedef struct {
     uint32 reserved[6]; // 保留字段，填 0
 } xhci_input_control_context32_t;
 
-/* 修改设备上下文数据结构 */
+/* 修改设备上下文数据结构32字节 */
 typedef struct {
     xhci_input_control_context32_t control;
     xhci_device_context32_t dev_ctx;
@@ -565,8 +572,8 @@ typedef struct {
     uint64              *dcbaap;      //设备上下文插槽
     xhci_ring_t         cmd_ring;     //命令环
     xhci_ring_t         event_ring;   //事件环
-    uint32              align_size;   //xhci内存分配对齐边界
-    uint8               context_size; //设备上下文字节数（32或64字节）
+    uint32              align_size;       //xhci内存分配对齐边界
+    uint8               dev_ctx_size; //设备上下文字节数（32或64字节）
 } xhci_controller_t;
 
 //定时

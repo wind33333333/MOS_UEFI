@@ -41,6 +41,13 @@ void xhci_input_endpoint_context_add(xhci_input_context_t *input_ctx, uint32 ctx
     input_ctx->input_ctx32.control.add_context |= 1 << ep_num;
 }
 
+//增加设备上文
+void xhci_input_context_add(xhci_input_context_t *input_ctx, uint32 ctx_size, uint32 ep_num,void *from_ctx) {
+    void* to_ctx = (uint8*)input_ctx + ctx_size * (ep_num + 1);
+    mem_cpy(from_ctx,to_ctx,ctx_size);
+    input_ctx->input_ctx32.control.add_context |= 1 << ep_num;
+}
+
 //读取插槽上下文
 void xhci_slot_context_read(xhci_device_context_t *dev_context, xhci_slot_context_t *to_slot_ctx) {
     to_slot_ctx->reg0 = dev_context->dev_ctx32.slot.route_speed;
@@ -120,14 +127,14 @@ void xhci_address_device(usb_dev_t *usb_dev) {
     slot_ctx.reg1 = usb_dev->port_id << 16;
     slot_ctx.reg2 = 0;
     slot_ctx.reg3 = 0;
-    xhci_input_slot_context_add(input_ctx, xhci_controller->context_size, &slot_ctx); // 启用 Slot Context
+    xhci_input_slot_context_add(input_ctx, xhci_controller->dev_ctx_size, &slot_ctx); // 启用 Slot Context
 
     xhci_endpoint_context_t ep_ctx;
     ep_ctx.reg0 = 0;
     ep_ctx.reg1 = EP_TYPE_CONTROL | 8 << 16 | 3 << 1;
     ep_ctx.reg2 = va_to_pa(usb_dev->control_ring.ring_base) | 1;
     ep_ctx.reg3 = 0;
-    xhci_input_endpoint_context_add(input_ctx, xhci_controller->context_size, 1, &ep_ctx); //Endpoint 0 Context
+    xhci_input_endpoint_context_add(input_ctx, xhci_controller->dev_ctx_size, 1, &ep_ctx); //Endpoint 0 Context
 
     trb_t trb;
     addr_dev_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
@@ -172,7 +179,7 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
     xhci_controller->align_size = PAGE_4K_SIZE << bsf(xhci_controller->op_reg->pagesize);
 
     /*设备上下文字节数*/
-    xhci_controller->context_size = 32 << ((xhci_controller->cap_reg->hccparams1 & HCCP1_CSZ) >> 2);
+    xhci_controller->dev_ctx_size = 32 << ((xhci_controller->cap_reg->hccparams1 & HCCP1_CSZ) >> 2);
 
     /*初始化设备上下文*/
     uint32 max_slots = xhci_controller->cap_reg->hcsparams1 & 0xff;
@@ -219,7 +226,7 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
         xhci_dev->bar[0].paddr, xhci_dev->msi_x_flags, xhci_controller->cap_reg->hcsparams1 & 0xFF,
         xhci_controller->cap_reg->hcsparams1 >> 8 & 0x7FF,
         xhci_controller->cap_reg->hcsparams1 >> 24, xhci_controller->cap_reg->hccparams1 >> 2 & 1,
-        xhci_controller->context_size, spb_number,
+        xhci_controller->dev_ctx_size, spb_number,
         xhci_controller->op_reg->usbcmd, xhci_controller->op_reg->usbsts, xhci_controller->align_size,
         xhci_controller->rt_reg->intr_regs[0].iman,
         xhci_controller->rt_reg->intr_regs[0].imod, va_to_pa(xhci_controller->cmd_ring.ring_base),

@@ -32,9 +32,9 @@ static inline int32 usb_get_device_descriptor(usb_dev_t *usb_dev) {
                                 : dev_desc->max_packet_size0;
     xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
     xhci_endpoint_context_t ep_ctx;
-    xhci_endpoint_context_read(usb_dev->dev_context, xhci_controller->context_size, 1, &ep_ctx);
+    xhci_endpoint_context_read(usb_dev->dev_context, xhci_controller->dev_ctx_size, 1, &ep_ctx);
     ep_ctx.reg1 = EP_TYPE_CONTROL | max_packe_size << 16;
-    xhci_input_endpoint_context_add(input_ctx, xhci_controller->context_size, 1, &ep_ctx);
+    xhci_input_endpoint_context_add(input_ctx, xhci_controller->dev_ctx_size, 1, &ep_ctx);
     evaluate_context_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
     xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
     xhci_ring_doorbell(xhci_controller, 0, 0);
