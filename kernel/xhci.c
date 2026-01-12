@@ -7,8 +7,103 @@
 #include "vmalloc.h"
 #include "usb.h"
 
-////////////////////////////////////////////////////////////
+typedef struct {
+    uint32 reg0;
+    uint32 reg1;
+    uint32 reg2;
+    uint32 reg3;
+} xhci_slot_context_t;
 
+//增加输入插槽上下文
+void xhci_input_slot_context_add(xhci_input_context_t *input_ctx, uint32 ctx_size, xhci_slot_context_t *from_slot_ctx) {
+    xhci_slot_context_t *to_slot_ctx = (xhci_slot_context_t *) ((uint64) input_ctx + ctx_size);
+    to_slot_ctx->reg0 = from_slot_ctx->reg0;
+    to_slot_ctx->reg1 = from_slot_ctx->reg1;
+    to_slot_ctx->reg2 = from_slot_ctx->reg2;
+    to_slot_ctx->reg3 = from_slot_ctx->reg3;
+    input_ctx->input_ctx32.control.add_context |= 1;
+}
+
+typedef struct {
+    uint32 reg0;
+    uint32 reg1;
+    uint64 reg2;
+    uint32 reg3;
+} xhci_endpoint_context_t;
+
+//增加输入端点上下文
+void xhci_input_endpoint_context_add(xhci_input_context_t *input_ctx, uint32 ctx_size, uint32 ep_num,xhci_endpoint_context_t *from_ep_ctx) {
+    xhci_endpoint_context_t *to_ep_ctx = (xhci_endpoint_context_t *) ((uint64) input_ctx + ctx_size * (ep_num + 1));
+    to_ep_ctx->reg0 = from_ep_ctx->reg0;
+    to_ep_ctx->reg1 = from_ep_ctx->reg1;
+    to_ep_ctx->reg2 = from_ep_ctx->reg2;
+    to_ep_ctx->reg3 = from_ep_ctx->reg3;
+    input_ctx->input_ctx32.control.add_context |= 1 << ep_num;
+}
+
+//读取插槽上下文
+void xhci_slot_context_read(xhci_device_context_t *dev_context, xhci_slot_context_t *to_slot_ctx) {
+    to_slot_ctx->reg0 = dev_context->dev_ctx32.slot.route_speed;
+    to_slot_ctx->reg1 = dev_context->dev_ctx32.slot.latency_hub;
+    to_slot_ctx->reg2 = dev_context->dev_ctx32.slot.parent_info;
+    to_slot_ctx->reg3 = dev_context->dev_ctx32.slot.addr_status;
+}
+
+//读取端点上下文
+void xhci_endpoint_context_read(xhci_device_context_t *dev_context, uint32 ctx_size, uint32 ep_num,
+                                xhci_endpoint_context_t *to_ep_ctx) {
+    xhci_endpoint_context_t *from_ep_ctx = (xhci_endpoint_context_t *) ((uint64) dev_context + ctx_size * (ep_num + 1));
+    to_ep_ctx->reg0 = from_ep_ctx->reg0;
+    to_ep_ctx->reg1 = from_ep_ctx->reg1;
+    to_ep_ctx->reg2 = from_ep_ctx->reg2;
+    to_ep_ctx->reg3 = from_ep_ctx->reg3;
+}
+
+
+//命令环/传输环入队列
+int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb) {
+    if (ring->index >= TRB_COUNT - 1) {
+        link_trb(&ring->ring_base[TRB_COUNT - 1], va_to_pa(ring->ring_base), ring->status_c);
+        ring->index = 0;
+        ring->status_c ^= TRB_FLAG_CYCLE;
+    }
+
+    ring->ring_base[ring->index].member0 = trb->member0;
+    ring->ring_base[ring->index].member1 = trb->member1 | ring->status_c;
+    ring->index++;
+    return 0;
+}
+
+//事件环出队列
+int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb) {
+    xhci_ring_t *event_ring = &xhci_controller->event_ring;
+    while ((event_ring->ring_base[event_ring->index].member1 & TRB_FLAG_CYCLE) == event_ring->status_c) {
+        evt_trb->member0 = event_ring->ring_base[event_ring->index].member0;
+        evt_trb->member1 = event_ring->ring_base[event_ring->index].member1;
+        event_ring->index++;
+        if (event_ring->index >= TRB_COUNT) {
+            event_ring->index = 0;
+            event_ring->status_c ^= TRB_FLAG_CYCLE;
+        }
+        xhci_controller->rt_reg->intr_regs[0].erdp =
+                va_to_pa(&event_ring->ring_base[event_ring->index]) | XHCI_ERDP_EHB;
+    }
+    return 0;
+}
+
+//分配插槽
+uint8 xhci_enable_slot(xhci_controller_t *xhci_controller) {
+    trb_t trb;
+    enable_slot_com_trb(&trb);
+    xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
+    xhci_ring_doorbell(xhci_controller, 0, 0);
+    timing();
+    xhci_ering_dequeue(xhci_controller, &trb);
+    if ((trb.member1 >> 42 & 0x3F) == 33 && trb.member1 >> 56) {
+        return trb.member1 >> 56;
+    }
+    return -1;
+}
 
 //设置设备地址
 void xhci_address_device(usb_dev_t *usb_dev) {
@@ -43,15 +138,11 @@ void xhci_address_device(usb_dev_t *usb_dev) {
     kfree(input_ctx);
 }
 
-
-
-
-///////////////////////////////////////////////////////////
-
-xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_reg, uint8 cap_id) {
-    uint32 offset = xhci_reg->cap_reg->hccparams1 >> 16;
+//xhic能力搜索
+xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_controller, uint8 cap_id) {
+    uint32 offset = xhci_controller->cap_reg->hccparams1 >> 16;
     while (offset) {
-        xhci_cap_t *xhci_cap = (void *) xhci_reg->cap_reg + (offset << 2);
+        xhci_cap_t *xhci_cap = (void *) xhci_controller->cap_reg + (offset << 2);
         if ((xhci_cap->cap_id & 0xFF) == cap_id) return xhci_cap;
         offset = (xhci_cap->next_ptr >> 8) & 0xFF;
     }

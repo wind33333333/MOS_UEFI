@@ -164,7 +164,6 @@ usb_dev_t *usb_dev_create(pcie_dev_t *xhci_dev, uint32 port_id) {
     usb_dev->dev.name = "USB-dev";
     usb_dev->dev.parent = &xhci_dev->dev;
     usb_dev->dev.bus = &usb_bus_type;
-    usb_dev->dev.type = usb_dev_e;
     return usb_dev;
 }
 
