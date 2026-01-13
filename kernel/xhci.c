@@ -8,14 +8,14 @@
 #include "usb.h"
 
 //写入input上文
-void xhci_input_context_write(xhci_input_context_t *input_ctx,void *from_ctx, uint32 ctx_size, uint32 ep_num) {
+void xhci_input_context_add(xhci_input_context_t *input_ctx,void *from_ctx, uint32 ctx_size, uint32 ep_num) {
     void* to_ctx = (uint8*)input_ctx + ctx_size * (ep_num + 1);
     mem_cpy(from_ctx,to_ctx,ctx_size);
     input_ctx->input_ctx32.control.add_context |= 1 << ep_num;
 }
 
 //读取input上下文
-void xhci_input_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_num) {
+void xhci_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_num) {
     void* from_ctx = (uint8*) dev_context + ctx_size * ep_num;
     mem_cpy(from_ctx,to_ctx,ctx_size);
 }
@@ -52,13 +52,13 @@ int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb) {
 }
 
 //分配插槽
-uint8 xhci_enable_slot(xhci_controller_t *xhci_controller) {
+uint8 xhci_enable_slot(usb_dev_t *usb_dev) {
     trb_t trb;
     enable_slot_com_trb(&trb);
-    xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
-    xhci_ring_doorbell(xhci_controller, 0, 0);
+    xhci_ring_enqueue(&usb_dev->xhci_controller->cmd_ring, &trb);
+    xhci_ring_doorbell(usb_dev->xhci_controller, 0, 0);
     timing();
-    xhci_ering_dequeue(xhci_controller, &trb);
+    xhci_ering_dequeue(usb_dev->xhci_controller, &trb);
     if ((trb.member1 >> 42 & 0x3F) == 33 && trb.member1 >> 56) {
         return trb.member1 >> 56;
     }
@@ -67,7 +67,7 @@ uint8 xhci_enable_slot(xhci_controller_t *xhci_controller) {
 
 //设置设备地址
 void xhci_address_device(usb_dev_t *usb_dev) {
-    xhci_controller_t *xhci_controller = usb_dev->dev.parent->drv_data;
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     //分配设备插槽上下文内存
     usb_dev->dev_context = kzalloc(align_up(sizeof(xhci_device_context_t), xhci_controller->align_size));
     xhci_controller->dcbaap[usb_dev->slot_id] = va_to_pa(usb_dev->dev_context);
@@ -80,14 +80,14 @@ void xhci_address_device(usb_dev_t *usb_dev) {
     slot_ctx.latency_hub = usb_dev->port_id << 16;
     slot_ctx.parent_info = 0;
     slot_ctx.addr_status = 0;
-    xhci_input_context_write(input_ctx, &slot_ctx,xhci_controller->dev_ctx_size,0); // 启用 Slot Context
+    xhci_input_context_add(input_ctx, &slot_ctx,xhci_controller->dev_ctx_size,0); // 启用 Slot Context
 
     ep64_t ep_ctx = {0};
     ep_ctx.ep_config = 0;
     ep_ctx.ep_type_size = EP_TYPE_CONTROL | 8 << 16 | 3 << 1;
     ep_ctx.tr_dequeue_ptr = va_to_pa(usb_dev->control_ring.ring_base) | 1;
     ep_ctx.trb_payload = 0;
-    xhci_input_context_write(input_ctx, &ep_ctx,xhci_controller->dev_ctx_size, 1); //Endpoint 0 Context
+    xhci_input_context_add(input_ctx, &ep_ctx,xhci_controller->dev_ctx_size, 1); //Endpoint 0 Context
 
     trb_t trb;
     addr_dev_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
@@ -173,7 +173,7 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
 
     color_printk(
         GREEN,BLACK,
-        "Xhci Version:%x.%x USB%x.%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d Context_Size:%d AC64:%d SPB:%d USBcmd:%#x USBsts:%#x AlignSize:%d iman:%#x imod:%#x crcr:%#lx dcbaap:%#lx erstba:%#lx erdp0:%#lx\n",
+        "Xhci Version:%x.%x USB%x.%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d Dev_Ctx_Size:%d AC64:%d SPB:%d USBcmd:%#x USBsts:%#x AlignSize:%d iman:%#x imod:%#x crcr:%#lx dcbaap:%#lx erstba:%#lx erdp0:%#lx\n",
         xhci_controller->cap_reg->hciversion >> 8, xhci_controller->cap_reg->hciversion & 0xFF,
         sp_cap->supported_protocol.protocol_ver >> 24, sp_cap->supported_protocol.protocol_ver >> 16 & 0xFF,
         xhci_dev->bar[0].paddr, xhci_dev->msi_x_flags, xhci_controller->cap_reg->hcsparams1 & 0xFF,

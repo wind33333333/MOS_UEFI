@@ -1,4 +1,5 @@
 #pragma once
+#include "moslib.h"
 
 #pragma pack(push,1)
 

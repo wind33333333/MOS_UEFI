@@ -1,4 +1,7 @@
 #include "usb-storage.h"
+#include "xhci.h"
+#include "usb.h"
+#include "printk.h"
 
 //测试逻辑单元是否有效
 static inline boolean bot_msc_test_lun(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc,
@@ -356,8 +359,8 @@ void bot_get_msc_info(usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc) {
 int32 usb_mass_storage(usb_dev_t *usb_dev, usb_interface_descriptor_t *interface_desc, void *desc_end) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
-    xhci_slot_context_t slot_ctx;
-    xhci_endpoint_context_t ep_ctx;
+    slot64_t slot_ctx = {0};
+    ep64_t ep_ctx = {0};
     trb_t trb;
 
     //检测接口是否支持uasp协议
@@ -417,14 +420,14 @@ int32 usb_mass_storage(usb_dev_t *usb_dev, usb_interface_descriptor_t *interface
             }
             endpoint->ep_num = (endpoint_desc->endpoint_address & 0xF) << 1 | endpoint_desc->endpoint_address >> 7;
             if (endpoint->ep_num > context_entries) context_entries = endpoint->ep_num;
-            ep_ctx.reg1 = ep_transfer_type | endpoint_desc->max_packet_size << 16 | max_burst << 8 | 3 << 1;
+            ep_ctx.ep_type_size = ep_transfer_type | endpoint_desc->max_packet_size << 16 | max_burst << 8 | 3 << 1;
             if (max_streams_exp == 0) {
                 // 无流：单个Transfer Ring
-                ep_ctx.reg0 = 0;
+                ep_ctx.ep_config = 0;
                 xhci_ring_init(&endpoint->transfer_ring, xhci_controller->align_size);
-                ep_ctx.reg2 = va_to_pa(endpoint->transfer_ring.ring_base) | 1; // DCS=1
+                ep_ctx.tr_dequeue_ptr = va_to_pa(endpoint->transfer_ring.ring_base) | 1; // DCS=1
             } else {
-                ep_ctx.reg0 = (max_streams_exp << 10) | (1 << 15); // MaxPStreams，LSA=1，如果使用线性数组（可选，根据实现）
+                ep_ctx.ep_config = (max_streams_exp << 10) | (1 << 15); // MaxPStreams，LSA=1，如果使用线性数组（可选，根据实现）
                 // 有流：分配Stream Context Array和per-stream rings
                 uint32 streams_count = 1 << max_streams_exp;
                 xhci_stream_ctx_t *stream_array = kzalloc((streams_count + 1) * sizeof(xhci_stream_ctx_t));
@@ -440,21 +443,21 @@ int32 usb_mass_storage(usb_dev_t *usb_dev, usb_interface_descriptor_t *interface
                 // Stream ID 0保留，通常设为0或无效
                 stream_array[0].tr_dequeue = 0;
                 stream_array[0].reserved = 0;
-                ep_ctx.reg2 = va_to_pa(stream_array);
+                ep_ctx.tr_dequeue_ptr = va_to_pa(stream_array);
             }
-            ep_ctx.reg3 = 0;
-            xhci_input_endpoint_context_add(input_ctx, xhci_controller->context_size, endpoint->ep_num, &ep_ctx);
+            ep_ctx.trb_payload = 0;
+            xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->dev_ctx_size, endpoint->ep_num);
             color_printk(RED,BLACK, "max_streams_exp:%d ep_num:%d pipe:%d  \n", max_streams_exp, endpoint->ep_num,
                          pipe_usage_desc->pipe_id);
         }
         //更新slot
-        slot_ctx.reg0 = (context_entries << 27) | (
+        slot_ctx.route_speed = (context_entries << 27) | (
                             (usb_dev->xhci_controller->op_reg->portregs[usb_dev->port_id - 1].portsc &
                              0x3C00) << 10);
-        slot_ctx.reg1 = usb_dev->port_id << 16;
-        slot_ctx.reg2 = 0;
-        slot_ctx.reg3 = 0;
-        xhci_input_slot_context_add(input_ctx, xhci_controller->context_size, &slot_ctx);
+        slot_ctx.latency_hub = usb_dev->port_id << 16;
+        slot_ctx.parent_info = 0;
+        slot_ctx.addr_status = 0;
+        xhci_input_context_add(input_ctx, &slot_ctx, xhci_controller->dev_ctx_size,0);
 
         config_endpoint_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
         xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
@@ -787,20 +790,20 @@ int32 usb_mass_storage(usb_dev_t *usb_dev, usb_interface_descriptor_t *interface
             }
             //获取端点类型
             //增加端点
-            ep_ctx.reg0 = 0;
-            ep_ctx.reg1 = ep_transfer_type | endpoint_desc->max_packet_size << 16 | max_burst << 8 | 3 << 1;
-            ep_ctx.reg2 = va_to_pa(endpoint->transfer_ring.ring_base) | 1;
-            ep_ctx.reg3 = 0;
-            xhci_input_endpoint_context_add(input_ctx, xhci_controller->context_size, endpoint->ep_num, &ep_ctx);
+            ep_ctx.ep_config = 0;
+            ep_ctx.ep_type_size = ep_transfer_type | endpoint_desc->max_packet_size << 16 | max_burst << 8 | 3 << 1;
+            ep_ctx.tr_dequeue_ptr = va_to_pa(endpoint->transfer_ring.ring_base) | 1;
+            ep_ctx.trb_payload = 0;
+            xhci_input_context_add(input_ctx,&ep_ctx, xhci_controller->dev_ctx_size, endpoint->ep_num);
         }
         //更新slot
-        slot_ctx.reg0 = context_entries << 27 | (
+        slot_ctx.route_speed = context_entries << 27 | (
                             (usb_dev->xhci_controller->op_reg->portregs[usb_dev->port_id - 1].portsc &
                              0x3C00) << 10);
-        slot_ctx.reg1 = usb_dev->port_id << 16;
-        slot_ctx.reg2 = 0;
-        slot_ctx.reg3 = 0;
-        xhci_input_slot_context_add(input_ctx, xhci_controller->context_size, &slot_ctx);
+        slot_ctx.latency_hub = usb_dev->port_id << 16;
+        slot_ctx.parent_info = 0;
+        slot_ctx.addr_status = 0;
+        xhci_input_context_add(input_ctx,&slot_ctx, xhci_controller->context_size, 0);
 
         config_endpoint_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
         xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);

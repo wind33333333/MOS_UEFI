@@ -177,12 +177,14 @@ typedef struct {
 typedef struct usb_dev_t {
     uint8                   port_id;
     uint8                   slot_id;
+    uint8                   configuration_value; //启用的配置号
     uint16                  usb_ver;           // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
     uint16                  vid;               // 供应商 ID（VID），由 USB-IF 分配，标识制造商
     uint16                  pid;               // 产品 ID（PID），由厂商分配，标识具体产品
     uint16                  dev_ver;           // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
     xhci_device_context_t*  dev_context;       // 设备上下文
     xhci_ring_t             control_ring;      // 控制环
+    xhci_controller_t*      xhci_controller;   // xhci控制器
     device_t                dev;
     struct usb_dev_t        *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
     uint8_t                 parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
