@@ -7,65 +7,18 @@
 #include "vmalloc.h"
 #include "usb.h"
 
-typedef struct {
-    uint32 reg0;
-    uint32 reg1;
-    uint32 reg2;
-    uint32 reg3;
-} xhci_slot_context_t;
-
-//增加输入插槽上下文
-void xhci_input_slot_context_add(xhci_input_context_t *input_ctx, uint32 ctx_size, xhci_slot_context_t *from_slot_ctx) {
-    xhci_slot_context_t *to_slot_ctx = (xhci_slot_context_t *) ((uint64) input_ctx + ctx_size);
-    to_slot_ctx->reg0 = from_slot_ctx->reg0;
-    to_slot_ctx->reg1 = from_slot_ctx->reg1;
-    to_slot_ctx->reg2 = from_slot_ctx->reg2;
-    to_slot_ctx->reg3 = from_slot_ctx->reg3;
-    input_ctx->input_ctx32.control.add_context |= 1;
-}
-
-typedef struct {
-    uint32 reg0;
-    uint32 reg1;
-    uint64 reg2;
-    uint32 reg3;
-} xhci_endpoint_context_t;
-
-//增加输入端点上下文
-void xhci_input_endpoint_context_add(xhci_input_context_t *input_ctx, uint32 ctx_size, uint32 ep_num,xhci_endpoint_context_t *from_ep_ctx) {
-    xhci_endpoint_context_t *to_ep_ctx = (xhci_endpoint_context_t *) ((uint64) input_ctx + ctx_size * (ep_num + 1));
-    to_ep_ctx->reg0 = from_ep_ctx->reg0;
-    to_ep_ctx->reg1 = from_ep_ctx->reg1;
-    to_ep_ctx->reg2 = from_ep_ctx->reg2;
-    to_ep_ctx->reg3 = from_ep_ctx->reg3;
-    input_ctx->input_ctx32.control.add_context |= 1 << ep_num;
-}
-
-//增加设备上文
-void xhci_input_context_add(xhci_input_context_t *input_ctx, uint32 ctx_size, uint32 ep_num,void *from_ctx) {
+//写入input上文
+void xhci_input_context_write(xhci_input_context_t *input_ctx,void *from_ctx, uint32 ctx_size, uint32 ep_num) {
     void* to_ctx = (uint8*)input_ctx + ctx_size * (ep_num + 1);
     mem_cpy(from_ctx,to_ctx,ctx_size);
     input_ctx->input_ctx32.control.add_context |= 1 << ep_num;
 }
 
-//读取插槽上下文
-void xhci_slot_context_read(xhci_device_context_t *dev_context, xhci_slot_context_t *to_slot_ctx) {
-    to_slot_ctx->reg0 = dev_context->dev_ctx32.slot.route_speed;
-    to_slot_ctx->reg1 = dev_context->dev_ctx32.slot.latency_hub;
-    to_slot_ctx->reg2 = dev_context->dev_ctx32.slot.parent_info;
-    to_slot_ctx->reg3 = dev_context->dev_ctx32.slot.addr_status;
+//读取input上下文
+void xhci_input_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_num) {
+    void* from_ctx = (uint8*) dev_context + ctx_size * ep_num;
+    mem_cpy(from_ctx,to_ctx,ctx_size);
 }
-
-//读取端点上下文
-void xhci_endpoint_context_read(xhci_device_context_t *dev_context, uint32 ctx_size, uint32 ep_num,
-                                xhci_endpoint_context_t *to_ep_ctx) {
-    xhci_endpoint_context_t *from_ep_ctx = (xhci_endpoint_context_t *) ((uint64) dev_context + ctx_size * (ep_num + 1));
-    to_ep_ctx->reg0 = from_ep_ctx->reg0;
-    to_ep_ctx->reg1 = from_ep_ctx->reg1;
-    to_ep_ctx->reg2 = from_ep_ctx->reg2;
-    to_ep_ctx->reg3 = from_ep_ctx->reg3;
-}
-
 
 //命令环/传输环入队列
 int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb) {
@@ -122,19 +75,19 @@ void xhci_address_device(usb_dev_t *usb_dev) {
     xhci_ring_init(&usb_dev->control_ring, xhci_controller->align_size);
     //配置设备上下文
     xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
-    xhci_slot_context_t slot_ctx;
-    slot_ctx.reg0 = 1 << 27 | (xhci_controller->op_reg->portregs[usb_dev->port_id - 1].portsc & 0x3C00) << 10;
-    slot_ctx.reg1 = usb_dev->port_id << 16;
-    slot_ctx.reg2 = 0;
-    slot_ctx.reg3 = 0;
-    xhci_input_slot_context_add(input_ctx, xhci_controller->dev_ctx_size, &slot_ctx); // 启用 Slot Context
+    slot64_t slot_ctx = {0};
+    slot_ctx.route_speed = 1 << 27 | (xhci_controller->op_reg->portregs[usb_dev->port_id - 1].portsc & 0x3C00) << 10;
+    slot_ctx.latency_hub = usb_dev->port_id << 16;
+    slot_ctx.parent_info = 0;
+    slot_ctx.addr_status = 0;
+    xhci_input_context_write(input_ctx, &slot_ctx,xhci_controller->dev_ctx_size,0); // 启用 Slot Context
 
-    xhci_endpoint_context_t ep_ctx;
-    ep_ctx.reg0 = 0;
-    ep_ctx.reg1 = EP_TYPE_CONTROL | 8 << 16 | 3 << 1;
-    ep_ctx.reg2 = va_to_pa(usb_dev->control_ring.ring_base) | 1;
-    ep_ctx.reg3 = 0;
-    xhci_input_endpoint_context_add(input_ctx, xhci_controller->dev_ctx_size, 1, &ep_ctx); //Endpoint 0 Context
+    ep64_t ep_ctx = {0};
+    ep_ctx.ep_config = 0;
+    ep_ctx.ep_type_size = EP_TYPE_CONTROL | 8 << 16 | 3 << 1;
+    ep_ctx.tr_dequeue_ptr = va_to_pa(usb_dev->control_ring.ring_base) | 1;
+    ep_ctx.trb_payload = 0;
+    xhci_input_context_write(input_ctx, &ep_ctx,xhci_controller->dev_ctx_size, 1); //Endpoint 0 Context
 
     trb_t trb;
     addr_dev_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);

@@ -904,6 +904,8 @@ uint8 xhci_enable_slot(xhci_controller_t *xhci_controller);
 void xhci_address_device(struct usb_dev_t *usb_dev);
 int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);
 int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb);
+void xhci_input_context_write(xhci_input_context_t *input_ctx,void *from_ctx, uint32 ctx_size, uint32 ep_num);
+void xhci_input_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_num);
 
 
 
