@@ -4,8 +4,11 @@
 #include "printk.h"
 #include "pcie.h"
 
+device_type_t usb_dev_type = {"usb-dev"};
+device_type_t usb_if_type = {"usb-if"};
+
 //获取usb设备描述符
-static inline int32 usb_get_device_descriptor(usb_dev_t *usb_dev) {
+int usb_get_device_descriptor(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     usb_device_descriptor_t *dev_desc = kzalloc(align_up(sizeof(usb_device_descriptor_t), 64));
 
@@ -57,17 +60,12 @@ static inline int32 usb_get_device_descriptor(usb_dev_t *usb_dev) {
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
 
-    usb_dev->usb_ver = dev_desc->usb_version;
-    usb_dev->vid = dev_desc->vendor_id;
-    usb_dev->pid = dev_desc->product_id;
-    usb_dev->dev_ver = dev_desc->device_version;
-
-    kfree(dev_desc);
+    usb_dev->usb_dev_desc = dev_desc;
     return 0;
 }
 
 //获取usb配置描述符
-void usb_get_config_descriptor(usb_dev_t *usb_dev) {
+int usb_get_config_descriptor(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     usb_config_descriptor_t *config_desc = kzalloc(align_up(sizeof(usb_config_descriptor_t), 64));
 
@@ -108,9 +106,8 @@ void usb_get_config_descriptor(usb_dev_t *usb_dev) {
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
 
-    usb_dev->configuration_value = config_desc->configuration_value;
-
-    return;
+    usb_dev->usb_config_desc = config_desc;
+    return 0;
 }
 
 //激活usb配置
@@ -119,7 +116,7 @@ int usb_set_config(usb_dev_t *usb_dev) {
     trb_t trb;
 
     setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_out, usb_req_set_config,
-                    usb_dev->configuration_value, 0, 0, 8, no_data_stage);
+                    usb_dev->usb_config_desc->configuration_value, 0, 0, 8, no_data_stage);
     xhci_ring_enqueue(&usb_dev->control_ring, &trb);
 
     status_stage_trb(&trb, enable_ioc, trb_in);
@@ -133,7 +130,7 @@ int usb_set_config(usb_dev_t *usb_dev) {
 
 //设置备用设置
 int usb_set_interface(usb_dev_t *usb_dev, int64 if_num, int64 alt_num) {
-    xhci_controller_t *xhci_controller = usb_dev->dev.parent->drv_data;
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     trb_t trb;
 
     setup_stage_trb(&trb, setup_stage_interface, setup_stage_norm, setup_stage_out, usb_req_set_interface,
@@ -161,7 +158,7 @@ usb_dev_t *usb_dev_create(pcie_dev_t *xhci_dev, uint32 port_id) {
     usb_get_device_descriptor(usb_dev); //获取设备描述符
     usb_get_config_descriptor(usb_dev); //获取配置描述符
     usb_set_config(usb_dev); //激活配置
-    usb_dev->dev.name = "USB-dev";
+    usb_dev->dev.type = &usb_dev_type;
     usb_dev->dev.parent = &xhci_dev->dev;
     usb_dev->dev.bus = &usb_bus_type;
     return usb_dev;
