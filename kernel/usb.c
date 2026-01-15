@@ -169,6 +169,34 @@ void usb_dev_register(usb_dev_t *usb_dev) {
     device_register(&usb_dev->dev);
 }
 
+//匹配驱动id
+static inline usb_id_t *usb_match_id(usb_if_t *usb_if,driver_t *drv) {
+    usb_id_t *id_table = drv->id_table;
+    for (;id_table->if_class || id_table->if_protocol || id_table->if_subclass;id_table++) {
+        if (id_table->if_class==usb_if->if_class && id_table->if_protocol == usb_if->if_protocol && id_table->if_subclass==usb_if->if_subclass)
+            return id_table;
+    }
+    return NULL;
+}
+
+//usb设备驱动匹配程序
+int usb_bus_match(device_t* dev,driver_t* drv) {
+    if (dev->type != &usb_if_type) return FALSE;
+    usb_if_t* usb_if = CONTAINER_OF(dev,usb_if_t,dev);
+    usb_id_t *id = usb_match_id(usb_if,drv);
+    return id ? 1 : 0;
+}
+
+//usb设备探测初始化程序
+int usb_bus_probe(device_t* dev) {
+
+}
+
+//usb设备删除程序
+void usb_bus_remove(device_t* dev) {
+
+}
+
 //usb设备初始化
 void usb_dev_scan(pcie_dev_t *xhci_dev) {
     xhci_controller_t *xhci_controller = xhci_dev->dev.drv_data;

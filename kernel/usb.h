@@ -153,6 +153,25 @@ typedef struct {
 #pragma pack(pop)
 
 struct usb_dev_t;
+struct usb_interface_t;
+
+//usb驱动id表
+typedef struct {
+    // interface class 匹配（最常用）
+    uint8  if_class;
+    uint8  if_subclass;
+    uint8  if_protocol;
+} usb_id_t;
+
+//usb驱动
+typedef struct{
+    const char *name;
+    usb_id_t *id_table;
+    int  (*probe)(struct usb_dev_t *usb_dev, struct usb_interface_t *ifc, usb_id_t *id);
+    void (*remove)(struct usb_dev_t *usb_dev, struct usb_interface_t *ifc);
+    driver_t drv; // 复用你的通用 driver_t
+} usb_if_drv_t;
+
 
 //usb端点
 typedef struct {
@@ -171,7 +190,7 @@ typedef struct {
     device_t dev;
     uint8 ep_count;
     usb_endpoint_t *ep;         // 可动态分配
-} usb_interface_t;
+} usb_if_t;
 
 //USB设备
 typedef struct usb_dev_t {
@@ -187,7 +206,7 @@ typedef struct usb_dev_t {
     struct usb_dev_t                *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
     uint8_t                         parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
     uint8                           interfaces_count;  // 接口数量
-    usb_interface_t                 *interfaces;       // 接口指针根据接口数量动态分配
+    usb_if_t                        *interfaces;       // 接口指针根据接口数量动态分配
 } usb_dev_t;
 
 typedef struct usb_port {
@@ -208,7 +227,7 @@ typedef struct usb_hub {
     hub_kind_t kind;
 
     /* 归属：哪个 hub interface 管理这份 hub 状态 */
-    usb_interface_t *intf;        // 注意：归属到 interface（Linux 风格）
+    usb_if_t *intf;        // 注意：归属到 interface（Linux 风格）
     usb_dev_t *hdev;              // hub 对应的物理设备（便于访问拓扑/HCD）
 
     /* 端口管理 */
@@ -219,22 +238,6 @@ typedef struct usb_hub {
     uint32_t pending_bitmap;      // 哪些端口有变化待处理（可选但很有用）
 } usb_hub_t;
 
-//usb驱动id表
-typedef struct {
-    // interface class 匹配（最常用）
-    uint8  if_class;
-    uint8  if_subclass;
-    uint8  if_protocol;
-} usb_id_t;
-
-//usb驱动
-typedef struct{
-    const char *name;
-    usb_id_t *id_table;
-    int  (*probe)(usb_dev_t *usb_dev, usb_interface_t *ifc, usb_id_t *id);
-    void (*remove)(usb_dev_t *usb_dev, usb_interface_t *ifc);
-    driver_t drv; // 复用你的通用 driver_t
-} usb_drv_t;
 
 //获取下一个描述符
 static inline void *get_next_desc(usb_config_descriptor_t *config_desc) {
