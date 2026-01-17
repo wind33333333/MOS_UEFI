@@ -6,13 +6,17 @@
 
 #pragma pack(push,1)
 
+typedef struct {
+    uint8 length; // 描述符长度
+    uint8 descriptor_type; // 描述符类型
+}usb_descriptor_head;
+
 //region usb描述符
 /*usb设备描述符
 描述符长度，固定为 18 字节（0x12）
 描述符类型，固定为 0x01（设备描述符）*/
 typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
+    usb_descriptor_head head;
     uint16 usb_version;         // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
     uint8 device_class;         // 设备类代码，定义设备类别（如 0x00 表示类在接口描述符定义，0x03 表示 HID）
     uint8 device_subclass;      // 设备子类代码，进一步细化设备类（如 HID 的子类）
@@ -32,8 +36,7 @@ typedef struct {
 描述符长度，固定为 9 字节（0x09）
 描述符类型，固定为 0x02（配置描述符）*/
 typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
+    usb_descriptor_head head;
     uint16 total_length; // 配置描述符总长度（包括所有子描述符，如接口、端点等），单位为字节
     uint8 num_interfaces; // 该配置支持的接口数量
     uint8 configuration_value; // 配置值，用于 SET_CONFIGURATION 请求（通常从 1 开始）
@@ -52,8 +55,7 @@ typedef struct {
 描述符长度（含头部和字符串）
 描述符类型 = 0x03*/
 typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
+    usb_descriptor_head head;
     uint16 string[]; // UTF-16LE 编码的字符串内容（变长数组）
 } usb_string_descriptor_t;
 #define USB_STRING_DESCRIPTOR 0x3
@@ -62,8 +64,7 @@ typedef struct {
 描述符长度，固定为 9 字节（0x09）
 描述符类型，固定为 0x04（接口描述符）*/
 typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
+    usb_descriptor_head head;
     uint8 interface_number; // 接口编号，从 0 开始，标识该接口
     uint8 alternate_setting; // 备用设置编号，同一接口的不同配置（通常为 0）
     uint8 num_endpoints; // 该接口使用的端点数量（不包括端点 0）
@@ -78,8 +79,7 @@ typedef struct {
 描述符长度（固定7字节）
 描述符类型：0x05 = 端点描述符*/
 typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
+    usb_descriptor_head head;
     uint8 endpoint_address; // 端点地址：位7方向(0=OUT,主机→设备 1=IN，设备→主机)，位3-0端点号
     uint8 attributes; // 传输类型：0x00=控制，0x01=Isochronous，0x02=Bulk，0x03=Interrupt
 #define USB_EP_CONTROL   0x0   //ep0端点
@@ -95,8 +95,7 @@ typedef struct {
  *  uint8  bLength;            // 固定 6
     uint8  bDescriptorType;    // 0x30 表示 SuperSpeed Endpoint Companion Descriptor*/
 typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
+    usb_descriptor_head head;
     uint8 max_burst; // 每次突发包数（0-15），实际表示突发数+1
     uint8 attributes; // 位 4:0 Streams 支持数 (Bulk)，或多事务机会 (Isoch)
     uint16 bytes_per_interval; // 对于 Isoch/Interrupt，最大字节数
@@ -108,8 +107,7 @@ typedef struct {
  * uint8  bDescriptorType;    // 0x24
  */
 typedef struct {
-    uint8  length;               // 描述符总长度（字节数）
-    uint8  descriptor_type;      // 描述符类型 = 0x24 (CS_INTERFACE)
+    usb_descriptor_head head;
     uint8  pipe_id;              // 端点用途标识 1=command_out 2=status_in 3=bulk_in 4=bulk_out
 #define USB_PIPE_COMMAND_OUT    1
 #define USB_PIPE_STATUS_IN      2
@@ -123,8 +121,7 @@ typedef struct {
 描述符长度
 描述符类型：0x21 = HID 描述符*/
 typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
+    usb_descriptor_head head;
     uint16 hid; // HID 版本号
     uint8 country_code; // 国家代码（0=无）
     uint8 num_descriptors; // 后面跟随的子描述符数量
@@ -136,8 +133,7 @@ typedef struct {
 描述符长度
 描述符类型：0x29 = HUB 描述符*/
 typedef struct {
-    uint8 length; // 描述符长度
-    uint8 descriptor_type; // 描述符类型
+    usb_descriptor_head head;
     uint8 num_ports; // hub 下行端口数量
     uint16 hub_characteristics; // hub 特性位（供电方式、过流保护等）
     uint8 power_on_to_power_good; // 端口上电到电源稳定的时间（单位2ms）
@@ -179,17 +175,27 @@ typedef struct {
     uint8       ep_num;
 }usb_endpoint_t;
 
+//
+typedef struct usb_if_alt_t {
+    usb_interface_descriptor_t *if_desc;  // 指向 cfg_raw 内
+    uint8 altsetting;
+
+    uint8 if_class;
+    uint8 if_subclass;
+    uint8 if_protocol;
+
+    //uint8 ep_count;
+    //usb_ep_desc_t *eps;      // 可选：解析后的端点数组
+} usb_if_alt_t;
+
 //usb接口
-typedef struct {
-    uint8 if_num;       // bInterfaceNumber
-    uint8 alt_setting;  // bAlternateSetting
-    uint8 if_class;     // bInterfaceClass
-    uint8 if_subclass;  // bInterfaceSubClass
-    uint8 if_protocol;  // bInterfaceProtocol
+typedef struct usb_if_t {
     struct usb_dev_t *usb_dev;
+    uint8 if_num;
+    uint8 alt_count;
+    usb_if_alt_t *alts;
+    usb_if_alt_t *cur_alt;   // 或 cur_alt_idx
     device_t dev;
-    uint8 ep_count;
-    usb_endpoint_t *ep;         // 可动态分配
 } usb_if_t;
 
 //USB设备
@@ -198,7 +204,6 @@ typedef struct usb_dev_t {
     uint8                           slot_id;
     usb_device_descriptor_t*        usb_dev_desc;       //usb设备描述符
     usb_config_descriptor_t*        usb_config_desc;    //usb配置描述符
-    usb_interface_descriptor_t*     usb_if_desc;        //usb接口描述符
     xhci_device_context_t*          dev_context;       // 设备上下文
     xhci_ring_t                     control_ring;      // 控制环
     xhci_controller_t*              xhci_controller;   // xhci控制器
@@ -240,8 +245,24 @@ typedef struct usb_hub {
 
 
 //获取下一个描述符
-static inline void *get_next_desc(usb_config_descriptor_t *config_desc) {
-    return (void *) ((uint64) config_desc + config_desc->length);
+static inline void *get_next_desc(usb_descriptor_head *head) {
+    return (uint8*)head + head->length;
+}
+
+//配置描述符结束地址
+static inline void *usb_cfg_end(usb_config_descriptor_t *usb_config_desc)
+{
+    return (uint8*)usb_config_desc + usb_config_desc->total_length;
+}
+
+/* 在 uif->alts[] 中按 altsetting 值查找（不能用 altsetting 当数组下标） */
+static inline usb_if_alt_t *usb_find_alt_by_num(usb_if_t *usb_if, uint8 altsetting)
+{
+    for (uint8 i = 0; i < usb_if->alt_count; i++) {
+        if (usb_if->alts[i].altsetting == altsetting)
+            return &usb_if->alts[i];
+    }
+    return NULL;
 }
 
 extern struct bus_type_t usb_bus_type;

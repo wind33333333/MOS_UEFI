@@ -147,25 +147,13 @@ int usb_set_interface(usb_dev_t *usb_dev, int64 if_num, int64 alt_num) {
     return 0;
 }
 
-
-//创建usb设备
-usb_dev_t *usb_dev_create(pcie_dev_t *xhci_dev, uint32 port_id) {
-    usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
-    usb_dev->xhci_controller = xhci_dev->dev.drv_data;
-    usb_dev->port_id = port_id + 1;
-    usb_dev->slot_id = xhci_enable_slot(usb_dev); //启用插槽
-    xhci_address_device(usb_dev); //设置设备地址
-    usb_get_device_descriptor(usb_dev); //获取设备描述符
-    usb_get_config_descriptor(usb_dev); //获取配置描述符
-    usb_set_config(usb_dev); //激活配置
-    usb_dev->dev.type = &usb_dev_type;
-    usb_dev->dev.parent = &xhci_dev->dev;
-    usb_dev->dev.bus = &usb_bus_type;
-    return usb_dev;
+//注册usb接口
+static inline void usb_if_register(usb_if_t* usb_if) {
+    device_register(&usb_if->dev);
 }
 
 //注册usb设备
-void usb_dev_register(usb_dev_t *usb_dev) {
+static inline void usb_dev_register(usb_dev_t *usb_dev) {
     device_register(&usb_dev->dev);
 }
 
@@ -173,7 +161,7 @@ void usb_dev_register(usb_dev_t *usb_dev) {
 static inline usb_id_t *usb_match_id(usb_if_t *usb_if,driver_t *drv) {
     usb_id_t *id_table = drv->id_table;
     for (;id_table->if_class || id_table->if_protocol || id_table->if_subclass;id_table++) {
-        if (id_table->if_class==usb_if->if_class && id_table->if_protocol == usb_if->if_protocol && id_table->if_subclass==usb_if->if_subclass)
+        if (id_table->if_class==usb_if->cur_alt->if_class && id_table->if_protocol == usb_if->cur_alt->if_protocol && id_table->if_subclass==usb_if->cur_alt->if_subclass)
             return id_table;
     }
     return NULL;
@@ -197,6 +185,148 @@ void usb_bus_remove(device_t* dev) {
 
 }
 
+//usb接口创建并注册总线
+int usb_if_create_register(usb_dev_t *usb_dev) {
+    uint8 alt_count[256];      //每个接口的替用接口数量
+    usb_if_t *usb_if_map[256]; //usb_if临时缓存区
+    uint8 fill_idx[256];       //下一个alts计数
+
+    mem_set(alt_count, 0, sizeof(alt_count));
+    mem_set(usb_if_map, 0, sizeof(usb_if_map));
+    mem_set(fill_idx, 0, sizeof(fill_idx));
+
+    //统计每个接口的替用接口数量
+    usb_interface_descriptor_t* if_desc = (usb_interface_descriptor_t*)usb_dev->usb_config_desc;
+    void* cfg_end = usb_cfg_end(usb_dev->usb_config_desc);
+    while (if_desc < cfg_end) {
+        if (if_desc->head.descriptor_type == USB_INTERFACE_DESCRIPTOR) {
+            alt_count[if_desc->interface_number]++;
+        }
+        if_desc = get_next_desc(&if_desc->head);
+    }
+
+    //遍历alt_cout创建usb_if 和 usb_if_alt结构
+    for (uint8 i = 0; i < 256; i++) {
+        if (alt_count[i]) {
+            usb_if_t *usb_if = kzalloc(sizeof(usb_if_t));
+            usb_if->if_num = i;
+            usb_if->alt_count = alt_count[i];
+            usb_if->alts = kzalloc(sizeof(usb_if_alt_t)*usb_if->alt_count);
+            usb_if->usb_dev = usb_dev;
+            usb_if->dev.type = &usb_if_type;
+            usb_if->dev.parent = &usb_dev->dev;
+            usb_if->dev.bus = &usb_bus_type;
+            usb_if_map[i] = usb_if;     //把usb_if缓存在usb_if_map中
+            /* 建议：把 uif 挂到 usb_dev->interfaces 链表/数组，便于拔出时回收（此处略） */
+        }
+    }
+
+    //填充每个usb_if_alt
+    if_desc = (usb_interface_descriptor_t*)usb_dev->usb_config_desc;
+    while (if_desc < cfg_end) {
+        if (if_desc->head.descriptor_type == USB_INTERFACE_DESCRIPTOR) {
+            usb_if_t *usb_if = usb_if_map[if_desc->interface_number];
+            uint8 idx = fill_idx[if_desc->interface_number]++;
+            usb_if_alt_t *if_alt = &usb_if->alts[idx];
+            if_alt->if_desc     = if_desc;
+            if_alt->altsetting  = if_desc->alternate_setting;
+            if_alt->if_class    = if_desc->interface_class;
+            if_alt->if_subclass = if_desc->interface_subclass;
+            if_alt->if_protocol = if_desc->interface_protocol;
+            /* 可选：此处不解析端点，延后到 probe；或预解析以便 match/probe 快速使用 */
+            /* usb_parse_alt_endpoints(usb_dev, alt); */
+        }
+        if_desc = get_next_desc(&if_desc->head);
+    }
+
+    /* 设置 cur_alt（优先 alt0，否则第一个），然后延迟注册（触发 match/probe） */
+    for (int i = 0; i < 256; i++) {
+        usb_if_t *usb_if = usb_if_map[i];
+        if (!usb_if) continue;
+
+        usb_if_alt_t *alt0 = usb_find_alt_by_num(usb_if, 0);
+        usb_if->cur_alt = alt0 ? alt0 : &usb_if->alts[0];
+
+        /* 可选：只解析当前 alt 的端点，保证驱动 probe 一上来就能拿到 ep_count */
+        /* usb_parse_alt_endpoints(usb_dev, uif->cur_alt); */
+
+        /* 延迟注册：到这里 uif/alt 数据已完整 */
+        usb_if_register(usb_if);
+    }
+}
+
+//usb接口创建并注册总线
+/*
+int usb_if_create_register1(usb_dev_t *usb_dev) {
+    usb_interface_descriptor_t *cur_desc = (usb_interface_descriptor_t*)usb_dev->usb_config_desc;
+    void* end_decs = (uint8*)usb_dev->usb_config_desc+usb_dev->usb_config_desc->total_length;
+    while (cur_desc < end_decs) {
+        usb_interface_descriptor_t *next_desc = cur_desc;
+        usb_interface_descriptor_t *start_if_desc,*end_if_desc;
+        uint8 if_num = 0;
+        uint8 alt_count = 0;
+        while (next_desc < end_decs) {
+            if (next_desc->descriptor_type == USB_INTERFACE_DESCRIPTOR) {
+                if (!cur_desc->alternate_setting) {
+                    if_num = next_desc->interface_number;
+                    start_if_desc = next_desc;
+                }
+                if (next_desc->interface_number != if_num) {
+                    end_if_desc = next_desc;
+                    break;
+                }
+                alt_count++;
+            }
+            next_desc = get_next_desc(next_desc);
+        }
+
+        usb_if_t *usb_if;
+        while (start_if_desc < end_if_desc) {
+            if (start_if_desc->descriptor_type == USB_INTERFACE_DESCRIPTOR) {
+                if (!start_if_desc->alternate_setting) {
+                    usb_if = kzalloc(sizeof(usb_if_t));
+                    usb_if->if_num = start_if_desc->interface_number;
+                    usb_if->alt_count = alt_count;
+                    usb_if->alts = kzalloc(sizeof(usb_if_alt_t)*alt_count);
+                    usb_if->cur_alt = &usb_if->alts[0];
+                    usb_if->usb_dev = usb_dev;
+                    usb_if->dev.type = &usb_if_type;
+                    usb_if->dev.parent = &usb_dev->dev;
+                    usb_if->dev.bus = &usb_bus_type;
+                }
+                usb_if_alt_t *if_alt = &usb_if->alts[start_if_desc->alternate_setting];
+                if_alt->altsetting =  start_if_desc->alternate_setting;
+                if_alt->if_desc = start_if_desc;
+                if_alt->alt_end = end_if_desc;
+                if_alt->if_class = cur_desc->interface_class;
+                if_alt->if_subclass = cur_desc->interface_subclass;
+                if_alt->if_protocol = cur_desc->interface_protocol;
+            }
+            start_if_desc = get_next_desc(start_if_desc);
+        }
+        usb_if_register(usb_if);
+    }
+}
+*/
+
+
+
+//创建usb设备
+usb_dev_t *usb_dev_create(pcie_dev_t *xhci_dev, uint32 port_id) {
+    usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
+    usb_dev->xhci_controller = xhci_dev->dev.drv_data;
+    usb_dev->port_id = port_id + 1;
+    usb_dev->slot_id = xhci_enable_slot(usb_dev); //启用插槽
+    xhci_address_device(usb_dev); //设置设备地址
+    usb_get_device_descriptor(usb_dev); //获取设备描述符
+    usb_get_config_descriptor(usb_dev); //获取配置描述符
+    usb_set_config(usb_dev); //激活配置
+    usb_dev->dev.type = &usb_dev_type;
+    usb_dev->dev.parent = &xhci_dev->dev;
+    usb_dev->dev.bus = &usb_bus_type;
+    return usb_dev;
+}
+
 //usb设备初始化
 void usb_dev_scan(pcie_dev_t *xhci_dev) {
     xhci_controller_t *xhci_controller = xhci_dev->dev.drv_data;
@@ -214,6 +344,7 @@ void usb_dev_scan(pcie_dev_t *xhci_dev) {
             while (!(xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_PED)) pause();
             usb_dev_t *usb_dev = usb_dev_create(xhci_dev, i);
             usb_dev_register(usb_dev);
+            usb_if_create_register(usb_dev);
         }
     }
 }
