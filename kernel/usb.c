@@ -209,7 +209,7 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
         if_desc = get_next_desc(&if_desc->head);
     }
 
-    //遍历alt_cout创建usb_if 和 usb_if_alt结构
+    //解析alt_cout分配usb_if_alt内存
     for (uint32 i = 0; i < 256; i++) {
         if (alt_count[i]) {
             usb_if_t *usb_if = &usb_dev->interfaces[usb_dev->interfaces_count++];
