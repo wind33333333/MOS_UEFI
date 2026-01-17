@@ -195,6 +195,7 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
     mem_set(usb_if_map, 0, sizeof(usb_if_map));
     mem_set(fill_idx, 0, sizeof(fill_idx));
 
+    //给接口分配内存
     usb_dev->interfaces_count = 0;
     usb_dev->interfaces = kzalloc(sizeof(usb_if_t)*usb_dev->usb_config_desc->num_interfaces);
 
