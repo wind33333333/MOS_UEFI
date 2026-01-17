@@ -185,6 +185,11 @@ void usb_bus_remove(device_t* dev) {
 
 }
 
+//解析
+int usb_alt_parse_endpoints(usb_dev_t *usb_dev) {
+
+}
+
 //usb接口创建并注册总线
 int usb_if_create_register(usb_dev_t *usb_dev) {
     uint8 alt_count[256];      //每个接口的替用接口数量
@@ -236,6 +241,8 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
             if_alt->if_class    = if_desc->interface_class;
             if_alt->if_subclass = if_desc->interface_subclass;
             if_alt->if_protocol = if_desc->interface_protocol;
+            if_alt->ep_count = if_desc->num_endpoints;
+            if_alt->eps = kmalloc(if_alt->ep_count * sizeof(usb_ep_t)); //给端点分配内存
             /* 可选：此处不解析端点，延后到 probe；或预解析以便 match/probe 快速使用 */
             /* usb_parse_alt_endpoints(usb_dev, alt); */
         }
@@ -256,6 +263,7 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
             usb_if_register(usb_if);
         }
     }
+    return 0;
 }
 
 //创建usb设备

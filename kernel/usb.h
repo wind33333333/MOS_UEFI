@@ -171,11 +171,12 @@ typedef struct{
 
 //usb端点
 typedef struct {
+
     xhci_ring_t transfer_ring;
     uint8       ep_num;
-}usb_endpoint_t;
+}usb_ep_t;
 
-//
+//usb替用接口
 typedef struct usb_if_alt_t {
     usb_interface_descriptor_t *if_desc;  // 指向 cfg_raw 内
     uint8 altsetting;
@@ -184,8 +185,8 @@ typedef struct usb_if_alt_t {
     uint8 if_subclass;
     uint8 if_protocol;
 
-    //uint8 ep_count;
-    //usb_ep_desc_t *eps;      // 可选：解析后的端点数组
+    uint8 ep_count;     // 端点数量
+    usb_ep_t *eps;      // 可选：解析后的端点数组
 } usb_if_alt_t;
 
 //usb接口
