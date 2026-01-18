@@ -50,14 +50,14 @@ static inline uint8 bot_msc_read_max_lun(xhci_controller_t *xhci_controller, usb
     setup_stage_trb(&trb, setup_stage_interface, setup_stage_calss, setup_stage_in, usb_req_get_max_lun, 0, 0,
                     bot_msc->interface_num, 8,
                     in_data_stage);
-    xhci_ring_enqueue(&usb_dev->control_ring, &trb);
+    xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     uint8 *max_lun = kzalloc(64);
     data_stage_trb(&trb, va_to_pa(max_lun), 1, trb_in);
-    xhci_ring_enqueue(&usb_dev->control_ring, &trb);
+    xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     status_stage_trb(&trb, enable_ioc, trb_out);
-    xhci_ring_enqueue(&usb_dev->control_ring, &trb);
+    xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
     timing();

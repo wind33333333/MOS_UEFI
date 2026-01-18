@@ -72,7 +72,7 @@ void xhci_address_device(usb_dev_t *usb_dev) {
     usb_dev->dev_context = kzalloc(align_up(sizeof(xhci_device_context_t), xhci_controller->align_size));
     xhci_controller->dcbaap[usb_dev->slot_id] = va_to_pa(usb_dev->dev_context);
     //初始化控制
-    xhci_ring_init(&usb_dev->control_ring, xhci_controller->align_size);
+    xhci_ring_init(&usb_dev->ep0, xhci_controller->align_size);
     //配置设备上下文
     xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
     slot64_t slot_ctx = {0};
@@ -85,7 +85,7 @@ void xhci_address_device(usb_dev_t *usb_dev) {
     ep64_t ep_ctx = {0};
     ep_ctx.ep_config = 0;
     ep_ctx.ep_type_size = EP_TYPE_CONTROL | 8 << 16 | 3 << 1;
-    ep_ctx.tr_dequeue_ptr = va_to_pa(usb_dev->control_ring.ring_base) | 1;
+    ep_ctx.tr_dequeue_ptr = va_to_pa(usb_dev->ep0.ring_base) | 1;
     ep_ctx.trb_payload = 0;
     xhci_input_context_add(input_ctx, &ep_ctx,xhci_controller->dev_ctx_size, 1); //Endpoint 0 Context
 

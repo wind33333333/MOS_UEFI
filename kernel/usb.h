@@ -171,8 +171,8 @@ typedef struct{
 
 //usb端点
 typedef struct {
-
-    xhci_ring_t transfer_ring;
+    usb_endpoint_descriptor_t *ep_desc;
+    xhci_ring_t ep;
     uint8       ep_num;
 }usb_ep_t;
 
@@ -206,7 +206,8 @@ typedef struct usb_dev_t {
     usb_device_descriptor_t*        usb_dev_desc;       //usb设备描述符
     usb_config_descriptor_t*        usb_config_desc;    //usb配置描述符
     xhci_device_context_t*          dev_context;       // 设备上下文
-    xhci_ring_t                     control_ring;      // 控制环
+    xhci_ring_t                     ep0;               // 控制端点
+    xhci_ring_t                     ep1_31[31];        // 端点1-31
     xhci_controller_t*              xhci_controller;   // xhci控制器
     device_t                        dev;
     struct usb_dev_t                *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
@@ -214,6 +215,8 @@ typedef struct usb_dev_t {
     uint8                           interfaces_count;  // 接口数量
     usb_if_t                        *interfaces;       // 接口指针根据接口数量动态分配
 } usb_dev_t;
+
+///////////////////////////
 
 typedef struct usb_port {
     uint8_t port_id;              // 1..N
