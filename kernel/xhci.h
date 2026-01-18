@@ -562,6 +562,25 @@ typedef struct {
 
 #pragma pack(pop)
 
+
+struct usb_dev_t;
+struct usb_hub_t;
+
+typedef enum {
+    XHCI_PORT_EMPTY = 0,
+    XHCI_PORT_DEV,
+    XHCI_PORT_HUB,
+} xhci_port_type_t;
+
+//xhci端口
+typedef struct {
+    union {
+        struct usb_hub_t *usb_hub;      // hub设备
+        struct usb_dev_t *usb_dev;      // usb设备
+    };
+   xhci_port_type_t type;                     //1 = usb_dev , 2 = usb_hub;
+}xhci_port;
+
 //xhci控制器
 typedef struct {
     xhci_cap_regs_t     *cap_reg;     // 能力寄存器
@@ -569,11 +588,12 @@ typedef struct {
     xhci_rt_regs_t      *rt_reg;      // 运行时寄存器
     xhci_db_regs_t      *db_reg;      // 门铃寄存器
     xhci_ext_regs_t     *ext_reg;     // 扩展寄存器
-    uint64              *dcbaap;      //设备上下文插槽
-    xhci_ring_t         cmd_ring;     //命令环
-    xhci_ring_t         event_ring;   //事件环
-    uint32              align_size;   //xhci内存分配对齐边界
-    uint8               dev_ctx_size; //设备上下文字节数（32或64字节）
+    uint64              *dcbaap;      // 设备上下文插槽
+    xhci_port           *ports;       //
+    xhci_ring_t         cmd_ring;     // 命令环
+    xhci_ring_t         event_ring;   // 事件环
+    uint32              align_size;   // xhci内存分配对齐边界
+    uint8               dev_ctx_size; // 设备上下文字节数（32或64字节）
 } xhci_controller_t;
 
 //定时
@@ -899,7 +919,6 @@ static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 
     xhci_controller->db_reg[db_number] = value;
 }
 
-struct usb_dev_t;
 uint8 xhci_enable_slot(struct usb_dev_t *usb_dev);
 void xhci_address_device(struct usb_dev_t *usb_dev);
 int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);

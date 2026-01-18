@@ -231,7 +231,7 @@ typedef enum {
     HUB_KIND_EXTERNAL,            // 外部 hub（端口变化来自 hub interrupt endpoint）
 } hub_kind_t;
 
-typedef struct usb_hub {
+typedef struct usb_hub_t {
     hub_kind_t kind;
 
     /* 归属：哪个 hub interface 管理这份 hub 状态 */
