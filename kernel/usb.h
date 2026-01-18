@@ -99,8 +99,8 @@ typedef struct {
     uint8 max_burst; // 每次突发包数（0-15），实际表示突发数+1
     uint8 attributes; // 位 4:0 Streams 支持数 (Bulk)，或多事务机会 (Isoch)
     uint16 bytes_per_interval; // 对于 Isoch/Interrupt，最大字节数
-} usb_superspeed_endpint_companion_descriptor_t;
-#define USB_SUPERSPEED_ENDPOINT_COMPANION_descriptor 0x30
+} usb_superspeed_companion_descriptor_t;
+#define USB_SUPERSPEED_COMPANION_DESCRIPTOR 0x30
 
 /* USA 管道情况描述符
  * uint8  bLength;            // 固定 4
@@ -172,8 +172,7 @@ typedef struct{
 //usb端点
 typedef struct {
     usb_endpoint_descriptor_t *ep_desc;
-    xhci_ring_t ep;
-    uint8       ep_num;
+
 }usb_ep_t;
 
 //usb替用接口
