@@ -572,7 +572,7 @@ typedef struct {
     uint64              *dcbaap;      //设备上下文插槽
     xhci_ring_t         cmd_ring;     //命令环
     xhci_ring_t         event_ring;   //事件环
-    uint32              align_size;       //xhci内存分配对齐边界
+    uint32              align_size;   //xhci内存分配对齐边界
     uint8               dev_ctx_size; //设备上下文字节数（32或64字节）
 } xhci_controller_t;
 
