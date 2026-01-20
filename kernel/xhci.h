@@ -165,9 +165,9 @@ typedef struct {
                                - TM  (位 2)：1=隧道模式 0=本地模式
                                - OCA (位 3)：过电流激活 （1=该端口处于过流状态 0=该端口不存在过流情况）
                                - PR (位 4): 端口复位 （1=端口复位信令已断言 0=端口未复位）
-                               - PLS (位 5-8): 端口链路状态
+                               - PLS (位 5-8): 端口链路状态 0x0：U0 /0x1：U1 /0x2：U2 /0x3：U3 /0x4：Disabled /0x5：RxDetect /0x6：Inactive /0x7：Polling /0x8：Recovery /0x9：Hot Reset /0xA：Compliance Mode /0xB：Test Mode /0xF：Resume
                                - PP (位 9): 端口电源 默认=1
-                               - PortSpeed (位 10-13): 端口速度
+                               - PortSpeed (位 10-13): 端口速度 0：未定义（通常表示端口还没被 reset 初始化出有效速率）/1：Full Speed /2：Low Speed /3：High Speed /4：SuperSpeed /5：SuperSpeedPlus（SSP） /6–15：保留
                                - PIC (位 14-15): 端口指示器控制（0=端口指示灯关闭 1=琥珀色 2=绿色 3=未定义）
                                - LWS (位 16): 链路状态写入选通
                                - CSC (位 17): 连接状态变化
@@ -178,9 +178,9 @@ typedef struct {
                                - PLC (位 22): 端口链路状态变化
                                - CEC (位 23): 配置错误变化
                                - CAS (位 24): 冷连接状态
-                               - WCE (位 25): 唤醒连接启用
-                               - WDE (位 26): 断线唤醒启用
-                               - WOE (位 27)：过电流唤醒使能
+                               - WCE (位 25): 连接唤醒使能
+                               - WDE (位 26): 断开唤醒使能
+                               - WOE (位 27)：过流唤醒使能
                                - DR  (位 30)：1=设备不可拆卸 0=设备可移动
                                - WPR (位 31)：热端口复位 */
 #define XHCI_PORTSC_CCS (1 << 0)
@@ -196,6 +196,7 @@ typedef struct {
 #define XHCI_PORTSC_SPEED_LOW 2
 #define XHCI_PORTSC_SPEED_HIGH 3
 #define XHCI_PORTSC_SPEED_SUPER 4
+#define XHCI_PORTSC_SPEED_SUPER_PLUS 5
 #define XHCI_PORTSC_PIC_SHIFT 14
 #define XHCI_PORTSC_PIC_MASK 0x3
 #define XHCI_PORTSC_LWS (1 << 16)
