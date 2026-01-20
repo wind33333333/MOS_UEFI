@@ -186,8 +186,20 @@ void usb_bus_remove(device_t* dev) {
 }
 
 //解析
-int usb_alt_parse_endpoints(usb_dev_t *usb_dev) {
-
+int usb_alt_parse_endpoints(usb_dev_t *usb_dev,usb_if_alt_t *if_alt) {
+    usb_ep_t *eps = if_alt->eps;
+    usb_endpoint_descriptor_t *ep_desc = (void*)if_alt->if_desc;
+    void* cfg_end = usb_cfg_end(usb_dev->usb_config_desc);
+    uint8 eps_idx = 0;
+    while (ep_desc < cfg_end) {
+        if (ep_desc->head.descriptor_type == USB_ENDPOINT_DESCRIPTOR) {
+            eps[eps_idx].ep_desc = ep_desc;
+            eps_idx++;
+        }
+        ep_desc = get_next_desc(&ep_desc->head);
+        if (ep_desc->head.descriptor_type == USB_INTERFACE_DESCRIPTOR) break;
+    }
+    return 0;
 }
 
 //usb接口创建并注册总线
@@ -242,9 +254,10 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
             if_alt->if_subclass = if_desc->interface_subclass;
             if_alt->if_protocol = if_desc->interface_protocol;
             if_alt->ep_count = if_desc->num_endpoints;
-            if_alt->eps = kmalloc(if_alt->ep_count * sizeof(usb_ep_t)); //给端点分配内存
+            if_alt->eps = kzalloc(if_alt->ep_count * sizeof(usb_ep_t)); //给端点分配内存
             /* 可选：此处不解析端点，延后到 probe；或预解析以便 match/probe 快速使用 */
             /* usb_parse_alt_endpoints(usb_dev, alt); */
+            usb_alt_parse_endpoints(usb_dev,if_alt);
         }
         if_desc = get_next_desc(&if_desc->head);
     }

@@ -172,7 +172,6 @@ typedef struct{
 //usb端点
 typedef struct {
     usb_endpoint_descriptor_t *ep_desc;
-
 }usb_ep_t;
 
 //usb替用接口
@@ -206,7 +205,7 @@ typedef struct usb_dev_t {
     usb_config_descriptor_t*        usb_config_desc;    //usb配置描述符
     xhci_device_context_t*          dev_context;       // 设备上下文
     xhci_ring_t                     ep0;               // 控制端点
-    xhci_ring_t                     ep1_31[31];        // 端点1-31
+    xhci_ring_t                     eps[32];           // 端点0-31
     xhci_controller_t*              xhci_controller;   // xhci控制器
     device_t                        dev;
     struct usb_dev_t                *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
