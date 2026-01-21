@@ -274,11 +274,11 @@ typedef struct {
 
 // ===== 4. 门铃寄存器 (Doorbell Registers) =====
 // 门铃寄存器数组 (每个设备槽一个 + 主机控制器)
-typedef unsigned int xhci_db_regs_t; // 最大支持256个设备槽(由HCSPARAMS1的MaxSlots决定）
-// - DB Target (位 0-7): 门铃目标
-// - 值为0：触发命令环（Command Ring）
-// - 值为1-31：触发特定端点（Endpoint 0-31）的传输环
-// - DB Stream ID (位 16-31): 流ID（仅用于支持流的设备）
+typedef unsigned int xhci_db_regs_t;     /*最大支持256个设备槽(由HCSPARAMS1的MaxSlots决定）
+                                         - DB Target (位 0-7): 门铃目标
+                                         - 值为0：触发命令环（Command Ring）
+                                         - 值为1-31：触发特定端点（Endpoint 0-31）的传输环
+                                         - DB Stream ID (位 16-31): 流ID（仅用于支持流的设备）*/
 
 // ===== 5. 扩展寄存器 (HCCPARAMS2) =====
 // 当HCCPARAMS1[0] (AC64) 设置为1时出现
@@ -323,10 +323,10 @@ typedef struct {
 
         /* 0x02: Supported Protocol Capability (支持的协议能力) */
         struct {
-            uint32 protocol_ver; /* 位 23:16 小修订版本0x10 = x.10
+            uint32 protocol_ver;    /* 位 23:16 小修订版本0x10 = x.10
                                       位 31:24 主修订版本0x03 = 3.x */
-            uint8 name[4]; /* 位 31:0 4个asci字符 */
-            uint32 port_info; /* 位7:0 兼容端口偏移
+            uint8 name[4];            /* 位 31:0 4个asci字符 */
+            uint32 port_info;         /* 位7:0 兼容端口偏移
                                       位15:8 兼容端口计数偏移
                                       位31:28 协议速度 ID 计数 - RO，PSI 字段数量 (0-15)*/
             uint32 protocol_slot_type; /* 位4:0 协议插槽类型 */

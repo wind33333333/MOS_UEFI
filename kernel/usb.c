@@ -302,6 +302,7 @@ void usb_dev_scan(pcie_dev_t *xhci_dev) {
     uint8 max_ports = xhci_controller->cap_reg->hcsparams1>>24; //支持的端口数
     for (uint32 i = 0; i < max_ports; i++) {
         if (xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_CCS) { //检测端口是否有设备
+            color_printk(GREEN, BLACK, "ports[%d]:%#x    \n",i,xhci_controller->op_reg->portregs[i].portsc);
             if ((xhci_controller->op_reg->portregs[i].portsc>>XHCI_PORTSC_SPEED_SHIFT&XHCI_PORTSC_SPEED_MASK) < XHCI_PORTSC_SPEED_SUPER) {
                 //usb2.0
                 xhci_controller->op_reg->portregs[i].portsc |= XHCI_PORTSC_PR;
