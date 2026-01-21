@@ -313,7 +313,11 @@ void usb_dev_scan(pcie_dev_t *xhci_dev) {
             usb_dev_t *usb_dev = usb_dev_create(xhci_dev, i);
             usb_dev_register(usb_dev);
             usb_if_create_register(usb_dev);
-            xhci_controller->op_reg->portregs[i].portsc = 0xFFFFFFFF;
+            color_printk(GREEN, BLACK, "ports[%d]:%#x    \n",i,xhci_controller->op_reg->portregs[i].portsc);
+            uint32 w1c = xhci_controller->op_reg->portregs[i].portsc;
+            w1c &= (XHCI_PORTSC_W1C_MASK | XHCI_PORTSC_PP);
+            xhci_controller->op_reg->portregs[i].portsc = w1c;
+            color_printk(GREEN, BLACK, "ports[%d]:%#x    \n",i,xhci_controller->op_reg->portregs[i].portsc);
         }
     }
 }

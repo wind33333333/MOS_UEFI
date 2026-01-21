@@ -199,6 +199,7 @@ typedef struct {
 #define XHCI_PORTSC_SPEED_SUPER_PLUS 5
 #define XHCI_PORTSC_PIC_SHIFT 14
 #define XHCI_PORTSC_PIC_MASK 0x3
+#define XHCI_PORTSC_W1C_MASK 0xFE0000
 #define XHCI_PORTSC_LWS (1 << 16)
 #define XHCI_PORTSC_CSC (1 << 17)
 #define XHCI_PORTSC_PEC (1 << 18)
@@ -599,8 +600,8 @@ typedef struct {
 
 //定时
 static inline void timing(void) {
-    // uint64 count = 20000000;
-    // while (count--) pause();
+    uint64 count = 20000000;
+    while (count--) pause();
 }
 
 //region 命令环trb
