@@ -369,7 +369,7 @@ typedef struct {
             uint32 dbc_port; /* 调试端口寄存器：指定调试端口号 */
         } usb_debug;
     };
-} xhci_cap_t;
+} xhci_xcap_t;
 
 /* ERST条目结构 (16字节) */
 typedef struct {
@@ -600,8 +600,8 @@ typedef struct {
 
 //定时
 static inline void timing(void) {
-    uint64 count = 20000000;
-    while (count--) pause();
+    // uint64 count = 20000000;
+    // while (count--) pause();
 }
 
 //region 命令环trb
@@ -927,6 +927,7 @@ int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);
 int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb);
 void xhci_input_context_add(xhci_input_context_t *input_ctx,void *from_ctx, uint32 ctx_size, uint32 ep_num);
 void xhci_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_num);
+uint8 xhci_xcap_find(xhci_controller_t *xhci_controller,xhci_xcap_t **xcap_arr,uint8 cap_id);
 
 
 

@@ -302,7 +302,6 @@ void usb_dev_scan(pcie_dev_t *xhci_dev) {
     uint8 max_ports = xhci_controller->cap_reg->hcsparams1>>24; //支持的端口数
     for (uint32 i = 0; i < max_ports; i++) {
         if (xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_CCS) { //检测端口是否有设备
-            color_printk(GREEN, BLACK, "ports[%d]:%#x    \n",i,xhci_controller->op_reg->portregs[i].portsc);
             if ((xhci_controller->op_reg->portregs[i].portsc>>XHCI_PORTSC_SPEED_SHIFT&XHCI_PORTSC_SPEED_MASK) < XHCI_PORTSC_SPEED_SUPER) {
                 //usb2.0
                 xhci_controller->op_reg->portregs[i].portsc |= XHCI_PORTSC_PR;
@@ -314,11 +313,12 @@ void usb_dev_scan(pcie_dev_t *xhci_dev) {
             usb_dev_t *usb_dev = usb_dev_create(xhci_dev, i);
             usb_dev_register(usb_dev);
             usb_if_create_register(usb_dev);
-            color_printk(GREEN, BLACK, "ports[%d]:%#x    \n",i,xhci_controller->op_reg->portregs[i].portsc);
+            color_printk(GREEN, BLACK, "ports[%d]:%#x    \n",i+1,xhci_controller->op_reg->portregs[i].portsc);
             uint32 w1c = xhci_controller->op_reg->portregs[i].portsc;
             w1c &= (XHCI_PORTSC_W1C_MASK | XHCI_PORTSC_PP);
             xhci_controller->op_reg->portregs[i].portsc = w1c;
-            color_printk(GREEN, BLACK, "ports[%d]:%#x    \n",i,xhci_controller->op_reg->portregs[i].portsc);
+            color_printk(GREEN, BLACK, "ports[%d]:%#x    \n",i+1,xhci_controller->op_reg->portregs[i].portsc);
+            timing();
         }
     }
 }

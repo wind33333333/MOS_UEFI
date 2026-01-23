@@ -98,15 +98,19 @@ void xhci_address_device(usb_dev_t *usb_dev) {
     kfree(input_ctx);
 }
 
-//xhic能力搜索
-xhci_cap_t *xhci_cap_find(xhci_controller_t *xhci_controller, uint8 cap_id) {
+//xhic扩展能力搜索
+uint8 xhci_xcap_find(xhci_controller_t *xhci_controller,xhci_xcap_t **xcap_arr,uint8 cap_id) {
     uint32 offset = xhci_controller->cap_reg->hccparams1 >> 16;
+    xhci_xcap_t *xcap = (void *) xhci_controller->cap_reg;
+    uint8 count = 0;
     while (offset) {
-        xhci_cap_t *xhci_cap = (void *) xhci_controller->cap_reg + (offset << 2);
-        if ((xhci_cap->cap_id & 0xFF) == cap_id) return xhci_cap;
-        offset = (xhci_cap->next_ptr >> 8) & 0xFF;
+        xcap = (void *)xcap + (offset << 2);
+        if ((xcap->cap_id & 0xFF) == cap_id) {
+            xcap_arr[count++] = xcap;
+        };
+        offset = (xcap->next_ptr >> 8) & 0xFF;
     }
-    return NULL;
+    return count;
 }
 
 //xhci设备探测初始化驱动
@@ -169,13 +173,19 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
     xhci_controller->op_reg->usbcmd |= XHCI_CMD_RS;
 
     /*获取协议支持能力*/
-    xhci_cap_t *sp_cap = xhci_cap_find(xhci_controller, 2);
+    xhci_xcap_t *spc_cap[5];
+    uint8 spc_count;
+    spc_count = xhci_xcap_find(xhci_controller,&spc_cap, 2);
 
     color_printk(
         GREEN,BLACK,
-        "Xhci Version:%x.%x USB%x.%x BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d Dev_Ctx_Size:%d AC64:%d SPB:%d USBcmd:%#x USBsts:%#x AlignSize:%d iman:%#x imod:%#x crcr:%#lx dcbaap:%#lx erstba:%#lx erdp0:%#lx\n",
+        "Xhci Version:%x.%x spc_count:%d USB%x.%x start_port:%d count:%d USB%x.%x start_port:%d count:%d BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d Dev_Ctx_Size:%d AC64:%d SPB:%d USBcmd:%#x USBsts:%#x AlignSize:%d iman:%#x imod:%#x crcr:%#lx dcbaap:%#lx erstba:%#lx erdp0:%#lx\n",
         xhci_controller->cap_reg->hciversion >> 8, xhci_controller->cap_reg->hciversion & 0xFF,
-        sp_cap->supported_protocol.protocol_ver >> 24, sp_cap->supported_protocol.protocol_ver >> 16 & 0xFF,
+        spc_count,
+        spc_cap[0]->supported_protocol.protocol_ver >> 24, spc_cap[0]->supported_protocol.protocol_ver >> 16 & 0xFF,
+        spc_cap[0]->supported_protocol.port_info&0xFF,(spc_cap[0]->supported_protocol.port_info>>8)&0xFF,
+        spc_cap[1]->supported_protocol.protocol_ver >> 24, spc_cap[1]->supported_protocol.protocol_ver >> 16 & 0xFF,
+        spc_cap[1]->supported_protocol.port_info&0xFF,(spc_cap[1]->supported_protocol.port_info>>8)&0xFF,
         xhci_dev->bar[0].paddr, xhci_dev->msi_x_flags, xhci_controller->cap_reg->hcsparams1 & 0xFF,
         xhci_controller->cap_reg->hcsparams1 >> 8 & 0x7FF,
         xhci_controller->cap_reg->hcsparams1 >> 24, xhci_controller->cap_reg->hccparams1 >> 2 & 1,
