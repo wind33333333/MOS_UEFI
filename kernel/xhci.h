@@ -292,6 +292,47 @@ typedef struct {
     // ... 更多扩展寄存器 ...
 } xhci_ext_regs_t;
 
+/* 0x01: USB Legacy Support (USB 传统支持) */
+typedef struct {
+        uint32 usblegsup; /* 位16=1 bios控制，位24=1 os控制 */
+        uint32 usblegctlsts; /* 位0: USB SMI启用
+                                 位4: 主机系统错误SMI启用
+                                 位13: OS所有权变更SMI启用
+                                 位14: PCI命令变更SMI启用
+                                 位15: BAR变更SMI启用
+
+                                 === 高16位：SMI 状态/事件区域 ===
+                                 RO：只读
+                                 位16: 事件中断SMI状态(RO)
+                                 位19:17 保留 (RsvdP)
+                                 位20: 主机系统错误SMI状态(RO)
+                                 位28:21 保留 (RsvdZ)
+
+                                 RW1C：写1清除
+                                 位29: OS所有权变更SMI状态(RW1C)
+                                 位30: PCI命令变更SMI状态(RW1C)
+                                 位31: BAR变更SMI状态(RW1C)*/
+}xhci_xcap_legacy_support;
+
+/* 0x02: Supported Protocol Capability (支持的协议能力) */
+typedef struct {
+        uint32 protocol_ver;    /* 位 23:16 小修订版本0x10 = x.10
+                                  位 31:24 主修订版本0x03 = 3.x */
+        uint8 name[4];            /* 位 31:0 4个asci字符 */
+        uint32 port_info;         /* 位7:0 兼容端口偏移
+                                  位15:8 兼容端口计数偏移
+                                  位31:28 协议速度 ID 计数 - RO，PSI 字段数量 (0-15)*/
+        uint32 protocol_slot_type; /* 位4:0 协议插槽类型 */
+        uint32 protocol_speed[15]; /* 位3:0 协议速度 ID 值 - RO，Port Speed ID (1-15)
+                                  位5:4 协议速度标识 0=b/s 1=Kb/s 2=Mb/s 3=Gb/s
+                                  位7:6 SI 类型 - RO，对称性 (0=对称, 2/3=非对称)
+                                  位8   全双工 - RO，1=全双工
+                                  位15:14 链路协议 - RO，1=定义链路协议
+                                  位31:16 协议速度 ID 尾数 - RO，速度尾数*/
+}xhci_xcap_supported_protocol;
+
+
+
 /* xHCI 扩展能力 (xCAP) 结构体 */
 typedef struct {
     union {
