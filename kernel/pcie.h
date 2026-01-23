@@ -91,6 +91,7 @@ typedef struct {
 
 // Power Management能力结构（ID 0x01）
 typedef struct {
+    cap_head_t head;
     uint16 pmc; // 能力字段（支持的状态）
     uint16 pmcsr; // 控制/状态寄存器
 } power_mgmt_cap_t;
@@ -106,7 +107,7 @@ typedef struct {
     uint32 msg_addr_lo;  //32位消息地址（MSI中断写入的内存地址）,位12-19 指向local apic。
     uint32 msg_addr_hi;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
     uint16 msg_data;     //中断消息数据（写入Message Address的值，用于触发中断）。
-}msi_cap_tt;
+}msi_cap_t;
 
 // PCIe能力结构（ID 0x10）
 typedef struct {
@@ -210,15 +211,26 @@ typedef struct {
     };
 } cap_t;*/
 
+#pragma pack(pop)
+
+typedef struct {
+    uint16 msg_control;/*- 位0：MSI Enable（1=启用，0=禁用）。
+                 - 位1-3：Multiple Message Capable（支持的向量数：0=1，1=2，2=4，3=8，4=16，5=32）。
+                 - 位4-6：Multiple Message Enable（启用的向量数）。
+                 - 位7：64-bit Address Capable（1=支持64位地址）。
+                 - 位8-15：保留。*/
+    uint32 msg_addr_lo;  //32位消息地址（MSI中断写入的内存地址）,位12-19 指向local apic。
+    uint32 msg_addr_hi;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
+    uint16 msg_data;     //中断消息数据（写入Message Address的值，用于触发中断）。
+}msi_t;
+
 // MSI-X Table条目 (16字节)
 typedef struct {
     uint32 msg_addr_lo;    // 消息地址低32位,位12-19 指向local apic
     uint32 msg_addr_hi;    // 消息地址高32位 (如果64位)
     uint32 msg_data;       // 消息数据值
     uint32 vector_control; // 向量控制 (通常Bit0=Per Vector Mask)
-} msi_x_table_t;
-
-#pragma pack(pop)
+} msix_table_t;
 
 //pcie根复合体
 typedef struct pcie_root_complex_t {
@@ -289,7 +301,7 @@ typedef enum {
     msi_e        = 5,
     pcie_cap_e   = 0x10,
     msi_x_e      = 0x11
-} cap_id_e;
+} cap_type_e;
 
 
 /*pcie设备class_code*/

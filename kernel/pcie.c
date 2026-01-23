@@ -72,16 +72,16 @@ void pcie_disable_msi_intrs(pcie_dev_t *pcie_dev) {
  *参数pcie_config_space_t
  *数量
  */
-static inline uint8 get_msi_x_bir(cap_t *cap) {
-    uint32 bir = cap->msi_x.table_offset;
+static inline uint8 get_msi_x_bir(msix_cap_t *msix_cap) {
+    uint32 bir = msix_cap->table_offset;
     return bir & 0x7;
 }
 
 /*
  * 获取msi-x表相对bar偏移量
  */
-static inline uint32 get_msi_x_offset(cap_t *cap) {
-    uint32 table_offset = cap->msi_x.table_offset;
+static inline uint32 get_msi_x_offset(msix_cap_t *msix_cap) {
+    uint32 table_offset = msix_cap->table_offset;
     return table_offset & ~0x7;
 }
 
@@ -90,16 +90,16 @@ static inline uint32 get_msi_x_offset(cap_t *cap) {
  *参数pcie_config_space_t
  *数量
  */
-static inline uint8 get_pda_bir(cap_t *cap) {
-    uint32 bir = cap->msi_x.pba_offset;
+static inline uint8 get_pda_bir(msix_cap_t *msix_cap) {
+    uint32 bir = msix_cap->pba_offset;
     return bir & 0x7;
 }
 
 /*
  * 获取pda表相对bar偏移量
  */
-static inline uint32 get_pda_offset(cap_t *cap) {
-    uint32 table_offset = cap->msi_x.pba_offset;
+static inline uint32 get_pda_offset(msix_cap_t *msix_cap) {
+    uint32 table_offset = msix_cap->pba_offset;
     return table_offset & ~0x7;
 }
 
@@ -146,36 +146,36 @@ void pcie_bar_init(pcie_dev_t *pcie_dev) {
 //搜索能力链表
 //参数capability_id
 //返回一个capability_t* 指针
-cap_t *pcie_cap_find(pcie_dev_t *pcie_dev, cap_id_e cap_id) {
+void *pcie_cap_find(pcie_dev_t *pcie_dev, cap_type_e cap_type) {
     //检测是否支持能力链表,不支持返回空指针
     if (!(pcie_dev->pcie_config_space->status & 0x10)) return NULL;
     //计算能力链表起始地址
     uint8 next_ptr = pcie_dev->pcie_config_space->type0.cap_ptr;
     while (next_ptr){
-        cap_t *cap = (cap_t*)((uint64)pcie_dev->pcie_config_space + next_ptr);
-        if (cap->cap_id == cap_id) return cap;
-        next_ptr = cap->next_ptr;
+        cap_head_t *cap_head = (cap_head_t*)((uint64)pcie_dev->pcie_config_space + next_ptr);
+        if (cap_head->cap_id == cap_type) return cap_head;
+        next_ptr = cap_head->next_ptr;
     }
     return NULL;
 }
 
 //pcie设备msi中断功能初始化
 void pcie_msi_intrpt_init(pcie_dev_t *pcie_dev) {
-    cap_t *cap = pcie_cap_find(pcie_dev,msi_x_e);
+    msix_cap_t *msix_cap = pcie_cap_find(pcie_dev,msi_x_e);
     //优先启用msi-x中断
-    if (cap) {
+    if (msix_cap) {
         //初始化msi-x中断表
         pcie_dev->msi_x_flags = 1;
-        pcie_dev->msi_x.msg_control = &cap->msi_x.msg_control;
-        pcie_dev->msi_x.table_bir = get_msi_x_bir(cap);
-        pcie_dev->msi_x.table_offset = get_msi_x_offset(cap);
-        pcie_dev->msi_x.pba_bir = get_pda_bir(cap);
-        pcie_dev->msi_x.pba_offset = get_pda_offset(cap);
+        pcie_dev->msi_x.msg_control = &msix_cap->msg_control;
+        pcie_dev->msi_x.table_bir = get_msi_x_bir(msix_cap);
+        pcie_dev->msi_x.table_offset = get_msi_x_offset(msix_cap);
+        pcie_dev->msi_x.pba_bir = get_pda_bir(msix_cap);
+        pcie_dev->msi_x.pba_offset = get_pda_offset(msix_cap);
     }else {
         //启用msi中断
         pcie_dev->msi_x_flags = 0;
-        cap = pcie_cap_find(pcie_dev,msi_e);
-        pcie_dev->msi = &cap->msi;
+        msi_cap_t *msi_cap = pcie_cap_find(pcie_dev,msi_e);
+        pcie_dev->msi = &msi_cap->msg_control;
     }
 }
 
