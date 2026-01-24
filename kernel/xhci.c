@@ -196,6 +196,9 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
         xhci_controller->op_reg->dcbaap, xhci_controller->rt_reg->intr_regs[0].erstba,
         xhci_controller->rt_reg->intr_regs[0].erdp);
 
+    color_printk(GREEN,BLACK,"dw2:%#x dw3:%#x   \n",spc_cap[0]->supported_protocol.protocol_slot_type,spc_cap[0]->supported_protocol.protocol_speed);
+    color_printk(GREEN,BLACK,"dw2:%#x dw3:%#x   \n",spc_cap[1]->supported_protocol.protocol_slot_type,spc_cap[1]->supported_protocol.protocol_speed);
+
     timing();
 
     usb_dev_scan(xhci_dev);

@@ -14,7 +14,7 @@ void device_register(device_t *dev) {
             dev->drv = drv;     //把驱动挂到设备上
             bus->probe(dev);    //回调总线初始化设备
             drv->probe(dev);    //回调驱动初始化设备
-            break;      //驱动匹配成功结束
+            break;              //驱动匹配成功结束
         }
     }
 }
