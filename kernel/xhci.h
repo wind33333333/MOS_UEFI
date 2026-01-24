@@ -71,7 +71,8 @@ typedef struct {
                               - LHRC (位 5): 轻量级主机路由能力
                               - LTC (位 6): 延迟容忍能力
                               - NSS (位 7): 无嗅探能力
-                              - MaxPSASize (位 12-15): 最大主控制器流数组大小*/
+                              - MaxPSASize (位 12-15): 最大主控制器流数组大小
+                              - ECPA(位16-31)：扩展能力链表偏移地址 = 偏移<<2 */
 #define HCCP1_CSZ   (1<<2)
 
     uint32 dboff; // 0x14 门铃寄存器偏移
@@ -312,24 +313,24 @@ typedef struct {
                                  位29: OS所有权变更SMI状态(RW1C)
                                  位30: PCI命令变更SMI状态(RW1C)
                                  位31: BAR变更SMI状态(RW1C)*/
-}xhci_xcap_legacy_support;
+}xhci_ecap_legacy_support;
 
 /* 0x02: Supported Protocol Capability (支持的协议能力) */
 typedef struct {
-        uint32 protocol_ver;    /* 位 23:16 小修订版本0x10 = x.10
-                                  位 31:24 主修订版本0x03 = 3.x */
-        uint8 name[4];            /* 位 31:0 4个asci字符 */
-        uint32 port_info;         /* 位7:0 兼容端口偏移
-                                  位15:8 兼容端口计数偏移
-                                  位31:28 协议速度 ID 计数 - RO，PSI 字段数量 (0-15)*/
-        uint32 protocol_slot_type; /* 位4:0 协议插槽类型 */
-        uint32 protocol_speed[15]; /* 位3:0 协议速度 ID 值 - RO，Port Speed ID (1-15)
-                                  位5:4 协议速度标识 0=b/s 1=Kb/s 2=Mb/s 3=Gb/s
-                                  位7:6 SI 类型 - RO，对称性 (0=对称, 2/3=非对称)
-                                  位8   全双工 - RO，1=全双工
+    uint32 protocol_ver;    /* 位 23:16 小修订版本0x10 = x.10
+                              位 31:24 主修订版本0x03 = 3.x */
+    uint8 name[4];            /* 位 31:0 4个asci字符 */
+    uint32 port_info;         /* 位7:0 兼容端口偏移
+                              位15:8 兼容端口计数偏移
+                              位31:28 协议速度 ID 计数 - RO，PSI 字段数量 (0-15)*/
+    uint32 protocol_slot_type; /* 位4:0 协议插槽类型 */
+    uint32 protocol_speed[15]; /* bits[3:0] PSIV（Protocol Speed ID Value）：这个值会出现在 PORTSC 的 Port Speed 字段中。PSIV=0 保留，不会被 PSI 定义。
+                                  bits[5:4] PSIE（Exponent）：表示 10^(3*PSIE) 的指数档位（0=bit/s，1=Kb/s，2=Mb/s，3=Gb/s）。
+                                  bits[7:6] PLT（PSI Type）：对称/非对称（若非对称，需 Rx/Tx 成对出现，Rx 紧跟 Tx）
+                                  bits[8]   全双工 - RO，1=全双工
                                   位15:14 链路协议 - RO，1=定义链路协议
                                   位31:16 协议速度 ID 尾数 - RO，速度尾数*/
-}xhci_xcap_supported_protocol;
+}xhci_ecap_supported_protocol;
 
 
 
@@ -371,12 +372,12 @@ typedef struct {
                                       位15:8 兼容端口计数偏移
                                       位31:28 协议速度 ID 计数 - RO，PSI 字段数量 (0-15)*/
             uint32 protocol_slot_type; /* 位4:0 协议插槽类型 */
-            uint32 protocol_speed[15]; /* 位3:0 协议速度 ID 值 - RO，Port Speed ID (1-15)
-                                      位5:4 协议速度标识 0=b/s 1=Kb/s 2=Mb/s 3=Gb/s
-                                      位7:6 SI 类型 - RO，对称性 (0=对称, 2/3=非对称)
-                                      位8   全双工 - RO，1=全双工
-                                      位15:14 链路协议 - RO，1=定义链路协议
-                                      位31:16 协议速度 ID 尾数 - RO，速度尾数*/
+            uint32 protocol_speed[15]; /* bits[3:0] PSIV（Protocol Speed ID Value）：这个值会出现在 PORTSC 的 Port Speed 字段中。PSIV=0 保留，不会被 PSI 定义。
+                                          bits[5:4] PSIE（Exponent）：表示 10^(3*PSIE) 的指数档位（0=bit/s，1=Kb/s，2=Mb/s，3=Gb/s）。
+                                          bits[7:6] PLT（PSI Type）：对称/非对称（若非对称，需 Rx/Tx 成对出现，Rx 紧跟 Tx）
+                                          bits[8]   全双工 - RO，1=全双工
+                                          位15:14 链路协议 - RO，1=定义链路协议
+                                          位31:16 协议速度 ID 尾数 - RO，速度尾数*/
         } supported_protocol;
 
         /* 0x03: Extended Power Management (扩展电源管理) */

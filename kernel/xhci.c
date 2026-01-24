@@ -99,7 +99,7 @@ void xhci_address_device(usb_dev_t *usb_dev) {
 }
 
 //xhic扩展能力搜索
-uint8 xhci_xcap_find(xhci_controller_t *xhci_controller,xhci_xcap_t **xcap_arr,uint8 cap_id) {
+uint8 xhci_ecap_find(xhci_controller_t *xhci_controller,xhci_xcap_t **xcap_arr,uint8 cap_id) {
     uint32 offset = xhci_controller->cap_reg->hccparams1 >> 16;
     xhci_xcap_t *xcap = (void *) xhci_controller->cap_reg;
     uint8 count = 0;
