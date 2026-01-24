@@ -626,22 +626,38 @@ typedef struct {
    xhci_port_type_t type;                     //1 = usb_dev , 2 = usb_hub;
 }xhci_port;
 
+
+typedef struct {
+    uint8  major_bcd;           // 协议主版本（DW0[31:24]，常见 0x02=USB2，0x03=USB3.x）
+    uint8  minor_bcd;           // 协议次版本（DW0[23:16]，如 0x10=USB3.1 等）
+    char8  name[4];             // 协议名字符串（DW1，常见 "USB " = 0x20425355）
+    uint16 proto_defined;       // 协议自定义字段（DW2[27:16]，USB2/USB3 各自有含义）
+    uint8  port_first;          // 覆盖端口起始号（DW2[7:0]，1-based）
+    uint8  port_count;          // 连续覆盖端口数量（DW2[15:8]）
+    uint8  slot_type;           // Protocol Slot Type（DW3[4:0]）
+    uint8  psi_count;           // PSI 条目数 PSIC（DW2[31:28]，0=默认映射，>0=显式 PSI 表）
+    uint32 *psi;                // 按 PSIV 索引的 PSI 原始 dword（用于解释 PortSC speed）
+} xhci_spc_t;
+
+
 //xhci控制器
 typedef struct {
-    xhci_cap_regs_t     *cap_reg;     // 能力寄存器
-    xhci_op_regs_t      *op_reg;      // 操作寄存器
-    xhci_rt_regs_t      *rt_reg;      // 运行时寄存器
-    xhci_db_regs_t      *db_reg;      // 门铃寄存器
-    xhci_ext_regs_t     *ext_reg;     // 扩展寄存器
-    uint64              *dcbaap;      // 设备上下文插槽
-    xhci_port           *ports;       // 端口
-    xhci_ring_t         cmd_ring;     // 命令环
-    xhci_ring_t         event_ring;   // 事件环
-    uint32              align_size;   // xhci内存分配对齐边界
-    uint8               dev_ctx_size; // 设备上下文字节数（32或64字节）
-    uint8               max_ports;    // 最大端口数量
-    uint8               max_slots;    // 最大插槽数量
-    uint16              max_intrs;    // 最大中断数量
+    xhci_cap_regs_t     *cap_reg;           // 能力寄存器
+    xhci_op_regs_t      *op_reg;            // 操作寄存器
+    xhci_rt_regs_t      *rt_reg;            // 运行时寄存器
+    xhci_db_regs_t      *db_reg;            // 门铃寄存器
+    xhci_ext_regs_t     *ext_reg;           // 扩展寄存器
+    uint64              *dcbaap;            // 设备上下文插槽
+    xhci_port           *ports;             // 端口
+    xhci_ring_t         cmd_ring;           // 命令环
+    xhci_ring_t         event_ring;         // 事件环
+    uint32              align_size;         // xhci内存分配对齐边界
+    uint8               dev_ctx_size;       // 设备上下文字节数（32或64字节）
+    uint8               max_ports;          // 最大端口数量
+    uint8               max_slots;          // 最大插槽数量
+    uint16              max_intrs;          // 最大中断数量
+    xhci_spc_t          *spc;               // 支持的协议功能
+    uint8               *port_to_spc;       // 端口找spc号
 } xhci_controller_t;
 
 //定时
