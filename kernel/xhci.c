@@ -175,7 +175,7 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
     /*获取协议支持能力*/
     xhci_xcap_t *spc_cap[5];
     uint8 spc_count;
-    spc_count = xhci_xcap_find(xhci_controller,&spc_cap, 2);
+    spc_count = xhci_ecap_find(xhci_controller,&spc_cap, 2);
 
     color_printk(
         GREEN,BLACK,
@@ -196,8 +196,17 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
         xhci_controller->op_reg->dcbaap, xhci_controller->rt_reg->intr_regs[0].erstba,
         xhci_controller->rt_reg->intr_regs[0].erdp);
 
-    color_printk(GREEN,BLACK,"dw2:%#x dw3:%#x   \n",spc_cap[0]->supported_protocol.protocol_slot_type,spc_cap[0]->supported_protocol.protocol_speed);
-    color_printk(GREEN,BLACK,"dw2:%#x dw3:%#x   \n",spc_cap[1]->supported_protocol.protocol_slot_type,spc_cap[1]->supported_protocol.protocol_speed);
+    color_printk(GREEN,BLACK,"dw2:%#x dw3:%#x   \n",spc_cap[0]->supported_protocol.port_info,spc_cap[0]->supported_protocol.protocol_slot_type);
+    uint8 psi_count = spc_cap[0]->supported_protocol.port_info >> 28;
+    for (uint8 i = 0; i < psi_count; i++) {
+        color_printk(GREEN,BLACK,"psi[%d]:%#x   \n",i,spc_cap[0]->supported_protocol.protocol_speed[i]);
+    }
+
+    color_printk(GREEN,BLACK,"dw2:%#x dw3:%#x   \n",spc_cap[1]->supported_protocol.port_info,spc_cap[1]->supported_protocol.protocol_slot_type);
+    psi_count = spc_cap[1]->supported_protocol.port_info >> 28;
+    for (uint8 i = 0; i < psi_count; i++) {
+        color_printk(GREEN,BLACK,"psi[%d]:%#x   \n",i,spc_cap[1]->supported_protocol.protocol_speed[i]);
+    }
 
     timing();
 
@@ -205,6 +214,7 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
 
     color_printk(GREEN,BLACK, "\nUSBcmd:%#x  USBsts:%#x", xhci_controller->op_reg->usbcmd,
                  xhci_controller->op_reg->usbsts);
+
     while (1);
 }
 

@@ -324,12 +324,12 @@ typedef struct {
                               位15:8 兼容端口计数偏移
                               位31:28 协议速度 ID 计数 - RO，PSI 字段数量 (0-15)*/
     uint32 protocol_slot_type; /* 位4:0 协议插槽类型 */
-    uint32 protocol_speed[15]; /* bits[3:0] PSIV（Protocol Speed ID Value）：这个值会出现在 PORTSC 的 Port Speed 字段中。PSIV=0 保留，不会被 PSI 定义。
-                                  bits[5:4] PSIE（Exponent）：表示 10^(3*PSIE) 的指数档位（0=bit/s，1=Kb/s，2=Mb/s，3=Gb/s）。
-                                  bits[7:6] PLT（PSI Type）：对称/非对称（若非对称，需 Rx/Tx 成对出现，Rx 紧跟 Tx）
-                                  bits[8]   全双工 - RO，1=全双工
-                                  位15:14 链路协议 - RO，1=定义链路协议
-                                  位31:16 协议速度 ID 尾数 - RO，速度尾数*/
+    uint32 protocol_speed[15]; /* PSIV = bits[3:0]：Protocol Speed ID Value（会出现在 PORTSC 的 Port Speed 字段里）
+                                  PSIE = bits[5:4]：指数档，决定单位（0=bit/s，1=Kb/s，2=Mb/s，3=Gb/s）
+                                  PLT = bits[7:6]：PSI 类型（0=对称，2=非对称Rx，3=非对称Tx；非对称必须成对）
+                                  PFD = bit[8]：是否全双工（1=全双工，0=半双工）
+                                  LP = bits[15:14]：Link Protocol。对 USB2（Major=02h）要求为 0，具体是 LS/FS/HS 由速率决定。
+                                  PSIM = bits[31:16]：速率尾数（mantissa）*/
 }xhci_ecap_supported_protocol;
 
 
@@ -370,14 +370,15 @@ typedef struct {
             uint8 name[4];            /* 位 31:0 4个asci字符 */
             uint32 port_info;         /* 位7:0 兼容端口偏移
                                       位15:8 兼容端口计数偏移
+                                      位16:27 usb2.0 3.0解释不一样
                                       位31:28 协议速度 ID 计数 - RO，PSI 字段数量 (0-15)*/
             uint32 protocol_slot_type; /* 位4:0 协议插槽类型 */
             uint32 protocol_speed[15]; /* bits[3:0] PSIV（Protocol Speed ID Value）：这个值会出现在 PORTSC 的 Port Speed 字段中。PSIV=0 保留，不会被 PSI 定义。
                                           bits[5:4] PSIE（Exponent）：表示 10^(3*PSIE) 的指数档位（0=bit/s，1=Kb/s，2=Mb/s，3=Gb/s）。
                                           bits[7:6] PLT（PSI Type）：对称/非对称（若非对称，需 Rx/Tx 成对出现，Rx 紧跟 Tx）
-                                          bits[8]   全双工 - RO，1=全双工
-                                          位15:14 链路协议 - RO，1=定义链路协议
-                                          位31:16 协议速度 ID 尾数 - RO，速度尾数*/
+                                          bits[8] PFD  全双工 - RO，1=全双工
+                                          位15:14 LP 链路协议 - RO，1=定义链路协议
+                                          位31:16 PSIM 协议速度 ID 尾数 - RO，速度尾数*/
         } supported_protocol;
 
         /* 0x03: Extended Power Management (扩展电源管理) */
@@ -633,11 +634,14 @@ typedef struct {
     xhci_db_regs_t      *db_reg;      // 门铃寄存器
     xhci_ext_regs_t     *ext_reg;     // 扩展寄存器
     uint64              *dcbaap;      // 设备上下文插槽
-    xhci_port           *ports;       //
+    xhci_port           *ports;       // 端口
     xhci_ring_t         cmd_ring;     // 命令环
     xhci_ring_t         event_ring;   // 事件环
     uint32              align_size;   // xhci内存分配对齐边界
     uint8               dev_ctx_size; // 设备上下文字节数（32或64字节）
+    uint8               max_ports;    // 最大端口数量
+    uint8               max_slots;    // 最大插槽数量
+    uint16              max_intrs;    // 最大中断数量
 } xhci_controller_t;
 
 //定时
@@ -969,7 +973,7 @@ int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);
 int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb);
 void xhci_input_context_add(xhci_input_context_t *input_ctx,void *from_ctx, uint32 ctx_size, uint32 ep_num);
 void xhci_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_num);
-uint8 xhci_xcap_find(xhci_controller_t *xhci_controller,xhci_xcap_t **xcap_arr,uint8 cap_id);
+uint8 xhci_ecap_find(xhci_controller_t *xhci_controller,xhci_xcap_t **xcap_arr,uint8 cap_id);
 
 
 
