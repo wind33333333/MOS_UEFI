@@ -357,23 +357,18 @@ void bot_get_msc_info(usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc) {
 
 //u盘驱动程序
 int32 usb_mass_storage(usb_if_t *usb_if, usb_id_t *id) {
-    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+    xhci_controller_t *xhci_controller = usb_if->usb_dev->xhci_controller;
     xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
     slot64_t slot_ctx = {0};
     ep64_t ep_ctx = {0};
     trb_t trb;
 
-    //检测接口是否支持uasp协议
-    usb_interface_descriptor_t *uas_if_desc = 0;
-    usb_interface_descriptor_t *next_if_desc = interface_desc;
-    while (next_if_desc < desc_end) {
-        if (next_if_desc->descriptor_type == USB_INTERFACE_DESCRIPTOR && next_if_desc->interface_class == 0x8 &&
-            next_if_desc->interface_subclass == 0x6 && next_if_desc->interface_protocol == 0x62) {
-            uas_if_desc = next_if_desc;
-            break;
-        }
-        next_if_desc = get_next_desc(next_if_desc);
+    //u盘是否支持uas协议，优先设置为uas协议
+    usb_if_alt_t *alts = usb_if->alts;
+    for (uint8 i = 0; i < usb_if->alt_count; i++) {
+        if (alts[i].if_protocol == 0x62) usb_if->cur_alt = alts;
     }
+
 
     if (uas_if_desc) {
         //uas协议初始化流程
