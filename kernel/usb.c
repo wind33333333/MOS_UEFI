@@ -299,11 +299,10 @@ usb_dev_t *usb_dev_create(pcie_dev_t *xhci_dev, uint32 port_id) {
 void usb_dev_scan(pcie_dev_t *xhci_dev) {
     xhci_controller_t *xhci_controller = xhci_dev->dev.drv_data;
     trb_t trb;
-    uint8 max_ports = xhci_controller->cap_reg->hcsparams1>>24; //支持的端口数
-    for (uint32 i = 0; i < max_ports; i++) {
+    for (uint32 i = 0; i < xhci_controller->max_ports; i++) {
         if (xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_CCS) { //检测端口是否有设备
-            if ((xhci_controller->op_reg->portregs[i].portsc>>XHCI_PORTSC_SPEED_SHIFT&XHCI_PORTSC_SPEED_MASK) < XHCI_PORTSC_SPEED_SUPER) {
-                //usb2.0
+            uint8 spc_idx = xhci_controller->port_to_spc[i];
+            if (xhci_controller->spc[spc_idx].major_bcd == 0x2) {                //usb2.0
                 xhci_controller->op_reg->portregs[i].portsc |= XHCI_PORTSC_PR;
                 timing();
                 xhci_ering_dequeue(xhci_controller, &trb);
