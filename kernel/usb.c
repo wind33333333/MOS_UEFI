@@ -128,13 +128,14 @@ int usb_set_config(usb_dev_t *usb_dev) {
     return 0;
 }
 
-//设置备用设置
-int usb_set_interface(usb_dev_t *usb_dev, int64 if_num, int64 alt_num) {
+//激活接口
+int usb_set_interface(usb_if_t *usb_if) {
+    usb_dev_t *usb_dev = usb_if->usb_dev;
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     trb_t trb;
 
     setup_stage_trb(&trb, setup_stage_interface, setup_stage_norm, setup_stage_out, usb_req_set_interface,
-                    alt_num, if_num, 0, 8, no_data_stage);
+                    usb_if->cur_alt->altsetting, usb_if->if_num, 0, 8, no_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     status_stage_trb(&trb, enable_ioc, trb_in);

@@ -269,3 +269,5 @@ extern struct bus_type_t usb_bus_type;
 
 struct pcie_dev_t;
 void usb_dev_scan(struct pcie_dev_t *xhci_dev);
+int usb_set_config(usb_dev_t *usb_dev);
+int usb_set_interface(usb_if_t *usb_if);

@@ -357,7 +357,9 @@ void bot_get_msc_info(usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc) {
 
 //u盘驱动程序
 int32 usb_mass_storage(usb_if_t *usb_if, usb_id_t *id) {
-    xhci_controller_t *xhci_controller = usb_if->usb_dev->xhci_controller;
+    usb_dev_t *usb_dev = usb_if->usb_dev;
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+
     xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
     slot64_t slot_ctx = {0};
     ep64_t ep_ctx = {0};
@@ -368,13 +370,9 @@ int32 usb_mass_storage(usb_if_t *usb_if, usb_id_t *id) {
     for (uint8 i = 0; i < usb_if->alt_count; i++) {
         if (alts[i].if_protocol == 0x62) usb_if->cur_alt = alts;
     }
+    usb_set_interface(usb_if);   //切换接口备用配置
 
-
-    if (uas_if_desc) {
-        //uas协议初始化流程
-        usb_set_interface(usb_dev, uas_if_desc->interface_number, uas_if_desc->alternate_setting);
-        color_printk(RED,BLACK, "if_num:%d alt_set:%d   \n", uas_if_desc->interface_number,
-                     uas_if_desc->alternate_setting);
+    if (usb_if->cur_alt->if_protocol == 0x62) {        //uas协议初始化流程
         usb_uas_msc_t *uas_msc = kzalloc(sizeof(usb_uas_msc_t));
         uas_msc->usb_dev = usb_dev;
         uas_msc->interface_num = uas_if_desc->interface_number;
