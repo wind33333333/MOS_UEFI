@@ -99,16 +99,16 @@ void xhci_address_device(usb_dev_t *usb_dev) {
 }
 
 //xhic扩展能力搜索
-uint8 xhci_ecap_find(xhci_controller_t *xhci_controller,xhci_xcap_t **xcap_arr,uint8 cap_id) {
+uint8 xhci_ecap_find(xhci_controller_t *xhci_controller,void **ecap_arr,uint8 cap_id) {
     uint32 offset = xhci_controller->cap_reg->hccparams1 >> 16;
-    xhci_xcap_t *xcap = (void *) xhci_controller->cap_reg;
+    uint32 *ecap = (uint32*) xhci_controller->cap_reg;
     uint8 count = 0;
     while (offset) {
-        xcap = (void *)xcap + (offset << 2);
-        if ((xcap->cap_id & 0xFF) == cap_id) {
-            xcap_arr[count++] = xcap;
+        ecap = (void*)ecap + (offset << 2);
+        if ((*ecap & 0xFF) == cap_id) {
+            ecap_arr[count++] = ecap;
         };
-        offset = (xcap->next_ptr >> 8) & 0xFF;
+        offset = (*ecap >> 8) & 0xFF;
     }
     return count;
 }
@@ -139,11 +139,11 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
     xhci_controller->dev_ctx_size = 32 << ((xhci_controller->cap_reg->hccparams1 & HCCP1_CSZ) >> 2);
 
     /*初始化设备上下文*/
-    uint32 max_slots = xhci_controller->cap_reg->hcsparams1 & 0xff;
-    xhci_controller->dcbaap = kzalloc(align_up((max_slots + 1) << 3, xhci_controller->align_size));
+    xhci_controller->max_slots = xhci_controller->cap_reg->hcsparams1 & 0xff;
+    xhci_controller->dcbaap = kzalloc(align_up((xhci_controller->max_slots + 1) << 3, xhci_controller->align_size));
     //分配设备上下文插槽内存,最大插槽数量(插槽从1开始需要+1)*8字节内存
     xhci_controller->op_reg->dcbaap = va_to_pa(xhci_controller->dcbaap); //把设备上下文基地址数组表的物理地址写入寄存器
-    xhci_controller->op_reg->config = max_slots; //把最大插槽数量写入寄存器
+    xhci_controller->op_reg->config = xhci_controller->max_slots; //把最大插槽数量写入寄存器
 
     /*初始化命令环*/
     xhci_ring_init(&xhci_controller->cmd_ring, xhci_controller->align_size);
@@ -169,44 +169,53 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
         xhci_controller->dcbaap[0] = va_to_pa(spb_array); //暂存器缓存去数组指针写入设备上下写文数组0
     }
 
-    /*启动xhci*/
-    xhci_controller->op_reg->usbcmd |= XHCI_CMD_RS;
+    xhci_controller->major_bcd = xhci_controller->cap_reg->hciversion >> 8;          //xhci主版本
+    xhci_controller->minor_bcd = xhci_controller->cap_reg->hciversion & 0xFF;        //xhci次版本
+    xhci_controller->max_ports = xhci_controller->cap_reg->hcsparams1 >> 24;         //xhci最大端口数
+    xhci_controller->max_intrs = xhci_controller->cap_reg->hcsparams1 >> 8 & 0x7FF;  //xhci最大中断数
 
     /*获取协议支持能力*/
-    xhci_xcap_t *spc_cap[5];
-    uint8 spc_count;
-    spc_count = xhci_ecap_find(xhci_controller,&spc_cap, 2);
-
-    color_printk(
-        GREEN,BLACK,
-        "Xhci Version:%x.%x spc_count:%d USB%x.%x start_port:%d count:%d USB%x.%x start_port:%d count:%d BAR0 MMIO:%#lx MSI-X:%d MaxSlots:%d MaxIntrs:%d MaxPorts:%d Dev_Ctx_Size:%d AC64:%d SPB:%d USBcmd:%#x USBsts:%#x AlignSize:%d iman:%#x imod:%#x crcr:%#lx dcbaap:%#lx erstba:%#lx erdp0:%#lx\n",
-        xhci_controller->cap_reg->hciversion >> 8, xhci_controller->cap_reg->hciversion & 0xFF,
-        spc_count,
-        spc_cap[0]->supported_protocol.protocol_ver >> 24, spc_cap[0]->supported_protocol.protocol_ver >> 16 & 0xFF,
-        spc_cap[0]->supported_protocol.port_info&0xFF,(spc_cap[0]->supported_protocol.port_info>>8)&0xFF,
-        spc_cap[1]->supported_protocol.protocol_ver >> 24, spc_cap[1]->supported_protocol.protocol_ver >> 16 & 0xFF,
-        spc_cap[1]->supported_protocol.port_info&0xFF,(spc_cap[1]->supported_protocol.port_info>>8)&0xFF,
-        xhci_dev->bar[0].paddr, xhci_dev->msi_x_flags, xhci_controller->cap_reg->hcsparams1 & 0xFF,
-        xhci_controller->cap_reg->hcsparams1 >> 8 & 0x7FF,
-        xhci_controller->cap_reg->hcsparams1 >> 24, xhci_controller->cap_reg->hccparams1 >> 2 & 1,
-        xhci_controller->dev_ctx_size, spb_number,
-        xhci_controller->op_reg->usbcmd, xhci_controller->op_reg->usbsts, xhci_controller->align_size,
-        xhci_controller->rt_reg->intr_regs[0].iman,
-        xhci_controller->rt_reg->intr_regs[0].imod, va_to_pa(xhci_controller->cmd_ring.ring_base),
-        xhci_controller->op_reg->dcbaap, xhci_controller->rt_reg->intr_regs[0].erstba,
-        xhci_controller->rt_reg->intr_regs[0].erdp);
-
-    color_printk(GREEN,BLACK,"dw2:%#x dw3:%#x   \n",spc_cap[0]->supported_protocol.port_info,spc_cap[0]->supported_protocol.protocol_slot_type);
-    uint8 psi_count = spc_cap[0]->supported_protocol.port_info >> 28;
-    for (uint8 i = 0; i < psi_count; i++) {
-        color_printk(GREEN,BLACK,"psi[%d]:%#x   \n",i,spc_cap[0]->supported_protocol.protocol_speed[i]);
+    xhci_ecap_supported_protocol *ecap_spc_arr[16];
+    xhci_controller->spc_count = xhci_ecap_find(xhci_controller,ecap_spc_arr, 2);
+    xhci_controller->spc = kzalloc(sizeof(xhci_spc_t)*xhci_controller->spc_count);
+    xhci_controller->port_to_spc = kmalloc(xhci_controller->max_ports);
+    mem_set(xhci_controller->port_to_spc, 0xFF, xhci_controller->max_ports);
+    for (uint8 i = 0; i < xhci_controller->spc_count; i++) {
+        xhci_spc_t *spc = &xhci_controller->spc[i];
+        xhci_ecap_supported_protocol *spc_ecap = ecap_spc_arr[i];
+        spc->major_bcd = spc_ecap->protocol_ver >> 24;
+        spc->minor_bcd = spc_ecap->protocol_ver >> 16 & 0xFF;
+        *(uint32*)spc->name = *(uint32*)spc_ecap->name;
+        spc->name[3] = 0;
+        spc->proto_defined = spc_ecap->port_info >> 16 & 0x1FF;
+        spc->port_first = spc_ecap->port_info & 0xFF;
+        spc->port_count = spc_ecap->port_info >> 8 & 0xFF;
+        spc->slot_type = spc_ecap->protocol_slot_type & 0xF;
+        spc->psi_count = spc_ecap->port_info >> 28 & 0xF;
+        if (spc->psi_count) {
+            uint32 *psi = kzalloc(sizeof(uint32)*spc->psi_count);
+            spc->psi = psi;
+            for (uint8 j = 0; j < spc->psi_count; j++) {
+                psi[j] = spc_ecap->protocol_speed[j];
+            }
+        }
+        for (uint8 j = spc->port_first-1; j < spc->port_first-1 + spc->port_count; j++) {
+            xhci_controller->port_to_spc[j] = i;
+        }
     }
 
-    color_printk(GREEN,BLACK,"dw2:%#x dw3:%#x   \n",spc_cap[1]->supported_protocol.port_info,spc_cap[1]->supported_protocol.protocol_slot_type);
-    psi_count = spc_cap[1]->supported_protocol.port_info >> 28;
-    for (uint8 i = 0; i < psi_count; i++) {
-        color_printk(GREEN,BLACK,"psi[%d]:%#x   \n",i,spc_cap[1]->supported_protocol.protocol_speed[i]);
+
+    color_printk(GREEN,BLACK,"XHCI Version:%x.%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d Dev_Ctx_Size:%d AlignSize:%d USBcmd:%#x USBsts:%#x    \n",
+        xhci_controller->major_bcd, xhci_controller->minor_bcd,xhci_controller->max_slots,xhci_controller->max_intrs,xhci_controller->max_ports,
+        xhci_controller->dev_ctx_size,xhci_controller->align_size,xhci_controller->op_reg->usbcmd, xhci_controller->op_reg->usbsts);
+
+    for (uint8 i = 0; i < xhci_controller->spc_count; i++) {
+        xhci_spc_t *spc = &xhci_controller->spc[i];
+        color_printk(GREEN,BLACK,"spc%d %s%x.%x port_first:%d port_count:%d psi_count:%d    \n",i,spc->name,spc->major_bcd,spc->minor_bcd,spc->port_first,spc->port_count,spc->psi_count);
     }
+
+    /*启动xhci*/
+    xhci_controller->op_reg->usbcmd |= XHCI_CMD_RS;
 
     timing();
 

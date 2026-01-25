@@ -319,7 +319,7 @@ typedef struct {
 typedef struct {
     uint32 protocol_ver;    /* 位 23:16 小修订版本0x10 = x.10
                               位 31:24 主修订版本0x03 = 3.x */
-    uint8 name[4];            /* 位 31:0 4个asci字符 */
+    char8 name[4];            /* 位 31:0 4个asci字符 */
     uint32 port_info;         /* 位7:0 兼容端口偏移
                               位15:8 兼容端口计数偏移
                               位31:28 协议速度 ID 计数 - RO，PSI 字段数量 (0-15)*/
@@ -331,88 +331,6 @@ typedef struct {
                                   LP = bits[15:14]：Link Protocol。对 USB2（Major=02h）要求为 0，具体是 LS/FS/HS 由速率决定。
                                   PSIM = bits[31:16]：速率尾数（mantissa）*/
 }xhci_ecap_supported_protocol;
-
-
-
-/* xHCI 扩展能力 (xCAP) 结构体 */
-typedef struct {
-    union {
-        /* 通用头部：所有扩展能力的第一个 32 位寄存器 */
-        uint32 cap_id; /* 能力头部，位7:0 为 Capability ID ,位15:8 为Next Capability Pointer*/
-        uint32 next_ptr;
-
-        /* 0x01: USB Legacy Support (USB 传统支持) */
-        struct {
-            uint32 usblegsup; /* 位16=1 bios控制，位24=1 os控制 */
-            uint32 usblegctlsts; /* 位0: USB SMI启用
-                                     位4: 主机系统错误SMI启用
-                                     位13: OS所有权变更SMI启用
-                                     位14: PCI命令变更SMI启用
-                                     位15: BAR变更SMI启用
-
-                                     === 高16位：SMI 状态/事件区域 ===
-                                     RO：只读
-                                     位16: 事件中断SMI状态(RO)
-                                     位19:17 保留 (RsvdP)
-                                     位20: 主机系统错误SMI状态(RO)
-                                     位28:21 保留 (RsvdZ)
-
-                                     RW1C：写1清除
-                                     位29: OS所有权变更SMI状态(RW1C)
-                                     位30: PCI命令变更SMI状态(RW1C)
-                                     位31: BAR变更SMI状态(RW1C)*/
-        } legacy_support;
-
-        /* 0x02: Supported Protocol Capability (支持的协议能力) */
-        struct {
-            uint32 protocol_ver;    /* 位 23:16 小修订版本0x10 = x.10
-                                      位 31:24 主修订版本0x03 = 3.x */
-            uint8 name[4];            /* 位 31:0 4个asci字符 */
-            uint32 port_info;         /* 位7:0 兼容端口偏移
-                                      位15:8 兼容端口计数偏移
-                                      位16:27 usb2.0 3.0解释不一样
-                                      位31:28 协议速度 ID 计数 - RO，PSI 字段数量 (0-15)*/
-            uint32 protocol_slot_type; /* 位4:0 协议插槽类型 */
-            uint32 protocol_speed[15]; /* bits[3:0] PSIV（Protocol Speed ID Value）：这个值会出现在 PORTSC 的 Port Speed 字段中。PSIV=0 保留，不会被 PSI 定义。
-                                          bits[5:4] PSIE（Exponent）：表示 10^(3*PSIE) 的指数档位（0=bit/s，1=Kb/s，2=Mb/s，3=Gb/s）。
-                                          bits[7:6] PLT（PSI Type）：对称/非对称（若非对称，需 Rx/Tx 成对出现，Rx 紧跟 Tx）
-                                          bits[8] PFD  全双工 - RO，1=全双工
-                                          位15:14 LP 链路协议 - RO，1=定义链路协议
-                                          位31:16 PSIM 协议速度 ID 尾数 - RO，速度尾数*/
-        } supported_protocol;
-
-        /* 0x03: Extended Power Management (扩展电源管理) */
-        struct {
-            uint32 pwr_mgmt_cap; /* 电源管理能力寄存器：描述电源管理功能 */
-            uint32 pwr_mgmt_ctrl; /* 电源管理控制寄存器：控制电源管理行为 */
-        } ext_power_mgmt;
-
-        /* 0x04: I/O Virtualization (I/O 虚拟化) */
-        struct {
-            uint32 virt_cap; /* 虚拟化能力寄存器：描述虚拟化支持特性 */
-            uint32 virt_ctrl; /* 虚拟化控制寄存器：控制虚拟化行为 */
-        } io_virt;
-
-        /* 0x05: Message Interrupts (消息中断) */
-        struct {
-            uint32 msi_cap; /* MSI/MSI-X 能力寄存器：描述消息中断支持 */
-            uint32 msi_ctrl; /* MSI/MSI-X 控制寄存器：控制消息中断行为 */
-        } msg_interrupts;
-
-        /* 0x06: Latency Tolerance Messaging (延迟容忍消息) */
-        struct {
-            uint32 ltm_cap; /* LTM 能力寄存器：描述延迟容忍消息支持 */
-            uint32 ltm_ctrl; /* LTM 控制寄存器：控制 LTM 行为 */
-        } latency_tolerance;
-
-        /* 0x07: USB Debug Capability (USB 调试能力) */
-        struct {
-            uint32 dbc_cap; /* 调试能力寄存器：描述 USB 调试功能参数 */
-            uint32 dbc_ctrl; /* 调试控制寄存器：控制调试行为 */
-            uint32 dbc_port; /* 调试端口寄存器：指定调试端口号 */
-        } usb_debug;
-    };
-} xhci_xcap_t;
 
 /* ERST条目结构 (16字节) */
 typedef struct {
@@ -642,6 +560,8 @@ typedef struct {
 
 //xhci控制器
 typedef struct {
+    uint8               major_bcd;          // 主版本
+    uint8               minor_bcd;          // 次版本
     xhci_cap_regs_t     *cap_reg;           // 能力寄存器
     xhci_op_regs_t      *op_reg;            // 操作寄存器
     xhci_rt_regs_t      *rt_reg;            // 运行时寄存器
@@ -656,6 +576,7 @@ typedef struct {
     uint8               max_ports;          // 最大端口数量
     uint8               max_slots;          // 最大插槽数量
     uint16              max_intrs;          // 最大中断数量
+    uint8               spc_count;          // spc数量
     xhci_spc_t          *spc;               // 支持的协议功能
     uint8               *port_to_spc;       // 端口找spc号
 } xhci_controller_t;
@@ -989,7 +910,7 @@ int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);
 int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb);
 void xhci_input_context_add(xhci_input_context_t *input_ctx,void *from_ctx, uint32 ctx_size, uint32 ep_num);
 void xhci_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_num);
-uint8 xhci_ecap_find(xhci_controller_t *xhci_controller,xhci_xcap_t **xcap_arr,uint8 cap_id);
+uint8 xhci_ecap_find(xhci_controller_t *xhci_controller,void **ecap_arr,uint8 cap_id);
 
 
 
