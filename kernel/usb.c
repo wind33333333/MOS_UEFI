@@ -160,14 +160,17 @@ static inline void usb_dev_register(usb_dev_t *usb_dev) {
 //匹配驱动id
 static inline usb_id_t *usb_match_id(usb_if_t *usb_if,driver_t *drv) {
     usb_id_t *id_table = drv->id_table;
+    uint8 if_class = usb_if->cur_alt->if_class;
+    uint8 if_protocol = usb_if->cur_alt->if_protocol;
+    uint8 if_subclass = usb_if->cur_alt->if_subclass;
     for (;id_table->if_class || id_table->if_protocol || id_table->if_subclass;id_table++) {
-        if (id_table->if_class==usb_if->cur_alt->if_class && id_table->if_protocol == usb_if->cur_alt->if_protocol && id_table->if_subclass==usb_if->cur_alt->if_subclass)
+        if (id_table->if_class==if_class && id_table->if_protocol == if_protocol && id_table->if_subclass==if_subclass)
             return id_table;
     }
     return NULL;
 }
 
-//usb设备驱动匹配程序
+//usb总线层设备驱动匹配
 int usb_bus_match(device_t* dev,driver_t* drv) {
     if (dev->type != &usb_if_type) return FALSE;
     usb_if_t* usb_if = CONTAINER_OF(dev,usb_if_t,dev);
@@ -175,14 +178,27 @@ int usb_bus_match(device_t* dev,driver_t* drv) {
     return id ? 1 : 0;
 }
 
-//usb设备探测初始化程序
+//usb总线层探测初始化回调
 int usb_bus_probe(device_t* dev) {
 
 }
 
-//usb设备删除程序
+//usb总线层卸载在回调
 void usb_bus_remove(device_t* dev) {
 
+}
+
+//usb驱动层探测初始化回调
+int usb_drv_probe(device_t *dev) {
+    usb_if_t* usb_if = CONTAINER_OF(dev,usb_if_t,dev);
+    usb_if_drv_t* usb_if_drv = CONTAINER_OF(dev->drv,usb_if_drv_t,drv);
+    usb_id_t *id = usb_match_id(usb_if,usb_if_drv);
+    usb_if_drv->probe(usb_if, id);
+    return 0;
+}
+
+//usb驱动层卸载回调
+void usb_drv_remove(device_t *dev) {
 }
 
 //解析
@@ -303,7 +319,8 @@ void usb_dev_scan(pcie_dev_t *xhci_dev) {
         if ((xhci_controller->op_reg->portregs[i].portsc&XHCI_PORTSC_CCS) && xhci_controller->op_reg->portregs[i].portsc&(XHCI_PORTSC_CSC|XHCI_PORTSC_PRC)) { //检测端口是否有设备
             uint8 spc_idx = xhci_controller->port_to_spc[i];
             if (xhci_controller->spc[spc_idx].major_bcd < 0x3) {                //usb2.0
-                xhci_controller->op_reg->portregs[i].portsc |= XHCI_PORTSC_PR;
+                uint32 pr = XHCI_PORTSC_PR | XHCI_PORTSC_PP;
+                xhci_controller->op_reg->portregs[i].portsc = pr;
                 timing();
                 xhci_ering_dequeue(xhci_controller, &trb);
                 }

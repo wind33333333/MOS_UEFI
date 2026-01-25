@@ -189,14 +189,14 @@ static inline pcie_id_t *pcie_match_id(pcie_dev_t *pcie_dev,driver_t *drv) {
     return NULL;
 }
 
-//pcie设备驱动匹配
+//pcie总线层设备驱动匹配
 int pcie_bus_match(device_t *dev,driver_t *drv) {
     pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
     pcie_id_t *id = pcie_match_id(pcie_dev,drv);
     return id ? 1 : 0;
 }
 
-//pcie设备通用初始化程序
+//pcie总线层探测初始化回调
 int pcie_bus_probe(device_t *dev) {
     pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
     // 1) enable memory/io/bus mastering
@@ -208,12 +208,12 @@ int pcie_bus_probe(device_t *dev) {
     return 0;
 }
 
-//pcie设备通用卸载程序
+//pcie总线层卸载在回调
 void pcie_bus_remove(device_t *dev) {
 }
 
-//pcie设备加载驱动外壳
-int pcie_drv_probe_wrapper(device_t *dev) {
+//pcie驱动层探测初始化回调
+int pcie_drv_probe(device_t *dev) {
     pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
     pcie_drv_t *pcie_drv = CONTAINER_OF(dev->drv,pcie_drv_t,drv);
     pcie_id_t *id = pcie_match_id(pcie_dev,pcie_drv);
@@ -221,8 +221,8 @@ int pcie_drv_probe_wrapper(device_t *dev) {
     return 0;
 }
 
-//pcie设备卸载驱动外壳
-void pcie_drv_remove_wrapper(device_t *dev) {
+//pcie驱动层卸载回调
+void pcie_drv_remove(device_t *dev) {
 }
 
 //获取pice设备的class_code
@@ -265,8 +265,8 @@ static inline void pcie_dev_register(pcie_dev_t *pcie_dev) {
 //pcie设备驱动注册
 void pcie_drv_register(pcie_drv_t *pcie_drv) {
     pcie_drv->drv.bus = &pcie_bus_type;
-    pcie_drv->drv.probe = pcie_drv_probe_wrapper;
-    pcie_drv->drv.remove = pcie_drv_remove_wrapper;
+    pcie_drv->drv.probe = pcie_drv_probe;
+    pcie_drv->drv.remove = pcie_drv_remove;
     driver_register(&pcie_drv->drv);
 }
 

@@ -149,7 +149,7 @@ typedef struct {
 #pragma pack(pop)
 
 struct usb_dev_t;
-struct usb_interface_t;
+struct usb_if_t;
 
 //usb驱动id表
 typedef struct {
@@ -159,13 +159,11 @@ typedef struct {
     uint8  if_protocol;
 } usb_id_t;
 
-//usb驱动
+//usb接口驱动
 typedef struct{
-    const char *name;
-    usb_id_t *id_table;
-    int  (*probe)(struct usb_dev_t *usb_dev, struct usb_interface_t *ifc, usb_id_t *id);
-    void (*remove)(struct usb_dev_t *usb_dev, struct usb_interface_t *ifc);
-    driver_t drv; // 复用你的通用 driver_t
+    driver_t drv;
+    int  (*probe)(struct usb_if_t *ifc, usb_id_t *id);
+    void (*remove)(struct usb_if_t *ifc);
 } usb_if_drv_t;
 
 
