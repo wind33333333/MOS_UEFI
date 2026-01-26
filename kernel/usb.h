@@ -82,10 +82,6 @@ typedef struct {
     usb_descriptor_head head;
     uint8 endpoint_address; // 端点地址：位7方向(0=OUT,主机→设备 1=IN，设备→主机)，位3-0端点号
     uint8 attributes; // 传输类型：0x00=控制，0x01=Isochronous，0x02=Bulk，0x03=Interrupt
-#define USB_EP_CONTROL   0x0   //ep0端点
-#define USB_EP_ISOCH     0x1   //等时传输（实时音视频流，带带宽保证，不保证重传）
-#define USB_EP_BULK      0x2   //批量传输（大容量数据，可靠，有重传机制，如 U 盘数据块）
-#define USB_EP_INTERRUPT 0x3   //中断传输（小包，低延迟，周期性轮询，如键盘鼠标 HID 报告)
     uint16 max_packet_size; // 该端点的最大包长（不同速度有不同限制）
     uint8 interval; // 轮询间隔（仅中断/同步传输有意义）
 } usb_endpoint_descriptor_t;
@@ -166,11 +162,29 @@ typedef struct{
     void (*remove)(struct usb_if_t *ifc);
 } usb_if_drv_t;
 
+/* 端点传输类型枚举（bmAttributes 的低 2 位） */
+typedef enum {
+    USB_XFER_CONTROL = 0,   // 控制传输
+    USB_XFER_ISOC    = 1,   // 等时传输
+    USB_XFER_BULK    = 2,   // 批量传输（U盘 BOT/UAS 常用）
+    USB_XFER_INT     = 3,   // 中断传输（HID 常用）
+} usb_xfer_type_t;
 
 //usb端点
-typedef struct {
-    usb_endpoint_descriptor_t *ep_desc;
-}usb_ep_t;
+typedef struct usb_ep_t {
+    //端点描述符
+    uint8       ep_num;           // 端点号 1..31（通常非 0）
+    usb_xfer_type_t type;         // 传输类型：控制/批量/中断/等时
+    uint16      max_packet;        // wMaxPacketSize 解码后的最大包长（基础值）
+    uint8       interval;          // bInterval（中断/等时用；bulk 通常可忽略但保留）
+
+    //超高速端点伴随描述符
+    uint8       max_burst;         // USB3 bMaxBurst（0=1 burst；仅 SS/SSP 有意义）
+    uint16      max_streams;         // bulk 端点支持的最大 stream 数（由 ss_comp->bmAttributes 解码，0 表示不支持 streams（BOT 一般用不到，UAS 可能需要）
+    uint16      bytes_per_interval; // USB3 wBytesPerInterval（中断/等时重要）
+
+    void        *extras_desc;    // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
+} usb_ep_t;
 
 //usb替用接口
 typedef struct usb_if_alt_t {
@@ -207,7 +221,7 @@ typedef struct usb_dev_t {
     xhci_controller_t*              xhci_controller;   // xhci控制器
     device_t                        dev;
     struct usb_dev_t                *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
-    uint8_t                         parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
+    uint8                           parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
     uint8                           interfaces_count;  // 接口数量
     usb_if_t                        *interfaces;       // 接口指针根据接口数量动态分配
 } usb_dev_t;
@@ -215,10 +229,10 @@ typedef struct usb_dev_t {
 ///////////////////////////
 
 typedef struct usb_port {
-    uint8_t port_id;              // 1..N
-    uint8_t connected:1;
-    uint8_t enabled:1;
-    uint8_t resetting:1;
+    uint8   port_id;              // 1..N
+    uint8   connected:1;
+    uint8   enabled:1;
+    uint8   resetting:1;
 
     usb_dev_t *child;             // 端口当前挂的子设备（NULL 表示空）
 } usb_port_t;
@@ -236,16 +250,16 @@ typedef struct usb_hub_t {
     usb_dev_t *hdev;              // hub 对应的物理设备（便于访问拓扑/HCD）
 
     /* 端口管理 */
-    uint8_t port_count;
+    uint8   port_count;
     usb_port_t *ports;
 
     /* 事件与并发（精简版） */
-    uint32_t pending_bitmap;      // 哪些端口有变化待处理（可选但很有用）
+    uint32   pending_bitmap;      // 哪些端口有变化待处理（可选但很有用）
 } usb_hub_t;
 
 
 //获取下一个描述符
-static inline void *get_next_desc(usb_descriptor_head *head) {
+static inline void *usb_get_next_desc(usb_descriptor_head *head) {
     return (uint8*)head + head->length;
 }
 

@@ -381,13 +381,13 @@ int32 usb_mass_storage(usb_if_t *usb_if, usb_id_t *id) {
         uint32 context_entries = 0;
         usb_interface_descriptor_t *next_if_desc = uas_if_desc;
         for (uint8 i = 0; i < 4; i++) {
-            usb_endpoint_descriptor_t *endpoint_desc = get_next_desc(next_if_desc);
-            usb_superspeed_companion_descriptor_t *ss_ep_comp_desc = get_next_desc(endpoint_desc);
+            usb_endpoint_descriptor_t *endpoint_desc = usb_get_next_desc(next_if_desc);
+            usb_superspeed_companion_descriptor_t *ss_ep_comp_desc = usb_get_next_desc(endpoint_desc);
             usb_usa_pipe_usage_descriptor_t *pipe_usage_desc = (usb_usa_pipe_usage_descriptor_t *) ss_ep_comp_desc;
             uint32 max_burst = 0;
             uint8 max_streams_exp = 0;
             if (ss_ep_comp_desc->descriptor_type == USB_SUPERSPEED_ENDPOINT_COMPANION_descriptor) {
-                pipe_usage_desc = get_next_desc(ss_ep_comp_desc);
+                pipe_usage_desc = usb_get_next_desc(ss_ep_comp_desc);
                 max_burst = ss_ep_comp_desc->max_burst; // 突发包
                 max_streams_exp = ss_ep_comp_desc->attributes & 0x1F; // Max Streams指数
             }
@@ -411,7 +411,7 @@ int32 usb_mass_storage(usb_if_t *usb_if, usb_id_t *id) {
                     endpoint = &uas_msc->bluk_out_ep;
                     ep_transfer_type = EP_TYPE_BULK_OUT;
             }
-            endpoint->ep_num = (endpoint_desc->endpoint_address & 0xF) << 1 | endpoint_desc->endpoint_address >> 7;
+            endpoint->ep_num = ((endpoint_desc->endpoint_address&0xF)<<1) | (endpoint_desc->endpoint_address>>7);
             if (endpoint->ep_num > context_entries) context_entries = endpoint->ep_num;
             ep_ctx.ep_type_size = ep_transfer_type | endpoint_desc->max_packet_size << 16 | max_burst << 8 | 3 << 1;
             if (max_streams_exp == 0) {
@@ -762,7 +762,7 @@ int32 usb_mass_storage(usb_if_t *usb_if, usb_id_t *id) {
         usb_endpoint_descriptor_t *endpoint_desc = (usb_endpoint_descriptor_t *) interface_desc;
         uint32 context_entries = 0;
         for (uint8 i = 0; i < 2; i++) {
-            endpoint_desc = get_next_desc(endpoint_desc);
+            endpoint_desc = usb_get_next_desc(endpoint_desc);
             usb_endpoint_t *endpoint;
             uint32 ep_transfer_type;
             if (endpoint_desc->endpoint_address & 0x80) {
@@ -777,7 +777,7 @@ int32 usb_mass_storage(usb_if_t *usb_if, usb_id_t *id) {
             xhci_ring_init(&endpoint->transfer_ring, xhci_controller->align_size); //初始化端点传输环
             uint32 max_burst = 0;
             if (usb_dev->usb_ver >= 0x300) {
-                usb_superspeed_companion_descriptor_t *ss_ep_comp_desc = get_next_desc(endpoint_desc);
+                usb_superspeed_companion_descriptor_t *ss_ep_comp_desc = usb_get_next_desc(endpoint_desc);
                 endpoint_desc = (usb_endpoint_descriptor_t *) ss_ep_comp_desc;
                 max_burst = ss_ep_comp_desc->max_burst;
             }

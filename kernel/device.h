@@ -1,6 +1,4 @@
 #pragma once
-#include <stdint.h>
-
 #include "moslib.h"
 
 struct bus_type_t;

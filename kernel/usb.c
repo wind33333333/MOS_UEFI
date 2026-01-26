@@ -204,17 +204,33 @@ void usb_drv_remove(device_t *dev) {
 
 //解析端点
 int usb_alt_parse_endpoints(usb_dev_t *usb_dev,usb_if_alt_t *if_alt) {
-    usb_ep_t *eps = if_alt->eps;
-    usb_endpoint_descriptor_t *ep_desc = (void*)if_alt->if_desc;
+    usb_ep_t *cur_ep = NULL;
+    usb_descriptor_head *desc_head = usb_get_next_desc(&if_alt->if_desc->head);
+    uint8 ep_idx =0;
     void* cfg_end = usb_cfg_end(usb_dev->usb_config_desc);
-    uint8 eps_idx = 0;
-    while (ep_desc < cfg_end) {
-        if (ep_desc->head.descriptor_type == USB_ENDPOINT_DESCRIPTOR) {
-            eps[eps_idx].ep_desc = ep_desc;
-            eps_idx++;
-        }
-        ep_desc = get_next_desc(&ep_desc->head);
-        if (ep_desc->head.descriptor_type == USB_INTERFACE_DESCRIPTOR) break;
+    while (desc_head < cfg_end && desc_head->descriptor_type != USB_INTERFACE_DESCRIPTOR) {
+        if (desc_head->descriptor_type == USB_ENDPOINT_DESCRIPTOR) {
+            usb_endpoint_descriptor_t *ep_desc = (usb_endpoint_descriptor_t *)desc_head;
+            cur_ep = &if_alt->eps[ep_idx++];
+            cur_ep->ep_num = ((ep_desc->endpoint_address&0xF)<<1) | (ep_desc->endpoint_address>>7);
+            cur_ep->type = ep_desc->attributes & 3;
+            cur_ep->max_packet = ep_desc->max_packet_size & 0x07FF;
+            cur_ep->interval = ep_desc->interval;
+            cur_ep->max_burst = 0;
+            cur_ep->max_streams = 0;
+            cur_ep->bytes_per_interval = 0;
+            cur_ep->extras_desc = NULL;
+        }else if (desc_head->descriptor_type == USB_SUPERSPEED_COMPANION_DESCRIPTOR) {
+            usb_superspeed_companion_descriptor_t* ss_desc = (usb_superspeed_companion_descriptor_t *)desc_head;
+            cur_ep->max_burst = ss_desc->max_burst;
+            cur_ep->bytes_per_interval = ss_desc->bytes_per_interval;
+            uint8 max_streams_exp = ss_desc->attributes & 0x1F;
+            // MaxStreams 只对 bulk 有意义，且 code=0 => 不支持
+            if (cur_ep->type == USB_XFER_BULK) cur_ep->max_streams = max_streams_exp ? 1 << max_streams_exp : 0;
+        } else {
+            if (cur_ep && !cur_ep->extras_desc) cur_ep->extras_desc = desc_head;   //仅保存扫描到的第一条其他类型描述符
+        };
+        desc_head = usb_get_next_desc(desc_head);
     }
     return 0;
 }
@@ -240,7 +256,7 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
         if (if_desc->head.descriptor_type == USB_INTERFACE_DESCRIPTOR) {
             alt_count[if_desc->interface_number]++;
         }
-        if_desc = get_next_desc(&if_desc->head);
+        if_desc = usb_get_next_desc(&if_desc->head);
     }
 
     //解析alt_cout分配usb_if_alt内存
@@ -276,7 +292,7 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
             /* usb_parse_alt_endpoints(usb_dev, alt); */
             usb_alt_parse_endpoints(usb_dev,if_alt);
         }
-        if_desc = get_next_desc(&if_desc->head);
+        if_desc = usb_get_next_desc(&if_desc->head);
     }
 
     /* 设置 cur_alt（优先 alt0，否则第一个），然后延迟注册（触发 match/probe） */
