@@ -202,7 +202,7 @@ int usb_drv_probe(device_t *dev) {
 void usb_drv_remove(device_t *dev) {
 }
 
-//解析
+//解析端点
 int usb_alt_parse_endpoints(usb_dev_t *usb_dev,usb_if_alt_t *if_alt) {
     usb_ep_t *eps = if_alt->eps;
     usb_endpoint_descriptor_t *ep_desc = (void*)if_alt->if_desc;
