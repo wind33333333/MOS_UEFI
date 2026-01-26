@@ -173,7 +173,7 @@ typedef enum {
 //usb端点
 typedef struct usb_ep_t {
     //端点描述符
-    uint8       ep_num;           // 端点号 1..31（通常非 0）
+    uint8       ep_dci;           // 端点dci 1..31
     usb_xfer_type_t type;         // 传输类型：控制/批量/中断/等时
     uint16      max_packet;        // wMaxPacketSize 解码后的最大包长（基础值）
     uint8       interval;          // bInterval（中断/等时用；bulk 通常可忽略但保留）
