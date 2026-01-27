@@ -98,7 +98,7 @@ typedef struct {
 } usb_superspeed_companion_descriptor_t;
 #define USB_SUPERSPEED_COMPANION_DESCRIPTOR 0x30
 
-/* USA 管道情况描述符
+/* USA 管道描述符
  * uint8  bLength;            // 固定 4
  * uint8  bDescriptorType;    // 0x24
  */
@@ -176,6 +176,7 @@ typedef struct usb_ep_t {
     uint8       ep_dci;           // 端点dci 1..31
     usb_xfer_type_t type;         // 传输类型：控制/批量/中断/等时
     uint16      max_packet;        // wMaxPacketSize 解码后的最大包长（基础值）
+    uint8       mult;              // USB 2.0 High-Speed 高带宽事务 (Mult) 处理 0=1 transaction, 1=2 trans, 2=3 trans
     uint8       interval;          // bInterval（中断/等时用；bulk 通常可忽略但保留）
 
     //超高速端点伴随描述符

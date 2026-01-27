@@ -203,7 +203,7 @@ void usb_drv_remove(device_t *dev) {
 }
 
 //解析端点
-int usb_alt_parse_endpoints(usb_dev_t *usb_dev,usb_if_alt_t *if_alt) {
+int usb_parse_endpoints(usb_dev_t *usb_dev,usb_if_alt_t *if_alt) {
     usb_ep_t *cur_ep = NULL;
     usb_descriptor_head *desc_head = usb_get_next_desc(&if_alt->if_desc->head);
     uint8 ep_idx =0;
@@ -215,6 +215,7 @@ int usb_alt_parse_endpoints(usb_dev_t *usb_dev,usb_if_alt_t *if_alt) {
             cur_ep->ep_dci = ((ep_desc->endpoint_address&0xF)<<1) | (ep_desc->endpoint_address>>7);
             cur_ep->type = ep_desc->attributes & 3;
             cur_ep->max_packet = ep_desc->max_packet_size & 0x07FF;
+            cur_ep->mult = (ep_desc->max_packet_size >> 11) & 0x3;
             cur_ep->interval = ep_desc->interval;
             cur_ep->max_burst = 0;
             cur_ep->max_streams = 0;
@@ -290,7 +291,7 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
             if_alt->eps = kzalloc(if_alt->ep_count * sizeof(usb_ep_t)); //给端点分配内存
             /* 可选：此处不解析端点，延后到 probe；或预解析以便 match/probe 快速使用 */
             /* usb_parse_alt_endpoints(usb_dev, alt); */
-            usb_alt_parse_endpoints(usb_dev,if_alt);
+            usb_parse_endpoints(usb_dev,if_alt);
         }
         if_desc = usb_get_next_desc(&if_desc->head);
     }
