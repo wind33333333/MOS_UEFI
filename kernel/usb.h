@@ -98,7 +98,7 @@ typedef struct {
 } usb_superspeed_companion_descriptor_t;
 #define USB_SUPERSPEED_COMPANION_DESCRIPTOR 0x30
 
-/* USA 管道描述符
+/* USA管道描述符
  * uint8  bLength;            // 固定 4
  * uint8  bDescriptorType;    // 0x24
  */
