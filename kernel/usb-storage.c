@@ -356,7 +356,7 @@ void bot_get_msc_info(usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc) {
 }
 
 //u盘驱动程序
-int32 usb_mass_storage(usb_if_t *usb_if, usb_id_t *id) {
+int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
     usb_dev_t *usb_dev = usb_if->usb_dev;
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
 

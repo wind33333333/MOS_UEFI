@@ -173,7 +173,7 @@ typedef enum {
 //usb端点
 typedef struct usb_ep_t {
     //端点描述符
-    uint8       ep_dci;           // 端点dci 1..31
+    uint8       ep_num;           // 端点 1-31
     usb_xfer_type_t type;         // 传输类型：控制/批量/中断/等时
     uint16      max_packet;        // wMaxPacketSize 解码后的最大包长（基础值）
     uint8       mult;              // USB 2.0 High-Speed 高带宽事务 (Mult) 处理 0=1 transaction, 1=2 trans, 2=3 trans
@@ -218,7 +218,7 @@ typedef struct usb_dev_t {
     usb_config_descriptor_t*        usb_config_desc;    //usb配置描述符
     xhci_device_context_t*          dev_context;       // 设备上下文
     xhci_ring_t                     ep0;               // 控制端点
-    xhci_ring_t                     eps[32];           // 端点0-31
+    xhci_ring_t                     eps[31];           // 端点0-31
     xhci_controller_t*              xhci_controller;   // xhci控制器
     device_t                        dev;
     struct usb_dev_t                *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
@@ -226,38 +226,6 @@ typedef struct usb_dev_t {
     uint8                           interfaces_count;  // 接口数量
     usb_if_t                        *interfaces;       // 接口指针根据接口数量动态分配
 } usb_dev_t;
-
-///////////////////////////
-
-typedef struct usb_port {
-    uint8   port_id;              // 1..N
-    uint8   connected:1;
-    uint8   enabled:1;
-    uint8   resetting:1;
-
-    usb_dev_t *child;             // 端口当前挂的子设备（NULL 表示空）
-} usb_port_t;
-
-typedef enum {
-    HUB_KIND_ROOT,                // roothub（端口变化来自 HCD/xHCI）
-    HUB_KIND_EXTERNAL,            // 外部 hub（端口变化来自 hub interrupt endpoint）
-} hub_kind_t;
-
-typedef struct usb_hub_t {
-    hub_kind_t kind;
-
-    /* 归属：哪个 hub interface 管理这份 hub 状态 */
-    usb_if_t *intf;        // 注意：归属到 interface（Linux 风格）
-    usb_dev_t *hdev;              // hub 对应的物理设备（便于访问拓扑/HCD）
-
-    /* 端口管理 */
-    uint8   port_count;
-    usb_port_t *ports;
-
-    /* 事件与并发（精简版） */
-    uint32   pending_bitmap;      // 哪些端口有变化待处理（可选但很有用）
-} usb_hub_t;
-
 
 //获取下一个描述符
 static inline void *usb_get_next_desc(usb_descriptor_head *head) {
