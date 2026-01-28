@@ -110,7 +110,7 @@ typedef struct {
 #define USB_PIPE_BULK_IN        3
 #define USB_PIPE_BULK_OUT       4
     uint8  reserved;
-} usb_usa_pipe_usage_descriptor_t;
+} usb_uas_pipe_usage_descriptor_t;
 #define USB_USA_PIPE_USAGE_DESCTIPTOR 0x24
 
 /*HID 类描述符（可选
@@ -162,19 +162,11 @@ typedef struct{
     void (*remove)(struct usb_if_t *ifc);
 } usb_if_drv_t;
 
-/* 端点传输类型枚举（bmAttributes 的低 2 位） */
-typedef enum {
-    USB_XFER_CONTROL = 0,   // 控制传输
-    USB_XFER_ISOC    = 1,   // 等时传输
-    USB_XFER_BULK    = 2,   // 批量传输（U盘 BOT/UAS 常用）
-    USB_XFER_INT     = 3,   // 中断传输（HID 常用）
-} usb_xfer_type_t;
-
 //usb端点
 typedef struct usb_ep_t {
     //端点描述符
-    uint8       ep_num;           // 端点 1-31
-    usb_xfer_type_t type;         // 传输类型：控制/批量/中断/等时
+    uint8       ep_num;            // 端点 1-31
+    uint8       transfer_type;     // 传输类型：控制/批量/中断/等时
     uint16      max_packet;        // wMaxPacketSize 解码后的最大包长（基础值）
     uint8       mult;              // USB 2.0 High-Speed 高带宽事务 (Mult) 处理 0=1 transaction, 1=2 trans, 2=3 trans
     uint8       interval;          // bInterval（中断/等时用；bulk 通常可忽略但保留）

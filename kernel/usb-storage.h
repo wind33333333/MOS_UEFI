@@ -137,7 +137,7 @@ typedef struct bot_data_t {
 // UAS (USB Attached SCSI) 专用结构
 typedef struct uas_data_t {
     // [继承] 公共基类
-    struct us_common_data_t common;
+    us_common_data_t common;
 
     // --- 管道 (Pipes) ---
     // UAS 分离了命令、状态和数据管道

@@ -390,13 +390,13 @@ typedef struct {
                                  * 位 15:8 最大突发大小
                                  * 位 31:16 最大包大小（Max Packet Size）*/
         // xHCI 端点类型 (Endpoint Type)
-        #define EP_TYPE_ISOCH_OUT       (1 << 3)   // 同步传输 OUT（主机→设备）
-        #define EP_TYPE_BULK_OUT        (2 << 3)   // 批量传输 OUT（主机→设备）
-        #define EP_TYPE_INTERRUPT_OUT   (3 << 3)   // 中断传输 OUT（主机→设备）
-        #define EP_TYPE_CONTROL         (4 << 3)   // 控制传输 双向（EP0）
-        #define EP_TYPE_ISOCH_IN        (5 << 3)   // 同步传输 IN（设备→主机）
-        #define EP_TYPE_BULK_IN         (6 << 3)   // 批量传输 IN（设备→主机）
-        #define EP_TYPE_INTERRUPT_IN    (7 << 3)   // 中断传输 IN（设备→主机）
+        #define EP_TYPE_ISOCH_OUT       1   // 同步传输 OUT（主机→设备）
+        #define EP_TYPE_BULK_OUT        2   // 批量传输 OUT（主机→设备）
+        #define EP_TYPE_INTERRUPT_OUT   3   // 中断传输 OUT（主机→设备）
+        #define EP_TYPE_CONTROL         4   // 控制传输 双向（EP0）
+        #define EP_TYPE_ISOCH_IN        5   // 同步传输 IN（设备→主机）
+        #define EP_TYPE_BULK_IN         6   // 批量传输 IN（设备→主机）
+        #define EP_TYPE_INTERRUPT_IN    7   // 中断传输 IN（设备→主机）
         uint64 tr_dequeue_ptr;
         /* 位 0：DCS（Dequeue Cycle State）。当DCS=1时，主机控制器从传输环中获取的TRB需要其Cycle Bit为1才会被处理；当RCS=0时，则处理Cycle Bit为0的TRB。
                                             * 位 63:4：TR Dequeue Pointer（TR 出队指针）。64位传输环物理地址64字节对齐 */

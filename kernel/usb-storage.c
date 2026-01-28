@@ -368,12 +368,38 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
     //u盘是否支持uas协议，优先设置为uas协议
     usb_if_alt_t *alts = usb_if->alts;
     for (uint8 i = 0; i < usb_if->alt_count; i++) {
-        if (alts[i].if_protocol == 0x62) usb_if->cur_alt = alts;
+        if (alts[i].if_protocol == 0x62) usb_if->cur_alt = &alts[i];
     }
     usb_set_interface(usb_if);   //切换接口备用配置
 
     if (usb_if->cur_alt->if_protocol == 0x62) {        //uas协议初始化流程
-        usb_uas_msc_t *uas_msc = kzalloc(sizeof(usb_uas_msc_t));
+        uas_data_t *uas_data = kzalloc(sizeof(uas_data_t));
+        uas_data->common.usb_if = usb_if;
+
+        alts = usb_if->cur_alt;
+        usb_ep_t *ep = alts->eps;
+        for (uint8 i = 0; i < 4; i++) {
+            usb_uas_pipe_usage_descriptor_t *pipe_usage_desc = ep[i].extras_desc;
+            uint8 ep_transfer_type;
+            switch (pipe_usage_desc->pipe_id) {
+                case USB_PIPE_COMMAND_OUT:
+                    uas_data->cmd_pipe = ep[i].ep_num;
+                    ep_transfer_type = EP_TYPE_BULK_OUT;
+                    break;
+                case USB_PIPE_STATUS_IN:
+                    uas_data->status_pipe = ep[i].ep_num;
+                    ep_transfer_type = EP_TYPE_BULK_IN;
+                    break;
+                case USB_PIPE_BULK_IN:
+                    uas_data->data_in_pipe = ep[i].ep_num;
+                    ep_transfer_type = EP_TYPE_BULK_IN;
+                    break;
+                case USB_PIPE_BULK_OUT:
+                    uas_data->data_out_pipe = ep[i].ep_num;
+                    ep_transfer_type = EP_TYPE_BULK_OUT;
+            }
+        }
+
         uas_msc->usb_dev = usb_dev;
         uas_msc->interface_num = uas_if_desc->interface_number;
         usb_dev->interfaces = uas_msc;
@@ -383,7 +409,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         for (uint8 i = 0; i < 4; i++) {
             usb_endpoint_descriptor_t *endpoint_desc = usb_get_next_desc(next_if_desc);
             usb_superspeed_companion_descriptor_t *ss_ep_comp_desc = usb_get_next_desc(endpoint_desc);
-            usb_usa_pipe_usage_descriptor_t *pipe_usage_desc = (usb_usa_pipe_usage_descriptor_t *) ss_ep_comp_desc;
+            usb_uas_pipe_usage_descriptor_t *pipe_usage_desc = (usb_uas_pipe_usage_descriptor_t *) ss_ep_comp_desc;
             uint32 max_burst = 0;
             uint8 max_streams_exp = 0;
             if (ss_ep_comp_desc->descriptor_type == USB_SUPERSPEED_ENDPOINT_COMPANION_descriptor) {
