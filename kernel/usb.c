@@ -226,8 +226,7 @@ int usb_parse_endpoints(usb_dev_t *usb_dev,usb_if_alt_t *if_alt) {
             cur_ep->max_burst = ss_desc->max_burst;
             cur_ep->bytes_per_interval = ss_desc->bytes_per_interval;
             uint8 max_streams_exp = ss_desc->attributes & 0x1F;
-            // MaxStreams 只对 bulk 有意义，且 code=0 => 不支持
-            if (cur_ep->type == USB_XFER_BULK) cur_ep->max_streams = max_streams_exp ? 1 << max_streams_exp : 0;
+            cur_ep->max_streams = max_streams_exp ? 1 << max_streams_exp : 0;
         } else {
             if (cur_ep && !cur_ep->extras_desc) cur_ep->extras_desc = desc_head;   //仅保存扫描到的第一条其他类型描述符
         };
