@@ -204,8 +204,10 @@ typedef struct usb_if_t {
 
 //端点
 typedef struct {
-    xhci_ring_t  transfer_ring;
-    xhci_ring_t* stream_rings;   // per-stream rings数组 (如果启用流)
+    union {
+        xhci_ring_t  transfer_ring;
+        xhci_ring_t* stream_rings;   // per-stream rings数组 (如果启用流)
+    };
     uint32 streams_count;        // 2^max_streams_exp+1
 }endpoint_t;
 

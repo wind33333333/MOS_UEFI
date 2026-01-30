@@ -380,6 +380,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         //配置端点
         alts = usb_if->cur_alt;
         usb_ep_t *ep = alts->eps;
+        uint8 max_ep_num = 0;
         for (uint8 i = 0; i < 4; i++) {
             usb_uas_pipe_usage_descriptor_t *pipe_usage_desc = ep[i].extras_desc;
             switch (pipe_usage_desc->pipe_id) {
@@ -401,13 +402,13 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
                 // 有流：分配Stream Context Array和per-stream rings
                 uint32 streams_count = (1 << ep[i].max_streams) + 1;
                 xhci_stream_ctx_t *stream_array = kzalloc(streams_count * sizeof(xhci_stream_ctx_t));
-                endpoint->stream_rings = kzalloc((streams_count * sizeof(xhci_ring_t));
-                endpoint->streams_count = streams_count;
+                usb_dev->eps[ep[i].ep_num].stream_rings = kzalloc(streams_count * sizeof(xhci_ring_t));
+                usb_dev->eps[ep[i].ep_num].streams_count = streams_count;
 
-                for (uint32 s = 1; s < streams_count; s++) {
+                for (uint32 s = 1; s <= streams_count; s++) {
                     // Stream ID从1开始
-                    xhci_ring_init(&endpoint->stream_rings[s], xhci_controller->align_size);
-                    stream_array[s].tr_dequeue = va_to_pa(endpoint->stream_rings[s].ring_base) | 1 | 1 << 1;
+                    xhci_ring_init(&usb_dev->eps[ep[i].ep_num].stream_rings[s], xhci_controller->align_size);
+                    stream_array[s].tr_dequeue = va_to_pa(usb_dev->eps[ep[i].ep_num].stream_rings[s].ring_base) | 1 | 1 << 1;
                     stream_array[s].reserved = 0;
                 }
                 // Stream ID 0保留，通常设为0或无效
@@ -417,18 +418,18 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
             } else {
                 // 无流：单个Transfer Ring
                 ep_ctx.ep_config = 0;
-                xhci_ring_init(&endpoint->transfer_ring, xhci_controller->align_size);
-                ep_ctx.tr_dequeue_ptr = va_to_pa(endpoint->transfer_ring.ring_base) | 1; // DCS=1
+                xhci_ring_init(&usb_dev->eps[ep[i].ep_num].transfer_ring, xhci_controller->align_size);
+                ep_ctx.tr_dequeue_ptr = va_to_pa(usb_dev->eps[ep[i].ep_num].transfer_ring.ring_base) | 1; // DCS=1
             }
             ep_ctx.trb_payload = 0;
             ep_ctx.ep_type_size = ep[i].ep_type | ep[i].max_packet << 16 | ep[i].max_burst << 8 | 3 << 1;
-            xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->dev_ctx_size, endpoint->ep_num);
-            color_printk(RED,BLACK, "max_streams_exp:%d ep_num:%d pipe:%d  \n", max_streams_exp, endpoint->ep_num,
-                         pipe_usage_desc->pipe_id);
+            xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->dev_ctx_size, ep[i].ep_num);
+            if (ep[i].ep_num > max_ep_num) max_ep_num = ep[i].ep_num;
+            color_printk(RED,BLACK, "max_streams_exp:%d ep_num:%d pipe:%d  \n", ep[i].max_streams, ep[i].ep_num,pipe_usage_desc->pipe_id);
         }
 
         //更新slot
-        slot_ctx.route_speed = (context_entries << 27) | ((usb_dev->xhci_controller->op_reg->portregs[usb_dev->port_id - 1].portsc & 0x3C00) << 10);
+        slot_ctx.route_speed = (max_ep_num << 27) | ((xhci_controller->op_reg->portregs[usb_dev->port_id - 1].portsc & 0x3C00) << 10);
         slot_ctx.latency_hub = usb_dev->port_id << 16;
         slot_ctx.parent_info = 0;
         slot_ctx.addr_status = 0;
@@ -441,10 +442,8 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         xhci_ering_dequeue(xhci_controller, &trb);
 
 
-
-
-
         /////////////////////////////////////
+        /*
         trb_t cmd_trb, sta_trb, in_trb;
         uas_cmd_iu_t *ciu = kzalloc(sizeof(uas_cmd_iu_t));
         ciu->iu_id = 1; // UASP_IU_COMMAND
@@ -514,6 +513,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
 
         color_printk(RED,BLACK,"sense_iu iu_id:%d tag:%d status:%d   \n",status_buf->iu_id,status_buf->tag,status_buf->status);
         color_printk(RED,BLACK,"inquiy pdt_pq:%#x rmb:%#x ver:%#x resp:%#x add_len:%#x flag1:%#x flag2:%#x flag3:%#x vid:%s pid:%s rev:%s  \n",inquiry->pdt_pq,inquiry->rmb,inquiry->version,inquiry->resp_fmt,inquiry->add_len,inquiry->flags[0],inquiry->flags[1],inquiry->flags[2],inquiry->vendor,inquiry->product,inquiry->revision);
+        */
 
 
         /*//获取最大lun
@@ -738,7 +738,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         while (1);
     } else {
         //bot协议初始化流程
-        usb_set_interface(usb_dev, interface_desc->interface_number, interface_desc->alternate_setting);
+        /*usb_set_interface(usb_dev, interface_desc->interface_number, interface_desc->alternate_setting);
         usb_bot_msc_t *bot_msc = kzalloc(sizeof(usb_bot_msc_t));
         bot_msc->usb_dev = usb_dev;
         bot_msc->interface_num = interface_desc->interface_number;
@@ -817,7 +817,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         color_printk(GREEN,BLACK, "vid:%#x pid:%#x mode:%s block_num:%#lx block_size:%#x    \n", usb_dev->vid,
                      usb_dev->pid,
                      bot_msc->lun[0].vid, bot_msc->lun[0].block_count, bot_msc->lun[0].block_size);
-        //while (1);
+        //while (1);*/
     }
     kfree(input_ctx);
 }
