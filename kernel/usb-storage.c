@@ -372,10 +372,12 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
     }
     usb_set_interface(usb_if);   //切换接口备用配置
 
-    if (usb_if->cur_alt->if_protocol == 0x62) {        //uas协议初始化流程
+    if (usb_if->cur_alt->if_protocol == 0x62) {
+        //uas协议初始化流程
         uas_data_t *uas_data = kzalloc(sizeof(uas_data_t));
         uas_data->common.usb_if = usb_if;
 
+        //配置端点
         alts = usb_if->cur_alt;
         usb_ep_t *ep = alts->eps;
         for (uint8 i = 0; i < 4; i++) {
@@ -393,62 +395,16 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
                 case USB_PIPE_BULK_OUT:
                     uas_data->data_out_pipe = ep[i].ep_num;
             }
-        }
 
-        uas_msc->usb_dev = usb_dev;
-        uas_msc->interface_num = uas_if_desc->interface_number;
-        usb_dev->interfaces = uas_msc;
-        usb_dev->interfaces_count = 1;
-        uint32 context_entries = 0;
-        usb_interface_descriptor_t *next_if_desc = uas_if_desc;
-        for (uint8 i = 0; i < 4; i++) {
-            usb_endpoint_descriptor_t *endpoint_desc = usb_get_next_desc(next_if_desc);
-            usb_superspeed_companion_descriptor_t *ss_ep_comp_desc = usb_get_next_desc(endpoint_desc);
-            usb_uas_pipe_usage_descriptor_t *pipe_usage_desc = (usb_uas_pipe_usage_descriptor_t *) ss_ep_comp_desc;
-            uint32 max_burst = 0;
-            uint8 max_streams_exp = 0;
-            if (ss_ep_comp_desc->descriptor_type == USB_SUPERSPEED_ENDPOINT_COMPANION_descriptor) {
-                pipe_usage_desc = usb_get_next_desc(ss_ep_comp_desc);
-                max_burst = ss_ep_comp_desc->max_burst; // 突发包
-                max_streams_exp = ss_ep_comp_desc->attributes & 0x1F; // Max Streams指数
-            }
-            next_if_desc = (usb_interface_descriptor_t *) pipe_usage_desc;
-            usb_uas_endpoint_t *endpoint;
-            uint32 ep_transfer_type;
-            switch (pipe_usage_desc->pipe_id) {
-                case USB_PIPE_COMMAND_OUT:
-                    endpoint = &uas_msc->cmd_out_ep;
-                    ep_transfer_type = EP_TYPE_BULK_OUT;
-                    break;
-                case USB_PIPE_STATUS_IN:
-                    endpoint = &uas_msc->sta_in_ep;
-                    ep_transfer_type = EP_TYPE_BULK_IN;
-                    break;
-                case USB_PIPE_BULK_IN:
-                    endpoint = &uas_msc->bluk_in_ep;
-                    ep_transfer_type = EP_TYPE_BULK_IN;
-                    break;
-                case USB_PIPE_BULK_OUT:
-                    endpoint = &uas_msc->bluk_out_ep;
-                    ep_transfer_type = EP_TYPE_BULK_OUT;
-            }
-            endpoint->ep_num = ((endpoint_desc->endpoint_address&0xF)<<1) | (endpoint_desc->endpoint_address>>7);
-            if (endpoint->ep_num > context_entries) context_entries = endpoint->ep_num;
-            ep_ctx.ep_type_size = ep_transfer_type | endpoint_desc->max_packet_size << 16 | max_burst << 8 | 3 << 1;
-            if (max_streams_exp == 0) {
-                // 无流：单个Transfer Ring
-                ep_ctx.ep_config = 0;
-                xhci_ring_init(&endpoint->transfer_ring, xhci_controller->align_size);
-                ep_ctx.tr_dequeue_ptr = va_to_pa(endpoint->transfer_ring.ring_base) | 1; // DCS=1
-            } else {
-                ep_ctx.ep_config = (max_streams_exp << 10) | (1 << 15); // MaxPStreams，LSA=1，如果使用线性数组（可选，根据实现）
+            if (ep[i].max_streams) {
+                ep_ctx.ep_config = (ep[i].max_streams << 10) | (1 << 15); // MaxPStreams，LSA=1，如果使用线性数组（可选，根据实现）
                 // 有流：分配Stream Context Array和per-stream rings
-                uint32 streams_count = 1 << max_streams_exp;
-                xhci_stream_ctx_t *stream_array = kzalloc((streams_count + 1) * sizeof(xhci_stream_ctx_t));
-                endpoint->stream_rings = kzalloc((streams_count + 1) * sizeof(xhci_ring_t));
+                uint32 streams_count = (1 << ep[i].max_streams) + 1;
+                xhci_stream_ctx_t *stream_array = kzalloc(streams_count * sizeof(xhci_stream_ctx_t));
+                endpoint->stream_rings = kzalloc((streams_count * sizeof(xhci_ring_t));
                 endpoint->streams_count = streams_count;
 
-                for (uint32 s = 1; s <= streams_count; s++) {
+                for (uint32 s = 1; s < streams_count; s++) {
                     // Stream ID从1开始
                     xhci_ring_init(&endpoint->stream_rings[s], xhci_controller->align_size);
                     stream_array[s].tr_dequeue = va_to_pa(endpoint->stream_rings[s].ring_base) | 1 | 1 << 1;
@@ -458,16 +414,21 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
                 stream_array[0].tr_dequeue = 0;
                 stream_array[0].reserved = 0;
                 ep_ctx.tr_dequeue_ptr = va_to_pa(stream_array);
+            } else {
+                // 无流：单个Transfer Ring
+                ep_ctx.ep_config = 0;
+                xhci_ring_init(&endpoint->transfer_ring, xhci_controller->align_size);
+                ep_ctx.tr_dequeue_ptr = va_to_pa(endpoint->transfer_ring.ring_base) | 1; // DCS=1
             }
             ep_ctx.trb_payload = 0;
+            ep_ctx.ep_type_size = ep[i].ep_type | ep[i].max_packet << 16 | ep[i].max_burst << 8 | 3 << 1;
             xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->dev_ctx_size, endpoint->ep_num);
             color_printk(RED,BLACK, "max_streams_exp:%d ep_num:%d pipe:%d  \n", max_streams_exp, endpoint->ep_num,
                          pipe_usage_desc->pipe_id);
         }
+
         //更新slot
-        slot_ctx.route_speed = (context_entries << 27) | (
-                            (usb_dev->xhci_controller->op_reg->portregs[usb_dev->port_id - 1].portsc &
-                             0x3C00) << 10);
+        slot_ctx.route_speed = (context_entries << 27) | ((usb_dev->xhci_controller->op_reg->portregs[usb_dev->port_id - 1].portsc & 0x3C00) << 10);
         slot_ctx.latency_hub = usb_dev->port_id << 16;
         slot_ctx.parent_info = 0;
         slot_ctx.addr_status = 0;
@@ -478,6 +439,9 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         xhci_ring_doorbell(xhci_controller, 0, 0);
         timing();
         xhci_ering_dequeue(xhci_controller, &trb);
+
+
+
 
 
         /////////////////////////////////////

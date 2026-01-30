@@ -213,7 +213,7 @@ int usb_parse_endpoints(usb_dev_t *usb_dev,usb_if_alt_t *if_alt) {
             usb_endpoint_descriptor_t *ep_desc = (usb_endpoint_descriptor_t *)desc_head;
             cur_ep = &if_alt->eps[ep_idx++];
             cur_ep->ep_num = ((ep_desc->endpoint_address&0xF)<<1) | (ep_desc->endpoint_address>>7);
-            cur_ep->transfer_type = ((ep_desc->endpoint_address & 0x80) >> 5)+(ep_desc->attributes & 3); //计算端点传输类型
+            cur_ep->ep_type = ((ep_desc->endpoint_address & 0x80) >> 5)+(ep_desc->attributes & 3); //计算端点传输类型
             cur_ep->max_packet = ep_desc->max_packet_size & 0x07FF;
             cur_ep->mult = (ep_desc->max_packet_size >> 11) & 0x3;
             cur_ep->interval = ep_desc->interval;
@@ -225,8 +225,7 @@ int usb_parse_endpoints(usb_dev_t *usb_dev,usb_if_alt_t *if_alt) {
             usb_superspeed_companion_descriptor_t* ss_desc = (usb_superspeed_companion_descriptor_t *)desc_head;
             cur_ep->max_burst = ss_desc->max_burst;
             cur_ep->bytes_per_interval = ss_desc->bytes_per_interval;
-            uint8 max_streams_exp = ss_desc->attributes & 0x1F;
-            cur_ep->max_streams = max_streams_exp ? 1 << max_streams_exp : 0;
+            cur_ep->max_streams = ss_desc->attributes & 0x1F;
         } else {
             if (cur_ep && !cur_ep->extras_desc) cur_ep->extras_desc = desc_head;   //仅保存扫描到的第一条其他类型描述符
         };
