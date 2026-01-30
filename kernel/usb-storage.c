@@ -380,23 +380,18 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         usb_ep_t *ep = alts->eps;
         for (uint8 i = 0; i < 4; i++) {
             usb_uas_pipe_usage_descriptor_t *pipe_usage_desc = ep[i].extras_desc;
-            uint8 ep_transfer_type;
             switch (pipe_usage_desc->pipe_id) {
                 case USB_PIPE_COMMAND_OUT:
                     uas_data->cmd_pipe = ep[i].ep_num;
-                    ep_transfer_type = EP_TYPE_BULK_OUT;
                     break;
                 case USB_PIPE_STATUS_IN:
                     uas_data->status_pipe = ep[i].ep_num;
-                    ep_transfer_type = EP_TYPE_BULK_IN;
                     break;
                 case USB_PIPE_BULK_IN:
                     uas_data->data_in_pipe = ep[i].ep_num;
-                    ep_transfer_type = EP_TYPE_BULK_IN;
                     break;
                 case USB_PIPE_BULK_OUT:
                     uas_data->data_out_pipe = ep[i].ep_num;
-                    ep_transfer_type = EP_TYPE_BULK_OUT;
             }
         }
 

@@ -213,7 +213,7 @@ int usb_parse_endpoints(usb_dev_t *usb_dev,usb_if_alt_t *if_alt) {
             usb_endpoint_descriptor_t *ep_desc = (usb_endpoint_descriptor_t *)desc_head;
             cur_ep = &if_alt->eps[ep_idx++];
             cur_ep->ep_num = ((ep_desc->endpoint_address&0xF)<<1) | (ep_desc->endpoint_address>>7);
-            cur_ep->transfer_type = (ep_desc->endpoint_address&0x80) ? (ep_desc->attributes & 3) : ((ep_desc->attributes & 3)+4); //计算传输类型
+            cur_ep->transfer_type = ((ep_desc->endpoint_address & 0x80) >> 5)+(ep_desc->attributes & 3); //传输类型
             cur_ep->max_packet = ep_desc->max_packet_size & 0x07FF;
             cur_ep->mult = (ep_desc->max_packet_size >> 11) & 0x3;
             cur_ep->interval = ep_desc->interval;
