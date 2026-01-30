@@ -177,7 +177,7 @@ typedef struct {
     xhci_ring_t  transfer_ring;
     uint8        ep_num;
     xhci_ring_t* stream_rings;   // per-stream rings数组 (如果启用流)
-    uint32 streams_count;        // 2^max_streams_exp
+    uint32 streams_count;        // 2^max_streams_exp+1
 }usb_uas_endpoint_t;
 
 //uas协议u盘
