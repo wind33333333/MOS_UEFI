@@ -403,9 +403,9 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
             if (ep[i].max_streams) {
                 ep_ctx.ep_config = (ep[i].max_streams << 10) | (1 << 15); // MaxPStreams，LSA=1，如果使用线性数组（可选，根据实现）
                 // 有流：分配Stream Context Array和per-stream rings
-                uint32 streams_count = (1 << ep[i].max_streams) + 1;
-                xhci_stream_ctx_t *stream_array = kzalloc(streams_count * sizeof(xhci_stream_ctx_t));
-                usb_dev->eps[ep[i].ep_num].stream_rings = kzalloc((streams_count+1) * sizeof(xhci_ring_t));
+                uint32 streams_count = (1 << ep[i].max_streams);
+                xhci_stream_ctx_t *stream_array = kzalloc((streams_count+1) * sizeof(xhci_stream_ctx_t));
+                usb_dev->eps[ep[i].ep_num].stream_rings = kzalloc((streams_count+1) * sizeof(xhci_ring_t)); //streams0 保留，所以需要+1
                 usb_dev->eps[ep[i].ep_num].streams_count = streams_count;
 
                 for (uint32 s = 1; s <= streams_count; s++) {
