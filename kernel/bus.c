@@ -1,5 +1,6 @@
 #include "bus.h"
 #include "pcie.h"
+#include "usb.h"
 
 //pcie总线
 bus_type_t pcie_bus_type;
@@ -7,14 +8,7 @@ bus_type_t pcie_bus_type;
 //usb总线
 bus_type_t usb_bus_type;
 
-int pcie_bus_match(device_t *dev,driver_t *drv);
-int pcie_bus_probe(device_t *dev);
-void pcie_bus_remove(device_t *dev);
-void pcie_bus_init(void);
-
-int usb_bus_match(device_t* dev,driver_t* drv);
-int usb_bus_probe(device_t* dev);
-void usb_bus_remove(device_t* dev);
+extern usb_drv_t *create_us_driver();
 
 //创建一个pcie总线和usb总线
 INIT_TEXT void bus_init(void){
@@ -25,6 +19,9 @@ INIT_TEXT void bus_init(void){
     usb_bus_type.remove = usb_bus_remove;
     list_head_init(&usb_bus_type.dev_list);
     list_head_init(&usb_bus_type.drv_list);   //创建usb总线
+
+    usb_drv_t *usb_drv = create_us_driver();
+    usb_drv_register(usb_drv);
 
     pcie_bus_type.name = "PCIe Bus Type";
     pcie_bus_type.match = pcie_bus_match;

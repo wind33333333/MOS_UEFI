@@ -163,8 +163,8 @@ typedef struct {
 //bot协议u盘
 typedef struct usb_bot_msc_t{
     usb_dev_t*      usb_dev;                // 父设备指针
-    usb_endpoint_t  in_ep;                  // 输入端点
-    usb_endpoint_t  out_ep;                 // 输出端点
+    //usb_endpoint_t  in_ep;                  // 输入端点
+    //usb_endpoint_t  out_ep;                 // 输出端点
     int32 (*scsi_read)(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,struct usb_bot_msc_t *bot_msc,uint8 lun_id,uint64 lba,uint32 block_count,uint32 block_size,void *buf);
     int32 (*scsi_write)(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,struct usb_bot_msc_t *bot_msc,uint8 lun_id,uint64 lba,uint32 block_count,uint32 block_size,void *buf);
     uint8           interface_num;          // 接口号
@@ -210,8 +210,8 @@ typedef struct usb_msc_t {
     union {
         // BOT 协议特定部分
         struct {
-            usb_endpoint_t in_ep;   // Bulk-In 端点
-            usb_endpoint_t out_ep;  // Bulk-Out 端点
+            //usb_endpoint_t in_ep;   // Bulk-In 端点
+            //usb_endpoint_t out_ep;  // Bulk-Out 端点
         } bot;
 
         // UASP 协议特定部分
@@ -223,3 +223,5 @@ typedef struct usb_msc_t {
         } uasp;
     } protocol_specific;  // 访问示例：msc->protocol_specific.bot.in_ep
 } usb_msc_t;
+
+int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id);

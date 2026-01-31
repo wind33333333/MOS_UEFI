@@ -36,7 +36,7 @@ int usb_get_device_descriptor(usb_dev_t *usb_dev) {
     xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
     ep64_t ep_ctx;
     xhci_context_read(usb_dev->dev_context, &ep_ctx,xhci_controller->dev_ctx_size, 1);
-    ep_ctx.ep_type_size = EP_TYPE_CONTROL | max_packe_size << 16;
+    ep_ctx.ep_type_size = 4 << 3 | max_packe_size << 16 | 3 << 1;
     xhci_input_context_add(input_ctx,&ep_ctx, xhci_controller->dev_ctx_size, 1);
     evaluate_context_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
     xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
@@ -148,16 +148,6 @@ int usb_set_interface(usb_if_t *usb_if) {
     return 0;
 }
 
-//注册usb接口
-static inline void usb_if_register(usb_if_t* usb_if) {
-    device_register(&usb_if->dev);
-}
-
-//注册usb设备
-static inline void usb_dev_register(usb_dev_t *usb_dev) {
-    device_register(&usb_dev->dev);
-}
-
 //匹配驱动id
 static inline usb_id_t *usb_match_id(usb_if_t *usb_if,driver_t *drv) {
     usb_id_t *id_table = drv->id_table;
@@ -192,7 +182,7 @@ void usb_bus_remove(device_t* dev) {
 //usb驱动层探测初始化回调
 int usb_drv_probe(device_t *dev) {
     usb_if_t* usb_if = CONTAINER_OF(dev,usb_if_t,dev);
-    usb_if_drv_t* usb_if_drv = CONTAINER_OF(dev->drv,usb_if_drv_t,drv);
+    usb_drv_t* usb_if_drv = CONTAINER_OF(dev->drv,usb_drv_t,drv);
     usb_id_t *id = usb_match_id(usb_if,usb_if_drv);
     usb_if_drv->probe(usb_if, id);
     return 0;
@@ -200,6 +190,24 @@ int usb_drv_probe(device_t *dev) {
 
 //usb驱动层卸载回调
 void usb_drv_remove(device_t *dev) {
+}
+
+//注册usb接口
+static inline void usb_if_register(usb_if_t* usb_if) {
+    device_register(&usb_if->dev);
+}
+
+//注册usb设备
+static inline void usb_dev_register(usb_dev_t *usb_dev) {
+    device_register(&usb_dev->dev);
+}
+
+//注册usb驱动
+void usb_drv_register(usb_drv_t *usb_drv) {
+    usb_drv->drv.bus = &usb_bus_type;
+    usb_drv->drv.probe = usb_drv_probe;
+    usb_drv->drv.remove = usb_drv_remove;
+    driver_register(&usb_drv->drv);
 }
 
 //解析端点

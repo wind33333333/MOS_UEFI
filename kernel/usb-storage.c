@@ -4,6 +4,7 @@
 #include "printk.h"
 
 //测试逻辑单元是否有效
+/*
 static inline boolean bot_msc_test_lun(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc,
                                        uint8 lun_id) {
     //测试状态检测3次不成功则视为无效逻辑单元
@@ -354,6 +355,8 @@ void bot_get_msc_info(usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc) {
         bot_msc_read_capacity(xhci_controller, usb_dev, bot_msc, i); //获取u盘容量
     }
 }
+*/
+
 
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
@@ -732,56 +735,40 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->bluk_in_ep.ep_num | 1 << 16);
         timing();
         xhci_ering_dequeue(xhci_controller, &in_trb);
-        color_printk(RED,BLACK, "in_trb m0:%#lx m1:%#lx   \n", in_trb.member0, in_trb.member1);*/
+        color_printk(RED,BLACK, "in_trb m0:%#lx m1:%#lx   \n", in_trb.member0, in_trb.member1);
+        while (1);*/
 
-
-        while (1);
     } else {
         //bot协议初始化流程
-        /*usb_set_interface(usb_dev, interface_desc->interface_number, interface_desc->alternate_setting);
-        usb_bot_msc_t *bot_msc = kzalloc(sizeof(usb_bot_msc_t));
-        bot_msc->usb_dev = usb_dev;
-        bot_msc->interface_num = interface_desc->interface_number;
-        usb_dev->interfaces = bot_msc;
-        usb_dev->interfaces_count = 1;
-        usb_endpoint_descriptor_t *endpoint_desc = (usb_endpoint_descriptor_t *) interface_desc;
-        uint32 context_entries = 0;
+        bot_data_t *bot_data = kzalloc(sizeof(bot_data_t));
+        bot_data->common.usb_if = usb_if;
+
+        usb_if_alt_t *alt = usb_if->cur_alt;
+
+        uint8 max_ep_num = 0;
         for (uint8 i = 0; i < 2; i++) {
-            endpoint_desc = usb_get_next_desc(endpoint_desc);
-            usb_endpoint_t *endpoint;
-            uint32 ep_transfer_type;
-            if (endpoint_desc->endpoint_address & 0x80) {
-                endpoint = &bot_msc->in_ep;
-                ep_transfer_type = EP_TYPE_BULK_IN;
+            if (alt->eps[i].ep_num & 1) {
+                bot_data->pipe_in = alt->eps[i].ep_num;
             } else {
-                endpoint = &bot_msc->out_ep;
-                ep_transfer_type = EP_TYPE_BULK_OUT;
+                bot_data->pipe_out = alt->eps[i].ep_num;
             }
-            endpoint->ep_num = (endpoint_desc->endpoint_address & 0xF) << 1 | endpoint_desc->endpoint_address >> 7;
-            context_entries = endpoint->ep_num;
-            xhci_ring_init(&endpoint->transfer_ring, xhci_controller->align_size); //初始化端点传输环
-            uint32 max_burst = 0;
-            if (usb_dev->usb_ver >= 0x300) {
-                usb_superspeed_companion_descriptor_t *ss_ep_comp_desc = usb_get_next_desc(endpoint_desc);
-                endpoint_desc = (usb_endpoint_descriptor_t *) ss_ep_comp_desc;
-                max_burst = ss_ep_comp_desc->max_burst;
-            }
-            //获取端点类型
-            //增加端点
+            if (alt->eps[i].ep_num > max_ep_num) max_ep_num = alt->eps[i].ep_num;
+
+            xhci_ring_init(&usb_dev->eps[alt->eps[i].ep_num].transfer_ring, xhci_controller->align_size); //初始化端点传输环
+
+            //配置端点
             ep_ctx.ep_config = 0;
-            ep_ctx.ep_type_size = ep_transfer_type | endpoint_desc->max_packet_size << 16 | max_burst << 8 | 3 << 1;
-            ep_ctx.tr_dequeue_ptr = va_to_pa(endpoint->transfer_ring.ring_base) | 1;
+            ep_ctx.ep_type_size = alt->eps[i].ep_type<<3 | alt->eps[i].max_packet << 16 | alt->eps[i].max_burst << 8 | 3 << 1;
+            ep_ctx.tr_dequeue_ptr = va_to_pa(usb_dev->eps[alt->eps[i].ep_num].transfer_ring.ring_base) | 1;
             ep_ctx.trb_payload = 0;
-            xhci_input_context_add(input_ctx,&ep_ctx, xhci_controller->dev_ctx_size, endpoint->ep_num);
+            xhci_input_context_add(input_ctx,&ep_ctx, xhci_controller->dev_ctx_size, alt->eps[i].ep_num);
         }
         //更新slot
-        slot_ctx.route_speed = context_entries << 27 | (
-                            (usb_dev->xhci_controller->op_reg->portregs[usb_dev->port_id - 1].portsc &
-                             0x3C00) << 10);
+        slot_ctx.route_speed = max_ep_num << 27 | ((xhci_controller->op_reg->portregs[usb_dev->port_id - 1].portsc &0x3C00) << 10);
         slot_ctx.latency_hub = usb_dev->port_id << 16;
         slot_ctx.parent_info = 0;
         slot_ctx.addr_status = 0;
-        xhci_input_context_add(input_ctx,&slot_ctx, xhci_controller->context_size, 0);
+        xhci_input_context_add(input_ctx,&slot_ctx, xhci_controller->align_size, 0);
 
         config_endpoint_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
         xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
@@ -789,6 +776,8 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         timing();
         xhci_ering_dequeue(xhci_controller, &trb);
 
+
+        /*
         //获取u盘基本信息
         bot_get_msc_info(usb_dev, bot_msc);
 
@@ -815,9 +804,28 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         }
         color_printk(BLUE,BLACK, "\n");
         color_printk(GREEN,BLACK, "vid:%#x pid:%#x mode:%s block_num:%#lx block_size:%#x    \n", usb_dev->vid,
-                     usb_dev->pid,
-                     bot_msc->lun[0].vid, bot_msc->lun[0].block_count, bot_msc->lun[0].block_size);
-        //while (1);*/
+                     usb_dev->pid,bot_msc->lun[0].vid, bot_msc->lun[0].block_count, bot_msc->lun[0].block_size);
+        while (1);*/
     }
     kfree(input_ctx);
+}
+
+void usb_storage_remove(usb_if_t *usb_if) {
+
+}
+
+usb_drv_t *create_us_driver() {
+    usb_drv_t *usb_drv = kzalloc(sizeof(usb_drv_t));
+    usb_id_t *id_table = kzalloc(sizeof(usb_id_t)*3);
+    id_table[0].if_class = 0x8;
+    id_table[0].if_subclass = 0x6;
+    id_table[0].if_protocol = 0x50;
+    id_table[1].if_class = 0x8;
+    id_table[1].if_subclass = 0x6;
+    id_table[1].if_protocol = 0x62;
+    usb_drv->drv.name = "usb_storage";
+    usb_drv->drv.id_table = id_table;
+    usb_drv->probe = usb_storage_probe;
+    usb_drv->remove = usb_storage_remove;
+    return usb_drv;
 }

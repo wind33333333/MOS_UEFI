@@ -155,12 +155,12 @@ typedef struct {
     uint8  if_protocol;
 } usb_id_t;
 
-//usb接口驱动
+//usb驱动
 typedef struct{
     driver_t drv;
-    int  (*probe)(struct usb_if_t *ifc, usb_id_t *id);
-    void (*remove)(struct usb_if_t *ifc);
-} usb_if_drv_t;
+    int  (*probe)(struct usb_if_t *usb_if, usb_id_t *id);
+    void (*remove)(struct usb_if_t *usb_if);
+} usb_drv_t;
 
 //usb端点
 typedef struct usb_ep_t {
@@ -251,7 +251,18 @@ static inline usb_if_alt_t *usb_find_alt_by_num(usb_if_t *usb_if, uint8 altsetti
 
 extern struct bus_type_t usb_bus_type;
 
+int usb_bus_match(device_t* dev,driver_t* drv);
+int usb_bus_probe(device_t* dev);
+void usb_bus_remove(device_t* dev);
+
 struct pcie_dev_t;
 void usb_dev_scan(struct pcie_dev_t *xhci_dev);
 int usb_set_config(usb_dev_t *usb_dev);
 int usb_set_interface(usb_if_t *usb_if);
+
+//注册usb接口
+static inline void usb_if_register(usb_if_t* usb_if);
+//注册usb设备
+static inline void usb_dev_register(usb_dev_t *usb_dev);
+//注册usb驱动
+void usb_drv_register(usb_drv_t *usb_drv);

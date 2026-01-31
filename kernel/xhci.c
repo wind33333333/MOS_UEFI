@@ -84,7 +84,7 @@ void xhci_address_device(usb_dev_t *usb_dev) {
 
     ep64_t ep_ctx = {0};
     ep_ctx.ep_config = 0;
-    ep_ctx.ep_type_size = EP_TYPE_CONTROL | 8 << 16 | 3 << 1;
+    ep_ctx.ep_type_size = 4 << 3 | 8 << 16 | 3 << 1;
     ep_ctx.tr_dequeue_ptr = va_to_pa(usb_dev->ep0.ring_base) | 1;
     ep_ctx.trb_payload = 0;
     xhci_input_context_add(input_ctx, &ep_ctx,xhci_controller->dev_ctx_size, 1); //Endpoint 0 Context
