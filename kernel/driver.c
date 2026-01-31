@@ -7,7 +7,7 @@
 void driver_register(driver_t *drv) {
     bus_type_t *bus = drv->bus;
     list_add_head(&bus->drv_list,&drv->bus_node); //把驱动添加到总线驱动链表
-    for (list_head_t *next_dev_node = bus->dev_list.next;next_dev_node != &bus->dev_list;next_dev_node = next_dev_node->next){ //遍历总线设备链表是否有设备匹配驱动
+    for (list_head_t *next_dev_node = bus->dev_list.next; next_dev_node != &bus->dev_list; next_dev_node = next_dev_node->next){ //遍历总线设备链表是否有设备匹配驱动
         device_t *dev = CONTAINER_OF(next_dev_node,device_t,bus_node);
         if (!dev->drv && bus->match(dev,drv)) { //设备驱动存或不匹配，跳过设备。
             dev->drv = drv;     //把驱动挂到设备上

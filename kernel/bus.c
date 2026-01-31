@@ -20,9 +20,6 @@ INIT_TEXT void bus_init(void){
     list_head_init(&usb_bus_type.dev_list);
     list_head_init(&usb_bus_type.drv_list);   //创建usb总线
 
-    usb_drv_t *usb_drv = create_us_driver();
-    usb_drv_register(usb_drv);
-
     pcie_bus_type.name = "PCIe Bus Type";
     pcie_bus_type.match = pcie_bus_match;
     pcie_bus_type.probe = pcie_bus_probe;
@@ -30,5 +27,8 @@ INIT_TEXT void bus_init(void){
     list_head_init(&pcie_bus_type.dev_list);
     list_head_init(&pcie_bus_type.drv_list);   //创建pcie总线
     pcie_bus_init();                           //pcie总线初始化
+
+    usb_drv_t *usb_drv = create_us_driver();
+    usb_drv_register(usb_drv);
 
 }

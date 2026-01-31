@@ -224,7 +224,6 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
     color_printk(GREEN,BLACK, "\nUSBcmd:%#x  USBsts:%#x", xhci_controller->op_reg->usbcmd,
                  xhci_controller->op_reg->usbsts);
 
-    while (1);
 }
 
 void xhci_remove(pcie_dev_t *xhci_dev) {
