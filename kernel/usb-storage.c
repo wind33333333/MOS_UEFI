@@ -403,21 +403,22 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
             if (ep[i].max_streams) {
                 ep_ctx.ep_config = (ep[i].max_streams << 10) | (1 << 15); // MaxPStreams，LSA=1，如果使用线性数组（可选，根据实现）
                 // 有流：分配Stream Context Array和per-stream rings
-                uint32 streams_count = (1 << ep[i].max_streams);
-                xhci_stream_ctx_t *stream_array = kzalloc((streams_count+1) * sizeof(xhci_stream_ctx_t));
-                usb_dev->eps[ep[i].ep_num].stream_rings = kzalloc((streams_count+1) * sizeof(xhci_ring_t)); //streams0 保留，所以需要+1
+                uint32 streams_count = 1 << ep[i].max_streams;
+                uint32 streams_ctx_array_count = streams_count<<1;
+                xhci_stream_ctx_t *stream_ctx_array = kzalloc(streams_ctx_array_count * sizeof(xhci_stream_ctx_t));
+                usb_dev->eps[ep[i].ep_num].stream_rings = kzalloc(streams_ctx_array_count * sizeof(xhci_ring_t)); //streams0 保留内存需要对齐
                 usb_dev->eps[ep[i].ep_num].streams_count = streams_count;
 
                 for (uint32 s = 1; s <= streams_count; s++) {
                     // Stream ID从1开始
                     xhci_ring_init(&usb_dev->eps[ep[i].ep_num].stream_rings[s], xhci_controller->align_size);
-                    stream_array[s].tr_dequeue = va_to_pa(usb_dev->eps[ep[i].ep_num].stream_rings[s].ring_base) | 1 | 1 << 1;
-                    stream_array[s].reserved = 0;
+                    stream_ctx_array[s].tr_dequeue = va_to_pa(usb_dev->eps[ep[i].ep_num].stream_rings[s].ring_base) | 1 | 1 << 1;
+                    stream_ctx_array[s].reserved = 0;
                 }
                 // Stream ID 0保留，通常设为0或无效
-                stream_array[0].tr_dequeue = 0;
-                stream_array[0].reserved = 0;
-                ep_ctx.tr_dequeue_ptr = va_to_pa(stream_array);
+                stream_ctx_array[0].tr_dequeue = 0;
+                stream_ctx_array[0].reserved = 0;
+                ep_ctx.tr_dequeue_ptr = va_to_pa(stream_ctx_array);
             } else {
                 // 无流：单个Transfer Ring
                 ep_ctx.ep_config = 0;
