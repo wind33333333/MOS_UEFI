@@ -382,37 +382,41 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
 
         //配置端点
         alts = usb_if->cur_alt;
-        usb_ep_t *ep = alts->eps;
+        usb_ep_t *ep_phy = alts->eps;
         uint8 max_ep_num = 0;
         for (uint8 i = 0; i < 4; i++) {
-            usb_uas_pipe_usage_descriptor_t *pipe_usage_desc = ep[i].extras_desc;
+            uint8 ep_num = ep_phy[i].ep_num;
+            usb_uas_pipe_usage_descriptor_t *pipe_usage_desc = ep_phy[i].extras_desc;
             switch (pipe_usage_desc->pipe_id) {
                 case USB_PIPE_COMMAND_OUT:
-                    uas_data->cmd_pipe = ep[i].ep_num;
+                    uas_data->cmd_pipe = ep_num ;
                     break;
                 case USB_PIPE_STATUS_IN:
-                    uas_data->status_pipe = ep[i].ep_num;
+                    uas_data->status_pipe = ep_num ;
                     break;
                 case USB_PIPE_BULK_IN:
-                    uas_data->data_in_pipe = ep[i].ep_num;
+                    uas_data->data_in_pipe = ep_num ;
                     break;
                 case USB_PIPE_BULK_OUT:
-                    uas_data->data_out_pipe = ep[i].ep_num;
+                    uas_data->data_out_pipe = ep_num ;
             }
 
-            if (ep[i].max_streams) {
-                ep_ctx.ep_config = (ep[i].max_streams << 10) | (1 << 15); // MaxPStreams，LSA=1，如果使用线性数组（可选，根据实现）
+            uint16 max_streams = ep_phy[i].max_streams;
+            endpoint_t *ep_vir =  &usb_dev->eps[ep_num];
+            if (max_streams) {
+                ep_ctx.ep_config = (max_streams << 10) | (1 << 15); // MaxPStreams，LSA=1，如果使用线性数组（可选，根据实现）
                 // 有流：分配Stream Context Array和per-stream rings
-                uint32 streams_count = 1 << ep[i].max_streams;
+                uint32 streams_count = 1 << max_streams;
                 uint32 streams_ctx_array_count = streams_count<<1;
                 xhci_stream_ctx_t *stream_ctx_array = kzalloc(streams_ctx_array_count * sizeof(xhci_stream_ctx_t));
-                usb_dev->eps[ep[i].ep_num].stream_rings = kzalloc(streams_ctx_array_count * sizeof(xhci_ring_t)); //streams0 保留内存需要对齐
-                usb_dev->eps[ep[i].ep_num].streams_count = streams_count;
+                xhci_ring_t *stream_rings =kzalloc(streams_ctx_array_count * sizeof(xhci_ring_t)); //streams0 保留内存需要对齐;
+                ep_vir->stream_rings = stream_rings;
+                ep_vir->streams_count = streams_count;
 
                 for (uint32 s = 1; s <= streams_count; s++) {
                     // Stream ID从1开始
-                    xhci_ring_init(&usb_dev->eps[ep[i].ep_num].stream_rings[s], xhci_controller->align_size);
-                    stream_ctx_array[s].tr_dequeue = va_to_pa(usb_dev->eps[ep[i].ep_num].stream_rings[s].ring_base) | 1 | 1 << 1;
+                    xhci_ring_init(&stream_rings[s], xhci_controller->align_size);
+                    stream_ctx_array[s].tr_dequeue = va_to_pa(stream_rings[s].ring_base) | 1 | 1 << 1;
                     stream_ctx_array[s].reserved = 0;
                 }
                 // Stream ID 0保留，通常设为0或无效
@@ -422,14 +426,14 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
             } else {
                 // 无流：单个Transfer Ring
                 ep_ctx.ep_config = 0;
-                xhci_ring_init(&usb_dev->eps[ep[i].ep_num].transfer_ring, xhci_controller->align_size);
-                ep_ctx.tr_dequeue_ptr = va_to_pa(usb_dev->eps[ep[i].ep_num].transfer_ring.ring_base) | 1; // DCS=1
+                xhci_ring_init(&ep_vir->transfer_ring, xhci_controller->align_size);
+                ep_ctx.tr_dequeue_ptr = va_to_pa(ep_vir->transfer_ring.ring_base) | 1; // DCS=1
             }
             ep_ctx.trb_payload = 0;
-            ep_ctx.ep_type_size = ep[i].ep_type | ep[i].max_packet << 16 | ep[i].max_burst << 8 | 3 << 1;
-            xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->dev_ctx_size, ep[i].ep_num);
-            if (ep[i].ep_num > max_ep_num) max_ep_num = ep[i].ep_num;
-            color_printk(RED,BLACK, "max_streams_exp:%d ep_num:%d pipe:%d  \n", ep[i].max_streams, ep[i].ep_num,pipe_usage_desc->pipe_id);
+            ep_ctx.ep_type_size = ep_phy[i].ep_type | ep_phy[i].max_packet << 16 | ep_phy[i].max_burst << 8 | 3 << 1;
+            xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->dev_ctx_size, ep_phy[i].ep_num);
+            if (ep_num > max_ep_num) max_ep_num = ep_num;
+            color_printk(RED,BLACK, "max_streams_exp:%d ep_num:%d pipe:%d  \n", ep_phy[i].max_streams, ep_phy[i].ep_num,pipe_usage_desc->pipe_id);
         }
 
         //更新slot
