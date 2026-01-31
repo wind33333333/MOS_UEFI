@@ -405,7 +405,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
                 // 有流：分配Stream Context Array和per-stream rings
                 uint32 streams_count = (1 << ep[i].max_streams) + 1;
                 xhci_stream_ctx_t *stream_array = kzalloc(streams_count * sizeof(xhci_stream_ctx_t));
-                usb_dev->eps[ep[i].ep_num].stream_rings = kzalloc(streams_count * sizeof(xhci_ring_t));
+                usb_dev->eps[ep[i].ep_num].stream_rings = kzalloc((streams_count+1) * sizeof(xhci_ring_t));
                 usb_dev->eps[ep[i].ep_num].streams_count = streams_count;
 
                 for (uint32 s = 1; s <= streams_count; s++) {
@@ -768,7 +768,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         slot_ctx.latency_hub = usb_dev->port_id << 16;
         slot_ctx.parent_info = 0;
         slot_ctx.addr_status = 0;
-        xhci_input_context_add(input_ctx,&slot_ctx, xhci_controller->align_size, 0);
+        xhci_input_context_add(input_ctx,&slot_ctx, xhci_controller->dev_ctx_size, 0);
 
         config_endpoint_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
         xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
