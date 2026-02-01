@@ -64,6 +64,10 @@ int usb_get_device_descriptor(usb_dev_t *usb_dev) {
     return 0;
 }
 
+int usb_get_string_descriptor(usb_dev_t *usb_dev) {
+
+}
+
 //获取usb配置描述符
 int usb_get_config_descriptor(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
