@@ -405,7 +405,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
                 ep_ctx.ep_config = (ep_phy->max_streams << 10) | (1 << 15); // MaxPStreams，LSA=1，如果使用线性数组（可选，根据实现）
                 // 有流：分配Stream Context Array和per-stream rings
                 uint32 streams_count = 1 << ep_phy->max_streams;
-                uint32 streams_ctx_array_count = streams_count<<1;
+                uint32 streams_ctx_array_count = 1 << (ep_phy->max_streams+1);
                 xhci_stream_ctx_t *stream_ctx_array = kzalloc(streams_ctx_array_count * sizeof(xhci_stream_ctx_t));
                 xhci_ring_t *stream_rings =kzalloc(streams_ctx_array_count * sizeof(xhci_ring_t)); //streams0 保留内存需要对齐;
                 ep_vir->stream_rings = stream_rings;

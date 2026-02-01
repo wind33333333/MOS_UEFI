@@ -181,6 +181,7 @@ typedef struct usb_ep_t {
 
 //usb替用接口
 typedef struct usb_if_alt_t {
+    struct usb_if_t *usb_if;
     usb_interface_descriptor_t *if_desc;  // 指向 cfg_raw 内
     uint8 altsetting;
 
