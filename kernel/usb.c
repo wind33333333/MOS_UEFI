@@ -192,7 +192,7 @@ int usb_endpoint_init(usb_if_alt_t *if_alt) {
             ep_config = 0;
         }
         ep_ctx.ep_config = ep_config;
-        ep_ctx.ep_type_size = ep_phy->ep_type | ep_phy->max_packet << 16 | ep_phy->max_burst << 8 | 3 << 1;
+        ep_ctx.ep_type_size = ep_phy->ep_type << 3 | ep_phy->max_packet << 16 | ep_phy->max_burst << 8 | 3 << 1;
         ep_ctx.tr_dequeue_ptr = tr_dequeue_ptr;
         ep_ctx.trb_payload = 0;
         xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->dev_ctx_size, ep_num);
@@ -353,6 +353,7 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
             usb_if_t *usb_if = usb_if_map[if_desc->interface_number];
             uint8 idx = fill_idx[if_desc->interface_number]++;
             usb_if_alt_t *if_alt = &usb_if->alts[idx];
+            if_alt->usb_if = usb_if;
             if_alt->if_desc = if_desc;
             if_alt->altsetting = if_desc->alternate_setting;
             if_alt->if_class = if_desc->interface_class;

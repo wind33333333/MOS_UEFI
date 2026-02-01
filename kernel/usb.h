@@ -260,6 +260,7 @@ struct pcie_dev_t;
 void usb_dev_scan(struct pcie_dev_t *xhci_dev);
 int usb_set_config(usb_dev_t *usb_dev);
 int usb_set_interface(usb_if_t *usb_if);
+int usb_endpoint_init(usb_if_alt_t *if_alt);
 
 //注册usb接口
 static inline void usb_if_register(usb_if_t* usb_if);
