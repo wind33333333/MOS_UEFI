@@ -44,11 +44,11 @@ int usb_get_device_descriptor(usb_dev_t *usb_dev) {
     kfree(input_ctx);
 
     //第二次获取整个设备描述符
-    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x100, 0, 18, 8,
+    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x100, 0, sizeof(usb_device_descriptor_t), 8,
                     in_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Data TRB
-    data_stage_trb(&trb, va_to_pa(dev_desc), 18, trb_in);
+    data_stage_trb(&trb, va_to_pa(dev_desc), sizeof(usb_device_descriptor_t), trb_in);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Status TRB
     status_stage_trb(&trb, enable_ioc, trb_out);
@@ -113,11 +113,11 @@ int usb_get_string_descriptor(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     usb_string_descriptor_t *string_desc = kzalloc(256);
     trb_t trb;
-    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x303, 0x0409, 255, 8,
+    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x303, 0x0409, 2, 8,
                     in_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Data TRB
-    data_stage_trb(&trb, va_to_pa(string_desc), 255, trb_in);
+    data_stage_trb(&trb, va_to_pa(string_desc), 2, trb_in);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Status TRB
     status_stage_trb(&trb, enable_ioc, trb_out);
