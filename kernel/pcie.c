@@ -216,7 +216,7 @@ void pcie_bus_remove(device_t *dev) {
 int pcie_drv_probe(device_t *dev) {
     pcie_dev_t *pcie_dev = CONTAINER_OF(dev,pcie_dev_t,dev);
     pcie_drv_t *pcie_drv = CONTAINER_OF(dev->drv,pcie_drv_t,drv);
-    pcie_id_t *id = pcie_match_id(pcie_dev,pcie_drv);
+    pcie_id_t *id = pcie_match_id(pcie_dev,&pcie_drv->drv);
     pcie_drv->probe(pcie_dev,id); //加载pcie设备专属驱动初
     return 0;
 }

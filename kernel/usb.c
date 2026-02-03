@@ -30,7 +30,9 @@ int usb_get_device_descriptor(usb_dev_t *usb_dev) {
     xhci_ering_dequeue(xhci_controller, &trb);
 
     //更新端点0的最大包
-    uint32 max_packe_size = dev_desc->usb_version >= 0x300 ? 1 << dev_desc->max_packet_size0 : dev_desc->max_packet_size0;
+    uint32 max_packe_size = dev_desc->usb_version >= 0x300
+                                ? 1 << dev_desc->max_packet_size0
+                                : dev_desc->max_packet_size0;
     xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
     ep64_t ep_ctx;
     xhci_context_read(usb_dev->dev_context, &ep_ctx, xhci_controller->dev_ctx_size, 1);
@@ -44,7 +46,8 @@ int usb_get_device_descriptor(usb_dev_t *usb_dev) {
     kfree(input_ctx);
 
     //第二次获取整个设备描述符
-    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x100, 0, sizeof(usb_device_descriptor_t), 8,
+    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x100, 0,
+                    sizeof(usb_device_descriptor_t), 8,
                     in_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Data TRB
@@ -111,13 +114,15 @@ int usb_get_config_descriptor(usb_dev_t *usb_dev) {
 //获取字符串描述符
 int usb_get_string_descriptor(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
-    usb_string_descriptor_t *string_desc = kzalloc(256);
+    usb_string_descriptor_t *string_desc0 = kzalloc(8);
     trb_t trb;
-    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x303, 0x0409, 2, 8,
+
+    //获取string0 语言ID
+    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x300, 0, 8, 8,
                     in_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Data TRB
-    data_stage_trb(&trb, va_to_pa(string_desc), 2, trb_in);
+    data_stage_trb(&trb, va_to_pa(string_desc0), 8, trb_in);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Status TRB
     status_stage_trb(&trb, enable_ioc, trb_out);
@@ -128,6 +133,65 @@ int usb_get_string_descriptor(usb_dev_t *usb_dev) {
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
 
+    uint16 language_id = string_desc0->head.descriptor_type == USB_STRING_DESCRIPTOR ? string_desc0->string[0] : 0x0409;
+    //默认设备都支持美式英语
+    uint8 string_index[3] = {
+        usb_dev->usb_dev_desc->manufacturer_index, usb_dev->usb_dev_desc->product_index,
+        usb_dev->usb_dev_desc->serial_number_index
+    };
+    usb_string_descriptor_t *string_desc[3];
+    uint8 length = 0;
+
+    //获取制造商/产品型号/序列号字符串描述符
+    for (uint8 i = 0; i < 3; i++) {
+        if (string_index[i]) {
+            //第一次先获取长度
+            setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor,
+                            0x300 | string_index[i], language_id, 2, 8,
+                            in_data_stage);
+            xhci_ring_enqueue(&usb_dev->ep0, &trb);
+            // Data TRB
+            data_stage_trb(&trb, va_to_pa(string_desc0), 2, trb_in);
+            xhci_ring_enqueue(&usb_dev->ep0, &trb);
+            // Status TRB
+            status_stage_trb(&trb, enable_ioc, trb_out);
+            xhci_ring_enqueue(&usb_dev->ep0, &trb);
+
+            // 响铃
+            xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
+            timing();
+            xhci_ering_dequeue(xhci_controller, &trb);
+
+            //分配内存
+            length = string_desc0->head.length;
+            string_desc[i] = kzalloc(length);
+
+            //第二次先正式获取字符串描述符N
+            setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor,
+                            0x300 | string_index[i], language_id, length, 8,
+                            in_data_stage);
+            xhci_ring_enqueue(&usb_dev->ep0, &trb);
+            // Data TRB
+            data_stage_trb(&trb, va_to_pa(string_desc[i]), length, trb_in);
+            xhci_ring_enqueue(&usb_dev->ep0, &trb);
+            // Status TRB
+            status_stage_trb(&trb, enable_ioc, trb_out);
+            xhci_ring_enqueue(&usb_dev->ep0, &trb);
+
+            // 响铃
+            xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
+            timing();
+            xhci_ering_dequeue(xhci_controller, &trb);
+        }else {
+            string_desc[i] = NULL;
+        }
+    }
+
+    usb_dev->manufacturer_desc = string_desc[0];
+    usb_dev->product_desc = string_desc[1];
+    usb_dev->serial_number_desc = string_desc[2];
+    kfree(string_desc0);
+    return 0;
 }
 
 //激活usb配置
@@ -219,7 +283,8 @@ int usb_endpoint_init(usb_if_alt_t *if_alt) {
     }
 
     //配置slot
-    slot_ctx.route_speed = (max_ep_num << 27) | ((xhci_controller->op_reg->portregs[usb_dev->port_id - 1].portsc & 0x3C00) << 10);
+    slot_ctx.route_speed = (max_ep_num << 27) | (
+                               (xhci_controller->op_reg->portregs[usb_dev->port_id - 1].portsc & 0x3C00) << 10);
     slot_ctx.latency_hub = usb_dev->port_id << 16;
     slot_ctx.parent_info = 0;
     slot_ctx.addr_status = 0;
@@ -268,7 +333,7 @@ void usb_bus_remove(device_t *dev) {
 int usb_drv_probe(device_t *dev) {
     usb_if_t *usb_if = CONTAINER_OF(dev, usb_if_t, dev);
     usb_drv_t *usb_if_drv = CONTAINER_OF(dev->drv, usb_drv_t, drv);
-    usb_id_t *id = usb_match_id(usb_if, usb_if_drv);
+    usb_id_t *id = usb_match_id(usb_if, &usb_if_drv->drv);
     usb_if_drv->probe(usb_if, id);
     return 0;
 }
@@ -414,6 +479,7 @@ usb_dev_t *usb_dev_create(pcie_dev_t *xhci_dev, uint32 port_id) {
     xhci_address_device(usb_dev); //设置设备地址
     usb_get_device_descriptor(usb_dev); //获取设备描述符
     usb_get_config_descriptor(usb_dev); //获取配置描述符
+    usb_get_string_descriptor(usb_dev); //获取字符串描述符
     usb_set_config(usb_dev); //激活配置
     usb_dev->dev.type = &usb_dev_type;
     usb_dev->dev.parent = &xhci_dev->dev;
