@@ -333,7 +333,7 @@ void usb_bus_remove(device_t *dev) {
 int usb_drv_probe(device_t *dev) {
     usb_if_t *usb_if = CONTAINER_OF(dev, usb_if_t, dev);
     usb_drv_t *usb_if_drv = CONTAINER_OF(dev->drv, usb_drv_t, drv);
-    usb_id_t *id = usb_match_id(usb_if, &usb_if_drv->drv);
+    usb_id_t *id = usb_match_id(usb_if,dev->drv);
     usb_if_drv->probe(usb_if, id);
     return 0;
 }
