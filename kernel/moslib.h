@@ -645,3 +645,28 @@ static inline uint64 bswap64(uint64 var) {
     );
     return result;
 }
+
+/**
+ * 将 UTF-16LE 原始字节流转换为 ASCII 字符串
+ * * @param src      源数据指针 (UTF-16LE 编码)
+ * @param src_len  源数据字节长度 (注意：是字节数，不是字符数)
+ * @param dst      目标缓冲区
+ * @param dst_len  目标缓冲区最大容量 (包含结束符空间)
+ * @return         转换后的字符串长度 (不含结束符)
+ */
+uint8 utf16le_to_ascii(uint16 *src, char *dst, uint8 len) {
+    if (!src || !dst || !len) {
+        return 0;
+    }
+
+    uint8 i = 0;
+    for (;i<len;i++) {
+        uint16 val = src[i];
+        dst[i] = (val >= 32 && val<= 126) ? (char)val : '?';
+    }
+
+    // 必须添加字符串结束符
+    dst[i] = '\0';
+
+    return i; // 返回实际转换的字符数
+}

@@ -226,10 +226,14 @@ typedef struct usb_dev_t {
     endpoint_t                      eps[31];           // 端点0-31
     xhci_controller_t*              xhci_controller;   // xhci控制器
     device_t                        dev;
-    struct usb_dev_t                *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
-    uint8                           parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
     uint8                           interfaces_count;  // 接口数量
     usb_if_t                        *interfaces;       // 接口指针根据接口数量动态分配
+    uint8                           *manufacturer;     // 制造商ascii字符
+    uint8                           *product;          // 产品型号ascii字符
+    uint8                           *serial_number;    // 序列号ascii字符
+    struct usb_dev_t                *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
+    uint8                           parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
+
 } usb_dev_t;
 
 //获取下一个描述符

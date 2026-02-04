@@ -140,7 +140,7 @@ int usb_get_string_descriptor(usb_dev_t *usb_dev) {
         usb_dev->usb_dev_desc->serial_number_index
     };
     usb_string_descriptor_t *string_desc[3];
-    uint8 length = 0;
+    uint8 *string_ascii[3];
 
     //获取制造商/产品型号/序列号字符串描述符
     for (uint8 i = 0; i < 3; i++) {
@@ -163,16 +163,16 @@ int usb_get_string_descriptor(usb_dev_t *usb_dev) {
             xhci_ering_dequeue(xhci_controller, &trb);
 
             //分配内存
-            length = string_desc0->head.length;
-            string_desc[i] = kzalloc(length);
+            uint8 string_desc_length = string_desc0->head.length;
+            string_desc[i] = kzalloc(string_desc_length);
 
             //第二次先正式获取字符串描述符N
             setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor,
-                            0x300 | string_index[i], language_id, length, 8,
+                            0x300 | string_index[i], language_id, string_desc_length, 8,
                             in_data_stage);
             xhci_ring_enqueue(&usb_dev->ep0, &trb);
             // Data TRB
-            data_stage_trb(&trb, va_to_pa(string_desc[i]), length, trb_in);
+            data_stage_trb(&trb, va_to_pa(string_desc[i]), string_desc_length, trb_in);
             xhci_ring_enqueue(&usb_dev->ep0, &trb);
             // Status TRB
             status_stage_trb(&trb, enable_ioc, trb_out);
@@ -182,6 +182,11 @@ int usb_get_string_descriptor(usb_dev_t *usb_dev) {
             xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
             timing();
             xhci_ering_dequeue(xhci_controller, &trb);
+
+            //解析字符串描述符
+            uint8 string_ascii_length = (string_desc_length-2)/2;
+            string_ascii[i] = kzalloc(string_ascii_length+1);
+            utf16le_to_ascii(string_desc[i]->string,string_ascii[i],string_ascii_length);
         }else {
             string_desc[i] = NULL;
         }
@@ -190,6 +195,12 @@ int usb_get_string_descriptor(usb_dev_t *usb_dev) {
     usb_dev->manufacturer_desc = string_desc[0];
     usb_dev->product_desc = string_desc[1];
     usb_dev->serial_number_desc = string_desc[2];
+    usb_dev->manufacturer = string_ascii[0];
+    usb_dev->product = string_ascii[1];
+    usb_dev->serial_number = string_ascii[2];
+    color_printk(GREEN,BLACK,"manufacturer: %s   \n",usb_dev->manufacturer);
+    color_printk(GREEN,BLACK,"product: %s   \n",usb_dev->product);
+    color_printk(GREEN,BLACK,"serial: %s   \n",usb_dev->serial_number);
     kfree(string_desc0);
     return 0;
 }
