@@ -216,11 +216,12 @@ typedef struct {
 typedef struct usb_dev_t {
     uint8                           port_id;
     uint8                           slot_id;
-    usb_device_descriptor_t*        usb_dev_desc;       //usb设备描述符
+    usb_device_descriptor_t*        dev_desc;           //设备描述符
+    usb_config_descriptor_t*        config_desc;        //配置描述符
+    usb_string_descriptor_t*        language_desc;      //语言描述符
     usb_string_descriptor_t*        manufacturer_desc;  //制造商描述符
     usb_string_descriptor_t*        product_desc;       //产品型号名描述符
     usb_string_descriptor_t*        serial_number_desc; //序列号描述符
-    usb_config_descriptor_t*        usb_config_desc;    //usb配置描述符
     xhci_device_context_t*          dev_context;       // 设备上下文
     xhci_ring_t                     ep0;               // 控制端点
     endpoint_t                      eps[31];           // 端点0-31
