@@ -2,6 +2,7 @@
 #include "xhci.h"
 #include "usb.h"
 #include "printk.h"
+#include "scsi.h"
 
 //测试逻辑单元是否有效
 /*
@@ -357,6 +358,74 @@ void bot_get_msc_info(usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc) {
 }
 */
 
+//uas协议获取u盘信息
+int uas_send_inquiry(usb_dev_t *dev, uint8 lun_id, void *data_buf, uint32 data_len) {
+    uas_cmd_iu_t cmd_iu;
+    scsi_cdb_inquiry_t *cdb;
+    uint16 tag = 1; // 事务 ID，必须在 Cmd, Data, Status 中匹配 (由硬件或驱动逻辑维护)
+
+    // ================================
+    // 1. 构造 SCSI CDB
+    // ================================
+    memset(&cmd_iu, 0, sizeof(cmd_iu));
+    cdb = (scsi_cdb_inquiry_t *)cmd_iu.cdb;
+
+    cdb->opcode = 0x12;          // INQUIRY
+    cdb->alloc_len = cpu_to_be16(data_len); // 例如 36
+
+    // ================================
+    // 2. 构造 UAS Command IU
+    // ================================
+    cmd_iu.iu_id = UAS_IU_ID_COMMAND; // 0x01
+    cmd_iu.tag = cpu_to_be16(tag);    // Tag = 1
+    cmd_iu.len_cdb = 6;               // CDB 长度
+
+    // UAS LUN 格式与 BOT 不同！
+    // 它是 8 字节的 SCSI LUN 格式。
+    // 对于单层 LUN，格式通常是: (lun_id << 48) | 0...
+    // 比如 LUN 0 -> 0x0000000000000000
+    // 比如 LUN 1 -> 0x0100000000000000
+    uint64_t scsi_lun = (uint64_t)lun_id << 48;
+    cmd_iu.lun = cpu_to_be64(scsi_lun);
+
+    // ================================
+    // 3. 提交 TRB (并发提交)
+    // ================================
+
+    // [步骤 A] 准备状态接收 (Status Pipe)
+    // 提交一个 TRB 到 Status Endpoint Ring，准备接收 Sense IU
+    // buffer 必须足够大 (例如 32 字节)
+    uint8_t sense_buf[32];
+    xhci_queue_bulk_rx(dev, EP_STATUS_IN, sense_buf, 32, tag);
+
+    // [步骤 B] 准备数据接收 (Data-In Pipe)
+    // 提交一个 TRB 到 Data Endpoint Ring
+    // 告诉 xHCI："如果收到 Tag=1 的数据，就放到 data_buf 里"
+    xhci_queue_bulk_rx(dev, EP_DATA_IN, data_buf, data_len, tag);
+
+    // [步骤 C] 发送命令 (Command Pipe)
+    // 提交一个 TRB 到 Command Endpoint Ring
+    // 这是触发整个流程的扳机
+    xhci_queue_bulk_tx(dev, EP_CMD_OUT, &cmd_iu, sizeof(cmd_iu), tag);
+
+    // [步骤 D] 敲门铃 (Doorbell)
+    // 此时硬件开始工作：
+    // 1. 发送 Command IU 给设备。
+    // 2. 设备解析，准备数据。
+    // 3. 设备通过 Data Pipe 发送数据，主机匹配 Tag 后存入 data_buf。
+    // 4. 设备通过 Status Pipe 发送 Sense IU，主机匹配 Tag 后结束。
+
+    // ================================
+    // 4. 等待完成
+    // ================================
+    // 等待 Status Pipe 的中断完成事件...
+    wait_for_completion(tag);
+
+    // 检查 sense_buf 里的 status 字段是否为 0 (GOOD)
+    // ...
+
+    return 0;
+}
 
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
@@ -394,7 +463,6 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
 
 
         /////////////////////////////////////
-        /*
         trb_t cmd_trb, sta_trb, in_trb;
         uas_cmd_iu_t *ciu = kzalloc(sizeof(uas_cmd_iu_t));
         ciu->iu_id = 1; // UASP_IU_COMMAND
@@ -464,10 +532,9 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
 
         color_printk(RED,BLACK,"sense_iu iu_id:%d tag:%d status:%d   \n",status_buf->iu_id,status_buf->tag,status_buf->status);
         color_printk(RED,BLACK,"inquiy pdt_pq:%#x rmb:%#x ver:%#x resp:%#x add_len:%#x flag1:%#x flag2:%#x flag3:%#x vid:%s pid:%s rev:%s  \n",inquiry->pdt_pq,inquiry->rmb,inquiry->version,inquiry->resp_fmt,inquiry->add_len,inquiry->flags[0],inquiry->flags[1],inquiry->flags[2],inquiry->vendor,inquiry->product,inquiry->revision);
-        */
 
 
-        /*//获取最大lun
+        //获取最大lun
         uas_cmd_iu_t* ciu = kzalloc(sizeof(uas_cmd_iu_t));
         ciu->iu_id = 1;
         ciu->tag   = bswap16(1);
@@ -503,9 +570,9 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->bluk_in_ep.ep_num | 1<<16);
         timing();
         xhci_ering_dequeue(xhci_controller, &in_trb);
-        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);*/
+        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);
 
-        /*// 获取容量10
+        //获取容量10
         uas_cmd_iu_t* ciu = kzalloc(sizeof(uas_cmd_iu_t));
         ciu->iu_id = 1;
         ciu->tag   = bswap16(1);
@@ -539,10 +606,9 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->bluk_in_ep.ep_num | 1<<16);
         timing();
         xhci_ering_dequeue(xhci_controller, &in_trb);
-        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);*/
+        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);
 
 
-        /*
         // 获取容量16
         ciu->iu_id = 1;
         ciu->tag   = bswap16(1);
@@ -577,10 +643,10 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->bluk_in_ep.ep_num | 1<<16);
         timing();
         xhci_ering_dequeue(xhci_controller, &in_trb);
-        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);*/
+        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);
 
 
-        /*// 读u盘 10
+        //读u盘 10
         ciu->iu_id = 1;
         ciu->tag   = bswap16(1);
         ciu->len   = 0;
@@ -614,10 +680,10 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->bluk_in_ep.ep_num | 1<<16);
         timing();
         xhci_ering_dequeue(xhci_controller, &in_trb);
-        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);*/
+        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);
 
         //写u盘 16
-        /*ciu->iu_id = 1;
+        ciu->iu_id = 1;
         ciu->tag = bswap16(1);
         ciu->len = 0;
         ciu->cdb[0] = 0x8A; // REPORT LUNS
@@ -649,9 +715,9 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->bluk_out_ep.ep_num | 1 << 16);
         timing();
         xhci_ering_dequeue(xhci_controller, &in_trb);
-        color_printk(RED,BLACK, "in_trb m0:%#lx m1:%#lx   \n", in_trb.member0, in_trb.member1);*/
+        color_printk(RED,BLACK, "in_trb m0:%#lx m1:%#lx   \n", in_trb.member0, in_trb.member1);
 
-        /*//读u盘 16
+        //读u盘 16
         ciu->iu_id = 1;
         ciu->tag = bswap16(1);
         ciu->len = 0;
@@ -684,7 +750,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         timing();
         xhci_ering_dequeue(xhci_controller, &in_trb);
         color_printk(RED,BLACK, "in_trb m0:%#lx m1:%#lx   \n", in_trb.member0, in_trb.member1);
-        while (1);*/
+        while (1);
 
     } else {
         //bot协议初始化流程

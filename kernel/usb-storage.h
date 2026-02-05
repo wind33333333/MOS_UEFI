@@ -30,55 +30,19 @@ typedef struct {
     uint8  reserved[20]; // 保留字段（包括保护信息等）
 } read_capacity_16_t;
 
-//inquiry返回数据36字节
+//UAS Command IU (主机 -> 设备)
 typedef struct {
-    uint8 device_type; // byte 0: Peripheral Device Type (0x00 = Block Device)
-    uint8 rmb; // byte 1: Bit 7 = RMB (1 = Removable)
-    uint8 version; // byte 2: SCSI 版本
-    uint8 response_format; // byte 3: 响应格式（通常 2）
-    uint8 additional_len; // byte 4: 附加数据长度（通常 31）
-    uint8 reserved[3]; // byte 5-7
-    char  vendor_id[8]; // byte 8-15: 厂商 (ASCII)
-    char  product_id[16]; // byte 16-31: 产品型号 (ASCII)
-    char  revision[4]; // byte 32-35: 固件版本 (ASCII)
-} inquiry_data_t;
-
-
-/*typedef struct{
-    uint8  iu_id;          // 0x01 = Command IU
-    uint8  reserved1;
-    uint16 tag;            // 大端序
-    uint16 len;            // 大端序，长度，通常 16
-    uint8  priority_attr;  // 优先级 / 属性（一般填 0）
-    uint8  reserved2;
-    uint8  lun[8];
-    uint8  cdb[16];        // 完整 16 字节 SCSI CDB
-}uas_cmd_iu_t;*/
-
-typedef struct {
-    uint8  iu_id;       // 0x01
-    uint8  reserved1;
-    uint16 tag;         // 大端
-    uint8  priority_attr;  // 任务属性 + 优先级，0 = SIMPLE
-    uint8  reserved5;
-    uint8  len;         // 额外 CDB 字节数（4 字节对齐），通常 0
-    uint8  reserved7;
-    uint8  lun[8];      // SAM-4 LUN 编码
-    uint8  cdb[16];     // 固定 16 字节 CDB 区
+    uint8  iu_id;         // 0x01 (Command IU)
+    uint8  rsvd1;
+    uint16 tag;           // 关键！事务标签 (Big Endian)
+    uint8  prio_attr;     // 优先级 (Bits 7:3) + 属性 (Bits 2:0)
+    uint8  rsvd2;
+    uint8  len_cdb;       // CDB 的实际长度 (这里是 6)
+    uint8  rsvd3;
+    uint64 lun;           // 8字节 SCSI LUN (Big Endian)
+    uint8  cdb[16];       // 存放 SCSI CDB 内容
+    // 如果 len_cdb > 16，后面还有附加数据，但在 INQUIRY 中不需要
 }uas_cmd_iu_t;
-
-typedef struct{
-    uint8   pdt_pq;
-    uint8   rmb;
-    uint8   version;
-    uint8   resp_fmt;
-    uint8   add_len;
-    uint8   flags[3];
-    char    vendor[8];
-    char    product[16];
-    char    revision[4];
-} scsi_inquiry_std_t;
-
 
 /* Status(Sense) IU：见 UAS 规范 Table 13 */
 typedef struct {
