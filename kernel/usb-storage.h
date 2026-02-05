@@ -30,6 +30,7 @@ typedef struct {
     uint8  reserved[20]; // 保留字段（包括保护信息等）
 } read_capacity_16_t;
 
+
 //UAS Command IU (主机 -> 设备)
 typedef struct {
     uint8  iu_id;         // 0x01 (Command IU)
@@ -43,6 +44,20 @@ typedef struct {
     uint8  cdb[16];       // 存放 SCSI CDB 内容
     // 如果 len_cdb > 16，后面还有附加数据，但在 INQUIRY 中不需要
 }uas_cmd_iu_t;
+#define UAS_CMD_IU_ID       0x01
+
+// UAS Sense IU (0x03) - 设备向主机报告状态
+typedef struct {
+    uint8  iu_id;        // 0x03
+    uint8  rsvd1;
+    uint16 tag;          // Big Endian
+    uint16 status_qual;  // 状态限定符
+    uint8  status;       // SCSI 状态 (0=GOOD, 2=CHECK_CONDITION)
+    uint8  rsvd2[7];
+    uint16 len_sense;    // Sense Data 的长度 (Big Endian)
+    uint8  sense_data[18]; // 具体的错误信息 (Sense Data)
+}uas_sense_iu_t;
+#define UAS_SENSE_IU_ID    0x02
 
 /* Status(Sense) IU：见 UAS 规范 Table 13 */
 typedef struct {
@@ -55,6 +70,7 @@ typedef struct {
     /* 简单预留一点空间放 Sense Data；真的要用可以再扩展 */
     uint8  sense_data[18];
 } uas_status_iu_t;
+
 
 #pragma pack(one)
 

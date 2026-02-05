@@ -358,6 +358,184 @@ void bot_get_msc_info(usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc) {
 }
 */
 
+/**
+ * 同步发送 SCSI 命令并等待结果 (UAS 协议)
+ * * @param dev: USB 设备对象
+ * @param cmd_iu: 已经填充好 CDB 的命令 IU (tag 字段会被本函数覆盖)
+ * @param data_buf: 数据缓冲区 (必须 DMA 安全)
+ * @param data_len: 数据长度
+ * @param dir: 数据方向 (UAS_DIR_IN / UAS_DIR_OUT / UAS_DIR_NONE)
+ * * @return: 0 成功, <0 失败 (USB错误或SCSI错误)
+ */
+int uas_send_scsi_cmd_sync(usb_dev_t *dev, uas_cmd_iu_t *cmd_iu, void *data_buf, uint32 data_len, int dir)
+{
+    int ret;
+
+    // 1. 获取一个空闲的 Tag (事务 ID)
+    // 在 UAS 中，Tag 必须在 1 到 65535 之间
+    uint16 tag = uas_alloc_tag(dev);
+
+    // 2. 准备 Sense Buffer (用于接收状态)
+    // 必须是 DMA 安全的内存
+    uas_sense_iu_t *sense_buf = kzalloc(sizeof(uas_sense_iu_t));
+
+    // 3. 填充 Command IU 的 Tag
+    cmd_iu->tag = bswap16(tag);
+
+    // ========================================================
+    // 4. 提交 TRB (关键顺序：Status -> Data -> Command)
+    // 先准备好“收”，再触发“发”，防止设备回包太快导致溢出
+    // ========================================================
+
+    // [Step A] 提交 Status Pipe 请求 (接收 Sense IU)
+    // 告诉 xHCI: "如果有 Tag=%d 的状态包回来，放到 sense_buf 里"
+    ret = xhci_queue_bulk_rx(dev, dev->ep_status_in, sense_buf, sizeof(uas_sense_iu_t), tag);
+
+    // [Step B] 提交 Data Pipe 请求 (如果有数据)
+    if (data_len > 0 && data_buf != NULL) {
+        if (dir == UAS_DIR_IN) {
+            // 准备接收数据 (Bulk IN)
+            ret = xhci_queue_bulk_rx(dev, dev->ep_data_in, data_buf, data_len, tag);
+        } else if (dir == UAS_DIR_OUT) {
+            // 准备发送数据 (Bulk OUT)
+            // 注意：UAS 的写操作也是先排队，等待设备 Ready 后硬件自动发
+            ret = xhci_queue_bulk_tx(dev, dev->ep_data_out, data_buf, data_len, tag);
+        }
+        if (ret < 0) goto cleanup;
+    }
+
+    // [Step C] 提交 Command Pipe 请求 (触发执行)
+    // 告诉设备: "这是命令，Tag=%d"
+    ret = xhci_queue_bulk_tx(dev, dev->ep_cmd_out, cmd_iu, sizeof(uas_cmd_iu_t), tag);
+    if (ret < 0) goto cleanup;
+
+    // [Step D] 敲门铃 (Doorbell)
+    // 通知 xHCI 硬件处理所有 Rings
+    xhci_ring_doorbell_all(dev);
+
+    // ========================================================
+    // 5. 等待完成 (同步阻塞)
+    // ========================================================
+    // 等待 Status Pipe 收到对应 Tag 的包
+    ret = wait_for_uas_completion(dev, tag, 5000); // 5秒超时
+
+    if (ret < 0) {
+        printf("UAS: Command Timed Out or Error (Tag=%d)\n", tag);
+        // 这里通常需要发送 Task Mgmt IU (ABORT TASK) 来清理残局
+        goto cleanup;
+    }
+
+    // ========================================================
+    // 6. 解析结果 (Sense IU)
+    // ========================================================
+
+    // 检查 IU ID
+    if (sense_buf->iu_id == 0x04) {
+        printf("UAS: Received Response IU (Protocol Error)\n");
+        ret = -EIO;
+        goto cleanup;
+    }
+
+    if (sense_buf->iu_id != 0x03) {
+        printf("UAS: Invalid IU ID received: 0x%02x\n", sense_buf->iu_id);
+        ret = -EPROTO;
+        goto cleanup;
+    }
+
+    // 检查 SCSI Status
+    if (sense_buf->status != 0x00) { // 0x00 = GOOD
+        printf("UAS: SCSI Error Status=0x%02x\n", sense_buf->status);
+
+        // 如果是 CHECK_CONDITION (0x02)，应该打印 Sense Key
+        if (sense_buf->status == 0x02) {
+             uint8_t sense_key = sense_buf->sense_data[2] & 0x0F;
+             printf("UAS: Sense Key = 0x%x\n", sense_key);
+        }
+        ret = -EIO; // 返回 IO 错误
+        goto cleanup;
+    }
+
+    // 成功！
+    ret = 0;
+
+cleanup:
+    kfree(sense_buf);
+    uas_free_tag(dev, tag);
+    return ret;
+}
+
+/**
+ * 使用 UAS 协议获取 LUN 数量
+ * @param dev: USB 设备指针
+ * @param tag: UAS 事务 Tag (必须唯一)
+ * @return: LUN 的数量 (至少为 1)
+ */
+int uas_get_lun_count(usb_dev_t *dev, uint16 tag) {
+    uas_cmd_iu_t *cmd_iu = kzalloc(sizeof(uas_cmd_iu_t));
+    scsi_cdb_report_luns_t *cdb;
+
+    // 准备接收缓冲区 (512字节足够容纳几十个 LUN 了)
+    // 必须是 DMA 安全的内存
+    #define BUF_LEN 512
+    uint8 *data_buf = kzalloc(BUF_LEN);
+
+    // ================================
+    // 1. 构造 UAS Command IU
+    // ================================
+    cmd_iu->iu_id = UAS_CMD_IU_ID; // Command IU
+    cmd_iu->tag = bswap16(tag);
+    cmd_iu->len_cdb = 12; // REPORT LUNS 是 12 字节命令
+    cmd_iu->lun = 0;    // 注意：REPORT LUNS 总是发给 LUN 0 (Well Known LUN)所以 cmd_iu.lun 设为 0 即可
+
+    // ==========================================
+    // 2. 构建 SCSI CDB
+    // ==========================================
+    cdb = (scsi_cdb_report_luns_t *)cmd_iu->cdb;
+    cdb->opcode = SCSI_REPORT_LUNS;        // REPORT LUNS
+    cdb->alloc_len = bswap32(BUF_LEN); // 告诉设备我能收多少数据
+
+    // ==========================================
+    // 2. 发送 UAS 命令 (伪代码封装)
+    // ==========================================
+    // 这里需要调用你上一节实现的 3个Pipe 并发操作
+    // uas_transaction(dev, &cmd_iu, data_buf, buf_len, DIR_IN, tag);
+    int ret = uas_send_scsi_cmd_sync(dev, &cmd_iu, data_buf, buf_len);
+
+    if (ret < 0) {
+        printf("UAS REPORT LUNS failed, assuming 1 LUN.\n");
+        kfree(data_buf);
+        return 1; // 失败保底返回 1
+    }
+
+    // ==========================================
+    // 3. 解析结果
+    // ==========================================
+    scsi_report_luns_data_header_t *resp = (scsi_report_luns_data_header_t *)data_buf;
+
+    // 获取列表字节长度 (Big Endian -> Host Endian)
+    uint32_t list_bytes = be32_to_cpu(resp->lun_list_length);
+
+    // 计算 LUN 数量
+    // 每个 LUN 占 8 字节
+    int num_luns = list_bytes / 8;
+
+    // 打印调试信息
+    printf("UAS Report LUNs: List Length = %d bytes, Count = %d\n", list_bytes, num_luns);
+
+    // 如果你想知道具体的 LUN ID，可以遍历后面的数组
+    // uint64_t *lun_array = (uint64_t *)(data_buf + 8);
+    // for(int i=0; i<num_luns; i++) {
+    //     printf("  Found LUN ID: %016llx\n", be64_to_cpu(lun_array[i]));
+    // }
+
+    kfree(data_buf);
+
+    // 规范修正：如果列表长度为0，意味着只有 LUN 0 存在
+    if (num_luns == 0) return 1;
+
+    return num_luns;
+}
+
 //uas协议获取u盘信息
 int uas_send_inquiry(usb_dev_t *dev, uint8 lun_id, void *data_buf, uint32 data_len) {
     uas_cmd_iu_t cmd_iu;

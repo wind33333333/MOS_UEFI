@@ -27,21 +27,22 @@ typedef struct {
 
 // 1. SCSI REPORT LUNS CDB (12 字节)
 typedef struct {
-    uint8_t opcode;          // 0xA0
-    uint8_t rsvd1;
-    uint8_t select_report;   // 0x00 = 报告所有 LUN (通常用这个)
-    uint8_t rsvd2[3];
-    uint32_t alloc_len;      // Big Endian: 分配的数据长度
-    uint8_t rsvd3;
-    uint8_t control;         // 0x00
+    uint8 opcode;          // 0xA0
+    uint8 rsvd1;
+    uint8 select_report;   // 0x00 = 报告所有 LUN (通常用这个)
+    uint8 rsvd2[3];
+    uint32 alloc_len;      // Big Endian: 分配的数据长度
+    uint8 rsvd3;
+    uint8 control;         // 0x00
 }scsi_cdb_report_luns_t;
+#define SCSI_REPORT_LUNS 0xA0
 
 // 2. 返回的数据头部格式
 // SCSI 返回的数据是一个列表，前 8 字节是头
 typedef struct {
-    uint32_t lun_list_length; // Big Endian: LUN 列表的字节总长 (不包含这4个字节)
-    uint32_t rsvd;
+    uint32 lun_list_length; // Big Endian: LUN 列表的字节总长 (不包含这4个字节)
+    uint32 rsvd;
     // 后面跟着一个数组：uint64_t lun_list[];
-} PACKED scsi_report_luns_data_header_t;
+}scsi_report_luns_data_header_t;
 
 #pragma pack(one)
