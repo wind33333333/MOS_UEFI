@@ -208,7 +208,6 @@ typedef struct {
     union {
         xhci_ring_t  transfer_ring;
         xhci_ring_t  *stream_rings;   // per-stream rings数组 (如果启用流)
-        uint64       *stream_bitmap;
     };
     uint32 streams_count;        // 2^max_streams_exp+1
 }endpoint_t;
@@ -260,6 +259,8 @@ static inline usb_if_alt_t *usb_find_alt_by_num(usb_if_t *usb_if, uint8 altsetti
 }
 
 extern struct bus_type_t usb_bus_type;
+
+#define MAX_STREAMS 6  //最大支持流数量（2^6=64）
 
 int usb_bus_match(device_t* dev,driver_t* drv);
 int usb_bus_probe(device_t* dev);

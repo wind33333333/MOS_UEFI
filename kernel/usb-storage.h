@@ -126,9 +126,7 @@ typedef struct uas_data_t {
     uint8            data_in_pipe;   // Bulk IN (Read Data)
     uint8            data_out_pipe;  // Bulk OUT (Write Data)
 
-    // --- 扩展特性 ---
-    uint16           stream_id;      // USB 3.0 Stream ID (如果 endpoint 支持)
-    uint32           flags;          // UAS 特有标志 (如 USE_STREAMS)
+    uint64           tag_bitmap;      // UAS Tag管理,tag号对应stream
 } uas_data_t;
 
 ////////////////////////////////////////////////
