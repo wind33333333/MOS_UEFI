@@ -607,6 +607,8 @@ int uas_send_inquiry(usb_dev_t *dev, uint8 lun_id, void *data_buf, uint32 data_l
 
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
+    usb_dev_t *usb_dev = usb_if->usb_dev;
+
     //u盘是否支持uas协议，优先设置为uas协议
     usb_if_alt_t *alts = usb_if->alts;
     for (uint8 i = 0; i < usb_if->alt_count; i++) {
@@ -619,24 +621,32 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         //uas协议初始化流程
         uas_data_t *uas_data = kzalloc(sizeof(uas_data_t));
         uas_data->common.usb_if = usb_if;
+
+        uint32 mini_streams = MAX_STREAMS;
+        //解析pipe端点
         for (uint8 i = 0; i < 4; i++) {
             usb_ep_t *ep = &usb_if->cur_alt->eps[i];
             uint8 ep_num = ep->ep_num;
+            uint32 streams = usb_dev->eps[ep_num].streams_count;
+            if (streams < mini_streams) mini_streams = streams;
             usb_uas_pipe_usage_descriptor_t *pipe_usage_desc = ep->extras_desc;
             switch (pipe_usage_desc->pipe_id) {
                 case USB_PIPE_COMMAND_OUT:
-                    uas_data->cmd_pipe = ep_num ;
+                    uas_data->cmd_pipe = ep_num ;     //命令pipe
                     break;
                 case USB_PIPE_STATUS_IN:
-                    uas_data->status_pipe = ep_num ;
+                    uas_data->status_pipe = ep_num ; //状态pipe
                     break;
                 case USB_PIPE_BULK_IN:
-                    uas_data->data_in_pipe = ep_num ;
+                    uas_data->data_in_pipe = ep_num ; //接收数据pipe
                     break;
                 case USB_PIPE_BULK_OUT:
-                    uas_data->data_out_pipe = ep_num ;
+                    uas_data->data_out_pipe = ep_num ; //发送数据pipe
             }
         }
+
+        //初始化tag_bitmap
+
 
 
 
