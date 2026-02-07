@@ -76,20 +76,20 @@ INIT_TEXT void init_ioapic(void) {
     }
 
     //禁用8259A
-    io_out8(0x21,0xff);     //禁用主8259A
-    io_out8(0xA1,0xff);     //禁用从8259A
+    asm_io_out8(0x21,0xff);     //禁用主8259A
+    asm_io_out8(0xA1,0xff);     //禁用从8259A
 
-    io_out8(0x43,0x30);
-    io_out8(0x40,0);
-    io_out8(0x40,0);        //禁用8054计时器0
+    asm_io_out8(0x43,0x30);
+    asm_io_out8(0x40,0);
+    asm_io_out8(0x40,0);        //禁用8054计时器0
 
-    io_out8(0x43,0x70);
-    io_out8(0x41,0);
-    io_out8(0x41,0);        //禁用8054计时器1
+    asm_io_out8(0x43,0x70);
+    asm_io_out8(0x41,0);
+    asm_io_out8(0x41,0);        //禁用8054计时器1
 
-    io_out8(0x43,0xB0);
-    io_out8(0x42,0);
-    io_out8(0x42,0);        //禁用8054计时器2
+    asm_io_out8(0x43,0xB0);
+    asm_io_out8(0x42,0);
+    asm_io_out8(0x42,0);        //禁用8054计时器2
 
     //region 初始化ioapic
     //索引寄存器0xFEC00000 32bit bit0-7

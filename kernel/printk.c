@@ -173,7 +173,7 @@ int vsprintf(char *buf, const char *fmt, va_list args) {
                 s = va_arg(args, char *);
                 if (!s)
                     s = '\0';
-                len = strlen(s);
+                len = asm_strlen(s);
                 if (precision < 0)
                     precision = len;
                 else if (len > precision)

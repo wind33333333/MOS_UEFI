@@ -158,7 +158,7 @@ INIT_TEXT int32 memblock_mmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, u
     if (pml4t[index] == 0) {
         pml4t[index] = (uint64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                            attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-        mem_set(pa_to_va(pml4t[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
+        asm_mem_set(pa_to_va(pml4t[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }
 
     pdptt = pa_to_va(pml4t[index] & 0x7FFFFFFFF000);
@@ -167,7 +167,7 @@ INIT_TEXT int32 memblock_mmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, u
         //1G页
         if (pdptt[index] == 0) {
             pdptt[index] = pa | attr;
-            invlpg(va);
+            asm_invlpg(va);
             return 0; //1G页映射成功
         }
         return -1; //已被占用
@@ -176,7 +176,7 @@ INIT_TEXT int32 memblock_mmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, u
     if (pdptt[index] == 0) {
         pdptt[index] = (uint64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                            attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-        mem_set(pa_to_va(pdptt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
+        asm_mem_set(pa_to_va(pdptt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }
 
     pdt = pa_to_va(pdptt[index] & 0x7FFFFFFFF000);
@@ -185,7 +185,7 @@ INIT_TEXT int32 memblock_mmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, u
         //2M页
         if (pdt[index] == 0) {
             pdt[index] = pa | attr;
-            invlpg(va);
+            asm_invlpg(va);
             return 0; //2M页映射成功
         }
         return -1; //以占用
@@ -194,14 +194,14 @@ INIT_TEXT int32 memblock_mmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, u
     if (pdt[index] == 0) {
         pdt[index] = (uint64) memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE) | (
                          attr & (PAGE_US | PAGE_P | PAGE_RW) | PAGE_RW);
-        mem_set(pa_to_va(pdt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
+        asm_mem_set(pa_to_va(pdt[index] & 0x7FFFFFFFF000), 0,PAGE_4K_SIZE);
     }
 
     ptt = pa_to_va(pdt[index] & 0x7FFFFFFFF000);
     index = get_pte_index(va);
     if (ptt[index] == 0) {
         ptt[index] = pa | attr;
-        invlpg(va);
+        asm_invlpg(va);
         return 0; //4K页映射成功
     }
     return -1; //失败
@@ -234,7 +234,7 @@ INIT_TEXT int32 memblock_unmmap(uint64 *pml4t, void *va, uint64 page_size) {
     if (page_size == PAGE_1G_SIZE) {
         //如果为1G巨页，跳转到巨页释放
         pdptt[pdpte_index] = 0;
-        invlpg(va);
+        asm_invlpg(va);
         goto huge_page;
     }
 
@@ -244,18 +244,18 @@ INIT_TEXT int32 memblock_unmmap(uint64 *pml4t, void *va, uint64 page_size) {
     if (page_size == PAGE_2M_SIZE) {
         //如果等于1则表示该页为2M大页，跳转到大页释放
         pdt[pde_index] = 0;
-        invlpg(va);
+        asm_invlpg(va);
         goto big_page;
     }
 
     ptt = pa_to_va(pdt[pde_index] & PAGE_PA_MASK); //4K页
     pte_index = get_pte_index(va);
     ptt[pte_index] = 0;
-    invlpg(va);
+    asm_invlpg(va);
 
 
     //ptt为空则释放
-    if (forward_find_qword(ptt, 512, 0) == 0) {
+    if (asm_forward_find_qword(ptt, 512, 0) == 0) {
         memblock_free(va_to_pa(ptt),PAGE_4K_SIZE);
         pdt[pde_index] = 0;
     } else {
@@ -264,7 +264,7 @@ INIT_TEXT int32 memblock_unmmap(uint64 *pml4t, void *va, uint64 page_size) {
 
 big_page:
     //pde为空则释放
-    if (forward_find_qword(pdt, 512, 0) == 0) {
+    if (asm_forward_find_qword(pdt, 512, 0) == 0) {
         memblock_free(va_to_pa(pdt),PAGE_4K_SIZE);
         pdptt[pdpte_index] = 0;
     } else {
@@ -273,7 +273,7 @@ big_page:
 
 huge_page:
     //pdpt为空则释放
-    if (forward_find_qword(pdptt, 512, 0) == 0) {
+    if (asm_forward_find_qword(pdptt, 512, 0) == 0) {
         memblock_free(va_to_pa(pdptt),PAGE_4K_SIZE);
         pml4t[pml4e_index] = 0;
     }

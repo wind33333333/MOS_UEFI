@@ -10,14 +10,14 @@
 //写入input上文
 void xhci_input_context_add(xhci_input_context_t *input_ctx,void *from_ctx, uint32 ctx_size, uint32 ep_num) {
     void* to_ctx = (uint8*)input_ctx + ctx_size * (ep_num + 1);
-    mem_cpy(from_ctx,to_ctx,ctx_size);
+    asm_mem_cpy(from_ctx,to_ctx,ctx_size);
     input_ctx->input_ctx32.control.add_context |= 1 << ep_num;
 }
 
 //读取input上下文
 void xhci_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_num) {
     void* from_ctx = (uint8*) dev_context + ctx_size * ep_num;
-    mem_cpy(from_ctx,to_ctx,ctx_size);
+    asm_mem_cpy(from_ctx,to_ctx,ctx_size);
 }
 
 //命令环/传输环入队列
@@ -127,13 +127,13 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
 
     /*停止复位xhci*/
     xhci_controller->op_reg->usbcmd &= ~XHCI_CMD_RS; //停止xhci
-    while (!(xhci_controller->op_reg->usbsts & XHCI_STS_HCH)) pause();
+    while (!(xhci_controller->op_reg->usbsts & XHCI_STS_HCH)) asm_pause();
     xhci_controller->op_reg->usbcmd |= XHCI_CMD_HCRST; //复位xhci
-    while (xhci_controller->op_reg->usbcmd & XHCI_CMD_HCRST) pause();
-    while (xhci_controller->op_reg->usbsts & XHCI_STS_CNR) pause();
+    while (xhci_controller->op_reg->usbcmd & XHCI_CMD_HCRST) asm_pause();
+    while (xhci_controller->op_reg->usbsts & XHCI_STS_CNR) asm_pause();
 
     /*计算xhci内存对齐边界*/
-    xhci_controller->align_size = PAGE_4K_SIZE << bsf(xhci_controller->op_reg->pagesize);
+    xhci_controller->align_size = PAGE_4K_SIZE << asm_bsf(xhci_controller->op_reg->pagesize);
 
     /*设备上下文字节数*/
     xhci_controller->dev_ctx_size = 32 << ((xhci_controller->cap_reg->hccparams1 & HCCP1_CSZ) >> 2);
@@ -179,7 +179,7 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
     xhci_controller->spc_count = xhci_ecap_find(xhci_controller,ecap_spc_arr, 2);
     xhci_controller->spc = kzalloc(sizeof(xhci_spc_t)*xhci_controller->spc_count);
     xhci_controller->port_to_spc = kmalloc(xhci_controller->max_ports);
-    mem_set(xhci_controller->port_to_spc, 0xFF, xhci_controller->max_ports);
+    asm_mem_set(xhci_controller->port_to_spc, 0xFF, xhci_controller->max_ports);
     for (uint8 i = 0; i < xhci_controller->spc_count; i++) {
         xhci_spc_t *spc = &xhci_controller->spc[i];
         xhci_ecap_supported_protocol *spc_ecap = ecap_spc_arr[i];

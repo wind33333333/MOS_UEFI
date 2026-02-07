@@ -416,9 +416,9 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
     usb_if_t *usb_if_map[256]; //usb_if临时缓存区
     uint8 fill_idx[256]; //下一个alts计数
 
-    mem_set(alt_count, 0, sizeof(alt_count));
-    mem_set(usb_if_map, 0, sizeof(usb_if_map));
-    mem_set(fill_idx, 0, sizeof(fill_idx));
+    asm_mem_set(alt_count, 0, sizeof(alt_count));
+    asm_mem_set(usb_if_map, 0, sizeof(usb_if_map));
+    asm_mem_set(fill_idx, 0, sizeof(fill_idx));
 
     //给接口分配内存
     usb_dev->interfaces_count = 0;
@@ -522,7 +522,7 @@ void usb_dev_scan(pcie_dev_t *xhci_dev) {
                 xhci_ering_dequeue(xhci_controller, &trb);
             }
             //usb3.x
-            while (!(xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_PED)) pause();
+            while (!(xhci_controller->op_reg->portregs[i].portsc & XHCI_PORTSC_PED)) asm_pause();
             usb_dev_t *usb_dev = usb_dev_create(xhci_dev, i);
             usb_dev_register(usb_dev);
             usb_if_create_register(usb_dev);

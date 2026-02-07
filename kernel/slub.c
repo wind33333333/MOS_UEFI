@@ -77,7 +77,7 @@ void create_cache(char *cache_name, kmem_cache_t *cache, uint32 object_size) {
 //cache中添加一个slub
 static inline void new_slub(kmem_cache_t *cache) {
     page_t *slub = alloc_pages(cache->order_per_slub);
-    bts(&slub->flags,PG_SLUB);
+    asm_bts(&slub->flags,PG_SLUB);
     slub->list.prev = NULL;
     slub->list.next = NULL;
     slub->using_count = 0;
@@ -211,7 +211,7 @@ void *kmalloc(uint64 size) {
 inline void *kzalloc(uint64 size) {
     if (size  == 0) return NULL;
     void *ptr = kmalloc(size);
-    mem_set(ptr,0,size);
+    asm_mem_set(ptr,0,size);
     return ptr;
 }
 

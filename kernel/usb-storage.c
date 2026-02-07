@@ -367,7 +367,7 @@ void bot_get_msc_info(usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc) {
  * @param dir: 数据方向 (UAS_DIR_IN / UAS_DIR_OUT / UAS_DIR_NONE)
  * * @return: 0 成功, <0 失败 (USB错误或SCSI错误)
  */
-int uas_send_scsi_cmd_sync(usb_dev_t *dev, uas_cmd_iu_t *cmd_iu, void *data_buf, uint32 data_len, int dir)
+/*int uas_send_scsi_cmd_sync(usb_dev_t *dev, uas_cmd_iu_t *cmd_iu, void *data_buf, uint32 data_len, int dir)
 {
     int ret;
 
@@ -469,7 +469,7 @@ cleanup:
  * @param dev: USB 设备指针
  * @param tag: UAS 事务 Tag (必须唯一)
  * @return: LUN 的数量 (至少为 1)
- */
+ #1#
 int uas_get_lun_count(usb_dev_t *dev, uint16 tag) {
     uas_cmd_iu_t *cmd_iu = kzalloc(sizeof(uas_cmd_iu_t));
     scsi_cdb_report_luns_t *cdb;
@@ -603,7 +603,7 @@ int uas_send_inquiry(usb_dev_t *dev, uint8 lun_id, void *data_buf, uint32 data_l
     // ...
 
     return 0;
-}
+}*/
 
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
@@ -622,13 +622,13 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         uas_data_t *uas_data = kzalloc(sizeof(uas_data_t));
         uas_data->common.usb_if = usb_if;
 
-        uint32 mini_streams = MAX_STREAMS;
+        uint32 mini_streams = 1<<MAX_STREAMS;
         //解析pipe端点
         for (uint8 i = 0; i < 4; i++) {
             usb_ep_t *ep = &usb_if->cur_alt->eps[i];
             uint8 ep_num = ep->ep_num;
             uint32 streams = usb_dev->eps[ep_num].streams_count;
-            if (streams < mini_streams) mini_streams = streams;
+            if (streams && streams < mini_streams) mini_streams = streams;
             usb_uas_pipe_usage_descriptor_t *pipe_usage_desc = ep->extras_desc;
             switch (pipe_usage_desc->pipe_id) {
                 case USB_PIPE_COMMAND_OUT:
@@ -646,10 +646,13 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         }
 
         //初始化tag_bitmap
+        uas_data->tag_bitmap = 0xFFFFFFFFFFFFFFFFUL;
+        uas_data->tag_bitmap <<= mini_streams;
+        while (1);
 
 
 
-
+        /*
         /////////////////////////////////////
         trb_t cmd_trb, sta_trb, in_trb;
         uas_cmd_iu_t *ciu = kzalloc(sizeof(uas_cmd_iu_t));
@@ -938,7 +941,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         timing();
         xhci_ering_dequeue(xhci_controller, &in_trb);
         color_printk(RED,BLACK, "in_trb m0:%#lx m1:%#lx   \n", in_trb.member0, in_trb.member1);
-        while (1);
+        while (1);*/
 
     } else {
         //bot协议初始化流程

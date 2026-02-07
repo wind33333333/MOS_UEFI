@@ -15,18 +15,18 @@ uint32 *apic_id_table; //apic_id_table
 INIT_TEXT void get_cpu_info(void) {
     uint32 eax,ebx,ecx,edx;
     // 获取CPU厂商
-    cpuid(0,0,(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[0],(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[4]);
+    asm_cpuid(0,0,(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[0],(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[4]);
 
     // 获取CPU型号
-    cpuid(0x80000002,0,(uint32*)&cpu_info.model_name[0],(uint32*)&cpu_info.model_name[4],(uint32*)&cpu_info.model_name[8],(uint32*)&cpu_info.model_name[12]);
-    cpuid(0x80000003,0,(uint32*)&cpu_info.model_name[16],(uint32*)&cpu_info.model_name[20],(uint32*)&cpu_info.model_name[24],(uint32*)&cpu_info.model_name[28]);
-    cpuid(0x80000004,0,(uint32*)&cpu_info.model_name[32],(uint32*)&cpu_info.model_name[36],(uint32*)&cpu_info.model_name[40],(uint32*)&cpu_info.model_name[44]);
+    asm_cpuid(0x80000002,0,(uint32*)&cpu_info.model_name[0],(uint32*)&cpu_info.model_name[4],(uint32*)&cpu_info.model_name[8],(uint32*)&cpu_info.model_name[12]);
+    asm_cpuid(0x80000003,0,(uint32*)&cpu_info.model_name[16],(uint32*)&cpu_info.model_name[20],(uint32*)&cpu_info.model_name[24],(uint32*)&cpu_info.model_name[28]);
+    asm_cpuid(0x80000004,0,(uint32*)&cpu_info.model_name[32],(uint32*)&cpu_info.model_name[36],(uint32*)&cpu_info.model_name[40],(uint32*)&cpu_info.model_name[44]);
 
     // 获取CPU频率
-    cpuid(0x16,0,&cpu_info.fundamental_frequency,&cpu_info.maximum_frequency,&cpu_info.bus_frequency,&edx);
+    asm_cpuid(0x16,0,&cpu_info.fundamental_frequency,&cpu_info.maximum_frequency,&cpu_info.bus_frequency,&edx);
 
     // 获取CPU TSC频率
-    cpuid(0x15,0,&eax,&ebx,&ecx,&edx);
+    asm_cpuid(0x15,0,&eax,&ebx,&ecx,&edx);
     cpu_info.tsc_frequency = eax&ebx&ecx ? ebx*ecx/eax : 0;
 }
 
@@ -40,9 +40,9 @@ INIT_TEXT void enable_cpu_advanced_features(void){
     //BSP（bit 9）：作用：标记该处理器是否是系统的启动处理器（BSP）。系统启动时，BSP 是首先执行初始化代码的 CPU，其它处理器是 AP（Application Processors，应用处理器）。
     //APIC Base Address（bit 12-31）：作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
     ////endregion
-    value=rdmsr(IA32_APIC_BASE_MSR);
+    value=asm_rdmsr(IA32_APIC_BASE_MSR);
     value |= 0xC00;                        //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
-    wrmsr(IA32_APIC_BASE_MSR,value);
+    asm_wrmsr(IA32_APIC_BASE_MSR,value);
 
     //region CR4 寄存器
     //VME（bit 0） 描述：启用虚拟 8086 模式的扩展功能，允许在虚拟 8086 模式中支持虚拟中断。用途：用于实现虚拟机监控或虚拟 8086 环境中的精细中断控制。
@@ -68,7 +68,7 @@ INIT_TEXT void enable_cpu_advanced_features(void){
     //PKE（bit 22）描述：启用内存保护密钥功能。该功能允许程序在不修改页表的情况下控制内存的访问权限。用途：提供更灵活的内存保护机制，用于区分不同的内存访问权限。
     //endregion
     tmp=0;
-    cpuid(0x7,0,&eax,&ebx,&ecx,&edx);
+    asm_cpuid(0x7,0,&eax,&ebx,&ecx,&edx);
     if(ecx & 4)
         tmp |= 0x800;       //bit11 UMIP
 
@@ -81,7 +81,7 @@ INIT_TEXT void enable_cpu_advanced_features(void){
     if(ebx & 0x100000)
         tmp |= 0x200000;    //bit21 SMAP
 
-    cpuid(0x1,0,&eax,&ebx,&ecx,&edx);
+    asm_cpuid(0x1,0,&eax,&ebx,&ecx,&edx);
     if(ecx & 0x20)
         tmp |= 0x2000;      //bit13 VMXE
 
@@ -89,9 +89,9 @@ INIT_TEXT void enable_cpu_advanced_features(void){
         tmp |= 0x20000;     //bit17 PCIDE
 
     tmp |= 0x507C8;
-    value = get_cr4();
+    value = asm_get_cr4();
     value |= tmp;
-    set_cr4(value);
+    asm_set_cr4(value);
 
     //region XCR0 寄存器
     //x87（bit 0）：描述：控制 x87 浮点状态的保存与恢复。x87 是早期的浮点运算单元，负责处理浮点数运算。用途：如果该位被设置为 1，XSAVE 和 XRSTOR 指令将保存和恢复 x87 浮点状态。
@@ -102,20 +102,20 @@ INIT_TEXT void enable_cpu_advanced_features(void){
     //BNDCSR（bit 6）：描述：控制 MPX 的 BNDCSR 状态的保存与恢复。BNDCSR 用于管理 MPX 的边界检查寄存器。用途：启用该位后，处理器会保存和恢复 MPX 边界检查的控制状态。
     //PKRU（bit 8）：描述：控制 PKRU 状态的保存与恢复。PKRU（Protection Keys for Userspace）是内存保护的一种机制。用途：启用该位后，处理器会保存和恢复与 PKRU 相关的状态.
     //endregion
-    cpuid(0x7,0x0,&eax,&ebx,&ecx,&edx);
+    asm_cpuid(0x7,0x0,&eax,&ebx,&ecx,&edx);
     tmp=(ebx & 0x10000) ? 0xE7 : 0x7;   //AVX512=0xE7 AVX256=0x7
-    value = xgetbv(0);
+    value = asm_xgetbv(0);
     value |= tmp;
-    xsetbv(0,value);
+    asm_xsetbv(0,value);
 
     //region IA32_EFER_MSR 寄存器（MSR 0xC0000080)
     //SCE（bit 0） 1:启用 SYSCALL 和 SYSRET 指令。
     //LME（bit 8） 1:启用 64 位长模式。当该位被设置为 1 时，处理器允许进入 64 位模式。在启用长模式时，CR0.PG（分页启用位）和 CR4.PAE（物理地址扩展启用位）也必须设置。
     //NXE（bit 11）1:sfdsfs启用 NX（No-eXecute） 位功能。NX 位用于控制某些内存页面的执行权限。如果该位被设置为 1，操作系统可以使用分页机制将特定的内存页面标记为不可执行，以防止执行非代码数据，如栈或堆内存，防止某些缓冲区溢出攻击。
     //endregion
-    value=rdmsr(IA32_EFER_MSR);
+    value=asm_rdmsr(IA32_EFER_MSR);
     value |= 0x801;
-    wrmsr(IA32_EFER_MSR,value);
+    asm_wrmsr(IA32_EFER_MSR,value);
 
     //region CR0寄存器
     //PE（位 0）：1：启用保护模式，使得 CPU 能使用分段和分页机制。0：CPU 处于实模式，仅支持基础的内存访问。
@@ -130,10 +130,10 @@ INIT_TEXT void enable_cpu_advanced_features(void){
     //CD（位 30）：1：禁用 CPU 缓存，所有内存访问直接访问主存。0：启用 CPU 缓存，提高性能。
     //PG（位 31）：1：启用分页机制，支持虚拟内存管理。0：禁用分页，CPU 只能使用物理内存地址。
     //endregion
-    value=get_cr0();
+    value=asm_get_cr0();
     value &= 0xFFFFFFFF9FFFFFFFUL;
     value |= 0x10002;
-    set_cr0(value);
+    asm_set_cr0(value);
 
     //region IA32_PAT_MSR(0x277) 内存缓存模式配置寄存器
     //IA32_PAT是一个64位寄存器，其中包含8个8位的字段，每个字段定义一种缓存类型。格式如下：
@@ -147,7 +147,7 @@ INIT_TEXT void enable_cpu_advanced_features(void){
     //0x6: WB（Write Back，回写）
     //0x7: UC-（Uncacheable，不缓存，弱UC）
     //endregion
-    wrmsr(IA32_PAT_MSR,0x070504010006);
+    asm_wrmsr(IA32_PAT_MSR,0x070504010006);
 }
 
 INIT_TEXT uint32 apicid_to_cpuid(uint32 apic_id) {
@@ -164,7 +164,7 @@ INIT_TEXT uint32 cpuid_to_apicid(uint32 cpu_id) {
 
 INIT_TEXT void init_bsp(void){
     uint32 apic_id,cpu_id,tmp;
-    cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
+    asm_cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
     get_cpu_info();                            //获取cpu信息
     init_gdt();                                //初始化GDT
@@ -184,35 +184,35 @@ INIT_TEXT void init_ap(void) {
     ap_tmp_pml4t_ptr = (uint64*)va_to_pa(&tmp_pml4t);
     apic_id_table_ptr = apic_id_table;
     ap_rsp_ptr = (uint64)vmalloc((cpu_info.logical_processors_number-1)*4);            //每个ap核分配16K栈
-    mem_cpy(_apboot_start, (void*)ap_boot_loader_address,_apboot_end-_apboot_start);                 //把ap核初始化代码复制到过去
+    asm_mem_cpy(_apboot_start, (void*)ap_boot_loader_address,_apboot_end-_apboot_start);                 //把ap核初始化代码复制到过去
 
     uint32 counter;
     //bit8-10投递模式init101 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
-    wrmsr(APIC_INTERRUPT_COMMAND_MSR,0xC4500);
+    asm_wrmsr(APIC_INTERRUPT_COMMAND_MSR,0xC4500);
 
     counter=0x5000;
     while (counter !=0 )  //延时
         counter--;
 
     //Start-up IPI bit0-7处理器启动实模式物理地址VV000的高两位 ，bit8-10投递模式start-up110 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
-    wrmsr(APIC_INTERRUPT_COMMAND_MSR,(ap_boot_loader_address>>12)&0xFF|0xC4600);
+    asm_wrmsr(APIC_INTERRUPT_COMMAND_MSR,(ap_boot_loader_address>>12)&0xFF|0xC4600);
 
     counter=0x5000;
     while (counter !=0 )  //延时
         counter--;
 
-    wrmsr(APIC_INTERRUPT_COMMAND_MSR,(ap_boot_loader_address>>12)&0xFF|0xC4600);      //Start-up IPI
+    asm_wrmsr(APIC_INTERRUPT_COMMAND_MSR,(ap_boot_loader_address>>12)&0xFF|0xC4600);      //Start-up IPI
 }
 
 INIT_TEXT void ap_main(void){
     uint32 apic_id,cpu_id,tmp;
-    cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);        //获取apic_ia
+    asm_cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);        //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);
     enable_cpu_advanced_features();
-    set_cr3(kpml4t_ptr);
-    lgdt(&gdt_ptr,0x8,0x10);
-    ltr(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);
-    lidt(&idt_ptr);
+    asm_set_cr3(kpml4t_ptr);
+    asm_lgdt(&gdt_ptr,0x8,0x10);
+    asm_ltr(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);
+    asm_lidt(&idt_ptr);
     init_apic();
     init_syscall();
     color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);

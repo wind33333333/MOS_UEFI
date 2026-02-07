@@ -7,7 +7,7 @@ buddy_system_t buddy_system;
 
 INIT_TEXT static inline uint32 get_trailing_zeros(uint64 page_index) {
     if (page_index == 0) return 64;
-    return bsf(page_index);
+    return asm_bsf(page_index);
 }
 
 INIT_TEXT static inline uint32 get_max_order_for_size(uint64 num_pages) {
@@ -64,7 +64,7 @@ page_t *alloc_pages(uint32 order) {
 
     //如果是复合也则标记头并填充符合页page
     page->flags = 0;
-    if (order) bts(&page->flags,PG_HEAD);
+    if (order) asm_bts(&page->flags,PG_HEAD);
     for (uint32 i = 1; i < (1 << current_order); i++) {
         page[i].compound_head = (uint64) page | 1;
     }
@@ -81,14 +81,14 @@ void free_pages(page_t *page) {
         //当前阶链表有其他page尝试合并伙伴
         //计算伙伴page
         page_t *buddy_page = buddy_system.page_table + (page - buddy_system.page_table ^ (1UL << page->order));
-        if (!bt(buddy_page->flags,PG_BUDDY) || buddy_page->order != page->order) break;
+        if (!asm_bt(buddy_page->flags,PG_BUDDY) || buddy_page->order != page->order) break;
         if (page > buddy_page) page = buddy_page;
         list_del(&buddy_page->list);
         buddy_system.free_area[page->order].count--;
         page->order++;
     }
     page->flags = 0;
-    bts(&page->flags,PG_BUDDY);
+    asm_bts(&page->flags,PG_BUDDY);
     list_add_head(&buddy_system.free_area[page->order].list, &page->list);
     buddy_system.free_area[page->order].count++;
 }

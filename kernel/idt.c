@@ -50,5 +50,5 @@ INIT_TEXT void init_idt(void) {
     set_idt_descriptor(0x31,(uint64)keyboard,IST_1,TYPE_INTRPT);
     set_idt_descriptor(0x32,(uint64)hpet,IST_1,TYPE_INTRPT);
 
-    lidt(&idt_ptr);
+    asm_lidt(&idt_ptr);
 }

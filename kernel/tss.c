@@ -38,5 +38,5 @@ INIT_TEXT void init_tss(void) {
         //设置gdt tss描述符
         set_tss_descriptor(TSS_DESCRIPTOR_START_INDEX + i,(uint64)tss_ptr+i);
     }
-    ltr(TSS_DESCRIPTOR_START_INDEX * 16);
+    asm_ltr(TSS_DESCRIPTOR_START_INDEX * 16);
 }

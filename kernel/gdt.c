@@ -19,5 +19,5 @@ INIT_TEXT void init_gdt(void) {
     *(gdt_ptr.base + 5) = CODE64_3;        /*5	USER	Code	64-bit	Segment	0x28*/
     //*(gdt_ptr.base + 6) = DATA64_3;        /*6	USER	Data	64-bit	Segment	0x30*/
 
-    lgdt(&gdt_ptr,0x8,0x10);     //加载新gdt
+    asm_lgdt(&gdt_ptr,0x8,0x10);     //加载新gdt
 }
