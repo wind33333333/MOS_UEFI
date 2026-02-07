@@ -84,18 +84,7 @@ static inline void asm_lfence(void) {
 }
 
 //设置bit位
-static inline void asm_bts(uint64 *addr,uint64 nr) {
-    __asm__ __volatile__(
-        "lock \n\t"
-        "btsq   %1,%0 \n\t"
-        :"+m"(*addr)
-        :"ir"(nr)
-        :"memory"
-        );
-}
-
-//设置bit位
-static inline uint64 asm_bts1(uint64 var,uint64 nr) {
+static inline uint64 asm_bts(uint64 var,uint64 nr) {
     __asm__ __volatile__(
     "btsq   %1,%0 \n\t"
     :"+r"(var)

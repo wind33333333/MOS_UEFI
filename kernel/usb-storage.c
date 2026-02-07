@@ -361,7 +361,7 @@ void bot_get_msc_info(usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc) {
 uint16 uas_alloc_tag(uas_data_t *uas_data) {
     uint64 tag_bitmap = ~uas_data->tag_bitmap;
     uint32 bit = asm_tzcnt(tag_bitmap);
-    asm_bts(&uas_data->tag_bitmap,bit);
+    uas_data->tag_bitmap = asm_bts(uas_data->tag_bitmap,bit);
     return ++bit;
 }
 
@@ -660,8 +660,8 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
 
         uint16 tag = uas_alloc_tag(uas_data);
 
-        tag = 0x80;
-        tag = asm_btr(tag,7);
+        tag = 0x00;
+        tag = asm_bts(tag,7);
 
         while (1);
 

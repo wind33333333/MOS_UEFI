@@ -53,7 +53,7 @@ page_t *alloc_pages(uint32 order) {
 
     //如果是复合也则标记头并填充符合页page
     page->flags = 0;
-    if (order) asm_bts(&page->flags,PG_HEAD);
+    if (order) page->flags = asm_bts(page->flags,PG_HEAD);
     for (uint32 i = 1; i < (1 << current_order); i++) {
         page[i].compound_head = (uint64) page | 1;
     }
@@ -77,7 +77,7 @@ void free_pages(page_t *page) {
         page->order++;
     }
     page->flags = 0;
-    asm_bts(&page->flags,PG_BUDDY);
+    page->flags = asm_bts(page->flags,PG_BUDDY);
     list_add_head(&buddy_system.free_area[page->order].list, &page->list);
     buddy_system.free_area[page->order].count++;
 }
