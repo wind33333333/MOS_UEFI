@@ -94,10 +94,21 @@ static inline void asm_bts(uint64 *addr,uint64 nr) {
         );
 }
 
+//设置bit位
+static inline uint64 asm_bts1(uint64 var,uint64 nr) {
+    __asm__ __volatile__(
+    "btsq   %1,%0 \n\t"
+    :"+r"(var)
+    :"r"(nr)
+    :"cc"
+    );
+    return var;
+}
+
 //清除bit位
 static inline uint64 asm_btr(uint64 var,uint64 nr) {
     __asm__ __volatile__(
-        "btrq   %1,%2 \n\t"
+        "btrq   %1,%0 \n\t"
         :"+r"(var)
         :"r"(nr)
         :"cc"
