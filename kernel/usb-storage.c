@@ -358,11 +358,16 @@ void bot_get_msc_info(usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc) {
 }
 */
 
-uint16 uas_alloc_tag(uas_data_t *uas_data) {
-    uint64 tag_bitmap = ~uas_data->tag_bitmap;
-    uint32 bit = asm_tzcnt(tag_bitmap);
-    uas_data->tag_bitmap = asm_bts(uas_data->tag_bitmap,bit);
-    return ++bit;
+//获取一个tag
+static inline uint16 uas_alloc_tag(uas_data_t *uas_data) {
+    uint16 nr = asm_tzcnt(~uas_data->tag_bitmap);
+    uas_data->tag_bitmap = asm_bts(uas_data->tag_bitmap,nr);
+    return ++nr;
+}
+
+//释放一个tag
+static inline void uas_free_tag(uas_data_t *uas_data,uint16 nr) {
+    uas_data->tag_bitmap = asm_btr(uas_data->tag_bitmap,nr-1);
 }
 
 /**
@@ -374,20 +379,24 @@ uint16 uas_alloc_tag(uas_data_t *uas_data) {
  * @param dir: 数据方向 (UAS_DIR_IN / UAS_DIR_OUT / UAS_DIR_NONE)
  * * @return: 0 成功, <0 失败 (USB错误或SCSI错误)
  */
-/*int uas_send_scsi_cmd_sync(usb_dev_t *dev, uas_cmd_iu_t *cmd_iu, void *data_buf, uint32 data_len, int dir)
-{
+int uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *data_buf, uint32 data_len, int dir){
+
     int ret;
+
+    trb_t cmd_trb,sense_trb,out_trb,in_trb;
+
+    usb_dev_t *usb_dev = uas_data->common.usb_if->usb_dev;
 
     // 1. 获取一个空闲的 Tag (事务 ID)
     // 在 UAS 中，Tag 必须在 1 到 65535 之间
-    uint16 tag = uas_alloc_tag(dev);
+    uint16 tag = uas_alloc_tag(uas_data);
 
-    // 2. 准备 Sense Buffer (用于接收状态)
+    // 2. 填充 Command IU 的 Tag
+    cmd_iu->tag = asm_bswap16(tag);
+
+    // 3. 准备 Sense Buffer (用于接收状态)
     // 必须是 DMA 安全的内存
     uas_sense_iu_t *sense_buf = kzalloc(sizeof(uas_sense_iu_t));
-
-    // 3. 填充 Command IU 的 Tag
-    cmd_iu->tag = bswap16(tag);
 
     // ========================================================
     // 4. 提交 TRB (关键顺序：Status -> Data -> Command)
@@ -396,20 +405,26 @@ uint16 uas_alloc_tag(uas_data_t *uas_data) {
 
     // [Step A] 提交 Status Pipe 请求 (接收 Sense IU)
     // 告诉 xHCI: "如果有 Tag=%d 的状态包回来，放到 sense_buf 里"
-    ret = xhci_queue_bulk_rx(dev, dev->ep_status_in, sense_buf, sizeof(uas_sense_iu_t), tag);
+    normal_transfer_trb(&sense_trb, va_to_pa(sense_buf), disable_ch, sizeof(uas_sense_iu_t), enable_ioc);
+    xhci_ring_enqueue(&usb_dev->eps->stream_rings[uas_data->status_pipe], &sense_trb);
+    //ret = xhci_queue_bulk_rx(dev, dev->ep_status_in, sense_buf, sizeof(uas_sense_iu_t), tag);
 
     // [Step B] 提交 Data Pipe 请求 (如果有数据)
     if (data_len > 0 && data_buf != NULL) {
         if (dir == UAS_DIR_IN) {
             // 准备接收数据 (Bulk IN)
-            ret = xhci_queue_bulk_rx(dev, dev->ep_data_in, data_buf, data_len, tag);
+            //ret = xhci_queue_bulk_rx(dev, dev->ep_data_in, data_buf, data_len, tag);
+            normal_transfer_trb(&in_trb, va_to_pa(data_buf), disable_ch, data_len, enable_ioc);
+            xhci_ring_enqueue(&usb_dev->eps->stream_rings[uas_data->data_in_pipe], &in_trb);
         } else if (dir == UAS_DIR_OUT) {
-            // 准备发送数据 (Bulk OUT)
-            // 注意：UAS 的写操作也是先排队，等待设备 Ready 后硬件自动发
-            ret = xhci_queue_bulk_tx(dev, dev->ep_data_out, data_buf, data_len, tag);
+            // 准备发送数据 (Bulk OUT)注意：UAS 的写操作也是先排队，等待设备 Ready 后硬件自动发
+            //ret = xhci_queue_bulk_tx(dev, dev->ep_data_out, data_buf, data_len, tag);
+            normal_transfer_trb(&in_trb, va_to_pa(data_buf), disable_ch, data_len, enable_ioc);
+            xhci_ring_enqueue(&usb_dev->eps->stream_rings[uas_data->data_out_pipe], &in_trb);
         }
         if (ret < 0) goto cleanup;
     }
+
 
     // [Step C] 提交 Command Pipe 请求 (触发执行)
     // 告诉设备: "这是命令，Tag=%d"
@@ -467,17 +482,16 @@ uint16 uas_alloc_tag(uas_data_t *uas_data) {
 
 cleanup:
     kfree(sense_buf);
-    uas_free_tag(dev, tag);
+    uas_free_tag(uas_data, tag);
     return ret;
 }
 
 /**
  * 使用 UAS 协议获取 LUN 数量
  * @param dev: USB 设备指针
- * @param tag: UAS 事务 Tag (必须唯一)
  * @return: LUN 的数量 (至少为 1)
- #1#
-int uas_get_lun_count(usb_dev_t *dev, uint16 tag) {
+*/
+int uas_get_lun_count(usb_dev_t *dev) {
     uas_cmd_iu_t *cmd_iu = kzalloc(sizeof(uas_cmd_iu_t));
     scsi_cdb_report_luns_t *cdb;
 
@@ -489,9 +503,8 @@ int uas_get_lun_count(usb_dev_t *dev, uint16 tag) {
     // ================================
     // 1. 构造 UAS Command IU
     // ================================
-    cmd_iu->iu_id = UAS_CMD_IU_ID; // Command IU
-    cmd_iu->tag = bswap16(tag);
-    cmd_iu->len_cdb = 12; // REPORT LUNS 是 12 字节命令
+    cmd_iu->iu_id = UAS_CMD_IU_ID; // UAS_CMD_IU_ID = 1
+    cmd_iu->len_cdb = sizeof(scsi_cdb_report_luns_t); // REPORT LUNS 是 12 字节命令
     cmd_iu->lun = 0;    // 注意：REPORT LUNS 总是发给 LUN 0 (Well Known LUN)所以 cmd_iu.lun 设为 0 即可
 
     // ==========================================
@@ -499,14 +512,14 @@ int uas_get_lun_count(usb_dev_t *dev, uint16 tag) {
     // ==========================================
     cdb = (scsi_cdb_report_luns_t *)cmd_iu->cdb;
     cdb->opcode = SCSI_REPORT_LUNS;        // REPORT LUNS
-    cdb->alloc_len = bswap32(BUF_LEN); // 告诉设备我能收多少数据
+    cdb->alloc_len = asm_bswap32(BUF_LEN); // 告诉设备我能收多少数据
 
     // ==========================================
     // 2. 发送 UAS 命令 (伪代码封装)
     // ==========================================
     // 这里需要调用你上一节实现的 3个Pipe 并发操作
-    // uas_transaction(dev, &cmd_iu, data_buf, buf_len, DIR_IN, tag);
-    int ret = uas_send_scsi_cmd_sync(dev, &cmd_iu, data_buf, buf_len);
+    // uas_transaction(cmd_iu, data_buf, buf_len, DIR_IN, tag);
+    int ret = uas_send_scsi_cmd_sync(cmd_iu, data_buf, buf_len);
 
     if (ret < 0) {
         printf("UAS REPORT LUNS failed, assuming 1 LUN.\n");
@@ -610,7 +623,7 @@ int uas_send_inquiry(usb_dev_t *dev, uint8 lun_id, void *data_buf, uint32 data_l
     // ...
 
     return 0;
-}*/
+}
 
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
@@ -658,12 +671,46 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         uas_data->tag_bitmap <<= 1;
 
 
-        uint16 tag = uas_alloc_tag(uas_data);
-
-        tag = 0x00;
-        tag = asm_bts(tag,7);
 
         while (1);
+
+        //获取最大lun
+        uas_cmd_iu_t* ciu = kzalloc(sizeof(uas_cmd_iu_t));
+        ciu->iu_id = 1;
+        ciu->tag   = bswap16(1);
+        ciu->len   = 0;
+        ciu->cdb[0] = 0xA0;   // REPORT LUNS
+        ciu->cdb[1] = 0x00;   // SELECT REPORT = 0 -> all luns
+        *(uint32*)&ciu->cdb[6] = bswap32(512);
+
+        trb_t cmd_trb,sta_trb,in_trb;
+
+        uas_status_iu_t* status_buf = kzalloc(128);
+        normal_transfer_trb(&sta_trb, va_to_pa(status_buf), disable_ch, 128, enable_ioc);
+        xhci_ring_enqueue(&uas_msc->sta_in_ep.stream_rings[1], &sta_trb);
+
+        uint64* in_data = kzalloc(512);        // 足够放 Data-In IU + 36B payload
+        mem_set(in_data, 0xFF, 512);
+        normal_transfer_trb(&in_trb, va_to_pa(in_data), disable_ch, 512, enable_ioc);
+        xhci_ring_enqueue(&uas_msc->bluk_in_ep.stream_rings[1], &in_trb);
+
+        normal_transfer_trb(&cmd_trb, va_to_pa(ciu), disable_ch,sizeof(uas_cmd_iu_t), enable_ioc);
+        xhci_ring_enqueue(&uas_msc->cmd_out_ep.transfer_ring, &cmd_trb);
+
+        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->cmd_out_ep.ep_num);
+        timing();
+        xhci_ering_dequeue(xhci_controller, &cmd_trb);
+        color_printk(RED,BLACK,"cmd_trb m0:%#lx m1:%#lx   \n",cmd_trb.member0,cmd_trb.member1);
+
+        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->sta_in_ep.ep_num | 1<<16);
+        timing();
+        xhci_ering_dequeue(xhci_controller, &sta_trb);
+        color_printk(RED,BLACK,"sta_trb m0:%#lx m1:%#lx   \n",sta_trb.member0,sta_trb.member1);
+
+        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->bluk_in_ep.ep_num | 1<<16);
+        timing();
+        xhci_ering_dequeue(xhci_controller, &in_trb);
+        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);
 
         /*
         /////////////////////////////////////
@@ -736,45 +783,6 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
 
         color_printk(RED,BLACK,"sense_iu iu_id:%d tag:%d status:%d   \n",status_buf->iu_id,status_buf->tag,status_buf->status);
         color_printk(RED,BLACK,"inquiy pdt_pq:%#x rmb:%#x ver:%#x resp:%#x add_len:%#x flag1:%#x flag2:%#x flag3:%#x vid:%s pid:%s rev:%s  \n",inquiry->pdt_pq,inquiry->rmb,inquiry->version,inquiry->resp_fmt,inquiry->add_len,inquiry->flags[0],inquiry->flags[1],inquiry->flags[2],inquiry->vendor,inquiry->product,inquiry->revision);
-
-
-        //获取最大lun
-        uas_cmd_iu_t* ciu = kzalloc(sizeof(uas_cmd_iu_t));
-        ciu->iu_id = 1;
-        ciu->tag   = bswap16(1);
-        ciu->len   = 0;
-        ciu->cdb[0] = 0xA0;   // REPORT LUNS
-        ciu->cdb[1] = 0x00;   // SELECT REPORT = 0 -> all luns
-        *(uint32*)&ciu->cdb[6] = bswap32(512);
-
-        trb_t cmd_trb,sta_trb,in_trb;
-
-        uas_status_iu_t* status_buf = kzalloc(128);
-        normal_transfer_trb(&sta_trb, va_to_pa(status_buf), disable_ch, 128, enable_ioc);
-        xhci_ring_enqueue(&uas_msc->sta_in_ep.stream_rings[1], &sta_trb);
-
-        uint64* in_data = kzalloc(512);        // 足够放 Data-In IU + 36B payload
-        mem_set(in_data, 0xFF, 512);
-        normal_transfer_trb(&in_trb, va_to_pa(in_data), disable_ch, 512, enable_ioc);
-        xhci_ring_enqueue(&uas_msc->bluk_in_ep.stream_rings[1], &in_trb);
-
-        normal_transfer_trb(&cmd_trb, va_to_pa(ciu), disable_ch,sizeof(uas_cmd_iu_t), enable_ioc);
-        xhci_ring_enqueue(&uas_msc->cmd_out_ep.transfer_ring, &cmd_trb);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->cmd_out_ep.ep_num);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &cmd_trb);
-        color_printk(RED,BLACK,"cmd_trb m0:%#lx m1:%#lx   \n",cmd_trb.member0,cmd_trb.member1);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->sta_in_ep.ep_num | 1<<16);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &sta_trb);
-        color_printk(RED,BLACK,"sta_trb m0:%#lx m1:%#lx   \n",sta_trb.member0,sta_trb.member1);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->bluk_in_ep.ep_num | 1<<16);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &in_trb);
-        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);
 
         //获取容量10
         uas_cmd_iu_t* ciu = kzalloc(sizeof(uas_cmd_iu_t));
