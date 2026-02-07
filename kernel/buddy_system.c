@@ -5,17 +5,6 @@
 
 buddy_system_t buddy_system;
 
-INIT_TEXT static inline uint32 get_trailing_zeros(uint64 page_index) {
-    if (page_index == 0) return 64;
-    return asm_bsf(page_index);
-}
-
-INIT_TEXT static inline uint32 get_max_order_for_size(uint64 num_pages) {
-    uint32 k = 0;
-    while ((1ULL << k) <= num_pages && k <= MAX_ORDER) k++;
-    return k - 1;
-}
-
 //初始化伙伴系统
 INIT_TEXT void init_buddy_system(void) {
     //初始化page_table指针

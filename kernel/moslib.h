@@ -95,51 +95,49 @@ static inline void asm_bts(uint64 *addr,uint64 nr) {
 }
 
 //清除bit位
-static inline void asm_btr(uint64 *addr,uint64 nr) {
+static inline uint64 asm_btr(uint64 var,uint64 nr) {
     __asm__ __volatile__(
-        "lock \n\t"
-        "btrq   %1,%0 \n\t"
-        :"+m"(*addr)
-        :"ir"(nr)
-        :"memory"
+        "btrq   %1,%2 \n\t"
+        :"+r"(var)
+        :"r"(nr)
+        :"cc"
         );
+    return var;
 }
 
 //位测试
 static inline boolean asm_bt(uint64 var,uint64 nr) {
-    boolean ret;
+    boolean cf;
     __asm__ __volatile__(
-        "btq   %2,%1 \n\t"
-        "setc  %0 \n\t"
-        :"=r"(ret)
-        :"m"(var),"ir"(nr)
-        :"memory"
-        );
-    return ret;
+        "btq   %1, %2  \n\t"
+        "setc  %0      \n\t"
+        : "=r"(cf)
+        : "r"(nr),"r"(var)
+        : "cc"
+    );
+    return cf;
 }
 
-//位扫描最低位1
-static inline uint32 asm_bsf(uint64 var) {
-    uint32 ret;
+//最低位为1是多少位
+static inline uint8 asm_tzcnt(uint64 var) {
+    uint64 result;
     __asm__ __volatile__(
-        "bsf    %1,%0   \n\t"
-        :"=r"(ret)
-        :"m"(var)
-        :"memory"
-        );
-    return ret;
+        "tzcntq    %1,%0   \n\t"
+        :"=r"(result)
+        :"r"(var)
+        :"cc");
+    return (uint8)result;
 }
 
-//位扫描最高位1
-static inline uint32 asm_bsr(uint64 var) {
-    uint32 ret;
+//最高位为1是多少位
+static inline uint8 asm_lzcnt(uint64 var) {
+    uint64 result;
     __asm__ __volatile__(
-        "bsr    %1,%0   \n\t"
-        :"=r"(ret)
-        :"m"(var)
-        :"memory"
-        );
-    return ret;
+        "lzcntq    %1,%0   \n\t"
+        :"=r"(result)
+        :"r"(var)
+        :"cc");
+    return (uint8)result;
 }
 
 // 自旋锁

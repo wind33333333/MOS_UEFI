@@ -133,7 +133,7 @@ int xhci_probe(pcie_dev_t *xhci_dev,pcie_id_t* id) {
     while (xhci_controller->op_reg->usbsts & XHCI_STS_CNR) asm_pause();
 
     /*计算xhci内存对齐边界*/
-    xhci_controller->align_size = PAGE_4K_SIZE << asm_bsf(xhci_controller->op_reg->pagesize);
+    xhci_controller->align_size = PAGE_4K_SIZE << asm_tzcnt(xhci_controller->op_reg->pagesize);
 
     /*设备上下文字节数*/
     xhci_controller->dev_ctx_size = 32 << ((xhci_controller->cap_reg->hccparams1 & HCCP1_CSZ) >> 2);

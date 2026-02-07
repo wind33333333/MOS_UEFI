@@ -358,6 +358,13 @@ void bot_get_msc_info(usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc) {
 }
 */
 
+uint16 uas_alloc_tag(uas_data_t *uas_data) {
+    uint64 tag_bitmap = ~uas_data->tag_bitmap;
+    uint32 bit = asm_tzcnt(tag_bitmap);
+    asm_bts(&uas_data->tag_bitmap,bit);
+    return ++bit;
+}
+
 /**
  * 同步发送 SCSI 命令并等待结果 (UAS 协议)
  * * @param dev: USB 设备对象
@@ -647,10 +654,16 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
 
         //初始化tag_bitmap
         uas_data->tag_bitmap = 0xFFFFFFFFFFFFFFFFUL;
-        uas_data->tag_bitmap <<= mini_streams;
+        uas_data->tag_bitmap <<= (mini_streams-1);
+        uas_data->tag_bitmap <<= 1;
+
+
+        uint16 tag = uas_alloc_tag(uas_data);
+
+        tag = 0x80;
+        tag = asm_btr(tag,7);
+
         while (1);
-
-
 
         /*
         /////////////////////////////////////
