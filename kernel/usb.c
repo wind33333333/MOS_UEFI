@@ -22,7 +22,7 @@ int usb_get_device_descriptor(usb_dev_t *usb_dev) {
     data_stage_trb(&trb, va_to_pa(dev_desc), 8, trb_in);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Status TRB
-    status_stage_trb(&trb, enable_ioc, trb_out);
+    status_stage_trb(&trb, ENABLE_IOC, trb_out);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
@@ -54,7 +54,7 @@ int usb_get_device_descriptor(usb_dev_t *usb_dev) {
     data_stage_trb(&trb, va_to_pa(dev_desc), sizeof(usb_device_descriptor_t), trb_in);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Status TRB
-    status_stage_trb(&trb, enable_ioc, trb_out);
+    status_stage_trb(&trb, ENABLE_IOC, trb_out);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
@@ -79,7 +79,7 @@ int usb_get_config_descriptor(usb_dev_t *usb_dev) {
     data_stage_trb(&trb, va_to_pa(config_desc), 9, trb_in);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Status TRB
-    status_stage_trb(&trb, enable_ioc, trb_out);
+    status_stage_trb(&trb, ENABLE_IOC, trb_out);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     // 响铃
@@ -99,7 +99,7 @@ int usb_get_config_descriptor(usb_dev_t *usb_dev) {
     data_stage_trb(&trb, va_to_pa(config_desc), config_desc_length, trb_in);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Status TRB
-    status_stage_trb(&trb, enable_ioc, trb_out);
+    status_stage_trb(&trb, ENABLE_IOC, trb_out);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     // 响铃
@@ -125,7 +125,7 @@ int usb_get_string_descriptor(usb_dev_t *usb_dev) {
     data_stage_trb(&trb, va_to_pa(language_desc), 8, trb_in);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Status TRB
-    status_stage_trb(&trb, enable_ioc, trb_out);
+    status_stage_trb(&trb, ENABLE_IOC, trb_out);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     // 响铃
@@ -163,7 +163,7 @@ int usb_get_string_descriptor(usb_dev_t *usb_dev) {
             data_stage_trb(&trb, va_to_pa(string_desc_head), 2, trb_in);
             xhci_ring_enqueue(&usb_dev->ep0, &trb);
             // Status TRB
-            status_stage_trb(&trb, enable_ioc, trb_out);
+            status_stage_trb(&trb, ENABLE_IOC, trb_out);
             xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
             // 响铃
@@ -184,7 +184,7 @@ int usb_get_string_descriptor(usb_dev_t *usb_dev) {
             data_stage_trb(&trb, va_to_pa(string_desc[i]), string_desc_length, trb_in);
             xhci_ring_enqueue(&usb_dev->ep0, &trb);
             // Status TRB
-            status_stage_trb(&trb, enable_ioc, trb_out);
+            status_stage_trb(&trb, ENABLE_IOC, trb_out);
             xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
             // 响铃
@@ -220,7 +220,7 @@ int usb_set_config(usb_dev_t *usb_dev) {
                     usb_dev->config_desc->configuration_value, 0, 0, 8, no_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
-    status_stage_trb(&trb, enable_ioc, trb_in);
+    status_stage_trb(&trb, ENABLE_IOC, trb_in);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
@@ -239,7 +239,7 @@ int usb_set_interface(usb_if_t *usb_if) {
                     usb_if->cur_alt->altsetting, usb_if->if_num, 0, 8, no_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
-    status_stage_trb(&trb, enable_ioc, trb_in);
+    status_stage_trb(&trb, ENABLE_IOC, trb_in);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);

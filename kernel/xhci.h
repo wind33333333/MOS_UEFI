@@ -648,8 +648,8 @@ static inline void evaluate_context_com_trb(trb_t *trb, uint64 input_ctx_ptr, ui
 #define TRB_TYPE_STATUS_STAGE            (4UL << 42)   // 状态阶段
 
 typedef enum {
-    disable_ioc = 0UL << 37,
-    enable_ioc = 1UL << 37,
+    DISABLE_IOC = 0UL << 37,
+    ENABLE_IOC = 1UL << 37
 } config_ioc_e;
 
 typedef enum {
