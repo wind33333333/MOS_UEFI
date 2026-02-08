@@ -21,17 +21,17 @@ void xhci_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ct
 }
 
 //命令环/传输环入队列
-int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb) {
+uint64 xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb) {
     if (ring->index >= TRB_COUNT - 1) {
         link_trb(&ring->ring_base[TRB_COUNT - 1], va_to_pa(ring->ring_base), ring->status_c);
         ring->index = 0;
         ring->status_c ^= TRB_FLAG_CYCLE;
     }
-
+    uint64 phy_ring_base = va_to_pa(&ring->ring_base[ring->index].member0);
     ring->ring_base[ring->index].member0 = trb->member0;
     ring->ring_base[ring->index].member1 = trb->member1 | ring->status_c;
     ring->index++;
-    return 0;
+    return phy_ring_base;
 }
 
 //事件环出队列
@@ -49,6 +49,42 @@ int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb) {
                 va_to_pa(&event_ring->ring_base[event_ring->index]) | XHCI_ERDP_EHB;
     }
     return 0;
+}
+
+/**
+ * 等待特定 TRB 完成
+ * @param xhci: 控制器实例
+ * @param target_trb_phys: 我们刚才提交的那个 TRB 的物理地址 (用于比对)
+ * @param timeout_ms: 超时时间
+ */
+int xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 target_trb_phys, uint64 timeout_ms) {
+    xhci_ring_t *event_ring = &xhci_controller->event_ring;
+    trb_t evt_trb;
+    while (timeout_ms--) {
+        if((event_ring->ring_base[event_ring->index].member1 & TRB_FLAG_CYCLE) == event_ring->status_c) {
+            evt_trb.member0 = event_ring->ring_base[event_ring->index].member0;
+            evt_trb.member1 = event_ring->ring_base[event_ring->index].member1;
+            event_ring->index++;
+            if (event_ring->index >= TRB_COUNT) {
+                event_ring->index = 0;
+                event_ring->status_c ^= TRB_FLAG_CYCLE;
+            }
+            xhci_controller->rt_reg->intr_regs[0].erdp = va_to_pa(&event_ring->ring_base[event_ring->index]) | XHCI_ERDP_EHB;
+        }
+
+        if (evt_trb.member0 == target_trb_phys) {
+            uint32 completion_code = (evt_trb.member1 >> 24) & 0xFF;
+            if (completion_code == 1 || completion_code == 13) {
+                return XHCI_COMP_SUCCESS;
+            }else{
+                return XHCI_COMP_ERROR;
+            }
+
+        }
+        // 如果不是我们要的，就继续循环，等下一个事件
+        // (在操作系统中，应该把这个事件分发给其他等待的驱动，但在裸机下直接丢弃即可)
+    }
+    return XHCI_COMP_TIMEOUT;
 }
 
 //分配插槽

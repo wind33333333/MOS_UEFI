@@ -898,11 +898,17 @@ static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 
 
 uint8 xhci_enable_slot(struct usb_dev_t *usb_dev);
 void xhci_address_device(struct usb_dev_t *usb_dev);
-int xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);
+uint64 xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);
 int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb);
 void xhci_input_context_add(xhci_input_context_t *input_ctx,void *from_ctx, uint32 ctx_size, uint32 ep_num);
 void xhci_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_num);
 uint8 xhci_ecap_find(xhci_controller_t *xhci_controller,void **ecap_arr,uint8 cap_id);
+
+// 定义返回值
+#define XHCI_COMP_SUCCESS   0
+#define XHCI_COMP_TIMEOUT   -1
+#define XHCI_COMP_ERROR     -2
+int xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 target_trb_phys, uint64 timeout_ms);
 
 
 
