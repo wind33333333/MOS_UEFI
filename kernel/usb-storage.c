@@ -590,45 +590,6 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
             if (!status_buf->status) break;
         }
 
-        // INQUIRY 获取u盘基本信息
-        ciu->iu_id = 1;
-        ciu->tag   = bswap16(1);
-        ciu->len   = 0;
-        ciu->cdb[0] = 0x12;     // INQUIRY
-        ciu->cdb[1] = 1;
-        ciu->cdb[2] = 0;
-        ciu->cdb[4] = 36;          // alloc len
-
-        uas_status_iu_t* status_buf = kzalloc(128);
-        normal_transfer_trb(&sta_trb, va_to_pa(status_buf), disable_ch, 36, enable_ioc);
-        xhci_ring_enqueue(&uas_msc->sta_in_ep.stream_rings[1], &sta_trb);
-
-        scsi_inquiry_std_t* inquiry = kzalloc(128);        // 足够放 Data-In IU + 36B payload
-        mem_set(inquiry, 0xFF, 128);
-        normal_transfer_trb(&in_trb, va_to_pa(inquiry), disable_ch, 96, enable_ioc);
-        xhci_ring_enqueue(&uas_msc->bluk_in_ep.stream_rings[1], &in_trb);
-
-        normal_transfer_trb(&cmd_trb, va_to_pa(ciu), disable_ch,sizeof(uas_cmd_iu_t), enable_ioc);
-        xhci_ring_enqueue(&uas_msc->cmd_out_ep.transfer_ring, &cmd_trb);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->cmd_out_ep.ep_num);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &cmd_trb);
-        color_printk(RED,BLACK,"cmd_trb m0:%#lx m1:%#lx   \n",cmd_trb.member0,cmd_trb.member1);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->sta_in_ep.ep_num | 1<<16);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &sta_trb);
-        color_printk(RED,BLACK,"sta_trb m0:%#lx m1:%#lx   \n",sta_trb.member0,sta_trb.member1);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->bluk_in_ep.ep_num | 1<<16);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &in_trb);
-        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);
-
-        color_printk(RED,BLACK,"sense_iu iu_id:%d tag:%d status:%d   \n",status_buf->iu_id,status_buf->tag,status_buf->status);
-        color_printk(RED,BLACK,"inquiy pdt_pq:%#x rmb:%#x ver:%#x resp:%#x add_len:%#x flag1:%#x flag2:%#x flag3:%#x vid:%s pid:%s rev:%s  \n",inquiry->pdt_pq,inquiry->rmb,inquiry->version,inquiry->resp_fmt,inquiry->add_len,inquiry->flags[0],inquiry->flags[1],inquiry->flags[2],inquiry->vendor,inquiry->product,inquiry->revision);
-
         //获取容量10
         uas_cmd_iu_t* ciu = kzalloc(sizeof(uas_cmd_iu_t));
         ciu->iu_id = 1;
