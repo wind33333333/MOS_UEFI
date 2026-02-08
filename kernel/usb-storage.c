@@ -468,6 +468,7 @@ uint32 uas_get_lun_count(uas_data_t *uas_data) {
     // 1. 构造 UAS Command IU
     // ================================
     cmd_iu->iu_id = UAS_CMD_IU_ID; // UAS_CMD_IU_ID = 1
+    //cmd_iu->length = asm_bswap16(sizeof(uas_cmd_iu_t)-6);
     cmd_iu->lun = 0;               // 注意：REPORT LUNS 总是发给 LUN 0 (Well Known LUN)所以 cmd_iu.lun 设为 0 即可
 
     // ==========================================
@@ -477,17 +478,9 @@ uint32 uas_get_lun_count(uas_data_t *uas_data) {
     repotr_luns_cdb->alloc_len = asm_bswap32(BUF_LEN); // 告诉设备我能收多少数据
 
     // ==========================================
-    // 2. 发送 UAS 命令 (伪代码封装)
+    // 2. 发送 UAS 命令
     // ==========================================
-    // 这里需要调用你上一节实现的 3个Pipe 并发操作
-    // uas_transaction(cmd_iu, data_buf, buf_len, DIR_IN, tag);
-    int ret = uas_send_scsi_cmd_sync(uas_data,cmd_iu, report_luns_data, BUF_LEN,UAS_DIR_IN);
-
-    /*if (ret < 0) {
-        printf("UAS REPORT LUNS failed, assuming 1 LUN.\n");
-        kfree(data_buf);
-        return 1; // 失败保底返回 1
-    }*/
+    uas_send_scsi_cmd_sync(uas_data,cmd_iu, report_luns_data, BUF_LEN,UAS_DIR_IN);
 
     // ==========================================
     // 3. 解析结果
@@ -497,23 +490,14 @@ uint32 uas_get_lun_count(uas_data_t *uas_data) {
 
     // 计算 LUN 数量
     // 每个 LUN 占 8 字节
-    uint32 num_luns = list_bytes >> 3;
-
-    // 打印调试信息
-    //printf("UAS Report LUNs: List Length = %d bytes, Count = %d\n", list_bytes, num_luns);
-
-    // 如果你想知道具体的 LUN ID，可以遍历后面的数组
-    // uint64_t *lun_array = (uint64_t *)(data_buf + 8);
-    // for(int i=0; i<num_luns; i++) {
-    //     printf("  Found LUN ID: %016llx\n", be64_to_cpu(lun_array[i]));
-    // }
+    uint32 luns_count = list_bytes >> 3;
 
     kfree(report_luns_data);
 
     // 规范修正：如果列表长度为0，意味着只有 LUN 0 存在
-    if (num_luns == 0) return 1;
+    if (luns_count == 0) return 1;
 
-    return num_luns;
+    return luns_count;
 }
 
 //uas协议获取u盘信息

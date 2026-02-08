@@ -32,30 +32,19 @@ typedef struct {
 
 
 //UAS Command IU (主机 -> 设备)
-/*typedef struct {
-    uint8  iu_id;         // 0x01 (Command IU)
+typedef struct{
+    uint8  iu_id;         // 0x01
+    uint8  rsvd0;
+    uint16 tag;           // 使用 cpu_to_be16() 赋值
+    uint8  prio_attr;     // Bits 2:0 = Attribute (0: Simple, 1: Head of Queue, 2: Ordered)
     uint8  rsvd1;
-    uint16 tag;           // 关键！事务标签 (Big Endian)
-    uint8  prio_attr;     // 优先级 (Bits 7:3) + 属性 (Bits 2:0)
+    uint8  add_cdb_len;   // 只有当 CDB > 16字节时才填 (len-16)/4，否则填 0
     uint8  rsvd2;
-    uint8  len_cdb;       // CDB 的实际长度 (这里是 6)
-    uint8  rsvd3;
-    uint64 lun;           // 8字节 SCSI LUN (Big Endian)
-    uint8  cdb[16];       // 存放 SCSI CDB 内容
-    // 如果 len_cdb > 16，后面还有附加数据，但在 INQUIRY 中不需要
-}uas_cmd_iu_t;*/
-#define UAS_CMD_IU_ID       0x01
-
-typedef struct __attribute__((packed)) {
-    uint8  iu_id;        // 0x01
-    uint8  rsvd0;        // 0
-    uint16 tag;          // COMMAND IDENTIFIER（命令标识/标签），大端
-    uint16 length;       // LENGTH：从本字段后开始的剩余字节数，大端；必须 > 15
-    uint8  task_attr;    // 任务属性/优先级（按规范位域）
-    uint8  rsvd1;        // 0
-    uint64 lun;          // 8字节 LUN，大端
-    uint8  cdb[16];      // 紧随其后的 CDB（变长），长度由 length_be 推导
+    uint64 lun;           // 使用 cpu_to_be64() 赋值
+    uint8  cdb[16];       // 存放标准 SCSI 命令
 } uas_cmd_iu_t;
+
+#define UAS_CMD_IU_ID       0x01
 
 // UAS Sense IU (0x03) - 设备向主机报告状态
 typedef struct {
