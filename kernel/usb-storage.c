@@ -420,28 +420,20 @@ int uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *dat
     }
 
     // [Step C] 提交 Command Pipe 请求 (触发执行)
-    normal_transfer_trb(&cmd_trb, va_to_pa(cmd_iu), disable_ch,sizeof(uas_cmd_iu_t)+(cmd_iu->add_cdb_len<<2), enable_ioc); //如果cdb超过了16字节需要加上扩展字节
+    normal_transfer_trb(&cmd_trb, va_to_pa(cmd_iu), disable_ch,sizeof(uas_cmd_iu_t)+(cmd_iu->add_cdb_len<<2), disable_ioc); //如果cdb超过了16字节需要加上扩展字节
     xhci_ring_enqueue(&usb_dev->eps[cmd_pipe].transfer_ring,&cmd_trb);
 
     // [Step D] 敲门铃 (Doorbell) status
     xhci_ring_doorbell(xhci_controller, slot_id, status_pipe | tag<<16);
-    timing();
-    xhci_ering_dequeue(xhci_controller, &sense_trb);
-    color_printk(RED,BLACK,"sta_trb m0:%#lx m1:%#lx   \n",sense_trb.member0,sense_trb.member1);
 
     //可选[Step E] 敲门铃 (Doorbell) data
     if (is_data_stage) {
         xhci_ring_doorbell(xhci_controller, slot_id, data_pipe | tag<<16);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &data_trb);
-        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",data_trb.member0,data_trb.member1);
     }
 
     //[Step F] 敲门铃 (Doorbell) cmd
     xhci_ring_doorbell(xhci_controller, slot_id, cmd_pipe);
     timing();
-    xhci_ering_dequeue(xhci_controller, &cmd_trb);
-    color_printk(RED,BLACK,"cmd_trb m0:%#lx m1:%#lx   \n",cmd_trb.member0,cmd_trb.member1);
 
     kfree(sense_buf);
     uas_free_tag(uas_data, tag);
@@ -485,7 +477,7 @@ uint32 uas_get_lun_count(uas_data_t *uas_data) {
     // ==========================================
     // 获取列表字节长度 (Big Endian -> Host Endian)
     uint32 list_bytes = asm_bswap32(report_luns_data->lun_list_length);
-
+    color_printk(GREEN,BLACK,"list_bytes:%d     \n",list_bytes);
     // 计算 LUN 数量
     // 每个 LUN 占 8 字节
     uint32 luns_count = list_bytes >> 3;
