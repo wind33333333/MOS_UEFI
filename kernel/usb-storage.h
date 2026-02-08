@@ -52,25 +52,12 @@ typedef struct {
     uint8  rsvd1;
     uint16 tag;          // Big Endian
     uint16 status_qual;  // 状态限定符
-    uint8  status;       // SCSI 状态 (0=GOOD, 2=CHECK_CONDITION)
+    uint8  status;       // SCSI 状态 // 0x00 = GOOD (成功) 0x02 = CHECK_CONDITION (出错，需查看 sense_data) 0x08 = BUSY (忙) 0x18 = RESERVATION_CONFLICT (预留冲突)
     uint8  rsvd2[7];
     uint16 len_sense;    // Sense Data 的长度 (Big Endian)
     uint8  sense_data[18]; // 具体的错误信息 (Sense Data)
 }uas_sense_iu_t;
 #define UAS_SENSE_IU_ID    0x03
-
-/* Status(Sense) IU：见 UAS 规范 Table 13 */
-typedef struct {
-    uint8  iu_id;       /* 0x03 = Sense IU (Status IU) */
-    uint8  rsvd1;
-    uint16 tag;         /* COMMAND IDENTIFIER，大端 */
-    uint16 length;      /* LENGTH，大端；本字段之后的字节数 */
-    uint8  status;      /* SCSI Status，例如 0x00 GOOD，0x02 CHECK CONDITION */
-    uint8  reserved2;
-    /* 简单预留一点空间放 Sense Data；真的要用可以再扩展 */
-    uint8  sense_data[18];
-} uas_status_iu_t;
-
 
 #pragma pack(one)
 

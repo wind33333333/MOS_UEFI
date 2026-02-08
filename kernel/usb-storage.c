@@ -384,13 +384,13 @@ int uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *dat
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     uint8 slot_id = usb_dev->slot_id;
 
-    int ret;
-
     trb_t cmd_trb,sense_trb,data_trb;
 
     uint8 cmd_pipe = uas_data->cmd_pipe;
     uint8 status_pipe = uas_data->status_pipe;
     uint8 data_pipe;
+
+    boolean is_data_stage = data_buf && data_len ? TRUE : FALSE;
 
     // 1. 获取一个空闲的 Tag (事务 ID)
     // 在 UAS 中，Tag 必须在 1 到 65535 之间
@@ -413,12 +413,8 @@ int uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *dat
     xhci_ring_enqueue(&usb_dev->eps[status_pipe].stream_rings[tag], &sense_trb);
 
     // [Step B] 提交 Data Pipe 请求 (如果有数据)
-    if (data_len && data_buf) {
-        if (dir == UAS_DIR_IN) {
-            data_pipe = uas_data->data_in_pipe;
-        } else if (dir == UAS_DIR_OUT) {
-            data_pipe = uas_data->data_out_pipe;
-        }
+    if (is_data_stage) {
+        data_pipe = dir == UAS_DIR_IN ? uas_data->data_in_pipe : uas_data->data_out_pipe;
         normal_transfer_trb(&data_trb, va_to_pa(data_buf), disable_ch, data_len, disable_ioc);
         xhci_ring_enqueue(&usb_dev->eps[data_pipe].stream_rings[tag], &data_trb);
     }
@@ -427,17 +423,21 @@ int uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *dat
     normal_transfer_trb(&cmd_trb, va_to_pa(cmd_iu), disable_ch,sizeof(uas_cmd_iu_t)+(cmd_iu->add_cdb_len<<2), enable_ioc); //如果cdb超过了16字节需要加上扩展字节
     xhci_ring_enqueue(&usb_dev->eps[cmd_pipe].transfer_ring,&cmd_trb);
 
-    // [Step D] 敲门铃 (Doorbell)
+    // [Step D] 敲门铃 (Doorbell) status
     xhci_ring_doorbell(xhci_controller, slot_id, status_pipe | tag<<16);
     timing();
     xhci_ering_dequeue(xhci_controller, &sense_trb);
     color_printk(RED,BLACK,"sta_trb m0:%#lx m1:%#lx   \n",sense_trb.member0,sense_trb.member1);
 
-    xhci_ring_doorbell(xhci_controller, slot_id, data_pipe | tag<<16);
-    timing();
-    xhci_ering_dequeue(xhci_controller, &data_trb);
-    color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",data_trb.member0,data_trb.member1);
+    //可选[Step E] 敲门铃 (Doorbell) data
+    if (is_data_stage) {
+        xhci_ring_doorbell(xhci_controller, slot_id, data_pipe | tag<<16);
+        timing();
+        xhci_ering_dequeue(xhci_controller, &data_trb);
+        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",data_trb.member0,data_trb.member1);
+    }
 
+    //[Step F] 敲门铃 (Doorbell) cmd
     xhci_ring_doorbell(xhci_controller, slot_id, cmd_pipe);
     timing();
     xhci_ering_dequeue(xhci_controller, &cmd_trb);
@@ -445,7 +445,7 @@ int uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *dat
 
     kfree(sense_buf);
     uas_free_tag(uas_data, tag);
-    return ret;
+    return 0;
 }
 
 /**
@@ -466,7 +466,7 @@ uint32 uas_get_lun_count(uas_data_t *uas_data) {
     // 1. 构造 UAS Command IU
     // ================================
     cmd_iu->iu_id = UAS_CMD_IU_ID; // UAS_CMD_IU_ID = 1
-    cmd_iu->add_cdb_len = 1;
+    cmd_iu->add_cdb_len = 0;
     cmd_iu->lun = 0;               // 注意：REPORT LUNS 总是发给 LUN 0 (Well Known LUN)所以 cmd_iu.lun 设为 0 即可
 
     // ==========================================
