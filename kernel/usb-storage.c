@@ -503,6 +503,65 @@ int uas_send_inquiry(uas_data_t *uas_data, uint8 lun_id, scsi_inquiry_data_t *in
     return 0;
 }
 
+/**
+ * 获取 U 盘容量
+ * @param dev: UAS 设备句柄
+ * @param capacity_bytes: 输出参数，返回总字节数
+ * @param block_size: 输出参数，返回扇区大小 (通常 512 或 4096)
+ * @return 0 成功, 非 0 失败
+ */
+int uas_get_capacity(uas_data_t *uas_data, uint8 lun_id) {
+    uas_cmd_iu_t *cmd_iu = kzalloc(sizeof(uas_cmd_iu_t));
+
+    // 1. 准备接收数据的 Buffer (必须是 DMA 安全的)
+    // 返回数据只有 8 字节，但也建议用 kzalloc 分配以保证缓存一致性
+    scsi_read_capacity10_data_t *read_capacity10_buf = kzalloc(sizeof(scsi_read_capacity10_data_t));
+
+    // 2. 准备 CDB (SCSI 命令)
+    scsi_read_capacity10_cdb_t *read_capacity10_cdb = (scsi_read_capacity10_cdb_t *)cmd_iu->cdb;
+
+    read_capacity10_cdb->opcode = SCSI_READ_CAPACITY10;
+    // lba, pmi 均为 0，表示查询整个设备的容量
+
+    // 3. 填充 UAS Command IU
+    cmd_iu->iu_id = UAS_CMD_IU_ID;
+    cmd_iu->prio_attr = 0x00; // Simple
+    cmd_iu->add_cdb_len = 0;  // 10字节命令 < 16字节，填 0
+    cmd_iu->lun = asm_bswap64(lun_id);
+
+    // 4. 发送命令 (同步等待)
+    // 这里的长度必须是 8 (sizeof resp_buf)
+    // 方向是 UAS_DIR_IN (读取数据)
+    uas_send_scsi_cmd_sync(uas_data, cmd_iu, read_capacity10_buf, sizeof(*read_capacity10_buf), UAS_DIR_IN);
+
+    // 5. 解析返回数据 (注意大端序转换)
+    /*uint32_t last_lba = be32_to_cpu(read_capacity10_buf->max_lba_be);
+    uint32_t blk_size = be32_to_cpu(read_capacity10_buf->block_size_be);
+
+    kfree(read_capacity10_buf);
+
+    // 6. 计算容量
+    // 注意 1: Max LBA 是最后一个扇区的下标，所以总扇区数 = Max LBA + 1
+    // 注意 2: 如果 Max LBA == 0xFFFFFFFF，说明容量 > 2TB，需要用 READ CAPACITY (16)
+    if (last_lba == 0xFFFFFFFF) {
+        printf("UAS: Drive is > 2TB, need READ CAPACITY (16)!\n");
+        return -2; // 需要实现 RC16
+    }
+
+    if (block_size_out) {
+        *block_size_out = blk_size;
+    }
+
+    if (capacity_bytes) {
+        // 强制转为 u64 防止溢出
+        *capacity_bytes = (uint64_t)(last_lba + 1) * blk_size;
+    }
+
+    printf("UAS: Capacity: %llu bytes, Block Size: %u\n", *capacity_bytes, blk_size);*/
+    return 0;
+}
+
+
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
     usb_dev_t *usb_dev = usb_if->usb_dev;
@@ -554,6 +613,8 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         scsi_inquiry_data_t *inquiry_data = kzalloc(sizeof(scsi_inquiry_data_t));
         uas_send_inquiry(uas_data,0,inquiry_data);
 
+        uas_get_capacity(uas_data,0);
+
 
         while (1);
 
@@ -595,7 +656,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         ciu->iu_id = 1;
         ciu->tag   = bswap16(1);
         ciu->len   = 0;
-        ciu->cdb[0] = 0x25;   // REPORT LUNS
+        ciu->cdb[0] = 0x25;
 
         trb_t cmd_trb,sta_trb,in_trb;
 

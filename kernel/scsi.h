@@ -46,4 +46,21 @@ typedef struct {
     // 后面跟着一个数组：uint64_t lun_list[];
 }scsi_report_luns_data_header_t;
 
+// 1. 命令包定义 (CDB) - 10 字节
+typedef struct __attribute__((packed)) {
+    uint8  opcode;      // 0x25
+    uint8  rsvd1;       // Reserved / RelAddr
+    uint32 lba;         // Logical Block Address (通常填 0)
+    uint16 rsvd2;       // Reserved
+    uint8  pmi;         // Partial Medium Indicator (通常填 0)
+    uint8  control;     // Control (通常填 0)
+} scsi_read_capacity10_cdb_t;
+#define SCSI_READ_CAPACITY10 0x25
+
+// 2. 返回数据定义 - 8 字节
+typedef struct __attribute__((packed)) {
+    uint32 max_lba_be;     // Max Logical Block Address (Big Endian)
+    uint32 block_size_be;  // Block Length in Bytes (Big Endian)
+} scsi_read_capacity10_data_t;
+
 #pragma pack(one)
