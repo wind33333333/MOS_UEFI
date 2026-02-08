@@ -379,9 +379,7 @@ static inline void uas_free_tag(uas_data_t *uas_data,uint16 nr) {
  * @param dir: 数据方向 (UAS_DIR_IN / UAS_DIR_OUT / UAS_DIR_NONE)
  * * @return: 0 成功, <0 失败 (USB错误或SCSI错误)
  */
-#define  UAS_DIR_IN 1
-#define  UAS_DIR_OUT 2
-int uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *data_buf, uint32 data_len, int dir){
+int uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *data_buf, uint32 data_len, uas_dir_e dir){
     usb_dev_t *usb_dev = uas_data->common.usb_if->usb_dev;
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     uint8 slot_id = usb_dev->slot_id;
@@ -415,7 +413,7 @@ int uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *dat
     xhci_ring_enqueue(&usb_dev->eps[status_pipe].stream_rings[tag], &sense_trb);
 
     // [Step B] 提交 Data Pipe 请求 (如果有数据)
-    if (data_len > 0 && data_buf != NULL) {
+    if (data_len && data_buf) {
         if (dir == UAS_DIR_IN) {
             data_pipe = uas_data->data_in_pipe;
         } else if (dir == UAS_DIR_OUT) {
@@ -426,7 +424,7 @@ int uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *dat
     }
 
     // [Step C] 提交 Command Pipe 请求 (触发执行)
-    normal_transfer_trb(&cmd_trb, va_to_pa(cmd_iu), disable_ch,sizeof(uas_cmd_iu_t), enable_ioc);
+    normal_transfer_trb(&cmd_trb, va_to_pa(cmd_iu), disable_ch,sizeof(uas_cmd_iu_t)+(cmd_iu->add_cdb_len<<2), enable_ioc); //如果cdb超过了16字节需要加上扩展字节
     xhci_ring_enqueue(&usb_dev->eps[cmd_pipe].transfer_ring,&cmd_trb);
 
     // [Step D] 敲门铃 (Doorbell)
@@ -468,7 +466,7 @@ uint32 uas_get_lun_count(uas_data_t *uas_data) {
     // 1. 构造 UAS Command IU
     // ================================
     cmd_iu->iu_id = UAS_CMD_IU_ID; // UAS_CMD_IU_ID = 1
-    //cmd_iu->length = asm_bswap16(sizeof(uas_cmd_iu_t)-6);
+    cmd_iu->add_cdb_len = 1;
     cmd_iu->lun = 0;               // 注意：REPORT LUNS 总是发给 LUN 0 (Well Known LUN)所以 cmd_iu.lun 设为 0 即可
 
     // ==========================================

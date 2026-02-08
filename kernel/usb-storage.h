@@ -30,6 +30,7 @@ typedef struct {
     uint8  reserved[20]; // 保留字段（包括保护信息等）
 } read_capacity_16_t;
 
+//////////////////////* UAS协议 *///////////////////
 
 //UAS Command IU (主机 -> 设备)
 typedef struct{
@@ -43,7 +44,6 @@ typedef struct{
     uint64 lun;           // 使用 cpu_to_be64() 赋值
     uint8  cdb[16];       // 存放标准 SCSI 命令
 } uas_cmd_iu_t;
-
 #define UAS_CMD_IU_ID       0x01
 
 // UAS Sense IU (0x03) - 设备向主机报告状态
@@ -57,12 +57,12 @@ typedef struct {
     uint16 len_sense;    // Sense Data 的长度 (Big Endian)
     uint8  sense_data[18]; // 具体的错误信息 (Sense Data)
 }uas_sense_iu_t;
-#define UAS_SENSE_IU_ID    0x02
+#define UAS_SENSE_IU_ID    0x03
 
 /* Status(Sense) IU：见 UAS 规范 Table 13 */
 typedef struct {
     uint8  iu_id;       /* 0x03 = Sense IU (Status IU) */
-    uint8  reserved1;
+    uint8  rsvd1;
     uint16 tag;         /* COMMAND IDENTIFIER，大端 */
     uint16 length;      /* LENGTH，大端；本字段之后的字节数 */
     uint8  status;      /* SCSI Status，例如 0x00 GOOD，0x02 CHECK CONDITION */
@@ -73,7 +73,6 @@ typedef struct {
 
 
 #pragma pack(one)
-
 
 // 前置声明
 struct scsi_cmnd;
@@ -128,6 +127,11 @@ typedef struct uas_data_t {
 
     uint64           tag_bitmap;      // UAS Tag管理,tag号对应stream
 } uas_data_t;
+
+typedef enum {
+    UAS_DIR_IN=1,
+    UAS_DIR_OUT=2
+}uas_dir_e;
 
 ////////////////////////////////////////////////
 //逻辑单元
