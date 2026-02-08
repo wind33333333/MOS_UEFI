@@ -515,7 +515,7 @@ int uas_get_capacity(uas_data_t *uas_data, uint8 lun_id) {
 
     // 1. 准备接收数据的 Buffer (必须是 DMA 安全的)
     // 返回数据只有 8 字节，但也建议用 kzalloc 分配以保证缓存一致性
-    scsi_read_capacity10_data_t *read_capacity10_buf = kzalloc(sizeof(scsi_read_capacity10_data_t));
+    scsi_read_capacity10_data_t *read_capacity10_buf = kzalloc(64);
 
     // 2. 准备 CDB (SCSI 命令)
     scsi_read_capacity10_cdb_t *read_capacity10_cdb = (scsi_read_capacity10_cdb_t *)cmd_iu->cdb;
