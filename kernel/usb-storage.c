@@ -487,18 +487,18 @@ uint32 uas_get_lun_count(uas_data_t *uas_data) {
 }
 
 //uas协议获取u盘信息
-int uas_send_inquiry(usb_dev_t *dev, uint8 lun_id, void *data_buf, uint32 data_len) {
+int uas_send_inquiry(uas_data_t *uas_data, uint8 lun_id, scsi_inquiry_data_t *inquiry_data_buf) {
     uas_cmd_iu_t *cmd_iu = kzalloc(sizeof(uas_cmd_iu_t));
     scsi_cdb_inquiry_t *inquiry_cdb = (scsi_cdb_inquiry_t*)cmd_iu->cdb;
-    scsi_inquiry_data_t *inquiry_data = kzalloc(sizeof(scsi_inquiry_data_t));
 
     cmd_iu->iu_id = UAS_CMD_IU_ID;
-    //cmd_iu->len_cdb = sizeof(scsi_cdb_inquiry_t);
-    cmd_iu->lun = 0;
+    cmd_iu->add_cdb_len = 0;
+    cmd_iu->lun = asm_bswap64(lun_id);
 
-    inquiry_cdb->opcode = SCSI_REPORT_LUNS;
-    inquiry_cdb->alloc_len = asm_bswap32(BUF_LEN);
+    inquiry_cdb->opcode = SCSI_INQUIRY;
+    inquiry_cdb->alloc_len = sizeof(scsi_inquiry_data_t);
 
+    uas_send_scsi_cmd_sync(uas_data,cmd_iu,inquiry_data_buf,sizeof(scsi_inquiry_data_t),UAS_DIR_IN);
 
     return 0;
 }
@@ -550,6 +550,9 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
 
         //获取lun数量
         uint8 lun_count = uas_get_lun_count(uas_data);
+
+        scsi_inquiry_data_t *inquiry_data = kzalloc(sizeof(scsi_inquiry_data_t));
+        uas_send_inquiry(uas_data,0,inquiry_data);
 
 
         while (1);

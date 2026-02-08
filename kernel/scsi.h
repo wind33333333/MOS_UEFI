@@ -3,13 +3,14 @@
 #pragma pack(push,1)
 
 // 1. SCSI INQUIRY CDB (6字节标准)
-typedef struct {
-    uint8 opcode;       // 0x12
-    uint8 evpd;         // Enable Vital Product Data (通常为0)
-    uint8 page_code;    // (通常为0)
-    uint16 alloc_len;   // Big Endian: 分配长度 (通常 36 字节)
-    uint8 control;      // 0x00
-}scsi_cdb_inquiry_t;
+typedef struct{
+    uint8 opcode;       // [0] 0x12
+    uint8 flags;        // [1] Bit0=EVPD
+    uint8 page_code;    // [2]
+    uint8 reserved;     // [3] 必须为 0
+    uint8 alloc_len;    // [4] 分配长度 (最大 255)
+    uint8 control;      // [5] 通常为 0
+} scsi_cdb_inquiry_t;
 #define SCSI_INQUIRY 0x12
 
 //inquiry返回数据36字节
