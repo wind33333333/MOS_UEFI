@@ -403,7 +403,7 @@ uint8 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *d
     // ========================================================
 
     // [Step A] 提交 Status Pipe 请求 (接收 Sense IU)
-    normal_transfer_trb(&trb, va_to_pa(sense_buf), disable_ch, sizeof(uas_sense_iu_t), DISABLE_IOC);
+    normal_transfer_trb(&trb, va_to_pa(sense_buf), disable_ch, sizeof(uas_sense_iu_t), ENABLE_IOC);
     xhci_ring_enqueue(&usb_dev->eps[status_pipe].stream_rings[tag], &trb);
 
     // [Step B] 提交 Data Pipe 请求 (如果有数据)
@@ -414,7 +414,7 @@ uint8 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *d
     }
 
     // [Step C] 提交 Command Pipe 请求 (触发执行)
-    normal_transfer_trb(&trb, va_to_pa(cmd_iu), disable_ch,sizeof(uas_cmd_iu_t)+(cmd_iu->add_cdb_len<<2), ENABLE_IOC); //如果cdb超过了16字节需要加上扩展字节
+    normal_transfer_trb(&trb, va_to_pa(cmd_iu), disable_ch,sizeof(uas_cmd_iu_t)+(cmd_iu->add_cdb_len<<2), DISABLE_IOC); //如果cdb超过了16字节需要加上扩展字节
     xhci_ring_enqueue(&usb_dev->eps[cmd_pipe].transfer_ring,&trb);
 
     // [Step D] 敲门铃 (Doorbell) status

@@ -575,8 +575,8 @@ typedef struct {
 
 //定时
 static inline void timing(void) {
-    uint64 count = 20000000;
-    while (count--) asm_pause();
+    // uint64 count = 20000000;
+    // while (count--) asm_pause();
 }
 
 //region 命令环trb
