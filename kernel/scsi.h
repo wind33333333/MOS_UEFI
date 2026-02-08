@@ -23,7 +23,7 @@ typedef struct {
     char  vendor_id[8]; // byte 8-15: 厂商 (ASCII)
     char  product_id[16]; // byte 16-31: 产品型号 (ASCII)
     char  revision[4]; // byte 32-35: 固件版本 (ASCII)
-} inquiry_data_t;
+} scsi_inquiry_data_t;
 
 // 1. SCSI REPORT LUNS CDB (12 字节)
 typedef struct {
