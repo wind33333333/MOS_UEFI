@@ -372,19 +372,13 @@ static inline void uas_free_tag(uas_data_t *uas_data,uint16 nr) {
 
 /**
  * 同步发送 SCSI 命令并等待结果 (UAS 协议)
- * * @param dev: USB 设备对象
- * @param cmd_iu: 已经填充好 CDB 的命令 IU (tag 字段会被本函数覆盖)
- * @param data_buf: 数据缓冲区 (必须 DMA 安全)
- * @param data_len: 数据长度
- * @param dir: 数据方向 (UAS_DIR_IN / UAS_DIR_OUT / UAS_DIR_NONE)
- * * @return: 0 成功, <0 失败 (USB错误或SCSI错误)
  */
-int uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *data_buf, uint32 data_len, uas_dir_e dir){
+uint8 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *data_buf, uint32 data_len, uas_dir_e dir){
     usb_dev_t *usb_dev = uas_data->common.usb_if->usb_dev;
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     uint8 slot_id = usb_dev->slot_id;
 
-    trb_t cmd_trb,sense_trb,data_trb;
+    trb_t trb;
 
     uint8 cmd_pipe = uas_data->cmd_pipe;
     uint8 status_pipe = uas_data->status_pipe;
@@ -409,19 +403,19 @@ int uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *dat
     // ========================================================
 
     // [Step A] 提交 Status Pipe 请求 (接收 Sense IU)
-    normal_transfer_trb(&sense_trb, va_to_pa(sense_buf), disable_ch, sizeof(uas_sense_iu_t), disable_ioc);
-    xhci_ring_enqueue(&usb_dev->eps[status_pipe].stream_rings[tag], &sense_trb);
+    normal_transfer_trb(&trb, va_to_pa(sense_buf), disable_ch, sizeof(uas_sense_iu_t), disable_ioc);
+    xhci_ring_enqueue(&usb_dev->eps[status_pipe].stream_rings[tag], &trb);
 
     // [Step B] 提交 Data Pipe 请求 (如果有数据)
     if (is_data_stage) {
         data_pipe = dir == UAS_DIR_IN ? uas_data->data_in_pipe : uas_data->data_out_pipe;
-        normal_transfer_trb(&data_trb, va_to_pa(data_buf), disable_ch, data_len, disable_ioc);
-        xhci_ring_enqueue(&usb_dev->eps[data_pipe].stream_rings[tag], &data_trb);
+        normal_transfer_trb(&trb, va_to_pa(data_buf), disable_ch, data_len, disable_ioc);
+        xhci_ring_enqueue(&usb_dev->eps[data_pipe].stream_rings[tag], &trb);
     }
 
     // [Step C] 提交 Command Pipe 请求 (触发执行)
-    normal_transfer_trb(&cmd_trb, va_to_pa(cmd_iu), disable_ch,sizeof(uas_cmd_iu_t)+(cmd_iu->add_cdb_len<<2), disable_ioc); //如果cdb超过了16字节需要加上扩展字节
-    xhci_ring_enqueue(&usb_dev->eps[cmd_pipe].transfer_ring,&cmd_trb);
+    normal_transfer_trb(&trb, va_to_pa(cmd_iu), disable_ch,sizeof(uas_cmd_iu_t)+(cmd_iu->add_cdb_len<<2), disable_ioc); //如果cdb超过了16字节需要加上扩展字节
+    xhci_ring_enqueue(&usb_dev->eps[cmd_pipe].transfer_ring,&trb);
 
     // [Step D] 敲门铃 (Doorbell) status
     xhci_ring_doorbell(xhci_controller, slot_id, status_pipe | tag<<16);
@@ -435,9 +429,11 @@ int uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *dat
     xhci_ring_doorbell(xhci_controller, slot_id, cmd_pipe);
     timing();
 
+    uint8 status = sense_buf->status;
+
     kfree(sense_buf);
     uas_free_tag(uas_data, tag);
-    return 0;
+    return status;
 }
 
 /**
@@ -558,45 +554,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
 
         while (1);
 
-        //获取最大lun
-        /*uas_cmd_iu_t* ciu = kzalloc(sizeof(uas_cmd_iu_t));
-        ciu->iu_id = 1;
-        ciu->tag   = bswap16(1);
-        ciu->len   = 0;
-        ciu->cdb[0] = 0xA0;   // REPORT LUNS
-        ciu->cdb[1] = 0x00;   // SELECT REPORT = 0 -> all luns
-        *(uint32*)&ciu->cdb[6] = bswap32(512);
-
-        trb_t cmd_trb,sta_trb,in_trb;
-
-        uas_status_iu_t* status_buf = kzalloc(128);
-        normal_transfer_trb(&sta_trb, va_to_pa(status_buf), disable_ch, 128, enable_ioc);
-        xhci_ring_enqueue(&uas_msc->sta_in_ep.stream_rings[1], &sta_trb);
-
-        uint64* in_data = kzalloc(512);        // 足够放 Data-In IU + 36B payload
-        mem_set(in_data, 0xFF, 512);
-        normal_transfer_trb(&in_trb, va_to_pa(in_data), disable_ch, 512, enable_ioc);
-        xhci_ring_enqueue(&uas_msc->bluk_in_ep.stream_rings[1], &in_trb);
-
-        normal_transfer_trb(&cmd_trb, va_to_pa(ciu), disable_ch,sizeof(uas_cmd_iu_t), enable_ioc);
-        xhci_ring_enqueue(&uas_msc->cmd_out_ep.transfer_ring, &cmd_trb);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->cmd_out_ep.ep_num);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &cmd_trb);
-        color_printk(RED,BLACK,"cmd_trb m0:%#lx m1:%#lx   \n",cmd_trb.member0,cmd_trb.member1);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->sta_in_ep.ep_num | 1<<16);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &sta_trb);
-        color_printk(RED,BLACK,"sta_trb m0:%#lx m1:%#lx   \n",sta_trb.member0,sta_trb.member1);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->bluk_in_ep.ep_num | 1<<16);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &in_trb);
-        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);*/
-
-        /*
+/*
         /////////////////////////////////////
         trb_t cmd_trb, sta_trb, in_trb;
         uas_cmd_iu_t *ciu = kzalloc(sizeof(uas_cmd_iu_t));

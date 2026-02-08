@@ -116,6 +116,7 @@ typedef struct uas_data_t {
 } uas_data_t;
 
 typedef enum {
+    UAS_DIR_NONE = 0,
     UAS_DIR_IN=1,
     UAS_DIR_OUT=2
 }uas_dir_e;
