@@ -593,9 +593,7 @@ int uas_get_capacity(uas_data_t *uas_data, uint8 lun_id) {
     read_capacity16_cdb->service_action = SA_READ_CAPACITY_16;
     read_capacity16_cdb->lba = 0;
     read_capacity16_cdb->alloc_len = asm_bswap32(sizeof(scsi_read_capacity16_data_t));
-
     uas_send_scsi_cmd_sync(uas_data, &sense_data,cmd_iu, read_capacity16_buf, sizeof(scsi_read_capacity16_data_t), UAS_DIR_IN);
-
 
     return 0;
 }
