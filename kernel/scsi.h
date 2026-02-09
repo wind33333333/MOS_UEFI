@@ -207,7 +207,7 @@ typedef struct {
 
 } scsi_read_capacity16_cdb_t;
 #define SCSI_READ_CAPACITY16 0x9E
-#define SA_READ_CAPACITY_16         0x10
+#define SA_READ_CAPACITY_16  0x10
 
 typedef struct {
 
