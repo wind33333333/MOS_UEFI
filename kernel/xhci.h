@@ -908,7 +908,7 @@ uint8 xhci_ecap_find(xhci_controller_t *xhci_controller,void **ecap_arr,uint8 ca
 #define XHCI_COMP_SUCCESS   0
 #define XHCI_COMP_TIMEOUT   -1
 #define XHCI_COMP_ERROR     -2
-int xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 target_trb_phys, uint64 timeout_ms);
+int32 xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 target_trb_phys, uint64 timeout_ms);
 
 
 

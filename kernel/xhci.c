@@ -57,7 +57,7 @@ int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb) {
  * @param target_trb_phys: 我们刚才提交的那个 TRB 的物理地址 (用于比对)
  * @param timeout_ms: 超时时间
  */
-int xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 target_trb_phys, uint64 timeout_ms) {
+int32 xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 target_trb_phys, uint64 timeout_ms) {
     xhci_ring_t *event_ring = &xhci_controller->event_ring;
     trb_t evt_trb;
     while (timeout_ms--) {

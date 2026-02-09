@@ -373,7 +373,7 @@ static inline void uas_free_tag(uas_data_t *uas_data,uint16 nr) {
 /**
  * 同步发送 SCSI 命令并等待结果 (UAS 协议)
  */
-uint8 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *data_buf, uint32 data_len, uas_dir_e dir){
+uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, scsi_sense_data_t *scsi_sense_data,uas_cmd_iu_t *cmd_iu, void *data_buf, uint32 data_len, uas_dir_e dir){
     usb_dev_t *usb_dev = uas_data->common.usb_if->usb_dev;
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     uint8 slot_id = usb_dev->slot_id;
@@ -427,9 +427,14 @@ uint8 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *d
 
     //[Step F] 敲门铃 (Doorbell) cmd
     xhci_ring_doorbell(xhci_controller, slot_id, cmd_pipe);
-    xhci_wait_for_completion(xhci_controller,status_trb_ptr,0x20000000);
+    int32 completion_code = xhci_wait_for_completion(xhci_controller,status_trb_ptr,0x20000000);
 
-    uint8 status = sense_buf->status;
+    uint32 status = sense_buf->status;
+    if (completion_code == XHCI_COMP_SUCCESS) {
+        if (status == 2 && scsi_sense_data) {       //如果有错误把错误信息传给调用者处理
+            asm_mem_cpy(sense_buf->sense_data,scsi_sense_data,18);
+        }
+    }
 
     kfree(sense_buf);
     uas_free_tag(uas_data, tag);
