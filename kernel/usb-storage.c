@@ -436,6 +436,37 @@ uint8 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_iu_t *cmd_iu, void *d
     return status;
 }
 
+
+/**
+ * 发送 TEST UNIT READY 命令
+ */
+int uas_test_unit_ready(uas_data_t *uas_data,uint8 lun_id) {
+    // 1. 准备 UAS Command IU
+    uas_cmd_iu_t *cmd_iu = kzalloc(sizeof(uas_cmd_iu_t));
+
+    cmd_iu->iu_id = 0x01;           // Command IU
+    cmd_iu->prio_attr = 0x00;       // Simple Task
+    cmd_iu->add_cdb_len = 0;        // 6字节命令 < 16，填 0
+    cmd_iu->lun = asm_bswap64(lun_id);   // 默认 LUN 0
+
+    // 2. 填充 CDB (SCSI Command Descriptor Block)
+    // TEST UNIT READY 的 CDB 非常简单，全是 0
+    // Byte 0: Opcode = 0x00
+    // Byte 1-4: Reserved = 0
+    // Byte 5: Control = 0
+    cmd_iu->cdb[0] = SCSI_TEST_UNIT_READY;
+    // memset 已经把 cdb[1]...cdb[5] 清零了，所以不用再写
+
+    // 3. 发送命令 (关键点：无数据传输)
+    // data_buf = NULL
+    // data_len = 0
+    // dir = UAS_DIR_NONE (或者 0)
+
+    uas_send_scsi_cmd_sync(uas_data, cmd_iu, NULL, 0, UAS_DIR_NONE);
+
+    return 0;
+}
+
 /**
  * 使用 UAS 协议获取 LUN 数量
  * @param dev: USB 设备指针
