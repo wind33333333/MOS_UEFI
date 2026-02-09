@@ -446,6 +446,7 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, scsi_sense_data_t *scsi_sens
  * 发送 TEST UNIT READY 命令
  */
 int uas_test_unit_ready(uas_data_t *uas_data,uint8 lun_id) {
+    scsi_sense_data_t sense_data;
     // 1. 准备 UAS Command IU
     uas_cmd_iu_t *cmd_iu = kzalloc(sizeof(uas_cmd_iu_t));
 
@@ -467,7 +468,7 @@ int uas_test_unit_ready(uas_data_t *uas_data,uint8 lun_id) {
     // data_len = 0
     // dir = UAS_DIR_NONE (或者 0)
 
-    uas_send_scsi_cmd_sync(uas_data, cmd_iu, NULL, 0, UAS_DIR_NONE);
+    uas_send_scsi_cmd_sync(uas_data, &sense_data,cmd_iu, NULL, 0, UAS_DIR_NONE);
 
     return 0;
 }
@@ -478,6 +479,7 @@ int uas_test_unit_ready(uas_data_t *uas_data,uint8 lun_id) {
  * @return: LUN 的数量 (至少为 1)
 */
 uint32 uas_get_lun_count(uas_data_t *uas_data) {
+    scsi_sense_data_t sense_data;
     uas_cmd_iu_t *cmd_iu = kzalloc(sizeof(uas_cmd_iu_t));
     scsi_cdb_report_luns_t *repotr_luns_cdb = (scsi_cdb_report_luns_t*)cmd_iu->cdb;
 
@@ -502,7 +504,7 @@ uint32 uas_get_lun_count(uas_data_t *uas_data) {
     // ==========================================
     // 2. 发送 UAS 命令
     // ==========================================
-    uas_send_scsi_cmd_sync(uas_data,cmd_iu, report_luns_data, BUF_LEN,UAS_DIR_IN);
+    uas_send_scsi_cmd_sync(uas_data,&sense_data,cmd_iu, report_luns_data, BUF_LEN,UAS_DIR_IN);
 
     // ==========================================
     // 3. 解析结果
@@ -524,6 +526,7 @@ uint32 uas_get_lun_count(uas_data_t *uas_data) {
 
 //uas协议获取u盘信息
 int uas_send_inquiry(uas_data_t *uas_data, uint8 lun_id, scsi_inquiry_data_t *inquiry_data_buf) {
+    scsi_sense_data_t sense_data;
     uas_cmd_iu_t *cmd_iu = kzalloc(sizeof(uas_cmd_iu_t));
     scsi_cdb_inquiry_t *inquiry_cdb = (scsi_cdb_inquiry_t*)cmd_iu->cdb;
 
@@ -534,7 +537,7 @@ int uas_send_inquiry(uas_data_t *uas_data, uint8 lun_id, scsi_inquiry_data_t *in
     inquiry_cdb->opcode = SCSI_INQUIRY;
     inquiry_cdb->alloc_len = sizeof(scsi_inquiry_data_t);
 
-    uas_send_scsi_cmd_sync(uas_data,cmd_iu,inquiry_data_buf,sizeof(scsi_inquiry_data_t),UAS_DIR_IN);
+    uas_send_scsi_cmd_sync(uas_data,&sense_data,cmd_iu,inquiry_data_buf,sizeof(scsi_inquiry_data_t),UAS_DIR_IN);
 
     return 0;
 }
@@ -547,11 +550,14 @@ int uas_send_inquiry(uas_data_t *uas_data, uint8 lun_id, scsi_inquiry_data_t *in
  * @return 0 成功, 非 0 失败
  */
 int uas_get_capacity(uas_data_t *uas_data, uint8 lun_id) {
+    uint64 max_lba;
+    uint32 blk_size;
+    scsi_sense_data_t sense_data;
     uas_cmd_iu_t *cmd_iu = kzalloc(sizeof(uas_cmd_iu_t));
 
     // 1. 准备接收数据的 Buffer (必须是 DMA 安全的)
     // 返回数据只有 8 字节，但也建议用 kzalloc 分配以保证缓存一致性
-    scsi_read_capacity10_data_t *read_capacity10_buf = kzalloc(64);
+    scsi_read_capacity10_data_t *read_capacity10_buf = kzalloc(sizeof(scsi_read_capacity10_data_t));
 
     // 2. 准备 CDB (SCSI 命令)
     scsi_read_capacity10_cdb_t *read_capacity10_cdb = (scsi_read_capacity10_cdb_t *)cmd_iu->cdb;
@@ -568,32 +574,21 @@ int uas_get_capacity(uas_data_t *uas_data, uint8 lun_id) {
     // 4. 发送命令 (同步等待)
     // 这里的长度必须是 8 (sizeof resp_buf)
     // 方向是 UAS_DIR_IN (读取数据)
-    uas_send_scsi_cmd_sync(uas_data, cmd_iu, read_capacity10_buf, sizeof(*read_capacity10_buf), UAS_DIR_IN);
-
-    // 5. 解析返回数据 (注意大端序转换)
-    /*uint32_t last_lba = be32_to_cpu(read_capacity10_buf->max_lba_be);
-    uint32_t blk_size = be32_to_cpu(read_capacity10_buf->block_size_be);
-
-    kfree(read_capacity10_buf);
-
-    // 6. 计算容量
-    // 注意 1: Max LBA 是最后一个扇区的下标，所以总扇区数 = Max LBA + 1
-    // 注意 2: 如果 Max LBA == 0xFFFFFFFF，说明容量 > 2TB，需要用 READ CAPACITY (16)
-    if (last_lba == 0xFFFFFFFF) {
-        printf("UAS: Drive is > 2TB, need READ CAPACITY (16)!\n");
-        return -2; // 需要实现 RC16
+    retransmit:
+    uint32 status = uas_send_scsi_cmd_sync(uas_data, &sense_data,cmd_iu, read_capacity10_buf, sizeof(scsi_read_capacity10_data_t), UAS_DIR_IN);
+    if (status == 2) {
+        if (sense_data.flags_key == 0x6 && sense_data.asc == 0x29 && sense_data.ascq == 0)
+            goto retransmit;
     }
 
-    if (block_size_out) {
-        *block_size_out = blk_size;
-    }
+    max_lba = asm_bswap32(read_capacity10_buf->max_lba);
+    blk_size = asm_bswap32(read_capacity10_buf->block_size);
 
-    if (capacity_bytes) {
-        // 强制转为 u64 防止溢出
-        *capacity_bytes = (uint64_t)(last_lba + 1) * blk_size;
-    }
 
-    printf("UAS: Capacity: %llu bytes, Block Size: %u\n", *capacity_bytes, blk_size);*/
+
+
+
+
     return 0;
 }
 
@@ -686,42 +681,6 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
             color_printk(RED,BLACK, "sta_trb m0:%#lx m1:%#lx   \n", sta_trb.member0, sta_trb.member1);
             if (!status_buf->status) break;
         }
-
-        //获取容量10
-        uas_cmd_iu_t* ciu = kzalloc(sizeof(uas_cmd_iu_t));
-        ciu->iu_id = 1;
-        ciu->tag   = bswap16(1);
-        ciu->len   = 0;
-        ciu->cdb[0] = 0x25;
-
-        trb_t cmd_trb,sta_trb,in_trb;
-
-        uas_status_iu_t* status_buf = kzalloc(128);
-        normal_transfer_trb(&sta_trb, va_to_pa(status_buf), disable_ch, 128, enable_ioc);
-        xhci_ring_enqueue(&uas_msc->sta_in_ep.stream_rings[1], &sta_trb);
-
-        uint64* in_data = kzalloc(64);        // 足够放 Data-In IU + 36B payload
-        mem_set(in_data, 0xFF, 64);
-        normal_transfer_trb(&in_trb, va_to_pa(in_data), disable_ch, 8, enable_ioc);
-        xhci_ring_enqueue(&uas_msc->bluk_in_ep.stream_rings[1], &in_trb);
-
-        normal_transfer_trb(&cmd_trb, va_to_pa(ciu), disable_ch,sizeof(uas_cmd_iu_t), enable_ioc);
-        xhci_ring_enqueue(&uas_msc->cmd_out_ep.transfer_ring, &cmd_trb);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->cmd_out_ep.ep_num);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &cmd_trb);
-        color_printk(RED,BLACK,"cmd_trb m0:%#lx m1:%#lx   \n",cmd_trb.member0,cmd_trb.member1);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->sta_in_ep.ep_num | 1<<16);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &sta_trb);
-        color_printk(RED,BLACK,"sta_trb m0:%#lx m1:%#lx   \n",sta_trb.member0,sta_trb.member1);
-
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, uas_msc->bluk_in_ep.ep_num | 1<<16);
-        timing();
-        xhci_ering_dequeue(xhci_controller, &in_trb);
-        color_printk(RED,BLACK,"in_trb m0:%#lx m1:%#lx   \n",in_trb.member0,in_trb.member1);
 
 
         // 获取容量16

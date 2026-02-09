@@ -49,11 +49,11 @@ typedef struct{
 // UAS Sense IU (0x03) - 设备向主机报告状态
 typedef struct {
     uint8  iu_id;        // 0x03
-    uint8  rsvd1;
+    uint8  rsvd0;
     uint16 tag;          // Big Endian
     uint16 status_qual;  // 状态限定符
     uint8  status;       // SCSI 状态 // 0x00 = GOOD (成功) 0x02 = CHECK_CONDITION (出错，需查看 sense_data) 0x08 = BUSY (忙) 0x18 = RESERVATION_CONFLICT (预留冲突)
-    uint8  rsvd2[7];
+    uint8  rsvd1[7];
     uint16 len_sense;    // Sense Data 的长度 (Big Endian)
     uint8  sense_data[18]; // 具体的错误信息 (Sense Data)
 }uas_sense_iu_t;

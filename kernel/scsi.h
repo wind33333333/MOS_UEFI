@@ -170,8 +170,74 @@ typedef struct __attribute__((packed)) {
 
 // 2. 返回数据定义 - 8 字节
 typedef struct __attribute__((packed)) {
-    uint32 max_lba_be;     // Max Logical Block Address (Big Endian)
-    uint32 block_size_be;  // Block Length in Bytes (Big Endian)
+    uint32 max_lba;     // Max Logical Block Address (Big Endian)
+    uint32 block_size;  // Block Length in Bytes (Big Endian)
 } scsi_read_capacity10_data_t;
+
+typedef struct {
+
+    // [Byte 0] Opcode
+    // 固定值：0x9E (SCSI_SERVICE_ACTION_IN_16)
+    // 注意：0x9E 是一个通用操作码，具体功能由 Service Action 决定
+    uint8  opcode;
+
+    // [Byte 1] Service Action
+    // 低 5 位必须是 0x10 (SCSI_SA_READ_CAPACITY_16)
+    // 高 3 位通常为 Reserved (0)
+    uint8  service_action;
+
+    // [Byte 2-9] Logical Block Address (Big Endian)
+    // 起始 LBA，通常填 0 表示查询整个磁盘
+    // 这是 64 位的，支持 ZB 级容量
+    uint64 lba;
+
+    // [Byte 10-13] Allocation Length (Big Endian)
+    // 分配长度。你希望设备返回多少字节的数据。
+    // 标准 READ CAPACITY (16) 的返回数据是 32 字节。
+    // 所以这里通常填 cpu_to_be32(32)。
+    uint32 alloc_len;
+
+    // [Byte 14] PMI (Partial Medium Indicator)
+    // Bit 0: PMI. 通常填 0。
+    uint8  pmi;
+
+    // [Byte 15] Control
+    // 通常填 0
+    uint8  control;
+
+} scsi_read_capacity16_cdb_t;
+#define SCSI_READ_CAPACITY16 0x9E
+#define SA_READ_CAPACITY_16         0x10
+
+typedef struct {
+
+    // [Byte 0-7] Max Logical Block Address (Big Endian)
+    // 最大 LBA 地址 (64位)。
+    // 真正的容量 = (max_lba + 1) * block_length
+    uint64 max_lba;
+
+    // [Byte 8-11] Block Length (Big Endian)
+    // 扇区大小，通常是 512 或 4096
+    uint32 block_len;
+
+    // [Byte 12] Protection & Flags
+    // Bit 0: PROT_EN (保护使能)
+    // Bit 1-3: P_TYPE (保护类型)
+    uint8  prot_en;
+
+    // [Byte 13] Logical Blocks per Physical Block Exponent
+    // 用于对齐优化 (例如 4K 对齐)
+    uint8  p_type_exponent;
+
+    // [Byte 14-15] Lowest Aligned Logical Block Address
+    // 对齐基准偏移
+    uint16 lowest_aligned_lba;
+
+    // [Byte 16-31] Reserved
+    // 保留字段，通常为 0
+    uint8  reserved[16];
+
+} scsi_read_capacity16_data_t;
+
 
 #pragma pack(one)
