@@ -390,14 +390,20 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, scsi_sense_data_t *scsi_sens
     // 在 UAS 中，Tag 必须在 1 到 65535 之间
     uint16 tag = uas_alloc_tag(uas_data);
 
+    // 逻辑：如果传入 6, 10, 12, 16 字节，统一分配 16 字节空间 (标准 UAS 要求)
+    // 如果传入 > 16 字节，则分配实际长度
+    uint16 effective_cdb_len = (scsi_cdb_len > 16) ? scsi_cdb_len : 16;
+
+    // 总大小 = 头部(16字节) + 有效CDB长度
+    // 注意：sizeof(uas_cmd_iu_t) 因为 cdb[] 是柔性数组，所以等于 16
+    uint32 iu_alloc_size = sizeof(uas_cmd_iu_t) + effective_cdb_len;
+
     // 1. 准备 UAS Command IU
-    uint16 align_cdb_len = scsi_cdb_len > 16 ? scsi_cdb_len : 16;
-    uint16 cmd_iu_len = sizeof(uas_cmd_iu_t) + align_cdb_len;
-    uas_cmd_iu_t *cmd_iu = kzalloc(cmd_iu_len);
+    uas_cmd_iu_t *cmd_iu = kzalloc(iu_alloc_size);
     cmd_iu->tag = asm_bswap16(tag);
     cmd_iu->iu_id = UAS_CMD_IU_ID;  // Command IU
     cmd_iu->prio_attr = 0x00;       // Simple Task
-    cmd_iu->add_cdb_len = (align_cdb_len & ~16) >> 2 ;        // cdb_len <= 16字节填 0， cdb_len > 16字节填 (cdb_len-16)>>2
+    cmd_iu->add_cdb_len = (effective_cdb_len - 16) >> 2;        // cdb_len <= 16字节填 0， cdb_len > 16字节填 (cdb_len-16)>>2
     cmd_iu->lun = asm_bswap64(lun_id);   // 默认 LUN 0
 
     //填充cdb
@@ -425,7 +431,7 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, scsi_sense_data_t *scsi_sens
     }
 
     // [Step C] 提交 Command Pipe 请求 (触发执行)
-    normal_transfer_trb(&trb, va_to_pa(cmd_iu), disable_ch,cmd_iu_len, DISABLE_IOC); //如果cdb超过了16字节需要加上扩展字节
+    normal_transfer_trb(&trb, va_to_pa(cmd_iu), disable_ch,iu_alloc_size, DISABLE_IOC); //如果cdb超过了16字节需要加上扩展字节
     xhci_ring_enqueue(&usb_dev->eps[cmd_pipe].transfer_ring,&trb);
 
     // [Step D] 敲门铃 (Doorbell) status
@@ -448,6 +454,7 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, scsi_sense_data_t *scsi_sens
     }
 
     kfree(sense_buf);
+    kfree(cmd_iu);
     uas_free_tag(uas_data, tag);
     return status;
 }
