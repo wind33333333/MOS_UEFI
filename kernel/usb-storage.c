@@ -373,7 +373,7 @@ static inline void uas_free_tag(uas_data_t *uas_data,uint16 nr) {
 /**
  * 同步发送 SCSI 命令并等待结果 (UAS 协议)
  */
-uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, scsi_sense_data_t *scsi_sense_data,uas_cmd_iu_t *cmd_iu, void *data_buf, uint32 data_len, uas_dir_e dir){
+uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, scsi_sense_data_t *scsi_sense,void *scsi_cdb,uint16 scsi_cdb_len,uint64 lun_id, void *data_buf, uint32 data_len, uas_dir_e dir){
     usb_dev_t *usb_dev = uas_data->common.usb_if->usb_dev;
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     uint8 slot_id = usb_dev->slot_id;
@@ -390,8 +390,19 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, scsi_sense_data_t *scsi_sens
     // 在 UAS 中，Tag 必须在 1 到 65535 之间
     uint16 tag = uas_alloc_tag(uas_data);
 
-    // 2. 填充 Command IU 的 Tag
+    // 1. 准备 UAS Command IU
+    uint16 align_cdb_len = scsi_cdb_len > 16 ? scsi_cdb_len : 16;
+    uint16 cmd_iu_len = sizeof(uas_cmd_iu_t) + align_cdb_len;
+    uas_cmd_iu_t *cmd_iu = kzalloc(cmd_iu_len);
     cmd_iu->tag = asm_bswap16(tag);
+    cmd_iu->iu_id = UAS_CMD_IU_ID;  // Command IU
+    cmd_iu->prio_attr = 0x00;       // Simple Task
+    cmd_iu->add_cdb_len = (align_cdb_len & ~16) >> 2 ;        // cdb_len <= 16字节填 0， cdb_len > 16字节填 (cdb_len-16)>>2
+    cmd_iu->lun = asm_bswap64(lun_id);   // 默认 LUN 0
+
+    //填充cdb
+    asm_mem_cpy(scsi_cdb,cmd_iu->cdb,scsi_cdb_len);
+
 
     // 3. 准备 Sense Buffer (用于接收状态)
     // 必须是 DMA 安全的内存
@@ -414,7 +425,7 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, scsi_sense_data_t *scsi_sens
     }
 
     // [Step C] 提交 Command Pipe 请求 (触发执行)
-    normal_transfer_trb(&trb, va_to_pa(cmd_iu), disable_ch,sizeof(uas_cmd_iu_t)+(cmd_iu->add_cdb_len<<2), DISABLE_IOC); //如果cdb超过了16字节需要加上扩展字节
+    normal_transfer_trb(&trb, va_to_pa(cmd_iu), disable_ch,cmd_iu_len, DISABLE_IOC); //如果cdb超过了16字节需要加上扩展字节
     xhci_ring_enqueue(&usb_dev->eps[cmd_pipe].transfer_ring,&trb);
 
     // [Step D] 敲门铃 (Doorbell) status
@@ -431,8 +442,8 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, scsi_sense_data_t *scsi_sens
 
     uint32 status = sense_buf->status;
     if (completion_code == XHCI_COMP_SUCCESS) {
-        if (status == 2 && scsi_sense_data) {       //如果有错误把错误信息传给调用者处理
-            asm_mem_cpy(sense_buf->sense_data,scsi_sense_data,18);
+        if (status == 2 && scsi_sense) {       //如果有错误把错误信息传给调用者处理
+            asm_mem_cpy(sense_buf->sense_data,scsi_sense,18);
         }
     }
 
@@ -447,9 +458,9 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, scsi_sense_data_t *scsi_sens
  */
 int uas_test_unit_ready(uas_data_t *uas_data,uint8 lun_id) {
     scsi_sense_data_t sense_data;
+    uint8   cdb = SCSI_TEST_UNIT_READY;
     // 1. 准备 UAS Command IU
     uas_cmd_iu_t *cmd_iu = kzalloc(sizeof(uas_cmd_iu_t));
-
     cmd_iu->iu_id = 0x01;           // Command IU
     cmd_iu->prio_attr = 0x00;       // Simple Task
     cmd_iu->add_cdb_len = 0;        // 6字节命令 < 16，填 0

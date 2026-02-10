@@ -42,7 +42,7 @@ typedef struct{
     uint8  add_cdb_len;   // 只有当 CDB > 16字节时才填 (len-16)/4，否则填 0
     uint8  rsvd2;
     uint64 lun;           // 使用 cpu_to_be64() 赋值
-    uint8  cdb[16];       // 存放标准 SCSI 命令
+    uint8  cdb[];         // 存放标准 SCSI 命令
 } uas_cmd_iu_t;
 #define UAS_CMD_IU_ID       0x01
 
