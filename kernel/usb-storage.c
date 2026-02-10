@@ -358,17 +358,7 @@ void bot_get_msc_info(usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc) {
 }
 */
 
-//获取一个tag
-static inline uint16 uas_alloc_tag(uas_data_t *uas_data) {
-    uint16 nr = asm_tzcnt(~uas_data->tag_bitmap);
-    uas_data->tag_bitmap = asm_bts(uas_data->tag_bitmap,nr);
-    return ++nr;
-}
 
-//释放一个tag
-static inline void uas_free_tag(uas_data_t *uas_data,uint16 nr) {
-    uas_data->tag_bitmap = asm_btr(uas_data->tag_bitmap,nr-1);
-}
 
 
 

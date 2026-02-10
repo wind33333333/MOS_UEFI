@@ -1,15 +1,18 @@
-#define "uas.h“
+#include  "uas.h"
+#include  "usb-storage.h"
 
-// 1. 定义事务参数结构体
-typedef struct {
-    uint8             *scsi_cdb;
-    uint8             scsi_cdb_len;
-    uint64            lun;
-    void              *data_buf;
-    uint32            data_len;
-    uas_dir_e         dir;
-    scsi_sense_data_t *scsi_sense; // 输出参数
-} uas_cmd_params_t;
+//获取一个tag
+static inline uint16 uas_alloc_tag(uas_data_t *uas_data) {
+    uint16 nr = asm_tzcnt(~uas_data->tag_bitmap);
+    uas_data->tag_bitmap = asm_bts(uas_data->tag_bitmap,nr);
+    return ++nr;
+}
+
+//释放一个tag
+static inline void uas_free_tag(uas_data_t *uas_data,uint16 nr) {
+    uas_data->tag_bitmap = asm_btr(uas_data->tag_bitmap,nr-1);
+}
+
 /**
  * 同步发送 SCSI 命令并等待结果 (UAS 协议)
  */
@@ -90,3 +93,4 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_params_t *params){
     uas_free_tag(uas_data, tag);
     return status;
 }
+
