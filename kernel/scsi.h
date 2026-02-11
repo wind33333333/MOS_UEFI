@@ -165,14 +165,14 @@ typedef struct __attribute__((packed)) {
     uint16 rsvd2;       // Reserved
     uint8  pmi;         // Partial Medium Indicator (通常填 0)
     uint8  control;     // Control (通常填 0)
-} scsi_read_capacity10_cdb_t;
+} scsi_cdb_read_capacity10_t;
 #define SCSI_READ_CAPACITY10 0x25
 
 // 2. 返回数据定义 - 8 字节
 typedef struct __attribute__((packed)) {
     uint32 max_lba;     // Max Logical Block Address (Big Endian)
     uint32 block_size;  // Block Length in Bytes (Big Endian)
-} scsi_read_capacity10_data_t;
+} scsi_data_read_capacity10_t;
 
 typedef struct {
 
@@ -205,7 +205,7 @@ typedef struct {
     // 通常填 0
     uint8  control;
 
-} scsi_read_capacity16_cdb_t;
+} scsi_cdb_read_capacity16_t;
 #define SCSI_READ_CAPACITY16 0x9E
 #define SA_READ_CAPACITY_16  0x10
 
@@ -237,7 +237,7 @@ typedef struct {
     // 保留字段，通常为 0
     uint8  reserved[16];
 
-} scsi_read_capacity16_data_t;
+} scsi_data_read_capacity16_t;
 
 
 #pragma pack(one)
