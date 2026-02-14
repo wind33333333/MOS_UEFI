@@ -1,6 +1,7 @@
 #pragma once
 #include "moslib.h"
 #include "scsi.h"
+#include "usb-storage.h"
 
 #pragma pack(push,1)
 //UAS Command IU (主机 -> 设备)
@@ -30,7 +31,7 @@ typedef struct {
 }uas_sense_iu_t;
 #define UAS_SENSE_IU_ID    0x03
 
-#pragma pack(one)
+#pragma pack(pop)
 
 typedef enum {
     UAS_DIR_NONE = 0,
@@ -48,3 +49,9 @@ typedef struct {
     uas_dir_e         dir;
     scsi_sense_data_t *scsi_sense_data; // 输出参数
 } uas_cmd_params_t;
+
+
+int32 uas_get_capacity(uas_data_t *uas_data, uint8 lun);
+int uas_send_inquiry(uas_data_t *uas_data, uint8 lun);
+uint32 uas_get_lun_count(uas_data_t *uas_data);
+int32 uas_test_unit_ready(uas_data_t *uas_data,uint8 lun);

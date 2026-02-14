@@ -23,17 +23,8 @@ typedef struct {
     uint8  csw_status; // 命令状态（0=成功，1=失败，2=相位错误）
 } usb_csw_t;
 
-/* READ CAPACITY (16) 返回数据（32 字节） */
-typedef struct {
-    uint64 last_lba; // 最后一个逻辑块地址（块数量 - 1，64 位）
-    uint32 block_size; // 逻辑块大小（字节）
-    uint8  reserved[20]; // 保留字段（包括保护信息等）
-} read_capacity_16_t;
 
-//////////////////////* UAS协议 *///////////////////
-
-
-#pragma pack(one)
+#pragma pack(pop)
 
 // 前置声明
 struct scsi_cmnd;

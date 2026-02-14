@@ -360,7 +360,6 @@ void bot_get_msc_info(usb_dev_t *usb_dev, usb_bot_msc_t *bot_msc) {
 */
 
 
-
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
     usb_dev_t *usb_dev = usb_if->usb_dev;
@@ -409,8 +408,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         //获取lun数量
         uint8 lun_count = uas_get_lun_count(uas_data);
 
-        scsi_inquiry_data_t *inquiry_data = kzalloc(sizeof(scsi_inquiry_data_t));
-        uas_send_inquiry(uas_data,0,inquiry_data);
+        uas_send_inquiry(uas_data,0);
 
         uas_get_capacity(uas_data,0);
 

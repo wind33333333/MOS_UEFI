@@ -1,5 +1,4 @@
 #include  "uas.h"
-#include  "usb-storage.h"
 
 //获取一个tag
 static inline uint16 uas_alloc_tag(uas_data_t *uas_data) {
@@ -97,7 +96,7 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_params_t *params){
 /**
  * 发送 TEST UNIT READY 命令
  */
-int uas_test_unit_ready(uas_data_t *uas_data,uint8 lun) {
+int32 uas_test_unit_ready(uas_data_t *uas_data,uint8 lun) {
     scsi_sense_data_t scsi_sense_data;
     uint8 scsi_cdb_test_unit = SCSI_TEST_UNIT_READY;
 
@@ -121,22 +120,22 @@ int uas_test_unit_ready(uas_data_t *uas_data,uint8 lun) {
  * @param dev: USB 设备指针
  * @return: LUN 的数量 (至少为 1)
 */
+#define LUN_BUF_LEN 512
 uint32 uas_get_lun_count(uas_data_t *uas_data) {
     scsi_sense_data_t scsi_sense_data;
 
-#define BUF_LEN 512
     // ==========================================
     // 2. 构建 SCSI CDB
     // ==========================================
     scsi_cdb_report_luns_t scsi_cdb_repotr_luns={0};
     scsi_cdb_repotr_luns.opcode = SCSI_REPORT_LUNS;        // REPORT LUNS
-    scsi_cdb_repotr_luns.alloc_len = asm_bswap32(BUF_LEN); // 告诉设备我能收多少数据
+    scsi_cdb_repotr_luns.alloc_len = asm_bswap32(LUN_BUF_LEN); // 告诉设备我能收多少数据
 
     // 准备接收缓冲区 (512字节足够容纳几十个 LUN 了)
     // 必须是 DMA 安全的内存
-    scsi_report_luns_data_header_t *report_luns_data = kzalloc(BUF_LEN);
+    scsi_report_luns_data_header_t *report_luns_data = kzalloc(LUN_BUF_LEN);
 
-    uas_cmd_params_t uas_cmd_params={&scsi_cdb_repotr_luns,sizeof(scsi_cdb_report_luns_t),0,report_luns_data,BUF_LEN,UAS_DIR_IN,&scsi_sense_data};
+    uas_cmd_params_t uas_cmd_params={&scsi_cdb_repotr_luns,sizeof(scsi_cdb_report_luns_t),0,report_luns_data,LUN_BUF_LEN,UAS_DIR_IN,&scsi_sense_data};
 
     // ==========================================
     // 2. 发送 UAS 命令
@@ -180,7 +179,7 @@ int uas_send_inquiry(uas_data_t *uas_data, uint8 lun) {
  * @param block_size: 输出参数，返回扇区大小 (通常 512 或 4096)
  * @return 0 成功, 非 0 失败
  */
-int uas_get_capacity(uas_data_t *uas_data, uint8 lun) {
+int32 uas_get_capacity(uas_data_t *uas_data, uint8 lun) {
     uint64 max_lba;
     uint32 blk_size;
     scsi_sense_data_t scsi_sense_data;
