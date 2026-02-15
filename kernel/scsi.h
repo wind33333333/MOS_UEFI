@@ -2,11 +2,6 @@
 #include "moslib.h"
 #pragma pack(push,1)
 
-// SCSI TEST UNIT READY Opcode
-#define SCSI_TEST_UNIT_READY  0x00
-
-
-
 // 常用 Sense Key 定义
 #define SK_NO_SENSE         0x00
 #define SK_RECOVERED_ERROR  0x01
@@ -112,6 +107,14 @@ typedef struct {
     //     Byte 16-17: 进度计数 (0~65535)。
     uint8 sks[3];
 } scsi_sense_t;
+
+// SCSI TEST UNIT CDB （6字节）
+typedef struct {
+    uint8 opcode;
+    uint8 rsvd0[4];
+    uint8 control;
+}scsi_cdb_test_unit_t;
+#define SCSI_TEST_UNIT_READY  0x00
 
 // 1. SCSI INQUIRY CDB (6字节标准)
 typedef struct{

@@ -98,16 +98,17 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_params_t *params){
  */
 int32 uas_test_unit_ready(uas_data_t *uas_data,uint8 lun) {
     scsi_sense_t scsi_sense;
-    uint8 scsi_cdb_test_unit = SCSI_TEST_UNIT_READY;
+    scsi_cdb_test_unit_t scsi_cdb_test_unit;
+
 
     // 1. 填充 CDB (SCSI Command Descriptor Block)
     // TEST UNIT READY 的 CDB 非常简单，全是 0
     // Byte 0: Opcode = 0x00
     // Byte 1-4: Reserved = 0
     // Byte 5: Control = 0
-    scsi_cdb_test_unit = SCSI_TEST_UNIT_READY;
+    scsi_cdb_test_unit.opcode = SCSI_TEST_UNIT_READY;
 
-    uas_cmd_params_t uas_cmd_params={&scsi_cdb_test_unit,sizeof(scsi_cdb_test_unit),lun,NULL,0,UAS_DIR_NONE,&scsi_sense};
+    uas_cmd_params_t uas_cmd_params={&scsi_cdb_test_unit,sizeof(scsi_cdb_test_unit_t),lun,NULL,0,UAS_DIR_NONE,&scsi_sense};
 
     uint32 status = 0;
     do {
