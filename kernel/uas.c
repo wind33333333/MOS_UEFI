@@ -32,13 +32,13 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_params_t *params){
     uint16 effective_cdb_len = (params->scsi_cdb_len > 16) ? params->scsi_cdb_len : 16;
 
     // 总大小 = 头部(16字节) + 有效CDB长度 注意：sizeof(uas_cmd_iu_t) 因为 cdb[] 是柔性数组，所以等于 16
-    uint32 iu_alloc_size = sizeof(uas_cmd_iu_t) + effective_cdb_len;
+    uint32 uas_cmd_iu_alloc_size = sizeof(uas_cmd_iu_t) + effective_cdb_len;
 
     // 获取一个空闲的 Tag (事务 ID)
     uint16 tag = uas_alloc_tag(uas_data);
 
     // 1. 准备 UAS Command IU
-    uas_cmd_iu_t *cmd_iu = kzalloc(iu_alloc_size);
+    uas_cmd_iu_t *cmd_iu = kzalloc(uas_cmd_iu_alloc_size);
     cmd_iu->tag = asm_bswap16(tag);
     cmd_iu->iu_id = UAS_CMD_IU_ID;  // Command IU
     cmd_iu->prio_attr = 0x00;       // Simple Task
@@ -48,13 +48,13 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_params_t *params){
 
 
     // 2. 准备 UAS Sense iu (用于接收状态)
-    uas_sense_iu_t *sense_iu = kzalloc(sizeof(uas_sense_iu_t));
+    uas_sense_iu_t *sense_iu = kzalloc(UAS_SENSE_IU_ALLOC_SIZE);
 
     // 3. 提交 TRB (关键顺序：Status -> Data -> Command) 先准备好“收”，再触发“发”，防止设备回包太快导致溢出
 
 
     // [Step A] 提交 Status Pipe 请求 (接收 Sense IU)
-    normal_transfer_trb(&trb, va_to_pa(sense_iu), disable_ch, sizeof(uas_sense_iu_t), ENABLE_IOC);
+    normal_transfer_trb(&trb, va_to_pa(sense_iu), disable_ch, UAS_SENSE_IU_ALLOC_SIZE, ENABLE_IOC);
     uint64 status_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[status_pipe].stream_rings[tag], &trb);
 
     // [Step B] 提交 Data Pipe 请求 (如果有数据)
@@ -65,7 +65,7 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_params_t *params){
     }
 
     // [Step C] 提交 Command Pipe 请求 (触发执行)
-    normal_transfer_trb(&trb, va_to_pa(cmd_iu), disable_ch,iu_alloc_size, DISABLE_IOC); //如果cdb超过了16字节需要加上扩展字节
+    normal_transfer_trb(&trb, va_to_pa(cmd_iu), disable_ch,uas_cmd_iu_alloc_size, DISABLE_IOC); //如果cdb超过了16字节需要加上扩展字节
     xhci_ring_enqueue(&usb_dev->eps[cmd_pipe].transfer_ring,&trb);
 
     // [Step D] 敲门铃 (Doorbell) status
@@ -83,7 +83,7 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_params_t *params){
     uint32 status = sense_iu->status;
     if (completion_code == XHCI_COMP_SUCCESS) {
         if (status == 2 && params->scsi_sense) {       //如果有错误把错误信息传给调用者处理
-            asm_mem_cpy(sense_iu->scsi_sense,params->scsi_sense,18);
+            asm_mem_cpy(sense_iu->scsi_sense,params->scsi_sense,asm_bswap16(sense_iu->scsi_sense_len));
         }
     }
 
@@ -109,7 +109,10 @@ int32 uas_test_unit_ready(uas_data_t *uas_data,uint8 lun) {
 
     uas_cmd_params_t uas_cmd_params={&scsi_cdb_test_unit,sizeof(scsi_cdb_test_unit),lun,NULL,0,UAS_DIR_NONE,&scsi_sense};
 
-    uas_send_scsi_cmd_sync(uas_data, &uas_cmd_params);
+    uint32 status = 0;
+    do {
+        status = uas_send_scsi_cmd_sync(uas_data, &uas_cmd_params);
+    } while (status == 2 && scsi_sense.flags_key == 0x6 && scsi_sense.asc == 0x29 && scsi_sense.ascq == 0);
 
     return 0;
 }
@@ -194,12 +197,7 @@ int32 uas_get_capacity(uas_data_t *uas_data, uint8 lun) {
 
     uas_cmd_params_t uas_cmd_params = {&scsi_cdb_read_capacity10,sizeof(scsi_cdb_read_capacity10),lun,scsi_read_capacity10,sizeof(scsi_read_capacity10_t),UAS_DIR_IN,&scsi_sense};
 
-    retransmit:
-    uint32 status = uas_send_scsi_cmd_sync(uas_data, &uas_cmd_params);
-    if (status == 2) {
-        if (scsi_sense.flags_key == 0x6 && scsi_sense.asc == 0x29 && scsi_sense.ascq == 0)
-            goto retransmit;
-    }
+    uas_send_scsi_cmd_sync(uas_data, &uas_cmd_params);
 
     max_lba = asm_bswap32(scsi_read_capacity10->max_lba);
     blk_size = asm_bswap32(scsi_read_capacity10->block_size);

@@ -405,6 +405,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         uas_data->tag_bitmap <<= (mini_streams-1);
         uas_data->tag_bitmap <<= 1;
 
+        uas_test_unit_ready(uas_data,0);
         //获取lun数量
         uint8 lun_count = uas_get_lun_count(uas_data);
 

@@ -26,10 +26,11 @@ typedef struct {
     uint16 status_qual;  // 状态限定符
     uint8  status;       // SCSI 状态 // 0x00 = GOOD (成功) 0x02 = CHECK_CONDITION (出错，需查看 sense_data) 0x08 = BUSY (忙) 0x18 = RESERVATION_CONFLICT (预留冲突)
     uint8  rsvd1[7];
-    uint16 len_sense;    // Sense Data 的长度 (Big Endian)
-    uint8  scsi_sense[18]; // 具体的错误信息 (Sense Data)
+    uint16 scsi_sense_len; // SCSI Sense Data 的长度 (Big Endian)
+    uint8  scsi_sense[];   // 具体的错误信息 (Sense Data)
 }uas_sense_iu_t;
 #define UAS_SENSE_IU_ID    0x03
+#define UAS_SENSE_IU_ALLOC_SIZE  256 // 定义足够大的缓冲区大小 (256字节) 包含 UAS Header (16) + Max SCSI Sense (240+)
 
 #pragma pack(pop)
 
