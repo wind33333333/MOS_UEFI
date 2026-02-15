@@ -785,10 +785,11 @@ typedef enum {
 } setup_stage_receiver_e;
 
 #define TRB_FLAG_IDT    (1UL<<38)
+#define TRB_TRAN_LEN 8
 
-static inline void setup_stage_trb(trb_t *trb, setup_stage_receiver_e receiver,setup_stage_type_e type, setup_stage_dir_e dir,setup_stage_req_e req, uint64 value, uint64 index, uint64 length,uint64 trb_tran_length, trb_trt_e trt) {
+static inline void setup_stage_trb(trb_t *trb, setup_stage_receiver_e receiver,setup_stage_type_e type, setup_stage_dir_e dir,setup_stage_req_e req, uint64 value, uint64 index, uint64 length, trb_trt_e trt) {
     trb->member0 = receiver | type | dir | req | (value<<16) | (index<<32) | (length<<48);
-    trb->member1 = (trb_tran_length << 0) | TRB_FLAG_IDT | TRB_TYPE_SETUP_STAGE | trt;
+    trb->member1 = (TRB_TRAN_LEN << 0) | TRB_FLAG_IDT | TRB_TYPE_SETUP_STAGE | trt;
 }
 
 /*

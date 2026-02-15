@@ -15,8 +15,7 @@ int usb_get_device_descriptor(usb_dev_t *usb_dev) {
     //第一次先获取设备描述符前8字节，拿到max_pack_size后更新端点1，再重新获取描述符。
     trb_t trb;
     // Setup TRB
-    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x100, 0, 8, 8,
-                    in_data_stage);
+    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x100, 0, 8, in_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Data TRB
     data_stage_trb(&trb, va_to_pa(dev_desc), 8, trb_in);
@@ -47,8 +46,7 @@ int usb_get_device_descriptor(usb_dev_t *usb_dev) {
 
     //第二次获取整个设备描述符
     setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x100, 0,
-                    sizeof(usb_device_descriptor_t), 8,
-                    in_data_stage);
+                    sizeof(usb_device_descriptor_t),in_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Data TRB
     data_stage_trb(&trb, va_to_pa(dev_desc), sizeof(usb_device_descriptor_t), trb_in);
@@ -72,8 +70,7 @@ int usb_get_config_descriptor(usb_dev_t *usb_dev) {
 
     //第一次先获取配置描述符前9字节
     trb_t trb;
-    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x200, 0, 9, 8,
-                    in_data_stage);
+    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x200, 0, 9, in_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Data TRB
     data_stage_trb(&trb, va_to_pa(config_desc), 9, trb_in);
@@ -93,7 +90,7 @@ int usb_get_config_descriptor(usb_dev_t *usb_dev) {
     config_desc = kzalloc(align_up(config_desc_length, 64));
 
     setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x200, 0,
-                    config_desc_length, 8, in_data_stage);
+                    config_desc_length, in_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Data TRB
     data_stage_trb(&trb, va_to_pa(config_desc), config_desc_length, trb_in);
@@ -118,8 +115,7 @@ int usb_get_string_descriptor(usb_dev_t *usb_dev) {
 
     usb_string_descriptor_t *language_desc = kzalloc(8);
     //获取语言ID描述符
-    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x300, 0, 8, 8,
-                    in_data_stage);
+    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x300, 0, 8, in_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
     // Data TRB
     data_stage_trb(&trb, va_to_pa(language_desc), 8, trb_in);
@@ -156,8 +152,7 @@ int usb_get_string_descriptor(usb_dev_t *usb_dev) {
         if (string_index[i]) {
             //第一次先获取长度
             setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor,
-                            0x300 | string_index[i], language_id, 2, 8,
-                            in_data_stage);
+                            0x300 | string_index[i], language_id, 2, in_data_stage);
             xhci_ring_enqueue(&usb_dev->ep0, &trb);
             // Data TRB
             data_stage_trb(&trb, va_to_pa(string_desc_head), 2, trb_in);
@@ -177,8 +172,7 @@ int usb_get_string_descriptor(usb_dev_t *usb_dev) {
 
             //第二次先正式获取字符串描述符N
             setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor,
-                            0x300 | string_index[i], language_id, string_desc_length, 8,
-                            in_data_stage);
+                            0x300 | string_index[i], language_id, string_desc_length, in_data_stage);
             xhci_ring_enqueue(&usb_dev->ep0, &trb);
             // Data TRB
             data_stage_trb(&trb, va_to_pa(string_desc[i]), string_desc_length, trb_in);
@@ -217,7 +211,7 @@ int usb_set_config(usb_dev_t *usb_dev) {
     trb_t trb;
 
     setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_out, usb_req_set_config,
-                    usb_dev->config_desc->configuration_value, 0, 0, 8, no_data_stage);
+                    usb_dev->config_desc->configuration_value, 0, 0, no_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     status_stage_trb(&trb, ENABLE_IOC, trb_in);
@@ -236,7 +230,7 @@ int usb_set_interface(usb_if_t *usb_if) {
     trb_t trb;
 
     setup_stage_trb(&trb, setup_stage_interface, setup_stage_norm, setup_stage_out, usb_req_set_interface,
-                    usb_if->cur_alt->altsetting, usb_if->if_num, 0, 8, no_data_stage);
+                    usb_if->cur_alt->altsetting, usb_if->if_num, 0, no_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     status_stage_trb(&trb, ENABLE_IOC, trb_in);

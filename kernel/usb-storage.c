@@ -51,8 +51,7 @@ static inline uint8 bot_msc_read_max_lun(xhci_controller_t *xhci_controller, usb
                                          usb_bot_msc_t *bot_msc) {
     trb_t trb;
     setup_stage_trb(&trb, setup_stage_interface, setup_stage_calss, setup_stage_in, usb_req_get_max_lun, 0, 0,
-                    bot_msc->interface_num, 8,
-                    in_data_stage);
+                    bot_msc->interface_num,in_data_stage);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     uint8 *max_lun = kzalloc(64);
