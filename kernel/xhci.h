@@ -854,7 +854,7 @@ static inline void status_stage_trb(trb_t *trb, config_ioc_e ioc, trb_dir_e dir)
  *                 位41    bei     1=块事件中端，ioc=1 则传输事件在下一个中断阀值时，ioc产生的中断不应向主机发送中断。
  *                 位42-47 TRB Type 类型
  */
-static inline void normal_transfer_trb(trb_t *trb, uint64 data_buff_ptr, config_ch_e ent_ch, uint64 trb_tran_length,
+static inline void normal_transfer_trb(trb_t *trb, uint64 data_buff_ptr, config_ch_e ent_ch, uint32 trb_tran_length,
                                        config_ioc_e ioc) {
     trb->member0 = data_buff_ptr;
     trb->member1 = ent_ch | (trb_tran_length << 0) | ioc | TRB_TYPE_NORMAL;
