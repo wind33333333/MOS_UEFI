@@ -111,7 +111,7 @@ typedef struct {
     //     表示进度条。
     //     Byte 16-17: 进度计数 (0~65535)。
     uint8 sks[3];
-} scsi_sense_data_t;
+} scsi_sense_t;
 
 // 1. SCSI INQUIRY CDB (6字节标准)
 typedef struct{
@@ -135,7 +135,7 @@ typedef struct {
     char  vendor_id[8]; // byte 8-15: 厂商 (ASCII)
     char  product_id[16]; // byte 16-31: 产品型号 (ASCII)
     char  revision[4]; // byte 32-35: 固件版本 (ASCII)
-} scsi_inquiry_data_t;
+} scsi_inquiry_t;
 
 // 1. SCSI REPORT LUNS CDB (12 字节)
 typedef struct {
@@ -154,8 +154,8 @@ typedef struct {
 typedef struct {
     uint32 lun_list_length; // Big Endian: LUN 列表的字节总长 (不包含这4个字节)
     uint32 rsvd;
-    // 后面跟着一个数组：uint64_t lun_list[];
-}scsi_report_luns_data_header_t;
+    uint64 lun_list[];  //一个数组：uint64_t lun_list[];
+}scsi_report_luns_t;
 
 // 1. 命令包定义 (CDB) - 10 字节
 typedef struct __attribute__((packed)) {
@@ -172,7 +172,7 @@ typedef struct __attribute__((packed)) {
 typedef struct __attribute__((packed)) {
     uint32 max_lba;     // Max Logical Block Address (Big Endian)
     uint32 block_size;  // Block Length in Bytes (Big Endian)
-} scsi_data_read_capacity10_t;
+} scsi_read_capacity10_t;
 
 typedef struct {
 
@@ -237,7 +237,7 @@ typedef struct {
     // 保留字段，通常为 0
     uint8  reserved[16];
 
-} scsi_data_read_capacity16_t;
+} scsi_read_capacity16_t;
 
 
 #pragma pack(pop)

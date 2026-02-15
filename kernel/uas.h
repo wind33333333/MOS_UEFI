@@ -14,7 +14,7 @@ typedef struct{
     uint8  add_cdb_len;   // 只有当 CDB > 16字节时才填 (len-16)/4，否则填 0
     uint8  rsvd2;
     uint64 lun;           // 使用 cpu_to_be64() 赋值
-    uint8  scsi_cdb[];         // 存放标准 SCSI 命令
+    uint8  scsi_cdb[];    // 存放标准 SCSI 命令
 } uas_cmd_iu_t;
 #define UAS_CMD_IU_ID       0x01
 
@@ -27,7 +27,7 @@ typedef struct {
     uint8  status;       // SCSI 状态 // 0x00 = GOOD (成功) 0x02 = CHECK_CONDITION (出错，需查看 sense_data) 0x08 = BUSY (忙) 0x18 = RESERVATION_CONFLICT (预留冲突)
     uint8  rsvd1[7];
     uint16 len_sense;    // Sense Data 的长度 (Big Endian)
-    uint8  scsi_sense_data[18]; // 具体的错误信息 (Sense Data)
+    uint8  scsi_sense[18]; // 具体的错误信息 (Sense Data)
 }uas_sense_iu_t;
 #define UAS_SENSE_IU_ID    0x03
 
@@ -47,7 +47,7 @@ typedef struct {
     void              *data_buf;
     uint32            data_len;
     uas_dir_e         dir;
-    scsi_sense_data_t *scsi_sense_data; // 输出参数
+    scsi_sense_t      *scsi_sense; // 输出参数
 } uas_cmd_params_t;
 
 

@@ -82,8 +82,8 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_params_t *params){
 
     uint32 status = sense_iu->status;
     if (completion_code == XHCI_COMP_SUCCESS) {
-        if (status == 2 && params->scsi_sense_data) {       //如果有错误把错误信息传给调用者处理
-            asm_mem_cpy(sense_iu->scsi_sense_data,params->scsi_sense_data,18);
+        if (status == 2 && params->scsi_sense) {       //如果有错误把错误信息传给调用者处理
+            asm_mem_cpy(sense_iu->scsi_sense,params->scsi_sense,18);
         }
     }
 
@@ -97,7 +97,7 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_params_t *params){
  * 发送 TEST UNIT READY 命令
  */
 int32 uas_test_unit_ready(uas_data_t *uas_data,uint8 lun) {
-    scsi_sense_data_t scsi_sense_data;
+    scsi_sense_t scsi_sense;
     uint8 scsi_cdb_test_unit = SCSI_TEST_UNIT_READY;
 
     // 1. 填充 CDB (SCSI Command Descriptor Block)
@@ -107,7 +107,7 @@ int32 uas_test_unit_ready(uas_data_t *uas_data,uint8 lun) {
     // Byte 5: Control = 0
     scsi_cdb_test_unit = SCSI_TEST_UNIT_READY;
 
-    uas_cmd_params_t uas_cmd_params={&scsi_cdb_test_unit,sizeof(scsi_cdb_test_unit),lun,NULL,0,UAS_DIR_NONE,&scsi_sense_data};
+    uas_cmd_params_t uas_cmd_params={&scsi_cdb_test_unit,sizeof(scsi_cdb_test_unit),lun,NULL,0,UAS_DIR_NONE,&scsi_sense};
 
     uas_send_scsi_cmd_sync(uas_data, &uas_cmd_params);
 
@@ -122,7 +122,7 @@ int32 uas_test_unit_ready(uas_data_t *uas_data,uint8 lun) {
 */
 #define LUN_BUF_LEN 512
 uint32 uas_get_lun_count(uas_data_t *uas_data) {
-    scsi_sense_data_t scsi_sense_data;
+    scsi_sense_t scsi_sense;
 
     // ==========================================
     // 2. 构建 SCSI CDB
@@ -133,9 +133,9 @@ uint32 uas_get_lun_count(uas_data_t *uas_data) {
 
     // 准备接收缓冲区 (512字节足够容纳几十个 LUN 了)
     // 必须是 DMA 安全的内存
-    scsi_report_luns_data_header_t *report_luns_data = kzalloc(LUN_BUF_LEN);
+    scsi_report_luns_t *scsi_report_luns = kzalloc(LUN_BUF_LEN);
 
-    uas_cmd_params_t uas_cmd_params={&scsi_cdb_repotr_luns,sizeof(scsi_cdb_report_luns_t),0,report_luns_data,LUN_BUF_LEN,UAS_DIR_IN,&scsi_sense_data};
+    uas_cmd_params_t uas_cmd_params={&scsi_cdb_repotr_luns,sizeof(scsi_cdb_report_luns_t),0,scsi_report_luns,LUN_BUF_LEN,UAS_DIR_IN,&scsi_sense};
 
     // ==========================================
     // 2. 发送 UAS 命令
@@ -146,12 +146,12 @@ uint32 uas_get_lun_count(uas_data_t *uas_data) {
     // 3. 解析结果
     // ==========================================
     // 获取列表字节长度 (Big Endian -> Host Endian)
-    uint32 list_bytes = asm_bswap32(report_luns_data->lun_list_length);
+    uint32 list_bytes = asm_bswap32(scsi_report_luns->lun_list_length);
     // 计算 LUN 数量
     // 每个 LUN 占 8 字节
     uint32 luns_count = list_bytes >> 3;
 
-    kfree(report_luns_data);
+    kfree(scsi_report_luns);
 
     // 规范修正：如果列表长度为0，意味着只有 LUN 0 存在
     if (luns_count == 0) return 1;
@@ -161,14 +161,14 @@ uint32 uas_get_lun_count(uas_data_t *uas_data) {
 
 //uas协议获取u盘信息
 int uas_send_inquiry(uas_data_t *uas_data, uint8 lun) {
-    scsi_sense_data_t scsi_sense_data;
+    scsi_sense_t scsi_sense;
     scsi_cdb_inquiry_t scsi_cdb_inquiry = {0};
     scsi_cdb_inquiry.opcode = SCSI_INQUIRY;
-    scsi_cdb_inquiry.alloc_len = sizeof(scsi_inquiry_data_t);
-    scsi_inquiry_data_t *scsi_inquiry_data = kzalloc(sizeof(scsi_inquiry_data_t));
-    uas_cmd_params_t uas_cmd_params = {&scsi_cdb_inquiry,sizeof(scsi_cdb_inquiry),lun,scsi_inquiry_data,sizeof(scsi_inquiry_data_t),UAS_DIR_IN,&scsi_sense_data};
+    scsi_cdb_inquiry.alloc_len = sizeof(scsi_inquiry_t);
+    scsi_inquiry_t *scsi_inquiry = kzalloc(sizeof(scsi_inquiry_t));
+    uas_cmd_params_t uas_cmd_params = {&scsi_cdb_inquiry,sizeof(scsi_cdb_inquiry),lun,scsi_inquiry,sizeof(scsi_inquiry_t),UAS_DIR_IN,&scsi_sense};
     uas_send_scsi_cmd_sync(uas_data,&uas_cmd_params);
-
+    kfree(scsi_inquiry);
     return 0;
 }
 
@@ -182,47 +182,49 @@ int uas_send_inquiry(uas_data_t *uas_data, uint8 lun) {
 int32 uas_get_capacity(uas_data_t *uas_data, uint8 lun) {
     uint64 max_lba;
     uint32 blk_size;
-    scsi_sense_data_t scsi_sense_data;
+    scsi_sense_t scsi_sense;
 
     // 1. 准备接收数据的 Buffer (必须是 DMA 安全的)
     // 返回数据只有 8 字节，但也建议用 kzalloc 分配以保证缓存一致性
-    scsi_data_read_capacity10_t *scsi_read_capacity10_data = kzalloc(sizeof(scsi_data_read_capacity10_t));
+    scsi_read_capacity10_t *scsi_read_capacity10 = kzalloc(sizeof(scsi_read_capacity10_t));
 
     // 2. 准备 CDB (SCSI 命令)
     scsi_cdb_read_capacity10_t scsi_cdb_read_capacity10 = {0};
     scsi_cdb_read_capacity10.opcode = SCSI_READ_CAPACITY10;
 
-    uas_cmd_params_t uas_cmd_params = {&scsi_cdb_read_capacity10,sizeof(scsi_cdb_read_capacity10),lun,scsi_read_capacity10_data,sizeof(scsi_data_read_capacity10_t),UAS_DIR_IN,&scsi_sense_data};
+    uas_cmd_params_t uas_cmd_params = {&scsi_cdb_read_capacity10,sizeof(scsi_cdb_read_capacity10),lun,scsi_read_capacity10,sizeof(scsi_read_capacity10_t),UAS_DIR_IN,&scsi_sense};
 
     retransmit:
     uint32 status = uas_send_scsi_cmd_sync(uas_data, &uas_cmd_params);
     if (status == 2) {
-        if (scsi_sense_data.flags_key == 0x6 && scsi_sense_data.asc == 0x29 && scsi_sense_data.ascq == 0)
+        if (scsi_sense.flags_key == 0x6 && scsi_sense.asc == 0x29 && scsi_sense.ascq == 0)
             goto retransmit;
     }
 
-    max_lba = asm_bswap32(scsi_read_capacity10_data->max_lba);
-    blk_size = asm_bswap32(scsi_read_capacity10_data->block_size);
+    max_lba = asm_bswap32(scsi_read_capacity10->max_lba);
+    blk_size = asm_bswap32(scsi_read_capacity10->block_size);
 
+    kfree(scsi_read_capacity10);
     if (max_lba < 0xFFFFFFFF) return (max_lba);
 
-    scsi_data_read_capacity16_t *scsi_data_read_capacity16 = kzalloc(sizeof(scsi_data_read_capacity16_t));
+    scsi_read_capacity16_t *scsi_read_capacity16 = kzalloc(sizeof(scsi_read_capacity16_t));
     scsi_cdb_read_capacity16_t scsi_cdb_read_capacity16 = {0};
 
     scsi_cdb_read_capacity16.opcode = SCSI_READ_CAPACITY16;
     scsi_cdb_read_capacity16.service_action = SA_READ_CAPACITY_16;
     scsi_cdb_read_capacity16.lba = 0;
-    scsi_cdb_read_capacity16.alloc_len = asm_bswap32(sizeof(scsi_data_read_capacity16_t));
+    scsi_cdb_read_capacity16.alloc_len = asm_bswap32(sizeof(scsi_read_capacity16_t));
 
-    uas_cmd_params.scsi_cdb = &scsi_cdb_read_capacity10;
-    uas_cmd_params.scsi_cdb_len = sizeof(scsi_cdb_read_capacity10);
+    uas_cmd_params.scsi_cdb = &scsi_cdb_read_capacity16;
+    uas_cmd_params.scsi_cdb_len = sizeof(scsi_cdb_read_capacity16);
     uas_cmd_params.lun = lun;
-    uas_cmd_params.data_buf = scsi_read_capacity10_data;
-    uas_cmd_params.data_len = sizeof(scsi_data_read_capacity10_t);
+    uas_cmd_params.data_buf = scsi_read_capacity16;
+    uas_cmd_params.data_len = sizeof(scsi_read_capacity16_t);
     uas_cmd_params.dir = UAS_DIR_IN;
-    uas_cmd_params.scsi_sense_data = &scsi_sense_data;
+    uas_cmd_params.scsi_sense = &scsi_sense;
 
     uas_send_scsi_cmd_sync(uas_data, &uas_cmd_params);
 
+    kfree(scsi_read_capacity16);
     return 0;
 }
