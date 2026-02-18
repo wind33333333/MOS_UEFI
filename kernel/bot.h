@@ -34,3 +34,6 @@ typedef struct {
 #define BOT_SENSE_ALLOC_SIZE 128
 
 #pragma pack(pop)
+
+
+int bot_send_inquiry(bot_data_t *bot_data, uint8 lun);

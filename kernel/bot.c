@@ -140,3 +140,15 @@ int32 bot_send_scsi_cmd_sync(bot_data_t *bot_data, uas_cmd_params_t *params) {
     return final_status;
 }
 
+//bot协议获取u盘信息
+int bot_send_inquiry(bot_data_t *bot_data, uint8 lun) {
+    scsi_sense_t scsi_sense;
+    scsi_cdb_inquiry_t scsi_cdb_inquiry = {0};
+    scsi_cdb_inquiry.opcode = SCSI_INQUIRY;
+    scsi_cdb_inquiry.alloc_len = sizeof(scsi_inquiry_t);
+    scsi_inquiry_t *scsi_inquiry = kzalloc(sizeof(scsi_inquiry_t));
+    uas_cmd_params_t uas_cmd_params = {&scsi_cdb_inquiry,sizeof(scsi_cdb_inquiry),lun,scsi_inquiry,sizeof(scsi_inquiry_t),UAS_DIR_IN,&scsi_sense};
+    bot_send_scsi_cmd_sync(bot_data,&uas_cmd_params);
+    kfree(scsi_inquiry);
+    return 0;
+}

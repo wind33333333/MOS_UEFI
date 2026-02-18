@@ -2,8 +2,8 @@
 #include "xhci.h"
 #include "usb.h"
 #include "printk.h"
-#include "scsi.h"
 #include "uas.h"
+#include "bot.h"
 
 //测试逻辑单元是否有效
 /*
@@ -413,8 +413,6 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         uas_get_capacity(uas_data,0);
 
 
-        while (1);
-
 /*
         //读u盘 10
         ciu->iu_id = 1;
@@ -535,6 +533,8 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
                 bot_data->pipe_out = ep_num;
             }
         }
+
+        bot_send_inquiry(bot_data,0);
 
 
         /*
