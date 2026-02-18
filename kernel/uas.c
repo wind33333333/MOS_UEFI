@@ -26,8 +26,6 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_params_t *params){
     uint8 status_pipe = uas_data->status_pipe;
     uint8 data_pipe;
 
-    boolean is_data_stage = params->data_buf && params->data_len ? TRUE : FALSE;
-
     // 逻辑：如果传入 6, 10, 12, 16 字节，统一分配 16 字节空间 (标准 UAS 要求) 如果传入 > 16 字节，则分配实际长度
     uint16 effective_cdb_len = (params->scsi_cdb_len > 16) ? params->scsi_cdb_len : 16;
 
@@ -51,14 +49,12 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_params_t *params){
     uas_sense_iu_t *sense_iu = kzalloc(UAS_SENSE_IU_ALLOC_SIZE);
 
     // 3. 提交 TRB (关键顺序：Status -> Data -> Command) 先准备好“收”，再触发“发”，防止设备回包太快导致溢出
-
-
     // [Step A] 提交 Status Pipe 请求 (接收 Sense IU)
     normal_transfer_trb(&trb, va_to_pa(sense_iu), disable_ch, UAS_SENSE_IU_ALLOC_SIZE, ENABLE_IOC);
     uint64 status_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[status_pipe].stream_rings[tag], &trb);
 
     // [Step B] 提交 Data Pipe 请求 (如果有数据)
-    if (is_data_stage) {
+    if (params->data_buf && params->data_len) {
         data_pipe = params->dir == UAS_DIR_IN ? uas_data->data_in_pipe : uas_data->data_out_pipe;
         normal_transfer_trb(&trb, va_to_pa(params->data_buf), disable_ch, params->data_len, DISABLE_IOC);
         xhci_ring_enqueue(&usb_dev->eps[data_pipe].stream_rings[tag], &trb);
@@ -72,7 +68,7 @@ uint32 uas_send_scsi_cmd_sync(uas_data_t *uas_data, uas_cmd_params_t *params){
     xhci_ring_doorbell(xhci_controller, slot_id, status_pipe | tag<<16);
 
     //可选[Step E] 敲门铃 (Doorbell) data
-    if (is_data_stage) {
+    if (params->data_buf && params->data_len) {
         xhci_ring_doorbell(xhci_controller, slot_id, data_pipe | tag<<16);
     }
 

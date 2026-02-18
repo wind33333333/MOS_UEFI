@@ -116,6 +116,15 @@ typedef struct {
 }scsi_cdb_test_unit_t;
 #define SCSI_TEST_UNIT_READY  0x00
 
+typedef struct {
+    uint8    opcode;       // 固定值: 0x03 (SCSI_REQUEST_SENSE)
+    uint8    desc; //[Byte 1] 描述符格式标志 (DESC) & 保留位 Bit 0: DESC (Descriptor Format) ,0 = Fixed Format (标准格式，U盘/移动硬盘绝大多数用这个),1 = Descriptor Format (描述符格式，部分企业级设备用)
+    uint16   rsvd0;
+    uint8    alloc_len; // [Byte 4] 分配长度 (Allocation Length)告诉设备：我为你准备了多少字节的缓冲区来接收 Sense Data。注意：这是一个 1 字节字段，所以最大只能请求 255 字节。
+    uint8    control;
+} scsi_cdb_request_sense_t;
+#define SCSI_REQUEST_SENSE 0x03
+
 // 1. SCSI INQUIRY CDB (6字节标准)
 typedef struct{
     uint8 opcode;       // [0] 0x12

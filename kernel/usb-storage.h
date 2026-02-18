@@ -56,13 +56,12 @@ typedef struct bot_data_t {
     // BOT 只有两个管道，数据和状态共用
     uint8             pipe_in;        // Bulk IN (Data Read + CSW)
     uint8             pipe_out;       // Bulk OUT (CBW + Data Write)
+    uint32            tag;
 
     // --- 协议缓冲区 (DMA Coherent) ---
     // BOT 协议每次传输都需要这两个包头
-    struct bulk_cbw     *cbw;           // Command Block Wrapper (31 Bytes)
-    uint64              cbw_dma;        // CBW 物理地址
-    struct bulk_csw     *csw;           // Command Status Wrapper (13 Bytes)
-    uint64              csw_dma;        // CSW 物理地址
+    struct bot_cbw    *cbw;           // Command Block Wrapper (31 Bytes)
+    struct bot_csw    *csw;           // Command Status Wrapper (13 Bytes)
 } bot_data_t;
 
 // UAS (USB Attached SCSI) 专用结构
@@ -76,7 +75,6 @@ typedef struct uas_data_t {
     uint8            status_pipe;    // Bulk IN (接收 Sense IU)
     uint8            data_in_pipe;   // Bulk IN (Read Data)
     uint8            data_out_pipe;  // Bulk OUT (Write Data)
-
     uint64           tag_bitmap;      // UAS Tag管理,tag号对应stream
 } uas_data_t;
 
