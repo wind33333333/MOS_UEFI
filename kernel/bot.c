@@ -3,6 +3,8 @@
 
 int32 bot_send_scsi_cmd_sync(bot_data_t *bot_data, uas_cmd_params_t *params);
 
+#define BOT_SCSI_ALLOC_SIZE 128
+
 /**
  * 执行 Request Sense 命令获取错误详情
  */
@@ -13,24 +15,25 @@ int32 bot_request_sense(bot_data_t *bot_data, uas_cmd_params_t *params) {
     //    否则会造成无限递归死循环 (Stack Overflow)。
     if (!params->scsi_sense || *(uint8*)params->scsi_cdb == SCSI_REQUEST_SENSE) return -1;
 
-    scsi_cdb_request_sense_t cdb = {SCSI_REQUEST_SENSE,0,0,18,0};
+    scsi_cdb_request_sense_t cdb = {SCSI_REQUEST_SENSE,0,0,BOT_SCSI_ALLOC_SIZE,0};
+
 
     // 1. 准备临时接收缓冲区
     // 虽然可以直接用 sense_data_out，但在栈上开辟一个小buffer更安全，防止 DMA 污染用户内存
-    scsi_sense_t *sense = kzalloc(sizeof(scsi_sense_t));
+    scsi_sense_t *scsi_sense = kzalloc(BOT_SCSI_ALLOC_SIZE);
 
     // 2. 构造参数包
-    uas_cmd_params_t sense_params = {&cdb, sizeof(scsi_sense_t),params->lun,sense,sizeof(scsi_sense_t),UAS_DIR_IN,NULL};
+    uas_cmd_params_t sense_params = {&cdb, sizeof(scsi_cdb_request_sense_t),params->lun,scsi_sense,BOT_SCSI_ALLOC_SIZE,UAS_DIR_IN,NULL};
 
     // 3. 递归调用主发送函数
     // 这里的逻辑是：把 Request Sense 当作一个普通的 SCSI 读命令发送出去
     int status = bot_send_scsi_cmd_sync(bot_data, &sense_params);
     if (status == 0) {
-        asm_mem_cpy(sense,params->scsi_sense,sizeof(scsi_sense_t));
+        asm_mem_cpy(scsi_sense,params->scsi_sense,8+scsi_sense->add_sense_len);
     }else {
         //连获取错误信息都失败了设备可能挂了
     }
-    kfree(sense);
+    kfree(scsi_sense);
     return status;
 }
 
@@ -115,7 +118,7 @@ int32 bot_send_scsi_cmd_sync(bot_data_t *bot_data, uas_cmd_params_t *params) {
     // 等待 CSW 接收完成
     completion_code = xhci_wait_for_completion(xhci, csw_trb_ptr, 200000);
 
-    uint32 final_status = -1;
+    int32 final_status = -1;
 
     //如果成功则 校验 CSW 有效性,Tag 匹配
     if (completion_code == XHCI_COMP_SUCCESS && csw->signature == BOT_CSW_SIGNATURE && csw->tag == tag) {
@@ -144,7 +147,7 @@ int32 bot_send_scsi_cmd_sync(bot_data_t *bot_data, uas_cmd_params_t *params) {
 int bot_send_inquiry(bot_data_t *bot_data, uint8 lun) {
     scsi_sense_t scsi_sense;
     scsi_cdb_inquiry_t scsi_cdb_inquiry = {0};
-    scsi_cdb_inquiry.opcode = SCSI_INQUIRY;
+    scsi_cdb_inquiry.opcode = 0xf0;
     scsi_cdb_inquiry.alloc_len = sizeof(scsi_inquiry_t);
     scsi_inquiry_t *scsi_inquiry = kzalloc(sizeof(scsi_inquiry_t));
     uas_cmd_params_t uas_cmd_params = {&scsi_cdb_inquiry,sizeof(scsi_cdb_inquiry),lun,scsi_inquiry,sizeof(scsi_inquiry_t),UAS_DIR_IN,&scsi_sense};
