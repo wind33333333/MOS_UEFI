@@ -1,5 +1,7 @@
 #pragma once
 #include "moslib.h"
+#include "slub.h"
+
 #pragma pack(push,1)
 
 // 常用 Sense Key 定义
@@ -251,5 +253,33 @@ typedef struct {
 
 } scsi_read_capacity16_t;
 
-
 #pragma pack(pop)
+
+// 1. 数据传输方向枚举
+typedef enum {
+    SCSI_DIR_NONE = 0, // 无数据传输 (如 TEST UNIT READY)
+    SCSI_DIR_IN   = 1, // 设备到主机 (读)
+    SCSI_DIR_OUT  = 2  // 主机到设备 (写)
+} scsi_dir_t;
+
+// 2. 通用 SCSI 任务结构体
+typedef struct {
+    // --- SCSI 命令部分 ---
+    void   *cdb;        // SCSI 命令块
+    uint8  cdb_len;      // 有效命令长度 (通常为 6, 10, 12, 16)
+    uint8  lun;          // 目标逻辑单元号 (通常为 0)
+
+    // --- 数据传输部分 ---
+    scsi_dir_t dir;        // 数据传输方向
+    void       *data_buf;    // 数据缓冲区指针 (必须是 DMA 安全的物理/虚拟地址)
+    uint32     data_len;     // 期望传输的数据总长度 (字节数)
+
+    // --- 错误处理部分 ---
+    scsi_sense_t  *sense;       // [可选] 用于接收 Auto-Sense 数据的缓冲区 (至少 18 字节)
+    uint32    status;       // [输出] 命令执行完成后的 SCSI 状态码 (0=成功, 2=Check Condition)
+} scsi_task_t;
+
+//销毁任务
+static inline void scsi_task_destroy(scsi_task_t *task) {
+    kfree(task->cdb);
+}

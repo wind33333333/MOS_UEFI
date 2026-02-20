@@ -15,7 +15,6 @@ int32 bot_request_sense(bot_data_t *bot_data, uas_cmd_params_t *params) {
 
     scsi_cdb_request_sense_t cdb = {SCSI_REQUEST_SENSE,0,0,BOT_SENSE_ALLOC_SIZE,0};
 
-
     // 1. 准备临时接收缓冲区
     // 虽然可以直接用 sense_data_out，但在栈上开辟一个小buffer更安全，防止 DMA 污染用户内存
     scsi_sense_t *scsi_sense = kzalloc(BOT_SENSE_ALLOC_SIZE);
