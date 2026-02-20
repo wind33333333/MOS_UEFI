@@ -83,7 +83,7 @@ int32 scsi_send_inquiry(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(v
 /*
  * 获取 LUN 数量
 */
-int32 scsi_report_luns(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_report_luns_t *report_luns) {
+int32 scsi_report_luns(void *dev_context,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_report_luns_t *report_luns) {
     scsi_sense_t sense;
 
     scsi_cdb_report_luns_t cdb={
@@ -94,7 +94,7 @@ int32 scsi_report_luns(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(vo
     scsi_task_t task={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_report_luns_t),
-        .lun = lun,
+        .lun = 0,
         .data_buf = report_luns,
         .data_len = SCSI_LUN_BUF_LEN,
         .dir = SCSI_DIR_IN,

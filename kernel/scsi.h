@@ -350,7 +350,7 @@ typedef struct {
 int32 scsi_test_unit_ready(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*));
 int32 scsi_request_sense(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_sense_t *sense);
 int32 scsi_send_inquiry(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*), scsi_inquiry_t *inquiry);
-int32 scsi_report_luns(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_report_luns_t *report_luns);
+int32 scsi_report_luns(void *dev_context,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_report_luns_t *report_luns);
 int32 scsi_read_capacity10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_read_capacity10_t *read_capacity10);
 int32 scsi_read_capacity16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_read_capacity16_t *read_capacity16);
 int32 scsi_read10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),uint32 lba,void *data_buf,uint16 block_count,uint16 block_size);
