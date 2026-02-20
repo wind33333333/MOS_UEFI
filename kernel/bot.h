@@ -31,7 +31,7 @@ typedef struct {
 #define BOT_CSW_FAIL  0x01
 #define BOT_CSW_PHASE 0x02
 
-#define BOT_SENSE_ALLOC_SIZE 128
+#define BOT_SENSE_ALLOC_SIZE 255
 
 #pragma pack(pop)
 
