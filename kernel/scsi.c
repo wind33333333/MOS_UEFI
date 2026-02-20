@@ -149,10 +149,10 @@ int32 scsi_read_capacity16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync
 
     scsi_task_t task={
         .cdb = &cdb,
-        .cdb_len = sizeof(scsi_cdb_read_capacity10_t),
+        .cdb_len = sizeof(scsi_cdb_read_capacity16_t),
         .lun = lun,
         .data_buf = read_capacity16,
-        .data_len = sizeof(scsi_read_capacity10_t),
+        .data_len = sizeof(scsi_read_capacity16_t),
         .dir = SCSI_DIR_IN,
         .sense = &sense,
         .status = -1

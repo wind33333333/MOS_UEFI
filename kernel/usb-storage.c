@@ -409,10 +409,10 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
 
         uint8 *write_data_buf = kmalloc(512);
         asm_mem_set(write_data_buf,0x18,512);
-        scsi_write10(uas_data,0,uas_send_scsi_cmd_sync,0,write_data_buf,1,512);
+        scsi_write16(uas_data,0,uas_send_scsi_cmd_sync,0,write_data_buf,1,512);
 
         uint8 *read_data_buf = kmalloc(512);
-        scsi_read10(uas_data,0,uas_send_scsi_cmd_sync,0,read_data_buf,1,512);
+        scsi_read16(uas_data,0,uas_send_scsi_cmd_sync,0,read_data_buf,1,512);
 
 
 
@@ -537,9 +537,22 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
             }
         }
 
+        scsi_test_unit_ready(bot_data,0,bot_send_scsi_cmd_sync);
+
         scsi_inquiry_t *inquiry = kzalloc(sizeof(scsi_inquiry_t));
         scsi_send_inquiry(bot_data,0,bot_send_scsi_cmd_sync,inquiry);
         kfree(inquiry);
+
+        scsi_read_capacity16_t *read_capacity16 = kzalloc(sizeof(scsi_read_capacity16_t));
+        scsi_read_capacity16(bot_data,0,bot_send_scsi_cmd_sync,read_capacity16);
+        kfree(read_capacity16);
+
+        uint8 *write_data_buf = kmalloc(512);
+        asm_mem_set(write_data_buf,0x18,512);
+        scsi_write16(bot_data,0,bot_send_scsi_cmd_sync,0,write_data_buf,1,512);
+
+        uint8 *read_data_buf = kmalloc(512);
+        scsi_read16(bot_data,0,bot_send_scsi_cmd_sync,0,read_data_buf,1,512);
 
 
         /*
