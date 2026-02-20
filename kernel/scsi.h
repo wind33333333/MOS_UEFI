@@ -278,7 +278,7 @@ typedef struct {
 
     // --- 错误处理部分 ---
     scsi_sense_t  *sense;       // [可选] 用于接收 Auto-Sense 数据的缓冲区 (至少 18 字节)
-    int32    status;       // [输出] 命令执行完成后的 SCSI 状态码 (0=成功, 2=Check Condition)
+    int32         status;       // [输出] 命令执行完成后的 SCSI 状态码 (0=成功, 2=Check Condition)
 } scsi_task_t;
 
 
