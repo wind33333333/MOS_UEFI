@@ -109,7 +109,7 @@ int32 uas_test_unit_ready(uas_data_t *uas_data,uint8 lun) {
  * 使用 UAS 协议获取 LUN 数量
 */
 #define LUN_BUF_LEN 512
-uint32 uas_get_lun_count(uas_data_t *uas_data) {
+uint32 scsi_report_luns(uas_data_t *uas_data) {
     scsi_sense_t scsi_sense;
     scsi_cdb_report_luns_t scsi_cdb_repotr_luns={0};
     scsi_cdb_repotr_luns.opcode = SCSI_REPORT_LUNS;        // REPORT LUNS

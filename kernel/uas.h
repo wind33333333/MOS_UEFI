@@ -54,5 +54,5 @@ typedef struct {
 
 int32 uas_get_capacity(uas_data_t *uas_data, uint8 lun);
 int uas_send_inquiry(uas_data_t *uas_data, uint8 lun);
-uint32 uas_get_lun_count(uas_data_t *uas_data);
+uint32 scsi_report_luns(uas_data_t *uas_data);
 int32 uas_test_unit_ready(uas_data_t *uas_data,uint8 lun);

@@ -62,3 +62,21 @@ int32 scsi_send_inquiry(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(v
     return 0;
 }
 
+/*
+ * 获取 LUN 数量
+*/
+#define LUN_BUF_LEN 512
+int32 scsi_report_luns(uas_data_t *uas_data) {
+    scsi_sense_t scsi_sense;
+    scsi_cdb_report_luns_t scsi_cdb_repotr_luns={0};
+    scsi_cdb_repotr_luns.opcode = SCSI_REPORT_LUNS;        // REPORT LUNS
+    scsi_cdb_repotr_luns.alloc_len = asm_bswap32(LUN_BUF_LEN); // 告诉设备我能收多少数据
+    scsi_report_luns_t *scsi_report_luns = kzalloc(LUN_BUF_LEN);
+    uas_cmd_params_t uas_cmd_params={&scsi_cdb_repotr_luns,sizeof(scsi_cdb_report_luns_t),0,scsi_report_luns,LUN_BUF_LEN,UAS_DIR_IN,&scsi_sense};
+    uas_send_scsi_cmd_sync(uas_data,&uas_cmd_params);
+    uint32 list_bytes = asm_bswap32(scsi_report_luns->lun_list_length);
+    uint32 luns_count = list_bytes >> 3;
+    kfree(scsi_report_luns);
+    if (luns_count == 0) return 1;
+    return luns_count;
+}

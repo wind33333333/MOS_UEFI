@@ -406,7 +406,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
 
         uas_test_unit_ready(uas_data,0);
         //获取lun数量
-        uint8 lun_count = uas_get_lun_count(uas_data);
+        uint8 lun_count = scsi_report_luns(uas_data);
 
         uas_send_inquiry(uas_data,0);
 
