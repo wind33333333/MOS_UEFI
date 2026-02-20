@@ -2,30 +2,6 @@
 #include "moslib.h"
 #include "usb.h"
 
-#pragma pack(push,1)
-
-/* CBW 结构（31 字节） */
-typedef struct {
-    uint32 cbw_signature; // 固定为 0x43425355 ('USBC')
-    uint32 cbw_tag; // 命令标签，唯一标识
-    uint32 cbw_data_transfer_length; // 数据传输长度
-    uint8  cbw_flags; // 传输方向（0x80=IN，0x00=OUT）
-    uint8  cbw_lun; // 逻辑单元号（通常为 0）
-    uint8  cbw_cb_length; // SCSI 命令长度（10 字节 for READ(10)）
-    uint8  cbw_cb[16]; // SCSI 命令块（READ(10) 命令）
-} usb_cbw_t;
-
-/* CSW 结构（13 字节） */
-typedef struct {
-    uint32 csw_signature; // 固定为 0x53425355 ('USBS')
-    uint32 csw_tag; // 匹配 CBW 的标签
-    uint32 csw_data_residue; // 未传输的数据长度
-    uint8  csw_status; // 命令状态（0=成功，1=失败，2=相位错误）
-} usb_csw_t;
-
-
-#pragma pack(pop)
-
 // 前置声明
 struct scsi_cmnd;
 

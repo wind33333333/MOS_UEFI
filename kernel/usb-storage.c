@@ -405,9 +405,15 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         uas_data->tag_bitmap <<= (mini_streams-1);
         uas_data->tag_bitmap <<= 1;
 
-        scsi_inquiry_t *inquiry = kzalloc(sizeof(scsi_inquiry_t));
-        scsi_send_inquiry(uas_data,0,uas_send_scsi_cmd_sync,inquiry);
-        kfree(inquiry);
+        scsi_test_unit_ready(uas_data,0,uas_send_scsi_cmd_sync);
+
+        uint8 *write_data_buf = kmalloc(512);
+        asm_mem_set(write_data_buf,0x18,512);
+        scsi_write10(uas_data,0,uas_send_scsi_cmd_sync,0,write_data_buf,1,512);
+
+        uint8 *read_data_buf = kmalloc(512);
+        scsi_read10(uas_data,0,uas_send_scsi_cmd_sync,0,read_data_buf,1,512);
+
 
 
 /*

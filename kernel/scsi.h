@@ -1,6 +1,5 @@
 #pragma once
 #include "moslib.h"
-#include "slub.h"
 
 #pragma pack(push,1)
 
@@ -255,6 +254,72 @@ typedef struct {
 
 } scsi_read_capacity16_t;
 
+// READ(10) 和 WRITE(10) 共享的 10 字节 CDB 结构
+typedef struct {
+    // [Byte 0] 操作码 (Opcode)
+    // 读: 0x28 (SCSI_CMD_READ10) | 写: 0x2A (SCSI_CMD_WRITE10)
+    uint8  opcode;
+
+    // [Byte 1] 标志位 (Flags)
+    // 包含 RDPROTECT(3位), DPO(1位), FUA(1位), FUA_NV(1位) 等。
+    // 对于普通的 U 盘和硬盘读写，直接填 0 即可（走设备默认缓存策略）。
+    uint8  flags;
+
+    // [Byte 2-5] 逻辑块地址 (Logical Block Address, LBA)
+    // 【极度警告】这里必须是 大端序 (Big-Endian)！
+    // 决定了你从哪个扇区开始读写。
+    uint32 lba;
+
+    // [Byte 6] 组号 (Group Number) / 保留位
+    // 通常填 0。
+    uint8  group;
+
+    // [Byte 7-8] 传输长度 (Transfer Length)
+    // 【警告】大端序 (Big-Endian)！
+    // 决定了你要连续读写多少个扇区（块）。
+    // 注意：如果是 0，表示传输 0 个块（不传输数据），有些老规范表示 65536 块，但现代设备通常视为 0。
+    uint16 transfer_length;
+
+    // [Byte 9] 控制字节 (Control)
+    // 填 0 即可。
+    uint8  control;
+
+}scsi_cdb_rw10_t;
+#define SCSI_READ10  0x28
+#define SCSI_WRITE10 0x2A
+
+// READ(16) 和 WRITE(16) 共享的 16 字节 CDB 结构
+typedef struct {
+    // [Byte 0] 操作码 (Opcode)
+    // 读: 0x88 (SCSI_CMD_READ16) | 写: 0x8A (SCSI_CMD_WRITE16)
+    uint8  opcode;
+
+    // [Byte 1] 标志位 (Flags)
+    // 同 10 字节命令，普通读写填 0。
+    uint8  flags;
+
+    // [Byte 2-9] 逻辑块地址 (Logical Block Address, LBA)
+    // 【警告】这里是 64 位的大端序 (Big-Endian)！
+    // 突破 2TB 限制的核心字段。
+    uint64 lba;
+
+    // [Byte 10-13] 传输长度 (Transfer Length)
+    // 【警告】这里是 32 位的大端序 (Big-Endian)！
+    // 支持单次发起超过 65535 个扇区的超级大块读写。
+    uint32 transfer_length;
+
+    // [Byte 14] 组号 (Group Number) / 保留位
+    // 填 0。
+    uint8  group;
+
+    // [Byte 15] 控制字节 (Control)
+    // 填 0 即可。
+    uint8  control;
+
+}scsi_cdb_rw16_t;
+#define SCSI_READ16  0x88
+#define SCSI_WRITE16 0x8A
+
 #pragma pack(pop)
 
 // 1. 数据传输方向枚举
@@ -288,3 +353,7 @@ int32 scsi_send_inquiry(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(v
 int32 scsi_report_luns(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_report_luns_t *report_luns);
 int32 scsi_read_capacity10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_read_capacity10_t *read_capacity10);
 int32 scsi_read_capacity16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_read_capacity16_t *read_capacity16);
+int32 scsi_read10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),uint32 lba,void *data_buf,uint16 block_count,uint16 block_size);
+int32 scsi_write10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),uint32 lba,void *data_buf,uint16 block_count,uint16 block_size);
+int32 scsi_read16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),uint64 lba,void *data_buf,uint32 block_count,uint32 block_size);
+int32 scsi_write16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),uint64 lba,void *data_buf,uint32 block_count,uint32 block_size);

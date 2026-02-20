@@ -80,7 +80,7 @@ void uas_send_scsi_cmd_sync(void *dev_context, scsi_task_t *task){
 
     task->status = sense_iu->status;
     if (completion_code == XHCI_COMP_SUCCESS) {
-        if (task->status == 2 && task->sense) {       //如果有错误把错误信息传给调用者处理
+        if (sense_iu->status == 2 && task->sense) {       //如果有错误把错误信息传给调用者处理
             asm_mem_cpy(sense_iu->scsi_sense,task->sense,asm_bswap16(sense_iu->scsi_sense_len));
         }
     }
