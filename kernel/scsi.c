@@ -1,7 +1,5 @@
 #include "scsi.h"
 
-#include "uas.h"
-
 /**
  * 发送 TEST UNIT READY 命令
  */
@@ -33,17 +31,37 @@ int32 scsi_test_unit_ready(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync
     return task.status;
 }
 
+int32 scsi_request_sense(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_sense_t *sense) {
+    scsi_cdb_request_sense_t cdb = {
+        .opcode = SCSI_REQUEST_SENSE,
+        .alloc_len = SCSI_SENSE_ALLOC_SIZE
+    };
+
+    scsi_task_t task={
+        .cdb = &cdb,
+        .cdb_len = sizeof(scsi_cdb_request_sense_t),
+        .lun = lun,
+        .dir = SCSI_DIR_IN,
+        .data_buf = sense,
+        .data_len = SCSI_SENSE_ALLOC_SIZE,
+        .sense = NULL,
+        .status = -1
+    };
+
+    send_scsi_cmd_sync(dev_context,&task);
+
+    return task.status;
+}
+
 
 //获取u盘信息
-int32 scsi_send_inquiry(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*)) {
+int32 scsi_send_inquiry(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*), scsi_inquiry_t *inquiry) {
     scsi_sense_t sense;
 
     scsi_cdb_inquiry_t cdb = {
         .opcode = SCSI_INQUIRY,
         .alloc_len = sizeof(scsi_inquiry_t)
     };
-
-    scsi_inquiry_t *inquiry = kzalloc(sizeof(scsi_inquiry_t));
 
     scsi_task_t task={
         .cdb = &cdb,
@@ -58,25 +76,88 @@ int32 scsi_send_inquiry(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(v
 
     send_scsi_cmd_sync(dev_context,&task);
 
-    kfree(inquiry);
-    return 0;
+    return task.status;
 }
 
 /*
  * 获取 LUN 数量
 */
-#define LUN_BUF_LEN 512
-int32 scsi_report_luns(uas_data_t *uas_data) {
-    scsi_sense_t scsi_sense;
-    scsi_cdb_report_luns_t scsi_cdb_repotr_luns={0};
-    scsi_cdb_repotr_luns.opcode = SCSI_REPORT_LUNS;        // REPORT LUNS
-    scsi_cdb_repotr_luns.alloc_len = asm_bswap32(LUN_BUF_LEN); // 告诉设备我能收多少数据
-    scsi_report_luns_t *scsi_report_luns = kzalloc(LUN_BUF_LEN);
-    uas_cmd_params_t uas_cmd_params={&scsi_cdb_repotr_luns,sizeof(scsi_cdb_report_luns_t),0,scsi_report_luns,LUN_BUF_LEN,UAS_DIR_IN,&scsi_sense};
-    uas_send_scsi_cmd_sync(uas_data,&uas_cmd_params);
-    uint32 list_bytes = asm_bswap32(scsi_report_luns->lun_list_length);
-    uint32 luns_count = list_bytes >> 3;
-    kfree(scsi_report_luns);
-    if (luns_count == 0) return 1;
-    return luns_count;
+int32 scsi_report_luns(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_report_luns_t *report_luns) {
+    scsi_sense_t sense;
+
+    scsi_cdb_report_luns_t cdb={
+        .opcode = SCSI_REPORT_LUNS,
+        .alloc_len =  asm_bswap32(SCSI_LUN_BUF_LEN),
+    };
+
+    scsi_task_t task={
+        .cdb = &cdb,
+        .cdb_len = sizeof(scsi_cdb_report_luns_t),
+        .lun = lun,
+        .data_buf = report_luns,
+        .data_len = SCSI_LUN_BUF_LEN,
+        .dir = SCSI_DIR_IN,
+        .sense = &sense,
+        .status = -1
+    };
+
+    send_scsi_cmd_sync(dev_context,&task);
+
+    return task.status;
+}
+
+/**
+ * 获取 U 盘容量
+ */
+int32 scsi_read_capacity10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_read_capacity10_t *read_capacity10) {
+    scsi_sense_t sense;
+
+    scsi_cdb_read_capacity10_t cdb = {
+        .opcode = SCSI_READ_CAPACITY10,
+    };
+
+    scsi_task_t task={
+        .cdb = &cdb,
+        .cdb_len = sizeof(scsi_cdb_read_capacity10_t),
+        .lun = lun,
+        .data_buf = read_capacity10,
+        .data_len = sizeof(scsi_read_capacity10_t),
+        .dir = SCSI_DIR_IN,
+        .sense = &sense,
+        .status = -1
+    };
+
+    send_scsi_cmd_sync(dev_context, &task);
+
+    return task.status;
+}
+
+/**
+ * 获取 U 盘容量
+ */
+int32 scsi_read_capacity16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_read_capacity16_t *read_capacity16) {
+    scsi_sense_t sense;
+
+    scsi_cdb_read_capacity16_t cdb = {
+        .opcode = SCSI_READ_CAPACITY16,
+        .service_action = SA_READ_CAPACITY_16,
+        .lba = 0,
+        .alloc_len = asm_bswap32(sizeof(scsi_read_capacity16_t))
+
+    };
+
+    scsi_task_t task={
+        .cdb = &cdb,
+        .cdb_len = sizeof(scsi_cdb_read_capacity10_t),
+        .lun = lun,
+        .data_buf = read_capacity16,
+        .data_len = sizeof(scsi_read_capacity10_t),
+        .dir = SCSI_DIR_IN,
+        .sense = &sense,
+        .status = -1
+    };
+
+    send_scsi_cmd_sync(dev_context, &task);
+
+    return task.status;
 }

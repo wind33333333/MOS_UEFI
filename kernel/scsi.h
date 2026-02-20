@@ -126,6 +126,7 @@ typedef struct {
     uint8    control;
 } scsi_cdb_request_sense_t;
 #define SCSI_REQUEST_SENSE 0x03
+#define SCSI_SENSE_ALLOC_SIZE 255
 
 // 1. SCSI INQUIRY CDB (6字节标准)
 typedef struct{
@@ -170,6 +171,7 @@ typedef struct {
     uint32 rsvd;
     uint64 lun_list[];  //一个数组：uint64_t lun_list[];
 }scsi_report_luns_t;
+#define SCSI_LUN_BUF_LEN 512
 
 // 1. 命令包定义 (CDB) - 10 字节
 typedef struct __attribute__((packed)) {
@@ -279,7 +281,10 @@ typedef struct {
     int32    status;       // [输出] 命令执行完成后的 SCSI 状态码 (0=成功, 2=Check Condition)
 } scsi_task_t;
 
-//销毁任务
-static inline void scsi_task_destroy(scsi_task_t *task) {
-    kfree(task->cdb);
-}
+
+int32 scsi_test_unit_ready(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*));
+int32 scsi_request_sense(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_sense_t *sense);
+int32 scsi_send_inquiry(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*), scsi_inquiry_t *inquiry);
+int32 scsi_report_luns(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_report_luns_t *report_luns);
+int32 scsi_read_capacity10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_read_capacity10_t *read_capacity10);
+int32 scsi_read_capacity16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_read_capacity16_t *read_capacity16);

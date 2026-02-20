@@ -2,6 +2,7 @@
 #include "xhci.h"
 #include "usb.h"
 #include "printk.h"
+#include "scsi.h"
 #include "uas.h"
 #include "bot.h"
 
@@ -404,13 +405,9 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         uas_data->tag_bitmap <<= (mini_streams-1);
         uas_data->tag_bitmap <<= 1;
 
-        uas_test_unit_ready(uas_data,0);
-        //获取lun数量
-        uint8 lun_count = scsi_report_luns(uas_data);
-
-        uas_send_inquiry(uas_data,0);
-
-        uas_get_capacity(uas_data,0);
+        scsi_inquiry_t *inquiry = kzalloc(sizeof(scsi_inquiry_t));
+        scsi_send_inquiry(uas_data,0,uas_send_scsi_cmd_sync,inquiry);
+        kfree(inquiry);
 
 
 /*
@@ -534,7 +531,9 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
             }
         }
 
-        bot_send_inquiry(bot_data,0);
+        scsi_inquiry_t *inquiry = kzalloc(sizeof(scsi_inquiry_t));
+        scsi_send_inquiry(bot_data,0,bot_send_scsi_cmd_sync,inquiry);
+        kfree(inquiry);
 
 
         /*

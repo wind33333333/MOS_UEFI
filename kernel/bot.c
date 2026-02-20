@@ -1,36 +1,23 @@
 #include "bot.h"
-#include "uas.h"
-
-int32 bot_send_scsi_cmd_sync(bot_data_t *bot_data, uas_cmd_params_t *params);
+#include "scsi.h"
 
 /**
  * 执行 Request Sense 命令获取错误详情
  */
-int32 bot_request_sense(bot_data_t *bot_data, uas_cmd_params_t *params) {
-    // 1. 检查是否需要获取 Sense (上层提供了缓冲区)
-    // 2. 【防死锁守卫】: 检查当前命令是否已经是 Request Sense (Opcode 0x03)
-    //    如果当前正在执行 0x03 命令却失败了，绝对不能再调 bot_perform_request_sense，
-    //    否则会造成无限递归死循环 (Stack Overflow)。
-    if (!params->scsi_sense || *(uint8*)params->scsi_cdb == SCSI_REQUEST_SENSE) return -1;
+int32 bot_request_sense(bot_data_t *bot_data,scsi_task_t *task) {
+    if (!task->sense || *(uint8*)task->cdb == SCSI_REQUEST_SENSE) return -1;
 
-    scsi_cdb_request_sense_t cdb = {SCSI_REQUEST_SENSE,0,0,BOT_SENSE_ALLOC_SIZE,0};
+    scsi_sense_t *sense = kzalloc(SCSI_SENSE_ALLOC_SIZE);
 
-    // 1. 准备临时接收缓冲区
-    // 虽然可以直接用 sense_data_out，但在栈上开辟一个小buffer更安全，防止 DMA 污染用户内存
-    scsi_sense_t *scsi_sense = kzalloc(BOT_SENSE_ALLOC_SIZE);
+    int32 status = scsi_request_sense(bot_data,task->lun,bot_send_scsi_cmd_sync,sense);
 
-    // 2. 构造参数包
-    uas_cmd_params_t sense_params = {&cdb, sizeof(scsi_cdb_request_sense_t),params->lun,scsi_sense,BOT_SENSE_ALLOC_SIZE,UAS_DIR_IN,NULL};
-
-    // 3. 递归调用主发送函数
-    // 这里的逻辑是：把 Request Sense 当作一个普通的 SCSI 读命令发送出去
-    int status = bot_send_scsi_cmd_sync(bot_data, &sense_params);
     if (status == 0) {
-        asm_mem_cpy(scsi_sense,params->scsi_sense,8+scsi_sense->add_sense_len);
+        asm_mem_cpy(sense,task->sense,8+sense->add_sense_len);
     }else {
         //连获取错误信息都失败了设备可能挂了
     }
-    kfree(scsi_sense);
+
+    kfree(sense);
     return status;
 }
 
@@ -38,7 +25,8 @@ int32 bot_request_sense(bot_data_t *bot_data, uas_cmd_params_t *params) {
  * BOT 协议同步发送函数
  * 逻辑：CBW -> Data(可选) -> CSW
  */
-int32 bot_send_scsi_cmd_sync(bot_data_t *bot_data, uas_cmd_params_t *params) {
+void bot_send_scsi_cmd_sync(void *dev_context, scsi_task_t *task) {
+    bot_data_t *bot_data =dev_context;
     usb_dev_t *usb_dev = bot_data->common.usb_if->usb_dev;
     xhci_controller_t *xhci = usb_dev->xhci_controller;
 
@@ -60,15 +48,15 @@ int32 bot_send_scsi_cmd_sync(bot_data_t *bot_data, uas_cmd_params_t *params) {
     // 填充 CBW
     cbw->signature = BOT_CBW_SIGNATURE; // "USBC"
     cbw->tag       = tag;
-    cbw->data_tran_len = params->data_len;
+    cbw->data_tran_len = task->data_len;
 
     // 方向标志: IN(设备->主机) = 0x80, OUT(主机->设备) = 0x00
-    cbw->flags    = (params->dir == UAS_DIR_IN) ? BOT_CBW_DATA_IN : BOT_CBW_DATA_OUT;
+    cbw->flags    = (task->dir == SCSI_DIR_IN) ? BOT_CBW_DATA_IN : BOT_CBW_DATA_OUT;
 
-    cbw->lun       = params->lun;
-    cbw->scsi_cdb_len  = params->scsi_cdb_len; // 有效 CDB 长度
+    cbw->lun       = task->lun;
+    cbw->scsi_cdb_len  = task->cdb_len; // 有效 CDB 长度
 
-    asm_mem_cpy(params->scsi_cdb, cbw->scsi_cdb, params->scsi_cdb_len);
+    asm_mem_cpy(task->cdb, cbw->scsi_cdb, task->cdb_len);
 
     // 提交 TRB 到 Bulk OUT
     normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(bot_cbw_t), ENABLE_IOC);
@@ -79,16 +67,17 @@ int32 bot_send_scsi_cmd_sync(bot_data_t *bot_data, uas_cmd_params_t *params) {
     completion_code = xhci_wait_for_completion(xhci, cbw_trb_ptr, 200000); // 2秒超时
     if (completion_code != XHCI_COMP_SUCCESS) {
         kfree(cbw);
-        return -1; // 发送命令失败
+        task->status = -1;
+        return; // 发送命令失败
     }
 
     // ============================================================
     // Stage 2: 数据传输 (Data Stage) - 可选
     // ============================================================
-    if (params->data_buf && params->data_len) {
-        uint8 data_pipe = (params->dir == UAS_DIR_IN) ? pipe_in : pipe_out;
+    if (task->data_buf && task->data_len) {
+        uint8 data_pipe = (task->dir == SCSI_DIR_IN) ? pipe_in : pipe_out;
 
-        normal_transfer_trb(&trb, va_to_pa(params->data_buf), disable_ch, params->data_len, ENABLE_IOC);
+        normal_transfer_trb(&trb, va_to_pa(task->data_buf), disable_ch, task->data_len, ENABLE_IOC);
         uint64 data_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[data_pipe].transfer_ring, &trb);
         xhci_ring_doorbell(xhci, usb_dev->slot_id, data_pipe);
 
@@ -98,7 +87,8 @@ int32 bot_send_scsi_cmd_sync(bot_data_t *bot_data, uas_cmd_params_t *params) {
             // 注意：BOT 协议中，如果数据长度不匹配，设备可能会 STALL 端点
             // 这里应该加入 Clear Stall (Endpoint Halt) 的逻辑
             kfree(cbw);
-            return -2;
+            task->status = -2;
+            return;
         }
     }
 
@@ -115,17 +105,15 @@ int32 bot_send_scsi_cmd_sync(bot_data_t *bot_data, uas_cmd_params_t *params) {
     // 等待 CSW 接收完成
     completion_code = xhci_wait_for_completion(xhci, csw_trb_ptr, 200000);
 
-    int32 final_status = -1;
-
     //如果成功则 校验 CSW 有效性,Tag 匹配
     if (completion_code == XHCI_COMP_SUCCESS && csw->signature == BOT_CSW_SIGNATURE && csw->tag == tag) {
         switch (csw->status) {
             case BOT_CSW_PASS:
-                final_status = 0; //成功返回0
+                task->status = 0; //成功返回0
                 break;
             case BOT_CSW_FAIL:
-                final_status = 0x02; // 如果失败 (0x01)，调用者应该发送 REQUEST SENSE 映射为 SCSI Check Condition
-                bot_request_sense(bot_data, params);
+                task->status = 0x02; // 如果失败 (0x01)，调用者应该发送 REQUEST SENSE 映射为 SCSI Check Condition
+                bot_request_sense(bot_data, task);
                 break;
             case BOT_CSW_PHASE:
                 //相位错误重启设备
@@ -137,18 +125,6 @@ int32 bot_send_scsi_cmd_sync(bot_data_t *bot_data, uas_cmd_params_t *params) {
     kfree(cbw);
     kfree(csw);
 
-    return final_status;
+    return;
 }
 
-//bot协议获取u盘信息
-int bot_send_inquiry(bot_data_t *bot_data, uint8 lun) {
-    scsi_sense_t scsi_sense;
-    scsi_cdb_inquiry_t scsi_cdb_inquiry = {0};
-    scsi_cdb_inquiry.opcode = 0xf0;
-    scsi_cdb_inquiry.alloc_len = sizeof(scsi_inquiry_t);
-    scsi_inquiry_t *scsi_inquiry = kzalloc(sizeof(scsi_inquiry_t));
-    uas_cmd_params_t uas_cmd_params = {&scsi_cdb_inquiry,sizeof(scsi_cdb_inquiry),lun,scsi_inquiry,sizeof(scsi_inquiry_t),UAS_DIR_IN,&scsi_sense};
-    bot_send_scsi_cmd_sync(bot_data,&uas_cmd_params);
-    kfree(scsi_inquiry);
-    return 0;
-}

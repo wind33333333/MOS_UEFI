@@ -34,25 +34,4 @@ typedef struct {
 
 #pragma pack(pop)
 
-typedef enum {
-    UAS_DIR_NONE = 0,
-    UAS_DIR_IN=1,
-    UAS_DIR_OUT=2
-}uas_dir_e;
-
-// 1. 定义事务参数结构体
-typedef struct {
-    void              *scsi_cdb;
-    uint8             scsi_cdb_len;
-    uint64            lun;
-    void              *data_buf;
-    uint32            data_len;
-    uas_dir_e         dir;
-    scsi_sense_t      *scsi_sense; // 输出参数
-} uas_cmd_params_t;
-
-
-int32 uas_get_capacity(uas_data_t *uas_data, uint8 lun);
-int uas_send_inquiry(uas_data_t *uas_data, uint8 lun);
-uint32 scsi_report_luns(uas_data_t *uas_data);
-int32 uas_test_unit_ready(uas_data_t *uas_data,uint8 lun);
+void uas_send_scsi_cmd_sync(void *dev_context, scsi_task_t *task);

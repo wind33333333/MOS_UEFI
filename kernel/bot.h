@@ -31,9 +31,7 @@ typedef struct {
 #define BOT_CSW_FAIL  0x01
 #define BOT_CSW_PHASE 0x02
 
-#define BOT_SENSE_ALLOC_SIZE 255
-
 #pragma pack(pop)
 
 
-int bot_send_inquiry(bot_data_t *bot_data, uint8 lun);
+void bot_send_scsi_cmd_sync(void *dev_context, scsi_task_t *task);
