@@ -346,6 +346,16 @@ typedef struct {
     int32         status;       // [输出] 命令执行完成后的 SCSI 状态码 (0=成功, 2=Check Condition)
 } scsi_task_t;
 
+// 定义 SCSI 设备句柄
+typedef struct scsi_device {
+    void    *transport_context;   // 底层传输协议上下文 (bot_data_t / uas_data_t)
+    uint8   lun;                 // 逻辑单元号
+    uint32  block_size;          // 扇区大小 (获取容量后缓存在这里，读写时不用每次传)
+
+    // 底层绑定的发送函数指针
+    void (*send_cmd_sync)(void *context, scsi_task_t *task);
+} scsi_device_t;
+
 
 int32 scsi_test_unit_ready(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*));
 int32 scsi_request_sense(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_sense_t *sense);

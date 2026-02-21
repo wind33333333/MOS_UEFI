@@ -14,13 +14,6 @@ typedef struct us_common_data_t {
     list_head_t         lun_list;       // 挂载的逻辑单元 (LUN) 链表
     uint8               max_lun;        // 最大 LUN 编号
 
-    // --- 统一的操作接口 (虚函数表) ---
-    // 通过这组函数指针，屏蔽 BOT 和 UAS 的差异
-    struct us_protocol_ops {
-        int (*queue_command)(struct us_common_data_t *us, struct scsi_cmnd *cmnd);
-        int (*device_reset)(struct us_common_data_t *us);
-        void (*abort_command)(struct us_common_data_t *us, struct scsi_cmnd *cmnd);
-    } *ops;
 } us_common_data_t;
 
 // BOT (Bulk-Only Transport) 专用结构
@@ -54,77 +47,5 @@ typedef struct uas_data_t {
     uint64           tag_bitmap;      // UAS Tag管理,tag号对应stream
 } uas_data_t;
 
-////////////////////////////////////////////////
-//逻辑单元
-typedef struct {
-    uint64          block_count;            // 块数量
-    uint32          block_size;             // 块大小
-    char8           vid[25];                // 厂商ascii码
-    uint8           lun_id;                 // 逻辑单元
-} usb_lun_t;
-
-//bot协议u盘
-typedef struct usb_bot_msc_t{
-    usb_dev_t*      usb_dev;                // 父设备指针
-    //usb_endpoint_t  in_ep;                  // 输入端点
-    //usb_endpoint_t  out_ep;                 // 输出端点
-    int32 (*scsi_read)(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,struct usb_bot_msc_t *bot_msc,uint8 lun_id,uint64 lba,uint32 block_count,uint32 block_size,void *buf);
-    int32 (*scsi_write)(xhci_controller_t *xhci_controller,usb_dev_t *usb_dev,struct usb_bot_msc_t *bot_msc,uint8 lun_id,uint64 lba,uint32 block_count,uint32 block_size,void *buf);
-    uint8           interface_num;          // 接口号
-    usb_lun_t*      lun;                    // 逻辑单元组
-    uint8           lun_count;              // 逻辑单元实际个数
-    uint32          tag;                    // 全局标签
-} usb_bot_msc_t;
-
-typedef struct {
-    xhci_ring_t  transfer_ring;
-    uint8        ep_num;
-    xhci_ring_t* stream_rings;   // per-stream rings数组 (如果启用流)
-    uint32 streams_count;        // 2^max_streams_exp+1
-}usb_uas_endpoint_t;
-
-//uas协议u盘
-typedef struct {
-    usb_dev_t*      usb_dev;                // 父设备指针
-    usb_uas_endpoint_t cmd_out_ep;
-    usb_uas_endpoint_t sta_in_ep;
-    usb_uas_endpoint_t bluk_in_ep;
-    usb_uas_endpoint_t bluk_out_ep;
-    uint8           interface_num;          // 接口号
-    usb_lun_t*      lun;                    // 逻辑单元组
-    uint8           lun_count;              // 逻辑单元实际个数
-    uint16          tag;                    // 全局标签
-} usb_uas_msc_t;
-
-// 通用的 USB Mass Storage Class (MSC) 结构
-// 整合 BOT 和 UASP 的共同字段，并使用联合体处理协议特定部分
-typedef struct usb_msc_t {
-    usb_dev_t* usb_dev;          // 父 USB 设备指针（通用）
-    uint8 interface_num;         // 接口号（通用）
-    usb_lun_t* lun;              // 逻辑单元组指针（通用）
-    uint8 lun_count;             // 逻辑单元实际个数（通用）
-    uint32 tag;                  // 全局标签（兼容 BOT uint32 和 UASP uint16，使用 uint32）
-
-    // 通用的 SCSI 读写函数指针（根据协议内部分支实现）
-    int32 (*scsi_read)(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev, struct usb_msc_t *msc, uint8 lun_id, uint64 lba, uint32 block_count, uint32 block_size, void *buf);
-    int32 (*scsi_write)(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev, struct usb_msc_t *msc, uint8 lun_id, uint64 lba, uint32 block_count, uint32 block_size, void *buf);
-
-    // 协议特定字段，使用联合体节省内存
-    union {
-        // BOT 协议特定部分
-        struct {
-            //usb_endpoint_t in_ep;   // Bulk-In 端点
-            //usb_endpoint_t out_ep;  // Bulk-Out 端点
-        } bot;
-
-        // UASP 协议特定部分
-        struct {
-            usb_uas_endpoint_t cmd_out_ep;  // Command Pipe (Bulk-Out)
-            usb_uas_endpoint_t sta_in_ep;   // Status Pipe (Bulk-In)
-            usb_uas_endpoint_t bulk_in_ep;  // Data-In Pipe (Bulk-In，支持 Streams)
-            usb_uas_endpoint_t bulk_out_ep; // Data-Out Pipe (Bulk-Out，支持 Streams)
-        } uasp;
-    } protocol_specific;  // 访问示例：msc->protocol_specific.bot.in_ep
-} usb_msc_t;
 
 int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id);

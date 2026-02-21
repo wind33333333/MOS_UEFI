@@ -80,6 +80,8 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         uas_data->tag_bitmap <<= (mini_streams-1);
         uas_data->tag_bitmap <<= 1;
 
+
+
         scsi_test_unit_ready(uas_data,0,uas_send_scsi_cmd_sync);
 
         uint8 *write_data_buf = kmalloc(512);
