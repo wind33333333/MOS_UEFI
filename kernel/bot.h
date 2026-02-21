@@ -1,7 +1,6 @@
 #pragma once
 #include "moslib.h"
-#include "scsi.h"
-#include "usb.h"
+
 
 #pragma pack(push,1)
 
@@ -37,7 +36,7 @@ typedef struct {
 // BOT (Bulk-Only Transport) 专用结构
 typedef struct bot_data_t {
     // --- 硬件拓扑 ---
-    usb_if_t     *usb_if;          // 绑定的 USB 接口
+    struct usb_if_t     *usb_if;          // 绑定的 USB 接口
 
     // --- SCSI / LUN 管理 ---
     struct scsi_device_t *scsi_dev;
@@ -59,5 +58,5 @@ typedef struct bot_data_t {
 } bot_data_t;
 
 
-
-void bot_send_scsi_cmd_sync(void *dev_context, scsi_task_t *task);
+struct scsi_task_t;
+void bot_send_scsi_cmd_sync(void *dev_context, struct scsi_task_t *task);

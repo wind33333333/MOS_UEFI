@@ -204,7 +204,7 @@ typedef struct usb_if_t {
 } usb_if_t;
 
 //端点
-typedef struct {
+typedef struct endpoint_t{
     union {
         xhci_ring_t  transfer_ring;
         xhci_ring_t  *stream_rings;   // per-stream rings数组 (如果启用流)
@@ -274,7 +274,9 @@ int usb_endpoint_init(usb_if_alt_t *if_alt);
 
 //注册usb接口
 static inline void usb_if_register(usb_if_t* usb_if);
+
 //注册usb设备
 static inline void usb_dev_register(usb_dev_t *usb_dev);
+
 //注册usb驱动
 void usb_drv_register(usb_drv_t *usb_drv);

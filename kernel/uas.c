@@ -1,4 +1,5 @@
 #include  "uas.h"
+#include  "usb.h"
 #include "scsi.h"
 
 //获取一个tag
