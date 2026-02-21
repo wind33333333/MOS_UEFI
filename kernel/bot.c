@@ -9,7 +9,7 @@ int32 bot_request_sense(bot_data_t *bot_data,scsi_task_t *task) {
 
     scsi_sense_t *sense = kzalloc(SCSI_SENSE_ALLOC_SIZE);
 
-    int32 status = scsi_request_sense(bot_data,task->lun,bot_send_scsi_cmd_sync,sense);
+    int32 status = scsi_request_sense(bot_data->scsi_dev,sense);
 
     if (status == 0) {
         asm_mem_cpy(sense,task->sense,8+sense->add_sense_len);

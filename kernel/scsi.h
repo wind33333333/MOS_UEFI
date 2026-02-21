@@ -347,7 +347,7 @@ typedef struct {
 } scsi_task_t;
 
 // 定义 SCSI 设备句柄
-typedef struct scsi_device {
+typedef struct scsi_device_t{
     void    *transport_context;   // 底层传输协议上下文 (bot_data_t / uas_data_t)
     uint8   lun;                 // 逻辑单元号
     uint32  block_size;          // 扇区大小 (获取容量后缓存在这里，读写时不用每次传)
@@ -357,13 +357,13 @@ typedef struct scsi_device {
 } scsi_device_t;
 
 
-int32 scsi_test_unit_ready(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*));
-int32 scsi_request_sense(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_sense_t *sense);
-int32 scsi_send_inquiry(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*), scsi_inquiry_t *inquiry);
-int32 scsi_report_luns(void *dev_context,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_report_luns_t *report_luns);
-int32 scsi_read_capacity10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_read_capacity10_t *read_capacity10);
-int32 scsi_read_capacity16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_read_capacity16_t *read_capacity16);
-int32 scsi_read10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),uint32 lba,void *data_buf,uint16 block_count,uint16 block_size);
-int32 scsi_write10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),uint32 lba,void *data_buf,uint16 block_count,uint16 block_size);
-int32 scsi_read16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),uint64 lba,void *data_buf,uint32 block_count,uint32 block_size);
-int32 scsi_write16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),uint64 lba,void *data_buf,uint32 block_count,uint32 block_size);
+int32 scsi_test_unit_ready(scsi_device_t *scsi_dev);
+int32 scsi_request_sense(scsi_device_t *scsi_dev,scsi_sense_t *sense);
+int32 scsi_send_inquiry(scsi_device_t *scsi_dev, scsi_inquiry_t *inquiry);
+int32 scsi_report_luns(scsi_device_t *scsi_dev,scsi_report_luns_t *report_luns);
+int32 scsi_read_capacity10(scsi_device_t *scsi_dev,scsi_read_capacity10_t *read_capacity10);
+int32 scsi_read_capacity16(scsi_device_t *scsi_dev,scsi_read_capacity16_t *read_capacity16);
+int32 scsi_read10(scsi_device_t *scsi_dev,void *data_buf,uint32 lba,uint16 block_count);
+int32 scsi_write10(scsi_device_t *scsi_dev,void *data_buf,uint32 lba,uint16 block_count);
+int32 scsi_read16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 block_count);
+int32 scsi_write16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 block_count);

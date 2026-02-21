@@ -1,9 +1,37 @@
 #include "scsi.h"
 
+#include "printk.h"
+
+// 统一的 SCSI 任务执行器和错误处理逻辑
+int32 scsi_execute(scsi_device_t *scsi_dev, scsi_task_t *task) {
+    int retry_count = 3;
+    do {
+        // 调用底层绑定的真实发送函数 (BOT/UAS)
+        scsi_dev->send_cmd_sync(scsi_dev->transport_context, task);
+
+        // 统一执行状态处理逻辑
+        if (task->status == 0) {
+            // 如果成功，直接返回
+            break;
+        }else if(task->status == 2 && task->sense->flags_key == 0x06 && task->sense->asc == 0x29) {
+            // 这Unit Attention (设备刚上电/复位) 是良性错误，静默重试
+            retry_count--;
+        }else{
+            //其他错误处理
+            color_printk(RED,BLACK,"send_cmd_sync error status:%#x  flags_key:%#x  asc:%#x  \n",task->status,task->sense->flags_key,task->sense->asc);
+            while (1);
+        }
+
+    } while (retry_count > 0);
+
+    return task->status;
+}
+
+
 /**
  * 发送 TEST UNIT READY 命令
  */
-int32 scsi_test_unit_ready(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*)) {
+int32 scsi_test_unit_ready(scsi_device_t *scsi_dev) {
     //scsi_sense信息
     scsi_sense_t sense;
 
@@ -13,9 +41,10 @@ int32 scsi_test_unit_ready(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync
     };
 
     //构造scsi_task
-    scsi_task_t task={.cdb = &cdb,
+    scsi_task_t task={
+        .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_test_unit_t),
-        .lun = lun,
+        .lun = scsi_dev->lun,
         .dir = SCSI_DIR_NONE,
         .data_buf = NULL,
         .data_len = 0,
@@ -24,15 +53,13 @@ int32 scsi_test_unit_ready(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync
     };
 
     //发送scsi命令
-    do {
-        send_scsi_cmd_sync(dev_context, &task);
-    } while (task.status == 2 && sense.flags_key == 0x6 && sense.asc == 0x29 && sense.ascq == 0);
+    scsi_execute(scsi_dev,&task);
 
     return task.status;
 }
 
 //获取scsi命令错误信息
-int32 scsi_request_sense(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_sense_t *sense) {
+int32 scsi_request_sense(scsi_device_t *scsi_dev,scsi_sense_t *sense) {
     scsi_cdb_request_sense_t cdb = {
         .opcode = SCSI_REQUEST_SENSE,
         .alloc_len = SCSI_SENSE_ALLOC_SIZE
@@ -41,7 +68,7 @@ int32 scsi_request_sense(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(
     scsi_task_t task={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_request_sense_t),
-        .lun = lun,
+        .lun = scsi_dev->lun,
         .dir = SCSI_DIR_IN,
         .data_buf = sense,
         .data_len = SCSI_SENSE_ALLOC_SIZE,
@@ -49,14 +76,14 @@ int32 scsi_request_sense(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(
         .status = -1
     };
 
-    send_scsi_cmd_sync(dev_context,&task);
+    scsi_execute(scsi_dev,&task);
 
     return task.status;
 }
 
 
 //获取u盘信息
-int32 scsi_send_inquiry(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*), scsi_inquiry_t *inquiry) {
+int32 scsi_send_inquiry(scsi_device_t *scsi_dev, scsi_inquiry_t *inquiry) {
     scsi_sense_t sense;
 
     scsi_cdb_inquiry_t cdb = {
@@ -67,7 +94,7 @@ int32 scsi_send_inquiry(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(v
     scsi_task_t task={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_inquiry_t),
-        .lun = lun,
+        .lun = scsi_dev->lun,
         .data_buf = inquiry,
         .data_len = sizeof(scsi_inquiry_t),
         .dir = SCSI_DIR_IN,
@@ -75,7 +102,7 @@ int32 scsi_send_inquiry(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(v
         .status = -1
     };
 
-    send_scsi_cmd_sync(dev_context,&task);
+    scsi_execute(scsi_dev,&task);
 
     return task.status;
 }
@@ -83,7 +110,7 @@ int32 scsi_send_inquiry(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(v
 /*
  * 获取 LUN 数量
 */
-int32 scsi_report_luns(void *dev_context,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_report_luns_t *report_luns) {
+int32 scsi_report_luns(scsi_device_t *scsi_dev,scsi_report_luns_t *report_luns) {
     scsi_sense_t sense;
 
     scsi_cdb_report_luns_t cdb={
@@ -102,7 +129,7 @@ int32 scsi_report_luns(void *dev_context,void (*send_scsi_cmd_sync)(void*, scsi_
         .status = -1
     };
 
-    send_scsi_cmd_sync(dev_context,&task);
+    scsi_execute(scsi_dev,&task);
 
     return task.status;
 }
@@ -110,7 +137,7 @@ int32 scsi_report_luns(void *dev_context,void (*send_scsi_cmd_sync)(void*, scsi_
 /**
  * 获取 U 盘容量
  */
-int32 scsi_read_capacity10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_read_capacity10_t *read_capacity10) {
+int32 scsi_read_capacity10(scsi_device_t *scsi_dev,scsi_read_capacity10_t *read_capacity10) {
     scsi_sense_t sense;
 
     scsi_cdb_read_capacity10_t cdb = {
@@ -120,7 +147,7 @@ int32 scsi_read_capacity10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync
     scsi_task_t task={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_read_capacity10_t),
-        .lun = lun,
+        .lun = scsi_dev->lun,
         .data_buf = read_capacity10,
         .data_len = sizeof(scsi_read_capacity10_t),
         .dir = SCSI_DIR_IN,
@@ -128,7 +155,7 @@ int32 scsi_read_capacity10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync
         .status = -1
     };
 
-    send_scsi_cmd_sync(dev_context, &task);
+    scsi_execute(scsi_dev,&task);
 
     return task.status;
 }
@@ -136,7 +163,7 @@ int32 scsi_read_capacity10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync
 /**
  * 获取 U 盘容量
  */
-int32 scsi_read_capacity16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),scsi_read_capacity16_t *read_capacity16) {
+int32 scsi_read_capacity16(scsi_device_t *scsi_dev,scsi_read_capacity16_t *read_capacity16) {
     scsi_sense_t sense;
 
     scsi_cdb_read_capacity16_t cdb = {
@@ -150,7 +177,7 @@ int32 scsi_read_capacity16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync
     scsi_task_t task={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_read_capacity16_t),
-        .lun = lun,
+        .lun = scsi_dev->lun,
         .data_buf = read_capacity16,
         .data_len = sizeof(scsi_read_capacity16_t),
         .dir = SCSI_DIR_IN,
@@ -158,13 +185,13 @@ int32 scsi_read_capacity16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync
         .status = -1
     };
 
-    send_scsi_cmd_sync(dev_context, &task);
+    scsi_execute(scsi_dev,&task);
 
     return task.status;
 }
 
 //scsi读扇区10
-int32 scsi_read10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),uint32 lba,void *data_buf,uint16 block_count,uint16 block_size) {
+int32 scsi_read10(scsi_device_t *scsi_dev,void *data_buf,uint32 lba,uint16 block_count) {
     scsi_sense_t sense;
 
     scsi_cdb_rw10_t cdb = {
@@ -177,22 +204,22 @@ int32 scsi_read10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, 
     scsi_task_t task={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_rw10_t),
-        .lun = lun,
+        .lun = scsi_dev->lun,
         .data_buf = data_buf,
-        .data_len = block_count*block_size,
+        .data_len = block_count*scsi_dev->block_size,
         .dir = SCSI_DIR_IN,
         .sense = &sense,
         .status = -1
     };
 
-    send_scsi_cmd_sync(dev_context, &task);
+    scsi_execute(scsi_dev, &task);
 
     return task.status;
 }
 
 
 //scsi写扇区10
-int32 scsi_write10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),uint32 lba,void *data_buf,uint16 block_count,uint16 block_size) {
+int32 scsi_write10(scsi_device_t *scsi_dev,void *data_buf,uint32 lba,uint16 block_count) {
     scsi_sense_t sense;
 
     scsi_cdb_rw10_t cdb = {
@@ -205,21 +232,21 @@ int32 scsi_write10(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*,
     scsi_task_t task={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_rw10_t),
-        .lun = lun,
+        .lun = scsi_dev->lun,
         .data_buf = data_buf,
-        .data_len = block_count*block_size,
+        .data_len = block_count*scsi_dev->block_size,
         .dir = SCSI_DIR_OUT,
         .sense = &sense,
         .status = -1
     };
 
-    send_scsi_cmd_sync(dev_context, &task);
+    scsi_execute(scsi_dev, &task);
 
     return task.status;
 }
 
 //scsi读扇区16
-int32 scsi_read16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),uint64 lba,void *data_buf,uint32 block_count,uint32 block_size) {
+int32 scsi_read16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 block_count) {
     scsi_sense_t sense;
 
     scsi_cdb_rw16_t cdb = {
@@ -232,21 +259,21 @@ int32 scsi_read16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, 
     scsi_task_t task={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_rw16_t),
-        .lun = lun,
+        .lun = scsi_dev->lun,
         .data_buf = data_buf,
-        .data_len = block_count*block_size,
+        .data_len = block_count*scsi_dev->block_size,
         .dir = SCSI_DIR_IN,
         .sense = &sense,
         .status = -1
     };
 
-    send_scsi_cmd_sync(dev_context, &task);
+    scsi_execute(scsi_dev, &task);
 
     return task.status;
 }
 
 //scsi写扇区16
-int32 scsi_write16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*, scsi_task_t*),uint64 lba,void *data_buf,uint32 block_count,uint32 block_size) {
+int32 scsi_write16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 block_count) {
     scsi_sense_t sense;
 
     scsi_cdb_rw16_t cdb = {
@@ -259,15 +286,15 @@ int32 scsi_write16(void *dev_context,uint8 lun,void (*send_scsi_cmd_sync)(void*,
     scsi_task_t task={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_rw16_t),
-        .lun = lun,
+        .lun = scsi_dev->lun,
         .data_buf = data_buf,
-        .data_len = block_count*block_size,
+        .data_len = block_count*scsi_dev->block_size,
         .dir = SCSI_DIR_OUT,
         .sense = &sense,
         .status = -1
     };
 
-    send_scsi_cmd_sync(dev_context, &task);
+    scsi_execute(scsi_dev, &task);
 
     return task.status;
 }

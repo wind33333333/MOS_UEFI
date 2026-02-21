@@ -2,8 +2,7 @@
 #include "moslib.h"
 #include "usb.h"
 
-// 前置声明
-struct scsi_cmnd;
+struct scsi_device_t;
 
 // USB 存储设备公共基类
 typedef struct us_common_data_t {
@@ -31,6 +30,9 @@ typedef struct bot_data_t {
     // BOT 协议每次传输都需要这两个包头
     struct bot_cbw    *cbw;           // Command Block Wrapper (31 Bytes)
     struct bot_csw    *csw;           // Command Status Wrapper (13 Bytes)
+
+    struct scsi_device_t *scsi_dev;
+
 } bot_data_t;
 
 // UAS (USB Attached SCSI) 专用结构
