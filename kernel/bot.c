@@ -1,5 +1,6 @@
 #include "bot.h"
 #include "scsi.h"
+#include "slub.h"
 
 /**
  * 执行 Request Sense 命令获取错误详情
@@ -27,7 +28,7 @@ int32 bot_request_sense(bot_data_t *bot_data,scsi_task_t *task) {
  */
 void bot_send_scsi_cmd_sync(void *dev_context, scsi_task_t *task) {
     bot_data_t *bot_data =dev_context;
-    usb_dev_t *usb_dev = bot_data->common.usb_if->usb_dev;
+    usb_dev_t *usb_dev = bot_data->usb_if->usb_dev;
     xhci_controller_t *xhci = usb_dev->xhci_controller;
 
     // 管道定义 (BOT 通常只用两个 Bulk 管道)

@@ -18,7 +18,7 @@ static inline void uas_free_tag(uas_data_t *uas_data,uint16 nr) {
  */
 void uas_send_scsi_cmd_sync(void *dev_context, scsi_task_t *task){
     uas_data_t *uas_data = dev_context;
-    usb_dev_t *usb_dev = uas_data->common.usb_if->usb_dev;
+    usb_dev_t *usb_dev = uas_data->usb_if->usb_dev;
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     uint8 slot_id = usb_dev->slot_id;
 

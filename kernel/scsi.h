@@ -330,7 +330,7 @@ typedef enum {
 } scsi_dir_t;
 
 // 2. 通用 SCSI 任务结构体
-typedef struct {
+typedef struct scsi_task_t{
     // --- SCSI 命令部分 ---
     void   *cdb;        // SCSI 命令块
     uint8  cdb_len;      // 有效命令长度 (通常为 6, 10, 12, 16)

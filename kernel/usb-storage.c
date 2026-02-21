@@ -51,7 +51,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
     if (usb_if->cur_alt->if_protocol == 0x62) {
         //uas协议初始化流程
         uas_data_t *uas_data = kzalloc(sizeof(uas_data_t));
-        uas_data->common.usb_if = usb_if;
+        uas_data->usb_if = usb_if;
 
         uint32 mini_streams = 1<<MAX_STREAMS;
         //解析pipe端点
@@ -86,7 +86,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         scsi_dev->lun = 0;
         scsi_dev->block_size = 512;
         scsi_dev->send_cmd_sync = uas_send_scsi_cmd_sync;
-        uas_data->common.scsi_dev = scsi_dev;
+        uas_data->scsi_dev = scsi_dev;
 
         //临时测试
         scsi_test_unit_ready(scsi_dev);
@@ -102,7 +102,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
     } else {
         //bot协议初始化流程
         bot_data_t *bot_data = kzalloc(sizeof(bot_data_t));
-        bot_data->common.usb_if = usb_if;
+        bot_data->usb_if = usb_if;
         for (uint8 i = 0; i < 2; i++) {
             usb_ep_t *ep_phy = &usb_if->cur_alt->eps[i];
             uint8 ep_num = ep_phy->ep_num;
@@ -118,7 +118,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         scsi_dev->lun = 0;
         scsi_dev->block_size = 512;
         scsi_dev->send_cmd_sync = bot_send_scsi_cmd_sync;
-        bot_data->common.scsi_dev = scsi_dev;
+        bot_data->scsi_dev = scsi_dev;
 
         //临时测试
          scsi_test_unit_ready(scsi_dev);

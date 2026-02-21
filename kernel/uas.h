@@ -1,7 +1,6 @@
 #pragma once
 #include "moslib.h"
-#include "scsi.h"
-#include "usb-storage.h"
+#include "usb.h"
 
 #pragma pack(push,1)
 //UAS Command IU (主机 -> 设备)
@@ -34,4 +33,25 @@ typedef struct {
 
 #pragma pack(pop)
 
-void uas_send_scsi_cmd_sync(void *dev_context, scsi_task_t *task);
+// UAS (USB Attached SCSI) 专用结构
+typedef struct uas_data_t {
+    // --- 硬件拓扑 ---
+    usb_if_t     *usb_if;          // 绑定的 USB 接口
+
+    // --- SCSI / LUN 管理 ---
+    struct scsi_device_t *scsi_dev;
+
+    list_head_t         lun_list;       // 挂载的逻辑单元 (LUN) 链表
+    uint8               max_lun;        // 最大 LUN 编号
+
+    // --- 管道 (Pipes) ---
+    // UAS 分离了命令、状态和数据管道
+    uint8            cmd_pipe;       // Bulk OUT (发送 Command IU)
+    uint8            status_pipe;    // Bulk IN (接收 Sense IU)
+    uint8            data_in_pipe;   // Bulk IN (Read Data)
+    uint8            data_out_pipe;  // Bulk OUT (Write Data)
+    uint64           tag_bitmap;      // UAS Tag管理,tag号对应stream
+} uas_data_t;
+
+struct scsi_task_t;
+void uas_send_scsi_cmd_sync(void *dev_context, struct scsi_task_t *task);

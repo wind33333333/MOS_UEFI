@@ -1,7 +1,7 @@
 #pragma once
 #include "moslib.h"
 #include "scsi.h"
-#include "usb-storage.h"
+#include "usb.h"
 
 #pragma pack(push,1)
 
@@ -32,6 +32,32 @@ typedef struct {
 #define BOT_CSW_PHASE 0x02
 
 #pragma pack(pop)
+
+
+// BOT (Bulk-Only Transport) 专用结构
+typedef struct bot_data_t {
+    // --- 硬件拓扑 ---
+    usb_if_t     *usb_if;          // 绑定的 USB 接口
+
+    // --- SCSI / LUN 管理 ---
+    struct scsi_device_t *scsi_dev;
+
+    list_head_t         lun_list;       // 挂载的逻辑单元 (LUN) 链表
+    uint8               max_lun;        // 最大 LUN 编号
+
+    // --- 管道 (Pipes) ---
+    // BOT 只有两个管道，数据和状态共用
+    uint8             pipe_in;        // Bulk IN (Data Read + CSW)
+    uint8             pipe_out;       // Bulk OUT (CBW + Data Write)
+    uint32            tag;
+
+    // --- 协议缓冲区 (DMA Coherent) ---
+    // BOT 协议每次传输都需要这两个包头
+    struct bot_cbw    *cbw;           // Command Block Wrapper (31 Bytes)
+    struct bot_csw    *csw;           // Command Status Wrapper (13 Bytes)
+
+} bot_data_t;
+
 
 
 void bot_send_scsi_cmd_sync(void *dev_context, scsi_task_t *task);
