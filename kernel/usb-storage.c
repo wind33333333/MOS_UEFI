@@ -35,6 +35,7 @@ static inline uint8 bot_msc_read_max_lun(xhci_controller_t *xhci_controller, usb
 */
 
 
+
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
     usb_dev_t *usb_dev = usb_if->usb_dev;
