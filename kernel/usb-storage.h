@@ -10,6 +10,8 @@ typedef struct us_common_data_t {
     usb_if_t     *usb_if;          // 绑定的 USB 接口
 
     // --- SCSI / LUN 管理 ---
+    struct scsi_device_t *scsi_dev;
+
     list_head_t         lun_list;       // 挂载的逻辑单元 (LUN) 链表
     uint8               max_lun;        // 最大 LUN 编号
 
@@ -30,8 +32,6 @@ typedef struct bot_data_t {
     // BOT 协议每次传输都需要这两个包头
     struct bot_cbw    *cbw;           // Command Block Wrapper (31 Bytes)
     struct bot_csw    *csw;           // Command Status Wrapper (13 Bytes)
-
-    struct scsi_device_t *scsi_dev;
 
 } bot_data_t;
 

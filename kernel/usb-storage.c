@@ -86,7 +86,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         scsi_dev->lun = 0;
         scsi_dev->block_size = 512;
         scsi_dev->send_cmd_sync = uas_send_scsi_cmd_sync;
-
+        uas_data->common.scsi_dev = scsi_dev;
 
         scsi_test_unit_ready(scsi_dev);
 
@@ -117,7 +117,7 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         scsi_dev->lun = 0;
         scsi_dev->block_size = 512;
         scsi_dev->send_cmd_sync = bot_send_scsi_cmd_sync;
-        bot_data->scsi_dev = scsi_dev;
+        bot_data->common.scsi_dev = scsi_dev;
 
          scsi_test_unit_ready(scsi_dev);
 
