@@ -81,16 +81,21 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         uas_data->tag_bitmap <<= (mini_streams-1);
         uas_data->tag_bitmap <<= 1;
 
+        scsi_device_t *scsi_dev = kzalloc(sizeof(scsi_device_t));
+        scsi_dev->transport_context = uas_data;
+        scsi_dev->lun = 0;
+        scsi_dev->block_size = 512;
+        scsi_dev->send_cmd_sync = uas_send_scsi_cmd_sync;
 
 
-        scsi_test_unit_ready(uas_data,0,uas_send_scsi_cmd_sync);
+        scsi_test_unit_ready(scsi_dev);
 
         uint8 *write_data_buf = kmalloc(512);
         asm_mem_set(write_data_buf,0x18,512);
-        scsi_write16(uas_data,0,uas_send_scsi_cmd_sync,0,write_data_buf,1,512);
+        scsi_write16(scsi_dev,write_data_buf,0,1);
 
         uint8 *read_data_buf = kmalloc(512);
-        scsi_read16(uas_data,0,uas_send_scsi_cmd_sync,0,read_data_buf,1,512);
+        scsi_read16(scsi_dev,read_data_buf,0,1);
 
 
     } else {
@@ -107,22 +112,29 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
             }
         }
 
-        scsi_test_unit_ready(bot_data,0,bot_send_scsi_cmd_sync);
+        scsi_device_t *scsi_dev = kzalloc(sizeof(scsi_device_t));
+        scsi_dev->transport_context = bot_data;
+        scsi_dev->lun = 0;
+        scsi_dev->block_size = 512;
+        scsi_dev->send_cmd_sync = bot_send_scsi_cmd_sync;
+        bot_data->scsi_dev = scsi_dev;
 
-        scsi_inquiry_t *inquiry = kzalloc(sizeof(scsi_inquiry_t));
-        scsi_send_inquiry(bot_data,0,bot_send_scsi_cmd_sync,inquiry);
-        kfree(inquiry);
+         scsi_test_unit_ready(scsi_dev);
 
-        scsi_read_capacity16_t *read_capacity16 = kzalloc(sizeof(scsi_read_capacity16_t));
-        scsi_read_capacity16(bot_data,0,bot_send_scsi_cmd_sync,read_capacity16);
-        kfree(read_capacity16);
+         scsi_inquiry_t *inquiry = kzalloc(sizeof(scsi_inquiry_t));
+         scsi_send_inquiry(scsi_dev,inquiry);
+         kfree(inquiry);
 
-        uint8 *write_data_buf = kmalloc(512);
-        asm_mem_set(write_data_buf,0x18,512);
-        scsi_write16(bot_data,0,bot_send_scsi_cmd_sync,0,write_data_buf,1,512);
+         scsi_read_capacity16_t *read_capacity16 = kzalloc(sizeof(scsi_read_capacity16_t));
+         scsi_read_capacity16(scsi_dev,read_capacity16);
+         kfree(read_capacity16);
 
-        uint8 *read_data_buf = kmalloc(512);
-        scsi_read16(bot_data,0,bot_send_scsi_cmd_sync,0,read_data_buf,1,512);
+         uint8 *write_data_buf = kmalloc(512);
+         asm_mem_set(write_data_buf,0x18,512);
+         scsi_write16(scsi_dev,write_data_buf,0,1);
+
+         uint8 *read_data_buf = kmalloc(512);
+         scsi_read16(scsi_dev,read_data_buf,0,1);
 
     }
 }
