@@ -24,7 +24,6 @@ static inline uint8 bot_msc_read_max_lun(xhci_controller_t *xhci_controller, usb
     status_stage_trb(&trb, enable_ioc, trb_out);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
-
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
     timing();
     xhci_ering_dequeue(xhci_controller, &trb);
