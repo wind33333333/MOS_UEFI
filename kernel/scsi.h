@@ -436,10 +436,10 @@ typedef struct scsi_cmnd_t{
 } scsi_cmnd_t;
 
 
-int32 scsi_test_unit_ready(scsi_device_t *scsi_dev);
+int32 scsi_test_unit_ready(scsi_device_t *sdev);
 int32 scsi_request_sense(scsi_device_t *scsi_dev,scsi_sense_t *sense);
 int32 scsi_send_inquiry(scsi_device_t *sdev, scsi_inquiry_t *inquiry);
-int32 scsi_report_luns(scsi_device_t *scsi_dev,scsi_report_luns_t *report_luns);
+int32 scsi_report_luns(scsi_device_t *sdev,scsi_report_luns_t *report_luns);
 int32 scsi_read_capacity10(scsi_device_t *scsi_dev,scsi_read_capacity10_t *read_capacity10);
 int32 scsi_read_capacity16(scsi_device_t *scsi_dev,scsi_read_capacity16_t *read_capacity16);
 int32 scsi_read10(scsi_device_t *scsi_dev,void *data_buf,uint32 lba,uint16 block_count);
