@@ -299,6 +299,10 @@ int32 scsi_write16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 bloc
     return task.status;
 }
 
+// 定义设备类型，用于在统一设备树中区分身份
+device_type_t scsi_host_type = {"scsi-host"};
+device_type_t scsi_dev_type = {"scsi-dev"};
+
 //创建scsi_host
 scsi_host_t *scsi_create_host(scsi_host_template_t *host_template,void* host_data,device_t *parent,uint8 max_lun,char *name) {
     scsi_host_t *scsi_host = kzalloc(sizeof(scsi_host_t));
@@ -322,4 +326,117 @@ scsi_host_t *scsi_create_host(scsi_host_template_t *host_template,void* host_dat
     scsi_host->host_status = 0;
     list_head_init(&scsi_host->devices_list);
     return scsi_host;
+}
+
+
+// 工具函数：清理 INQUIRY 返回字符串尾部的空格 (0x20)
+static void scsi_trim_string(char *str, int len) {
+    int i = len - 1;
+    while (i >= 0 && (str[i] == ' ' || str[i] == 0)) {
+        str[i] = '\0';
+        i--;
+    }
+}
+
+// ============================================================================
+// 步骤 3: 探测具体的 LUN (探针)
+// ============================================================================
+static void scsi_probe_lun(scsi_host_t *shost, uint32 lun) {
+    // 1. 预分配 LUN 句柄
+    scsi_device_t *sdev = kzalloc(sizeof(scsi_device_t));
+    sdev->host = shost;
+    sdev->lun  = lun;
+
+    // 2. 发送 INQUIRY 命令查身份
+    scsi_inquiry_t inq = {0};
+    int32 status = scsi_send_inquiry(sdev, &inq);
+    if (status != 0) {
+        kfree(sdev); // 没有设备响应，说明这个 LUN 不存在
+        return;
+    }
+
+    // 检查 Peripheral Qualifier (高 3 位)
+    // 0x03 (011b) 表示：设备支持这个 LUN 地址，但当前没有物理介质连接 (如读卡器空槽)
+    if ((inq.device_type >> 5) == 0x03) {
+        kfree(sdev);
+        return;
+    }
+
+    // 3. 解析身份信息
+    sdev->type = inq.device_type & 0x1F;
+    sdev->removable = (inq.rmb & 0x80) ? 1 : 0;
+
+    // 拷贝并清理字符串
+    asm_mem_cpy(sdev->vendor, inq.vendor_id, 8);
+    sdev->vendor[8] = '\0';
+    scsi_trim_string(sdev->vendor, 8);
+
+    asm_mem_cpy(sdev->model, inq.product_id, 16);
+    sdev->model[16] = '\0';
+    scsi_trim_string(sdev->model, 16);
+
+    // 4. 发送 TEST UNIT READY (消费掉刚上电的 Unit Attention)
+    scsi_test_unit_ready(sdev);
+
+    // 5. 如果是磁盘设备 (Type 0)，尝试获取容量
+    if (sdev->type == 0x00) {
+        scsi_read_capacity10_t cap = {0};
+        // 注意：这里哪怕没获取到容量(如读卡器没插卡)，也要把 sdev 留着，只是标记 is_ready = 0
+        if (scsi_read_capacity10(sdev, &cap) == 0) {
+            sdev->block_size = asm_bswap32(cap.block_size);
+            sdev->max_lba    = asm_bswap32(cap.max_lba);
+            sdev->capacity   = sdev->max_lba + 1;
+            sdev->is_ready   = 1;
+        }
+    }
+
+    // 6. 组装设备树，将其挂载到 SCSI 总线上！
+    sdev->dev.parent = &shost->dev;         // 认 Host 为父
+    sdev->dev.bus    = &scsi_bus_type;      // 挂载到 SCSI 总线
+    sdev->dev.type   = &scsi_device_type;   // 身份标记为 scsi_device
+
+    // 挂入 Host 的设备链表中，方便统一管理
+    list_add_tail(&sdev->siblings, &shost->devices_list);
+
+    // 7. 正式注册设备！
+    // 【核心联动】这行代码会唤醒 SCSI 总线，总线会拿着 sdev->type 去找对应的驱动 (如 sd_driver)
+    device_register(&sdev->dev);
+
+    // 打印漂亮的系统日志
+    if (sdev->is_ready) {
+        color_printk(GREEN, BLACK, "SCSI: Found [%s %s] (Type %d, %d MB)\n", dev->vendor, sdev->model, sdev->type, (sdev->capacity * sdev->block_size) / 1024 / 1024);
+    } else {
+        color_printk(YELLOW, BLACK, "SCSI: Found [%s %s] (Type %d, Medium Not Present)\n",
+                     sdev->vendor, sdev->model, sdev->type);
+    }
+}
+
+// ============================================================================
+// 步骤 2: 扫描主机下的所有 LUN
+// ============================================================================
+static void scsi_scan_host(scsi_host_t *shost) {
+    // 对于大部分普通的 U 盘，max_lun 通常是 0 (只循环一次)
+    // 对于读卡器，可能是 3 (循环 4 次)
+    for (uint32 lun = 0; lun <= shost->max_lun; lun++) {
+        scsi_probe_lun(shost, lun);
+    }
+}
+
+// ============================================================================
+// 步骤 1: 底层驱动交接入口
+// ============================================================================
+int32 scsi_add_host(scsi_host_t *shost) {
+    // 完善主机的设备树信息
+    // 注意：shost->dev.parent 已经在 usb-storage 中被指向了 usb_if
+    shost->dev.bus  = NULL;             // Host 是总线提供者，不需要挂载到具体总线去相亲
+    shost->dev.type = &scsi_host_type;  // 标记它的身份
+
+    // 1. 将 Host 注册到系统的全局设备树中
+    // 这会在操作系统的设备拓扑结构里建立一个物理节点
+    //device_register(&shost->dev);
+
+    // 2. 启动异步/同步扫描引擎，探查这个 Host 下面挂了哪些逻辑磁盘
+    scsi_scan_host(shost);
+
+    return 0;
 }
