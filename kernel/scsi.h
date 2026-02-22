@@ -1,5 +1,8 @@
 #pragma once
 #include "moslib.h"
+#include "bus.h"
+#include "device.h"
+#include "driver.h"
 
 #pragma pack(push,1)
 
@@ -322,6 +325,93 @@ typedef struct {
 
 #pragma pack(pop)
 
+// ============================================================================
+// 1. SCSI 主机操作模板 (SCSI Host Template)
+// 本质：驱动的“虚函数表”。
+// 必须被声明为 static const，存放在内核的 .rodata (只读数据段) 中以防止被黑客篡改。
+// ============================================================================
+typedef struct scsi_host_template_t {
+    const char *name;                    // 驱动名称，例如 "usb-bot", "usb-uas", "ahci"
+
+    // 【核心接口】派发 SCSI 任务给底层硬件
+    // 返回值通常为 0 (成功接收并处理) 或错误码
+    int32 (*queue_command)(struct scsi_host *host, struct scsi_task_t *task);
+
+    // 【可选接口】复位整个主机控制器 (当设备彻底卡死时调用)
+    int32 (*reset_host)(struct scsi_host *host);
+
+    // 【可选接口】中止单个超时的 SCSI 命令
+    int32 (*abort_command)(struct scsi_host *host, struct scsi_task_t *task);
+
+    // 默认支持的最大 LUN 数量 (如果在探测阶段无法动态获取，则使用此默认值)
+    uint8 default_max_lun;
+} scsi_host_template_t;
+
+// ============================================================================
+// 2. SCSI 主机实例 (SCSI Host)
+// 本质：代表一个物理控制器或传输通道 (如一根 USB 线、一个 SATA 控制器)。
+// 内存位置：由底层驱动在堆 (Heap) 上动态 kzalloc 分配。
+// ============================================================================
+typedef struct scsi_host_t {
+    // --- 1. 继承与设备树模型 ---
+    device_t              dev;          // 通用设备节点。
+    // 极其重要：
+    // dev.parent 必须指向物理设备 (如 usb_if->dev)
+    // dev.bus 必须设为 NULL (它不参与总线相亲)
+
+    // --- 2. 接口与私有数据 (桥梁核心) ---
+    scsi_host_template_t *hostt;        // 指向绑定的操作模板 (虚函数表)
+    void                 *hostdata;     // 底层驱动的私有数据指针！
+    // 如果是 BOT，它会被强转为 bot_data_t*
+    // 如果是 UAS，它会被强转为 uas_data_t*
+
+    // --- 3. 硬件状态与属性 ---
+    uint32                host_no;      // 系统分配的全局主机编号 (如 0 代表 host0)
+    uint8                 max_lun;      // 探测到的真实硬件 LUN 上限 (例如 BOT 通过 0xFE 请求获取)
+    uint32                host_status;  // 主机当前状态 (0=运行中, 1=正在复位, 2=已拔出)
+
+    // --- 4. 子设备管理 ---
+    list_head_t           devices_list; // 链表头：挂载在此 Host 下的所有逻辑单元 (scsi_device_t)
+
+    // uint64             lock;         // 未来加入自旋锁，保护并发读写时的 devices_list 和状态
+} scsi_host_t;
+
+// ============================================================================
+// 3. SCSI 逻辑设备 (SCSI Device / LUN)
+// 本质：代表一个具体的逻辑磁盘 (如 U 盘的一个分区、光驱、SATA 硬盘)
+// 内存位置：在 scsi_scan_host 扫描到有效 LUN 时，由 SCSI 中间层在堆上动态分配。
+// ============================================================================
+typedef struct scsi_device_t{
+    // --- 1. 设备树模型继承 ---
+    device_t            dev;          // 通用的设备节点结构体
+    // 关键配置：
+    // dev.parent = &host->dev (认 Host 为父)
+    // dev.bus = &scsi_bus_type (挂在 SCSI 总线上等待相亲)
+
+    // --- 2. 拓扑与寻址结构 ---
+    struct scsi_host    *host;        // 【反向指针】指向孕育它的 SCSI Host
+    uint16              channel;      // 通道号 (通常为 0)
+    uint16              id;           // Target ID (通常为 0)
+    uint32              lun;          // 逻辑单元号 (如 0, 1, 2...)
+
+    // --- 3. 硬件身份信息 (通过 INQUIRY 命令获取) ---
+    uint8               type;         // 设备类型 (0x00=磁盘, 0x05=光驱)
+    uint8               removable;    // 是否为可移动介质 (RMB 位: 1=是, 0=否)
+    char                vendor[9];    // 厂商名 (8 字节 ASCII + 1 字节 '\0')
+    char                model[17];    // 产品型号 (16 字节 ASCII + 1 字节 '\0')
+    char                rev[5];       // 固件版本 (4 字节 ASCII + 1 字节 '\0')
+
+    // --- 4. 运行时状态与容量 (通过 READ CAPACITY 命令获取) ---
+    uint32              block_size;   // 扇区大小 (通常 512 或 4096 字节)
+    uint64              max_lba;      // 最大逻辑块地址 (总容量 = (max_lba + 1) * block_size)
+    uint8               is_ready;     // 介质是否就绪 (0=未就绪/无盘, 1=就绪)
+
+    // --- 5. 链表与高层绑定 ---
+    list_head_t         siblings;     // 兄弟节点链表 (用于挂在 host->devices_list 上)
+    void                *disk_data;   // 【极度关键】指向上层的高级对象！
+    // 当 sd_driver 认领它后，这里会指向 block_device_t (如 sda)
+} scsi_device_t;
+
 // 1. 数据传输方向枚举
 typedef enum {
     SCSI_DIR_NONE = 0, // 无数据传输 (如 TEST UNIT READY)
@@ -345,16 +435,6 @@ typedef struct scsi_task_t{
     scsi_sense_t  *sense;       // [可选] 用于接收 Auto-Sense 数据的缓冲区 (至少 18 字节)
     int32         status;       // [输出] 命令执行完成后的 SCSI 状态码 (0=成功, 2=Check Condition)
 } scsi_task_t;
-
-// 定义 SCSI 设备句柄
-typedef struct scsi_device_t{
-    void    *transport_context;   // 底层传输协议上下文 (bot_data_t / uas_data_t)
-    uint8   lun;                 // 逻辑单元号
-    uint32  block_size;          // 扇区大小 (获取容量后缓存在这里，读写时不用每次传)
-
-    // 底层绑定的发送函数指针
-    void (*send_cmd_sync)(void *context, scsi_task_t *task);
-} scsi_device_t;
 
 
 int32 scsi_test_unit_ready(scsi_device_t *scsi_dev);

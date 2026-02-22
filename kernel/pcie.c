@@ -1,6 +1,5 @@
 #include "pcie.h"
 #include "acpi.h"
-#include "apic.h"
 #include "printk.h"
 #include "slub.h"
 #include "vmalloc.h"

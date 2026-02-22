@@ -8,10 +8,20 @@ bus_type_t pcie_bus_type;
 //usb总线
 bus_type_t usb_bus_type;
 
+//scsi总线
+bus_type_t scsi_bus_type;
+
 extern usb_drv_t *create_us_driver();
 
 //创建一个pcie总线和usb总线
 INIT_TEXT void bus_init(void){
+
+    scsi_bus_type.name = "SCSI Bus Type";
+    scsi_bus_type.match = NULL;
+    scsi_bus_type.probe = NULL;
+    scsi_bus_type.remove = NULL;
+    list_head_init(&scsi_bus_type.dev_list);
+    list_head_init(&scsi_bus_type.drv_list);
 
     usb_bus_type.name = "USB Bus Type";
     usb_bus_type.match = usb_bus_match;

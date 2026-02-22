@@ -6,7 +6,7 @@
 /**
  * 执行 Request Sense 命令获取错误详情
  */
-int32 bot_request_sense(bot_data_t *bot_data,struct scsi_task_t *task) {
+int32 bot_request_sense(bot_data_t *bot_data,scsi_task_t *task) {
     if (!task->sense || *(uint8*)task->cdb == SCSI_REQUEST_SENSE) return -1;
 
     scsi_sense_t *sense = kzalloc(SCSI_SENSE_ALLOC_SIZE);
