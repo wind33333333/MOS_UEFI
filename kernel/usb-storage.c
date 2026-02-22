@@ -90,6 +90,7 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
 
 
 
+
     } else {        //bot协议初始化流程
         //创建bot_data
         bot_data_t *bot_data = kzalloc(sizeof(bot_data_t));
