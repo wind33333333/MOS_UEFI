@@ -1,5 +1,5 @@
 #include "scsi.h"
-
+#include "slub.h"
 #include "printk.h"
 
 // 统一的 SCSI 任务执行器和错误处理逻辑
@@ -297,4 +297,29 @@ int32 scsi_write16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 bloc
     scsi_execute(scsi_dev, &task);
 
     return task.status;
+}
+
+//创建scsi_host
+scsi_host_t *scsi_create_host(scsi_host_template_t *host_template,void* host_data,uint8 max_lun,char *name) {
+    scsi_host_t *scsi_host = kzalloc(sizeof(scsi_host_t));
+    scsi_host->dev.name = name;
+    scsi_host->dev.bus = 0;
+    scsi_host->dev.bus_node.next = NULL;
+    scsi_host->dev.bus_node.prev = NULL;
+    scsi_host->dev.child_list.next = NULL;
+    scsi_host->dev.child_list.prev = NULL;
+    scsi_host->dev.child_node.next = NULL;
+    scsi_host->dev.child_node.prev = NULL;
+    scsi_host->dev.drv = NULL;
+    scsi_host->dev.drv_data = NULL;
+    scsi_host->dev.parent = NULL;
+    scsi_host->dev.type = NULL;
+
+    scsi_host->hostt = host_template;
+    scsi_host->hostdata = host_data;
+    scsi_host->host_no = 0;
+    scsi_host->max_lun = max_lun;
+    scsi_host->host_status = 0;
+    list_head_init(&scsi_host->devices_list);
+    return scsi_host;
 }

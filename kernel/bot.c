@@ -27,8 +27,8 @@ int32 bot_request_sense(bot_data_t *bot_data,scsi_task_t *task) {
  * BOT 协议同步发送函数
  * 逻辑：CBW -> Data(可选) -> CSW
  */
-void bot_send_scsi_cmd_sync(void *dev_context, scsi_task_t *task) {
-    bot_data_t *bot_data =dev_context;
+void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_task_t *task) {
+    bot_data_t *bot_data =host->hostdata;
     usb_dev_t *usb_dev = bot_data->usb_if->usb_dev;
     xhci_controller_t *xhci = usb_dev->xhci_controller;
 
@@ -130,3 +130,11 @@ void bot_send_scsi_cmd_sync(void *dev_context, scsi_task_t *task) {
     return;
 }
 
+
+//uas协议模板
+scsi_host_template_t bot_host_template = {
+    .name = "bot",
+    .queue_command = bot_send_scsi_cmd_sync,
+    .reset_host = NULL,
+    .abort_command = NULL,
+};

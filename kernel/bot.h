@@ -57,6 +57,3 @@ typedef struct bot_data_t {
 
 } bot_data_t;
 
-
-struct scsi_task_t;
-void bot_send_scsi_cmd_sync(void *dev_context, struct scsi_task_t *task);

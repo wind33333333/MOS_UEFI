@@ -35,6 +35,7 @@ static inline uint8 bot_msc_read_max_lun(xhci_controller_t *xhci_controller, usb
 */
 
 struct scsi_host_template_t uas_host_template;
+struct scsi_host_template_t bot_host_template;
 
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
@@ -84,29 +85,13 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
         uas_data->tag_bitmap <<= 1;
 
         //创建scsi_host
-        scsi_host_t *scsi_host = kzalloc(sizeof(scsi_host_t));
-        scsi_host->hostt = & uas_host_template;
-        scsi_host->hostdata = uas_data;
-        scsi_host->host_no = 0;
-        scsi_host->max_lun = 0;
-        scsi_host->host_status = 0;
-        list_head_init(&scsi_host->devices_list);
+        scsi_create_host(&uas_host_template,uas_data,0,"uas_host");
 
 
 
-        //临时测试
-        scsi_test_unit_ready(scsi_dev);
 
-        uint8 *write_data_buf = kmalloc(512);
-        asm_mem_set(write_data_buf,0x18,512);
-        scsi_write16(scsi_dev,write_data_buf,0,1);
-
-        uint8 *read_data_buf = kmalloc(512);
-        scsi_read16(scsi_dev,read_data_buf,0,1);
-
-
-    } else {
-        //bot协议初始化流程
+    } else {        //bot协议初始化流程
+        //创建bot_data
         bot_data_t *bot_data = kzalloc(sizeof(bot_data_t));
         bot_data->usb_if = usb_if;
         for (uint8 i = 0; i < 2; i++) {
@@ -119,30 +104,10 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
             }
         }
 
-        scsi_device_t *scsi_dev = kzalloc(sizeof(scsi_device_t));
-        scsi_dev->transport_context = bot_data;
-        scsi_dev->lun = 0;
-        scsi_dev->block_size = 512;
-        scsi_dev->send_cmd_sync = bot_send_scsi_cmd_sync;
-        bot_data->scsi_dev = scsi_dev;
+        //创建scsi_host
+        scsi_create_host(&bot_host_template,bot_data,99,"bot_host");
 
-        //临时测试
-         scsi_test_unit_ready(scsi_dev);
 
-         scsi_inquiry_t *inquiry = kzalloc(sizeof(scsi_inquiry_t));
-         scsi_send_inquiry(scsi_dev,inquiry);
-         kfree(inquiry);
-
-         scsi_read_capacity16_t *read_capacity16 = kzalloc(sizeof(scsi_read_capacity16_t));
-         scsi_read_capacity16(scsi_dev,read_capacity16);
-         kfree(read_capacity16);
-
-         uint8 *write_data_buf = kmalloc(512);
-         asm_mem_set(write_data_buf,0x18,512);
-         scsi_write16(scsi_dev,write_data_buf,0,1);
-
-         uint8 *read_data_buf = kmalloc(512);
-         scsi_read16(scsi_dev,read_data_buf,0,1);
 
     }
 }
