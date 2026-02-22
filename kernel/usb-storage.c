@@ -85,7 +85,7 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
         uas_data->tag_bitmap <<= 1;
 
         //创建scsi_host
-        scsi_create_host(&uas_host_template,uas_data,0,"uas_host");
+        scsi_create_host(&uas_host_template,uas_data,&usb_if->dev,0,"uas_host");
 
 
 
@@ -106,7 +106,7 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
         }
 
         //创建scsi_host
-        scsi_create_host(&bot_host_template,bot_data,99,"bot_host");
+        scsi_create_host(&bot_host_template,bot_data,&usb_if->dev,99,"bot_host");
 
 
 

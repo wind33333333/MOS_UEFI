@@ -300,7 +300,7 @@ int32 scsi_write16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 bloc
 }
 
 //创建scsi_host
-scsi_host_t *scsi_create_host(scsi_host_template_t *host_template,void* host_data,uint8 max_lun,char *name) {
+scsi_host_t *scsi_create_host(scsi_host_template_t *host_template,void* host_data,device_t *parent,uint8 max_lun,char *name) {
     scsi_host_t *scsi_host = kzalloc(sizeof(scsi_host_t));
     scsi_host->dev.name = name;
     scsi_host->dev.bus = 0;
@@ -312,7 +312,7 @@ scsi_host_t *scsi_create_host(scsi_host_template_t *host_template,void* host_dat
     scsi_host->dev.child_node.prev = NULL;
     scsi_host->dev.drv = NULL;
     scsi_host->dev.drv_data = NULL;
-    scsi_host->dev.parent = NULL;
+    scsi_host->dev.parent = parent;
     scsi_host->dev.type = NULL;
 
     scsi_host->hostt = host_template;
