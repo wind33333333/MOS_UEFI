@@ -51,5 +51,3 @@ typedef struct uas_data_t {
     uint64           tag_bitmap;      // UAS Tag管理,tag号对应stream
 } uas_data_t;
 
-struct scsi_task_t;
-void uas_send_scsi_cmd_sync(void *dev_context, struct scsi_task_t *task);

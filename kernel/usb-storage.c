@@ -34,10 +34,10 @@ static inline uint8 bot_msc_read_max_lun(xhci_controller_t *xhci_controller, usb
 }
 */
 
-
+struct scsi_host_template_t uas_host_template;
 
 //u盘驱动程序
-int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
+int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
     usb_dev_t *usb_dev = usb_if->usb_dev;
 
     //u盘是否支持uas协议，优先设置为uas协议
@@ -48,8 +48,10 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
     usb_set_interface(usb_if);   //切换接口备用配置
     usb_endpoint_init(usb_if->cur_alt);   //初始化端点
 
-    if (usb_if->cur_alt->if_protocol == 0x62) {
-        //uas协议初始化流程
+    if (usb_if->cur_alt->if_protocol == 0x62) {        //uas协议初始化流程
+
+
+        //创建uas协议似有数据
         uas_data_t *uas_data = kzalloc(sizeof(uas_data_t));
         uas_data->usb_if = usb_if;
 
@@ -81,12 +83,16 @@ int32 usb_storage_probe(usb_if_t *usb_if, usb_id_t *id) {
         uas_data->tag_bitmap <<= (mini_streams-1);
         uas_data->tag_bitmap <<= 1;
 
-        scsi_device_t *scsi_dev = kzalloc(sizeof(scsi_device_t));
-        scsi_dev->transport_context = uas_data;
-        scsi_dev->lun = 0;
-        scsi_dev->block_size = 512;
-        scsi_dev->send_cmd_sync = uas_send_scsi_cmd_sync;
-        uas_data->scsi_dev = scsi_dev;
+        //创建scsi_host
+        scsi_host_t *scsi_host = kzalloc(sizeof(scsi_host_t));
+        scsi_host->hostt = & uas_host_template;
+        scsi_host->hostdata = uas_data;
+        scsi_host->host_no = 0;
+        scsi_host->max_lun = 0;
+        scsi_host->host_status = 0;
+        list_head_init(&scsi_host->devices_list);
+
+
 
         //临时测试
         scsi_test_unit_ready(scsi_dev);

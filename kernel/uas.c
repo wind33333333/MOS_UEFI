@@ -17,8 +17,8 @@ static inline void uas_free_tag(uas_data_t *uas_data,uint16 nr) {
 /**
  * 同步发送 SCSI 命令并等待结果 (UAS 协议)
  */
-void uas_send_scsi_cmd_sync(void *dev_context, scsi_task_t *task){
-    uas_data_t *uas_data = dev_context;
+void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_task_t *task){
+    uas_data_t *uas_data = host->hostdata;
     usb_dev_t *usb_dev = uas_data->usb_if->usb_dev;
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     uint8 slot_id = usb_dev->slot_id;
@@ -91,3 +91,12 @@ void uas_send_scsi_cmd_sync(void *dev_context, scsi_task_t *task){
     uas_free_tag(uas_data, tag);
     return;
 }
+
+
+//uas协议模板
+scsi_host_template_t uas_host_template = {
+    .name = "uas",
+    .queue_command = uas_send_scsi_cmd_sync,
+    .reset_host = NULL,
+    .abort_command = NULL,
+};

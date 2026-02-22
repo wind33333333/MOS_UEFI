@@ -148,7 +148,7 @@ struct usb_dev_t;
 struct usb_if_t;
 
 //usb驱动id表
-typedef struct {
+typedef struct usb_id_t {
     // interface class 匹配（最常用）
     uint8  if_class;
     uint8  if_subclass;
