@@ -364,7 +364,7 @@ static void scsi_probe_lun(scsi_host_t *shost) {
 
     // 3. 解析身份信息
     sdev->type = inq.device_type & 0x1F;
-    sdev->removable = (inq.rmb & 0x80) ? 1 : 0;
+    sdev->removable = inq.rmb>>7;
 
     // 拷贝并清理字符串
     asm_mem_cpy(sdev->vendor, inq.vendor_id, 8);
