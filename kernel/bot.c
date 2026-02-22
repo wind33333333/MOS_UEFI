@@ -6,7 +6,7 @@
 /**
  * 执行 Request Sense 命令获取错误详情
  */
-int32 bot_request_sense(bot_data_t *bot_data,scsi_task_t *task) {
+int32 bot_request_sense(bot_data_t *bot_data,scsi_cmnd_t *task) {
     if (!task->sense || *(uint8*)task->cdb == SCSI_REQUEST_SENSE) return -1;
 
     scsi_sense_t *sense = kzalloc(SCSI_SENSE_ALLOC_SIZE);
@@ -27,7 +27,7 @@ int32 bot_request_sense(bot_data_t *bot_data,scsi_task_t *task) {
  * BOT 协议同步发送函数
  * 逻辑：CBW -> Data(可选) -> CSW
  */
-void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_task_t *task) {
+void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *task) {
     bot_data_t *bot_data =host->hostdata;
     usb_dev_t *usb_dev = bot_data->usb_if->usb_dev;
     xhci_controller_t *xhci = usb_dev->xhci_controller;

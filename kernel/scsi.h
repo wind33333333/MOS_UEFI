@@ -335,13 +335,13 @@ typedef struct scsi_host_template_t {
 
     // 【核心接口】派发 SCSI 任务给底层硬件
     // 返回值通常为 0 (成功接收并处理) 或错误码
-    void (*queue_command)(struct scsi_host_t *host, struct scsi_task_t *task);
+    void (*queue_command)(struct scsi_host_t *host, struct scsi_cmnd_t *task);
 
     // 【可选接口】复位整个主机控制器 (当设备彻底卡死时调用)
     int32 (*reset_host)(struct scsi_host_t *host);
 
     // 【可选接口】中止单个超时的 SCSI 命令
-    int32 (*abort_command)(struct scsi_host_t *host, struct scsi_task_t *task);
+    int32 (*abort_command)(struct scsi_host_t *host, struct scsi_cmnd_t *task);
 
 } scsi_host_template_t;
 
@@ -387,7 +387,7 @@ typedef struct scsi_device_t{
     // dev.bus = &scsi_bus_type (挂在 SCSI 总线上等待相亲)
 
     // --- 2. 拓扑与寻址结构 ---
-    struct scsi_host    *host;        // 【反向指针】指向孕育它的 SCSI Host
+    scsi_host_t         *host;        // 【反向指针】指向孕育它的 SCSI Host
     uint16              channel;      // 通道号 (通常为 0)
     uint16              id;           // Target ID (通常为 0)
     uint32              lun;          // 逻辑单元号 (如 0, 1, 2...)
@@ -418,11 +418,12 @@ typedef enum {
 } scsi_dir_t;
 
 // 2. 通用 SCSI 任务结构体
-typedef struct scsi_task_t{
+typedef struct scsi_cmnd_t{
+    scsi_device_t *sdev;
+
     // --- SCSI 命令部分 ---
     void   *cdb;        // SCSI 命令块
     uint8  cdb_len;      // 有效命令长度 (通常为 6, 10, 12, 16)
-    uint8  lun;          // 目标逻辑单元号 (通常为 0)
 
     // --- 数据传输部分 ---
     scsi_dir_t dir;        // 数据传输方向
@@ -432,12 +433,12 @@ typedef struct scsi_task_t{
     // --- 错误处理部分 ---
     scsi_sense_t  *sense;       // [可选] 用于接收 Auto-Sense 数据的缓冲区 (至少 18 字节)
     int32         status;       // [输出] 命令执行完成后的 SCSI 状态码 (0=成功, 2=Check Condition)
-} scsi_task_t;
+} scsi_cmnd_t;
 
 
 int32 scsi_test_unit_ready(scsi_device_t *scsi_dev);
 int32 scsi_request_sense(scsi_device_t *scsi_dev,scsi_sense_t *sense);
-int32 scsi_send_inquiry(scsi_device_t *scsi_dev, scsi_inquiry_t *inquiry);
+int32 scsi_send_inquiry(scsi_device_t *sdev, scsi_inquiry_t *inquiry);
 int32 scsi_report_luns(scsi_device_t *scsi_dev,scsi_report_luns_t *report_luns);
 int32 scsi_read_capacity10(scsi_device_t *scsi_dev,scsi_read_capacity10_t *read_capacity10);
 int32 scsi_read_capacity16(scsi_device_t *scsi_dev,scsi_read_capacity16_t *read_capacity16);

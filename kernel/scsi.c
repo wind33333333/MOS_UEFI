@@ -3,28 +3,28 @@
 #include "printk.h"
 
 // 统一的 SCSI 任务执行器和错误处理逻辑
-int32 scsi_execute(scsi_device_t *scsi_dev, scsi_task_t *task) {
+int32 scsi_execute(scsi_cmnd_t *scmnd) {
     int retry_count = 3;
     do {
         // 调用底层绑定的真实发送函数 (BOT/UAS)
-        scsi_dev->send_cmd_sync(scsi_dev->transport_context, task);
+        scmnd->sdev->host->hostt->queue_command(scmnd->sdev->host,scmnd);
 
         // 统一执行状态处理逻辑
-        if (task->status == 0) {
+        if (scmnd->status == 0) {
             // 如果成功，直接返回
             break;
-        }else if(task->status == 2 && task->sense->flags_key == 0x06 && task->sense->asc == 0x29) {
+        }else if(scmnd->status == 2 && scmnd->sense->flags_key == 0x06 && scmnd->sense->asc == 0x29) {
             // 这Unit Attention (设备刚上电/复位) 是良性错误，静默重试
             retry_count--;
         }else{
             //其他错误处理
-            color_printk(RED,BLACK,"send_cmd_sync error status:%#x  flags_key:%#x  asc:%#x  \n",task->status,task->sense->flags_key,task->sense->asc);
+            color_printk(RED,BLACK,"send_cmd_sync error status:%#x  flags_key:%#x  asc:%#x  \n",scmnd->status,scmnd->sense->flags_key,scmnd->sense->asc);
             while (1);
         }
 
     } while (retry_count > 0);
 
-    return task->status;
+    return scmnd->status;
 }
 
 
@@ -40,11 +40,10 @@ int32 scsi_test_unit_ready(scsi_device_t *scsi_dev) {
         .opcode = SCSI_TEST_UNIT_READY,
     };
 
-    //构造scsi_task
-    scsi_task_t task={
+    //构造scsi_scmnd
+    scsi_cmnd_t scmnd={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_test_unit_t),
-        .lun = scsi_dev->lun,
         .dir = SCSI_DIR_NONE,
         .data_buf = NULL,
         .data_len = 0,
@@ -53,9 +52,9 @@ int32 scsi_test_unit_ready(scsi_device_t *scsi_dev) {
     };
 
     //发送scsi命令
-    scsi_execute(scsi_dev,&task);
+    scsi_execute(scsi_dev,&scmnd);
 
-    return task.status;
+    return scmnd.status;
 }
 
 //获取scsi命令错误信息
@@ -65,7 +64,7 @@ int32 scsi_request_sense(scsi_device_t *scsi_dev,scsi_sense_t *sense) {
         .alloc_len = SCSI_SENSE_ALLOC_SIZE
     };
 
-    scsi_task_t task={
+    scsi_cmnd_t scmnd={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_request_sense_t),
         .lun = scsi_dev->lun,
@@ -76,14 +75,14 @@ int32 scsi_request_sense(scsi_device_t *scsi_dev,scsi_sense_t *sense) {
         .status = -1
     };
 
-    scsi_execute(scsi_dev,&task);
+    scsi_execute(scsi_dev,&scmnd);
 
-    return task.status;
+    return scmnd.status;
 }
 
 
 //获取u盘信息
-int32 scsi_send_inquiry(scsi_device_t *scsi_dev, scsi_inquiry_t *inquiry) {
+int32 scsi_send_inquiry(scsi_device_t *sdev, scsi_inquiry_t *inquiry) {
     scsi_sense_t sense;
 
     scsi_cdb_inquiry_t cdb = {
@@ -91,10 +90,10 @@ int32 scsi_send_inquiry(scsi_device_t *scsi_dev, scsi_inquiry_t *inquiry) {
         .alloc_len = sizeof(scsi_inquiry_t)
     };
 
-    scsi_task_t task={
+    scsi_cmnd_t scmnd={
+        .sdev = sdev,
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_inquiry_t),
-        .lun = scsi_dev->lun,
         .data_buf = inquiry,
         .data_len = sizeof(scsi_inquiry_t),
         .dir = SCSI_DIR_IN,
@@ -102,9 +101,9 @@ int32 scsi_send_inquiry(scsi_device_t *scsi_dev, scsi_inquiry_t *inquiry) {
         .status = -1
     };
 
-    scsi_execute(scsi_dev,&task);
+    scsi_execute(&scmnd);
 
-    return task.status;
+    return scmnd.status;
 }
 
 /*
@@ -118,7 +117,7 @@ int32 scsi_report_luns(scsi_device_t *scsi_dev,scsi_report_luns_t *report_luns) 
         .alloc_len =  asm_bswap32(SCSI_LUN_BUF_LEN),
     };
 
-    scsi_task_t task={
+    scsi_cmnd_t scmnd={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_report_luns_t),
         .lun = 0,
@@ -129,9 +128,9 @@ int32 scsi_report_luns(scsi_device_t *scsi_dev,scsi_report_luns_t *report_luns) 
         .status = -1
     };
 
-    scsi_execute(scsi_dev,&task);
+    scsi_execute(scsi_dev,&scmnd);
 
-    return task.status;
+    return scmnd.status;
 }
 
 /**
@@ -144,7 +143,7 @@ int32 scsi_read_capacity10(scsi_device_t *scsi_dev,scsi_read_capacity10_t *read_
         .opcode = SCSI_READ_CAPACITY10,
     };
 
-    scsi_task_t task={
+    scsi_cmnd_t scmnd={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_read_capacity10_t),
         .lun = scsi_dev->lun,
@@ -155,9 +154,9 @@ int32 scsi_read_capacity10(scsi_device_t *scsi_dev,scsi_read_capacity10_t *read_
         .status = -1
     };
 
-    scsi_execute(scsi_dev,&task);
+    scsi_execute(scsi_dev,&scmnd);
 
-    return task.status;
+    return scmnd.status;
 }
 
 /**
@@ -174,7 +173,7 @@ int32 scsi_read_capacity16(scsi_device_t *scsi_dev,scsi_read_capacity16_t *read_
 
     };
 
-    scsi_task_t task={
+    scsi_cmnd_t scmnd={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_read_capacity16_t),
         .lun = scsi_dev->lun,
@@ -185,9 +184,9 @@ int32 scsi_read_capacity16(scsi_device_t *scsi_dev,scsi_read_capacity16_t *read_
         .status = -1
     };
 
-    scsi_execute(scsi_dev,&task);
+    scsi_execute(scsi_dev,&scmnd);
 
-    return task.status;
+    return scmnd.status;
 }
 
 //scsi读扇区10
@@ -201,7 +200,7 @@ int32 scsi_read10(scsi_device_t *scsi_dev,void *data_buf,uint32 lba,uint16 block
 
     };
 
-    scsi_task_t task={
+    scsi_cmnd_t scmnd={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_rw10_t),
         .lun = scsi_dev->lun,
@@ -212,9 +211,9 @@ int32 scsi_read10(scsi_device_t *scsi_dev,void *data_buf,uint32 lba,uint16 block
         .status = -1
     };
 
-    scsi_execute(scsi_dev, &task);
+    scsi_execute(scsi_dev, &scmnd);
 
-    return task.status;
+    return scmnd.status;
 }
 
 
@@ -229,7 +228,7 @@ int32 scsi_write10(scsi_device_t *scsi_dev,void *data_buf,uint32 lba,uint16 bloc
 
     };
 
-    scsi_task_t task={
+    scsi_cmnd_t scmnd={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_rw10_t),
         .lun = scsi_dev->lun,
@@ -240,9 +239,9 @@ int32 scsi_write10(scsi_device_t *scsi_dev,void *data_buf,uint32 lba,uint16 bloc
         .status = -1
     };
 
-    scsi_execute(scsi_dev, &task);
+    scsi_execute(scsi_dev, &scmnd);
 
-    return task.status;
+    return scmnd.status;
 }
 
 //scsi读扇区16
@@ -256,7 +255,7 @@ int32 scsi_read16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 block
 
     };
 
-    scsi_task_t task={
+    scsi_cmnd_t scmnd={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_rw16_t),
         .lun = scsi_dev->lun,
@@ -267,9 +266,9 @@ int32 scsi_read16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 block
         .status = -1
     };
 
-    scsi_execute(scsi_dev, &task);
+    scsi_execute(scsi_dev, &scmnd);
 
-    return task.status;
+    return scmnd.status;
 }
 
 //scsi写扇区16
@@ -283,7 +282,7 @@ int32 scsi_write16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 bloc
 
     };
 
-    scsi_task_t task={
+    scsi_cmnd_t scmnd={
         .cdb = &cdb,
         .cdb_len = sizeof(scsi_cdb_rw16_t),
         .lun = scsi_dev->lun,
@@ -294,9 +293,9 @@ int32 scsi_write16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 bloc
         .status = -1
     };
 
-    scsi_execute(scsi_dev, &task);
+    scsi_execute(scsi_dev, &scmnd);
 
-    return task.status;
+    return scmnd.status;
 }
 
 // 定义设备类型，用于在统一设备树中区分身份
@@ -339,13 +338,13 @@ static void scsi_trim_string(char *str, int len) {
 }
 
 // ============================================================================
-// 步骤 3: 探测具体的 LUN (探针)
+// 步骤 2: 探测具体的 LUN (探针)
 // ============================================================================
-static void scsi_probe_lun(scsi_host_t *shost, uint32 lun) {
+static void scsi_probe_lun(scsi_host_t *shost) {
     // 1. 预分配 LUN 句柄
     scsi_device_t *sdev = kzalloc(sizeof(scsi_device_t));
     sdev->host = shost;
-    sdev->lun  = lun;
+    sdev->lun  = 0;     //lun0 所有scsi设备都必须存在
 
     // 2. 发送 INQUIRY 命令查身份
     scsi_inquiry_t inq = {0};
@@ -412,17 +411,6 @@ static void scsi_probe_lun(scsi_host_t *shost, uint32 lun) {
 }
 
 // ============================================================================
-// 步骤 2: 扫描主机下的所有 LUN
-// ============================================================================
-static void scsi_scan_host(scsi_host_t *shost) {
-    // 对于大部分普通的 U 盘，max_lun 通常是 0 (只循环一次)
-    // 对于读卡器，可能是 3 (循环 4 次)
-    for (uint32 lun = 0; lun <= shost->max_lun; lun++) {
-        scsi_probe_lun(shost, lun);
-    }
-}
-
-// ============================================================================
 // 步骤 1: 底层驱动交接入口
 // ============================================================================
 int32 scsi_add_host(scsi_host_t *shost) {
@@ -436,7 +424,7 @@ int32 scsi_add_host(scsi_host_t *shost) {
     //device_register(&shost->dev);
 
     // 2. 启动异步/同步扫描引擎，探查这个 Host 下面挂了哪些逻辑磁盘
-    scsi_scan_host(shost);
+    scsi_probe_lun(shost);
 
     return 0;
 }

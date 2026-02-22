@@ -17,7 +17,7 @@ static inline void uas_free_tag(uas_data_t *uas_data,uint16 nr) {
 /**
  * 同步发送 SCSI 命令并等待结果 (UAS 协议)
  */
-void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_task_t *task){
+void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *task){
     uas_data_t *uas_data = host->hostdata;
     usb_dev_t *usb_dev = uas_data->usb_if->usb_dev;
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
