@@ -6,6 +6,21 @@
 
 #pragma pack(push,1)
 
+// ============================================================================
+// SCSI Status Codes (SCSI 状态码)
+// ============================================================================
+#define SCSI_STATUS_GOOD                        0x00  // 完美成功 (命令正常执行完毕，无报错)
+#define SCSI_STATUS_CHECK_CONDITION             0x02  // 检查条件 (★最常见的错误！说明出错或有警告，必须解析后面的 Sense Data)
+#define SCSI_STATUS_CONDITION_MET               0x04  // 条件满足 (用于早期的搜索预取命令，现代存储极少遇到)
+#define SCSI_STATUS_BUSY                        0x08  // 设备忙碌 (硬盘主控太忙，拒绝接客，主机应稍后重试该命令)
+#define SCSI_STATUS_INTERMEDIATE                0x10  // 中间状态 (用于老旧的"链接命令"机制，现代设备基本废弃)
+#define SCSI_STATUS_INTERMEDIATE_COND_MET       0x14  // 中间状态且条件满足 (同上，已废弃)
+#define SCSI_STATUS_RESERVATION_CONFLICT        0x18  // 预留冲突 (★双机热备/集群常见：另一个主机锁死了这个 LUN，你无权读写)
+#define SCSI_STATUS_COMMAND_TERMINATED          0x22  // 命令被终止 (已被规范废弃，被 Task Aborted 取代)
+#define SCSI_STATUS_TASK_SET_FULL               0x28  // 任务集已满 (★UAS 并发极速读写时常见：硬盘内部的 NCQ/TCQ 队列塞满了，主机应减速下发新 Tag)
+#define SCSI_STATUS_ACA_ACTIVE                  0x30  // ACA 激活 (发生了极严重的连锁错误，设备进入封锁状态，只接收清理命令)
+#define SCSI_STATUS_TASK_ABORTED                0x40  // 任务被中止 (说明你之前发了 Task Management IU 的 Abort 指令，这个任务被成功强杀了)
+
 // 常用 Sense Key 定义
 #define SK_NO_SENSE         0x00
 #define SK_RECOVERED_ERROR  0x01
