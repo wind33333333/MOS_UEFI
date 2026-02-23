@@ -350,9 +350,18 @@ static void scsi_probe_lun(scsi_host_t *shost) {
     sdev->host = shost;
     sdev->lun  = 0;     //lun0 所有scsi设备都必须存在
 
+    //探测lun
+    scsi_report_luns_t *report_luns = kzalloc(sizeof(scsi_report_luns_t));
+    int32 status = scsi_report_luns(sdev,report_luns);
+    if (status == 0 && report_luns->lun_list_length) {
+        shost->max_lun = asm_bswap32(report_luns->lun_list_length);
+    }
+    kfree(report_luns);
+    color_printk(GREEN,BLACK,"%s max lun:%d    \n",shost->dev.name,shost->max_lun);
+
     // 2. 发送 INQUIRY 命令查身份
     scsi_inquiry_t *inq = kzalloc(sizeof(scsi_inquiry_t));
-    int32 status = scsi_send_inquiry(sdev, inq);
+    status = scsi_send_inquiry(sdev, inq);
     if (status != 0) {
         kfree(inq);
         kfree(sdev); // 没有设备响应，说明这个 LUN 不存在
@@ -380,12 +389,16 @@ static void scsi_probe_lun(scsi_host_t *shost) {
     sdev->model[16] = '\0';
     scsi_trim_string(sdev->model, 16);
 
+    asm_mem_cpy(inq->revision,sdev->rev,  4);
+    sdev->rev[4] = '\0';
+    scsi_trim_string(sdev->rev, 4);
+
     kfree(inq);
 
     // 4. 发送 TEST UNIT READY (消费掉刚上电的 Unit Attention)
     scsi_test_unit_ready(sdev);
 
-    // 5. 如果是磁盘设备 (Type 0)，尝试获取容量
+    /*// 5. 如果是磁盘设备 (Type 0)，尝试获取容量
     if (sdev->type == 0x00) {
         scsi_read_capacity10_t cap = {0};
         // 注意：这里哪怕没获取到容量(如读卡器没插卡)，也要把 sdev 留着，只是标记 is_ready = 0
@@ -406,7 +419,7 @@ static void scsi_probe_lun(scsi_host_t *shost) {
 
     // 7. 正式注册设备！
     // 【核心联动】这行代码会唤醒 SCSI 总线，总线会拿着 sdev->type 去找对应的驱动 (如 sd_driver)
-    device_register(&sdev->dev);
+    device_register(&sdev->dev);*/
 
 }
 
