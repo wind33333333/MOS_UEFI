@@ -4,10 +4,11 @@
 
 // 统一的 SCSI 任务执行器和错误处理逻辑
 int32 scsi_execute(scsi_cmnd_t *scmnd) {
+    scsi_host_t *shost = scmnd->sdev->host;
     int retry_count = 3;
     do {
         // 调用底层绑定的真实发送函数 (BOT/UAS)
-        scmnd->sdev->host->hostt->queue_command(scmnd->sdev->host,scmnd);
+        shost->hostt->queue_command(shost,scmnd);
 
         // 统一执行状态处理逻辑
         if (scmnd->status == 0) {
@@ -303,29 +304,31 @@ int32 scsi_write16(scsi_device_t *sdev,void *data_buf,uint64 lba,uint32 block_co
 device_type_t scsi_host_type = {"scsi-host"};
 device_type_t scsi_dev_type = {"scsi-dev"};
 
+extern bus_type_t scsi_bus_type;
+
 //创建scsi_host
 scsi_host_t *scsi_create_host(scsi_host_template_t *host_template,void* host_data,device_t *parent,uint8 max_lun,char *name) {
-    scsi_host_t *scsi_host = kzalloc(sizeof(scsi_host_t));
-    scsi_host->dev.name = name;
-    scsi_host->dev.bus = 0;
-    scsi_host->dev.bus_node.next = NULL;
-    scsi_host->dev.bus_node.prev = NULL;
-    scsi_host->dev.child_list.next = NULL;
-    scsi_host->dev.child_list.prev = NULL;
-    scsi_host->dev.child_node.next = NULL;
-    scsi_host->dev.child_node.prev = NULL;
-    scsi_host->dev.drv = NULL;
-    scsi_host->dev.drv_data = NULL;
-    scsi_host->dev.parent = parent;
-    scsi_host->dev.type = NULL;
+    scsi_host_t *shost = kzalloc(sizeof(scsi_host_t));
+    shost->dev.name = name;
+    shost->dev.bus = 0;
+    shost->dev.bus_node.next = NULL;
+    shost->dev.bus_node.prev = NULL;
+    shost->dev.child_list.next = NULL;
+    shost->dev.child_list.prev = NULL;
+    shost->dev.child_node.next = NULL;
+    shost->dev.child_node.prev = NULL;
+    shost->dev.drv = NULL;
+    shost->dev.drv_data = NULL;
+    shost->dev.parent = parent;
+    shost->dev.type = NULL;
 
-    scsi_host->hostt = host_template;
-    scsi_host->hostdata = host_data;
-    scsi_host->host_no = 0;
-    scsi_host->max_lun = max_lun;
-    scsi_host->host_status = 0;
-    list_head_init(&scsi_host->devices_list);
-    return scsi_host;
+    shost->hostt = host_template;
+    shost->hostdata = host_data;
+    shost->host_no = 0;
+    shost->max_lun = max_lun;
+    shost->host_status = 0;
+    list_head_init(&shost->devices_list);
+    return shost;
 }
 
 
@@ -348,32 +351,36 @@ static void scsi_probe_lun(scsi_host_t *shost) {
     sdev->lun  = 0;     //lun0 所有scsi设备都必须存在
 
     // 2. 发送 INQUIRY 命令查身份
-    scsi_inquiry_t inq = {0};
-    int32 status = scsi_send_inquiry(sdev, &inq);
+    scsi_inquiry_t *inq = kzalloc(sizeof(scsi_inquiry_t));
+    int32 status = scsi_send_inquiry(sdev, inq);
     if (status != 0) {
+        kfree(inq);
         kfree(sdev); // 没有设备响应，说明这个 LUN 不存在
         return;
     }
 
     // 检查 Peripheral Qualifier (高 3 位)
     // 0x03 (011b) 表示：设备支持这个 LUN 地址，但当前没有物理介质连接 (如读卡器空槽)
-    if ((inq.device_type >> 5) == 0x03) {
+    if ((inq->device_type >> 5) == 0x03) {
+        kfree(inq);
         kfree(sdev);
         return;
     }
 
     // 3. 解析身份信息
-    sdev->type = inq.device_type & 0x1F;
-    sdev->removable = inq.rmb>>7;
+    sdev->type = inq->device_type & 0x1F;
+    sdev->removable = inq->rmb>>7;
 
     // 拷贝并清理字符串
-    asm_mem_cpy(sdev->vendor, inq.vendor_id, 8);
+    asm_mem_cpy(inq->vendor_id,sdev->vendor, 8);
     sdev->vendor[8] = '\0';
     scsi_trim_string(sdev->vendor, 8);
 
-    asm_mem_cpy(sdev->model, inq.product_id, 16);
+    asm_mem_cpy(inq->product_id,sdev->model,  16);
     sdev->model[16] = '\0';
     scsi_trim_string(sdev->model, 16);
+
+    kfree(inq);
 
     // 4. 发送 TEST UNIT READY (消费掉刚上电的 Unit Attention)
     scsi_test_unit_ready(sdev);
@@ -385,7 +392,6 @@ static void scsi_probe_lun(scsi_host_t *shost) {
         if (scsi_read_capacity10(sdev, &cap) == 0) {
             sdev->block_size = asm_bswap32(cap.block_size);
             sdev->max_lba    = asm_bswap32(cap.max_lba);
-            sdev->capacity   = sdev->max_lba + 1;
             sdev->is_ready   = 1;
         }
     }
@@ -393,22 +399,15 @@ static void scsi_probe_lun(scsi_host_t *shost) {
     // 6. 组装设备树，将其挂载到 SCSI 总线上！
     sdev->dev.parent = &shost->dev;         // 认 Host 为父
     sdev->dev.bus    = &scsi_bus_type;      // 挂载到 SCSI 总线
-    sdev->dev.type   = &scsi_device_type;   // 身份标记为 scsi_device
+    sdev->dev.type   = &scsi_dev_type;     // 身份标记为 scsi_device
 
     // 挂入 Host 的设备链表中，方便统一管理
-    list_add_tail(&sdev->siblings, &shost->devices_list);
+    list_add_tail( &shost->devices_list,&sdev->siblings);
 
     // 7. 正式注册设备！
     // 【核心联动】这行代码会唤醒 SCSI 总线，总线会拿着 sdev->type 去找对应的驱动 (如 sd_driver)
     device_register(&sdev->dev);
 
-    // 打印漂亮的系统日志
-    if (sdev->is_ready) {
-        color_printk(GREEN, BLACK, "SCSI: Found [%s %s] (Type %d, %d MB)\n", dev->vendor, sdev->model, sdev->type, (sdev->capacity * sdev->block_size) / 1024 / 1024);
-    } else {
-        color_printk(YELLOW, BLACK, "SCSI: Found [%s %s] (Type %d, Medium Not Present)\n",
-                     sdev->vendor, sdev->model, sdev->type);
-    }
 }
 
 // ============================================================================

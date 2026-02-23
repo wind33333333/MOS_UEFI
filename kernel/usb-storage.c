@@ -49,7 +49,7 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
     usb_set_interface(usb_if);   //切换接口备用配置
     usb_endpoint_init(usb_if->cur_alt);   //初始化端点
 
-    scsi_host_t *scsi_host;
+    scsi_host_t *shost;
 
     if (usb_if->cur_alt->if_protocol == 0x62) {        //uas协议初始化流程
 
@@ -87,11 +87,7 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
         uas_data->tag_bitmap <<= 1;
 
         //创建scsi_host
-        scsi_host = scsi_create_host(&uas_host_template,uas_data,&usb_if->dev,0,"uas_host");
-
-
-
-
+        shost = scsi_create_host(&uas_host_template,uas_data,&usb_if->dev,0,"uas_host");
 
     } else {        //bot协议初始化流程
         //创建bot_data
@@ -108,11 +104,11 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
         }
 
         //创建scsi_host
-        scsi_host = scsi_create_host(&bot_host_template,bot_data,&usb_if->dev,99,"bot_host");
+        shost = scsi_create_host(&bot_host_template,bot_data,&usb_if->dev,99,"bot_host");
 
     }
 
-    scsi_add_host(scsi_host);
+    scsi_add_host(shost);
 }
 
 void usb_storage_remove(usb_if_t *usb_if) {

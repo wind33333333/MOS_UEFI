@@ -89,7 +89,8 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	  -device qemu-xhci,id=xhci \
 	  -device usb-storage,drive=bootdisk,bus=xhci.0,bootindex=1 \
 	  -drive if=none,id=uasdisk,file=/home/wind3/disk-uas.img,format=raw \
-	  -device usb-storage,drive=uasdisk,bus=xhci.0,removable=on &
+	  -device usb-uas,id=uas,bus=xhci.0 \
+	  -device scsi-hd,drive=uasdisk,bus=uas.0,lun=0 &
 
 qemu-monitor:
 	telnet localhost 4444

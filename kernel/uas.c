@@ -17,7 +17,7 @@ static inline void uas_free_tag(uas_data_t *uas_data,uint16 nr) {
 /**
  * 同步发送 SCSI 命令并等待结果 (UAS 协议)
  */
-void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *task){
+void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     uas_data_t *uas_data = host->hostdata;
     usb_dev_t *usb_dev = uas_data->usb_if->usb_dev;
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
@@ -30,7 +30,7 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *task){
     uint8 data_pipe;
 
     // 逻辑：如果传入 6, 10, 12, 16 字节，统一分配 16 字节空间 (标准 UAS 要求) 如果传入 > 16 字节，则分配实际长度
-    uint16 effective_cdb_len = (task->cdb_len > 16) ? task->cdb_len : 16;
+    uint16 effective_cdb_len = (cmnd->cdb_len > 16) ? cmnd->cdb_len : 16;
 
     // 总大小 = 头部(16字节) + 有效CDB长度 注意：sizeof(uas_cmd_iu_t) 因为 cdb[] 是柔性数组，所以等于 16
     uint32 uas_cmd_iu_alloc_size = sizeof(uas_cmd_iu_t) + effective_cdb_len;
@@ -44,8 +44,8 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *task){
     cmd_iu->iu_id = UAS_CMD_IU_ID;  // Command IU
     cmd_iu->prio_attr = 0x00;       // Simple Task
     cmd_iu->add_cdb_len = (effective_cdb_len - 16) >> 2;        // cdb_len <= 16字节填 0， cdb_len > 16字节填 (cdb_len-16)>>2
-    cmd_iu->lun = asm_bswap64(task->lun);   // 默认 LUN 0
-    asm_mem_cpy(task->cdb,cmd_iu->scsi_cdb,task->cdb_len);    //填充cdb
+    cmd_iu->lun = asm_bswap64(cmnd->sdev->lun);   // 默认 LUN 0
+    asm_mem_cpy(cmnd->cdb,cmd_iu->scsi_cdb,cmnd->cdb_len);    //填充cdb
 
 
     // 2. 准备 UAS Sense iu (用于接收状态)
@@ -57,9 +57,9 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *task){
     uint64 status_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[status_pipe].stream_rings[tag], &trb);
 
     // [Step B] 提交 Data Pipe 请求 (如果有数据)
-    if (task->data_buf && task->data_len) {
-        data_pipe = task->dir == SCSI_DIR_IN ? uas_data->data_in_pipe : uas_data->data_out_pipe;
-        normal_transfer_trb(&trb, va_to_pa(task->data_buf), disable_ch, task->data_len, DISABLE_IOC);
+    if (cmnd->data_buf && cmnd->data_len) {
+        data_pipe = cmnd->dir == SCSI_DIR_IN ? uas_data->data_in_pipe : uas_data->data_out_pipe;
+        normal_transfer_trb(&trb, va_to_pa(cmnd->data_buf), disable_ch, cmnd->data_len, DISABLE_IOC);
         xhci_ring_enqueue(&usb_dev->eps[data_pipe].stream_rings[tag], &trb);
     }
 
@@ -71,7 +71,7 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *task){
     xhci_ring_doorbell(xhci_controller, slot_id, status_pipe | tag<<16);
 
     //可选[Step E] 敲门铃 (Doorbell) data
-    if (task->data_buf && task->data_len) {
+    if (cmnd->data_buf && cmnd->data_len) {
         xhci_ring_doorbell(xhci_controller, slot_id, data_pipe | tag<<16);
     }
 
@@ -80,12 +80,12 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *task){
     int32 completion_code = xhci_wait_for_completion(xhci_controller,status_trb_ptr,0x20000000);
 
     if (completion_code == XHCI_COMP_SUCCESS) {
-        if (sense_iu->status == 2 && task->sense) {       //如果有错误把错误信息传给调用者处理
-            asm_mem_cpy(sense_iu->scsi_sense,task->sense,asm_bswap16(sense_iu->scsi_sense_len));
+        if (sense_iu->status == 2 && cmnd->sense) {       //如果有错误把错误信息传给调用者处理
+            asm_mem_cpy(sense_iu->scsi_sense,cmnd->sense,asm_bswap16(sense_iu->scsi_sense_len));
         }
     }
 
-    task->status = sense_iu->status;
+    cmnd->status = sense_iu->status;
     kfree(sense_iu);
     kfree(cmd_iu);
     uas_free_tag(uas_data, tag);

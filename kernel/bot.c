@@ -6,15 +6,15 @@
 /**
  * 执行 Request Sense 命令获取错误详情
  */
-int32 bot_request_sense(bot_data_t *bot_data,scsi_cmnd_t *task) {
-    if (!task->sense || *(uint8*)task->cdb == SCSI_REQUEST_SENSE) return -1;
+int32 bot_request_sense(bot_data_t *bot_data,scsi_cmnd_t *cmnd) {
+    if (!cmnd->sense || *(uint8*)cmnd->cdb == SCSI_REQUEST_SENSE) return -1;
 
     scsi_sense_t *sense = kzalloc(SCSI_SENSE_ALLOC_SIZE);
 
-    int32 status = scsi_request_sense(bot_data->scsi_dev,sense);
+    int32 status = scsi_request_sense(bot_data->sdev,sense);
 
     if (status == 0) {
-        asm_mem_cpy(sense,task->sense,8+sense->add_sense_len);
+        asm_mem_cpy(sense,cmnd->sense,8+sense->add_sense_len);
     }else {
         //连获取错误信息都失败了设备可能挂了
     }
@@ -27,7 +27,7 @@ int32 bot_request_sense(bot_data_t *bot_data,scsi_cmnd_t *task) {
  * BOT 协议同步发送函数
  * 逻辑：CBW -> Data(可选) -> CSW
  */
-void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *task) {
+void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     bot_data_t *bot_data =host->hostdata;
     usb_dev_t *usb_dev = bot_data->usb_if->usb_dev;
     xhci_controller_t *xhci = usb_dev->xhci_controller;
@@ -50,15 +50,15 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *task) {
     // 填充 CBW
     cbw->signature = BOT_CBW_SIGNATURE; // "USBC"
     cbw->tag       = tag;
-    cbw->data_tran_len = task->data_len;
+    cbw->data_tran_len = cmnd->data_len;
 
     // 方向标志: IN(设备->主机) = 0x80, OUT(主机->设备) = 0x00
-    cbw->flags    = (task->dir == SCSI_DIR_IN) ? BOT_CBW_DATA_IN : BOT_CBW_DATA_OUT;
+    cbw->flags    = (cmnd->dir == SCSI_DIR_IN) ? BOT_CBW_DATA_IN : BOT_CBW_DATA_OUT;
 
-    cbw->lun       = task->lun;
-    cbw->scsi_cdb_len  = task->cdb_len; // 有效 CDB 长度
+    cbw->lun       = cmnd->sdev->lun;
+    cbw->scsi_cdb_len  = cmnd->cdb_len; // 有效 CDB 长度
 
-    asm_mem_cpy(task->cdb, cbw->scsi_cdb, task->cdb_len);
+    asm_mem_cpy(cmnd->cdb, cbw->scsi_cdb, cmnd->cdb_len);
 
     // 提交 TRB 到 Bulk OUT
     normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(bot_cbw_t), ENABLE_IOC);
@@ -69,17 +69,17 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *task) {
     completion_code = xhci_wait_for_completion(xhci, cbw_trb_ptr, 200000); // 2秒超时
     if (completion_code != XHCI_COMP_SUCCESS) {
         kfree(cbw);
-        task->status = -1;
+        cmnd->status = -1;
         return; // 发送命令失败
     }
 
     // ============================================================
     // Stage 2: 数据传输 (Data Stage) - 可选
     // ============================================================
-    if (task->data_buf && task->data_len) {
-        uint8 data_pipe = (task->dir == SCSI_DIR_IN) ? pipe_in : pipe_out;
+    if (cmnd->data_buf && cmnd->data_len) {
+        uint8 data_pipe = (cmnd->dir == SCSI_DIR_IN) ? pipe_in : pipe_out;
 
-        normal_transfer_trb(&trb, va_to_pa(task->data_buf), disable_ch, task->data_len, ENABLE_IOC);
+        normal_transfer_trb(&trb, va_to_pa(cmnd->data_buf), disable_ch, cmnd->data_len, ENABLE_IOC);
         uint64 data_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[data_pipe].transfer_ring, &trb);
         xhci_ring_doorbell(xhci, usb_dev->slot_id, data_pipe);
 
@@ -89,7 +89,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *task) {
             // 注意：BOT 协议中，如果数据长度不匹配，设备可能会 STALL 端点
             // 这里应该加入 Clear Stall (Endpoint Halt) 的逻辑
             kfree(cbw);
-            task->status = -2;
+            cmnd->status = -2;
             return;
         }
     }
@@ -111,11 +111,11 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *task) {
     if (completion_code == XHCI_COMP_SUCCESS && csw->signature == BOT_CSW_SIGNATURE && csw->tag == tag) {
         switch (csw->status) {
             case BOT_CSW_PASS:
-                task->status = 0; //成功返回0
+                cmnd->status = 0; //成功返回0
                 break;
             case BOT_CSW_FAIL:
-                task->status = 0x02; // 如果失败 (0x01)，调用者应该发送 REQUEST SENSE 映射为 SCSI Check Condition
-                bot_request_sense(bot_data, task);
+                cmnd->status = 0x02; // 如果失败 (0x01)，调用者应该发送 REQUEST SENSE 映射为 SCSI Check Condition
+                bot_request_sense(bot_data, cmnd);
                 break;
             case BOT_CSW_PHASE:
                 //相位错误重启设备

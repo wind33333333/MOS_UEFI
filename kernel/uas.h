@@ -38,7 +38,7 @@ typedef struct uas_data_t {
     struct usb_if_t     *usb_if;          // 绑定的 USB 接口
 
     // --- SCSI / LUN 管理 ---
-    struct scsi_device_t *scsi_dev;
+    struct scsi_device_t *sdev;
     list_head_t         lun_list;       // 挂载的逻辑单元 (LUN) 链表
     uint8               max_lun;        // 最大 LUN 编号
 
