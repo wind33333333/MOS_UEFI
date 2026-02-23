@@ -73,13 +73,7 @@ int32 xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 target
         }
 
         if (evt_trb.member0 == target_trb_phys) {
-            uint32 completion_code = (evt_trb.member1 >> 24) & 0xFF;
-            if (completion_code == 1 || completion_code == 13) {
-                return XHCI_COMP_SUCCESS;
-            }else{
-                return XHCI_COMP_ERROR;
-            }
-
+            return (evt_trb.member1 >> 24) & 0xFF;
         }
         // 如果不是我们要的，就继续循环，等下一个事件
         // (在操作系统中，应该把这个事件分发给其他等待的驱动，但在裸机下直接丢弃即可)
