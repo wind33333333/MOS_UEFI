@@ -128,6 +128,12 @@ void xhci_address_device(usb_dev_t *usb_dev) {
     kfree(input_ctx);
 }
 
+//重置端点
+void xhci_reset_endpoint(usb_dev_t *usb_dev){
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+
+}
+
 //xhic扩展能力搜索
 uint8 xhci_ecap_find(xhci_controller_t *xhci_controller,void **ecap_arr,uint8 cap_id) {
     uint32 offset = xhci_controller->cap_reg->hccparams1 >> 16;

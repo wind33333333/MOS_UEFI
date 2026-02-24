@@ -26,6 +26,40 @@ int32 bot_request_sense(bot_data_t *bot_data,scsi_cmnd_t *cmnd) {
 }
 
 /**
+ * BOT 终极错误恢复 (Bulk-Only Mass Storage Reset)
+ * 用于应对协议阶段错误或致命的卡死。
+ */
+void bot_recovery_reset(usb_dev_t *usb_dev, uint8 pipe_in, uint8 pipe_out) {
+    color_printk(RED, BLACK, "BOT: Executing Mass Storage Reset Recovery...\n");
+
+    // 动作 1：发送特定的 0xFF 控制命令，将 U 盘内部状态机重置
+    usb_setup_pkt_t setup = {0};
+    // 这是一个面向"接口(Interface)"的"类专属(Class)"请求
+    setup.bmRequestType = USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE; // 0x21
+    setup.bRequest      = BOT_REQ_MASS_STORAGE_RESET;                         // 0xFF
+    setup.wValue        = 0;
+    setup.wIndex        = asm_bswap16(usb_dev->interface_num); // 通常是 0
+    setup.wLength       = 0;
+
+    int32 status = xhci_control_transfer(usb_dev, &setup, NULL, 0);
+    if (status != 0) {
+        color_printk(RED, BLACK, "BOT: Reset Request 0xFF failed!\n");
+        // 连核弹发出去都炸膛了，这个 U 盘只能物理拔插了
+        return;
+    }
+
+    // 动作 2：清理硬件与协议层面的 IN 管道挂起状态
+    xhci_reset_endpoint(usb_dev->xhci_controller, usb_dev->slot_id, pipe_in);
+    usb_clear_feature_halt(usb_dev, pipe_in);
+
+    // 动作 3：清理硬件与协议层面的 OUT 管道挂起状态
+    xhci_reset_endpoint(usb_dev->xhci_controller, usb_dev->slot_id, pipe_out);
+    usb_clear_feature_halt(usb_dev, pipe_out);
+
+    color_printk(GREEN, BLACK, "BOT: Recovery sequence complete. Ready for new commands.\n");
+}
+
+/**
  * BOT 协议同步发送函数
  * 逻辑：CBW -> Data(可选) -> CSW
  */
@@ -40,26 +74,23 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 
     trb_t trb;
     int32 completion_code;
+    bot_csw_t *csw = kzalloc(sizeof(bot_csw_t));
+    bot_cbw_t *cbw = kzalloc(sizeof(bot_cbw_t));
+
 
     // 1. 生成 Tag (BOT 的 Tag 只是为了配对 CSW，不用像 UAS 那样管理 Slot)
     uint32 tag = ++bot_data->tag;
 
     // ============================================================
-    // Stage 1: 发送 CBW (Command Block Wrapper)
+    // Stage 1: 填充 CBW 发送 CBW (Command Block Wrapper)
     // ============================================================
-    bot_cbw_t *cbw = kzalloc(sizeof(bot_cbw_t));
-
-    // 填充 CBW
     cbw->signature = BOT_CBW_SIGNATURE; // "USBC"
     cbw->tag       = tag;
     cbw->data_tran_len = cmnd->data_len;
-
     // 方向标志: IN(设备->主机) = 0x80, OUT(主机->设备) = 0x00
     cbw->flags    = (cmnd->dir == SCSI_DIR_IN) ? BOT_CBW_DATA_IN : BOT_CBW_DATA_OUT;
-
     cbw->lun       = cmnd->sdev->lun;
     cbw->scsi_cdb_len  = cmnd->cdb_len; // 有效 CDB 长度
-
     asm_mem_cpy(cmnd->cdb, cbw->scsi_cdb, cmnd->cdb_len);
 
     // 提交 TRB 到 Bulk OUT
@@ -70,9 +101,11 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     // 等待 CBW 发送完成
     completion_code = xhci_wait_for_completion(xhci, cbw_trb_ptr, 200000); // 2秒超时
     if (completion_code != XHCI_COMP_SUCCESS) {
-        kfree(cbw);
+        color_printk(RED, BLACK, "BOT Stage 1: CBW Failed (%d). Resetting...\n", completion_code);
+        // CBW 阶段出错是极其致命的，直接上“核弹复位”
+        bot_recovery_reset(usb_dev, pipe_in, pipe_out);
         cmnd->status = -1;
-        return; // 发送命令失败
+        goto cleanup;
     }
 
     // ============================================================
@@ -88,19 +121,33 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
         // 等待数据传输完成
         completion_code = xhci_wait_for_completion(xhci, data_trb_ptr, 200000); // 5秒超时
         if (completion_code != XHCI_COMP_SUCCESS) {
-            // 注意：BOT 协议中，如果数据长度不匹配，设备可能会 STALL 端点
-            // 这里应该加入 Clear Stall (Endpoint Halt) 的逻辑
-            kfree(cbw);
-            cmnd->status = -2;
-            return;
+            if (completion_code == XHCI_COMP_SHORT_PACKET) {
+                // 完美情况：只是短包，无需处理，直接去读 CSW
+                color_printk(YELLOW, BLACK, "BOT Stage 2: Short Packet (Normal).\n");
+
+            } else if (completion_code == XHCI_COMP_STALL_ERROR) {
+                // 协议级卡死：数据长度不匹配引发的 STALL
+                color_printk(YELLOW, BLACK, "BOT Stage 2: STALL. Clearing Halt...\n");
+                // 1. 复位 xHCI 硬件端点状态
+                xhci_reset_endpoint(xhci, usb_dev->slot_id, data_pipe);
+                // 2. 发送 USB 控制请求，撬开 U 盘大门
+                usb_clear_feature_halt(usb_dev, data_pipe);
+                // ★ 注意：绝对不能 return！门撬开了，必须硬着头皮去读 CSW！
+
+            } else {
+                // 物理链路错误 (如 TX_ERR) 或者 DMA 错误
+                color_printk(RED, BLACK, "BOT Stage 2: Fatal Data Error (%d).\n", completion_code);
+                bot_recovery_reset(usb_dev, pipe_in, pipe_out);
+                cmnd->status = -2;
+                goto cleanup;
+            }
         }
     }
 
     // ============================================================
     // Stage 3: 接收 CSW (Command Status Wrapper)
     // ============================================================
-    bot_csw_t *csw = kzalloc(sizeof(bot_csw_t));
-
+retry_csw:
     // 提交 TRB 到 Bulk IN (不管刚才数据是读是写，CSW 永远是读)
     normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(bot_csw_t), ENABLE_IOC);
     uint64 csw_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[pipe_in].transfer_ring, &trb);
@@ -108,23 +155,59 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 
     // 等待 CSW 接收完成
     completion_code = xhci_wait_for_completion(xhci, csw_trb_ptr, 200000);
+    completion_code = xhci_wait_for_completion(xhci, csw_trb_ptr, 200000);
 
-    //如果成功则 校验 CSW 有效性,Tag 匹配
-    if (completion_code == XHCI_COMP_SUCCESS && csw->signature == BOT_CSW_SIGNATURE && csw->tag == tag) {
-        switch (csw->status) {
-            case BOT_CSW_PASS:
-                cmnd->status = 0; //成功返回0
-                break;
-            case BOT_CSW_FAIL:
-                cmnd->status = 0x02; // 如果失败 (0x01)，调用者应该发送 REQUEST SENSE 映射为 SCSI Check Condition
-                bot_request_sense(bot_data, cmnd);
-                break;
-            case BOT_CSW_PHASE:
-                //相位错误重启设备
-                break;
-        }
+    // 异常 1: 请求 CSW 时发生 STALL (有些 U 盘会在发 CSW 前莫名其妙再卡一次)
+    if (completion_code == XHCI_COMP_STALL_ERROR && csw_retry_count == 0) {
+        color_printk(YELLOW, BLACK, "BOT Stage 3: CSW STALL. Clearing and retrying...\n");
+        xhci_reset_endpoint(xhci, usb_dev->slot_id, pipe_in);
+        usb_clear_feature_halt(usb_dev, pipe_in);
+        csw_retry_count++;
+        goto retry_csw; // 撬开门，重试一次 CSW
+    }
+    // 异常 2: 硬件死机、短包、或者重试后依旧报错
+    else if (completion_code != XHCI_COMP_SUCCESS) {
+        color_printk(RED, BLACK, "BOT Stage 3: CSW Fetch Failed (%d). Resetting...\n", completion_code);
+        bot_recovery_reset(usb_dev, pipe_in, pipe_out);
+        cmnd->status = -3;
+        goto cleanup;
     }
 
+    // ============================================================
+    // Stage 4: 解析 CSW 结果
+    // ============================================================
+    // 校验签名和 Tag 是否防伪串线
+    if (csw->signature != BOT_CSW_SIGNATURE || csw->tag != tag) {
+        color_printk(RED, BLACK, "BOT: CSW Signature/Tag Mismatch! Phase Error.\n");
+        bot_recovery_reset(usb_dev, pipe_in, pipe_out);
+        cmnd->status = -4;
+        goto cleanup;
+    }
+
+    // 解析状态机
+    switch (csw->status) {
+        case BOT_CSW_PASS:       // 0x00
+            cmnd->status = SCSI_STATUS_GOOD; // 0
+            break;
+
+        case BOT_CSW_FAIL:       // 0x01
+            cmnd->status = SCSI_STATUS_CHECK_CONDITION; // 0x02
+            // 自动发请求获取错误详情
+            bot_request_sense(bot_data, cmnd);
+            break;
+
+        case BOT_CSW_PHASE:      // 0x02
+            color_printk(RED, BLACK, "BOT: CSW Reported Phase Error! Resetting...\n");
+            bot_recovery_reset(usb_dev, pipe_in, pipe_out);
+            cmnd->status = -5;
+            break;
+
+        default:
+            cmnd->status = -6;
+            break;
+    }
+
+cleanup:
     // 释放资源
     kfree(cbw);
     kfree(csw);

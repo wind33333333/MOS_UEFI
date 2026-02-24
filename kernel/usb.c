@@ -7,6 +7,27 @@
 device_type_t usb_dev_type = {"usb-dev"};
 device_type_t usb_if_type = {"usb-if"};
 
+//端点转Dci
+static inline uint8 ep_to_dci(uint8 ep) {
+    asm volatile(
+        "rolb $1,%0"
+        :"+q"(ep)
+        :
+        :"cc");
+    return ep;
+}
+
+//Dci转端点
+static inline uint8 dci_to_ep(uint8 dci) {
+    asm volatile(
+        "rorb $1,%0"
+        :"+q"(dci)
+        :
+        :"cc");
+    return dci;
+
+}
+
 //获取usb设备描述符
 int usb_get_device_descriptor(usb_dev_t *usb_dev) {
     xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
@@ -241,6 +262,37 @@ int usb_set_interface(usb_if_t *usb_if) {
     xhci_ering_dequeue(xhci_controller, &trb);
     color_printk(RED,BLACK, "set_if_trb m0:%#lx m1:%#lx   \n", trb.member0, trb.member1);
     return 0;
+}
+
+/**
+ * 清除 USB 端点的 STALL/Halt 状态 (撬开大门)
+ * @param usb_dev      USB 设备上下文
+ * @param xhci_pipe_id xHCI 的端点上下文索引 (DCI, 范围 2-31)
+ */
+int32 usb_clear_feature_halt(usb_dev_t *usb_dev, uint8 xhci_pipe_id) {
+    // 1. 将 xHCI 的 DCI 翻译成 USB 标准端点地址
+    // 在 xHCI 中：DCI 偶数是 OUT端点，奇数是 IN端点。DCI / 2 就是端点号。
+    uint8 ep_num = xhci_pipe_id / 2;
+    uint8 ep_dir = (xhci_pipe_id % 2 != 0) ? USB_DIR_IN : USB_DIR_OUT;
+    uint8 ep_addr = ep_dir | ep_num; // 拼装成给 U 盘看的地址 (如 0x81)
+
+    // 2. 组装 8 字节的标准 Setup 请求包
+    usb_setup_pkt_t setup = {0};
+    setup.bmRequestType = USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_ENDPOINT; // 0x02
+    setup.bRequest      = USB_REQ_CLEAR_FEATURE;                                // 0x01
+    setup.wValue        = asm_bswap16(USB_FEATURE_ENDPOINT_HALT);               // 0x0000
+    setup.wIndex        = asm_bswap16((uint16)ep_addr);                         // 目标端点地址
+    setup.wLength       = 0;                                                    // 无额外数据阶段
+
+    // 3. 通过 EP0 发送控制传输
+    // 假设你的内核底座已经实现了统一的 EP0 发送函数 xhci_control_transfer
+    // 参数：设备, setup包结构, 数据缓冲区(这里是NULL), 数据长度(0)
+    int32 status = xhci_control_transfer(usb_dev, &setup, NULL, 0);
+
+    if (status != 0) {
+        color_printk(RED, BLACK, "USB: Clear Feature (Halt) failed on EP %02X!\n", ep_addr);
+    }
+    return status;
 }
 
 //初始化端点
