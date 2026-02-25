@@ -52,6 +52,59 @@
 #define XHCI_TRB_CMD_RESET_DEVICE       17
 
 // ============================================================================
+// xHCI TRB 类型枚举 (对应所有 TRB Dword 3 的 Bits 10-15: type)
+// 规范出处: xHCI Spec 1.2 - Table 132 (TRB Type Definitions)
+// ============================================================================
+typedef enum ：uint32 {
+    XHCI_TRB_TYPE_RESERVED = 0,          // 0: 保留 (非法 TRB)
+
+    // ========================================================================
+    // 【传输环 TRB】(Transfer Ring) - 塞入端点环，用于真实的数据搬运
+    // ========================================================================
+    XHCI_TRB_TYPE_NORMAL       = 1,      // 普通传输 (BOT 数据进出的绝对主力)
+    XHCI_TRB_TYPE_SETUP_STAGE  = 2,      // 控制传输：Setup 阶段 (★ 你刚才写的 8 字节包就是它)
+    XHCI_TRB_TYPE_DATA_STAGE   = 3,      // 控制传输：数据阶段
+    XHCI_TRB_TYPE_STATUS_STAGE = 4,      // 控制传输：状态确认阶段
+    XHCI_TRB_TYPE_ISOCH        = 5,      // 等时传输 (用于 USB 麦克风、摄像头等实时设备)
+    XHCI_TRB_TYPE_LINK         = 6,      // 链接 TRB (★ 物理内存环填满时，用它跳回环的开头)
+    XHCI_TRB_TYPE_EVENT_DATA   = 7,      // 事件数据 (给虚拟化或者特殊同步用的)
+    XHCI_TRB_TYPE_NO_OP        = 8,      // 空操作 TRB (占坑用)
+
+    // ========================================================================
+    // 【命令环 TRB】(Command Ring) - 塞入全局命令环，用于控制 xHCI 主板硬件
+    // ========================================================================
+    XHCI_TRB_TYPE_ENABLE_SLOT       = 9,  // 启用设备槽 (设备刚插入时的第一步！)
+    XHCI_TRB_TYPE_DISABLE_SLOT      = 10, // 禁用设备槽 (设备拔出时清理内存)
+    XHCI_TRB_TYPE_ADDRESS_DEVICE    = 11, // 分配设备地址 (告诉 xHCI 给设备发 Set Address 命令)
+    XHCI_TRB_TYPE_CONFIGURE_EP      = 12, // 配置端点 (激活 Bulk IN/OUT 管道全靠它)
+    XHCI_TRB_TYPE_EVALUATE_CTX      = 13, // 评估上下文 (比如告诉硬件：这个 U 盘最大包长是 512)
+    XHCI_TRB_TYPE_RESET_EP          = 14, // 复位端点 (★ 清除 STALL 卡死时必发的神兵利器)
+    XHCI_TRB_TYPE_STOP_EP           = 15, // 停止端点 (强行踩刹车，中止正在进行的传输)
+    XHCI_TRB_TYPE_SET_TR_DEQUEUE    = 16, // 设置出队指针 (★ STALL 恢复后，强行拨动硬件的出队指针)
+    XHCI_TRB_TYPE_RESET_DEVICE      = 17, // 复位设备
+    XHCI_TRB_TYPE_FORCE_EVENT       = 18, // 强制事件 (SR-IOV 虚拟化常用)
+    XHCI_TRB_TYPE_NEGOTIATE_BW      = 19, // 协商带宽
+    XHCI_TRB_TYPE_SET_LATENCY_TOL   = 20, // 设置延迟容忍度
+    XHCI_TRB_TYPE_GET_PORT_BW       = 21, // 获取端口带宽
+    XHCI_TRB_TYPE_FORCE_HEADER      = 22, // 强制包头
+    XHCI_TRB_TYPE_NO_OP_CMD         = 23, // 空操作命令 (测试命令环通不通时用)
+
+    // ========================================================================
+    // 【事件环 TRB】(Event Ring) - xHCI 硬件主动写入内存，触发 CPU 中断的回执
+    // ========================================================================
+    XHCI_TRB_TYPE_TRANSFER_EVENT    = 32, // 传输完成事件 (★ 汇报 Normal/Setup 等传输的对错，如短包/STALL)
+    XHCI_TRB_TYPE_CMD_COMPLETION    = 33, // 命令完成事件 (★ 汇报 Reset EP 等主板命令是否成功)
+    XHCI_TRB_TYPE_PORT_STATUS_CHG   = 34, // 端口状态改变事件 (★ 最关键的中断：U盘插入或拔出的瞬间产生！)
+    XHCI_TRB_TYPE_BANDWIDTH_REQ     = 35, // 带宽请求事件
+    XHCI_TRB_TYPE_DOORBELL          = 36, // 门铃事件
+    XHCI_TRB_TYPE_HOST_CTRL         = 37, // 主机控制器事件
+    XHCI_TRB_TYPE_DEVICE_NOTIFY     = 38, // 设备通知事件
+    XHCI_TRB_TYPE_MFINDEX_WRAP      = 39  // 微帧索引翻转事件
+
+    // 48 到 63 是厂商自定义 (Vendor Defined)，通常不用管
+} xhci_trb_type_e;
+
+// ============================================================================
 // Setup Stage TRB (Type 2) - 控制传输的第一阶段
 // ============================================================================
 // TRT (Transfer Type) 控制传输的数据阶段方向
@@ -59,39 +112,117 @@
 #define XHCI_SETUP_TRT_OUT_DATA   2  // 主机向设备发数据
 #define XHCI_SETUP_TRT_IN_DATA    3  // 设备向主机发数据 (如 GetDescriptor)
 
+typedef enum : uint8 {
+    USB_RECIP_DEVICE    = 0,  //设备
+    USB_RECIP_INTERFACE = 1,  //接口
+    USB_RECIP_ENDPOINT  = 2,  //端点
+    USB_RECIP_OTHER     = 3   //其他
+} usb_recipient_e;
+
+// USB 请求类型枚举 (对应 bmRequestType 的 Bits 5-6:type)
+typedef enum : uint8 {
+    USB_REQ_TYPE_STANDARD = 0, // 0 = 标准请求 (Standard Request)场景：设备枚举、获取设备描述符 (Get Descriptor)、分配地址 (Set Address)、清除端点卡死 (Clear Feature) 等。
+    USB_REQ_TYPE_CLASS    = 1, // 1 = 类特定请求 (Class Request)比如我们 U 盘 (Mass Storage Class) 专属的 BOT Mass Storage Reset (0xFF) 和 Get Max LUN (0xFE)。
+    USB_REQ_TYPE_VENDOR   = 2,  // 2 = 厂商自定义请求 (Vendor Request)
+    USB_REQ_TYPE_RESERVED = 3   // 3 = 保留 (Reserved)
+} usb_req_type_e;
+
+// USB 数据传输方向枚举 (对应 bmRequestType 的 Bit 7: dtd)
+typedef enum :uint8 {
+    USB_DIR_OUT = 0, // 0 = OUT (主机到设备 / Host to Device)作用：控制传输的数据阶段，数据是由主机发送给设备的。注意：如果这个控制请求根本【没有】数据阶段（比如只发一个没有参数的命令），按照规范，方向也必须填 OUT(0)。
+    USB_DIR_IN  = 1  // 1 = IN (设备到主机 / Device to Host)作用：控制传输的数据阶段，主机期待设备把数据传回来，场景：比如你想读取 U 盘的最大 LUN (Get Max LUN)，或者读取设备的描述符 (Get Descriptor) 时。
+} usb_data_dir_e;
+
+// ============================================================================
+// USB 具体请求指令枚举 (对应 bRequest)
+// 注意：0x00~0x0F 通常为标准请求，0x20以上及 0xFE/0xFF 常用于类特定请求
+// ============================================================================
+typedef enum : uint8 {
+    // ------------------------------------------------------------------------
+    // 【USB 标准请求】(当 RequestType == USB_REQ_TYPE_STANDARD 时有效)
+    // ------------------------------------------------------------------------
+    USB_REQ_GET_STATUS        = 0x00, // 获取状态 (比如看看设备是自供电还是总线供电，端点有没有Halt)
+    USB_REQ_CLEAR_FEATURE     = 0x01, // 清除特性 (★我们在撬开卡死端点时用的就是这个！)
+    // 0x02 是保留的
+    USB_REQ_SET_FEATURE       = 0x03, // 设置特性 (比如让设备进入测试模式，或挂起特定端点)
+    // 0x04 是保留的
+    USB_REQ_SET_ADDRESS       = 0x05, // 设置地址 (设备刚插入时地址为0，xHCI用这个给它分配一个 1~127 的新地址)
+    USB_REQ_GET_DESCRIPTOR    = 0x06, // 获取描述符 (★枚举设备、获取厂商PID/VID、端点配置全靠它)
+    USB_REQ_SET_DESCRIPTOR    = 0x07, // 设置描述符 (极少使用，通常用于固件更新)
+    USB_REQ_GET_CONFIGURATION = 0x08, // 获取当前配置 (看看设备现在处于哪种工作模式)
+    USB_REQ_SET_CONFIGURATION = 0x09, // 设置当前配置 (告诉设备：“你现在作为U盘模式启动吧”)
+    USB_REQ_GET_INTERFACE     = 0x0A, // 获取当前接口备用设置
+    USB_REQ_SET_INTERFACE     = 0x0B, // 设置接口备用设置 (常见于带麦克风和音响的复合 USB 耳机切换采样率)
+    USB_REQ_SYNCH_FRAME       = 0x0C, // 同步帧 (仅用于等时传输，如音频/视频设备同步时间戳)
+    // ------------------------------------------------------------------------
+    // 【Mass Storage (BOT) 类专属请求】(当 qtype == USB_REQ_TYPE_CLASS 时有效)
+    // ------------------------------------------------------------------------
+    BOT_REQ_GET_MAX_LUN       = 0xFE, // 获取最大逻辑单元号 (问读卡器：“你身上插了几个SD卡？”)
+    BOT_REQ_MASS_STORAGE_RESET= 0xFF  // 批量仅复位 (★核弹按钮：让U盘的协议状态机瞬间清零重启)
+
+} usb_request_e;
+
+// ============================================================================
+// xHCI 控制传输类型枚举 (对应 Setup TRB Dword 3 的 Bits 16-17: trt)
+// 作用：告诉硬件这次控制传输是否包含数据阶段，以及数据的方向。
+// ============================================================================
+typedef enum : uint32 {
+    // 0 = 无数据阶段 (No Data Stage)
+    // 场景：命令发出去就完事了，不需要额外的数据负载。
+    // 举例：Clear Feature (撬门), Set Address, BOT Mass Storage Reset (核弹)
+    // 结构：[Setup TRB] ---> [Status TRB] (仅 2 节车厢)
+    XHCI_TRT_NO_DATA   = 0,
+
+    // 1 = 保留 (Reserved)
+    // 绝对不要使用，硬件会报错。
+    XHCI_TRT_RESERVED  = 1,
+
+    // 2 = OUT 数据阶段 (OUT Data Stage)
+    // 场景：主机不仅发命令，还要把一坨内存数据强塞给设备。
+    // 举例：Set Descriptor (刷固件等)
+    // 结构：[Setup TRB] ---> [Data TRB (OUT)] ---> [Status TRB (IN)]
+    XHCI_TRT_OUT_DATA  = 2,
+
+    // 3 = IN 数据阶段 (IN Data Stage)
+    // 场景：主机发完命令，张开嘴等设备把数据喂回来。
+    // 举例：Get Descriptor (获取设备信息), BOT Get Max LUN (问 U 盘有几个分区)
+    // 结构：[Setup TRB] ---> [Data TRB (IN)] ---> [Status TRB (OUT)]
+    XHCI_TRT_IN_DATA   = 3
+} xhci_trt_e;
+
 typedef struct trb_setup_stage_t{
     //bmRequestType
-    uint8 recipient     : 5;
-    uint8 qtype         : 2;
-    uint8 dtd           : 1;
+    usb_recipient_e recipient : 5;
+    usb_req_type_e  req_type  : 2;
+    usb_data_dir_e  dtd       : 1;
 
     //bRequest
-    uint8 request;
+    usb_request_e   request; //请求代码
 
     //wValue
-    uint16 value;
+    uint16          value; //请求值，具体含义由 b_request 定义 例如：GET_DESCRIPTOR 中，w_value 高字节为描述符类型，低字节为索引
 
     //wIndex
-    uint16 index;
+    uint16          index; //索引或偏移，具体含义由 b_request 定义 例如：接口号、端点号或字符串描述符索引
 
     //wLength
-    uint16 length; // 如果 wLength > 0，则必须有 Data Stage
+    uint16          length; //数据阶段的传输长度（字节）主机到设备：发送的数据长度 设备到主机：请求的数据长度
 
     // Dword 2: 长度与中断目标
-    uint32 trb_transfer_len : 17; // 规范强制要求：Setup TRB 的长度必须固定填 8！
-    uint32 rsvd1            : 5;
-    uint32 int_target       : 10;
+    uint32          trb_transfer_len : 17; // 规范强制要求：Setup TRB 的长度必须固定填 8！
+    uint32          rsvd1            : 5;
+    uint32          int_target       : 10;
 
     // Dword 3: 控制位
-    uint32 cycle : 1;
-    uint32 rsvd2 : 3;
-    uint32 chain : 1;  // ★ 必须填 1！因为后面一定跟着 Data 或 Status TRB
-    uint32 ioc   : 1;  // 通常填 0，因为我们只关心最后一个 Status TRB 的完成中断
-    uint32 idt   : 1;  // ★ 必须填 1！(Immediate Data: 告诉硬件前 8 字节是数据本身，不是指针)
-    uint32 rsvd3 : 3;
-    uint32 type  : 6;  // Bits 10-15: TRB 类型 (固定为 2)
-    uint32 trt   : 2;  // Bits 16-17: 传输类型 (见上方宏定义，极其重要)
-    uint32 rsvd4 : 14;
+    uint32          cycle : 1;
+    uint32          rsvd2 : 3;
+    uint32          chain : 1;  // ★ 必须填 1！因为后面一定跟着 Data 或 Status TRB
+    uint32          ioc   : 1;  // 通常填 0，因为我们只关心最后一个 Status TRB 的完成中断
+    uint32          idt   : 1;  // ★ 必须填 1！(Immediate Data: 告诉硬件前 8 字节是数据本身，不是指针)
+    uint32          rsvd3 : 3;
+    xhci_trb_type_e type  : 6;  // Bits 10-15: TRB 类型 (固定为 2)
+    xhci_trt_e      trt   : 2;  // Bits 16-17: 传输类型 (见上方宏定义，极其重要)
+    uint32          rsvd4 : 14;
 } trb_setup_stage_t;
 
 // ============================================================================
@@ -143,6 +274,7 @@ typedef struct trb_status_stage_t {
     uint32 rsvd4 : 15;
 }trb_status_stage_t;
 
+//复位端点trb
 typedef struct trb_rest_ep_cmd_t{
     uint32 rsvd0[3];
     uint32 cycle:1;
