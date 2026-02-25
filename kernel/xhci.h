@@ -60,13 +60,22 @@
 #define XHCI_SETUP_TRT_IN_DATA    3  // 设备向主机发数据 (如 GetDescriptor)
 
 typedef struct trb_setup_stage_t{
-    // Dword 0-1: 极其特殊！这里直接塞入 8 字节的 USB Setup Packet 数据
-    uint32 bmRequestType : 8;
-    uint32 bRequest      : 8;
-    uint32 wValue        : 16;
+    //bmRequestType
+    uint8 recipient     : 5;
+    uint8 qtype         : 2;
+    uint8 dtd           : 1;
 
-    uint32 wIndex        : 16;
-    uint32 wLength       : 16; // 如果 wLength > 0，则必须有 Data Stage
+    //bRequest
+    uint8 request;
+
+    //wValue
+    uint16 value;
+
+    //wIndex
+    uint16 index;
+
+    //wLength
+    uint16 length; // 如果 wLength > 0，则必须有 Data Stage
 
     // Dword 2: 长度与中断目标
     uint32 trb_transfer_len : 17; // 规范强制要求：Setup TRB 的长度必须固定填 8！
