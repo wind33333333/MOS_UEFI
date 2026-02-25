@@ -167,27 +167,10 @@ typedef enum : uint8 {
 // 作用：告诉硬件这次控制传输是否包含数据阶段，以及数据的方向。
 // ============================================================================
 typedef enum : uint32 {
-    // 0 = 无数据阶段 (No Data Stage)
-    // 场景：命令发出去就完事了，不需要额外的数据负载。
-    // 举例：Clear Feature (撬门), Set Address, BOT Mass Storage Reset (核弹)
-    // 结构：[Setup TRB] ---> [Status TRB] (仅 2 节车厢)
-    XHCI_TRT_NO_DATA   = 0,
-
-    // 1 = 保留 (Reserved)
-    // 绝对不要使用，硬件会报错。
-    XHCI_TRT_RESERVED  = 1,
-
-    // 2 = OUT 数据阶段 (OUT Data Stage)
-    // 场景：主机不仅发命令，还要把一坨内存数据强塞给设备。
-    // 举例：Set Descriptor (刷固件等)
-    // 结构：[Setup TRB] ---> [Data TRB (OUT)] ---> [Status TRB (IN)]
-    XHCI_TRT_OUT_DATA  = 2,
-
-    // 3 = IN 数据阶段 (IN Data Stage)
-    // 场景：主机发完命令，张开嘴等设备把数据喂回来。
-    // 举例：Get Descriptor (获取设备信息), BOT Get Max LUN (问 U 盘有几个分区)
-    // 结构：[Setup TRB] ---> [Data TRB (IN)] ---> [Status TRB (OUT)]
-    XHCI_TRT_IN_DATA   = 3
+    XHCI_TRT_NO_DATA   = 0, // 0 = 无数据阶段 (No Data Stage)场景：命令发出去就完事了，不需要额外的数据负载。
+    XHCI_TRT_RESERVED  = 1, // 1 = 保留 (Reserved)    // 绝对不要使用，硬件会报错。
+    XHCI_TRT_OUT_DATA  = 2, // 2 = OUT 数据阶段 (OUT Data Stage)场景：主机不仅发命令，还要把一坨内存数据强塞给设备。
+    XHCI_TRT_IN_DATA   = 3 // 3 = IN 数据阶段 (IN Data Stage)场景：主机发完命令，张开嘴等设备把数据喂回来。
 } xhci_trt_e;
 
 typedef struct trb_setup_stage_t{
@@ -230,25 +213,25 @@ typedef struct trb_setup_stage_t{
 // ============================================================================
 typedef struct trb_data_stage_t {
     // Dword 0-1: 数据缓冲区的 64 位物理地址 (PA)
-    uint64 data_buf_ptr;
+    uint64          data_buf_ptr;
 
     // Dword 2: 长度控制
-    uint32 transfer_len : 17; // 你要传输的实际数据长度
-    uint32 td_size      : 5;  // 剩余的包数 (简单起见常填 0)
-    uint32 int_target   : 10;
+    uint32          transfer_len : 17; // 你要传输的实际数据长度
+    uint32          td_size      : 5;  // 剩余的包数 (简单起见常填 0)
+    uint32          int_target   : 10;
 
     // Dword 3: 控制位
-    uint32 cycle : 1;
-    uint32 ent   : 1;
-    uint32 isp   : 1;  // 短包中断
-    uint32 ns    : 1;  // No Snoop
-    uint32 chain : 1;  // ★ 必须填 1！因为后面必须跟着一节 Status TRB 车尾
-    uint32 ioc   : 1;  // 通常填 0
-    uint32 idt   : 1;  // 必须填 0 (说明前面是个指针)
-    uint32 rsvd1 : 3;
-    uint32 type  : 6;  // Bits 10-15: TRB 类型 (固定为 3)
-    uint32 dir   : 1;  // ★ Bits 16: 数据方向 (0 = OUT 主机发给设备, 1 = IN 设备发给主机)
-    uint32 rsvd2 : 15;
+    uint32          cycle : 1;
+    uint32          ent   : 1;  //评估下一个trb
+    uint32          isp   : 1;  // 短包中断
+    uint32          ns    : 1;  // No Snoop
+    uint32          chain : 1;  // ★ 必须填 1！因为后面必须跟着一节 Status TRB 车尾
+    uint32          ioc   : 1;  // 通常填 0
+    uint32          idt   : 1;  // 必须填 0 (说明前面是个指针)
+    uint32          rsvd1 : 3;
+    xhci_trb_type_e type  : 6;  // Bits 10-15: TRB 类型 (固定为 3)
+    uint32          dir   : 1;  // ★ Bits 16: 数据方向 (0 = OUT 主机发给设备, 1 = IN 设备发给主机)
+    uint32          rsvd2 : 15;
 }trb_data_stage_t;
 
 // ============================================================================
@@ -256,37 +239,37 @@ typedef struct trb_data_stage_t {
 // ============================================================================
 typedef struct trb_status_stage_t {
     // Dword 0-1: 规范强制要求保留全 0！(状态阶段没有真实的数据负载)
-    uint64 rsvd0;
+    uint64          rsvd0;
 
     // Dword 2
-    uint32 rsvd1      : 22; // 必须全 0
-    uint32 int_target : 10;
+    uint32          rsvd1      : 22; // 必须全 0
+    uint32          int_target : 10;
 
     // Dword 3: 控制位
-    uint32 cycle : 1;
-    uint32 ent   : 1;
-    uint32 rsvd2 : 2;
-    uint32 chain : 1;  // ★ 必须填 0！因为这是最后一节车厢了！
-    uint32 ioc   : 1;  // ★ 必须填 1！(Interrupt On Completion：硬件跑完这个 TRB，才向内核汇报)
-    uint32 rsvd3 : 4;
-    uint32 type  : 6;  // Bits 10-15: TRB 类型 (固定为 4)
-    uint32 dir   : 1;  // ★ Bits 16: 握手方向 (如果是 No Data 或 OUT，这里填 1；如果 Data是 IN，这里填 0)
-    uint32 rsvd4 : 15;
+    uint32          cycle : 1;
+    uint32          ent   : 1;
+    uint32          rsvd2 : 2;
+    uint32          chain : 1;  // ★ 必须填 0！因为这是最后一节车厢了！
+    uint32          ioc   : 1;  // ★ 必须填 1！(Interrupt On Completion：硬件跑完这个 TRB，才向内核汇报)
+    uint32          rsvd3 : 4;
+    xhci_trb_type_e type  : 6;  // Bits 10-15: TRB 类型 (固定为 4)
+    uint32          dir   : 1;  // ★ Bits 16: 握手方向 (如果是 No Data 或 OUT，这里填 1； 如果 Data是 IN，这里填 0)
+    uint32          rsvd4 : 15;
 }trb_status_stage_t;
 
 //复位端点trb
 typedef struct trb_rest_ep_cmd_t{
-    uint32 rsvd0[3];
-    uint32 cycle:1;
-    uint32 rsvd1:8;
-    uint32 tsp:1;
-    uint32 type:6;
-    uint32 ep_id:5;
-    uint32 rsvd2:3;
-    uint32 slot_id:8;
+    uint32          rsvd0[3];
+    uint32          cycle:1;
+    uint32          rsvd1:8;
+    uint32          tsp:1;
+    xhci_trb_type_e type:6;
+    uint32          ep_id:5;
+    uint32          rsvd2:3;
+    uint32          slot_id:8;
 }trb_rest_ep_cmd_t;
-#define XHCI_TRB_CMD_RESET_EP           14   // ★ 复位端点命令
 
+//trb集合
 typedef union xhci_trb_t {
     // 【视角 1：内存搬运工视角】(用于底层 enqueue 拷贝和清零)
     uint64 raw[2];
@@ -308,8 +291,9 @@ typedef union xhci_trb_t {
 
     // 【视角 4：业务定制视角】(包含了所有具体的 TRB 解析格式)
     trb_rest_ep_cmd_t    rest_ep_cmd;
-    // trb_setup_struct_t  setup;
-    // trb_cmd_struct_t    cmd;
+    trb_setup_stage_t    setup_stage;
+    trb_data_stage_t     data_stage;
+    trb_status_stage_t  status_stage;
     // ... 以后加什么 TRB，就往这里塞什么 struct ...
 
 }xhci_trb_t;
