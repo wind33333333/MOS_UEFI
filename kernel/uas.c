@@ -82,8 +82,8 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     int32 completion_code = xhci_wait_for_completion(xhci_controller,status_trb_ptr,0x20000000);
 
     //检测TRB是否发送成功
-    if (completion_code == XHCI_COMP_SUCCESS || completion_code == XHCI_COMP_STALL_ERROR) {   //TRB发送成功
-        if (sense_iu->status == SCSI_STATUS_CHECK_CONDITION && cmnd->sense) {                //如果sense_iu报错着把错误拷贝传给调用者
+    if (completion_code == XHCI_COMP_SUCCESS || completion_code == XHCI_COMP_SHORT_PACKET) {   //TRB发送成功
+        if (sense_iu->status == SCSI_STATUS_CHECK_CONDITION && cmnd->sense) {                  //如果sense_iu报错着把错误拷贝传给调用者
             asm_mem_cpy(sense_iu->scsi_sense,cmnd->sense,asm_bswap16(sense_iu->scsi_sense_len));
         }
     }else {//TRB发送错误处理流程
