@@ -129,9 +129,19 @@ void xhci_address_device(usb_dev_t *usb_dev) {
 }
 
 //重置端点
-void xhci_reset_endpoint(usb_dev_t *usb_dev){
-    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
-
+void xhci_reset_endpoint(xhci_controller_t *xhci_controller,uint8 slot_id, uint8 ep_dci, uint8 tsp_flag){
+    xhci_trb_t trb ={0};
+    trb.rest_ep_cmd.type = XHCI_TRB_CMD_RESET_EP;
+    trb.rest_ep_cmd.tsp = tsp_flag & 1;
+    trb.rest_ep_cmd.ep_id = ep_dci;
+    trb.rest_ep_cmd.slot_id = slot_id;
+    uint64 enqueue_ptr = xhci_ring_enqueue(&xhci_controller->cmd_ring, (void*)&trb);
+    xhci_ring_doorbell(xhci_controller, 0, 0);
+    int32 completion_code = xhci_wait_for_completion(xhci_controller,enqueue_ptr,200000);
+    if (completion_code != XHCI_COMP_SUCCESS) {
+        color_printk(RED,BLACK,"xhci_reset_endpoint error: completion_code=%d \n",completion_code);
+    while (1);
+    }
 }
 
 //xhic扩展能力搜索

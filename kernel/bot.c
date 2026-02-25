@@ -66,7 +66,7 @@ void bot_recovery_reset(usb_dev_t *usb_dev, uint8 pipe_in, uint8 pipe_out) {
 void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     bot_data_t *bot_data =host->hostdata;
     usb_dev_t *usb_dev = bot_data->usb_if->usb_dev;
-    xhci_controller_t *xhci = usb_dev->xhci_controller;
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
 
     // 管道定义 (BOT 通常只用两个 Bulk 管道)
     uint8 pipe_out = bot_data->pipe_out;
@@ -96,10 +96,10 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     // 提交 TRB 到 Bulk OUT
     normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(bot_cbw_t), ENABLE_IOC);
     uint64 cbw_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[pipe_out].transfer_ring, &trb);
-    xhci_ring_doorbell(xhci, usb_dev->slot_id, pipe_out);
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, pipe_out);
 
     // 等待 CBW 发送完成
-    completion_code = xhci_wait_for_completion(xhci, cbw_trb_ptr, 200000); // 2秒超时
+    completion_code = xhci_wait_for_completion(xhci_controller, cbw_trb_ptr, 200000); // 2秒超时
     if (completion_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "BOT Stage 1: CBW Failed (%d). Resetting...\n", completion_code);
         // CBW 阶段出错是极其致命的，直接上“核弹复位”
@@ -116,10 +116,10 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 
         normal_transfer_trb(&trb, va_to_pa(cmnd->data_buf), disable_ch, cmnd->data_len, ENABLE_IOC);
         uint64 data_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[data_pipe].transfer_ring, &trb);
-        xhci_ring_doorbell(xhci, usb_dev->slot_id, data_pipe);
+        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, data_pipe);
 
         // 等待数据传输完成
-        completion_code = xhci_wait_for_completion(xhci, data_trb_ptr, 200000); // 5秒超时
+        completion_code = xhci_wait_for_completion(xhci_controller, data_trb_ptr, 200000); // 5秒超时
         if (completion_code != XHCI_COMP_SUCCESS) {
             if (completion_code == XHCI_COMP_SHORT_PACKET) {
                 // 完美情况：只是短包，无需处理，直接去读 CSW
@@ -129,7 +129,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
                 // 协议级卡死：数据长度不匹配引发的 STALL
                 color_printk(YELLOW, BLACK, "BOT Stage 2: STALL. Clearing Halt...\n");
                 // 1. 复位 xHCI 硬件端点状态
-                xhci_reset_endpoint(xhci, usb_dev->slot_id, data_pipe);
+                xhci_reset_endpoint(xhci_controller, usb_dev->slot_id, data_pipe);
                 // 2. 发送 USB 控制请求，撬开 U 盘大门
                 usb_clear_feature_halt(usb_dev, data_pipe);
                 // ★ 注意：绝对不能 return！门撬开了，必须硬着头皮去读 CSW！
@@ -151,16 +151,16 @@ retry_csw:
     // 提交 TRB 到 Bulk IN (不管刚才数据是读是写，CSW 永远是读)
     normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(bot_csw_t), ENABLE_IOC);
     uint64 csw_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[pipe_in].transfer_ring, &trb);
-    xhci_ring_doorbell(xhci, usb_dev->slot_id, pipe_in);
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, pipe_in);
 
     // 等待 CSW 接收完成
-    completion_code = xhci_wait_for_completion(xhci, csw_trb_ptr, 200000);
-    completion_code = xhci_wait_for_completion(xhci, csw_trb_ptr, 200000);
+    completion_code = xhci_wait_for_completion(xhci_controller, csw_trb_ptr, 200000);
+    completion_code = xhci_wait_for_completion(xhci_controller, csw_trb_ptr, 200000);
 
     // 异常 1: 请求 CSW 时发生 STALL (有些 U 盘会在发 CSW 前莫名其妙再卡一次)
     if (completion_code == XHCI_COMP_STALL_ERROR && csw_retry_count == 0) {
         color_printk(YELLOW, BLACK, "BOT Stage 3: CSW STALL. Clearing and retrying...\n");
-        xhci_reset_endpoint(xhci, usb_dev->slot_id, pipe_in);
+        xhci_reset_endpoint(xhci_controller, usb_dev->slot_id, pipe_in);
         usb_clear_feature_halt(usb_dev, pipe_in);
         csw_retry_count++;
         goto retry_csw; // 撬开门，重试一次 CSW

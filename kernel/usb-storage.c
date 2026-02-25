@@ -62,7 +62,7 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
         //解析pipe端点
         for (uint8 i = 0; i < 4; i++) {
             usb_ep_t *ep = &usb_if->cur_alt->eps[i];
-            uint8 ep_num = ep->ep_num;
+            uint8 ep_num = ep->ep_dci;
             uint32 streams = usb_dev->eps[ep_num].streams_count;
             if (streams && streams < mini_streams) mini_streams = streams;
             usb_uas_pipe_usage_descriptor_t *pipe_usage_desc = ep->extras_desc;
@@ -95,7 +95,7 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
         bot_data->usb_if = usb_if;
         for (uint8 i = 0; i < 2; i++) {
             usb_ep_t *ep_phy = &usb_if->cur_alt->eps[i];
-            uint8 ep_num = ep_phy->ep_num;
+            uint8 ep_num = ep_phy->ep_dci;
             if (ep_num & 1) {
                 bot_data->pipe_in = ep_num;
             } else {

@@ -39,6 +39,141 @@
 #define TRB_MFINDEX_WRAP            (39 << 10)  // 主框架索引回绕
 
 // ============================================================================
+// xHCI Command TRB Types (命令环专用的 TRB 类型)
+// ============================================================================
+#define XHCI_TRB_CMD_ENABLE_SLOT        9
+#define XHCI_TRB_CMD_DISABLE_SLOT       10
+#define XHCI_TRB_CMD_ADDRESS_DEVICE     11
+#define XHCI_TRB_CMD_CONFIGURE_EP       12
+#define XHCI_TRB_CMD_EVALUATE_CTX       13
+
+#define XHCI_TRB_CMD_STOP_EP            15
+#define XHCI_TRB_CMD_SET_TR_DEQUEUE     16   // ★ 设置出队指针命令 (稍后解释这个神坑)
+#define XHCI_TRB_CMD_RESET_DEVICE       17
+
+// ============================================================================
+// Setup Stage TRB (Type 2) - 控制传输的第一阶段
+// ============================================================================
+// TRT (Transfer Type) 控制传输的数据阶段方向
+#define XHCI_SETUP_TRT_NO_DATA    0  // 只有 Setup 和 Status (如 ClearFeature)
+#define XHCI_SETUP_TRT_OUT_DATA   2  // 主机向设备发数据
+#define XHCI_SETUP_TRT_IN_DATA    3  // 设备向主机发数据 (如 GetDescriptor)
+
+typedef struct trb_setup_stage_t{
+    // Dword 0-1: 极其特殊！这里直接塞入 8 字节的 USB Setup Packet 数据
+    uint32 bmRequestType : 8;
+    uint32 bRequest      : 8;
+    uint32 wValue        : 16;
+
+    uint32 wIndex        : 16;
+    uint32 wLength       : 16; // 如果 wLength > 0，则必须有 Data Stage
+
+    // Dword 2: 长度与中断目标
+    uint32 trb_transfer_len : 17; // 规范强制要求：Setup TRB 的长度必须固定填 8！
+    uint32 rsvd1            : 5;
+    uint32 int_target       : 10;
+
+    // Dword 3: 控制位
+    uint32 cycle : 1;
+    uint32 rsvd2 : 3;
+    uint32 chain : 1;  // ★ 必须填 1！因为后面一定跟着 Data 或 Status TRB
+    uint32 ioc   : 1;  // 通常填 0，因为我们只关心最后一个 Status TRB 的完成中断
+    uint32 idt   : 1;  // ★ 必须填 1！(Immediate Data: 告诉硬件前 8 字节是数据本身，不是指针)
+    uint32 rsvd3 : 3;
+    uint32 type  : 6;  // Bits 10-15: TRB 类型 (固定为 2)
+    uint32 trt   : 2;  // Bits 16-17: 传输类型 (见上方宏定义，极其重要)
+    uint32 rsvd4 : 14;
+} trb_setup_stage_t;
+
+// ============================================================================
+// Data Stage TRB (Type 3) - 控制传输的第二阶段 (可选)
+// ============================================================================
+typedef struct trb_data_stage_t {
+    // Dword 0-1: 数据缓冲区的 64 位物理地址 (PA)
+    uint64 data_buf_ptr;
+
+    // Dword 2: 长度控制
+    uint32 transfer_len : 17; // 你要传输的实际数据长度
+    uint32 td_size      : 5;  // 剩余的包数 (简单起见常填 0)
+    uint32 int_target   : 10;
+
+    // Dword 3: 控制位
+    uint32 cycle : 1;
+    uint32 ent   : 1;
+    uint32 isp   : 1;  // 短包中断
+    uint32 ns    : 1;  // No Snoop
+    uint32 chain : 1;  // ★ 必须填 1！因为后面必须跟着一节 Status TRB 车尾
+    uint32 ioc   : 1;  // 通常填 0
+    uint32 idt   : 1;  // 必须填 0 (说明前面是个指针)
+    uint32 rsvd1 : 3;
+    uint32 type  : 6;  // Bits 10-15: TRB 类型 (固定为 3)
+    uint32 dir   : 1;  // ★ Bits 16: 数据方向 (0 = OUT 主机发给设备, 1 = IN 设备发给主机)
+    uint32 rsvd2 : 15;
+}trb_data_stage_t;
+
+// ============================================================================
+// Status Stage TRB (Type 4) - 控制传输的最终确认阶段
+// ============================================================================
+typedef struct trb_status_stage_t {
+    // Dword 0-1: 规范强制要求保留全 0！(状态阶段没有真实的数据负载)
+    uint64 rsvd0;
+
+    // Dword 2
+    uint32 rsvd1      : 22; // 必须全 0
+    uint32 int_target : 10;
+
+    // Dword 3: 控制位
+    uint32 cycle : 1;
+    uint32 ent   : 1;
+    uint32 rsvd2 : 2;
+    uint32 chain : 1;  // ★ 必须填 0！因为这是最后一节车厢了！
+    uint32 ioc   : 1;  // ★ 必须填 1！(Interrupt On Completion：硬件跑完这个 TRB，才向内核汇报)
+    uint32 rsvd3 : 4;
+    uint32 type  : 6;  // Bits 10-15: TRB 类型 (固定为 4)
+    uint32 dir   : 1;  // ★ Bits 16: 握手方向 (如果是 No Data 或 OUT，这里填 1；如果 Data是 IN，这里填 0)
+    uint32 rsvd4 : 15;
+}trb_status_stage_t;
+
+typedef struct trb_rest_ep_cmd_t{
+    uint32 rsvd0[3];
+    uint32 cycle:1;
+    uint32 rsvd1:8;
+    uint32 tsp:1;
+    uint32 type:6;
+    uint32 ep_id:5;
+    uint32 rsvd2:3;
+    uint32 slot_id:8;
+}trb_rest_ep_cmd_t;
+#define XHCI_TRB_CMD_RESET_EP           14   // ★ 复位端点命令
+
+typedef union xhci_trb_t {
+    // 【视角 1：内存搬运工视角】(用于底层 enqueue 拷贝和清零)
+    uint64 raw[2];
+
+    // 【视角 2：极简 64 位指针视角】(你刚才提议的优质写法)
+    struct {
+        uint64 ptr;
+        uint32 status;
+        uint32 ctrl;
+    }generic_64;
+
+    // 【视角 3：官方 32 位视角】(应对特殊的 Setup 阶段包)
+    struct {
+        uint32 param1;
+        uint32 param2;
+        uint32 status;
+        uint32 ctrl;
+    } generic_32;
+
+    // 【视角 4：业务定制视角】(包含了所有具体的 TRB 解析格式)
+    trb_rest_ep_cmd_t    rest_ep_cmd;
+    // trb_setup_struct_t  setup;
+    // trb_cmd_struct_t    cmd;
+    // ... 以后加什么 TRB，就往这里塞什么 struct ...
+
+}xhci_trb_t;
+
+// ============================================================================
 // xHCI TRB Completion Codes (完成码 / 错误码)
 // ============================================================================
 #define XHCI_COMP_TIMEOUT                       -1  // 超时或未获取到事件TRB(这个是自己定义的非系统定义)
@@ -939,6 +1074,7 @@ static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 
     xhci_controller->db_reg[db_number] = value;
 }
 
+void xhci_reset_endpoint(xhci_controller_t *xhci_controller,uint8 slot_id, uint8 ep_dci, uint8 tsp_flag);
 uint8 xhci_enable_slot(struct usb_dev_t *usb_dev);
 void xhci_address_device(struct usb_dev_t *usb_dev);
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);

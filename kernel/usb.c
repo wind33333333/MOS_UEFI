@@ -8,7 +8,7 @@ device_type_t usb_dev_type = {"usb-dev"};
 device_type_t usb_if_type = {"usb-if"};
 
 //端点转Dci
-static inline uint8 ep_to_dci(uint8 ep) {
+static inline uint8 epaddr_to_epdci(uint8 ep) {
     asm volatile(
         "rolb $1,%0"
         :"+q"(ep)
@@ -18,7 +18,7 @@ static inline uint8 ep_to_dci(uint8 ep) {
 }
 
 //Dci转端点
-static inline uint8 dci_to_ep(uint8 dci) {
+static inline uint8 epdci_to_epaddr(uint8 dci) {
     asm volatile(
         "rorb $1,%0"
         :"+q"(dci)
@@ -267,14 +267,10 @@ int usb_set_interface(usb_if_t *usb_if) {
 /**
  * 清除 USB 端点的 STALL/Halt 状态 (撬开大门)
  * @param usb_dev      USB 设备上下文
- * @param xhci_pipe_id xHCI 的端点上下文索引 (DCI, 范围 2-31)
+ * @param ep_dci xHCI 的端点上下文索引 (DCI, 范围 2-31)
  */
-int32 usb_clear_feature_halt(usb_dev_t *usb_dev, uint8 xhci_pipe_id) {
-    // 1. 将 xHCI 的 DCI 翻译成 USB 标准端点地址
-    // 在 xHCI 中：DCI 偶数是 OUT端点，奇数是 IN端点。DCI / 2 就是端点号。
-    uint8 ep_num = xhci_pipe_id / 2;
-    uint8 ep_dir = (xhci_pipe_id % 2 != 0) ? USB_DIR_IN : USB_DIR_OUT;
-    uint8 ep_addr = ep_dir | ep_num; // 拼装成给 U 盘看的地址 (如 0x81)
+int32 usb_clear_feature_halt(usb_dev_t *usb_dev, uint8 ep_dci) {
+    uint8 ep_addr = epdci_to_epaddr(ep_dci);
 
     // 2. 组装 8 字节的标准 Setup 请求包
     usb_setup_pkt_t setup = {0};
@@ -307,7 +303,7 @@ int usb_endpoint_init(usb_if_alt_t *if_alt) {
     uint8 max_ep_num = 0;
     for (uint8 i = 0; i < if_alt->ep_count; i++) {
         usb_ep_t *ep_phy = &if_alt->eps[i];
-        uint8 ep_num = ep_phy->ep_num;
+        uint8 ep_num = ep_phy->ep_dci;
         if (ep_num > max_ep_num) max_ep_num = ep_num;
         endpoint_t *ep_vir = &usb_dev->eps[ep_num];
         uint32 ep_config = 0;
@@ -434,7 +430,7 @@ int usb_parse_endpoints(usb_dev_t *usb_dev, usb_if_alt_t *if_alt) {
         if (desc_head->descriptor_type == USB_ENDPOINT_DESCRIPTOR) {
             usb_endpoint_descriptor_t *ep_desc = (usb_endpoint_descriptor_t *) desc_head;
             cur_ep = &if_alt->eps[ep_idx++];
-            cur_ep->ep_num = ((ep_desc->endpoint_address & 0xF) << 1) | (ep_desc->endpoint_address >> 7);
+            cur_ep->ep_dci = epaddr_to_epdci(ep_desc->endpoint_address);
             cur_ep->ep_type = ((ep_desc->endpoint_address & 0x80) >> 5) + (ep_desc->attributes & 3); //计算端点传输类型
             cur_ep->max_packet = ep_desc->max_packet_size & 0x07FF;
             cur_ep->mult = (ep_desc->max_packet_size >> 11) & 0x3;
