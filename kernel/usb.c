@@ -270,25 +270,44 @@ int usb_set_interface(usb_if_t *usb_if) {
  * @param ep_dci xHCI 的端点上下文索引 (DCI, 范围 2-31)
  */
 int32 usb_clear_feature_halt(usb_dev_t *usb_dev, uint8 ep_dci) {
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
     uint8 ep_addr = epdci_to_epaddr(ep_dci);
+    xhci_trb_t trb = {0};
 
     // 2. 组装 8 字节的标准 Setup 请求包
-    usb_setup_pkt_t setup = {0};
-    setup.bmRequestType = USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_ENDPOINT; // 0x02
-    setup.bRequest      = USB_REQ_CLEAR_FEATURE;                                // 0x01
-    setup.wValue        = asm_bswap16(USB_FEATURE_ENDPOINT_HALT);               // 0x0000
-    setup.wIndex        = asm_bswap16((uint16)ep_addr);                         // 目标端点地址
-    setup.wLength       = 0;                                                    // 无额外数据阶段
+    trb.setup_stage.recipient = USB_RECIP_ENDPOINT;
+    trb.setup_stage.req_type = USB_REQ_TYPE_STANDARD;
+    trb.setup_stage.dtd = USB_DIR_OUT;
+    trb.setup_stage.request = USB_REQ_CLEAR_FEATURE;
+    trb.setup_stage.value = USB_FEATURE_ENDPOINT_HALT;
+    trb.setup_stage.index = ep_addr;
+    trb.setup_stage.length = 0;
 
-    // 3. 通过 EP0 发送控制传输
-    // 假设你的内核底座已经实现了统一的 EP0 发送函数 xhci_control_transfer
-    // 参数：设备, setup包结构, 数据缓冲区(这里是NULL), 数据长度(0)
-    int32 status = xhci_control_transfer(usb_dev, &setup, NULL, 0);
+    trb.setup_stage.trb_transfer_len = 8;
+    trb.setup_stage.int_target = 0;
+    trb.setup_stage.chain = 1;
+    trb.setup_stage.ioc = 0;
+    trb.setup_stage.idt = 1;
+    trb.setup_stage.type = XHCI_TRB_TYPE_SETUP_STAGE;
+    trb.setup_stage.trt = XHCI_TRT_NO_DATA;
+    xhci_ring_enqueue(&usb_dev->ep0, (void*)&trb);
 
-    if (status != 0) {
+    asm_mem_set(&trb,0,sizeof(trb));
+    trb.status_stage.int_target = 0;
+    trb.status_stage.chain = 0;
+    trb.status_stage.ioc = 1;
+    trb.status_stage.type = XHCI_TRB_TYPE_STATUS_STAGE;
+    trb.status_stage.dir = 1;
+    uint64 ptr = xhci_ring_enqueue(&usb_dev->ep0, (void*)&trb);
+
+    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
+    int32 completion_code = xhci_wait_for_completion(xhci_controller,ptr,0x20000000);
+
+    if (completion_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "USB: Clear Feature (Halt) failed on EP %02X!\n", ep_addr);
+        while (1);
     }
-    return status;
+    return completion_code;
 }
 
 //初始化端点

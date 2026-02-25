@@ -3,6 +3,8 @@
 #include "slub.h"
 #include "vmm.h"
 
+#pragma pack(push,1)
+
 #define TRB_COUNT 256        //trb个数
 
 #define TRB_RESERVED                (0 << 10)   // 保留
@@ -39,17 +41,47 @@
 #define TRB_MFINDEX_WRAP            (39 << 10)  // 主框架索引回绕
 
 // ============================================================================
-// xHCI Command TRB Types (命令环专用的 TRB 类型)
+// xHCI TRB Completion Codes (完成码 / 错误码)
 // ============================================================================
-#define XHCI_TRB_CMD_ENABLE_SLOT        9
-#define XHCI_TRB_CMD_DISABLE_SLOT       10
-#define XHCI_TRB_CMD_ADDRESS_DEVICE     11
-#define XHCI_TRB_CMD_CONFIGURE_EP       12
-#define XHCI_TRB_CMD_EVALUATE_CTX       13
+#define XHCI_COMP_TIMEOUT                       -1  // 超时或未获取到事件TRB(这个是自己定义的非系统定义)
+#define XHCI_COMP_INVALID                       0   // 非法状态 (TRB 尚未完成或被清零)
+#define XHCI_COMP_SUCCESS                       1   // 完美成功 (数据完整传输无报错)
+#define XHCI_COMP_DATA_BUFFER_ERROR             2   // 数据缓冲区错误 (主机内存 DMA 寻址失败或越界)
+#define XHCI_COMP_BABBLE_ERROR                  3   // 喋喋不休错误 (设备发送的数据超出了最大包长限制)
+#define XHCI_COMP_USB_TRANSACTION_ERROR         4   // 传输事务错误 (物理链路无响应/CRC校验失败/超时)
+#define XHCI_COMP_TRB_ERROR                     5   // TRB格式错误 (你构造的 TRB 参数非法)
+#define XHCI_COMP_STALL_ERROR                   6   // 端点卡死 (设备主动返回 STALL 拒绝服务)
+#define XHCI_COMP_RESOURCE_ERROR                7   // 资源错误 (xHCI 控制器内部资源耗尽)
+#define XHCI_COMP_BANDWIDTH_ERROR               8   // 带宽不足 (USB 总线带宽已被占满)
+#define XHCI_COMP_NO_SLOTS_AVAILABLE_ERROR      9   // 无可用槽位 (设备连接过多，Slot 耗尽)
+#define XHCI_COMP_INVALID_STREAM_TYPE_ERROR     10  // 流类型非法 (USB 3.0 Streams 配置错误)
+#define XHCI_COMP_SLOT_NOT_ENABLED_ERROR        11  // 槽位未启用 (对未经初始化的 Slot 下发了命令)
+#define XHCI_COMP_ENDPOINT_NOT_ENABLED_ERROR    12  // 端点未启用 (对未经初始化的 Endpoint 下发了请求)
+#define XHCI_COMP_SHORT_PACKET                  13  // 短包响应 (设备返回的数据少于预期，这在 BOT 中是正常现象)
+#define XHCI_COMP_RING_UNDERRUN                 14  // 环下溢出 (等时传输：主机塞数据太慢)
+#define XHCI_COMP_RING_OVERRUN                  15  // 环上溢出 (等时传输：主机收数据太慢)
+#define XHCI_COMP_VF_EVENT_RING_FULL_ERROR      16  // 虚拟功能事件环已满 (SR-IOV 虚拟化专用)
+#define XHCI_COMP_PARAMETER_ERROR               17  // 参数错误 (上下文数据结构填写错误)
+#define XHCI_COMP_BANDWIDTH_OVERRUN_ERROR       18  // 带宽超载错误
+#define XHCI_COMP_CONTEXT_STATE_ERROR           19  // 状态机时序错误 (如：在 Halted 状态下发了正常传输命令)
+#define XHCI_COMP_NO_PING_RESPONSE_ERROR        20  // 无Ping响应 (USB 3.0 链路层错误)
+#define XHCI_COMP_EVENT_RING_FULL_ERROR         21  // 事件环满爆错误 (内核中断处理太慢，Event Ring 被硬件写满了)
+#define XHCI_COMP_INCOMPATIBLE_DEVICE_ERROR     22  // 不兼容的设备接入
+#define XHCI_COMP_MISSED_SERVICE_ERROR          23  // 错过服务 (等时传输错过了时间微帧周期)
+#define XHCI_COMP_COMMAND_RING_STOPPED          24  // 命令环已停止 (对 Stop Ring 命令的正常回执)
+#define XHCI_COMP_COMMAND_ABORTED               25  // 命令已中止 (对 Abort Command 命令的正常回执)
+#define XHCI_COMP_STOPPED                       26  // 传输已停止 (对 Stop Endpoint 命令的正常回执)
+#define XHCI_COMP_STOPPED_LENGTH_INVALID        27  // 传输停止且长度无效 (停止时，硬件无法计算残余字节数)
+#define XHCI_COMP_STOPPED_SHORT_PACKET          28  // 传输停止且刚好遇到短包
+#define XHCI_COMP_MAX_EXIT_LATENCY_TOO_LARGE    29  // 退出延迟过大 (链路电源管理状态评估失败)
+// 注意：规范中代码 30 是保留的
+#define XHCI_COMP_ISOCH_BUFFER_OVERRUN          31  // 等时缓冲区上溢出
+#define XHCI_COMP_EVENT_LOST_ERROR              32  // 事件丢失错误 (Event Ring 溢出导致硬件被迫丢弃后续事件)
+#define XHCI_COMP_UNDEFINED_ERROR               33  // 未定义错误 (xHCI 硬件内部发生了不可知的崩溃)
+#define XHCI_COMP_INVALID_STREAM_ID_ERROR       34  // 流 ID 非法 (USB 3.0 Streams)
+#define XHCI_COMP_SECONDARY_BANDWIDTH_ERROR     35  // 次级带宽分配错误
+#define XHCI_COMP_SPLIT_TRANSACTION_ERROR       36  // 拆分事务错误 (通常通过 USB 2.0 Hub 接低速鼠标键盘时出错)
 
-#define XHCI_TRB_CMD_STOP_EP            15
-#define XHCI_TRB_CMD_SET_TR_DEQUEUE     16   // ★ 设置出队指针命令 (稍后解释这个神坑)
-#define XHCI_TRB_CMD_RESET_DEVICE       17
 
 // ============================================================================
 // xHCI TRB 类型枚举 (对应所有 TRB Dword 3 的 Bits 10-15: type)
@@ -107,11 +139,6 @@ typedef enum ：uint32 {
 // ============================================================================
 // Setup Stage TRB (Type 2) - 控制传输的第一阶段
 // ============================================================================
-// TRT (Transfer Type) 控制传输的数据阶段方向
-#define XHCI_SETUP_TRT_NO_DATA    0  // 只有 Setup 和 Status (如 ClearFeature)
-#define XHCI_SETUP_TRT_OUT_DATA   2  // 主机向设备发数据
-#define XHCI_SETUP_TRT_IN_DATA    3  // 设备向主机发数据 (如 GetDescriptor)
-
 typedef enum : uint8 {
     USB_RECIP_DEVICE    = 0,  //设备
     USB_RECIP_INTERFACE = 1,  //接口
@@ -161,6 +188,28 @@ typedef enum : uint8 {
     BOT_REQ_MASS_STORAGE_RESET= 0xFF  // 批量仅复位 (★核弹按钮：让U盘的协议状态机瞬间清零重启)
 
 } usb_request_e;
+
+// ============================================================================
+// USB 标准特性选择器枚举 (对应 Clear Feature / Set Feature 的 wValue 字段)
+// ============================================================================
+typedef enum : uint16 {
+    // ------------------------------------------------------------------------
+    // 【发给 Endpoint (端点) 的特性】(当 recipient == ENDPOINT 时)
+    // ------------------------------------------------------------------------
+    // 作用：清除它，就能解开端点的 STALL 状态，让数据通道重新开放。
+    // ★ 在 BOT 错误恢复中，你的 value 必须填这个！
+    USB_FEATURE_ENDPOINT_HALT        = 0x00,
+
+    // ------------------------------------------------------------------------
+    // 【发给 Device (设备) 的特性】(当 recipient == DEVICE 时)
+    // ------------------------------------------------------------------------
+    USB_FEATURE_DEVICE_REMOTE_WAKEUP = 0x01, // 远程唤醒 (比如敲击休眠键盘唤醒电脑)
+    USB_FEATURE_TEST_MODE            = 0x02, // 测试模式 (主要用于主板硬件出厂测试)
+
+    // USB 3.0 新增设备特性
+    USB_FEATURE_U1_ENABLE            = 0x30, // 允许进入 U1 节能状态
+    USB_FEATURE_U2_ENABLE            = 0x31  // 允许进入 U2 节能状态
+} usb_feature_selector_e;
 
 // ============================================================================
 // xHCI 控制传输类型枚举 (对应 Setup TRB Dword 3 的 Bits 16-17: trt)
@@ -297,50 +346,6 @@ typedef union xhci_trb_t {
     // ... 以后加什么 TRB，就往这里塞什么 struct ...
 
 }xhci_trb_t;
-
-// ============================================================================
-// xHCI TRB Completion Codes (完成码 / 错误码)
-// ============================================================================
-#define XHCI_COMP_TIMEOUT                       -1  // 超时或未获取到事件TRB(这个是自己定义的非系统定义)
-#define XHCI_COMP_INVALID                       0   // 非法状态 (TRB 尚未完成或被清零)
-#define XHCI_COMP_SUCCESS                       1   // 完美成功 (数据完整传输无报错)
-#define XHCI_COMP_DATA_BUFFER_ERROR             2   // 数据缓冲区错误 (主机内存 DMA 寻址失败或越界)
-#define XHCI_COMP_BABBLE_ERROR                  3   // 喋喋不休错误 (设备发送的数据超出了最大包长限制)
-#define XHCI_COMP_USB_TRANSACTION_ERROR         4   // 传输事务错误 (物理链路无响应/CRC校验失败/超时)
-#define XHCI_COMP_TRB_ERROR                     5   // TRB格式错误 (你构造的 TRB 参数非法)
-#define XHCI_COMP_STALL_ERROR                   6   // 端点卡死 (设备主动返回 STALL 拒绝服务)
-#define XHCI_COMP_RESOURCE_ERROR                7   // 资源错误 (xHCI 控制器内部资源耗尽)
-#define XHCI_COMP_BANDWIDTH_ERROR               8   // 带宽不足 (USB 总线带宽已被占满)
-#define XHCI_COMP_NO_SLOTS_AVAILABLE_ERROR      9   // 无可用槽位 (设备连接过多，Slot 耗尽)
-#define XHCI_COMP_INVALID_STREAM_TYPE_ERROR     10  // 流类型非法 (USB 3.0 Streams 配置错误)
-#define XHCI_COMP_SLOT_NOT_ENABLED_ERROR        11  // 槽位未启用 (对未经初始化的 Slot 下发了命令)
-#define XHCI_COMP_ENDPOINT_NOT_ENABLED_ERROR    12  // 端点未启用 (对未经初始化的 Endpoint 下发了请求)
-#define XHCI_COMP_SHORT_PACKET                  13  // 短包响应 (设备返回的数据少于预期，这在 BOT 中是正常现象)
-#define XHCI_COMP_RING_UNDERRUN                 14  // 环下溢出 (等时传输：主机塞数据太慢)
-#define XHCI_COMP_RING_OVERRUN                  15  // 环上溢出 (等时传输：主机收数据太慢)
-#define XHCI_COMP_VF_EVENT_RING_FULL_ERROR      16  // 虚拟功能事件环已满 (SR-IOV 虚拟化专用)
-#define XHCI_COMP_PARAMETER_ERROR               17  // 参数错误 (上下文数据结构填写错误)
-#define XHCI_COMP_BANDWIDTH_OVERRUN_ERROR       18  // 带宽超载错误
-#define XHCI_COMP_CONTEXT_STATE_ERROR           19  // 状态机时序错误 (如：在 Halted 状态下发了正常传输命令)
-#define XHCI_COMP_NO_PING_RESPONSE_ERROR        20  // 无Ping响应 (USB 3.0 链路层错误)
-#define XHCI_COMP_EVENT_RING_FULL_ERROR         21  // 事件环满爆错误 (内核中断处理太慢，Event Ring 被硬件写满了)
-#define XHCI_COMP_INCOMPATIBLE_DEVICE_ERROR     22  // 不兼容的设备接入
-#define XHCI_COMP_MISSED_SERVICE_ERROR          23  // 错过服务 (等时传输错过了时间微帧周期)
-#define XHCI_COMP_COMMAND_RING_STOPPED          24  // 命令环已停止 (对 Stop Ring 命令的正常回执)
-#define XHCI_COMP_COMMAND_ABORTED               25  // 命令已中止 (对 Abort Command 命令的正常回执)
-#define XHCI_COMP_STOPPED                       26  // 传输已停止 (对 Stop Endpoint 命令的正常回执)
-#define XHCI_COMP_STOPPED_LENGTH_INVALID        27  // 传输停止且长度无效 (停止时，硬件无法计算残余字节数)
-#define XHCI_COMP_STOPPED_SHORT_PACKET          28  // 传输停止且刚好遇到短包
-#define XHCI_COMP_MAX_EXIT_LATENCY_TOO_LARGE    29  // 退出延迟过大 (链路电源管理状态评估失败)
-// 注意：规范中代码 30 是保留的
-#define XHCI_COMP_ISOCH_BUFFER_OVERRUN          31  // 等时缓冲区上溢出
-#define XHCI_COMP_EVENT_LOST_ERROR              32  // 事件丢失错误 (Event Ring 溢出导致硬件被迫丢弃后续事件)
-#define XHCI_COMP_UNDEFINED_ERROR               33  // 未定义错误 (xHCI 硬件内部发生了不可知的崩溃)
-#define XHCI_COMP_INVALID_STREAM_ID_ERROR       34  // 流 ID 非法 (USB 3.0 Streams)
-#define XHCI_COMP_SECONDARY_BANDWIDTH_ERROR     35  // 次级带宽分配错误
-#define XHCI_COMP_SPLIT_TRANSACTION_ERROR       36  // 拆分事务错误 (通常通过 USB 2.0 Hub 接低速鼠标键盘时出错)
-
-#pragma pack(push,1)
 
 // ===== 1. 能力寄存器 (Capability Registers) =====
 typedef struct {
