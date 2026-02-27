@@ -206,10 +206,6 @@ void xhci_recover_stalled_endpoint(usb_dev_t *usb_dev, uint8 ep_dci) {
     // ========================================================================
     xhci_reset_endpoint(xhci_controller,slot_id,ep_dci,0);
 
-    timing();
-    color_printk(RED,BLACK,"ep:%d c:%#x t:%#x \n",ep_dci,usb_dev->dev_context->dev_ctx32.ep[ep_dci-1].ep_config,usb_dev->dev_context->dev_ctx32.ep[ep_dci-1].ep_type_size);
-    color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_context->dev_ctx32.ep[0].ep_config,usb_dev->dev_context->dev_ctx32.ep[0].ep_type_size);
-
     // ========================================================================
     // 第二步：清理案发现场 (Set TR Dequeue Pointer Command)
     // 目标：将 xHCI 的硬件执行指针，挪到你软件当前环的最新位置，跨过死掉的 TRB
@@ -224,8 +220,6 @@ void xhci_recover_stalled_endpoint(usb_dev_t *usb_dev, uint8 ep_dci) {
     // ========================================================================
     usb_clear_feature_halt(usb_dev, ep_dci);
 
-    color_printk(RED,BLACK,"in_ep:%d c:%#x t:%#x \n",ep_dci,usb_dev->dev_context->dev_ctx32.ep[ep_dci-1].ep_config,usb_dev->dev_context->dev_ctx32.ep[ep_dci-1].ep_type_size);
-    color_printk(GREEN, BLACK, "Step 3 OK: USB device endpoint halt cleared. Ready for next command!\n");
 }
 
 //xhic扩展能力搜索
