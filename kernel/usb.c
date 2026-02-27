@@ -253,13 +253,11 @@ int usb_set_interface(usb_if_t *usb_if) {
     setup_stage_trb(&trb, setup_stage_interface, setup_stage_norm, setup_stage_out, usb_req_set_interface,
                     usb_if->cur_alt->altsetting, usb_if->if_num, 0, no_data_stage);
 
-    color_printk(RED,BLACK,"setup trb m0:%lx m1:%#lx  \n",trb.member0,trb.member1);
     uint64 setup_ptr = xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     status_stage_trb(&trb, ENABLE_IOC, trb_in);
 
     uint64 status_ptr = xhci_ring_enqueue(&usb_dev->ep0, &trb);
-    color_printk(RED,BLACK,"status trb m0:%lx m1:%#lx  \n",trb.member0,trb.member1);
 
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
 
