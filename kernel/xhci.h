@@ -311,12 +311,33 @@ typedef struct trb_rest_ep_cmd_t{
     uint32          rsvd0[3];
     uint32          cycle:1;
     uint32          rsvd1:8;
-    uint32          tsp:1;
+    uint32          tsp:1;      // 常规填 0
     xhci_trb_type_e type:6;
-    uint32          ep_id:5;
+    uint32          ep_dci:5; // 端点索引 (DCI)，如 IN 是 3，OUT 是 4
     uint32          rsvd2:3;
-    uint32          slot_id:8;
+    uint32          slot_id:8; // 设备槽位号
 }trb_rest_ep_cmd_t;
+
+// ============================================================================
+// xHCI 规范：设置出队指针命令 (Set TR Dequeue Pointer Command TRB)类型码：16 (XHCI_TRB_TYPE_SET_TR_DEQ)
+// ============================================================================
+typedef struct trb_set_tr_deq_ptr_cmd_t{
+    // Dword 0-1 (64位物理地址)
+    uint64 tr_dequeue_ptr; // ★ 极其致命：最低位 Bit 0 是 DCS (Dequeue Cycle State)，必须包含新指针所在位置的 Cycle 位！
+
+    // Dword 2
+    uint16 rsvd0;
+    uint16 stream_id;     // BOT 协议不支持 Stream，必须填 0
+
+    // Dword 3
+    uint32 cycle            : 1;
+    uint32 rsvd1            : 8;
+    uint32          tsp     : 1;
+    xhci_trb_type_e type    : 6;      // ★ 必须填 16
+    uint32 ep_dci           : 5;      // 端点索引 (DCI)
+    uint32 rsvd2            : 3;
+    uint32 slot_id          : 8;
+}trb_set_tr_deq_ptr_cmd_t;
 
 //trb集合
 typedef union xhci_trb_t {
@@ -339,10 +360,11 @@ typedef union xhci_trb_t {
     } generic_32;
 
     // 【视角 4：业务定制视角】(包含了所有具体的 TRB 解析格式)
-    trb_rest_ep_cmd_t    rest_ep_cmd;
-    trb_setup_stage_t    setup_stage;
-    trb_data_stage_t     data_stage;
-    trb_status_stage_t  status_stage;
+    trb_set_tr_deq_ptr_cmd_t set_tr_deq_ptr_cmd;
+    trb_rest_ep_cmd_t        rest_ep_cmd;
+    trb_setup_stage_t        setup_stage;
+    trb_data_stage_t         data_stage;
+    trb_status_stage_t       status_stage;
     // ... 以后加什么 TRB，就往这里塞什么 struct ...
 
 }xhci_trb_t;
@@ -882,8 +904,8 @@ typedef struct {
 
 //定时
 static inline void timing(void) {
-    uint64 count = 20000000;
-    while (count--) asm_pause();
+    // uint64 count = 20000000;
+    // while (count--) asm_pause();
 }
 
 //region 命令环trb
@@ -1213,6 +1235,7 @@ void xhci_input_context_add(xhci_input_context_t *input_ctx,void *from_ctx, uint
 void xhci_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_num);
 uint8 xhci_ecap_find(xhci_controller_t *xhci_controller,void **ecap_arr,uint8 cap_id);
 int32 xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 target_trb_phys, uint64 timeout_ms);
+void xhci_recover_stalled_endpoint(struct usb_dev_t *usb_dev, uint8 ep_dci);
 
 
 

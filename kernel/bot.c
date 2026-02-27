@@ -92,6 +92,10 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     uint8 pipe_out = bot_data->pipe_out;
     uint8 pipe_in  = bot_data->pipe_in;
 
+    color_printk(RED,BLACK,"out_ep:%d c:%#x t:%#x \n",pipe_out,usb_dev->dev_context->dev_ctx32.ep[pipe_out-1].ep_config,usb_dev->dev_context->dev_ctx32.ep[pipe_out-1].ep_type_size);
+    color_printk(RED,BLACK,"in_ep:%d c:%#x t:%#x \n",pipe_in,usb_dev->dev_context->dev_ctx32.ep[pipe_in-1].ep_config,usb_dev->dev_context->dev_ctx32.ep[pipe_in-1].ep_type_size);
+    color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_context->dev_ctx32.ep[0].ep_config,usb_dev->dev_context->dev_ctx32.ep[0].ep_type_size);
+
     trb_t trb;
     int32 completion_code;
     bot_csw_t *csw = kzalloc(sizeof(bot_csw_t));
@@ -138,6 +142,11 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
         uint64 data_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[data_pipe].transfer_ring, &trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, data_pipe);
 
+        timing();
+        color_printk(RED,BLACK,"out_ep:%d c:%#x t:%#x \n",pipe_out,usb_dev->dev_context->dev_ctx32.ep[pipe_out-1].ep_config,usb_dev->dev_context->dev_ctx32.ep[pipe_out-1].ep_type_size);
+        color_printk(RED,BLACK,"in_ep:%d c:%#x t:%#x \n",pipe_in,usb_dev->dev_context->dev_ctx32.ep[pipe_in-1].ep_config,usb_dev->dev_context->dev_ctx32.ep[pipe_in-1].ep_type_size);
+        color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_context->dev_ctx32.ep[0].ep_config,usb_dev->dev_context->dev_ctx32.ep[0].ep_type_size);
+
         // 等待数据传输完成
         completion_code = xhci_wait_for_completion(xhci_controller, data_trb_ptr, 500000000); // 5秒超时
         if (completion_code != XHCI_COMP_SUCCESS) {
@@ -148,11 +157,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
             } else if (completion_code == XHCI_COMP_STALL_ERROR) {
                 // 协议级卡死：数据长度不匹配引发的 STALL
                 color_printk(YELLOW, BLACK, "BOT Stage 2: STALL. Clearing Halt...\n");
-                // 1. 复位 xHCI 硬件端点状态
-                xhci_reset_endpoint(xhci_controller, usb_dev->slot_id, data_pipe,0);
-                // 2. 发送 USB 控制请求，撬开 U 盘大门
-                usb_clear_feature_halt(usb_dev, data_pipe);
-                // ★ 注意：绝对不能 return！门撬开了，必须硬着头皮去读 CSW！
+                xhci_recover_stalled_endpoint(usb_dev,data_pipe);
 
             } else {
                 // 物理链路错误 (如 TX_ERR) 或者 DMA 错误
@@ -181,8 +186,7 @@ retry_csw:
     // 异常 1: 请求 CSW 时发生 STALL (有些 U 盘会在发 CSW 前莫名其妙再卡一次)
     if (completion_code == XHCI_COMP_STALL_ERROR && csw_retry_count == 0) {
         color_printk(YELLOW, BLACK, "BOT Stage 3: CSW STALL. Clearing and retrying...\n");
-        xhci_reset_endpoint(xhci_controller, usb_dev->slot_id, pipe_in,0);
-        usb_clear_feature_halt(usb_dev, pipe_in);
+        xhci_recover_stalled_endpoint(usb_dev, pipe_in);
         csw_retry_count++;
         goto retry_csw; // 撬开门，重试一次 CSW
     }

@@ -133,7 +133,7 @@ void xhci_reset_endpoint(xhci_controller_t *xhci_controller,uint8 slot_id, uint8
     xhci_trb_t trb ={0};
     trb.rest_ep_cmd.type = XHCI_TRB_TYPE_RESET_EP;
     trb.rest_ep_cmd.tsp = tsp_flag & 1;
-    trb.rest_ep_cmd.ep_id = ep_dci;
+    trb.rest_ep_cmd.ep_dci = ep_dci;
     trb.rest_ep_cmd.slot_id = slot_id;
     uint64 enqueue_ptr = xhci_ring_enqueue(&xhci_controller->cmd_ring, (void*)&trb);
     xhci_ring_doorbell(xhci_controller, 0, 0);
@@ -142,6 +142,92 @@ void xhci_reset_endpoint(xhci_controller_t *xhci_controller,uint8 slot_id, uint8
         color_printk(RED,BLACK,"xhci_reset_endpoint error: completion_code=%d \n",completion_code);
     while (1);
     }
+    color_printk(GREEN,BLACK,"xhci_reset_endpoint success slot_id:%d ep_dci:%d \n",slot_id,ep_dci);
+
+}
+
+/**
+ * @brief 发送 Set TR Dequeue Pointer Command，强制移动端点底层的出队指针
+ * * @param xhci          xHCI 控制器实例
+ * @param slot_id       设备槽位号
+ * @param ep_dci        端点上下文索引 (DCI，例如 IN通常是 3，OUT通常是 4)
+ * @param transfer_ring 需要被修改指针的 Transfer Ring 结构体指针
+ * @return int32        完成状态码 (XHCI_COMP_SUCCESS 表示成功)
+ */
+int32 xhci_set_tr_dequeue_pointer(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_dci, xhci_ring_t *transfer_ring) {
+    xhci_trb_t trb;
+
+    // 【核心算力】：找到 Transfer Ring 中软件当前准备写入的、下一个干净槽位的物理地址
+    uint64 next_clean_trb_pa = va_to_pa(&transfer_ring->ring_base[transfer_ring->index].member0);
+
+    // 获取软件当前在这个槽位上预期的 Cycle Bit 状态
+    uint8 next_cycle_state = transfer_ring->status_c;
+
+    // 硬件强制规范：物理地址的最低位 (Bit 0) 必须包含 Dequeue Cycle State (DCS)
+    // 这样硬件指针挪过去之后，才知道下次扫描该期待 0 还是 1
+    trb.set_tr_deq_ptr_cmd.tr_dequeue_ptr = next_clean_trb_pa | next_cycle_state;
+    trb.set_tr_deq_ptr_cmd.type    = XHCI_TRB_TYPE_SET_TR_DEQUEUE;
+    trb.set_tr_deq_ptr_cmd.ep_dci  = ep_dci;
+    trb.set_tr_deq_ptr_cmd.slot_id = slot_id;
+
+    // 塞入主板的全局 Command Ring (注意：绝不能塞进业务 Transfer Ring)
+    uint64 cmd_pa = xhci_ring_enqueue(&xhci_controller->cmd_ring, (void*)&trb);
+
+    // 敲响主板命令环的门铃 (寄存器 0, DB Target 0)
+    xhci_ring_doorbell(xhci_controller, 0, 0);
+
+    // 等待主板硬件执行完毕 (2秒超时足够了，主板执行本地指令是微秒级的)
+    int32 comp_code = xhci_wait_for_completion(xhci_controller, cmd_pa, 20000000);
+
+    if (comp_code != XHCI_COMP_SUCCESS) {
+        color_printk(RED, BLACK, "xHCI: Set Dequeue Pointer failed for Slot %d EP %d! Code: %#x\n", slot_id, ep_dci, comp_code);
+    }
+
+    color_printk(GREEN, BLACK, "xHCI: Hardware Dequeue Pointer moved success fully for EP %d.\n", ep_dci);
+
+    return comp_code;
+}
+
+/**
+ * 挽救被 STALL 卡死的 xHCI 端点 (经典三步曲)
+ * @param usb_dev  USB 设备结构体
+ * @param pipe_idx 出错的管道号 (pipe_in 或 pipe_out)
+ */
+void xhci_recover_stalled_endpoint(usb_dev_t *usb_dev, uint8 ep_dci) {
+    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+    uint8 slot_id = usb_dev->slot_id;
+    xhci_ring_t *transfer_ring = &usb_dev->eps[ep_dci-1].transfer_ring;
+
+    color_printk(YELLOW, BLACK, "Recovery: Starting 3-step STALL recovery for EP %d...\n", ep_dci);
+
+    // ========================================================================
+    // 第一步：主板层解挂 (Reset Endpoint Command)
+    // 目标：将端点状态从 Halted (2) 强行拽入 Stopped (3)
+    // ========================================================================
+    xhci_reset_endpoint(xhci_controller,slot_id,1,0);
+    xhci_reset_endpoint(xhci_controller,slot_id,ep_dci,0);
+
+    timing();
+    color_printk(RED,BLACK,"ep:%d c:%#x t:%#x \n",ep_dci,usb_dev->dev_context->dev_ctx32.ep[ep_dci-1].ep_config,usb_dev->dev_context->dev_ctx32.ep[ep_dci-1].ep_type_size);
+    color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_context->dev_ctx32.ep[0].ep_config,usb_dev->dev_context->dev_ctx32.ep[0].ep_type_size);
+
+    // ========================================================================
+    // 第二步：清理案发现场 (Set TR Dequeue Pointer Command)
+    // 目标：将 xHCI 的硬件执行指针，挪到你软件当前环的最新位置，跨过死掉的 TRB
+    // ========================================================================
+    xhci_set_tr_dequeue_pointer(xhci_controller,slot_id,1,transfer_ring);
+    xhci_set_tr_dequeue_pointer(xhci_controller,slot_id,ep_dci,&usb_dev->ep0);
+
+
+
+    // ========================================================================
+    // 第三步：协议层握手 (Clear Feature ENDPOINT_HALT)
+    // 目标：通过 EP0 控制管道，发信给 U 盘的固件，将它的端点状态机和 Toggle 清零
+    // ========================================================================
+    usb_clear_feature_halt(usb_dev, ep_dci);
+
+    color_printk(RED,BLACK,"in_ep:%d c:%#x t:%#x \n",ep_dci,usb_dev->dev_context->dev_ctx32.ep[ep_dci-1].ep_config,usb_dev->dev_context->dev_ctx32.ep[ep_dci-1].ep_type_size);
+    color_printk(GREEN, BLACK, "Step 3 OK: USB device endpoint halt cleared. Ready for next command!\n");
 }
 
 //xhic扩展能力搜索

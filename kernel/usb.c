@@ -252,15 +252,28 @@ int usb_set_interface(usb_if_t *usb_if) {
 
     setup_stage_trb(&trb, setup_stage_interface, setup_stage_norm, setup_stage_out, usb_req_set_interface,
                     usb_if->cur_alt->altsetting, usb_if->if_num, 0, no_data_stage);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
+
+    color_printk(RED,BLACK,"setup trb m0:%lx m1:%#lx  \n",trb.member0,trb.member1);
+    uint64 setup_ptr = xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
     status_stage_trb(&trb, ENABLE_IOC, trb_in);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
+
+    uint64 status_ptr = xhci_ring_enqueue(&usb_dev->ep0, &trb);
+    color_printk(RED,BLACK,"status trb m0:%lx m1:%#lx  \n",trb.member0,trb.member1);
 
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
-    timing();
-    xhci_ering_dequeue(xhci_controller, &trb);
-    color_printk(RED,BLACK, "set_if_trb m0:%#lx m1:%#lx   \n", trb.member0, trb.member1);
+
+    int32 comp_code = xhci_wait_for_completion(xhci_controller, setup_ptr, 20000000);
+    if (comp_code == -1) {
+        comp_code = xhci_wait_for_completion(xhci_controller, status_ptr, 20000000);
+    }
+
+    if (comp_code != XHCI_COMP_SUCCESS) {
+        color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_context->dev_ctx32.ep[0].ep_config,usb_dev->dev_context->dev_ctx32.ep[0].ep_type_size);
+        color_printk(RED,BLACK,"usb set if error code:%#x   \n",comp_code);
+        while (1);
+    }
+
     return 0;
 }
 
@@ -285,12 +298,12 @@ int32 usb_clear_feature_halt(usb_dev_t *usb_dev, uint8 ep_dci) {
 
     trb.setup_stage.trb_transfer_len = 8;
     trb.setup_stage.int_target = 0;
-    trb.setup_stage.chain = 1;
-    trb.setup_stage.ioc = 0;
+    trb.setup_stage.chain = 0;
+    trb.setup_stage.ioc = 1;
     trb.setup_stage.idt = 1;
     trb.setup_stage.type = XHCI_TRB_TYPE_SETUP_STAGE;
     trb.setup_stage.trt = XHCI_TRT_NO_DATA;
-    xhci_ring_enqueue(&usb_dev->ep0, (void*)&trb);
+    uint64 setup_ptr = xhci_ring_enqueue(&usb_dev->ep0, (void*)&trb);
 
     asm_mem_set(&trb,0,sizeof(trb));
     trb.status_stage.int_target = 0;
@@ -298,15 +311,28 @@ int32 usb_clear_feature_halt(usb_dev_t *usb_dev, uint8 ep_dci) {
     trb.status_stage.ioc = 1;
     trb.status_stage.type = XHCI_TRB_TYPE_STATUS_STAGE;
     trb.status_stage.dir = 1;
-    uint64 ptr = xhci_ring_enqueue(&usb_dev->ep0, (void*)&trb);
+    uint64 status_ptr = xhci_ring_enqueue(&usb_dev->ep0, (void*)&trb);
 
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
-    int32 completion_code = xhci_wait_for_completion(xhci_controller,ptr,500000000);
 
+    int32 completion_code = xhci_wait_for_completion(xhci_controller,setup_ptr,500000000);
+    if (completion_code != XHCI_COMP_SUCCESS) {
+        // 如果这里打印出了 0x06 (STALL)，真相就大白了！
+        color_printk(RED, BLACK, "USB: Clear Feature FATAL at SETUP stage! comp_code: %#x\n", completion_code);
+        // 注意：此时 EP0 已经被 U 盘搞死锁 (Halted) 了！
+        while (1);
+    }
+
+    completion_code = xhci_wait_for_completion(xhci_controller,status_ptr,500000000);
     if (completion_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "USB: Clear Feature (Halt) failed on EP %#x  comp_code:%#x  !\n  ", ep_addr,completion_code);
         while (1);
     }
+    color_printk(GREEN, BLACK, "USB: Clear Feature (Halt) sueccess ep:%d  !\n  ", ep_addr);
+
+    color_printk(RED,BLACK,"ep:%d c:%#x t:%#x \n",ep_dci,usb_dev->dev_context->dev_ctx32.ep[ep_dci-1].ep_config,usb_dev->dev_context->dev_ctx32.ep[ep_dci-1].ep_type_size);
+    color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_context->dev_ctx32.ep[0].ep_config,usb_dev->dev_context->dev_ctx32.ep[0].ep_type_size);
+
     return completion_code;
 }
 

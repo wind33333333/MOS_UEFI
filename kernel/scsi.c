@@ -363,7 +363,7 @@ static void scsi_probe_lun(scsi_host_t *shost) {
     kfree(report_luns);
     color_printk(GREEN,BLACK,"%s max lun:%d    \n",shost->dev.name,shost->max_lun);
 
-    while (1);
+    //while (1);
 
     // 2. 发送 INQUIRY 命令查身份
     scsi_inquiry_t *inq = kzalloc(sizeof(scsi_inquiry_t));
