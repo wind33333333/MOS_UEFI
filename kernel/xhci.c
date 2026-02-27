@@ -204,7 +204,6 @@ void xhci_recover_stalled_endpoint(usb_dev_t *usb_dev, uint8 ep_dci) {
     // 第一步：主板层解挂 (Reset Endpoint Command)
     // 目标：将端点状态从 Halted (2) 强行拽入 Stopped (3)
     // ========================================================================
-    xhci_reset_endpoint(xhci_controller,slot_id,1,0);
     xhci_reset_endpoint(xhci_controller,slot_id,ep_dci,0);
 
     timing();
@@ -215,8 +214,7 @@ void xhci_recover_stalled_endpoint(usb_dev_t *usb_dev, uint8 ep_dci) {
     // 第二步：清理案发现场 (Set TR Dequeue Pointer Command)
     // 目标：将 xHCI 的硬件执行指针，挪到你软件当前环的最新位置，跨过死掉的 TRB
     // ========================================================================
-    xhci_set_tr_dequeue_pointer(xhci_controller,slot_id,1,transfer_ring);
-    xhci_set_tr_dequeue_pointer(xhci_controller,slot_id,ep_dci,&usb_dev->ep0);
+    xhci_set_tr_dequeue_pointer(xhci_controller,slot_id,ep_dci,transfer_ring);
 
 
 
