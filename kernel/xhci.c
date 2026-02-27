@@ -137,7 +137,7 @@ void xhci_reset_endpoint(xhci_controller_t *xhci_controller,uint8 slot_id, uint8
     trb.rest_ep_cmd.slot_id = slot_id;
     uint64 enqueue_ptr = xhci_ring_enqueue(&xhci_controller->cmd_ring, (void*)&trb);
     xhci_ring_doorbell(xhci_controller, 0, 0);
-    int32 completion_code = xhci_wait_for_completion(xhci_controller,enqueue_ptr,200000);
+    int32 completion_code = xhci_wait_for_completion(xhci_controller,enqueue_ptr,50000000);
     if (completion_code != XHCI_COMP_SUCCESS) {
         color_printk(RED,BLACK,"xhci_reset_endpoint error: completion_code=%d \n",completion_code);
     while (1);

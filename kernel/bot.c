@@ -3,6 +3,7 @@
 #include "usb.h"
 #include "scsi.h"
 #include "slub.h"
+#include "uefi.h"
 
 /**
  * 执行 Request Sense 命令获取错误详情
@@ -75,6 +76,7 @@ void bot_recovery_reset(usb_dev_t *usb_dev,uint8 if_num, uint8 pipe_in, uint8 pi
     xhci_reset_endpoint(usb_dev->xhci_controller, usb_dev->slot_id, pipe_out,0);
     usb_clear_feature_halt(usb_dev, pipe_out);
 
+    color_printk(GREEN, BLACK, "BOT: Reset Request!\n");
 }
 
 /**
@@ -94,7 +96,6 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     int32 completion_code;
     bot_csw_t *csw = kzalloc(sizeof(bot_csw_t));
     bot_cbw_t *cbw = kzalloc(sizeof(bot_cbw_t));
-
 
     // 1. 生成 Tag (BOT 的 Tag 只是为了配对 CSW，不用像 UAS 那样管理 Slot)
     uint32 tag = ++bot_data->tag;
@@ -117,9 +118,9 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, pipe_out);
 
     // 等待 CBW 发送完成
-    completion_code = xhci_wait_for_completion(xhci_controller, cbw_trb_ptr, 200000); // 2秒超时
+    completion_code = xhci_wait_for_completion(xhci_controller, cbw_trb_ptr, 500000000); // 2秒超时
     if (completion_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "BOT Stage 1: CBW Failed (%d). Resetting...\n", completion_code);
+        color_printk(RED, BLACK, "BOT Stage 1: CBW Failed (%#x). Resetting...\n", completion_code);
         // CBW 阶段出错是极其致命的，直接上“核弹复位”
         bot_recovery_reset(usb_dev, bot_data->usb_if->if_num,pipe_in, pipe_out);
         cmnd->status = -1;
@@ -132,12 +133,13 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     if (cmnd->data_buf && cmnd->data_len) {
         uint8 data_pipe = (cmnd->dir == SCSI_DIR_IN) ? pipe_in : pipe_out;
 
-        normal_transfer_trb(&trb, va_to_pa(cmnd->data_buf), disable_ch, cmnd->data_len, ENABLE_IOC);
+        normal_transfer_trb(&trb, va_to_pa(cmnd->data_buf), disable_ch,cmnd->data_len , ENABLE_IOC);
+        trb.member1 |= 1UL<<34;//设置短包中断
         uint64 data_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[data_pipe].transfer_ring, &trb);
         xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, data_pipe);
 
         // 等待数据传输完成
-        completion_code = xhci_wait_for_completion(xhci_controller, data_trb_ptr, 200000); // 5秒超时
+        completion_code = xhci_wait_for_completion(xhci_controller, data_trb_ptr, 500000000); // 5秒超时
         if (completion_code != XHCI_COMP_SUCCESS) {
             if (completion_code == XHCI_COMP_SHORT_PACKET) {
                 // 完美情况：只是短包，无需处理，直接去读 CSW
@@ -154,7 +156,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 
             } else {
                 // 物理链路错误 (如 TX_ERR) 或者 DMA 错误
-                color_printk(RED, BLACK, "BOT Stage 2: Fatal Data Error (%d).\n", completion_code);
+                color_printk(RED, BLACK, "BOT Stage 2: Fatal Data Error (%#x).\n", completion_code);
                 bot_recovery_reset(usb_dev, bot_data->usb_if->if_num,pipe_in, pipe_out);
                 cmnd->status = -2;
                 goto cleanup;
@@ -169,11 +171,11 @@ retry_csw:
     // 提交 TRB 到 Bulk IN (不管刚才数据是读是写，CSW 永远是读)
     normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(bot_csw_t), ENABLE_IOC);
     uint64 csw_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[pipe_in].transfer_ring, &trb);
+
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, pipe_in);
 
     // 等待 CSW 接收完成
-    completion_code = xhci_wait_for_completion(xhci_controller, csw_trb_ptr, 200000);
-    completion_code = xhci_wait_for_completion(xhci_controller, csw_trb_ptr, 200000);
+    completion_code = xhci_wait_for_completion(xhci_controller, csw_trb_ptr, 500000000);
 
     uint8 csw_retry_count = 0;
     // 异常 1: 请求 CSW 时发生 STALL (有些 U 盘会在发 CSW 前莫名其妙再卡一次)
@@ -186,7 +188,7 @@ retry_csw:
     }
     // 异常 2: 硬件死机、短包、或者重试后依旧报错
     else if (completion_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "BOT Stage 3: CSW Fetch Failed (%d). Resetting...\n", completion_code);
+        color_printk(RED, BLACK, "BOT Stage 3: CSW Fetch Failed (%#x). Resetting...\n", completion_code);
         bot_recovery_reset(usb_dev, bot_data->usb_if->if_num,pipe_in, pipe_out);
         cmnd->status = -3;
         goto cleanup;

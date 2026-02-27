@@ -301,10 +301,10 @@ int32 usb_clear_feature_halt(usb_dev_t *usb_dev, uint8 ep_dci) {
     uint64 ptr = xhci_ring_enqueue(&usb_dev->ep0, (void*)&trb);
 
     xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
-    int32 completion_code = xhci_wait_for_completion(xhci_controller,ptr,0x20000000);
+    int32 completion_code = xhci_wait_for_completion(xhci_controller,ptr,500000000);
 
     if (completion_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "USB: Clear Feature (Halt) failed on EP %02X!\n", ep_addr);
+        color_printk(RED, BLACK, "USB: Clear Feature (Halt) failed on EP %#x  comp_code:%#x  !\n  ", ep_addr,completion_code);
         while (1);
     }
     return completion_code;

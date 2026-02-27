@@ -188,7 +188,7 @@ typedef struct {
     uint32 rsvd;
     uint64 lun_list[];  //一个数组：uint64_t lun_list[];
 }scsi_report_luns_t;
-#define SCSI_LUN_BUF_LEN 512
+#define SCSI_LUN_BUF_LEN 64
 
 // 1. 命令包定义 (CDB) - 10 字节
 typedef struct __attribute__((packed)) {
