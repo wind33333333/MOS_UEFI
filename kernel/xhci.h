@@ -7,39 +7,6 @@
 
 #define TRB_COUNT 256        //trb个数
 
-#define TRB_RESERVED                (0 << 10)   // 保留
-#define TRB_NORMAL                  (1 << 10)   // 普通传输
-#define TRB_SETUP_STAGE             (2 << 10)   // 设置阶段
-#define TRB_DATA_STAGE              (3 << 10)   // 数据阶段
-#define TRB_STATUS_STAGE            (4 << 10)   // 状态阶段
-#define TRB_ISOCH                   (5 << 10)   // 等时传输
-#define TRB_LINK                    (6 << 10)   // 链接
-#define TRB_EVDATA                  (7 << 10)   // 事件数据
-#define TRB_NOOP                    (8 << 10)   // 空操作
-#define TRB_ENABLE_SLOT             (9 << 10)   // 启用插槽
-#define TRB_DISABLE_SLOT            (10 << 10)  // 禁用插槽
-#define TRB_ADDRESS_DEVICE          (11 << 10)  // 设备寻址
-#define TRB_CONFIGURE_ENDPOINT      (12 << 10)  // 配置端点
-#define TRB_EVALUATE_CONTEXT        (13 << 10)  // 评估上下文
-#define TRB_RESET_ENDPOINT          (14 << 10)  // 重置端点
-#define TRB_STOP_ENDPOINT           (15 << 10)  // 停止端点
-#define TRB_SET_TR_DEQUEUE          (16 << 10)  // 设置传输环出队
-#define TRB_RESET_DEVICE            (17 << 10)  // 重置设备
-#define TRB_FORCE_EVENT             (18 << 10)  // 强制事件
-#define TRB_NEGOTIATE_BW            (19 << 10)  // 协商带宽
-#define TRB_SET_LATENCY_TOLERANCE   (20 << 10)  // 设置延迟容忍
-#define TRB_GET_PORT_BANDWIDTH      (21 << 10)  // 获取端口带宽
-#define TRB_FORCE_HEADER            (22 << 10)  // 强制头部
-#define TRB_NOOP_COMMAND            (23 << 10)  // 空操作命令
-#define TRB_TRANSFER                (32 << 10)  // 传输
-#define TRB_COMMAND_COMPLETE        (33 << 10)  // 命令完成
-#define TRB_PORT_STATUS_CHANGE      (34 << 10)  // 端口状态改变
-#define TRB_BANDWIDTH_REQUEST       (35 << 10)  // 带宽请求
-#define TRB_DOORBELL                (36 << 10)  // 门铃
-#define TRB_HOST_CONTROLLER         (37 << 10)  // 主机控制器
-#define TRB_DEVICE_NOTIFICATION     (38 << 10)  // 设备通知
-#define TRB_MFINDEX_WRAP            (39 << 10)  // 主框架索引回绕
-
 // ============================================================================
 // xHCI 规范：TRB 完成码 (Completion Code)
 // 来源：xHCI Specification Rev 1.2, Section 6.4.5
@@ -371,6 +338,21 @@ typedef struct trb_set_tr_deq_ptr_cmd_t{
     uint32 slot_id          : 8;
 }trb_set_tr_deq_ptr_cmd_t;
 
+// ============================================================================
+// xHCI 规范 6.4.3.9: Enable Slot Command TRB
+// 作用：向主板 xHC 芯片申请一个空闲的设备槽位 (Slot)，主板会在完成事件中返回分配的 Slot ID
+// ============================================================================
+typedef struct trb_enable_slot_cmd_t {
+    uint32          rsvd0[3];       // Dword 0, 1, 2: 规范要求全部保留，必须清零
+
+    // Dword 3 (x86 小端序，从低位开始映射)
+    uint32          cycle:1;        // Bit 0: 翻转位 (C)，交由底层的 enqueue 函数处理
+    uint32          rsvd1:9;        // Bits 1-9: 保留，填 0
+    trb_type_e      type:6;         // Bits 10-15: TRB 类型，这里必须是 9 (Enable Slot)
+    uint32          slot_type:5;    // Bits 16-20: 槽位类型。对于常规的 USB 设备，直接填 0
+    uint32          rsvd2:11;       // Bits 21-31: 保留，填 0
+} trb_enable_slot_cmd_t;
+
 //trb集合
 typedef union xhci_trb_t {
     // 【视角 1：内存搬运工视角】(用于底层 enqueue 拷贝和清零)
@@ -392,6 +374,7 @@ typedef union xhci_trb_t {
     } generic_32;
 
     // 【视角 4：业务定制视角】(包含了所有具体的 TRB 解析格式)
+    trb_enable_slot_cmd_t    enable_slot_cmd;
     trb_set_tr_deq_ptr_cmd_t set_tr_deq_ptr_cmd;
     trb_rest_ep_cmd_t        rest_ep_cmd;
     trb_setup_stage_t        setup_stage;
@@ -934,6 +917,67 @@ typedef struct {
     uint8               *port_to_spc;       // 端口找spc号
 } xhci_controller_t;
 
+
+
+//初始化环
+static inline int xhci_ring_init(xhci_ring_t *ring, uint32 align_size) {
+    ring->ring_base = kzalloc(align_up(TRB_COUNT * sizeof(trb_t), align_size));
+    ring->index = 0;
+    ring->status_c = TRB_FLAG_CYCLE;
+}
+
+//响铃
+static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 db_number, uint32 value) {
+    xhci_controller->db_reg[db_number] = value;
+}
+
+int32 xhci_set_tr_dequeue_pointer(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_dci, xhci_ring_t *transfer_ring);
+void xhci_reset_endpoint(xhci_controller_t *xhci_controller,uint8 slot_id, uint8 ep_dci, uint8 tsp_flag);
+uint8 xhci_enable_slot(struct usb_dev_t *usb_dev);
+void xhci_address_device(struct usb_dev_t *usb_dev);
+uint64 xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);
+int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb);
+void xhci_input_context_add(xhci_input_context_t *input_ctx,void *from_ctx, uint32 ctx_size, uint32 ep_num);
+void xhci_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_num);
+uint8 xhci_ecap_find(xhci_controller_t *xhci_controller,void **ecap_arr,uint8 cap_id);
+int32 xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 target_trb_phys, uint64 timeout_ms);
+void xhci_recover_stalled_endpoint(struct usb_dev_t *usb_dev, uint8 ep_dci);
+
+
+/////////////////////////////////////// 准备作废 /////////////////////////////////////////////
+#define TRB_RESERVED                (0 << 10)   // 保留
+#define TRB_NORMAL                  (1 << 10)   // 普通传输
+#define TRB_SETUP_STAGE             (2 << 10)   // 设置阶段
+#define TRB_DATA_STAGE              (3 << 10)   // 数据阶段
+#define TRB_STATUS_STAGE            (4 << 10)   // 状态阶段
+#define TRB_ISOCH                   (5 << 10)   // 等时传输
+#define TRB_LINK                    (6 << 10)   // 链接
+#define TRB_EVDATA                  (7 << 10)   // 事件数据
+#define TRB_NOOP                    (8 << 10)   // 空操作
+#define TRB_ENABLE_SLOT             (9 << 10)   // 启用插槽
+#define TRB_DISABLE_SLOT            (10 << 10)  // 禁用插槽
+#define TRB_ADDRESS_DEVICE          (11 << 10)  // 设备寻址
+#define TRB_CONFIGURE_ENDPOINT      (12 << 10)  // 配置端点
+#define TRB_EVALUATE_CONTEXT        (13 << 10)  // 评估上下文
+#define TRB_RESET_ENDPOINT          (14 << 10)  // 重置端点
+#define TRB_STOP_ENDPOINT           (15 << 10)  // 停止端点
+#define TRB_SET_TR_DEQUEUE          (16 << 10)  // 设置传输环出队
+#define TRB_RESET_DEVICE            (17 << 10)  // 重置设备
+#define TRB_FORCE_EVENT             (18 << 10)  // 强制事件
+#define TRB_NEGOTIATE_BW            (19 << 10)  // 协商带宽
+#define TRB_SET_LATENCY_TOLERANCE   (20 << 10)  // 设置延迟容忍
+#define TRB_GET_PORT_BANDWIDTH      (21 << 10)  // 获取端口带宽
+#define TRB_FORCE_HEADER            (22 << 10)  // 强制头部
+#define TRB_NOOP_COMMAND            (23 << 10)  // 空操作命令
+#define TRB_TRANSFER                (32 << 10)  // 传输
+#define TRB_COMMAND_COMPLETE        (33 << 10)  // 命令完成
+#define TRB_PORT_STATUS_CHANGE      (34 << 10)  // 端口状态改变
+#define TRB_BANDWIDTH_REQUEST       (35 << 10)  // 带宽请求
+#define TRB_DOORBELL                (36 << 10)  // 门铃
+#define TRB_HOST_CONTROLLER         (37 << 10)  // 主机控制器
+#define TRB_DEVICE_NOTIFICATION     (38 << 10)  // 设备通知
+#define TRB_MFINDEX_WRAP            (39 << 10)  // 主框架索引回绕
+
 //定时
 static inline void timing(void) {
     // uint64 count = 20000000;
@@ -1245,30 +1289,6 @@ static inline void link_trb(trb_t *trb, uint64 ring_base_ptr, uint64 cycle) {
 
 //endregion
 
-
-//初始化环
-static inline int xhci_ring_init(xhci_ring_t *ring, uint32 align_size) {
-    ring->ring_base = kzalloc(align_up(TRB_COUNT * sizeof(trb_t), align_size));
-    ring->index = 0;
-    ring->status_c = TRB_FLAG_CYCLE;
-}
-
-//响铃
-static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 db_number, uint32 value) {
-    xhci_controller->db_reg[db_number] = value;
-}
-
-int32 xhci_set_tr_dequeue_pointer(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_dci, xhci_ring_t *transfer_ring);
-void xhci_reset_endpoint(xhci_controller_t *xhci_controller,uint8 slot_id, uint8 ep_dci, uint8 tsp_flag);
-uint8 xhci_enable_slot(struct usb_dev_t *usb_dev);
-void xhci_address_device(struct usb_dev_t *usb_dev);
-uint64 xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);
-int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb);
-void xhci_input_context_add(xhci_input_context_t *input_ctx,void *from_ctx, uint32 ctx_size, uint32 ep_num);
-void xhci_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_num);
-uint8 xhci_ecap_find(xhci_controller_t *xhci_controller,void **ecap_arr,uint8 cap_id);
-int32 xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 target_trb_phys, uint64 timeout_ms);
-void xhci_recover_stalled_endpoint(struct usb_dev_t *usb_dev, uint8 ep_dci);
 
 
 

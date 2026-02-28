@@ -54,10 +54,10 @@ int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb) {
 /**
  * 等待特定 TRB 完成
  * @param xhci: 控制器实例
- * @param target_trb_phys: 我们刚才提交的那个 TRB 的物理地址 (用于比对)
+ * @param wait_trb_pa: 我们刚才提交的那个 TRB 的物理地址 (用于比对)
  * @param timeout_ms: 超时时间
  */
-int32 xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 target_trb_phys, uint64 timeout_ms) {
+int32 xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 wait_trb_pa, uint64 timeout_ms,trb_t *out_event_trb) {
     xhci_ring_t *event_ring = &xhci_controller->event_ring;
     trb_t evt_trb;
     while (timeout_ms--) {
@@ -72,8 +72,10 @@ int32 xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 target
             xhci_controller->rt_reg->intr_regs[0].erdp = va_to_pa(&event_ring->ring_base[event_ring->index]) | XHCI_ERDP_EHB;
         }
 
-        if (evt_trb.member0 == target_trb_phys) {
+        if (evt_trb.member0 == wait_trb_pa) {
             return (evt_trb.member1 >> 24) & 0xFF;
+            *out_event_trb = evt_trb;
+
         }
         // 如果不是我们要的，就继续循环，等下一个事件
         // (在操作系统中，应该把这个事件分发给其他等待的驱动，但在裸机下直接丢弃即可)
@@ -81,18 +83,110 @@ int32 xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 target
     return XHCI_COMP_TIMEOUT;
 }
 
-//分配插槽
-uint8 xhci_enable_slot(usb_dev_t *usb_dev) {
-    trb_t trb;
-    enable_slot_com_trb(&trb);
-    xhci_ring_enqueue(&usb_dev->xhci_controller->cmd_ring, &trb);
-    xhci_ring_doorbell(usb_dev->xhci_controller, 0, 0);
-    timing();
-    xhci_ering_dequeue(usb_dev->xhci_controller, &trb);
-    if ((trb.member1 >> 42 & 0x3F) == 33 && trb.member1 >> 56) {
-        return trb.member1 >> 56;
+/**
+ * @brief xHCI 统一的命令环 (Command Ring) 发射与严厉诊断函数 (带数据回传功能)
+ * @param xhci_controller          xHCI 控制器上下文指针
+ * @param cmd_trb       已经组装好具体字段的 Command TRB 指针
+ * @param timeout_us    超时时间 (通常 2000000us)
+ * @param out_event_trb [输出参数] 用于接收主板返回的完整事件 TRB。如果不关心返回数据，可传入 NULL。
+ * @return xhci_comp_code_t 返回强类型的硬件完成码
+ */
+xhci_comp_code_e xhci_execute_command_sync(xhci_controller_t *xhci_controller, xhci_trb_t *cmd_trb, uint32 timeout_us, xhci_trb_t *out_event_trb) {
+
+    uint64 cmd_pa = xhci_ring_enqueue(&xhci_controller->cmd_ring, cmd_trb);
+    xhci_ring_doorbell(xhci_controller, 0, 0);
+
+    // ★ 关键修改：把 out_event_trb 指针继续传递给底层的 wait 函数
+    // 底层的 wait 函数在轮询/中断匹配到事件时，需要把那个 Event TRB 的 16 字节内容 copy 到这个指针里
+    xhci_comp_code_e comp_code = xhci_wait_for_completion(xhci_controller, cmd_pa, timeout_us, out_event_trb);
+
+    if (comp_code == XHCI_COMP_SUCCESS) {
+        return comp_code;
     }
-    return -1;
+
+    // ==========================================================
+    // 5. 冷路径：极其严厉的“主板级”错误诊断中心
+    // ==========================================================
+    // 如果走到这里，通常意味着你的驱动代码有 Bug (比如状态机不对、上下文没对齐)
+    color_printk(RED, BLACK, "\nxHCI: [FATAL] Command TRB rejected at PA %#llx!\n", cmd_pa);
+
+    switch (comp_code) {
+        case XHCI_COMP_TRB_ERROR:
+            color_printk(YELLOW, BLACK,
+                "[Diag] TRB Error (5): Invalid TRB format.\n"
+                "  -> Check: Is the Chain bit set to 0?\n"
+                "  -> Check: Is the Type field correct?\n");
+            break;
+
+        case XHCI_COMP_SLOT_NOT_ENABLED_ERROR:
+            color_printk(YELLOW, BLACK,
+                "[Diag] Slot Not Enabled (11): Target slot is not enabled.\n"
+                "  -> Check: Command issued to an unallocated Slot ID.\n");
+            break;
+
+        case XHCI_COMP_PARAMETER_ERROR:
+            color_printk(YELLOW, BLACK,
+                "[Diag] Parameter Error (17): Invalid context parameter.\n"
+                "  -> Check: Is the Input Context physically 64-byte aligned?\n"
+                "  -> Check: Are Drop/Add Context flags conflicting?\n");
+            break;
+
+        case XHCI_COMP_CONTEXT_STATE_ERROR:
+            color_printk(YELLOW, BLACK,
+                "[Diag] Context State Error (19): Invalid slot or endpoint state.\n"
+                "  -> Check: Resetting an endpoint that is not Halted?\n"
+                "  -> Check: Configuring an endpoint while in Default state?\n");
+            break;
+
+        case XHCI_COMP_TIMEOUT:
+            color_printk(RED, BLACK,
+                "[Diag] TIMEOUT (-1): Command ignored or hardware hang.\n"
+                "  -> Check: Is the Command Ring Cycle Bit flipped incorrectly?\n"
+                "  -> Check: Is the Event Ring full, blocking new interrupts?\n");
+            break;
+
+        case XHCI_COMP_COMMAND_RING_STOPPED:
+            color_printk(GREEN, BLACK, "[Diag] Command Ring Stopped (24): Normal completion for Stop Ring command.\n");
+            break;
+
+        default:
+            color_printk(YELLOW, BLACK, "[Diag] Unhandled Command Hardware Error Code: %d\n", comp_code);
+            break;
+    }
+
+    // 命令环出错了通常无法通过重试来恢复 (因为是你代码写的逻辑或者参数本身有问题)。
+    // 这里直接返回错误码，让上层决定是 Kernel Panic 还是禁用该 USB 设备。
+    return comp_code;
+}
+
+
+//分配插槽
+int32 xhci_enable_slot(xhci_controller_t *xhci, uint8 *out_slot_id) { {
+    xhci_trb_t trb;
+    asm_mem_set(&trb, 0, sizeof(xhci_trb_t));
+
+    // 极其清爽的赋值！没有繁琐的位移 (<<) 操作！
+    trb.enable_slot_cmd.type = 9; // XHCI_TRB_TYPE_ENABLE_SLOT_CMD
+    trb.enable_slot_cmd.slot_type = 0;
+
+    // 1. 发送命令到命令环 (Command Ring)
+    xhci_comp_code_e status = xhci_execute_command_sync(xhci, &trb, 2000000);
+
+    if (status != XHCI_COMP_SUCCESS) {
+        color_printk(RED, BLACK, "xHCI: Failed to enable slot! Error: %d\n", status);
+        return -1;
+    }
+
+    // 2. 怎么拿到主板分配的 Slot ID 呢？
+    // 注意：主板是在 Event Ring 的 Command Completion Event TRB 里把 Slot ID 返回给你的！
+    // 所以你的 xhci_wait_for_completion 函数，除了返回状态码，
+    // 最好能把那个 Event TRB 里的 slot_id 提取出来，或者让它保存在 xhci 结构体里。
+
+    // *假设你已经从事件回执里提取到了*
+    // *out_slot_id = event_trb->slot_id;
+
+    color_printk(GREEN, BLACK, "xHCI: Successfully enabled Slot ID: %d\n", *out_slot_id);
+    return 0;
 }
 
 //设置设备地址
