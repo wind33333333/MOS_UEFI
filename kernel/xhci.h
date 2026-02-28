@@ -134,7 +134,7 @@ typedef enum ：uint32 {
     XHCI_TRB_TYPE_MFINDEX_WRAP      = 39  // 微帧索引翻转事件
 
     // 48 到 63 是厂商自定义 (Vendor Defined)，通常不用管
-} xhci_trb_type_e;
+} trb_type_e;
 
 // ============================================================================
 // Setup Stage TRB (Type 2) - 控制传输的第一阶段
@@ -211,17 +211,10 @@ typedef enum : uint16 {
     USB_FEATURE_U2_ENABLE            = 0x31  // 允许进入 U2 节能状态
 } usb_feature_selector_e;
 
-// ============================================================================
-// xHCI 控制传输类型枚举 (对应 Setup TRB Dword 3 的 Bits 16-17: trt)
-// 作用：告诉硬件这次控制传输是否包含数据阶段，以及数据的方向。
-// ============================================================================
-typedef enum : uint32 {
-    XHCI_TRT_NO_DATA   = 0, // 0 = 无数据阶段 (No Data Stage)场景：命令发出去就完事了，不需要额外的数据负载。
-    XHCI_TRT_RESERVED  = 1, // 1 = 保留 (Reserved)    // 绝对不要使用，硬件会报错。
-    XHCI_TRT_OUT_DATA  = 2, // 2 = OUT 数据阶段 (OUT Data Stage)场景：主机不仅发命令，还要把一坨内存数据强塞给设备。
-    XHCI_TRT_IN_DATA   = 3 // 3 = IN 数据阶段 (IN Data Stage)场景：主机发完命令，张开嘴等设备把数据喂回来。
-} xhci_trt_e;
 
+/*
+ * usb 8字节请求包
+ */
 typedef struct usb_req_pkg_t {
     //bmRequestType
     usb_recipient_e recipient : 5;
@@ -241,7 +234,25 @@ typedef struct usb_req_pkg_t {
     uint16          length; //数据阶段的传输长度（字节）主机到设备：发送的数据长度 设备到主机：请求的数据长度
 }usb_req_pkg_t;
 
+// ============================================================================
+// xHCI 控制传输类型枚举 (对应 Setup TRB Dword 3 的 Bits 16-17: trt)
+// 作用：告诉硬件这次控制传输是否包含数据阶段，以及数据的方向。
+// ============================================================================
+typedef enum : uint32 {
+    TRB_TRT_NO_DATA   = 0, // 0 = 无数据阶段 (No Data Stage)场景：命令发出去就完事了，不需要额外的数据负载。
+    TRB_TRT_RESERVED  = 1, // 1 = 保留 (Reserved)    // 绝对不要使用，硬件会报错。
+    TRB_TRT_OUT_DATA  = 2, // 2 = OUT 数据阶段 (OUT Data Stage)场景：主机不仅发命令，还要把一坨内存数据强塞给设备。
+    TRB_TRT_IN_DATA   = 3 // 3 = IN 数据阶段 (IN Data Stage)场景：主机发完命令，张开嘴等设备把数据喂回来。
+} trb_trt_e;
+
+typedef enum : uint32 {
+    TRB_DIR_OUT = 0,
+    TRB_DIR_IN  = 1
+}trb_dir_e;
+
+
 typedef struct trb_setup_stage_t{
+    // Dword 0-1:
     usb_req_pkg_t   usb_req_pkg;
 
     // Dword 2: 长度与中断目标
@@ -256,8 +267,8 @@ typedef struct trb_setup_stage_t{
     uint32          ioc   : 1;  // 通常填 0，因为我们只关心最后一个 Status TRB 的完成中断
     uint32          idt   : 1;  // ★ 必须填 1！(Immediate Data: 告诉硬件前 8 字节是数据本身，不是指针)
     uint32          rsvd3 : 3;
-    xhci_trb_type_e type  : 6;  // Bits 10-15: TRB 类型 (固定为 2)
-    xhci_trt_e      trt   : 2;  // Bits 16-17: 传输类型 (见上方宏定义，极其重要)
+    trb_type_e      type  : 6;  // Bits 10-15: TRB 类型 (固定为 2)
+    trb_trt_e       trt   : 2;  // Bits 16-17: 传输类型 (见上方宏定义，极其重要)
     uint32          rsvd4 : 14;
 } trb_setup_stage_t;
 
@@ -282,8 +293,8 @@ typedef struct trb_data_stage_t {
     uint32          ioc   : 1;  // 通常填 0
     uint32          idt   : 1;  // 必须填 0 (说明前面是个指针)
     uint32          rsvd1 : 3;
-    xhci_trb_type_e type  : 6;  // Bits 10-15: TRB 类型 (固定为 3)
-    uint32          dir   : 1;  // ★ Bits 16: 数据方向 (0 = OUT 主机发给设备, 1 = IN 设备发给主机)
+    trb_type_e      type  : 6;  // Bits 10-15: TRB 类型 (固定为 3)
+    trb_dir_e       dir   : 1;  // ★ Bits 16: 数据方向 (0 = OUT 主机发给设备, 1 = IN 设备发给主机)
     uint32          rsvd2 : 15;
 }trb_data_stage_t;
 
@@ -305,8 +316,8 @@ typedef struct trb_status_stage_t {
     uint32          chain : 1;  // ★ 必须填 0！因为这是最后一节车厢了！
     uint32          ioc   : 1;  // ★ 必须填 1！(Interrupt On Completion：硬件跑完这个 TRB，才向内核汇报)
     uint32          rsvd3 : 4;
-    xhci_trb_type_e type  : 6;  // Bits 10-15: TRB 类型 (固定为 4)
-    uint32          dir   : 1;  // ★ Bits 16: 握手方向 (如果是 No Data 或 OUT，这里填 1； 如果 Data是 IN，这里填 0)
+    trb_type_e      type  : 6;  // Bits 10-15: TRB 类型 (固定为 4)
+    trb_dir_e       dir   : 1;  // ★ Bits 16: 握手方向 (如果是 No Data 或 OUT，这里填 1； 如果 Data是 IN，这里填 0)
     uint32          rsvd4 : 15;
 }trb_status_stage_t;
 
@@ -316,7 +327,7 @@ typedef struct trb_rest_ep_cmd_t{
     uint32          cycle:1;
     uint32          rsvd1:8;
     uint32          tsp:1;      // 常规填 0
-    xhci_trb_type_e type:6;
+    trb_type_e      type:6;
     uint32          ep_dci:5; // 端点索引 (DCI)，如 IN 是 3，OUT 是 4
     uint32          rsvd2:3;
     uint32          slot_id:8; // 设备槽位号
@@ -337,7 +348,7 @@ typedef struct trb_set_tr_deq_ptr_cmd_t{
     uint32 cycle            : 1;
     uint32 rsvd1            : 8;
     uint32          tsp     : 1;
-    xhci_trb_type_e type    : 6;      // ★ 必须填 16
+    trb_type_e      type    : 6;      // ★ 必须填 16
     uint32 ep_dci           : 5;      // 端点索引 (DCI)
     uint32 rsvd2            : 3;
     uint32 slot_id          : 8;

@@ -290,49 +290,46 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
     uint64 setup_ptr, data_ptr = 0, status_ptr;
     int32 status;
 
-    // 解析方向 (Bit 7 为 1 表示 IN)
-    uint8 is_in = (usb_req_pkg->bmRequestType & 0x80) ? 1 : 0;
+    uint16 length = usb_req_pkg->length;
+
+    // 解析trb方向
+    uint8 usb_req_dir = usb_req_pkg->dtd;
 
     // ==========================================================
     // 阶段 1：组装 Setup TRB
     // ==========================================================
     asm_mem_set(&trb, 0, sizeof(xhci_trb_t));
-    asm_mem_cpy(usb_req_pkg,&trb,sizeof(usb_req_pkg_t));
-
-    trb.setup_stage.trb_transfer_len = 8;
-    trb.setup_stage.idt = 1;
+    asm_mem_cpy(usb_req_pkg,&trb,sizeof(usb_req_pkg_t)); //拷贝USB请求包到TRB前8字节中
+    trb.setup_stage.trb_transfer_len = sizeof(usb_req_pkg_t); //steup trb必须8
+    trb.setup_stage.int_target = 0;     //中断号暂时统一设置0
+    trb.setup_stage.idt = 1;            // setup trb 必须1
     trb.setup_stage.type = XHCI_TRB_TYPE_SETUP_STAGE;
     trb.setup_stage.chain = 0;
     trb.setup_stage.ioc = 1;
-
     // 判断 TRT (Transfer Type)
-    if (usb_req_pkg->length == 0) {
-        trb.setup_stage.trt = XHCI_TRT_NO_DATA;
+    if (length == 0) {
+        trb.setup_stage.trt = TRB_TRT_NO_DATA;
     } else if (usb_req_pkg->dtd == USB_DIR_IN) {
-        trb.setup_stage.trt = XHCI_TRT_IN_DATA;
+        trb.setup_stage.trt = TRB_TRT_IN_DATA;
     } else {
-        trb.setup_stage.trt = XHCI_TRT_OUT_DATA;
+        trb.setup_stage.trt = TRB_TRT_OUT_DATA;
     }
 
-    setup_ptr = xhci_ring_enqueue(&usb_dev->ep0, &trb);
+    setup_ptr = xhci_ring_enqueue(&udev->eps[0].transfer_ring, &trb);
 
     // ==========================================================
     // 阶段 2：组装 Data TRB (如果有)
     // ==========================================================
-    if (wLength > 0 && data_buf != NULL) {
+    if (length != 0 && data_buf != NULL) {
         asm_mem_set(&trb, 0, sizeof(xhci_trb_t));
-
-        trb.data_stage.data_buffer = va_to_pa(data_buf); // 物理地址
-        trb.data_stage.trb_transfer_len = wLength;
+        trb.data_stage.data_buf_ptr = va_to_pa(data_buf); // 物理地址
+        trb.data_stage.transfer_len = length;
         trb.data_stage.type = XHCI_TRB_TYPE_DATA_STAGE;
-        trb.data_stage.dir = is_in ? 1 : 0;
+        trb.data_stage.dir = usb_req_dir;  //数据阶段方向和usb.dtd方向一致
         trb.data_stage.chain = 0; // 单个 Data TRB 必须为 0
         trb.data_stage.ioc = 1;   // 开启中断防雷
 
-        // 刷新缓存，确保 DMA 能读到最新的 OUT 数据 / 或者为 IN 腾出空间
-        asm volatile("clflush (%0)" :: "r"(data_buf) : "memory");
-
-        data_ptr = xhci_ring_enqueue(&usb_dev->ep0, &trb);
+        data_ptr = xhci_ring_enqueue(&udev->eps[0].transfer_ring, &trb);
     }
 
     // ==========================================================
@@ -342,20 +339,14 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
     trb.status_stage.type = XHCI_TRB_TYPE_STATUS_STAGE;
     trb.status_stage.chain = 0;
     trb.status_stage.ioc = 1;
+    trb.status_stage.dir = (length == 0 || usb_req_dir == USB_DIR_OUT) ? TRB_DIR_IN : TRB_DIR_OUT; // ★ 核心逻辑 2：Status 阶段的方向必须是相反的！
 
-    // ★ 核心逻辑 2：Status 阶段的方向必须是相反的！
-    if (wLength == 0 || !is_in) {
-        trb.status_stage.dir = 1; // IN (如果没有数据，或者数据是 OUT，状态必须读回执)
-    } else {
-        trb.status_stage.dir = 0; // OUT (如果数据是 IN，状态必须发确认)
-    }
-
-    status_ptr = xhci_ring_enqueue(&usb_dev->ep0, &trb);
+    status_ptr = xhci_ring_enqueue(&udev->ep0, &trb);
 
     // ==========================================================
     // 阶段 4：一次性鸣笛发车！
     // ==========================================================
-    xhci_ring_doorbell(xhci, usb_dev->slot_id, 1);
+    xhci_ring_doorbell(xhci_controller, udev->slot_id, 1);
 
     // ==========================================================
     // 阶段 5：步步为营的守护监听 (复用你写的完美错误处理函数)
@@ -400,7 +391,7 @@ int32 usb_clear_feature_halt(usb_dev_t *usb_dev, uint8 ep_dci) {
     trb.setup_stage.ioc = 1;
     trb.setup_stage.idt = 1;
     trb.setup_stage.type = XHCI_TRB_TYPE_SETUP_STAGE;
-    trb.setup_stage.trt = XHCI_TRT_NO_DATA;
+    trb.setup_stage.trt = TRB_TRT_NO_DATA;
     uint64 setup_ptr = xhci_ring_enqueue(&usb_dev->ep0, (void*)&trb);
 
     asm_mem_set(&trb,0,sizeof(trb));

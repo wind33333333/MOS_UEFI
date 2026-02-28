@@ -48,7 +48,7 @@ void bot_recovery_reset(usb_dev_t *usb_dev,uint8 if_num, uint8 pipe_in, uint8 pi
     trb.setup_stage.ioc = 0;
     trb.setup_stage.idt = 1;
     trb.setup_stage.type = XHCI_TRB_TYPE_SETUP_STAGE;
-    trb.setup_stage.trt = XHCI_TRT_NO_DATA;
+    trb.setup_stage.trt = TRB_TRT_NO_DATA;
     xhci_ring_enqueue(&usb_dev->ep0, (void*)&trb);
 
     asm_mem_set(&trb,0,sizeof(trb));
