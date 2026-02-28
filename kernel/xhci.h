@@ -1258,6 +1258,7 @@ static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 
     xhci_controller->db_reg[db_number] = value;
 }
 
+int32 xhci_set_tr_dequeue_pointer(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_dci, xhci_ring_t *transfer_ring);
 void xhci_reset_endpoint(xhci_controller_t *xhci_controller,uint8 slot_id, uint8 ep_dci, uint8 tsp_flag);
 uint8 xhci_enable_slot(struct usb_dev_t *usb_dev);
 void xhci_address_device(struct usb_dev_t *usb_dev);

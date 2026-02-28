@@ -318,8 +318,7 @@ xhci_comp_code_e xhci_execute_transfer_sync(usb_dev_t *udev, uint8 ep_dci, uint6
 
         // 抢救第 2 步：跨越“坏死”的 TRB 尸体
         // 必须区分目标环：EP0 的环独立存放在 usb_dev->ep0，其他端点在 eps 数组里
-        xhci_ring_t *target_ring = (ep_dci == 1) ? &udev->ep0 : &udev->eps[ep_dci - 1].transfer_ring;
-        xhci_set_tr_dequeue_pointer(xhci, udev->slot_id, ep_dci, target_ring);
+        xhci_set_tr_dequeue_pointer(xhci, udev->slot_id, ep_dci, &udev->eps[ep_dci - 1].transfer_ring);
 
         // 抢救第 3 步：协议级和解 —— ★ 极其关键的架构分流！
         if (ep_dci > 1) {
