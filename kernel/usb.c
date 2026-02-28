@@ -275,6 +275,106 @@ int usb_set_interface(usb_if_t *usb_if) {
     return 0;
 }
 
+
+/**
+ * 标准 USB 控制传输统一封装函数 (EP0 专属) - 结构体传参版
+ * @param udev       USB 设备上下文
+ * @param usb_req_pkg           指向 8 字节标准 Setup 结构体的指针
+ * @param data_buf      数据缓冲区指针 (无数据阶段填 NULL)
+ * @param timeout_us    超时时间 (微秒)
+ * @return int32        0 表示成功，其他为错误码
+ */
+int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_buf, uint32 timeout_us) {
+    xhci_controller_t *xhci_controller = udev->xhci_controller;
+    xhci_trb_t trb;
+    uint64 setup_ptr, data_ptr = 0, status_ptr;
+    int32 status;
+
+    // 解析方向 (Bit 7 为 1 表示 IN)
+    uint8 is_in = (usb_req_pkg->bmRequestType & 0x80) ? 1 : 0;
+
+    // ==========================================================
+    // 阶段 1：组装 Setup TRB
+    // ==========================================================
+    asm_mem_set(&trb, 0, sizeof(xhci_trb_t));
+    asm_mem_cpy(usb_req_pkg,&trb,sizeof(usb_req_pkg_t));
+
+    trb.setup_stage.trb_transfer_len = 8;
+    trb.setup_stage.idt = 1;
+    trb.setup_stage.type = XHCI_TRB_TYPE_SETUP_STAGE;
+    trb.setup_stage.chain = 0;
+    trb.setup_stage.ioc = 1;
+
+    // 判断 TRT (Transfer Type)
+    if (usb_req_pkg->length == 0) {
+        trb.setup_stage.trt = XHCI_TRT_NO_DATA;
+    } else if (usb_req_pkg->dtd == USB_DIR_IN) {
+        trb.setup_stage.trt = XHCI_TRT_IN_DATA;
+    } else {
+        trb.setup_stage.trt = XHCI_TRT_OUT_DATA;
+    }
+
+    setup_ptr = xhci_ring_enqueue(&usb_dev->ep0, &trb);
+
+    // ==========================================================
+    // 阶段 2：组装 Data TRB (如果有)
+    // ==========================================================
+    if (wLength > 0 && data_buf != NULL) {
+        asm_mem_set(&trb, 0, sizeof(xhci_trb_t));
+
+        trb.data_stage.data_buffer = va_to_pa(data_buf); // 物理地址
+        trb.data_stage.trb_transfer_len = wLength;
+        trb.data_stage.type = XHCI_TRB_TYPE_DATA_STAGE;
+        trb.data_stage.dir = is_in ? 1 : 0;
+        trb.data_stage.chain = 0; // 单个 Data TRB 必须为 0
+        trb.data_stage.ioc = 1;   // 开启中断防雷
+
+        // 刷新缓存，确保 DMA 能读到最新的 OUT 数据 / 或者为 IN 腾出空间
+        asm volatile("clflush (%0)" :: "r"(data_buf) : "memory");
+
+        data_ptr = xhci_ring_enqueue(&usb_dev->ep0, &trb);
+    }
+
+    // ==========================================================
+    // 阶段 3：组装 Status TRB
+    // ==========================================================
+    asm_mem_set(&trb, 0, sizeof(xhci_trb_t));
+    trb.status_stage.type = XHCI_TRB_TYPE_STATUS_STAGE;
+    trb.status_stage.chain = 0;
+    trb.status_stage.ioc = 1;
+
+    // ★ 核心逻辑 2：Status 阶段的方向必须是相反的！
+    if (wLength == 0 || !is_in) {
+        trb.status_stage.dir = 1; // IN (如果没有数据，或者数据是 OUT，状态必须读回执)
+    } else {
+        trb.status_stage.dir = 0; // OUT (如果数据是 IN，状态必须发确认)
+    }
+
+    status_ptr = xhci_ring_enqueue(&usb_dev->ep0, &trb);
+
+    // ==========================================================
+    // 阶段 4：一次性鸣笛发车！
+    // ==========================================================
+    xhci_ring_doorbell(xhci, usb_dev->slot_id, 1);
+
+    // ==========================================================
+    // 阶段 5：步步为营的守护监听 (复用你写的完美错误处理函数)
+    // ==========================================================
+    // 监听 Setup 阶段
+    status = xhci_execute_transfer_sync(usb_dev, 1, setup_ptr, timeout_us);
+    if (status != 0) return status; // 如果 U 盘拒收命令，它会在这里 STALL 并被自动救活
+
+    // 监听 Data 阶段
+    if (wLength > 0 && data_buf != NULL) {
+        status = xhci_execute_transfer_sync(usb_dev, 1, data_ptr, timeout_us);
+        if (status != 0 && status != XHCI_COMP_SHORT_PACKET) return status;
+    }
+
+    // 监听 Status 阶段
+    status = xhci_execute_transfer_sync(usb_dev, 1, status_ptr, timeout_us);
+    return status;
+}
+
 /**
  * 清除 USB 端点的 STALL/Halt 状态 (撬开大门)
  * @param usb_dev      USB 设备上下文

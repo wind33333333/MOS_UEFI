@@ -222,7 +222,7 @@ typedef enum : uint32 {
     XHCI_TRT_IN_DATA   = 3 // 3 = IN 数据阶段 (IN Data Stage)场景：主机发完命令，张开嘴等设备把数据喂回来。
 } xhci_trt_e;
 
-typedef struct trb_setup_stage_t{
+typedef struct usb_req_pkg_t {
     //bmRequestType
     usb_recipient_e recipient : 5;
     usb_req_type_e  req_type  : 2;
@@ -239,6 +239,10 @@ typedef struct trb_setup_stage_t{
 
     //wLength
     uint16          length; //数据阶段的传输长度（字节）主机到设备：发送的数据长度 设备到主机：请求的数据长度
+}usb_req_pkg_t;
+
+typedef struct trb_setup_stage_t{
+    usb_req_pkg_t   usb_req_pkg;
 
     // Dword 2: 长度与中断目标
     uint32          trb_transfer_len : 17; // 规范强制要求：Setup TRB 的长度必须固定填 8！
@@ -248,7 +252,7 @@ typedef struct trb_setup_stage_t{
     // Dword 3: 控制位
     uint32          cycle : 1;
     uint32          rsvd2 : 3;
-    uint32          chain : 1;  // ★ 必须填 1！因为后面一定跟着 Data 或 Status TRB
+    uint32          chain : 1;  // ★ 必须填0
     uint32          ioc   : 1;  // 通常填 0，因为我们只关心最后一个 Status TRB 的完成中断
     uint32          idt   : 1;  // ★ 必须填 1！(Immediate Data: 告诉硬件前 8 字节是数据本身，不是指针)
     uint32          rsvd3 : 3;
@@ -274,7 +278,7 @@ typedef struct trb_data_stage_t {
     uint32          ent   : 1;  //评估下一个trb
     uint32          isp   : 1;  // 短包中断
     uint32          ns    : 1;  // No Snoop
-    uint32          chain : 1;  // ★ 必须填 1！因为后面必须跟着一节 Status TRB 车尾
+    uint32          chain : 1;  //
     uint32          ioc   : 1;  // 通常填 0
     uint32          idt   : 1;  // 必须填 0 (说明前面是个指针)
     uint32          rsvd1 : 3;
