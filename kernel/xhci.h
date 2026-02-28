@@ -250,6 +250,20 @@ typedef enum : uint32 {
     TRB_DIR_IN  = 1
 }trb_dir_e;
 
+typedef enum : uint32 {
+    TRB_IOC_DISABLE = 0,
+    TRB_IOC_ENABLE  = 1
+}trb_ioc_e;
+
+typedef enum : uint32 {
+    TRB_CHAIN_DISABLE = 0,
+    TRB_CHAIN_ENABLE  = 1
+}trb_chain_e;
+
+typedef enum : uint32 {
+    TRB_IDT_DISABLE = 0,
+    TRB_IDT_ENABLE  = 1
+}trb_idt_e;
 
 typedef struct trb_setup_stage_t{
     // Dword 0-1:
@@ -263,9 +277,9 @@ typedef struct trb_setup_stage_t{
     // Dword 3: 控制位
     uint32          cycle : 1;
     uint32          rsvd2 : 3;
-    uint32          chain : 1;  // ★ 必须填0
-    uint32          ioc   : 1;  // 通常填 0，因为我们只关心最后一个 Status TRB 的完成中断
-    uint32          idt   : 1;  // ★ 必须填 1！(Immediate Data: 告诉硬件前 8 字节是数据本身，不是指针)
+    trb_chain_e     chain : 1;  // ★ 必须填0
+    trb_ioc_e       ioc   : 1;  // 通常填 0，因为我们只关心最后一个 Status TRB 的完成中断
+    trb_idt_e       idt   : 1;  // ★ 必须填 1！(Immediate Data: 告诉硬件前 8 字节是数据本身，不是指针)
     uint32          rsvd3 : 3;
     trb_type_e      type  : 6;  // Bits 10-15: TRB 类型 (固定为 2)
     trb_trt_e       trt   : 2;  // Bits 16-17: 传输类型 (见上方宏定义，极其重要)
@@ -289,9 +303,9 @@ typedef struct trb_data_stage_t {
     uint32          ent   : 1;  //评估下一个trb
     uint32          isp   : 1;  // 短包中断
     uint32          ns    : 1;  // No Snoop
-    uint32          chain : 1;  //
-    uint32          ioc   : 1;  // 通常填 0
-    uint32          idt   : 1;  // 必须填 0 (说明前面是个指针)
+    trb_chain_e     chain : 1;  //
+    trb_ioc_e       ioc   : 1;  // 通常填 0
+    trb_idt_e       idt   : 1;  // 必须填 0 (说明前面是个指针)
     uint32          rsvd1 : 3;
     trb_type_e      type  : 6;  // Bits 10-15: TRB 类型 (固定为 3)
     trb_dir_e       dir   : 1;  // ★ Bits 16: 数据方向 (0 = OUT 主机发给设备, 1 = IN 设备发给主机)
@@ -313,8 +327,8 @@ typedef struct trb_status_stage_t {
     uint32          cycle : 1;
     uint32          ent   : 1;
     uint32          rsvd2 : 2;
-    uint32          chain : 1;  // ★ 必须填 0！因为这是最后一节车厢了！
-    uint32          ioc   : 1;  // ★ 必须填 1！(Interrupt On Completion：硬件跑完这个 TRB，才向内核汇报)
+    trb_chain_e     chain : 1;  // ★ 必须填 0！因为这是最后一节车厢了！
+    trb_ioc_e       ioc   : 1;  // ★ 必须填 1！(Interrupt On Completion：硬件跑完这个 TRB，才向内核汇报)
     uint32          rsvd3 : 4;
     trb_type_e      type  : 6;  // Bits 10-15: TRB 类型 (固定为 4)
     trb_dir_e       dir   : 1;  // ★ Bits 16: 握手方向 (如果是 No Data 或 OUT，这里填 1； 如果 Data是 IN，这里填 0)

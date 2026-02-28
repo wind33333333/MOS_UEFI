@@ -302,10 +302,10 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
     asm_mem_cpy(usb_req_pkg,&trb,sizeof(usb_req_pkg_t)); //拷贝USB请求包到TRB前8字节中
     trb.setup_stage.trb_transfer_len = sizeof(usb_req_pkg_t); //steup trb必须8
     trb.setup_stage.int_target = 0;     //中断号暂时统一设置0
-    trb.setup_stage.idt = 1;            // setup trb 必须1
+    trb.setup_stage.idt = TRB_IDT_ENABLE;   // setup trb 必须1
     trb.setup_stage.type = XHCI_TRB_TYPE_SETUP_STAGE;
-    trb.setup_stage.chain = 0;
-    trb.setup_stage.ioc = 1;
+    trb.setup_stage.chain = TRB_CHAIN_DISABLE;
+    trb.setup_stage.ioc = TRB_CHAIN_ENABLE;
     // 判断 TRT (Transfer Type)
     if (length == 0) {
         trb.setup_stage.trt = TRB_TRT_NO_DATA;
@@ -326,8 +326,8 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
         trb.data_stage.transfer_len = length;
         trb.data_stage.type = XHCI_TRB_TYPE_DATA_STAGE;
         trb.data_stage.dir = usb_req_dir;  //数据阶段方向和usb.dtd方向一致
-        trb.data_stage.chain = 0; // 单个 Data TRB 必须为 0
-        trb.data_stage.ioc = 1;   // 开启中断防雷
+        trb.data_stage.chain = TRB_CHAIN_DISABLE; // 单个 Data TRB 必须为 0
+        trb.data_stage.ioc = TRB_IOC_ENABLE;   // 开启中断防雷
 
         data_ptr = xhci_ring_enqueue(&udev->eps[0].transfer_ring, &trb);
     }
@@ -337,8 +337,8 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
     // ==========================================================
     asm_mem_set(&trb, 0, sizeof(xhci_trb_t));
     trb.status_stage.type = XHCI_TRB_TYPE_STATUS_STAGE;
-    trb.status_stage.chain = 0;
-    trb.status_stage.ioc = 1;
+    trb.status_stage.chain = TRB_CHAIN_DISABLE;
+    trb.status_stage.ioc = TRB_IOC_ENABLE;
     trb.status_stage.dir = (length == 0 || usb_req_dir == USB_DIR_OUT) ? TRB_DIR_IN : TRB_DIR_OUT; // ★ 核心逻辑 2：Status 阶段的方向必须是相反的！
 
     status_ptr = xhci_ring_enqueue(&udev->ep0, &trb);
