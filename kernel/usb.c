@@ -297,43 +297,48 @@ xhci_comp_code_e xhci_execute_transfer_sync(usb_dev_t *udev, uint8 ep_dci, uint6
     // 2. 完美成功或可接受的短包 (直接放行)
     // ==========================================================
     if (comp_code == XHCI_COMP_SUCCESS) {
-        return XHCI_COMP_SUCCESS;
+        return comp_code;
     }
 
     // 在 BOT 协议的 Data IN 阶段，设备实际发送的数据少于我们请求的长度是合法的
     if (comp_code == XHCI_COMP_SHORT_PACKET) {
         // 注意：此处最好能打印出实际收到的数据长度，便于上层文件系统裁剪缓冲区
         color_printk(YELLOW, BLACK, "xHCI: Short Packet on EP (DCI=%d) - Normal for BOT.\n", ep_dci);
-        return XHCI_COMP_SHORT_PACKET;
+        return comp_code;
     }
 
     // ==========================================================
-    // 3. 核心护城河：拦截 STALL 错误并全自动抢救
+    // 3. 核心护城河：拦截端点 Halted 异常并全自动抢救
+    // 涵盖：逻辑拒绝 (STALL) 与 物理链路崩溃 (Transaction/Babble)
     // ==========================================================
-    if (comp_code == XHCI_COMP_STALL_ERROR) {
-        color_printk(YELLOW, BLACK, "xHCI: STALL intercepted on EP (DCI=%d)! Auto-Recovery engaged...\n", ep_dci);
+    if (comp_code == XHCI_COMP_STALL_ERROR || comp_code == XHCI_COMP_USB_TRANSACTION_ERROR || comp_code == XHCI_COMP_BABBLE_ERROR) {
 
-        // 抢救第 1 步：主板级解挂 (强行将硬件状态机从 Halted 拽回 Stopped)
+        color_printk(YELLOW, BLACK, "xHCI: Halt condition (%d) on EP (DCI=%d)! Auto-Recovery engaged...\n", comp_code, ep_dci);
+
+        // 抢救第 1 步：主板级解挂 (强制从 Halted 拽回 Stopped)
         xhci_reset_endpoint(xhci, udev->slot_id, ep_dci, 0);
 
         // 抢救第 2 步：跨越“坏死”的 TRB 尸体
         // 必须区分目标环：EP0 的环独立存放在 usb_dev->ep0，其他端点在 eps 数组里
         xhci_set_tr_dequeue_pointer(xhci, udev->slot_id, ep_dci, &udev->eps[ep_dci - 1].transfer_ring);
 
-        // 抢救第 3 步：协议级和解 —— ★ 极其关键的架构分流！
-        if (ep_dci > 1) {
-            // 对于 Bulk / Interrupt 等普通端点，必须向 U 盘发送和解信，清除其内部错误状态
-            color_printk(YELLOW, BLACK, "xHCI: Sending Clear Feature to unlock physical endpoint...\n");
-            // 注意：usb_clear_feature_halt 内部会调用本函数(但入参是 EP0)，这就体现了分流设计的绝妙之处，不会引发死锁。
-            usb_clear_feature_halt(udev, ep_dci);
+        // 抢救第 3 步：协议级和解 (只针对 STALL 错误)
+        if (comp_code == XHCI_COMP_STALL_ERROR) {
+            if (ep_dci > 1) {
+                // 普通端点且是因为 STALL 挂起：必须发和解信
+                color_printk(YELLOW, BLACK, "xHCI: Sending Clear Feature to unlock physical endpoint...\n");
+                usb_clear_feature_halt(udev, ep_dci);
+            } else {
+                // EP0 的 STALL：靠下一个 Setup 包自动冲刷，什么都不用做
+                color_printk(GREEN, BLACK, "xHCI: EP0 STALL CPR complete.\n");
+            }
         } else {
-            // 对于控制端点 EP0 (DCI=1)，USB 规范规定绝对不能发 Clear Feature！
-            // EP0 在收到下一个崭新的 Setup 包时，硬件会自动冲刷掉之前的 STALL 状态。
-            color_printk(GREEN, BLACK, "xHCI: EP0 CPR complete. Ready for next Setup token.\n");
+            // 对于 Transaction 或 Babble 等物理错误：U 盘并未傲娇，坚决不能发 Clear Feature
+            color_printk(YELLOW, BLACK, "xHCI: Physical Bus Error CPR complete. (No Clear Feature needed).\n");
         }
 
-        // 抢救完毕！向上层如实汇报：“遇到了卡死，但内核已经把跑道清理干净了，你可以重试”。
-        return XHCI_COMP_STALL_ERROR;
+        // 抢救完毕！向上层如实汇报错误码
+        return comp_code;
     }
 
     // ==========================================================
