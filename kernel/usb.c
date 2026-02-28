@@ -275,6 +275,88 @@ int usb_set_interface(usb_if_t *usb_if) {
     return 0;
 }
 
+/**
+ * @brief xHCI 统一传输执行与自动错误抢救守护函数
+ * * 这个函数封装了底层的轮询/中断等待逻辑。一旦检测到 U 盘/鼠标发生了 STALL 卡死，
+ * 它会自动介入主板硬件层，执行 "Reset -> 挪指针 -> Clear Feature" 的完整心肺复苏。
+ * * @param udev      USB 设备上下文指针
+ * @param ep_dci       发生通信的端点 DCI (1 是控制端点 EP0, 2/3/4... 是普通端点)
+ * @param wait_trb_pa  你刚刚在传输环中入队的最后一条 TRB 的物理地址
+ * @param timeout_us   超时时间 (微秒)
+ * @return xhci_comp_code_t 返回强类型的硬件完成码
+ */
+xhci_comp_code_e xhci_execute_transfer_sync(usb_dev_t *udev, uint8 ep_dci, uint64 wait_trb_pa, uint32 timeout_us) {
+    xhci_controller_t *xhci = udev->xhci_controller;
+
+    // ==========================================================
+    // 1. 挂起等待事件环 (Event Ring) 的回执
+    // ==========================================================
+    xhci_comp_code_e comp_code = xhci_wait_for_completion(xhci, wait_trb_pa, timeout_us);
+
+    // ==========================================================
+    // 2. 完美成功或可接受的短包 (直接放行)
+    // ==========================================================
+    if (comp_code == XHCI_COMP_SUCCESS) {
+        return XHCI_COMP_SUCCESS;
+    }
+
+    // 在 BOT 协议的 Data IN 阶段，设备实际发送的数据少于我们请求的长度是合法的
+    if (comp_code == XHCI_COMP_SHORT_PACKET) {
+        // 注意：此处最好能打印出实际收到的数据长度，便于上层文件系统裁剪缓冲区
+        color_printk(YELLOW, BLACK, "xHCI: Short Packet on EP (DCI=%d) - Normal for BOT.\n", ep_dci);
+        return XHCI_COMP_SHORT_PACKET;
+    }
+
+    // ==========================================================
+    // 3. 核心护城河：拦截 STALL 错误并全自动抢救
+    // ==========================================================
+    if (comp_code == XHCI_COMP_STALL_ERROR) {
+        color_printk(YELLOW, BLACK, "xHCI: STALL intercepted on EP (DCI=%d)! Auto-Recovery engaged...\n", ep_dci);
+
+        // 抢救第 1 步：主板级解挂 (强行将硬件状态机从 Halted 拽回 Stopped)
+        xhci_reset_endpoint(xhci, udev->slot_id, ep_dci, 0);
+
+        // 抢救第 2 步：跨越“坏死”的 TRB 尸体
+        // 必须区分目标环：EP0 的环独立存放在 usb_dev->ep0，其他端点在 eps 数组里
+        xhci_ring_t *target_ring = (ep_dci == 1) ? &udev->ep0 : &udev->eps[ep_dci - 1].transfer_ring;
+        xhci_set_tr_dequeue_pointer(xhci, udev->slot_id, ep_dci, target_ring);
+
+        // 抢救第 3 步：协议级和解 —— ★ 极其关键的架构分流！
+        if (ep_dci > 1) {
+            // 对于 Bulk / Interrupt 等普通端点，必须向 U 盘发送和解信，清除其内部错误状态
+            color_printk(YELLOW, BLACK, "xHCI: Sending Clear Feature to unlock physical endpoint...\n");
+            // 注意：usb_clear_feature_halt 内部会调用本函数(但入参是 EP0)，这就体现了分流设计的绝妙之处，不会引发死锁。
+            usb_clear_feature_halt(udev, ep_dci);
+        } else {
+            // 对于控制端点 EP0 (DCI=1)，USB 规范规定绝对不能发 Clear Feature！
+            // EP0 在收到下一个崭新的 Setup 包时，硬件会自动冲刷掉之前的 STALL 状态。
+            color_printk(GREEN, BLACK, "xHCI: EP0 CPR complete. Ready for next Setup token.\n");
+        }
+
+        // 抢救完毕！向上层如实汇报：“遇到了卡死，但内核已经把跑道清理干净了，你可以重试”。
+        return XHCI_COMP_STALL_ERROR;
+    }
+
+    // ==========================================================
+    // 4. 极其致命的灾难性错误 (超时、物理断开、驱动 Bug)
+    // ==========================================================
+    color_printk(RED, BLACK, "xHCI: FATAL Transfer Error %d on EP (DCI=%d)!\n", comp_code, ep_dci);
+
+    // 诊断：检查是不是极其恶劣的 U 盘直接物理掉线了
+    if (comp_code == XHCI_COMP_TIMEOUT) {
+        uint32 portsc = xhci_read_portsc(xhci, udev->port_id);
+        if ((portsc & 0x01) == 0) { // PORTSC 的 Bit 0 (CCS) 为 0 表示物理断开
+            color_printk(RED, BLACK, "xHCI: Diag - Device forcefully disconnected from Port!\n");
+            return XHCI_COMP_INVALID; // 设备已拔出，没救了
+        } else {
+            color_printk(RED, BLACK, "xHCI: Diag - Device still plugged in, but ignored doorbell. Firmware crash?\n");
+        }
+    }
+
+    // 返回那些致命错误码 (比如 XHCI_COMP_TRB_ERROR)，让上层直接放弃这个任务
+    return comp_code;
+}
+
 
 /**
  * 标准 USB 控制传输统一封装函数 (EP0 专属) - 结构体传参版
@@ -288,7 +370,7 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
     xhci_controller_t *xhci_controller = udev->xhci_controller;
     xhci_trb_t trb;
     uint64 setup_ptr, data_ptr = 0, status_ptr;
-    int32 status;
+    xhci_comp_code_e comp_code;
 
     uint16 length = usb_req_pkg->length;
 
@@ -352,18 +434,18 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
     // 阶段 5：步步为营的守护监听 (复用你写的完美错误处理函数)
     // ==========================================================
     // 监听 Setup 阶段
-    status = xhci_execute_transfer_sync(usb_dev, 1, setup_ptr, timeout_us);
-    if (status != 0) return status; // 如果 U 盘拒收命令，它会在这里 STALL 并被自动救活
+    comp_code = xhci_execute_transfer_sync(udev, 1, setup_ptr, timeout_us);
+    if (comp_code != 0) return comp_code; // 如果 U 盘拒收命令，它会在这里 STALL 并被自动救活
 
     // 监听 Data 阶段
-    if (wLength > 0 && data_buf != NULL) {
-        status = xhci_execute_transfer_sync(usb_dev, 1, data_ptr, timeout_us);
-        if (status != 0 && status != XHCI_COMP_SHORT_PACKET) return status;
+    if (length != 0 && data_buf != NULL) {
+        comp_code = xhci_execute_transfer_sync(udev, 1, data_ptr, timeout_us);
+        if (comp_code != 0 && comp_code != XHCI_COMP_SHORT_PACKET) return comp_code;
     }
 
     // 监听 Status 阶段
-    status = xhci_execute_transfer_sync(usb_dev, 1, status_ptr, timeout_us);
-    return status;
+    comp_code = xhci_execute_transfer_sync(udev, 1, status_ptr, timeout_us);
+    return comp_code;
 }
 
 /**
