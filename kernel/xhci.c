@@ -7,48 +7,33 @@
 #include "vmalloc.h"
 #include "usb.h"
 
-//写入input上文
-void xhci_input_context_add(xhci_input_context_t *input_ctx,void *from_ctx, uint32 ctx_size, uint32 ep_num) {
-    void* to_ctx = (uint8*)input_ctx + ctx_size * (ep_num + 1);
-    asm_mem_cpy(from_ctx,to_ctx,ctx_size);
-    input_ctx->input_ctx32.control.add_context |= 1 << ep_num;
-}
-
-//读取input上下文
-void xhci_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_num) {
-    void* from_ctx = (uint8*) dev_context + ctx_size * ep_num;
-    asm_mem_cpy(from_ctx,to_ctx,ctx_size);
-}
-
 //命令环/传输环入队列
-uint64 xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb) {
+uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
+    xhci_trb_t *trb_ptr;
     if (ring->index >= TRB_COUNT - 1) {
-        link_trb(&ring->ring_base[TRB_COUNT - 1], va_to_pa(ring->ring_base), ring->cycle);
+        uint8 chain = ring->ring_base[TRB_COUNT - 2].link.chain; //获取队列前一个trb的chain位
+
+        trb_ptr = &ring->ring_base[TRB_COUNT - 1];
+        trb_ptr->raw[0] = 0;
+        trb_ptr->raw[1] = 0;        //清空环中trb防止残留数据污染
+
+        trb_ptr->link.ring_segment_ptr = va_to_pa(ring->ring_base);
+        trb_ptr->link.toggle_cycle = 1;
+        trb_ptr->link.trb_type = XHCI_TRB_TYPE_LINK;
+        trb_ptr->link.cycle = ring->cycle;
+        trb_ptr->link.chain = chain;
+
         ring->index = 0;
         ring->cycle ^= TRB_FLAG_CYCLE;
     }
-    uint64 phy_ring_base = va_to_pa(&ring->ring_base[ring->index].member0);
-    ring->ring_base[ring->index].member0 = trb->member0;
-    ring->ring_base[ring->index].member1 = trb->member1 | ring->cycle;
-    ring->index++;
-    return phy_ring_base;
-}
 
-//事件环出队列
-int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb) {
-    xhci_ring_t *event_ring = &xhci_controller->event_ring;
-    while ((event_ring->ring_base[event_ring->index].member1 & TRB_FLAG_CYCLE) == event_ring->cycle) {
-        evt_trb->member0 = event_ring->ring_base[event_ring->index].member0;
-        evt_trb->member1 = event_ring->ring_base[event_ring->index].member1;
-        event_ring->index++;
-        if (event_ring->index >= TRB_COUNT) {
-            event_ring->index = 0;
-            event_ring->cycle ^= TRB_FLAG_CYCLE;
-        }
-        xhci_controller->rt_reg->intr_regs[0].erdp =
-                va_to_pa(&event_ring->ring_base[event_ring->index]) | XHCI_ERDP_EHB;
-    }
-    return 0;
+    trb_push->link.cycle = ring->cycle;   //设置需要如队列trb的cycle位
+
+    trb_ptr = &ring->ring_base[ring->index];
+    trb_ptr->raw[0] = trb_push->raw[0];
+    trb_ptr->raw[1] = trb_push->raw[1];
+    ring->index++;
+    return va_to_pa(trb_ptr);
 }
 
 /**
@@ -57,31 +42,70 @@ int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb) {
  * @param wait_trb_pa: 我们刚才提交的那个 TRB 的物理地址 (用于比对)
  * @param timeout_ms: 超时时间
  */
-int32 xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 wait_trb_pa, uint64 timeout_ms,trb_t *out_event_trb) {
+xhci_trb_comp_code_e xhci_wait_for_event(xhci_controller_t *xhci_controller, uint64 wait_trb_pa, uint64 timeout_ms,xhci_trb_t *out_event_trb) {
     xhci_ring_t *evt_ring = &xhci_controller->event_ring;
-    xhci_trb_t cur_evt_trb;
-    // uint8 cur_cycle = evt_ring->cycle;
+    xhci_trb_t *cur_evt_trb;
     while (timeout_ms--) {
-        cur_evt_trb = evt_ring->ring_base[evt_ring->index];
-        if(cur_evt_trb.generic.cycle ==  evt_ring->cycle) {
+        //如果当前事件trb的cycle位相同则表示事件环有事件
+        cur_evt_trb = &evt_ring->ring_base[evt_ring->index];
+        if(cur_evt_trb->cmd_comp_event.cycle == evt_ring->cycle) {
+            //事件trb向前移动一个 ，判断事件环是否满了
             evt_ring->index++;
             if (evt_ring->index >= TRB_COUNT) {
                 evt_ring->index = 0;
                 evt_ring->cycle ^= 1;
             }
             xhci_controller->rt_reg->intr_regs[0].erdp = va_to_pa(&evt_ring->ring_base[evt_ring->index]) | XHCI_ERDP_EHB;
+
+            //如果是命令事件或传输事件则饭或trb和完成码给调用者
+            trb_type_e evt_type = cur_evt_trb->cmd_comp_event.trb_type;
+            if((evt_type == XHCI_TRB_TYPE_TRANSFER_EVENT ||
+                evt_type == XHCI_TRB_TYPE_CMD_COMPLETION) &&
+                cur_evt_trb->cmd_comp_event.cmd_trb_ptr == wait_trb_pa){
+                if (out_event_trb != NULL) {
+                    *out_event_trb = *cur_evt_trb;
+                }
+                return cur_evt_trb->cmd_comp_event.comp_code;
+            }
+
+            // 其他类型的旁路事件处理与日志分发
+            switch (evt_type){
+                case XHCI_TRB_TYPE_PORT_STATUS_CHG:
+                    color_printk(YELLOW, BLACK, "[xHCI Event] Port Status Change! Device plugged/unplugged.\n");
+                    break;
+                case XHCI_TRB_TYPE_BANDWIDTH_REQ:
+                    color_printk(BLUE, BLACK, "[xHCI Event] Bandwidth Request (Ignored).\n");
+                    break;
+                case XHCI_TRB_TYPE_DOORBELL:
+                    color_printk(BLUE, BLACK, "[xHCI Event] Virtualization Doorbell (Ignored).\n");
+                    break;
+                case XHCI_TRB_TYPE_HOST_CTRL:
+                    color_printk(RED, BLACK, "[xHCI Event] Host Controller internal state change!\n");
+                    break;
+                case XHCI_TRB_TYPE_DEVICE_NOTIFY:
+                    color_printk(BLUE, BLACK, "[xHCI Event] Device Notification received (Ignored).\n");
+                    break;
+                case XHCI_TRB_TYPE_MFINDEX_WRAP:
+                    // 这个中断每 2 秒发生一次，不用打印，否则会刷屏
+                    break;
+                default:
+                    color_printk(RED, BLACK, "[xHCI Event] Unknown TRB Type: %d\n", evt_type);
+                    break;
         }
-
-        if (cur_evt_trb.generic.ptr == wait_trb_pa) {
-
-            *out_event_trb = evt_trb;
-            return cur_evt_trb.;
-
-        }
-        // 如果不是我们要的，就继续循环，等下一个事件
-        // (在操作系统中，应该把这个事件分发给其他等待的驱动，但在裸机下直接丢弃即可)
     }
     return XHCI_COMP_TIMEOUT;
+}
+
+//初始化环
+static inline int xhci_ring_init(xhci_ring_t *ring, uint32 align_size) {
+    ring->ring_base = kzalloc(align_up(TRB_COUNT * sizeof(trb_t), align_size));
+    ring->index = 0;
+    ring->cycle = TRB_FLAG_CYCLE;
+}
+
+//响铃
+static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 db_number, uint32 value) {
+    xhci_controller->db_reg[db_number] = value;
 }
 
 /**
@@ -99,7 +123,7 @@ xhci_trb_comp_code_e xhci_execute_command_sync(xhci_controller_t *xhci_controlle
 
     // ★ 关键修改：把 out_event_trb 指针继续传递给底层的 wait 函数
     // 底层的 wait 函数在轮询/中断匹配到事件时，需要把那个 Event TRB 的 16 字节内容 copy 到这个指针里
-    xhci_trb_comp_code_e comp_code = xhci_wait_for_completion(xhci_controller, cmd_pa, timeout_us, out_event_trb);
+    xhci_trb_comp_code_e comp_code = xhci_wait_for_event(xhci_controller, cmd_pa, timeout_us, out_event_trb);
 
     if (comp_code == XHCI_COMP_SUCCESS) {
         return comp_code;
@@ -159,6 +183,20 @@ xhci_trb_comp_code_e xhci_execute_command_sync(xhci_controller_t *xhci_controlle
     // 这里直接返回错误码，让上层决定是 Kernel Panic 还是禁用该 USB 设备。
     return comp_code;
 }
+
+//写入input上文
+void xhci_input_context_add(xhci_input_context_t *input_ctx,void *from_ctx, uint32 ctx_size, uint32 ep_dci) {
+    void* to_ctx = (uint8*)input_ctx + ctx_size * (ep_dci + 1);
+    asm_mem_cpy(from_ctx,to_ctx,ctx_size);
+    input_ctx->input_ctx32.control.add_context |= 1 << ep_dci;
+}
+
+//读取input上下文
+void xhci_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_dci) {
+    void* from_ctx = (uint8*) dev_context + ctx_size * ep_dci;
+    asm_mem_cpy(from_ctx,to_ctx,ctx_size);
+}
+
 
 
 //分配插槽

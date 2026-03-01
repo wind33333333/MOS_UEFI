@@ -8,48 +8,64 @@
 #define TRB_COUNT 256        //trb个数
 
 // ============================================================================
-// xHCI 规范：TRB 完成码 (Completion Code)
-// 来源：xHCI Specification Rev 1.2, Section 6.4.5
+// xHCI 规范 6.4.5: TRB 完成码 (按【事件归属类型】严格物理隔离版)
+// 设计目的：完美适配 xhci_execute_command_sync 与 xhci_execute_transfer_sync
 // ============================================================================
 typedef enum : int8 {
-    XHCI_COMP_TIMEOUT                    = -1, // 超时/未获取到事件 (自定义：内核软件层面的死等超时)
-    XHCI_COMP_INVALID                    = 0,  // 非法状态 (TRB 尚未被硬件执行，或被系统清零)
-    XHCI_COMP_SUCCESS                    = 1,  // 完美成功 (数据完整传输无报错)
-    XHCI_COMP_DATA_BUFFER_ERROR          = 2,  // 数据缓冲区错误 (主机内存 DMA 寻址失败或越界)
-    XHCI_COMP_BABBLE_ERROR               = 3,  // 喋喋不休错误 (设备发来的数据超出了你 TRB 限制的最大包长)
-    XHCI_COMP_USB_TRANSACTION_ERROR      = 4,  // 传输事务错误 (物理链路无响应/CRC校验失败/总线超时)
-    XHCI_COMP_TRB_ERROR                  = 5,  // TRB 格式错误 (你构造的 TRB 参数非法，如 Chain 位设置错误)
-    XHCI_COMP_STALL_ERROR                = 6,  // 端点卡死 (设备主动返回 STALL 拒绝服务，端点进入 Halted 状态)
-    XHCI_COMP_RESOURCE_ERROR             = 7,  // 资源错误 (xHCI 控制器内部资源或内存耗尽)
-    XHCI_COMP_BANDWIDTH_ERROR            = 8,  // 带宽不足 (USB 总线带宽已被占满，无法安排新传输)
-    XHCI_COMP_NO_SLOTS_AVAILABLE_ERROR   = 9,  // 无可用槽位 (设备连接过多，主板 Slot 资源耗尽)
-    XHCI_COMP_INVALID_STREAM_TYPE_ERROR  = 10, // 流类型非法 (USB 3.0 Streams 配置错误)
-    XHCI_COMP_SLOT_NOT_ENABLED_ERROR     = 11, // 槽位未启用 (对未经 Enable Slot 初始化的槽位下发了命令)
-    XHCI_COMP_ENDPOINT_NOT_ENABLED_ERROR = 12, // 端点未启用 (对未经初始化的 Endpoint 下发了请求)
-    XHCI_COMP_SHORT_PACKET               = 13, // 短包响应 (设备返回的数据少于预期，在 BOT 读写中属正常现象)
-    XHCI_COMP_RING_UNDERRUN              = 14, // 环下溢出 (等时传输：主机往环里塞数据的速度太慢)
-    XHCI_COMP_RING_OVERRUN               = 15, // 环上溢出 (等时传输：主机从环里收数据的速度太慢)
-    XHCI_COMP_VF_EVENT_RING_FULL_ERROR   = 16, // 虚拟功能事件环已满 (SR-IOV 虚拟化专用硬件拦截)
-    XHCI_COMP_PARAMETER_ERROR            = 17, // 参数错误 (Input Context 上下文数据结构填写错误)
-    XHCI_COMP_BANDWIDTH_OVERRUN_ERROR    = 18, // 带宽超载错误
-    XHCI_COMP_CONTEXT_STATE_ERROR        = 19, // 状态机时序错误 (如：试图向 Halted 的端点直接发普通 TRB)
-    XHCI_COMP_NO_PING_RESPONSE_ERROR     = 20, // 无 Ping 响应 (USB 3.0 链路层电源管理错误)
-    XHCI_COMP_EVENT_RING_FULL_ERROR      = 21, // 事件环满爆错误 (内核读中断太慢，Event Ring 彻底被硬件塞满)
-    XHCI_COMP_INCOMPATIBLE_DEVICE_ERROR  = 22, // 不兼容的设备接入
-    XHCI_COMP_MISSED_SERVICE_ERROR       = 23, // 错过服务 (等时传输错过了 USB 微帧的严格时间窗口)
-    XHCI_COMP_COMMAND_RING_STOPPED       = 24, // 命令环已停止 (发送 Stop Ring 命令后的正常回执)
-    XHCI_COMP_COMMAND_ABORTED            = 25, // 命令已中止 (发送 Abort Command 命令后的正常回执)
-    XHCI_COMP_STOPPED                    = 26, // 传输已停止 (发送 Stop Endpoint 命令后的正常回执)
-    XHCI_COMP_STOPPED_LENGTH_INVALID     = 27, // 传输停止且长度无效 (停止时硬件正好在跨界，无法计算残余字节数)
-    XHCI_COMP_STOPPED_SHORT_PACKET       = 28, // 传输停止且刚好遇到短包
-    XHCI_COMP_MAX_EXIT_LATENCY_TOO_LARGE = 29, // 退出延迟过大 (链路电源管理从休眠唤醒时的评估失败)
-    // 注意：规范中代码 30 是保留的 (Reserved)
-    XHCI_COMP_ISOCH_BUFFER_OVERRUN       = 31, // 等时缓冲区上溢出
-    XHCI_COMP_EVENT_LOST_ERROR           = 32, // 事件丢失错误 (事件环溢出导致主板被迫丢弃了新发生的中断事件)
-    XHCI_COMP_UNDEFINED_ERROR            = 33, // 未定义错误 (xHCI 硬件内部发生了不可知的致命崩溃)
-    XHCI_COMP_INVALID_STREAM_ID_ERROR    = 34, // 流 ID 非法 (试图使用未分配的 Stream ID)
-    XHCI_COMP_SECONDARY_BANDWIDTH_ERROR  = 35, // 次级带宽分配错误
-    XHCI_COMP_SPLIT_TRANSACTION_ERROR    = 36  // 拆分事务错误 (通常发生在使用 USB 2.0 Hub 挂载低速键鼠时)
+    // ==========================================================
+    // 【第 1 阵营：通用与系统级事件】 (Shared / System Level)
+    // 归属：命令和传输都可能遇到，或者属于主板硬件级崩溃。
+    // 处理建议：在 cmd 和 transfer 的函数中都需要做基础的拦截。
+    // ==========================================================
+    XHCI_COMP_TIMEOUT                    = -1, // [系统软件] 超时/未获取到事件
+    XHCI_COMP_INVALID                    = 0,  // [通用] 非法状态
+    XHCI_COMP_SUCCESS                    = 1,  // [通用] 完美成功
+    XHCI_COMP_TRB_ERROR                  = 5,  // [通用] TRB 格式非法 (填错字段、Chain不对等)
+    XHCI_COMP_RESOURCE_ERROR             = 7,  // [通用] 主板 xHC 控制器内部资源/内存耗尽
+    XHCI_COMP_VF_EVENT_RING_FULL_ERROR   = 16, // [通用] 虚拟功能事件环满爆 (SR-IOV)
+    XHCI_COMP_EVENT_RING_FULL_ERROR      = 21, // [通用] 真实事件环满爆 (内核中断处理太慢)
+    XHCI_COMP_EVENT_LOST_ERROR           = 32, // [通用] 事件丢失 (事件环溢出导致主板丢弃回执)
+    XHCI_COMP_UNDEFINED_ERROR            = 33, // [通用] 未定义的致命硬件崩溃
+
+    // ==========================================================
+    // 【第 2 阵营：命令事件专属】 (Command Event Only)
+    // 归属：仅由 Command Ring 触发。
+    // 处理建议：全部塞进 xhci_execute_command_sync 的 switch-case 中。
+    // ==========================================================
+    XHCI_COMP_BANDWIDTH_ERROR            = 8,  // [命令] 配置端点时，USB 总线带宽不足
+    XHCI_COMP_NO_SLOTS_AVAILABLE_ERROR   = 9,  // [命令] Enable Slot 时，主板分配不出新槽位
+    XHCI_COMP_INVALID_STREAM_TYPE_ERROR  = 10, // [命令] 配置流上下文时，Stream Type 非法
+    XHCI_COMP_SLOT_NOT_ENABLED_ERROR     = 11, // [命令] 对未经 Enable 的槽位下发了命令
+    XHCI_COMP_ENDPOINT_NOT_ENABLED_ERROR = 12, // [命令] 对未经初始化的端点下发了命令
+    XHCI_COMP_PARAMETER_ERROR            = 17, // [命令] Context 上下文结构体参数填错或未对齐
+    XHCI_COMP_CONTEXT_STATE_ERROR        = 19, // [命令] 状态机时序错误 (如：乱发 Reset Endpoint)
+    XHCI_COMP_COMMAND_RING_STOPPED       = 24, // [命令] 正常回执：命令环已成功停止
+    XHCI_COMP_COMMAND_ABORTED            = 25, // [命令] 正常回执：命令已被成功中止
+    XHCI_COMP_SECONDARY_BANDWIDTH_ERROR  = 35, // [命令] 配置端点辅助带宽时出错
+
+    // ==========================================================
+    // 【第 3 阵营：传输事件专属】 (Transfer Event Only)
+    // 归属：仅由 Transfer Ring (EP0-31) 通信触发。
+    // 处理建议：全部塞进 xhci_execute_transfer_sync 的 switch-case 中。
+    // ==========================================================
+    XHCI_COMP_DATA_BUFFER_ERROR          = 2,  // [传输] 数据缓冲区错误 (主机内存 DMA 寻址失败)
+    XHCI_COMP_BABBLE_ERROR               = 3,  // [传输] 喋喋不休 (U盘发来的数据超出预期，端点 Halted)
+    XHCI_COMP_USB_TRANSACTION_ERROR      = 4,  // [传输] 物理链路车祸 (超时/CRC失败，端点 Halted)
+    XHCI_COMP_STALL_ERROR                = 6,  // [传输] 逻辑卡死 (U盘主动拒绝服务，端点 Halted)
+    XHCI_COMP_SHORT_PACKET               = 13, // [传输] 短包响应 (数据少于预期，BOT 中属正常)
+    XHCI_COMP_RING_UNDERRUN              = 14, // [传输] 等时环下溢出 (发数据太慢)
+    XHCI_COMP_RING_OVERRUN               = 15, // [传输] 等时环上溢出 (收数据太慢)
+    XHCI_COMP_BANDWIDTH_OVERRUN_ERROR    = 18, // [传输] 带宽超载 (设备发送过量数据)
+    XHCI_COMP_NO_PING_RESPONSE_ERROR     = 20, // [传输] USB 3.0 链路无 Ping 响应
+    XHCI_COMP_INCOMPATIBLE_DEVICE_ERROR  = 22, // [传输] 试图与不兼容的设备通信
+    XHCI_COMP_MISSED_SERVICE_ERROR       = 23, // [传输] 等时传输错过了时间微帧
+    XHCI_COMP_STOPPED                    = 26, // [传输] 正常回执：传输流被主板强行刹车
+    XHCI_COMP_STOPPED_LENGTH_INVALID     = 27, // [传输] 正常回执：刹车时残余长度无法计算
+    XHCI_COMP_STOPPED_SHORT_PACKET       = 28, // [传输] 正常回执：刹车时刚好遇到短包
+    XHCI_COMP_MAX_EXIT_LATENCY_TOO_LARGE = 29, // [传输] 链路从休眠唤醒失败
+    XHCI_COMP_ISOCH_BUFFER_OVERRUN       = 31, // [传输] 等时接收缓冲区上溢
+    XHCI_COMP_INVALID_STREAM_ID_ERROR    = 34, // [传输] UAS 协议中发了非法的 Stream ID
+    XHCI_COMP_SPLIT_TRANSACTION_ERROR    = 36  // [传输] USB 2.0 Hub 拆分事务失败
 } xhci_trb_comp_code_e;
 
 
@@ -60,6 +76,8 @@ typedef enum : int8 {
 typedef enum ：uint32 {
     XHCI_TRB_TYPE_RESERVED = 0,          // 0: 保留 (非法 TRB)
 
+    XHCI_TRB_TYPE_LINK         = 6,      // 链接 TRB (传输环和命令环通用★ 物理内存环填满时，用它跳回环的开头)
+
     // ========================================================================
     // 【传输环 TRB】(Transfer Ring) - 塞入端点环，用于真实的数据搬运
     // ========================================================================
@@ -68,7 +86,6 @@ typedef enum ：uint32 {
     XHCI_TRB_TYPE_DATA_STAGE   = 3,      // 控制传输：数据阶段
     XHCI_TRB_TYPE_STATUS_STAGE = 4,      // 控制传输：状态确认阶段
     XHCI_TRB_TYPE_ISOCH        = 5,      // 等时传输 (用于 USB 麦克风、摄像头等实时设备)
-    XHCI_TRB_TYPE_LINK         = 6,      // 链接 TRB (★ 物理内存环填满时，用它跳回环的开头)
     XHCI_TRB_TYPE_EVENT_DATA   = 7,      // 事件数据 (给虚拟化或者特殊同步用的)
     XHCI_TRB_TYPE_NO_OP        = 8,      // 空操作 TRB (占坑用)
 
@@ -105,6 +122,31 @@ typedef enum ：uint32 {
 
     // 48 到 63 是厂商自定义 (Vendor Defined)，通常不用管
 } trb_type_e;
+
+// ============================================================================
+// xHCI 规范 6.4.4.1: 链接 TRB (Link TRB, Type = 6)
+// 作用：放置在 Ring 的末尾，将硬件执行指针引回 Ring 的头部，并翻转硬件的周期期待值。
+// ============================================================================
+typedef struct trb_link_t{
+    // Dword 0 & 1: 下一个 Ring Segment (环段) 的首地址。
+    // 在我们这种单段环 (Single-Segment Ring) 的设计中，这里永远填 Ring 第 0 个 TRB 的物理地址！
+    // 注意：地址必须是 16 字节对齐的 (也就是低 4 位必须为 0)。
+    uint64 ring_segment_ptr;
+
+    // Dword 2
+    uint32 rsvd1:22;          // Bits [21:0]: 保留，填 0
+    uint32 intr_target:10;    // Bits [31:22]: 目标中断器号 (通常填 0 即可)
+
+    // Dword 3 (x86 小端序，从低位开始)
+    uint32 cycle:1;           // Bit [0]: 硬件翻转位 (C)
+    uint32 toggle_cycle:1;    // Bit [1]: ★ 极度关键！切换周期位 (TC)。
+    uint32 rsvd2:2;           // Bits [3:2]: 保留，填 0
+    uint32 chain:1;           // Bit [4]: 链位 (CH)。在普通的 Link TRB 中填 0
+    uint32 ioc:1;             // Bit [5]: 完成时中断位 (IOC)。通常填 0，不让它产生多余中断
+    uint32 rsvd3:4;           // Bits [9:6]: 保留，填 0
+    uint32 trb_type:6;        // Bits [15:10]: 必须是 6 (XHCI_TRB_TYPE_LINK_TRB)
+    uint32 rsvd4:16;          // Bits [31:16]: 保留，填 0
+} trb_link_t;
 
 //============================================传输trb=================================
 
@@ -336,13 +378,13 @@ typedef struct trb_set_tr_deq_ptr_cmd_t{
     uint16 stream_id;     // BOT 协议不支持 Stream，必须填 0
 
     // Dword 3
-    uint32 cycle            : 1;
-    uint32 rsvd1            : 8;
+    uint32          cycle   : 1;
+    uint32          rsvd1   : 8;
     uint32          tsp     : 1;
     trb_type_e      type    : 6;      // ★ 必须填 16
-    uint32 ep_dci           : 5;      // 端点索引 (DCI)
-    uint32 rsvd2            : 3;
-    uint32 slot_id          : 8;
+    uint32          ep_dci  : 5;      // 端点索引 (DCI)
+    uint32          rsvd2   : 3;
+    uint32          slot_id : 8;
 }trb_set_tr_deq_ptr_cmd_t;
 
 // ============================================================================
@@ -422,13 +464,14 @@ typedef union xhci_trb_t {
     uint64 raw[2];
 
     // 【视角 2：极简 64 位指针视角】(你刚才提议的优质写法)
-    struct {
-        uint64 ptr;
-        uint32 status;
+    // struct {
+    //     uint64 ptr;
+    //     uint32 status;
+    //     uint32 ctrl;
+    // }generic;
 
-        uint32 cycle:1;
-        uint32 ctrl:31;
-    }generic;
+    //命令或传输环连接trb
+    trb_link_t link;
 
     // 【视角 3：业务定制视角】(包含了所有具体的 TRB 解析格式) ... 以后加什么 TRB，就往这里塞什么 struct ...
     //命令trb xhci命令环专用，用于发送启用插槽等
@@ -984,29 +1027,9 @@ typedef struct {
 
 
 
-//初始化环
-static inline int xhci_ring_init(xhci_ring_t *ring, uint32 align_size) {
-    ring->ring_base = kzalloc(align_up(TRB_COUNT * sizeof(trb_t), align_size));
-    ring->index = 0;
-    ring->cycle = TRB_FLAG_CYCLE;
-}
 
-//响铃
-static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 db_number, uint32 value) {
-    xhci_controller->db_reg[db_number] = value;
-}
 
-int32 xhci_set_tr_dequeue_pointer(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_dci, xhci_ring_t *transfer_ring);
-void xhci_reset_endpoint(xhci_controller_t *xhci_controller,uint8 slot_id, uint8 ep_dci, uint8 tsp_flag);
-uint8 xhci_enable_slot(struct usb_dev_t *usb_dev);
-void xhci_address_device(struct usb_dev_t *usb_dev);
-uint64 xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb);
-int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb);
-void xhci_input_context_add(xhci_input_context_t *input_ctx,void *from_ctx, uint32 ctx_size, uint32 ep_num);
-void xhci_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ctx_size, uint32 ep_num);
-uint8 xhci_ecap_find(xhci_controller_t *xhci_controller,void **ecap_arr,uint8 cap_id);
-int32 xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 target_trb_phys, uint64 timeout_ms);
-void xhci_recover_stalled_endpoint(struct usb_dev_t *usb_dev, uint8 ep_dci);
+
 
 
 /////////////////////////////////////// 准备作废 /////////////////////////////////////////////
