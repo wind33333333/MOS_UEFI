@@ -106,6 +106,8 @@ typedef enum ：uint32 {
     // 48 到 63 是厂商自定义 (Vendor Defined)，通常不用管
 } trb_type_e;
 
+//============================================传输trb=================================
+
 // ============================================================================
 // Setup Stage TRB (Type 2) - 控制传输的第一阶段
 // ============================================================================
@@ -305,6 +307,11 @@ typedef struct trb_status_stage_t {
     uint32          rsvd4 : 15;
 }trb_status_stage_t;
 
+//===================================================================
+
+
+//==================================命令trb==================================================
+
 //复位端点trb
 typedef struct trb_rest_ep_cmd_t{
     uint32          rsvd0[3];
@@ -353,6 +360,62 @@ typedef struct trb_enable_slot_cmd_t {
     uint32          rsvd2:11;       // Bits 21-31: 保留，填 0
 } trb_enable_slot_cmd_t;
 
+//=================================================================================================
+
+
+//============================ 事件trb ============================================================
+
+// 1. 命令完成事件 (Command Completion Event, Type = 33)
+// 发生场景：你发了 Enable Slot, Address Device 等主板命令后，主板的回执。
+typedef struct trb_cmd_comp_event_t{
+    uint64 cmd_trb_ptr;       // Dword 0 & 1: 刚才引发该事件的 Command TRB 物理地址
+    uint32 cmd_comp_param:24; // Dword 2 [23:0]: 命令完成参数 (通常为 0，个别命令有用)
+    uint32 comp_code:8;       // Dword 2 [31:24]: 完成码 (对应 xhci_comp_code_t)
+
+    uint32 cycle:1;           // Dword 3 [0]: 硬件翻转位
+    uint32 rsvd1:9;           // Dword 3 [9:1]: 保留
+    uint32 trb_type:6;        // Dword 3 [15:10]: 必须是 33 (XHCI_TRB_TYPE_CMD_COMP_EVENT)
+    uint32 vf_id:8;           // Dword 3 [23:16]: 虚拟功能 ID (SR-IOV 专用，常规填 0)
+    uint32 slot_id:8;         // Dword 3 [31:24]: ★ 极度重要！这里藏着主板分配的 Slot ID！
+}trb_cmd_comp_event_t;
+
+
+// 2. 传输事件 (Transfer Event, Type = 32)
+// 发生场景：U盘数据读写完成、Setup 控制传输完成等，端点产生的中断回执。
+typedef struct trb_transfer_event_t{
+    uint64 trb_ptr;           // Dword 0 & 1: 引发中断的那条 Transfer/Setup TRB 物理地址
+    uint32 transfer_len:24;   // Dword 2 [23:0]: ★ 极度重要！残余字节数 (没传完的数据量，短包时必看)
+    uint32 comp_code:8;       // Dword 2 [31:24]: 完成码 (如 SUCCESS, SHORT_PACKET, STALL)
+
+    uint32 cycle:1;           // Dword 3 [0]: 硬件翻转位
+    uint32 rsvd1:1;           // Dword 3 [1]: 保留
+    uint32 event_data:1;      // Dword 3 [2]: ED 位 (是否为纯事件数据)
+    uint32 rsvd2:7;           // Dword 3 [9:3]: 保留
+    uint32 trb_type:6;        // Dword 3 [15:10]: 必须是 32 (XHCI_TRB_TYPE_TRANSFER_EVENT)
+    uint32 endpoint_id:5;     // Dword 3 [20:16]: 发生事件的端点 DCI (1 是 EP0，等)
+    uint32 rsvd3:3;           // Dword 3 [23:21]: 保留
+    uint32 slot_id:8;         // Dword 3 [31:24]: 发生事件的设备槽位号
+} trb_transfer_event_t;
+
+// ============================================================================
+// xHCI 规范 6.4.2.3: 端口状态改变事件 TRB (Port Status Change Event, Type = 34)
+// 发生场景：物理线缆的插拔、端口复位完成、或者链路电源状态改变时硬件主动上报。
+// ============================================================================
+typedef struct trb_port_status_change_event_t{
+    uint32 rsvd0:24;          // Dword 0 [23:0]: 保留，全 0
+    uint32 port_id:8;         // Dword 0 [31:24]: ★ 核心机密！发生状态改变的物理端口号 (比如 1 号口)
+
+    uint32 rsvd1;             // Dword 1: 保留，全 0
+    uint32 rsvd2;             // Dword 2: 保留，全 0
+
+    uint32 cycle:1;           // Dword 3 [0]: 硬件翻转位 (Cycle Bit)
+    uint32 rsvd3:9;           // Dword 3 [9:1]: 保留
+    uint32 trb_type:6;        // Dword 3 [15:10]: 必须是 34 (XHCI_TRB_TYPE_PORT_STATUS_CHANGE_EVENT)
+    uint32 rsvd4:16;          // Dword 3 [31:16]: 保留
+}trb_port_status_change_event_t;
+
+//================================================================================================
+
 //trb集合
 typedef union xhci_trb_t {
     // 【视角 1：内存搬运工视角】(用于底层 enqueue 拷贝和清零)
@@ -373,15 +436,23 @@ typedef union xhci_trb_t {
         uint32 ctrl;
     } generic_32;
 
-    // 【视角 4：业务定制视角】(包含了所有具体的 TRB 解析格式)
+    // 【视角 4：业务定制视角】(包含了所有具体的 TRB 解析格式) ... 以后加什么 TRB，就往这里塞什么 struct ...
+    //命令trb xhci命令环专用，用于发送启用插槽等
     trb_enable_slot_cmd_t    enable_slot_cmd;
     trb_set_tr_deq_ptr_cmd_t set_tr_deq_ptr_cmd;
     trb_rest_ep_cmd_t        rest_ep_cmd;
+
+    //传输trb
+    //控制传输端点1专用，用于发送usb命令如获取设备描述符/设备信息等
     trb_setup_stage_t        setup_stage;
     trb_data_stage_t         data_stage;
     trb_status_stage_t       status_stage;
-    // ... 以后加什么 TRB，就往这里塞什么 struct ...
+    //bulk端点专用端点2-31专用，用于数据传输如read 10 write10等
 
+    //事件trb
+    trb_cmd_comp_event_t           cmd_comp_event;
+    trb_transfer_event_t           transfer_event;
+    trb_port_status_change_event_t prot_status_change_event;
 }xhci_trb_t;
 
 // ===== 1. 能力寄存器 (Capability Registers) =====
