@@ -668,3 +668,8 @@ uint8 utf16le_to_ascii(uint16 *src, char *dst, uint8 len) {
 
     return i; // 返回实际转换的字符数
 }
+
+// 纯编译器屏障：告诉 GCC "不要把我上下的内存读写指令打乱重排，不要优化缓存变量"
+static void compiler_barrier() {
+    asm volatile("" ::: "memory");
+}
