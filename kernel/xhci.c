@@ -44,11 +44,11 @@ uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
  */
 xhci_trb_comp_code_e xhci_wait_for_event(xhci_controller_t *xhci_controller, uint64 wait_trb_pa, uint64 timeout_ms,xhci_trb_t *out_event_trb) {
     xhci_ring_t *evt_ring = &xhci_controller->event_ring;
-    xhci_trb_t *cur_evt_trb;
+    xhci_trb_t local_trb;
     while (timeout_ms--) {
-        //如果当前事件trb的cycle位相同则表示事件环有事件
-        cur_evt_trb = &evt_ring->ring_base[evt_ring->index];
-        if(cur_evt_trb->cmd_comp_event.cycle == evt_ring->cycle) {
+        //先从事件环取出当前事件trb,如果当前事件trb的cycle位相同则表示事件环有事件
+        local_trb = evt_ring->ring_base[evt_ring->index];
+        if(local_trb.cmd_comp_event.cycle == evt_ring->cycle) {
             //事件trb向前移动一个 ，判断事件环是否满了
             evt_ring->index++;
             if (evt_ring->index >= TRB_COUNT) {
@@ -58,18 +58,17 @@ xhci_trb_comp_code_e xhci_wait_for_event(xhci_controller_t *xhci_controller, uin
             xhci_controller->rt_reg->intr_regs[0].erdp = va_to_pa(&evt_ring->ring_base[evt_ring->index]) | XHCI_ERDP_EHB;
 
             //如果是命令事件或传输事件则饭或trb和完成码给调用者
-            trb_type_e evt_type = cur_evt_trb->cmd_comp_event.trb_type;
-            if((evt_type == XHCI_TRB_TYPE_TRANSFER_EVENT ||
-                evt_type == XHCI_TRB_TYPE_CMD_COMPLETION) &&
-                cur_evt_trb->cmd_comp_event.cmd_trb_ptr == wait_trb_pa){
+            if((local_trb.cmd_comp_event.trb_type == XHCI_TRB_TYPE_TRANSFER_EVENT ||
+                local_trb.cmd_comp_event.trb_type == XHCI_TRB_TYPE_CMD_COMPLETION) &&
+                local_trb.cmd_comp_event.cmd_trb_ptr == wait_trb_pa){
                 if (out_event_trb != NULL) {
-                    *out_event_trb = *cur_evt_trb;
+                    *out_event_trb = local_trb;
                 }
-                return cur_evt_trb->cmd_comp_event.comp_code;
-            }
+                return local_trb.cmd_comp_event.comp_code;
+                }
 
             // 其他类型的旁路事件处理与日志分发
-            switch (evt_type){
+            switch (local_trb.cmd_comp_event.trb_type){
                 case XHCI_TRB_TYPE_PORT_STATUS_CHG:
                     color_printk(YELLOW, BLACK, "[xHCI Event] Port Status Change! Device plugged/unplugged.\n");
                     break;
@@ -89,11 +88,12 @@ xhci_trb_comp_code_e xhci_wait_for_event(xhci_controller_t *xhci_controller, uin
                     // 这个中断每 2 秒发生一次，不用打印，否则会刷屏
                     break;
                 default:
-                    color_printk(RED, BLACK, "[xHCI Event] Unknown TRB Type: %d\n", evt_type);
+                    color_printk(RED, BLACK, "[xHCI Event] Unknown TRB Type: %d\n", local_trb.cmd_comp_event.trb_type);
                     break;
+            }
         }
+        return XHCI_COMP_TIMEOUT;
     }
-    return XHCI_COMP_TIMEOUT;
 }
 
 //初始化环
