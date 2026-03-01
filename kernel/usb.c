@@ -285,13 +285,13 @@ int usb_set_interface(usb_if_t *usb_if) {
  * @param timeout_us   超时时间 (微秒)
  * @return xhci_comp_code_t 返回强类型的硬件完成码
  */
-xhci_comp_code_e xhci_execute_transfer_sync(usb_dev_t *udev, uint8 ep_dci, uint64 wait_trb_pa, uint32 timeout_us) {
+xhci_trb_comp_code_e xhci_execute_transfer_sync(usb_dev_t *udev, uint8 ep_dci, uint64 wait_trb_pa, uint32 timeout_us) {
     xhci_controller_t *xhci = udev->xhci_controller;
 
     // ==========================================================
     // 1. 挂起等待事件环 (Event Ring) 的回执
     // ==========================================================
-    xhci_comp_code_e comp_code = xhci_wait_for_completion(xhci, wait_trb_pa, timeout_us);
+    xhci_trb_comp_code_e comp_code = xhci_wait_for_completion(xhci, wait_trb_pa, timeout_us);
 
     // ==========================================================
     // 2. 完美成功或可接受的短包 (直接放行)
@@ -374,7 +374,7 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
     xhci_controller_t *xhci_controller = udev->xhci_controller;
     xhci_trb_t trb;
     uint64 setup_ptr, data_ptr = 0, status_ptr;
-    xhci_comp_code_e comp_code;
+    xhci_trb_comp_code_e comp_code;
 
     uint16 length = usb_req_pkg->length;
 

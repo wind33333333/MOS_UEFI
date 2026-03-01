@@ -23,13 +23,13 @@ void xhci_context_read(xhci_device_context_t *dev_context,void* to_ctx,uint32 ct
 //命令环/传输环入队列
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb) {
     if (ring->index >= TRB_COUNT - 1) {
-        link_trb(&ring->ring_base[TRB_COUNT - 1], va_to_pa(ring->ring_base), ring->status_c);
+        link_trb(&ring->ring_base[TRB_COUNT - 1], va_to_pa(ring->ring_base), ring->cycle);
         ring->index = 0;
-        ring->status_c ^= TRB_FLAG_CYCLE;
+        ring->cycle ^= TRB_FLAG_CYCLE;
     }
     uint64 phy_ring_base = va_to_pa(&ring->ring_base[ring->index].member0);
     ring->ring_base[ring->index].member0 = trb->member0;
-    ring->ring_base[ring->index].member1 = trb->member1 | ring->status_c;
+    ring->ring_base[ring->index].member1 = trb->member1 | ring->cycle;
     ring->index++;
     return phy_ring_base;
 }
@@ -37,13 +37,13 @@ uint64 xhci_ring_enqueue(xhci_ring_t *ring, trb_t *trb) {
 //事件环出队列
 int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb) {
     xhci_ring_t *event_ring = &xhci_controller->event_ring;
-    while ((event_ring->ring_base[event_ring->index].member1 & TRB_FLAG_CYCLE) == event_ring->status_c) {
+    while ((event_ring->ring_base[event_ring->index].member1 & TRB_FLAG_CYCLE) == event_ring->cycle) {
         evt_trb->member0 = event_ring->ring_base[event_ring->index].member0;
         evt_trb->member1 = event_ring->ring_base[event_ring->index].member1;
         event_ring->index++;
         if (event_ring->index >= TRB_COUNT) {
             event_ring->index = 0;
-            event_ring->status_c ^= TRB_FLAG_CYCLE;
+            event_ring->cycle ^= TRB_FLAG_CYCLE;
         }
         xhci_controller->rt_reg->intr_regs[0].erdp =
                 va_to_pa(&event_ring->ring_base[event_ring->index]) | XHCI_ERDP_EHB;
@@ -58,23 +58,24 @@ int xhci_ering_dequeue(xhci_controller_t *xhci_controller, trb_t *evt_trb) {
  * @param timeout_ms: 超时时间
  */
 int32 xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 wait_trb_pa, uint64 timeout_ms,trb_t *out_event_trb) {
-    xhci_ring_t *event_ring = &xhci_controller->event_ring;
-    trb_t evt_trb;
+    xhci_ring_t *evt_ring = &xhci_controller->event_ring;
+    xhci_trb_t cur_evt_trb;
+    // uint8 cur_cycle = evt_ring->cycle;
     while (timeout_ms--) {
-        if((event_ring->ring_base[event_ring->index].member1 & TRB_FLAG_CYCLE) == event_ring->status_c) {
-            evt_trb.member0 = event_ring->ring_base[event_ring->index].member0;
-            evt_trb.member1 = event_ring->ring_base[event_ring->index].member1;
-            event_ring->index++;
-            if (event_ring->index >= TRB_COUNT) {
-                event_ring->index = 0;
-                event_ring->status_c ^= TRB_FLAG_CYCLE;
+        cur_evt_trb = evt_ring->ring_base[evt_ring->index];
+        if(cur_evt_trb.generic.cycle ==  evt_ring->cycle) {
+            evt_ring->index++;
+            if (evt_ring->index >= TRB_COUNT) {
+                evt_ring->index = 0;
+                evt_ring->cycle ^= 1;
             }
-            xhci_controller->rt_reg->intr_regs[0].erdp = va_to_pa(&event_ring->ring_base[event_ring->index]) | XHCI_ERDP_EHB;
+            xhci_controller->rt_reg->intr_regs[0].erdp = va_to_pa(&evt_ring->ring_base[evt_ring->index]) | XHCI_ERDP_EHB;
         }
 
-        if (evt_trb.member0 == wait_trb_pa) {
-            return (evt_trb.member1 >> 24) & 0xFF;
+        if (cur_evt_trb.generic.ptr == wait_trb_pa) {
+
             *out_event_trb = evt_trb;
+            return cur_evt_trb.;
 
         }
         // 如果不是我们要的，就继续循环，等下一个事件
@@ -91,14 +92,14 @@ int32 xhci_wait_for_completion(xhci_controller_t *xhci_controller, uint64 wait_t
  * @param out_event_trb [输出参数] 用于接收主板返回的完整事件 TRB。如果不关心返回数据，可传入 NULL。
  * @return xhci_comp_code_t 返回强类型的硬件完成码
  */
-xhci_comp_code_e xhci_execute_command_sync(xhci_controller_t *xhci_controller, xhci_trb_t *cmd_trb, uint32 timeout_us, xhci_trb_t *out_event_trb) {
+xhci_trb_comp_code_e xhci_execute_command_sync(xhci_controller_t *xhci_controller, xhci_trb_t *cmd_trb, uint32 timeout_us, xhci_trb_t *out_event_trb) {
 
     uint64 cmd_pa = xhci_ring_enqueue(&xhci_controller->cmd_ring, cmd_trb);
     xhci_ring_doorbell(xhci_controller, 0, 0);
 
     // ★ 关键修改：把 out_event_trb 指针继续传递给底层的 wait 函数
     // 底层的 wait 函数在轮询/中断匹配到事件时，需要把那个 Event TRB 的 16 字节内容 copy 到这个指针里
-    xhci_comp_code_e comp_code = xhci_wait_for_completion(xhci_controller, cmd_pa, timeout_us, out_event_trb);
+    xhci_trb_comp_code_e comp_code = xhci_wait_for_completion(xhci_controller, cmd_pa, timeout_us, out_event_trb);
 
     if (comp_code == XHCI_COMP_SUCCESS) {
         return comp_code;
@@ -170,7 +171,7 @@ int32 xhci_enable_slot(xhci_controller_t *xhci, uint8 *out_slot_id) { {
     trb.enable_slot_cmd.slot_type = 0;
 
     // 1. 发送命令到命令环 (Command Ring)
-    xhci_comp_code_e status = xhci_execute_command_sync(xhci, &trb, 2000000);
+    xhci_trb_comp_code_e status = xhci_execute_command_sync(xhci, &trb, 2000000);
 
     if (status != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "xHCI: Failed to enable slot! Error: %d\n", status);

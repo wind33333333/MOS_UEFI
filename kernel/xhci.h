@@ -50,7 +50,7 @@ typedef enum : int8 {
     XHCI_COMP_INVALID_STREAM_ID_ERROR    = 34, // 流 ID 非法 (试图使用未分配的 Stream ID)
     XHCI_COMP_SECONDARY_BANDWIDTH_ERROR  = 35, // 次级带宽分配错误
     XHCI_COMP_SPLIT_TRANSACTION_ERROR    = 36  // 拆分事务错误 (通常发生在使用 USB 2.0 Hub 挂载低速键鼠时)
-} xhci_comp_code_e;
+} xhci_trb_comp_code_e;
 
 
 // ============================================================================
@@ -368,33 +368,33 @@ typedef struct trb_enable_slot_cmd_t {
 // 1. 命令完成事件 (Command Completion Event, Type = 33)
 // 发生场景：你发了 Enable Slot, Address Device 等主板命令后，主板的回执。
 typedef struct trb_cmd_comp_event_t{
-    uint64 cmd_trb_ptr;       // Dword 0 & 1: 刚才引发该事件的 Command TRB 物理地址
-    uint32 cmd_comp_param:24; // Dword 2 [23:0]: 命令完成参数 (通常为 0，个别命令有用)
-    uint32 comp_code:8;       // Dword 2 [31:24]: 完成码 (对应 xhci_comp_code_t)
+    uint64                    cmd_trb_ptr;       // Dword 0 & 1: 刚才引发该事件的 Command TRB 物理地址
+    uint32                    cmd_comp_param:24; // Dword 2 [23:0]: 命令完成参数 (通常为 0，个别命令有用)
+    xhci_trb_comp_code_e      comp_code:8;       // Dword 2 [31:24]: 完成码 (对应 xhci_comp_code_t)
 
-    uint32 cycle:1;           // Dword 3 [0]: 硬件翻转位
-    uint32 rsvd1:9;           // Dword 3 [9:1]: 保留
-    uint32 trb_type:6;        // Dword 3 [15:10]: 必须是 33 (XHCI_TRB_TYPE_CMD_COMP_EVENT)
-    uint32 vf_id:8;           // Dword 3 [23:16]: 虚拟功能 ID (SR-IOV 专用，常规填 0)
-    uint32 slot_id:8;         // Dword 3 [31:24]: ★ 极度重要！这里藏着主板分配的 Slot ID！
+    uint32                    cycle:1;           // Dword 3 [0]: 硬件翻转位
+    uint32                    rsvd1:9;           // Dword 3 [9:1]: 保留
+    trb_type_e                trb_type:6;        // Dword 3 [15:10]: 必须是 33 (XHCI_TRB_TYPE_CMD_COMP_EVENT)
+    uint32                    vf_id:8;           // Dword 3 [23:16]: 虚拟功能 ID (SR-IOV 专用，常规填 0)
+    uint32                    slot_id:8;         // Dword 3 [31:24]: ★ 极度重要！这里藏着主板分配的 Slot ID！
 }trb_cmd_comp_event_t;
 
 
 // 2. 传输事件 (Transfer Event, Type = 32)
 // 发生场景：U盘数据读写完成、Setup 控制传输完成等，端点产生的中断回执。
 typedef struct trb_transfer_event_t{
-    uint64 trb_ptr;           // Dword 0 & 1: 引发中断的那条 Transfer/Setup TRB 物理地址
-    uint32 transfer_len:24;   // Dword 2 [23:0]: ★ 极度重要！残余字节数 (没传完的数据量，短包时必看)
-    uint32 comp_code:8;       // Dword 2 [31:24]: 完成码 (如 SUCCESS, SHORT_PACKET, STALL)
+    uint64                    tr_trb_ptr;        // Dword 0 & 1: 引发中断的那条 Transfer/Setup TRB 物理地址
+    uint32                    transfer_len:24;   // Dword 2 [23:0]: ★ 极度重要！残余字节数 (没传完的数据量，短包时必看)
+    xhci_trb_comp_code_e      comp_code:8;       // Dword 2 [31:24]: 完成码 (如 SUCCESS, SHORT_PACKET, STALL)
 
-    uint32 cycle:1;           // Dword 3 [0]: 硬件翻转位
-    uint32 rsvd1:1;           // Dword 3 [1]: 保留
-    uint32 event_data:1;      // Dword 3 [2]: ED 位 (是否为纯事件数据)
-    uint32 rsvd2:7;           // Dword 3 [9:3]: 保留
-    uint32 trb_type:6;        // Dword 3 [15:10]: 必须是 32 (XHCI_TRB_TYPE_TRANSFER_EVENT)
-    uint32 endpoint_id:5;     // Dword 3 [20:16]: 发生事件的端点 DCI (1 是 EP0，等)
-    uint32 rsvd3:3;           // Dword 3 [23:21]: 保留
-    uint32 slot_id:8;         // Dword 3 [31:24]: 发生事件的设备槽位号
+    uint32                    cycle:1;           // Dword 3 [0]: 硬件翻转位
+    uint32                    rsvd1:1;           // Dword 3 [1]: 保留
+    uint32                    event_data:1;      // Dword 3 [2]: ED 位 (是否为纯事件数据)
+    uint32                    rsvd2:7;           // Dword 3 [9:3]: 保留
+    trb_type_e                trb_type:6;        // Dword 3 [15:10]: 必须是 32 (XHCI_TRB_TYPE_TRANSFER_EVENT)
+    uint32                    ep_id:5;           // Dword 3 [20:16]: 发生事件的端点 DCI (1 是 EP0，等)
+    uint32                    rsvd3:3;           // Dword 3 [23:21]: 保留
+    uint32                    slot_id:8;         // Dword 3 [31:24]: 发生事件的设备槽位号
 } trb_transfer_event_t;
 
 // ============================================================================
@@ -402,16 +402,16 @@ typedef struct trb_transfer_event_t{
 // 发生场景：物理线缆的插拔、端口复位完成、或者链路电源状态改变时硬件主动上报。
 // ============================================================================
 typedef struct trb_port_status_change_event_t{
-    uint32 rsvd0:24;          // Dword 0 [23:0]: 保留，全 0
-    uint32 port_id:8;         // Dword 0 [31:24]: ★ 核心机密！发生状态改变的物理端口号 (比如 1 号口)
+    uint32      rsvd0:24;          // Dword 0 [23:0]: 保留，全 0
+    uint32      port_id:8;         // Dword 0 [31:24]: ★ 核心机密！发生状态改变的物理端口号 (比如 1 号口)
 
-    uint32 rsvd1;             // Dword 1: 保留，全 0
-    uint32 rsvd2;             // Dword 2: 保留，全 0
+    uint32      rsvd1;             // Dword 1: 保留，全 0
+    uint32      rsvd2;             // Dword 2: 保留，全 0
 
-    uint32 cycle:1;           // Dword 3 [0]: 硬件翻转位 (Cycle Bit)
-    uint32 rsvd3:9;           // Dword 3 [9:1]: 保留
-    uint32 trb_type:6;        // Dword 3 [15:10]: 必须是 34 (XHCI_TRB_TYPE_PORT_STATUS_CHANGE_EVENT)
-    uint32 rsvd4:16;          // Dword 3 [31:16]: 保留
+    uint32      cycle:1;           // Dword 3 [0]: 硬件翻转位 (Cycle Bit)
+    uint32      rsvd3:9;           // Dword 3 [9:1]: 保留
+    trb_type_e  trb_type:6;        // Dword 3 [15:10]: 必须是 34 (XHCI_TRB_TYPE_PORT_STATUS_CHANGE_EVENT)
+    uint32      rsvd4:16;          // Dword 3 [31:16]: 保留
 }trb_port_status_change_event_t;
 
 //================================================================================================
@@ -425,18 +425,12 @@ typedef union xhci_trb_t {
     struct {
         uint64 ptr;
         uint32 status;
-        uint32 ctrl;
-    }generic_64;
 
-    // 【视角 3：官方 32 位视角】(应对特殊的 Setup 阶段包)
-    struct {
-        uint32 param1;
-        uint32 param2;
-        uint32 status;
-        uint32 ctrl;
-    } generic_32;
+        uint32 cycle:1;
+        uint32 ctrl:31;
+    }generic;
 
-    // 【视角 4：业务定制视角】(包含了所有具体的 TRB 解析格式) ... 以后加什么 TRB，就往这里塞什么 struct ...
+    // 【视角 3：业务定制视角】(包含了所有具体的 TRB 解析格式) ... 以后加什么 TRB，就往这里塞什么 struct ...
     //命令trb xhci命令环专用，用于发送启用插槽等
     trb_enable_slot_cmd_t    enable_slot_cmd;
     trb_set_tr_deq_ptr_cmd_t set_tr_deq_ptr_cmd;
@@ -925,9 +919,9 @@ typedef struct {
 //endregion
 
 typedef struct {
-    trb_t   *ring_base; //环起始地址
-    uint64  index; //trb索引
-    uint64  status_c; //循环位
+    xhci_trb_t   *ring_base; //环起始地址
+    uint32       index; //trb索引
+    uint8        cycle; //循环位
 } xhci_ring_t;
 
 #pragma pack(pop)
@@ -994,7 +988,7 @@ typedef struct {
 static inline int xhci_ring_init(xhci_ring_t *ring, uint32 align_size) {
     ring->ring_base = kzalloc(align_up(TRB_COUNT * sizeof(trb_t), align_size));
     ring->index = 0;
-    ring->status_c = TRB_FLAG_CYCLE;
+    ring->cycle = TRB_FLAG_CYCLE;
 }
 
 //响铃
