@@ -48,11 +48,11 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
     }
 
     timing();
-    color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_context->dev_ctx32.ep[0].ep_config,usb_dev->dev_context->dev_ctx32.ep[0].ep_type_size);
+    color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_ctx->dev_ctx32.ep[0].ep_config,usb_dev->dev_ctx->dev_ctx32.ep[0].ep_type_size);
 
     usb_set_interface(usb_if);   //切换接口备用配置
 
-    color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_context->dev_ctx32.ep[0].ep_config,usb_dev->dev_context->dev_ctx32.ep[0].ep_type_size);
+    color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_ctx->dev_ctx32.ep[0].ep_config,usb_dev->dev_ctx->dev_ctx32.ep[0].ep_type_size);
 
     usb_endpoint_init(usb_if->cur_alt);   //初始化端点
 

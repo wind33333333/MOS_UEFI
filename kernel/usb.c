@@ -55,7 +55,7 @@ int usb_get_device_descriptor(usb_dev_t *usb_dev) {
                                 : dev_desc->max_packet_size0;
     xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
     ep64_t ep_ctx;
-    xhci_context_read(usb_dev->dev_context, &ep_ctx, xhci_controller->ctx_size, 1);
+    xhci_context_read(usb_dev->dev_ctx, &ep_ctx, xhci_controller->ctx_size, 1);
     ep_ctx.ep_type_size = 4 << 3 | max_packe_size << 16 | 3 << 1;
     xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->ctx_size, 1);
     evaluate_context_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
@@ -267,7 +267,7 @@ int usb_set_interface(usb_if_t *usb_if) {
     }
 
     if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_context->dev_ctx32.ep[0].ep_config,usb_dev->dev_context->dev_ctx32.ep[0].ep_type_size);
+        color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_ctx->dev_ctx32.ep[0].ep_config,usb_dev->dev_ctx->dev_ctx32.ep[0].ep_type_size);
         color_printk(RED,BLACK,"usb set if error code:%#x   \n",comp_code);
         while (1);
     }
@@ -320,7 +320,7 @@ xhci_trb_comp_code_e xhci_execute_transfer_sync(usb_dev_t *udev, uint8 ep_dci, u
 
         // 抢救第 2 步：跨越“坏死”的 TRB 尸体
         // 必须区分目标环：EP0 的环独立存放在 usb_dev->ep0，其他端点在 eps 数组里
-        xhci_set_tr_dequeue_pointer(xhci, udev->slot_id, ep_dci, &udev->eps[ep_dci - 1].transfer_ring);
+        xhci_cmd_set_tr_deq_ptr(xhci, udev->slot_id, ep_dci, &udev->eps[ep_dci - 1].transfer_ring);
 
         // 抢救第 3 步：协议级和解 (只针对 STALL 错误)
         if (comp_code == XHCI_COMP_STALL_ERROR) {
@@ -386,7 +386,7 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
     // ==========================================================
     asm_mem_set(&trb, 0, sizeof(xhci_trb_t));
     asm_mem_cpy(usb_req_pkg,&trb,sizeof(usb_req_pkg_t)); //拷贝USB请求包到TRB前8字节中
-    trb.setup_stage.trb_transfer_len = sizeof(usb_req_pkg_t); //steup trb必须8
+    trb.setup_stage.trb_tr_len = sizeof(usb_req_pkg_t); //steup trb必须8
     trb.setup_stage.int_target = 0;     //中断号暂时统一设置0
     trb.setup_stage.idt = TRB_IDT_ENABLE;   // setup trb 必须1
     trb.setup_stage.type = XHCI_TRB_TYPE_SETUP_STAGE;
@@ -409,7 +409,7 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
     if (length != 0 && data_buf != NULL) {
         asm_mem_set(&trb, 0, sizeof(xhci_trb_t));
         trb.data_stage.data_buf_ptr = va_to_pa(data_buf); // 物理地址
-        trb.data_stage.transfer_len = length;
+        trb.data_stage.tr_len = length;
         trb.data_stage.type = XHCI_TRB_TYPE_DATA_STAGE;
         trb.data_stage.dir = usb_req_dir;  //数据阶段方向和usb.dtd方向一致
         trb.data_stage.chain = TRB_CHAIN_DISABLE; // 单个 Data TRB 必须为 0
@@ -471,7 +471,7 @@ int32 usb_clear_feature_halt(usb_dev_t *usb_dev, uint8 ep_dci) {
     trb.setup_stage.index = ep_addr;
     trb.setup_stage.length = 0;
 
-    trb.setup_stage.trb_transfer_len = 8;
+    trb.setup_stage.trb_tr_len = 8;
     trb.setup_stage.int_target = 0;
     trb.setup_stage.chain = 0;
     trb.setup_stage.ioc = 1;
@@ -505,8 +505,8 @@ int32 usb_clear_feature_halt(usb_dev_t *usb_dev, uint8 ep_dci) {
     }
     color_printk(GREEN, BLACK, "USB: Clear Feature (Halt) sueccess ep:%d  !\n  ", ep_addr);
 
-    color_printk(RED,BLACK,"ep:%d c:%#x t:%#x \n",ep_dci,usb_dev->dev_context->dev_ctx32.ep[ep_dci-1].ep_config,usb_dev->dev_context->dev_ctx32.ep[ep_dci-1].ep_type_size);
-    color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_context->dev_ctx32.ep[0].ep_config,usb_dev->dev_context->dev_ctx32.ep[0].ep_type_size);
+    color_printk(RED,BLACK,"ep:%d c:%#x t:%#x \n",ep_dci,usb_dev->dev_ctx->dev_ctx32.ep[ep_dci-1].ep_config,usb_dev->dev_ctx->dev_ctx32.ep[ep_dci-1].ep_type_size);
+    color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_ctx->dev_ctx32.ep[0].ep_config,usb_dev->dev_ctx->dev_ctx32.ep[0].ep_type_size);
 
     return completion_code;
 }

@@ -222,7 +222,7 @@ typedef struct usb_dev_t{
     usb_string_descriptor_t*        manufacturer_desc;  //制造商描述符
     usb_string_descriptor_t*        product_desc;       //产品型号名描述符
     usb_string_descriptor_t*        serial_number_desc; //序列号描述符
-    void*                           dev_context;       // 设备上下文
+    void*                           dev_ctx;           // 设备上下文
     endpoint_t                      eps[32];           // 端点0-31
     xhci_controller_t*              xhci_controller;   // xhci控制器
     device_t                        dev;

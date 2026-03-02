@@ -288,25 +288,23 @@ xhci_trb_comp_code_e xhci_execute_command_sync(xhci_controller_t *xhci_controlle
 }
 
 //获取需要input端点的上下文地址
-void *xhci_get_input_ctx_addr(xhci_controller_t *xhci_controller,input_ctrl_ctx_t *input_ctx, uint32 ep_dci) {
+void *xhci_get_input_ctx_addr(xhci_controller_t *xhci_controller,xhci_input_ctrl_ctx_t *input_ctx, uint32 ep_dci) {
     uint8 ctx_size = xhci_controller->ctx_size;
     return (uint8 *)input_ctx + ctx_size * (ep_dci + 1);
 }
 
 //获取需要端点的上下文地址
 void *xhci_get_ctx_addr(usb_dev_t *udev, uint32 ep_dci) {
-    uint8 *dev_ctx_base = (uint8*)udev->dev_context;
-    uint8 ctx_size = udev->xhci_controller->ctx_size;
-    return dev_ctx_base+ ctx_size * ep_dci;
+    return (uint8*)udev->dev_ctx + udev->xhci_controller->ctx_size * ep_dci;
 }
 
 
 //分配插槽
-int8 xhci_enable_slot(xhci_controller_t *xhci_controller, uint8 *out_slot_id) {
+int32 xhci_enable_slot(xhci_controller_t *xhci_controller, uint8 *out_slot_id) {
     xhci_trb_t evt_trb;
     xhci_trb_t cmd_trb = {0};
-    cmd_trb.enable_slot_cmd.type = XHCI_TRB_TYPE_ENABLE_SLOT;
-    cmd_trb.enable_slot_cmd.slot_type = 0;
+    cmd_trb.enable_slot.type = XHCI_TRB_TYPE_ENABLE_SLOT;
+    cmd_trb.enable_slot.slot_type = 0;
 
     // 1. 发送命令到命令环 (Command Ring)
     xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhci_controller, &cmd_trb, 5000000, &evt_trb);
@@ -325,7 +323,7 @@ int8 xhci_enable_slot(xhci_controller_t *xhci_controller, uint8 *out_slot_id) {
  * @param usb_dev         要销毁的 USB 设备对象
  * @return int8           0 表示成功，-1 表示失败
  */
-int8 xhci_disable_slot(xhci_controller_t *xhci_controller, uint8 slot_id) {
+int32 xhci_disable_slot(xhci_controller_t *xhci_controller, uint8 slot_id) {
     if (xhci_controller == NULL || slot_id == 0) {
         return -1; // 非法参数或设备本就没分配槽位
     }
@@ -333,8 +331,8 @@ int8 xhci_disable_slot(xhci_controller_t *xhci_controller, uint8 slot_id) {
     xhci_trb_t cmd_trb = {0};
 
     // 1. 组装注销命令
-    cmd_trb.disable_slot_cmd.trb_type = XHCI_TRB_TYPE_DISABLE_SLOT;
-    cmd_trb.disable_slot_cmd.slot_id  = slot_id;
+    cmd_trb.disable_slot.trb_type = XHCI_TRB_TYPE_DISABLE_SLOT;
+    cmd_trb.disable_slot.slot_id  = slot_id;
 
     // 2. 发射命令并同步等待
     xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhci_controller, &cmd_trb, 2000000,NULL);
@@ -350,13 +348,13 @@ int8 xhci_disable_slot(xhci_controller_t *xhci_controller, uint8 slot_id) {
 
 
 //设置设备地址
-int8 xhci_address_device(xhci_controller_t *xhci_controller, uint8 slot_id,xhci_input_context_t *input_ctx) {
+int32 xhci_cmd_addr_dev(xhci_controller_t *xhci_controller, uint8 slot_id,xhci_input_ctrl_ctx_t *input_ctx) {
     //配置和执行addr_dev命令
     xhci_trb_t cmd_trb = {0};
-    cmd_trb.address_device_cmd.trb_type = XHCI_TRB_TYPE_ADDRESS_DEVICE;
-    cmd_trb.address_device_cmd.input_context_ptr = va_to_pa(input_ctx);
-    cmd_trb.address_device_cmd.slot_id = slot_id;
-    cmd_trb.address_device_cmd.bsr = 0;
+    cmd_trb.addr_dev.trb_type = XHCI_TRB_TYPE_ADDRESS_DEVICE;
+    cmd_trb.addr_dev.input_ctx_ptr = va_to_pa(input_ctx);
+    cmd_trb.addr_dev.slot_id = slot_id;
+    cmd_trb.addr_dev.bsr = 0;
 
     xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhci_controller, &cmd_trb, 2000000,NULL);
 
@@ -369,12 +367,12 @@ int8 xhci_address_device(xhci_controller_t *xhci_controller, uint8 slot_id,xhci_
 
 
 //重置端点
-int8 xhci_reset_endpoint(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_dci) {
+uint32 xhci_cmd_reset_ep(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_dci) {
     xhci_trb_t cmd_trb = {0};
-    cmd_trb.rest_ep_cmd.type = XHCI_TRB_TYPE_RESET_EP;
-    cmd_trb.rest_ep_cmd.tsp = 0;
-    cmd_trb.rest_ep_cmd.ep_dci = ep_dci;
-    cmd_trb.rest_ep_cmd.slot_id = slot_id;
+    cmd_trb.rest_ep.type = XHCI_TRB_TYPE_RESET_EP;
+    cmd_trb.rest_ep.tsp = 0;
+    cmd_trb.rest_ep.ep_dci = ep_dci;
+    cmd_trb.rest_ep.slot_id = slot_id;
 
     xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhci_controller, &cmd_trb, 2000000,NULL);
     if (comp_code != XHCI_COMP_SUCCESS) {
@@ -391,7 +389,7 @@ int8 xhci_reset_endpoint(xhci_controller_t *xhci_controller, uint8 slot_id, uint
  * @param ep_id           出事端点的 EP ID (注意: EP0 的 ep_id 是 1)
  * @return int8           0 表示成功刹车，-1 表示灾难升级
  */
-int8 xhci_stop_endpoint(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_id) {
+int32 xhci_cmd_stop_ep(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_id) {
     if (slot_id == 0 || ep_id == 0 || ep_id > 31) {
         return -1; // 参数非法
     }
@@ -399,10 +397,10 @@ int8 xhci_stop_endpoint(xhci_controller_t *xhci_controller, uint8 slot_id, uint8
     xhci_trb_t cmd_trb = {0},evt_trb;
 
     // 1. 组装“拔管”命令
-    cmd_trb.stop_ep_cmd.trb_type = XHCI_TRB_TYPE_STOP_EP; // 15
-    cmd_trb.stop_ep_cmd.slot_id  = slot_id;
-    cmd_trb.stop_ep_cmd.ep_id    = ep_id;
-    cmd_trb.stop_ep_cmd.suspend  = 0; // 坚决不挂起，直接要求主板废弃当前内部缓存的坏状态！
+    cmd_trb.stop_ep.trb_type = XHCI_TRB_TYPE_STOP_EP; // 15
+    cmd_trb.stop_ep.slot_id  = slot_id;
+    cmd_trb.stop_ep.ep_id    = ep_id;
+    cmd_trb.stop_ep.suspend  = 0; // 坚决不挂起，直接要求主板废弃当前内部缓存的坏状态！
 
     // 2. 发射命令并同步等待
     // 注意：刹车命令通常非常快，主板会在微秒级响应。
@@ -438,7 +436,7 @@ int8 xhci_stop_endpoint(xhci_controller_t *xhci_controller, uint8 slot_id, uint8
  * @param transfer_ring 需要被修改指针的 Transfer Ring 结构体指针
  * @return int32        完成状态码 (XHCI_COMP_SUCCESS 表示成功)
  */
-int32 xhci_set_tr_dequeue_pointer(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_dci,
+int32 xhci_cmd_set_tr_deq_ptr(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_dci,
                                   xhci_ring_t *transfer_ring) {
     xhci_trb_t cmd_trb={0};
 
@@ -450,10 +448,10 @@ int32 xhci_set_tr_dequeue_pointer(xhci_controller_t *xhci_controller, uint8 slot
 
     // 硬件强制规范：物理地址的最低位 (Bit 0) 必须包含 Dequeue Cycle State (DCS)
     // 这样硬件指针挪过去之后，才知道下次扫描该期待 0 还是 1
-    cmd_trb.set_tr_deq_ptr_cmd.tr_dequeue_ptr = next_clean_trb_pa | next_cycle_state;
-    cmd_trb.set_tr_deq_ptr_cmd.type = XHCI_TRB_TYPE_SET_TR_DEQUEUE;
-    cmd_trb.set_tr_deq_ptr_cmd.ep_dci = ep_dci;
-    cmd_trb.set_tr_deq_ptr_cmd.slot_id = slot_id;
+    cmd_trb.set_tr_deq_ptr.tr_deq_ptr = next_clean_trb_pa | next_cycle_state;
+    cmd_trb.set_tr_deq_ptr.type = XHCI_TRB_TYPE_SET_TR_DEQUEUE;
+    cmd_trb.set_tr_deq_ptr.ep_dci = ep_dci;
+    cmd_trb.set_tr_deq_ptr.slot_id = slot_id;
 
     xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhci_controller, &cmd_trb, 2000000,NULL);
     if (comp_code != XHCI_COMP_SUCCESS) {
@@ -463,30 +461,99 @@ int32 xhci_set_tr_dequeue_pointer(xhci_controller_t *xhci_controller, uint8 slot
     return 0;
 }
 
+/**
+ * @brief 底层指令：发送 Configure Endpoint 命令
+ * @param xhci_controller xHCI 控制器实例
+ * @param input_ctx_pa    Input Context 的物理地址 (必须64字节对齐)
+ * @param slot_id         目标 Slot ID
+ * @param dc              Deconfigure 标志 (0=配置端点, 1=一键清除所有业务端点)
+ */
+int32 xhci_cmd_cfg_ep(xhci_controller_t *xhci_controller, xhci_input_ctrl_ctx_t *input_ctx, uint8 slot_id, uint8 dc) {
+    xhci_trb_t cmd_trb = {0};
+    cmd_trb.cfg_ep.trb_type = XHCI_TRB_TYPE_CONFIGURE_EP;
+    cmd_trb.cfg_ep.input_ctx_ptr = va_to_pa(input_ctx);
+    cmd_trb.cfg_ep.slot_id = slot_id;
+    cmd_trb.cfg_ep.dc = dc;
+
+    // 敲响命令环门铃，等待主板评估带宽并分配资源
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhci_controller, &cmd_trb, 2000000, NULL);
+    if (comp_code != XHCI_COMP_SUCCESS) {
+        color_printk(RED, BLACK, "xHCI: Failed to configure_endpoint! Error: %d\n", comp_code);
+        return -1;
+    }
+    return 0;
+}
+
+/**
+ * @brief 底层指令：发送 Evaluate Context 命令
+ * @param xhci            xHCI 控制器实例
+ * @param input_ctx_pa    Input Context 的物理地址
+ * @param slot_id         目标 Slot ID
+ */
+int32 xhci_cmd_eval_ctx(xhci_controller_t *xhci_controller, xhci_input_ctrl_ctx_t *input_ctx, uint8 slot_id) {
+    xhci_trb_t cmd_trb = {0};
+    cmd_trb.eval_ctx.trb_type = XHCI_TRB_TYPE_EVALUATE_CTX;
+    cmd_trb.eval_ctx.input_ctx_ptr = va_to_pa(input_ctx);
+    cmd_trb.eval_ctx.slot_id = slot_id;
+
+    // 敲响命令环门铃，主板将读取并更新上下文
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhci_controller, &cmd_trb, 2000000, NULL);
+    if (comp_code != XHCI_COMP_SUCCESS) {
+        color_printk(RED, BLACK, "xHCI: Failed to evaluate_context! Error: %d\n", comp_code);
+        return -1;
+    }
+    return 0;
+}
+
+/**
+ * @brief 底层指令：发送 Reset Device 命令
+ * @param xhci            xHCI 控制器实例
+ * @param slot_id         目标 Slot ID
+ * @return xhci_trb_comp_code_e 硬件完成码
+ */
+int32 xhci_cmd_reset_dev(xhci_controller_t *xhci_controller, uint8 slot_id) {
+    xhci_trb_t cmd_trb = {0};
+
+    cmd_trb.reset_dev.trb_type = XHCI_TRB_TYPE_RESET_DEVICE;
+    cmd_trb.reset_dev.slot_id = slot_id;
+
+    // 敲响门铃，主板将强行清空该 Slot 的所有业务端点状态
+    // 敲响命令环门铃，主板将读取并更新上下文
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhci_controller, &cmd_trb, 2000000, NULL);
+    if (comp_code != XHCI_COMP_SUCCESS) {
+        color_printk(RED, BLACK, "xHCI: Failed to reset_device! Error: %d\n", comp_code);
+        return -1;
+    }
+    return 0;
+}
+
 //配置slot和ep0上下文
 void xhci_setup_slot_ep0_ctx(usb_dev_t *udev) {
     xhci_controller_t *xhci_controller = udev->xhci_controller;
 
+    uint8 ctx_size = xhci_controller->ctx_size;
+    uint32 align_size = xhci_controller->align_size;
     //分配设备插槽上下文内存
-    udev->dev_context = kzalloc(align_up(sizeof(xhci_device_context_t), xhci_controller->align_size));
-    xhci_controller->dcbaap[udev->slot_id] = va_to_pa(udev->dev_context);
+    udev->dev_ctx = kzalloc(align_up(XHCI_DEVICE_CONTEXT_COUNT*ctx_size,align_size));
+    xhci_controller->dcbaap[udev->slot_id] = va_to_pa(udev->dev_ctx);
 
     //usb控制传输环初始化
     xhci_ring_t *uc_ring = &udev->eps[0].transfer_ring;
     xhci_ring_init(uc_ring, xhci_controller->align_size);
 
     //分配输入上下文空间
-    xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
+    xhci_input_ctrl_ctx_t *input_ctx = kzalloc(align_up(sizeof(XHCI_INPUT_CONTEXT_COUNT*ctx_size),align_size));
 
+    //获取端口速率
     uint8 port_speed = (xhci_controller->op_reg->portregs[udev->port_id - 1].portsc >> 10) & 0x0F;
 
-    //设置插槽上下文
-    slot64_t slot_ctx = {0};
-    slot_ctx.route_speed = 1 << 27 | port_speed << 20;
-    slot_ctx.latency_hub = udev->port_id << 16;
-    slot_ctx.parent_info = 0;
-    slot_ctx.addr_status = 0;
-    xhci_input_context_add(input_ctx, &slot_ctx, xhci_controller->ctx_size, 0); // 启用 Slot Context
+    //配置slot_ctx
+    xhci_slot_ctx_t *slot_ctx = xhci_get_input_ctx_addr(xhci_controller, input_ctx,0);
+    asm_mem_set(slot_ctx,0,sizeof(xhci_slot_ctx_t));
+    slot_ctx->port_speed = port_speed;
+    slot_ctx->context_entries = 1;
+    slot_ctx->context_entries = udev->port_id;
+    input_ctx->add_context_flags |= 1<<0;
 
     uint32 max_packet_size = 8; // 默认给 8
     // ★ 核心修复：使用 >= 4，一举拿下所有未来超高速设备！
@@ -502,15 +569,16 @@ void xhci_setup_slot_ep0_ctx(usb_dev_t *udev) {
         max_packet_size = 8;
     }
 
-    //设置端点0上下文（控制传输端点）
-    ep64_t ep_ctx = {0};
-    ep_ctx.ep_config = 0;
-    ep_ctx.ep_type_size = (4 << 3) | (max_packet_size << 16) | (3 << 1); // Type=Control(4), ErrorCount=3
-    ep_ctx.tr_dequeue_ptr = va_to_pa(uc_ring->ring_base) | 1;
-    ep_ctx.trb_payload = 0;
-    xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->ctx_size, 1); //Endpoint 0 Context
+    //配置端点0上下文（控制传输端点）
+    xhci_ep_ctx_t *ep_ctx = xhci_get_input_ctx_addr(xhci_controller, input_ctx,1);
+    asm_mem_set(ep_ctx,0,sizeof(xhci_ep_ctx_t));
+    ep_ctx->cerr = 3;
+    ep_ctx->ep_type = 4;
+    ep_ctx->max_packet_size = max_packet_size;
+    ep_ctx->tr_dequeue_ptr = va_to_pa(uc_ring->ring_base) | 1;
+    input_ctx->add_context_flags |= 1<<1;
 
-    xhci_address_device(xhci_controller,udev->slot_id,input_ctx);
+    xhci_cmd_address_device(xhci_controller,udev->slot_id,input_ctx);
 
     kfree(input_ctx);
 }
@@ -531,13 +599,13 @@ void xhci_recover_stalled_endpoint(usb_dev_t *usb_dev, uint8 ep_dci) {
     // 第一步：主板层解挂 (Reset Endpoint Command)
     // 目标：将端点状态从 Halted (2) 强行拽入 Stopped (3)
     // ========================================================================
-    xhci_reset_endpoint(xhci_controller, slot_id, ep_dci);
+    xhci_cmd_reset_endpoint(xhci_controller, slot_id, ep_dci);
 
     // ========================================================================
     // 第二步：清理案发现场 (Set TR Dequeue Pointer Command)
     // 目标：将 xHCI 的硬件执行指针，挪到你软件当前环的最新位置，跨过死掉的 TRB
     // ========================================================================
-    xhci_set_tr_dequeue_pointer(xhci_controller, slot_id, ep_dci, transfer_ring);
+    xhci_cmd_set_tr_deq_ptr(xhci_controller, slot_id, ep_dci, transfer_ring);
 
 
     // ========================================================================
