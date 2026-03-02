@@ -55,9 +55,9 @@ int usb_get_device_descriptor(usb_dev_t *usb_dev) {
                                 : dev_desc->max_packet_size0;
     xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
     ep64_t ep_ctx;
-    xhci_context_read(usb_dev->dev_context, &ep_ctx, xhci_controller->dev_ctx_size, 1);
+    xhci_context_read(usb_dev->dev_context, &ep_ctx, xhci_controller->ctx_size, 1);
     ep_ctx.ep_type_size = 4 << 3 | max_packe_size << 16 | 3 << 1;
-    xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->dev_ctx_size, 1);
+    xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->ctx_size, 1);
     evaluate_context_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
     xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);
     xhci_ring_doorbell(xhci_controller, 0, 0);
@@ -559,7 +559,7 @@ int usb_endpoint_init(usb_if_alt_t *if_alt) {
         ep_ctx.ep_type_size = ep_phy->ep_type << 3 | ep_phy->max_packet << 16 | ep_phy->max_burst << 8 | 3 << 1;
         ep_ctx.tr_dequeue_ptr = tr_dequeue_ptr;
         ep_ctx.trb_payload = 0;
-        xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->dev_ctx_size, ep_num);
+        xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->ctx_size, ep_num);
     }
 
     //配置slot
@@ -568,7 +568,7 @@ int usb_endpoint_init(usb_if_alt_t *if_alt) {
     slot_ctx.latency_hub = usb_dev->port_id << 16;
     slot_ctx.parent_info = 0;
     slot_ctx.addr_status = 0;
-    xhci_input_context_add(input_ctx, &slot_ctx, xhci_controller->dev_ctx_size, 0);
+    xhci_input_context_add(input_ctx, &slot_ctx, xhci_controller->ctx_size, 0);
 
     config_endpoint_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
     xhci_ring_enqueue(&xhci_controller->cmd_ring, &trb);

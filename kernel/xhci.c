@@ -288,16 +288,18 @@ xhci_trb_comp_code_e xhci_execute_command_sync(xhci_controller_t *xhci_controlle
 }
 
 //写入input上文
-void xhci_input_context_add(xhci_input_context_t *input_ctx, void *from_ctx, uint32 ctx_size, uint32 ep_dci) {
-    void *to_ctx = (uint8 *) input_ctx + ctx_size * (ep_dci + 1);
+void xhci_input_ctx_add(xhci_controller_t *xhci_controller,xhci_input_context_t *input_ctx, void *from_ctx, uint32 ep_dci) {
+    uint8 ctx_size = xhci_controller->ctx_size;
+    void *to_ctx = (uint8 *)input_ctx + ctx_size * (ep_dci + 1);
     asm_mem_cpy(from_ctx, to_ctx, ctx_size);
     input_ctx->input_ctx32.control.add_context |= 1 << ep_dci;
 }
 
-//读取input上下文
-void xhci_context_read(xhci_device_context_t *dev_context, void *to_ctx, uint32 ctx_size, uint32 ep_dci) {
-    void *from_ctx = (uint8 *) dev_context + ctx_size * ep_dci;
-    asm_mem_cpy(from_ctx, to_ctx, ctx_size);
+//获取需要读取端点的上下文地址
+void *xhci_get_ctx_addr(usb_dev_t *udev, uint32 ep_dci) {
+    uint8 *dev_ctx_base = (uint8*)udev->dev_context;
+    uint8 ctx_size = udev->xhci_controller->ctx_size;
+    return dev_ctx_base+ ctx_size * ep_dci;
 }
 
 
@@ -486,7 +488,7 @@ void xhci_setup_slot_ep0_ctx(usb_dev_t *udev) {
     slot_ctx.latency_hub = udev->port_id << 16;
     slot_ctx.parent_info = 0;
     slot_ctx.addr_status = 0;
-    xhci_input_context_add(input_ctx, &slot_ctx, xhci_controller->dev_ctx_size, 0); // 启用 Slot Context
+    xhci_input_context_add(input_ctx, &slot_ctx, xhci_controller->ctx_size, 0); // 启用 Slot Context
 
     uint32 max_packet_size = 8; // 默认给 8
     // ★ 核心修复：使用 >= 4，一举拿下所有未来超高速设备！
@@ -508,7 +510,7 @@ void xhci_setup_slot_ep0_ctx(usb_dev_t *udev) {
     ep_ctx.ep_type_size = (4 << 3) | (max_packet_size << 16) | (3 << 1); // Type=Control(4), ErrorCount=3
     ep_ctx.tr_dequeue_ptr = va_to_pa(uc_ring->ring_base) | 1;
     ep_ctx.trb_payload = 0;
-    xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->dev_ctx_size, 1); //Endpoint 0 Context
+    xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->ctx_size, 1); //Endpoint 0 Context
 
     xhci_address_device(xhci_controller,udev->slot_id,input_ctx);
 
@@ -585,7 +587,7 @@ int xhci_probe(pcie_dev_t *xhci_dev, pcie_id_t *id) {
     xhci_controller->align_size = PAGE_4K_SIZE << asm_tzcnt(xhci_controller->op_reg->pagesize);
 
     /*设备上下文字节数*/
-    xhci_controller->dev_ctx_size = 32 << ((xhci_controller->cap_reg->hccparams1 & HCCP1_CSZ) >> 2);
+    xhci_controller->ctx_size = 32 << ((xhci_controller->cap_reg->hccparams1 & HCCP1_CSZ) >> 2);
 
     /*初始化设备上下文*/
     xhci_controller->max_slots = xhci_controller->cap_reg->hcsparams1 & 0xff;
@@ -660,7 +662,7 @@ int xhci_probe(pcie_dev_t *xhci_dev, pcie_id_t *id) {
         "XHCI Version:%x.%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d Dev_Ctx_Size:%d AlignSize:%d USBcmd:%#x USBsts:%#x    \n",
         xhci_controller->major_bcd, xhci_controller->minor_bcd, xhci_controller->max_slots,
         xhci_controller->max_intrs, xhci_controller->max_ports,
-        xhci_controller->dev_ctx_size, xhci_controller->align_size, xhci_controller->op_reg->usbcmd,
+        xhci_controller->ctx_size, xhci_controller->align_size, xhci_controller->op_reg->usbcmd,
         xhci_controller->op_reg->usbsts);
 
     for (uint8 i = 0; i < xhci_controller->spc_count; i++) {

@@ -364,15 +364,12 @@ typedef struct trb_stop_ep_cmd_t{
     uint32 cycle:1;           // Bit [0]: 硬件翻转位 (C)
     uint32 rsvd2:9;           // Bits [9:1]: 保留，填 0
     trb_type_e trb_type:6;        // Bits [15:10]: 必须是 15 (XHCI_TRB_TYPE_STOP_EP)
-
     // ★ 狙击目标：精准定位到具体的设备和具体的管道
     uint32 ep_id:5;           // Bits [20:16]: 目标 Endpoint ID (1~31)
     uint32 rsvd3:2;           // Bits [22:21]: 保留，填 0
-
     // ★ 挂起位：0 = 彻底停止并丢弃内部缓存; 1 = 只是挂起(Suspend)，以后还能原样恢复。
     // 在超时抢救场景中，我们永远填 0（彻底停止）！
     uint32 suspend:1;         // Bit [23]: SP (Suspend) 位
-
     uint32 slot_id:8;         // Bits [31:24]: 目标 Slot ID
 }trb_stop_ep_cmd_t;
 
@@ -877,7 +874,7 @@ typedef struct {
 // ============================================================================
 // Slot Context (32 字节核心部分，外部按需套一层 32/64 字节外壳)
 // ============================================================================
-typedef struct {
+typedef struct slot_ctx_t{
     // Dword 0
     uint32 route_string:20;     // [19:0] 路由字符串
     uint32 port_speed:4;        // [23:20] 端口速度
@@ -909,7 +906,7 @@ typedef struct {
 // ============================================================================
 // Endpoint Context (32 字节核心部分)
 // ============================================================================
-typedef struct {
+typedef struct ep_ctx_t{
     // Dword 0
     uint16 ep_state:3;          // [2:0] 端点状态 (0=禁用, 1=运行, 2=暂停, 3=停止, 4=错误)
     uint16 rsvd_dw0_3:5;        // [7:3] 保留
@@ -942,14 +939,14 @@ typedef struct {
 // ============================================================================
 // Input Control Context
 // ============================================================================
-typedef struct {
+typedef struct input_ctrl_ctx_t{
     uint32 drop_context_flags;  // Dword 0: 位 0 = Slot, 位 1 = EP0, 位 2 = EP1...
     uint32 add_context_flags;   // Dword 1: 同上
     uint32 reserved[6];         // 填充至 32 字节
 } input_ctrl_ctx_t;
 
-#pragma pack(pop)
-
+#define XHCI_DEVICE_CONTEXT_COUNT 32
+#define XHCI_INPUT_CONTEXT_COUNT 33
 
 
 ///===========================后面准备作废===========================================================================================
@@ -1169,7 +1166,7 @@ typedef struct {
     xhci_ring_t         cmd_ring;           // 命令环
     xhci_ring_t         event_ring;         // 事件环
     uint32              align_size;         // xhci内存分配对齐边界
-    uint8               dev_ctx_size;       // 设备上下文字节数（32或64字节）
+    uint8               ctx_size;           // 设备上下文字节数（32或64字节）
     uint8               max_ports;          // 最大端口数量
     uint8               max_slots;          // 最大插槽数量
     uint16              max_intrs;          // 最大中断数量
