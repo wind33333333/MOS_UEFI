@@ -872,6 +872,88 @@ typedef struct {
 
 //region 设备上下文结构
 
+#pragma pack(push, 1) // 必须强制 1 字节对齐，绝不允许编译器随意塞 padding
+
+// ============================================================================
+// Slot Context (32 字节核心部分，外部按需套一层 32/64 字节外壳)
+// ============================================================================
+typedef struct {
+    // Dword 0
+    uint32 route_string:20;     // [19:0] 路由字符串
+    uint32 port_speed:4;        // [23:20] 端口速度
+    uint32 rsvd_dw0_24:1;       // [24] 保留位 (规范中隐蔽的一位)
+    uint32 mtt:1;               // [25] 多重事务转换器
+    uint32 is_hub:1;            // [26] 1=集线器, 0=USB设备
+    uint32 context_entries:5;   // [31:27] 端点上下文条目数量 (1~31)
+
+    // Dword 1
+    uint16 max_exit_latency; // [15:0] 最大退出延迟 (us)
+    uint8 root_hub_port_num; // [23:16] 根集线器端口号
+    uint8 num_ports;         // [31:24] 端口数量 (仅Hub有效)
+
+    // Dword 2
+    uint8 parent_hub_slot_id;// [7:0] 父集线器插槽 ID
+    uint8 parent_port_num;   // [15:8] 父端口号
+    uint16 tt_think_time:2;     // [17:16] TT 思考时间
+    uint16 rsvd_dw2_18:4;       // [21:18] 保留
+    uint16 interrupter_target:10;// [31:22] 目标中断器编号
+
+    // Dword 3
+    uint32 usb_device_address:8;// [7:0] 硬件分配的 USB 地址 (只读)
+    uint32 rsvd_dw3_8:19;       // [26:8] 保留
+    uint32 slot_state:5;        // [31:27] 插槽状态 (0=禁用, 1=默认, 2=寻址, 3=已配置)
+
+    uint32 reserved[4];         // 填充至 32 字节
+} slot_ctx_t;
+
+// ============================================================================
+// Endpoint Context (32 字节核心部分)
+// ============================================================================
+typedef struct {
+    // Dword 0
+    uint16 ep_state:3;          // [2:0] 端点状态 (0=禁用, 1=运行, 2=暂停, 3=停止, 4=错误)
+    uint16 rsvd_dw0_3:5;        // [7:3] 保留
+    uint16 mult:2;              // [9:8] 突发乘数
+    uint16 max_pstreams:5;      // [14:10] 最大主数据流数量
+    uint16 lsa:1;               // [15] 线性流数组标志
+    uint8 interval;          // [23:16] 轮询间隔
+    uint8 max_esit_payload_hi;// [31:24] ESIT 有效载荷高 8 位
+
+    // Dword 1
+    uint8 rsvd_dw1_0:1;        // [0] 保留
+    uint8 cerr:2;              // [2:1] 错误计数 (通常填 3)
+    uint8 ep_type:3;           // [5:3] 端点类型 (4=控制传输, 6=Bulk In, 等)
+    uint8 rsvd_dw1_6:1;        // [6] 保留
+    uint8 hid:1;               // [7] 主机初始化的禁用流标志
+    uint8 max_burst_size;    // [15:8] 最大突发大小
+    uint16 max_packet_size;  // [31:16] 最大包长 (8, 64, 512)
+
+    // ★ 你的神作：Dword 2 & 3 (Qword 1，完美映射 64 位指针)
+    uint64 dcs:1;               // [0] 出队周期状态 (Cycle Bit)
+    uint64 rsvd_dw2_1:3;        // [3:1] 保留 (或 SCT 流上下文类型)
+    uint64 tr_dequeue_ptr:60;   // [63:4] 传输环物理出队指针
+
+    // Dword 4
+    uint16 average_trb_length;// [15:0] 平均 TRB 长度
+    uint16 max_esit_payload_lo;// [31:16] ESIT 有效载荷低 16 位
+    uint32 reserved[3];         // 填充至 32 字节
+} ep_ctx_t;
+
+// ============================================================================
+// Input Control Context
+// ============================================================================
+typedef struct {
+    uint32 drop_context_flags;  // Dword 0: 位 0 = Slot, 位 1 = EP0, 位 2 = EP1...
+    uint32 add_context_flags;   // Dword 1: 同上
+    uint32 reserved[6];         // 填充至 32 字节
+} input_ctrl_ctx_t;
+
+#pragma pack(pop)
+
+
+
+///===========================后面准备作废===========================================================================================
+
 /* Slot Context（64 字节） */
 typedef struct {
     uint32 route_speed; /* 位 19:0 Route String[19:8] - 路由字符串的高 12 位，描述设备在 USB 拓扑中的路径。
@@ -1102,7 +1184,7 @@ xhci_trb_comp_code_e xhci_wait_for_event(xhci_controller_t *xhci_controller, uin
 static inline int32 xhci_ring_init(xhci_ring_t *ring, uint32 align_size);
 static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 db_number, uint32 value);
 int8 xhci_enable_slot(xhci_controller_t *xhci_controller, uint8 *out_slot_id);
-int8 xhci_address_device(struct usb_dev_t *udev);
+int8 xhci_address_device(xhci_controller_t *xhci_controller, uint8 slot_id,xhci_input_context_t *input_ctx);
 
 
 

@@ -325,8 +325,8 @@ int8 xhci_enable_slot(xhci_controller_t *xhci_controller, uint8 *out_slot_id) {
  * @param usb_dev         要销毁的 USB 设备对象
  * @return int8           0 表示成功，-1 表示失败
  */
-int8 xhci_disable_slot(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev) {
-    if (usb_dev == NULL || usb_dev->slot_id == 0) {
+int8 xhci_disable_slot(xhci_controller_t *xhci_controller, uint8 slot_id) {
+    if (xhci_controller == NULL || slot_id == 0) {
         return -1; // 非法参数或设备本就没分配槽位
     }
 
@@ -334,13 +334,13 @@ int8 xhci_disable_slot(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev) {
 
     // 1. 组装注销命令
     cmd_trb.disable_slot_cmd.trb_type = XHCI_TRB_TYPE_DISABLE_SLOT;
-    cmd_trb.disable_slot_cmd.slot_id  = usb_dev->slot_id;
+    cmd_trb.disable_slot_cmd.slot_id  = slot_id;
 
     // 2. 发射命令并同步等待
     xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhci_controller, &cmd_trb, 2000000,NULL);
 
     if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "xHCI: Failed to disable Slot ID %d! Hardware code: %d\n", usb_dev->slot_id, comp_code);
+        color_printk(RED, BLACK, "xHCI: Failed to disable Slot ID %d! Hardware code: %d\n", slot_id, comp_code);
         // 注意：即使硬件注销失败，某些情况下我们依然需要强行清理软件层内存，防止泄漏。
         // 但通常硬件注销失败意味着控制器状态机已经出大问题了。
         return -1;
@@ -348,63 +348,17 @@ int8 xhci_disable_slot(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev) {
     return 0;
 }
 
+
 //设置设备地址
-int8 xhci_address_device(usb_dev_t *udev) {
-    xhci_controller_t *xhci_controller = udev->xhci_controller;
-
-    //分配设备插槽上下文内存
-    udev->dev_context = kzalloc(align_up(sizeof(xhci_device_context_t), xhci_controller->align_size));
-    xhci_controller->dcbaap[udev->slot_id] = va_to_pa(udev->dev_context);
-
-    //usb控制传输环初始化
-    xhci_ring_t *uc_ring = &udev->eps[0].transfer_ring;
-    xhci_ring_init(uc_ring, xhci_controller->align_size);
-
-    //分配输入上下文空间
-    xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
-
-    uint8 port_speed = (xhci_controller->op_reg->portregs[udev->port_id - 1].portsc >> 10) & 0x0F;
-
-    //设置插槽上下文
-    slot64_t slot_ctx = {0};
-    slot_ctx.route_speed = 1 << 27 | port_speed << 20;
-    slot_ctx.latency_hub = udev->port_id << 16;
-    slot_ctx.parent_info = 0;
-    slot_ctx.addr_status = 0;
-    xhci_input_context_add(input_ctx, &slot_ctx, xhci_controller->dev_ctx_size, 0); // 启用 Slot Context
-
-    uint32 max_packet_size = 8; // 默认给 8
-    // ★ 核心修复：使用 >= 4，一举拿下所有未来超高速设备！
-    if (port_speed >= 4) {
-        // 涵盖 4(SS), 5(SSP), 6(SSP Gen2x2) 等所有现代超高速设备
-        max_packet_size = 512;
-    } else if (port_speed == 3) {
-        // 涵盖 3(HS), 标准 USB 2.0 高速设备
-        max_packet_size = 64;
-    } else {
-        // 涵盖 1(FS), 2(LS), 极其古老的 USB 1.1 设备
-        // 在正式读取设备描述符前，8 字节是 USB 1.1 的绝对安全保底值
-        max_packet_size = 8;
-    }
-
-    //设置端点0上下文（控制传输端点）
-    ep64_t ep_ctx = {0};
-    ep_ctx.ep_config = 0;
-    ep_ctx.ep_type_size = (4 << 3) | (max_packet_size << 16) | (3 << 1); // Type=Control(4), ErrorCount=3
-    ep_ctx.tr_dequeue_ptr = va_to_pa(uc_ring->ring_base) | 1;
-    ep_ctx.trb_payload = 0;
-    xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->dev_ctx_size, 1); //Endpoint 0 Context
-
+int8 xhci_address_device(xhci_controller_t *xhci_controller, uint8 slot_id,xhci_input_context_t *input_ctx) {
     //配置和执行addr_dev命令
     xhci_trb_t cmd_trb = {0};
     cmd_trb.address_device_cmd.trb_type = XHCI_TRB_TYPE_ADDRESS_DEVICE;
     cmd_trb.address_device_cmd.input_context_ptr = va_to_pa(input_ctx);
-    cmd_trb.address_device_cmd.slot_id = udev->slot_id;
+    cmd_trb.address_device_cmd.slot_id = slot_id;
     cmd_trb.address_device_cmd.bsr = 0;
 
     xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhci_controller, &cmd_trb, 2000000,NULL);
-
-    kfree(input_ctx);
 
     if (comp_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "xHCI: Failed to address device! Error: %d\n", comp_code);
@@ -412,6 +366,7 @@ int8 xhci_address_device(usb_dev_t *udev) {
     }
     return 0;
 }
+
 
 //重置端点
 int8 xhci_reset_endpoint(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_dci) {
@@ -506,6 +461,58 @@ int32 xhci_set_tr_dequeue_pointer(xhci_controller_t *xhci_controller, uint8 slot
         return -1;
     }
     return 0;
+}
+
+//配置slot和ep0上下文
+void xhci_setup_slot_ep0_ctx(usb_dev_t *udev) {
+    xhci_controller_t *xhci_controller = udev->xhci_controller;
+
+    //分配设备插槽上下文内存
+    udev->dev_context = kzalloc(align_up(sizeof(xhci_device_context_t), xhci_controller->align_size));
+    xhci_controller->dcbaap[udev->slot_id] = va_to_pa(udev->dev_context);
+
+    //usb控制传输环初始化
+    xhci_ring_t *uc_ring = &udev->eps[0].transfer_ring;
+    xhci_ring_init(uc_ring, xhci_controller->align_size);
+
+    //分配输入上下文空间
+    xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhci_controller->align_size));
+
+    uint8 port_speed = (xhci_controller->op_reg->portregs[udev->port_id - 1].portsc >> 10) & 0x0F;
+
+    //设置插槽上下文
+    slot64_t slot_ctx = {0};
+    slot_ctx.route_speed = 1 << 27 | port_speed << 20;
+    slot_ctx.latency_hub = udev->port_id << 16;
+    slot_ctx.parent_info = 0;
+    slot_ctx.addr_status = 0;
+    xhci_input_context_add(input_ctx, &slot_ctx, xhci_controller->dev_ctx_size, 0); // 启用 Slot Context
+
+    uint32 max_packet_size = 8; // 默认给 8
+    // ★ 核心修复：使用 >= 4，一举拿下所有未来超高速设备！
+    if (port_speed >= 4) {
+        // 涵盖 4(SS), 5(SSP), 6(SSP Gen2x2) 等所有现代超高速设备
+        max_packet_size = 512;
+    } else if (port_speed == 3) {
+        // 涵盖 3(HS), 标准 USB 2.0 高速设备
+        max_packet_size = 64;
+    } else {
+        // 涵盖 1(FS), 2(LS), 极其古老的 USB 1.1 设备
+        // 在正式读取设备描述符前，8 字节是 USB 1.1 的绝对安全保底值
+        max_packet_size = 8;
+    }
+
+    //设置端点0上下文（控制传输端点）
+    ep64_t ep_ctx = {0};
+    ep_ctx.ep_config = 0;
+    ep_ctx.ep_type_size = (4 << 3) | (max_packet_size << 16) | (3 << 1); // Type=Control(4), ErrorCount=3
+    ep_ctx.tr_dequeue_ptr = va_to_pa(uc_ring->ring_base) | 1;
+    ep_ctx.trb_payload = 0;
+    xhci_input_context_add(input_ctx, &ep_ctx, xhci_controller->dev_ctx_size, 1); //Endpoint 0 Context
+
+    xhci_address_device(xhci_controller,udev->slot_id,input_ctx);
+
+    kfree(input_ctx);
 }
 
 /**
