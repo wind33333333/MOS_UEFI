@@ -1,7 +1,5 @@
 #pragma once
 #include "moslib.h"
-#include "slub.h"
-#include "vmm.h"
 
 #pragma pack(push,1)
 
@@ -354,6 +352,35 @@ typedef struct trb_status_stage_t {
 
 //==================================命令trb==================================================
 
+// ============================================================================
+// xHCI 规范 6.4.3.4: 分配设备地址命令 TRB (Address Device Command, Type = 11)
+// 作用：向新插入的 USB 设备分配总线地址，并初始化 Slot Context 和 EP0 Context。
+// ============================================================================
+typedef struct trb_address_device_cmd_t{
+    // Dword 0 & 1: ★ 极度关键！指向 Input Context (输入上下文) 的物理地址。
+    // 物理地址的最低 4 位必须为 0 (即 16 字节对齐)，
+    // 但在实际的 x64 系统中，强烈建议直接进行 64 字节 (物理页的 Cache Line) 对齐！
+    uint64 input_context_ptr;
+
+    // Dword 2
+    uint32 rsvd1;             // 保留，必须填 0
+
+    // Dword 3
+    uint32 cycle:1;           // Bit [0]: 硬件翻转位 (C)
+    uint32 rsvd2:8;           // Bits [8:1]: 保留，填 0
+
+    // ★ 架构师秘钥：BSR (Block Set Address Request)
+    // 填 0：主板在底层自动帮你给 U 盘发 SET_ADDRESS 控制传输请求（最常用！）。
+    // 填 1：主板只在内部配置上下文，但不向 U 盘发 SET_ADDRESS（用于某些高级 USB 3.0 设备的状态机跳跃）。
+    uint32 bsr:1;             // Bit [9]: 阻止设置地址请求位
+
+    trb_type_e  trb_type:6;        // Bits [15:10]: 必须是 11 (XHCI_TRB_TYPE_ADDRESS_DEVICE)
+    uint32 rsvd3:8;           // Bits [23:16]: 保留，填 0
+
+    // ★ 身份绑定：填入你刚才通过 Enable Slot 抢到的那个号码！
+    uint32 slot_id:8;         // Bits [31:24]: 目标 Slot ID
+}trb_address_device_cmd_t;
+
 //复位端点trb
 typedef struct trb_rest_ep_cmd_t{
     uint32          rsvd0[3];
@@ -475,6 +502,7 @@ typedef union xhci_trb_t {
 
     // 【视角 3：业务定制视角】(包含了所有具体的 TRB 解析格式) ... 以后加什么 TRB，就往这里塞什么 struct ...
     //命令trb xhci命令环专用，用于发送启用插槽等
+    trb_address_device_cmd_t address_device_cmd;
     trb_enable_slot_cmd_t    enable_slot_cmd;
     trb_set_tr_deq_ptr_cmd_t set_tr_deq_ptr_cmd;
     trb_rest_ep_cmd_t        rest_ep_cmd;
@@ -970,9 +998,6 @@ typedef struct {
 #pragma pack(pop)
 
 
-struct usb_dev_t;
-struct usb_hub_t;
-
 typedef enum {
     XHCI_PORT_EMPTY = 0,
     XHCI_PORT_DEV,
@@ -1026,9 +1051,12 @@ typedef struct {
 } xhci_controller_t;
 
 
-
-
-
+uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push);
+xhci_trb_comp_code_e xhci_wait_for_event(xhci_controller_t *xhci_controller, uint64 wait_trb_pa, uint64 timeout_ms,xhci_trb_t *out_event_trb);
+static inline int32 xhci_ring_init(xhci_ring_t *ring, uint32 align_size);
+static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 db_number, uint32 value);
+int8 xhci_enable_slot(xhci_controller_t *xhci_controller, uint8 *out_slot_id);
+int8 xhci_address_device(struct usb_dev_t *udev);
 
 
 

@@ -213,7 +213,7 @@ typedef struct endpoint_t{
 }endpoint_t;
 
 //USB设备
-typedef struct usb_dev_t {
+typedef struct usb_dev_t{
     uint8                           port_id;
     uint8                           slot_id;
     usb_device_descriptor_t*        dev_desc;           //设备描述符
@@ -223,8 +223,7 @@ typedef struct usb_dev_t {
     usb_string_descriptor_t*        product_desc;       //产品型号名描述符
     usb_string_descriptor_t*        serial_number_desc; //序列号描述符
     xhci_device_context_t*          dev_context;       // 设备上下文
-    xhci_ring_t                     ep0;               // 控制端点
-    endpoint_t                      eps[31];           // 端点0-31
+    endpoint_t                      eps[32];           // 端点0-31
     xhci_controller_t*              xhci_controller;   // xhci控制器
     device_t                        dev;
     uint8                           interfaces_count;  // 接口数量
