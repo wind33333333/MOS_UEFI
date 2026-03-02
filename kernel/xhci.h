@@ -429,6 +429,26 @@ typedef struct trb_enable_slot_cmd_t {
     uint32          rsvd2:11;       // Bits 21-31: 保留，填 0
 } trb_enable_slot_cmd_t;
 
+// ============================================================================
+// xHCI 规范 6.4.3.2: 禁用槽位命令 TRB (Disable Slot Command, Type = 10)
+// 作用：释放主板为该 Slot ID 分配的内部资源，使该 Slot ID 可以被再次分配。
+// ============================================================================
+typedef struct trb_disable_slot_cmd_t{
+    uint32 rsvd1[3];          // Dword 0, 1, 2: 保留，必须全填 0
+
+    // Dword 3
+    uint32 cycle:1;           // Bit [0]: 硬件翻转位 (C)
+    uint32 rsvd2:9;           // Bits [9:1]: 保留，填 0
+    uint32 trb_type:6;        // Bits [15:10]: 必须是 10 (XHCI_TRB_TYPE_DISABLE_SLOT)
+    uint32 rsvd3:8;           // Bits [23:16]: 保留，填 0
+
+    // ★ 绝杀目标：告诉主板你要超度哪个设备
+    uint32 slot_id:8;         // Bits [31:24]: 目标 Slot ID
+}trb_disable_slot_cmd_t;
+
+// 在你的联合体中补充：
+// trb_disable_slot_cmd_t  disable_slot_cmd;
+
 //=================================================================================================
 
 
@@ -503,6 +523,7 @@ typedef union xhci_trb_t {
     // 【视角 3：业务定制视角】(包含了所有具体的 TRB 解析格式) ... 以后加什么 TRB，就往这里塞什么 struct ...
     //命令trb xhci命令环专用，用于发送启用插槽等
     trb_address_device_cmd_t address_device_cmd;
+    trb_disable_slot_cmd_t   disable_slot_cmd;
     trb_enable_slot_cmd_t    enable_slot_cmd;
     trb_set_tr_deq_ptr_cmd_t set_tr_deq_ptr_cmd;
     trb_rest_ep_cmd_t        rest_ep_cmd;
