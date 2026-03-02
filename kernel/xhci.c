@@ -24,7 +24,7 @@ uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
         trb_ptr->link.chain = chain;
 
         ring->index = 0;
-        ring->cycle ^= TRB_FLAG_CYCLE;
+        ring->cycle ^= 1;
     }
 
     trb_push->link.cycle = ring->cycle; //设置需要如队列trb的cycle位
