@@ -287,15 +287,13 @@ xhci_trb_comp_code_e xhci_execute_command_sync(xhci_controller_t *xhci_controlle
     return comp_code;
 }
 
-//写入input上文
-void xhci_input_ctx_add(xhci_controller_t *xhci_controller,xhci_input_context_t *input_ctx, void *from_ctx, uint32 ep_dci) {
+//获取需要input端点的上下文地址
+void *xhci_get_input_ctx_addr(xhci_controller_t *xhci_controller,input_ctrl_ctx_t *input_ctx, uint32 ep_dci) {
     uint8 ctx_size = xhci_controller->ctx_size;
-    void *to_ctx = (uint8 *)input_ctx + ctx_size * (ep_dci + 1);
-    asm_mem_cpy(from_ctx, to_ctx, ctx_size);
-    input_ctx->input_ctx32.control.add_context |= 1 << ep_dci;
+    return (uint8 *)input_ctx + ctx_size * (ep_dci + 1);
 }
 
-//获取需要读取端点的上下文地址
+//获取需要端点的上下文地址
 void *xhci_get_ctx_addr(usb_dev_t *udev, uint32 ep_dci) {
     uint8 *dev_ctx_base = (uint8*)udev->dev_context;
     uint8 ctx_size = udev->xhci_controller->ctx_size;
