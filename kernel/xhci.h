@@ -353,6 +353,30 @@ typedef struct trb_status_stage_t {
 //==================================命令trb==================================================
 
 // ============================================================================
+// xHCI 规范 6.4.3.8: 停止端点命令 TRB (Stop Endpoint Command, Type = 15)
+// 作用：强制主板 xHC 芯片停止处理指定端点的传输环，并将端点状态机切入 "Stopped"。
+// 核心用途：用于传输超时后的主动中止 (Abort Transfer) 和环指针的重新对齐。
+// ============================================================================
+typedef struct trb_stop_ep_cmd_t{
+    uint32 rsvd1[3];          // Dword 0, 1, 2: 保留，必须全填 0
+
+    // Dword 3
+    uint32 cycle:1;           // Bit [0]: 硬件翻转位 (C)
+    uint32 rsvd2:9;           // Bits [9:1]: 保留，填 0
+    trb_type_e trb_type:6;        // Bits [15:10]: 必须是 15 (XHCI_TRB_TYPE_STOP_EP)
+
+    // ★ 狙击目标：精准定位到具体的设备和具体的管道
+    uint32 ep_id:5;           // Bits [20:16]: 目标 Endpoint ID (1~31)
+    uint32 rsvd3:2;           // Bits [22:21]: 保留，填 0
+
+    // ★ 挂起位：0 = 彻底停止并丢弃内部缓存; 1 = 只是挂起(Suspend)，以后还能原样恢复。
+    // 在超时抢救场景中，我们永远填 0（彻底停止）！
+    uint32 suspend:1;         // Bit [23]: SP (Suspend) 位
+
+    uint32 slot_id:8;         // Bits [31:24]: 目标 Slot ID
+}trb_stop_ep_cmd_t;
+
+// ============================================================================
 // xHCI 规范 6.4.3.4: 分配设备地址命令 TRB (Address Device Command, Type = 11)
 // 作用：向新插入的 USB 设备分配总线地址，并初始化 Slot Context 和 EP0 Context。
 // ============================================================================
@@ -439,7 +463,7 @@ typedef struct trb_disable_slot_cmd_t{
     // Dword 3
     uint32 cycle:1;           // Bit [0]: 硬件翻转位 (C)
     uint32 rsvd2:9;           // Bits [9:1]: 保留，填 0
-    uint32 trb_type:6;        // Bits [15:10]: 必须是 10 (XHCI_TRB_TYPE_DISABLE_SLOT)
+    trb_type_e trb_type:6;        // Bits [15:10]: 必须是 10 (XHCI_TRB_TYPE_DISABLE_SLOT)
     uint32 rsvd3:8;           // Bits [23:16]: 保留，填 0
 
     // ★ 绝杀目标：告诉主板你要超度哪个设备
@@ -522,6 +546,7 @@ typedef union xhci_trb_t {
 
     // 【视角 3：业务定制视角】(包含了所有具体的 TRB 解析格式) ... 以后加什么 TRB，就往这里塞什么 struct ...
     //命令trb xhci命令环专用，用于发送启用插槽等
+    trb_stop_ep_cmd_t        stop_ep_cmd;
     trb_address_device_cmd_t address_device_cmd;
     trb_disable_slot_cmd_t   disable_slot_cmd;
     trb_enable_slot_cmd_t    enable_slot_cmd;

@@ -430,6 +430,52 @@ int8 xhci_reset_endpoint(xhci_controller_t *xhci_controller, uint8 slot_id, uint
 }
 
 /**
+ * @brief 紧急刹车：停止指定设备的指定端点 (用于超时抢救)
+ * @param xhci_controller xHCI 控制器上下文
+ * @param slot_id         出事设备的 Slot ID
+ * @param ep_id           出事端点的 EP ID (注意: EP0 的 ep_id 是 1)
+ * @return int8           0 表示成功刹车，-1 表示灾难升级
+ */
+int8 xhci_stop_endpoint(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_id) {
+    if (slot_id == 0 || ep_id == 0 || ep_id > 31) {
+        return -1; // 参数非法
+    }
+
+    xhci_trb_t cmd_trb = {0},evt_trb;
+
+    // 1. 组装“拔管”命令
+    cmd_trb.stop_ep_cmd.trb_type = XHCI_TRB_TYPE_STOP_EP; // 15
+    cmd_trb.stop_ep_cmd.slot_id  = slot_id;
+    cmd_trb.stop_ep_cmd.ep_id    = ep_id;
+    cmd_trb.stop_ep_cmd.suspend  = 0; // 坚决不挂起，直接要求主板废弃当前内部缓存的坏状态！
+
+    // 2. 发射命令并同步等待
+    // 注意：刹车命令通常非常快，主板会在微秒级响应。
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhci_controller, &cmd_trb, 2000000, &evt_trb);
+
+    if (comp_code != XHCI_COMP_SUCCESS) {
+        // 如果连 Stop Endpoint 都失败了 (比如返回了 CONTEXT_STATE_ERROR 19)
+        // 意味着该端点可能已经处于 Halted(死机) 或者 Disabled(未启用) 状态。
+        color_printk(RED, BLACK, "xHCI: Failed to Stop EP %d on Slot %d! Hardware code: %d\n", ep_id, slot_id, comp_code);
+        return -1;
+    }
+
+    // ==========================================================
+    // 3. ★ 架构师核心机密：提取刹车痕迹！
+    // ==========================================================
+    // 当主板成功停下端点时，它返回的 Event TRB 中，
+    // cmd_trb_ptr 字段记录的，正是主板【刹车时，硬件指针停留的那个物理地址】！
+    // 这个地址对于你接下来的抢救（挪动指针跨过坏点）有着极其关键的决定性作用！
+
+    uint64 hardware_stopped_pa = evt_trb.cmd_comp_event.cmd_trb_ptr;
+
+    color_printk(YELLOW, BLACK, "xHCI: Emergency Stopped EP %d on Slot %d! HW halted at PA: %#llx\n",
+                 ep_id, slot_id, hardware_stopped_pa);
+
+    return 0;
+}
+
+/**
  * @brief 发送 Set TR Dequeue Pointer Command，强制移动端点底层的出队指针
  * * @param xhci          xHCI 控制器实例
  * @param slot_id       设备槽位号
