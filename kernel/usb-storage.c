@@ -10,7 +10,7 @@
 /*
 
 //获取最大逻辑单元
-static inline uint8 bot_msc_read_max_lun(xhci_controller_t *xhci_controller, usb_dev_t *usb_dev,
+static inline uint8 bot_msc_read_max_lun(xhcd_t *xhcd, usb_dev_t *usb_dev,
                                          usb_bot_msc_t *bot_msc) {
     trb_t trb;
     setup_stage_trb(&trb, setup_stage_interface, setup_stage_calss, setup_stage_in, usb_req_get_max_lun, 0, 0,
@@ -24,9 +24,9 @@ static inline uint8 bot_msc_read_max_lun(xhci_controller_t *xhci_controller, usb
     status_stage_trb(&trb, enable_ioc, trb_out);
     xhci_ring_enqueue(&usb_dev->ep0, &trb);
 
-    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
+    xhci_ring_doorbell(xhcd, usb_dev->slot_id, 1);
     timing();
-    xhci_ering_dequeue(xhci_controller, &trb);
+    xhci_ering_dequeue(xhcd, &trb);
 
     uint8 lun_count = ++*max_lun;
     kfree(max_lun);

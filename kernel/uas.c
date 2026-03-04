@@ -22,7 +22,7 @@ static inline void uas_free_tag(uas_data_t *uas_data,uint16 nr) {
 void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     uas_data_t *uas_data = host->hostdata;
     usb_dev_t *usb_dev = uas_data->usb_if->usb_dev;
-    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+    xhci_hcd_t *xhcd = usb_dev->xhcd;
     uint8 slot_id = usb_dev->slot_id;
 
     trb_t trb;
@@ -70,16 +70,16 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     xhci_ring_enqueue(&usb_dev->eps[cmd_pipe].transfer_ring,&trb);
 
     // [Step D] 敲门铃 (Doorbell) status
-    xhci_ring_doorbell(xhci_controller, slot_id, status_pipe | tag<<16);
+    xhci_ring_doorbell(xhcd, slot_id, status_pipe | tag<<16);
 
     //可选[Step E] 敲门铃 (Doorbell) data
     if (cmnd->data_buf && cmnd->data_len) {
-        xhci_ring_doorbell(xhci_controller, slot_id, data_pipe | tag<<16);
+        xhci_ring_doorbell(xhcd, slot_id, data_pipe | tag<<16);
     }
 
     //[Step F] 敲门铃 (Doorbell) cmd
-    xhci_ring_doorbell(xhci_controller, slot_id, cmd_pipe);
-    int32 completion_code = xhci_wait_for_completion(xhci_controller,status_trb_ptr,0x20000000);
+    xhci_ring_doorbell(xhcd, slot_id, cmd_pipe);
+    int32 completion_code = xhci_wait_for_completion(xhcd,status_trb_ptr,0x20000000);
 
     //检测TRB是否发送成功
     if (completion_code == XHCI_COMP_SUCCESS || completion_code == XHCI_COMP_SHORT_PACKET) {   //TRB发送成功

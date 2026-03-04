@@ -1041,42 +1041,67 @@ typedef struct {
 
 
 //xhci控制器
-typedef struct {
-    uint8               major_bcd;          // 主版本
-    uint8               minor_bcd;          // 次版本
-    xhci_cap_regs_t     *cap_reg;           // 能力寄存器
-    xhci_op_regs_t      *op_reg;            // 操作寄存器
-    xhci_rt_regs_t      *rt_reg;            // 运行时寄存器
-    xhci_db_regs_t      *db_reg;            // 门铃寄存器
-    xhci_ext_regs_t     *ext_reg;           // 扩展寄存器
-    uint64              *dcbaap;            // 设备上下文插槽
-    xhci_port           *ports;             // 端口
-    xhci_ring_t         cmd_ring;           // 命令环
-    xhci_ring_t         event_ring;         // 事件环
-    uint32              align_size;         // xhci内存分配对齐边界
-    uint8               ctx_size;           // 设备上下文字节数（32或64字节）
-    uint8               max_ports;          // 最大端口数量
-    uint8               max_slots;          // 最大插槽数量
-    uint16              max_intrs;          // 最大中断数量
-    uint8               spc_count;          // spc数量
-    xhci_spc_t          *spc;               // 支持的协议功能
-    uint8               *port_to_spc;       // 端口找spc号
-} xhci_controller_t;
+typedef struct xhci_hcd_t{
+    // ==========================================
+    // 1. 硬件属性 (Hardware Capabilities)
+    // ==========================================
+    uint8               major_bcd;          // 主版本号
+    uint8               minor_bcd;          // 次版本号
+    uint32              align_size;         // xHCI 内存分配对齐边界 (PAGESIZE)
+    uint8               ctx_size;           // 设备上下文字节数 (32 还是 64 字节)
+    uint8               max_ports;          // 最大物理端口数量 (MaxPorts)
+    uint8               max_slots;          // 最大逻辑插槽数量 (MaxSlots)
+    uint16              max_intrs;          // 最大中断器数量 (MaxIntrs)
+
+    // ==========================================
+    // 2. 协议支持扩展 (Supported Protocol Capability)
+    // ==========================================
+    uint8               spc_count;          // SPC 块数量
+    xhci_spc_t          *spc;               // 动态分配的 SPC 结构体数组
+    uint8               *port_to_spc;       // [核心映射]: 物理 Port ID 对应的 SPC 索引
+
+    // ==========================================
+    // 3. MMIO 硬件寄存器指针 (Registers Mapping)
+    // ==========================================
+    xhci_cap_regs_t     *cap_reg;           // 能力寄存器 (只读)
+    xhci_op_regs_t      *op_reg;            // 操作寄存器 (控制全局状态)
+    xhci_rt_regs_t      *rt_reg;            // 运行时寄存器 (中断管理)
+    xhci_db_regs_t      *db_reg;            // 门铃寄存器 (敲门砖)
+    xhci_ext_regs_t     *ext_reg;           // 扩展寄存器链表起始地址
+
+    // ==========================================
+    // 4. DMA 核心共享内存 (Host <-> Device)
+    // ==========================================
+    uint64              *dcbaap;            // 设备上下文基址数组 (物理地址数组)
+    xhci_ring_t         cmd_ring;           // 全局单例：命令环 (Command Ring)
+
+    // ==========================================
+    // 5. 软硬件映射与并发控制 (Software State)
+    // ==========================================
+    // xhci_port_t         *ports;             // 端口逻辑对象数组
+    // struct usb_dev_t    *udevs;             // 插槽到设备的逻辑映射 (通过 Slot ID 查找 usb_dev_t)
+
+    // 注意：事件环不是一个，它是和中断器绑定的！这里根据 max_intrs 动态分配！
+    xhci_ring_t         *event_rings;       // 事件环数组 (大小为 max_intrs)
+    void                *ersts;             // ERST 表数组 (同样与中断器对应)
+
+    //spinlock_t          lock;               // 保护整个 xHCI 状态机的全局自旋锁
+} xhci_hcd_t;
 
 
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push);
-xhci_trb_comp_code_e xhci_wait_for_event(xhci_controller_t *xhci_controller, uint64 wait_trb_pa, uint64 timeout_ms,xhci_trb_t *out_event_trb);
+xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd, uint64 wait_trb_pa, uint64 timeout_ms,xhci_trb_t *out_event_trb);
 static inline int32 xhci_ring_init(xhci_ring_t *ring, uint32 align_size);
-static inline void xhci_ring_doorbell(xhci_controller_t *xhci_controller, uint8 db_number, uint32 value);
-int32 xhci_enable_slot(xhci_controller_t *xhci_controller, uint8 *out_slot_id);
-int32 xhci_disable_slot(xhci_controller_t *xhci_controller, uint8 slot_id);
-int32 xhci_cmd_address_device(xhci_controller_t *xhci_controller, uint8 slot_id,xhci_input_ctrl_ctx_t *input_ctx);
-int32 xhci_cmd_cfg_ep(xhci_controller_t *xhci_controller, xhci_input_ctrl_ctx_t *input_ctx, uint8 slot_id, uint8 dc);
-int32 xhci_cmd_stop_ep(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_id);
-uint32 xhci_cmd_reset_endpoint(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_dci);
-int32 xhci_cmd_eval_ctx(xhci_controller_t *xhci_controller, xhci_input_ctrl_ctx_t *input_ctx, uint8 slot_id);
-int32 xhci_cmd_set_tr_deq_ptr(xhci_controller_t *xhci_controller, uint8 slot_id, uint8 ep_dci,xhci_ring_t *transfer_ring);
-int32 xhci_cmd_reset_dev(xhci_controller_t *xhci_controller, uint8 slot_id);
+static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 value);
+int32 xhci_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id);
+int32 xhci_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);
+int32 xhci_cmd_address_device(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctrl_ctx_t *input_ctx);
+int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctrl_ctx_t *input_ctx, uint8 slot_id, uint8 dc);
+int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_id);
+uint32 xhci_cmd_reset_endpoint(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
+int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctrl_ctx_t *input_ctx, uint8 slot_id);
+int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci_ring_t *transfer_ring);
+int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id);
 
 
 

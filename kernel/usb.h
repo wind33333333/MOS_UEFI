@@ -224,7 +224,7 @@ typedef struct usb_dev_t{
     usb_string_descriptor_t*        serial_number_desc; //序列号描述符
     void*                           dev_ctx;           // 设备上下文
     endpoint_t                      eps[32];           // 端点0-31
-    xhci_controller_t*              xhci_controller;   // xhci控制器
+    xhci_hcd_t*              xhcd;   // xhci控制器
     device_t                        dev;
     uint8                           interfaces_count;  // 接口数量
     usb_if_t                        *interfaces;       // 接口指针根据接口数量动态分配
@@ -235,6 +235,19 @@ typedef struct usb_dev_t{
     uint8                           parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
 
 } usb_dev_t;
+
+//获取需要input端点的上下文地址
+static inline void *xhci_get_input_ctx_addr(xhci_hcd_t *xhcd,xhci_input_ctrl_ctx_t *input_ctx, uint32 ep_dci) {
+    uint8 ctx_size = xhcd->ctx_size;
+    return (uint8 *)input_ctx + ctx_size * (ep_dci + 1);
+}
+
+
+//获取需要端点的上下文地址
+static inline void *xhci_get_ctx_addr(usb_dev_t *udev, uint32 ep_dci) {
+    return (uint8*)udev->dev_ctx + udev->xhcd->ctx_size * ep_dci;
+}
+
 
 //获取下一个描述符
 static inline void *usb_get_next_desc(usb_descriptor_head *head) {

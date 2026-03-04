@@ -30,7 +30,7 @@ int32 bot_request_sense(bot_data_t *bot_data,scsi_cmnd_t *cmnd) {
  * 用于应对协议阶段错误或致命的卡死。
  */
 void bot_recovery_reset(usb_dev_t *usb_dev,uint8 if_num, uint8 pipe_in, uint8 pipe_out) {
-    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+    xhci_hcd_t *xhcd = usb_dev->xhcd;
 
     // 动作 1：发送特定的 0xFF 控制命令，将 U 盘内部状态机重置
     xhci_trb_t trb = {0};
@@ -59,8 +59,8 @@ void bot_recovery_reset(usb_dev_t *usb_dev,uint8 if_num, uint8 pipe_in, uint8 pi
     trb.status_stage.dir = 1;
     uint64 ptr = xhci_ring_enqueue(&usb_dev->ep0, (void*)&trb);
 
-    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, 1);
-    int32 completion_code = xhci_wait_for_completion(xhci_controller,ptr,0x20000000);
+    xhci_ring_doorbell(xhcd, usb_dev->slot_id, 1);
+    int32 completion_code = xhci_wait_for_completion(xhcd,ptr,0x20000000);
 
     if (completion_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "BOT: Reset Request 0xFF failed!\n");
@@ -69,11 +69,11 @@ void bot_recovery_reset(usb_dev_t *usb_dev,uint8 if_num, uint8 pipe_in, uint8 pi
     }
 
     // 动作 2：清理硬件与协议层面的 IN 管道挂起状态
-    xhci_reset_endpoint(usb_dev->xhci_controller, usb_dev->slot_id, pipe_in,0);
+    xhci_reset_endpoint(usb_dev->xhcd, usb_dev->slot_id, pipe_in,0);
     usb_clear_feature_halt(usb_dev, pipe_in);
 
     // 动作 3：清理硬件与协议层面的 OUT 管道挂起状态
-    xhci_reset_endpoint(usb_dev->xhci_controller, usb_dev->slot_id, pipe_out,0);
+    xhci_reset_endpoint(usb_dev->xhcd, usb_dev->slot_id, pipe_out,0);
     usb_clear_feature_halt(usb_dev, pipe_out);
 
     color_printk(GREEN, BLACK, "BOT: Reset Request!\n");
@@ -86,7 +86,7 @@ void bot_recovery_reset(usb_dev_t *usb_dev,uint8 if_num, uint8 pipe_in, uint8 pi
 void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     bot_data_t *bot_data =host->hostdata;
     usb_dev_t *usb_dev = bot_data->usb_if->usb_dev;
-    xhci_controller_t *xhci_controller = usb_dev->xhci_controller;
+    xhci_hcd_t *xhcd = usb_dev->xhcd;
 
     // 管道定义 (BOT 通常只用两个 Bulk 管道)
     uint8 pipe_out = bot_data->pipe_out;
@@ -119,10 +119,10 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     // 提交 TRB 到 Bulk OUT
     normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(bot_cbw_t), ENABLE_IOC);
     uint64 cbw_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[pipe_out].transfer_ring, &trb);
-    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, pipe_out);
+    xhci_ring_doorbell(xhcd, usb_dev->slot_id, pipe_out);
 
     // 等待 CBW 发送完成
-    completion_code = xhci_wait_for_completion(xhci_controller, cbw_trb_ptr, 500000000); // 2秒超时
+    completion_code = xhci_wait_for_completion(xhcd, cbw_trb_ptr, 500000000); // 2秒超时
     if (completion_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "BOT Stage 1: CBW Failed (%#x). Resetting...\n", completion_code);
         // CBW 阶段出错是极其致命的，直接上“核弹复位”
@@ -140,7 +140,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
         normal_transfer_trb(&trb, va_to_pa(cmnd->data_buf), disable_ch,cmnd->data_len , ENABLE_IOC);
         trb.member1 |= 1UL<<34;//设置短包中断
         uint64 data_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[data_pipe].transfer_ring, &trb);
-        xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, data_pipe);
+        xhci_ring_doorbell(xhcd, usb_dev->slot_id, data_pipe);
 
         timing();
         color_printk(RED,BLACK,"out_ep:%d c:%#x t:%#x \n",pipe_out,usb_dev->dev_ctx->dev_ctx32.ep[pipe_out-1].ep_config,usb_dev->dev_ctx->dev_ctx32.ep[pipe_out-1].ep_type_size);
@@ -148,7 +148,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
         color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_ctx->dev_ctx32.ep[0].ep_config,usb_dev->dev_ctx->dev_ctx32.ep[0].ep_type_size);
 
         // 等待数据传输完成
-        completion_code = xhci_wait_for_completion(xhci_controller, data_trb_ptr, 500000000); // 5秒超时
+        completion_code = xhci_wait_for_completion(xhcd, data_trb_ptr, 500000000); // 5秒超时
         if (completion_code != XHCI_COMP_SUCCESS) {
             if (completion_code == XHCI_COMP_SHORT_PACKET) {
                 // 完美情况：只是短包，无需处理，直接去读 CSW
@@ -177,10 +177,10 @@ retry_csw:
     normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(bot_csw_t), ENABLE_IOC);
     uint64 csw_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[pipe_in].transfer_ring, &trb);
 
-    xhci_ring_doorbell(xhci_controller, usb_dev->slot_id, pipe_in);
+    xhci_ring_doorbell(xhcd, usb_dev->slot_id, pipe_in);
 
     // 等待 CSW 接收完成
-    completion_code = xhci_wait_for_completion(xhci_controller, csw_trb_ptr, 500000000);
+    completion_code = xhci_wait_for_completion(xhcd, csw_trb_ptr, 500000000);
 
     uint8 csw_retry_count = 0;
     // 异常 1: 请求 CSW 时发生 STALL (有些 U 盘会在发 CSW 前莫名其妙再卡一次)
