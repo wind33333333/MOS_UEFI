@@ -1261,6 +1261,9 @@ typedef struct {
 
 #pragma pack(pop)
 
+
+//============================ 软件抽象 ==========================================
+
 typedef struct {
     xhci_trb_t   *ring_base; //环起始地址
     uint32       index; //trb索引
