@@ -1104,34 +1104,21 @@ typedef struct {
     // 后面通常跟 HID 报告描述符（类型0x22）等
 } usb_hid_desc_t;
 
-/*HUB 类描述符（可选）
-描述符长度
-描述符类型：0x29 = HUB 描述符*/
-typedef struct {
-    usb_desc_head head;
-    uint8 num_ports; // hub 下行端口数量
-    uint16 hub_characteristics; // hub 特性位（供电方式、过流保护等）
-    uint8 power_on_to_power_good; // 端口上电到电源稳定的时间（单位2ms）
-    uint8 hub_control_current; // hub 控制器所需电流
-    // 之后还会跟一个可变长度的 DeviceRemovable 和 PortPwrCtrlMask
-} usb_hub_desc_t;
-
 /**
  * @brief USB 2.0 集线器描述符 (Type: 0x29)
  * 警告：这是一个变长结构体！最后两个数组的长度取决于 bNbrPorts。
  */
 typedef struct {
-    uint8  bDescLength;         // 描述符总长度 (动态计算)
-    uint8  bDescriptorType;     // 0x29 (USB_DESC_TYPE_HUB)
-    uint8  bNbrPorts;           // ★ 下游端口总数 (极其关键，决定了你要轮询几次)
+    usb_desc_head head;
+    uint8  num_ports;           // ★ 下游端口总数 (极其关键，决定了你要轮询几次)
 
     // wHubCharacteristics 包含了极其重要的位域：
     // Bit 1:0 - 电源切换模式 (00=所有端口联动上电, 01=各端口独立上电, 11=无电源切换)
     // Bit 4:3 - 过流保护模式 (00=全局过流保护, 01=单端口独立过流保护, 11=无保护)
-    uint16 wHubCharacteristics;
+    uint16 hub_characteristics;
 
-    uint8  bPwrOn2PwrGood;      // 端口上电后，需要等多久电源才能稳定？(单位是 2ms，比如填 50 就是要等 100ms)
-    uint8  bHubContrCurrent;    // Hub 芯片自身工作需要的最大电流 (mA)
+    uint8  power_on_to_power_good;      // 端口上电后，需要等多久电源才能稳定？(单位是 2ms，比如填 50 就是要等 100ms)
+    uint8  hub_control_current;    // Hub 芯片自身工作需要的最大电流 (mA)
 
     // ==========================================
     // ⚠️ 变长警告：下面这两个字段在内存中紧挨着，但长度是不固定的！
@@ -1149,23 +1136,22 @@ typedef struct {
  * 优势：长度固定为 12 字节，无变长数组陷阱。
  */
 typedef struct {
-    uint8  bLength;             // 永远是 12 (0x0C)
-    uint8  bDescriptorType;     // 0x2A (USB_DESC_TYPE_SS_HUB)
-    uint8  bNbrPorts;           // 下游端口总数 (由于规范限制，绝不会超过 15)
-    uint16 wHubCharacteristics; // 特性掩码 (与 USB 2.0 类似，但去掉了废弃位)
-    uint8  bPwrOn2PwrGood;      // 单位依然是 2ms
-    uint8  bHubContrCurrent;    // ★ 注意：USB 3.0 规范里，这里的单位变成了 2mA！
+    usb_desc_head head;
+    uint8  num_ports;           // 下游端口总数 (由于规范限制，绝不会超过 15)
+    uint16 hub_characteristics; // 特性掩码 (与 USB 2.0 类似，但去掉了废弃位)
+    uint8  power_on_to_power_good;      // 单位依然是 2ms
+    uint8  hub_control_current;    // ★ 注意：USB 3.0 规范里，这里的单位变成了 2mA！
 
     // ==========================================
     // SuperSpeed 专属的新字段 (用于内核调度器评估总线延迟)
     // ==========================================
-    uint8  bHubHdrDecLat;       // Hub 数据包头解码延迟 (Hub Header Decode Latency)
-    uint16 wHubDelay;           // Hub 转发数据块的纳秒级平均延迟 (单位: ns)
+    uint8  hub_hdr_hecLat;       // Hub 数据包头解码延迟 (Hub Header Decode Latency)
+    uint16 hub_delay;           // Hub 转发数据块的纳秒级平均延迟 (单位: ns)
 
     // ==========================================
     // 曾经的变长数组，现在变成了固定的 16-bit 整数
     // ==========================================
-    uint16 DeviceRemovable;     // 16位位图。Bit 1~15 代表对应的端口是否可移除。(Bit 0 保留)
+    uint16 device_removable;     // 16位位图。Bit 1~15 代表对应的端口是否可移除。(Bit 0 保留)
 
 } usb_hub3_desc_t;
 
