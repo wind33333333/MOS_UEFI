@@ -3,6 +3,314 @@
 
 #pragma pack(push,1)
 
+//======================== XHCI硬件mimo寄存器 ========================================
+
+// ===== 1. 能力寄存器 (Capability Registers) =====
+typedef struct {
+    // 00h: 能力长度和版本 (CAPLENGTH/HCIVERSION)
+    uint8 cap_length; // [7:0] 能力寄存器总长度 (字节)
+    uint8 reserved0; // 保留
+    uint16 hciversion; // 控制器版本 (0x100 = 1.0.0, 0x110 = 1.1.0, 0x120 = 1.2.0)
+
+    // 04h: 硬件参数寄存器 (HCSPARAMS1)
+    uint32 hcsparams1; /*[7:0]   MaxSlots: 支持的最大设备槽数（最大256）
+                         [18:8]  MaxIntrs: 支持的中断向量数（最大2048）
+                         [24:31] MaxPorts: 支持的根端口数（最大256）*/
+
+    // 08h: 硬件参数寄存器 (HCSPARAMS2)
+    uint32 hcsparams2; /*[3:0]	    IST 等时调度阈值，单位为微帧（125us）。Host Controller 在这个阈值之后的同一帧内不再调度新的等时传输。常见值：0~8。
+                              [7:4]	    ERST Max 硬件支持的事件环段表最大条目数2^n ERST MAX = 8 则条目等于256。
+                              [25:21]	Max Scratchpad Buffers (hi  5 bits)	最大暂存器缓冲区数量的高5位（范围 0~1023）。
+                              [31:27]	Max Scratchpad Buffers (Lo 5 bits)	最大暂存器缓冲区数量的低5位*/
+
+    // 0Ch: 硬件参数寄存器 (HCSPARAMS3)
+    uint32 hcsparams3; /*[7:0]     U1DeviceExitLatency: U1设备退出延迟（以微秒为单位）
+                              [15:8]    U2DeviceExitLatency: U2设备退出延迟（以微秒为单位）*/
+
+    // 10h: 硬件参数寄存器 (HCCPARAMS1)
+    uint32 hccparams1; /*- AC64 (位 0): 64位寻址能力（1=支持，0=不支持）
+                              - BNC (位 1): 带宽协商能力
+                              - CSZ (位 2): 上下文大小（0=32字节，1=64字节）
+                              - PPC (位 3): 端口电源控制能力
+                              - PIND (位 4): 端口指示器能力
+                              - LHRC (位 5): 轻量级主机路由能力
+                              - LTC (位 6): 延迟容忍能力
+                              - NSS (位 7): 无嗅探能力
+                              - MaxPSASize (位 12-15): 最大主控制器流数组大小
+                              - ECPA(位16-31)：扩展能力链表偏移地址 = 偏移<<2 */
+#define HCCP1_CSZ   (1<<2)
+
+    uint32 dboff; // 0x14 门铃寄存器偏移
+
+    uint32 rtsoff; // 0x18 运行时寄存器偏移
+
+    uint32 hccparams2; /* - U3C (位 0): U3转换能力
+                               - CMC (位 1): 配置最大能力
+                               - FSC (位 2): 强制保存上下文能力
+                               - CTC (位 3): 符合性测试能力
+                               - LEC (位 4): 大型ESIT有效负载能力
+                               - CIC (位 5): 配置信息能力*/
+} xhci_cap_regs_t;
+
+// ===== 2. 操作寄存器 (Operational Registers) =====
+typedef struct {
+    // 00h: 命令寄存器 (USBCMD)
+    uint32 usbcmd; /*- R/S (位 0): 运行/停止（1=运行，0=停止）
+                      - HCRST (位 1): 主机控制器复位（置1触发复位）
+                      - INTE (位 2): 中断使能（1=使能，0=禁用）
+                      - HSEE (位 3): 主机系统错误使能
+                      - LHCRST (位 7): 轻量级主机控制器复位
+                      - CSS (位 8): 控制器保存状态
+                      - CRS (位 9): 控制器恢复状态
+                      - EWE (位 10): 事件中断使能
+                      - EU3S (位 11): 启用U3 MMI（电源管理相关）*/
+#define XHCI_CMD_RS (1 << 0)
+#define XHCI_CMD_HCRST (1 << 1)
+#define XHCI_CMD_INTE (1 << 2)
+#define XHCI_CMD_HSEE (1 << 3)
+#define XHCI_CMD_LHCRST (1 << 7)
+#define XHCI_CMD_CSS (1 << 8)
+#define XHCI_CMD_CRS (1 << 9)
+#define XHCI_CMD_EWE (1 << 10)
+#define XHCI_CMD_EU3S (1 << 11)
+
+    // 04h: 状态寄存器 (USBSTS)
+    uint32 usbsts; /* - HCH (位 0): 主机控制器停止（1=已停止，0=运行中）
+                      - HSE (位 2): 主机系统错误（1=错误发生）
+                      - EINT (位 3): 事件中断（1=有事件中断待处理）
+                      - PCD (位 4): 端口变化检测（1=端口状态变化）
+                      - SSS (位 8): 保存状态状态
+                      - RSS (位 9): 恢复状态状态
+                      - SRE (位 10): 保存/恢复错误
+                      - CNR (位 11): 控制器未就绪（1=未就绪）
+                      - HCE (位 12): 主机控制器错误*/
+#define XHCI_STS_HCH (1 << 0)
+#define XHCI_STS_HSE (1 << 2)
+#define XHCI_STS_EINT (1 << 3)
+#define XHCI_STS_PCD (1 << 4)
+#define XHCI_STS_SSS (1 << 8)
+#define XHCI_STS_RSS (1 << 9)
+#define XHCI_STS_SRE (1 << 10)
+#define XHCI_STS_CNR (1 << 11)
+#define XHCI_STS_HCE (1 << 12)
+
+    // 08h: 页面大小寄存器 (PAGESIZE)
+    uint32 pagesize; // 控制器支持的页面大小*0x1000
+
+    // 0Ch: 保留 [RsvdZ]
+    uint32 reserved0[2];
+
+    //0x14: 设备通知控制寄存器 (DNCTRL)
+    uint32 dnctrl; // - 每位对应一个设备槽的使能（0=禁用，1=使能）
+
+    //0x18 命令环控制寄存器 (CRCR)
+    uint64 crcr;
+    /*- 位[0] - RCS（Ring Cycle State，环周期状态）：当RCS=1时，主机控制器从命令环中获取的TRB需要其Cycle Bit为1才会被处理；当RCS=0时，则处理Cycle Bit为0的TRB。
+                      - 位[1] - CS（Command Stop，命令停止）：当置1时，命令环在完成当前命令后停止运行。
+                      - 位[2] - CA（Command Abort，命令中止）：当置1时，命令环立即停止，当前正在执行的命令被中止。
+                      - 位[3] - CRR（Command Ring Running，命令环运行状态）：为1时表示命令环正在运行，为0时表示命令环已停止。
+                      - 位[6:63] - Command Ring Pointer（命令环指针）：指向命令环的64位基地址（物理地址）。低6位必须为0（即地址必须64字节对齐）*/
+
+    //0x20: 保留字段
+    uint64 reserved1[2];
+
+    //0x30h: 设备上下文基础地址数组指针 (DCBAAP)
+    uint64 dcbaap; // DCBAA的物理地址指针
+
+    // 38h: 配置寄存器 (CONFIG)
+    uint32 config; // [7:0] 启用的设备槽数 (值≤MaxSlots)
+
+    // 保留字段 (Reserved), 偏移 0x3C-0x3FF, 填充到端口寄存器之前
+    uint32 reserved2[241];
+
+    // 端口寄存器数组 (PORTSC, PORTPMSC, PORTLI, PORTHLPMC), 偏移 0x400起,每个端口占用16字节，按端口数量动态分配
+    struct {
+        // 端口状态和控制寄存器 (PORTSC), 32位
+        uint32 portsc; /*  - CCS (位 0): 当前连接状态（1=设备连接 0=设备未连接）
+                               - PED (位 1): 端口已启用/禁用 （1=启用 0=禁用）
+                               - TM  (位 2)：1=隧道模式 0=本地模式
+                               - OCA (位 3)：过电流激活 （1=该端口处于过流状态 0=该端口不存在过流情况）
+                               - PR (位 4): 端口复位 （1=端口复位信令已断言 0=端口未复位）
+                               - PLS (位 5-8): 端口链路状态 0x0：U0 /0x1：U1 /0x2：U2 /0x3：U3 /0x4：Disabled /0x5：RxDetect /0x6：Inactive /0x7：Polling /0x8：Recovery /0x9：Hot Reset /0xA：Compliance Mode /0xB：Test Mode /0xF：Resume
+                               - PP (位 9): 端口电源 默认=1
+                               - PortSpeed (位 10-13): 端口速度 0：未定义（通常表示端口还没被 reset 初始化出有效速率）/1：Full Speed /2：Low Speed /3：High Speed /4：SuperSpeed /5：SuperSpeedPlus（SSP） /6–15：保留
+                               - PIC (位 14-15): 端口指示器控制（0=端口指示灯关闭 1=琥珀色 2=绿色 3=未定义）
+                               - LWS (位 16): 链路状态写入选通
+                               - CSC (位 17): 连接状态变化
+                               - PEC (位 18): 端口使能/禁用变化
+                               - WRC (位 19): 热重置变化
+                               - OCC (位 20): 过流变化
+                               - PRC (位 21): 端口复位变化
+                               - PLC (位 22): 端口链路状态变化
+                               - CEC (位 23): 配置错误变化
+                               - CAS (位 24): 冷连接状态
+                               - WCE (位 25): 连接唤醒使能
+                               - WDE (位 26): 断开唤醒使能
+                               - WOE (位 27)：过流唤醒使能
+                               - DR  (位 30)：1=设备不可拆卸 0=设备可移动
+                               - WPR (位 31)：热端口复位 */
+#define XHCI_PORTSC_CCS (1 << 0)
+#define XHCI_PORTSC_PED (1 << 1)
+#define XHCI_PORTSC_OCA (1 << 3)
+#define XHCI_PORTSC_PR (1 << 4)
+#define XHCI_PORTSC_PLS_SHIFT 5
+#define XHCI_PORTSC_PLS_MASK 0xf
+#define XHCI_PORTSC_PP (1 << 9)
+#define XHCI_PORTSC_SPEED_SHIFT 10
+#define XHCI_PORTSC_SPEED_MASK 0xf
+#define XHCI_PORTSC_SPEED_FULL 1
+#define XHCI_PORTSC_SPEED_LOW 2
+#define XHCI_PORTSC_SPEED_HIGH 3
+#define XHCI_PORTSC_SPEED_SUPER 4
+#define XHCI_PORTSC_SPEED_SUPER_PLUS 5
+#define XHCI_PORTSC_PIC_SHIFT 14
+#define XHCI_PORTSC_PIC_MASK 0x3
+#define XHCI_PORTSC_W1C_MASK 0xFE0000
+#define XHCI_PORTSC_LWS (1 << 16)
+#define XHCI_PORTSC_CSC (1 << 17)
+#define XHCI_PORTSC_PEC (1 << 18)
+#define XHCI_PORTSC_WRC (1 << 19)
+#define XHCI_PORTSC_OCC (1 << 20)
+#define XHCI_PORTSC_PRC (1 << 21)
+#define XHCI_PORTSC_PLC (1 << 22)
+#define XHCI_PORTSC_CEC (1 << 23)
+#define XHCI_PORTSC_CAS (1 << 24)
+#define XHCI_PORTSC_WCE (1 << 25)
+#define XHCI_PORTSC_WDE (1 << 26)
+#define XHCI_PORTSC_WOE (1 << 27)
+#define XHCI_PORTSC_DR (1 << 30)
+#define XHCI_PORTSC_WPR (1 << 31)
+
+#define XHCI_PLS_U0              0   // 正常工作状态，USB 设备活跃，支持全速数据传输（USB 3.0 或 USB 2.0）
+#define XHCI_PLS_U1              1   // U1 低功耗状态，USB 设备进入轻度节能模式，快速恢复，适用于 USB 3.0
+#define XHCI_PLS_U2              2   // U2 低功耗状态，USB 设备进入更深节能模式，恢复时间稍长，适用于 USB 3.0
+#define XHCI_PLS_U3              3   // U3 挂起状态，USB 设备进入深度休眠，功耗最低，恢复时间较长，适用于 USB 3.0
+#define XHCI_PLS_DISABLED        4   // 禁用状态，USB 端口被禁用，无法通信
+#define XHCI_PLS_RX_DETECT       5   // 接收检测状态，USB 控制器正在检测是否有设备连接
+#define XHCI_PLS_INACTIVE        6   // 非活跃状态，USB 端口未连接设备或设备未响应
+#define XHCI_PLS_POLLING         7   // 轮询状态，USB 控制器正在初始化或尝试建立与设备的连接
+#define XHCI_PLS_RECOVERY        8   // 恢复状态，USB 端口从低功耗状态（如 U3）恢复到活跃状态
+#define XHCI_PLS_HOT_RESET       9   // 热重置状态，USB 端口正在执行热重置操作，重新初始化设备
+#define XHCI_PLS_COMPLIANCE_MODE 10  // 合规模式，用于 USB 设备或控制器的合规性测试
+#define XHCI_PLS_TEST_MODE       11  // 测试模式，USB 端口进入特定测试状态，用于硬件或协议测试
+#define XHCI_PLS_RESUME          15  // 恢复状态，USB 设备从挂起状态恢复，通常由主机发起
+
+        // 端口电源管理状态和控制寄存器 (PORTPMSC),控制电源管理和U1/U2状态,具体字段依赖于协议（USB2或USB3）
+        uint32 portpmsc;
+
+        // 端口链路信息寄存器 (PORTLI), 提供链路错误计数等信息
+        uint32 portli;
+
+        // 主机控制器端口电源管理控制寄存器 (PORTHLPMC), 仅用于USB2协议端口，控制高级电源管理
+        uint32 porthlpmc;
+    } portregs[256]; // 最大支持256个端口（根据HCSPARAMS1中的MaxPorts）
+} xhci_op_regs_t;
+
+// ===== 3. 运行时寄存器 (Runtime Registers) =====
+typedef struct {
+    // 00h: 微帧索引寄存器 (MFINDEX)
+    uint32 mfindex; // [13:0] 当前微帧索引（按125μs递增）
+
+    // 04h: 保留
+    uint32 reserved0[7];
+
+    // 中断管理数组 (IMAN) - 每个中断向量一个
+    struct {
+        // 中断管理寄存器 (IMAN), 偏移 0x00
+        uint32 iman; // 中断管理 [0]：IP中断挂起（1=有中断待处理），[1]：中断使能（1=使能，0=禁用）
+
+        //中断调节寄存器 (IMOD), 偏移 0x04,
+        uint32 imod; // 中断调制器 (位 0-15): 中断调节间隔（以250ns为单位，(位 16-31): 中断调节计数器（只读）
+
+        // 事件环段表大小寄存器 (ERSTSZ), 偏移 0x08, 32位
+        uint32 erstsz; // - ERST Size (位 0-15): 事件环段表条目数（最大4096）
+        uint32 reserved1;
+
+        // 事件环段表基地址寄存器 (ERSTBA), 偏移 0x10-0x17, 64位
+        uint64 erstba; //指向事件环段表的64位基地址（对齐到64字节)
+
+        // 事件环出队指针寄存器 (ERDP), 偏移 0x18-0x1F, 64位
+        uint64 erdp; /*指向事件环的当前出队指针
+                        - DESI (位 0-2): 出队事件环段索引
+                        - EHB (位 3): 事件处理忙碌（1=忙碌，写1清除）
+                        - Event Ring Dequeue Pointer (位 4-63): 出队指针地址*/
+#define XHCI_ERDP_EHB (1<<3)
+    } intr_regs[1024]; // 最大支持1024个中断器（根据HCSPARAMS1中的MaxIntrs）
+} xhci_rt_regs_t;
+
+// ===== 4. 门铃寄存器 (Doorbell Registers) =====
+// 门铃寄存器数组 (每个设备槽一个 + 主机控制器)
+typedef unsigned int xhci_db_regs_t;     /*最大支持256个设备槽(由HCSPARAMS1的MaxSlots决定）
+                                         - DB Target (位 0-7): 门铃目标
+                                         - 值为0：触发命令环（Command Ring）
+                                         - 值为1-31：触发特定端点（Endpoint 0-31）的传输环
+                                         - DB Stream ID (位 16-31): 流ID（仅用于支持流的设备）*/
+
+// ===== 5. 扩展寄存器 (HCCPARAMS2) =====
+// 当HCCPARAMS1[0] (AC64) 设置为1时出现
+typedef struct {
+    // 00h: U1设备退出延迟 (U1DEL)
+    uint32 u1del; // 默认U1退出延迟
+
+    // 04h: U2设备退出延迟 (U2DEL)
+    uint32 u2del; // 默认U2退出延迟
+
+    // ... 更多扩展寄存器 ...
+} xhci_ext_regs_t;
+
+/* 0x01: USB Legacy Support (USB 传统支持) */
+typedef struct {
+        uint32 usblegsup; /* 位16=1 bios控制，位24=1 os控制 */
+        uint32 usblegctlsts; /* 位0: USB SMI启用
+                                 位4: 主机系统错误SMI启用
+                                 位13: OS所有权变更SMI启用
+                                 位14: PCI命令变更SMI启用
+                                 位15: BAR变更SMI启用
+
+                                 === 高16位：SMI 状态/事件区域 ===
+                                 RO：只读
+                                 位16: 事件中断SMI状态(RO)
+                                 位19:17 保留 (RsvdP)
+                                 位20: 主机系统错误SMI状态(RO)
+                                 位28:21 保留 (RsvdZ)
+
+                                 RW1C：写1清除
+                                 位29: OS所有权变更SMI状态(RW1C)
+                                 位30: PCI命令变更SMI状态(RW1C)
+                                 位31: BAR变更SMI状态(RW1C)*/
+}xhci_ecap_legacy_support;
+
+/* 0x02: Supported Protocol Capability (支持的协议能力) */
+typedef struct {
+    uint32 protocol_ver;    /* 位 23:16 小修订版本0x10 = x.10
+                              位 31:24 主修订版本0x03 = 3.x */
+    char8 name[4];            /* 位 31:0 4个asci字符 */
+    uint32 port_info;         /* 位7:0 兼容端口偏移
+                              位15:8 兼容端口计数偏移
+                              位31:28 协议速度 ID 计数 - RO，PSI 字段数量 (0-15)*/
+    uint32 protocol_slot_type; /* 位4:0 协议插槽类型 */
+    uint32 protocol_speed[15]; /* PSIV = bits[3:0]：Protocol Speed ID Value（会出现在 PORTSC 的 Port Speed 字段里）
+                                  PSIE = bits[5:4]：指数档，决定单位（0=bit/s，1=Kb/s，2=Mb/s，3=Gb/s）
+                                  PLT = bits[7:6]：PSI 类型（0=对称，2=非对称Rx，3=非对称Tx；非对称必须成对）
+                                  PFD = bit[8]：是否全双工（1=全双工，0=半双工）
+                                  LP = bits[15:14]：Link Protocol。对 USB2（Major=02h）要求为 0，具体是 LS/FS/HS 由速率决定。
+                                  PSIM = bits[31:16]：速率尾数（mantissa）*/
+}xhci_ecap_supported_protocol;
+
+/* ERST条目结构 (16字节) */
+typedef struct {
+    uint64 ring_seg_base; // 段的64位物理基地址 (位[63:6]有效，位[5:0]为0)
+    uint32 ring_seg_size; // 段中TRB的数量 (16到4096)
+    uint32 reserved; // 保留位，初始化为0
+} xhci_erst_t;
+
+//==================================================================================
+
+
+
+
+//============================= TRB集合 ===============================================
+
 #define TRB_COUNT 256        //trb个数
 
 // ============================================================================
@@ -612,313 +920,261 @@ typedef union xhci_trb_t {
     trb_port_status_change_event_t prot_status_change_event;
 }xhci_trb_t;
 
-// ===== 1. 能力寄存器 (Capability Registers) =====
-typedef struct {
-    // 00h: 能力长度和版本 (CAPLENGTH/HCIVERSION)
-    uint8 cap_length; // [7:0] 能力寄存器总长度 (字节)
-    uint8 reserved0; // 保留
-    uint16 hciversion; // 控制器版本 (0x100 = 1.0.0, 0x110 = 1.1.0, 0x120 = 1.2.0)
+//=========================================================================================
 
-    // 04h: 硬件参数寄存器 (HCSPARAMS1)
-    uint32 hcsparams1; /*[7:0]   MaxSlots: 支持的最大设备槽数（最大256）
-                         [18:8]  MaxIntrs: 支持的中断向量数（最大2048）
-                         [24:31] MaxPorts: 支持的根端口数（最大256）*/
 
-    // 08h: 硬件参数寄存器 (HCSPARAMS2)
-    uint32 hcsparams2; /*[3:0]	    IST 等时调度阈值，单位为微帧（125us）。Host Controller 在这个阈值之后的同一帧内不再调度新的等时传输。常见值：0~8。
-                              [7:4]	    ERST Max 硬件支持的事件环段表最大条目数2^n ERST MAX = 8 则条目等于256。
-                              [25:21]	Max Scratchpad Buffers (hi  5 bits)	最大暂存器缓冲区数量的高5位（范围 0~1023）。
-                              [31:27]	Max Scratchpad Buffers (Lo 5 bits)	最大暂存器缓冲区数量的低5位*/
+//========================== USB描述符 =========================
 
-    // 0Ch: 硬件参数寄存器 (HCSPARAMS3)
-    uint32 hcsparams3; /*[7:0]     U1DeviceExitLatency: U1设备退出延迟（以微秒为单位）
-                              [15:8]    U2DeviceExitLatency: U2设备退出延迟（以微秒为单位）*/
+/**
+ * @brief USB 描述符类型 (naos 完美多态版)
+ * 警告：0x20 及以上的宏存在值域重叠，解析时必须结合 Interface Class 上下文！
+ */
+typedef enum : uint8 {
+    // ==========================================
+    // 第一阵营：标准描述符 (Standard) - 绝对领域，无多态歧义
+    // 适用范围：所有 USB 设备的通用枚举阶段
+    // ==========================================
+    USB_DESC_TYPE_DEVICE                = 0x01, // 设备描述符
+    USB_DESC_TYPE_CONFIG                = 0x02, // 配置描述符
+    USB_DESC_TYPE_STRING                = 0x03, // 字符串描述符
+    USB_DESC_TYPE_INTERFACE             = 0x04, // 接口描述符
+    USB_DESC_TYPE_ENDPOINT              = 0x05, // 端点描述符
+    USB_DESC_TYPE_DEVICE_QUALIFIER      = 0x06, // 设备限定描述符 (USB 2.0 专属)
+    USB_DESC_TYPE_OTHER_SPEED_CONFIG    = 0x07, // 其他速度配置描述符
+    USB_DESC_TYPE_INTERFACE_POWER       = 0x08, // 接口电源描述符
+    USB_DESC_TYPE_OTG                   = 0x09, // OTG 描述符
+    USB_DESC_TYPE_DEBUG                 = 0x0A, // 调试描述符
+    USB_DESC_TYPE_INTERFACE_ASSOCIATION = 0x0B, // 接口关联描述符 (IAD)
+    USB_DESC_TYPE_BOS                   = 0x0F, // 二进制对象存储描述符 (USB 3.0+)
+    USB_DESC_TYPE_DEVICE_CAPABILITY     = 0x10, // 设备能力描述符
+    USB_DESC_TYPE_SS_ENDPOINT_COMPANION = 0x30, // 超高速端点伴随描述符 (USB 3.0 极度关键)
+    USB_DESC_TYPE_SSP_ISOCH_COMPANION   = 0x31, // 超高速+ 等时端点伴随描述符
 
-    // 10h: 硬件参数寄存器 (HCCPARAMS1)
-    uint32 hccparams1; /*- AC64 (位 0): 64位寻址能力（1=支持，0=不支持）
-                              - BNC (位 1): 带宽协商能力
-                              - CSZ (位 2): 上下文大小（0=32字节，1=64字节）
-                              - PPC (位 3): 端口电源控制能力
-                              - PIND (位 4): 端口指示器能力
-                              - LHRC (位 5): 轻量级主机路由能力
-                              - LTC (位 6): 延迟容忍能力
-                              - NSS (位 7): 无嗅探能力
-                              - MaxPSASize (位 12-15): 最大主控制器流数组大小
-                              - ECPA(位16-31)：扩展能力链表偏移地址 = 偏移<<2 */
-#define HCCP1_CSZ   (1<<2)
+    // ==========================================
+    // 第二阵营：类特定描述符 (Class-Specific) - 多态重叠区
+    // 解析条件：必须在遇到 0x04 (接口描述符) 之后，根据 bInterfaceClass 决定含义！
+    // ==========================================
 
-    uint32 dboff; // 0x14 门铃寄存器偏移
+    // --- [多态分支 A] 音频 (UAC) / 视频 (UVC) / 通信 (CDC) 等类 ---
+    // 前提: bInterfaceClass == 0x01(Audio) 或 0x0E(Video) 或 0x02(CDC)
+    USB_DESC_TYPE_CS_DEVICE             = 0x21,
+    USB_DESC_TYPE_CS_CONFIG             = 0x22,
+    USB_DESC_TYPE_CS_STRING             = 0x23,
+    USB_DESC_TYPE_CS_INTERFACE          = 0x24, // 音视频处理单元、格式声明等
+    USB_DESC_TYPE_CS_ENDPOINT           = 0x25,
 
-    uint32 rtsoff; // 0x18 运行时寄存器偏移
+    // --- [多态分支 B] 人机交互设备 (HID，如鼠标/键盘) ---
+    // 前提: bInterfaceClass == 0x03 (HID)
+    USB_DESC_TYPE_HID                   = 0x21, // ★ 与 CS_DEVICE 撞车！描述 HID 版本和报文数
+    USB_DESC_TYPE_HID_REPORT            = 0x22, // ★ 与 CS_CONFIG 撞车！极其复杂的报文定义树
+    USB_DESC_TYPE_HID_PHYSICAL          = 0x23, // ★ 与 CS_STRING 撞车！物理设备部件描述
 
-    uint32 hccparams2; /* - U3C (位 0): U3转换能力
-                               - CMC (位 1): 配置最大能力
-                               - FSC (位 2): 强制保存上下文能力
-                               - CTC (位 3): 符合性测试能力
-                               - LEC (位 4): 大型ESIT有效负载能力
-                               - CIC (位 5): 配置信息能力*/
-} xhci_cap_regs_t;
+    // --- [多态分支 C] 大容量存储 (Mass Storage - UAS 协议) ---
+    // 前提: bInterfaceClass == 0x08 且 bInterfaceProtocol == 0x62 (UAS)
+    USB_DESC_TYPE_UAS_PIPE_USAGE        = 0x24, // ★ 与 CS_INTERFACE 撞车！(你抓出来的 U 盘就是它)
 
-// ===== 2. 操作寄存器 (Operational Registers) =====
-typedef struct {
-    // 00h: 命令寄存器 (USBCMD)
-    uint32 usbcmd; /*- R/S (位 0): 运行/停止（1=运行，0=停止）
-                      - HCRST (位 1): 主机控制器复位（置1触发复位）
-                      - INTE (位 2): 中断使能（1=使能，0=禁用）
-                      - HSEE (位 3): 主机系统错误使能
-                      - LHCRST (位 7): 轻量级主机控制器复位
-                      - CSS (位 8): 控制器保存状态
-                      - CRS (位 9): 控制器恢复状态
-                      - EWE (位 10): 事件中断使能
-                      - EU3S (位 11): 启用U3 MMI（电源管理相关）*/
-#define XHCI_CMD_RS (1 << 0)
-#define XHCI_CMD_HCRST (1 << 1)
-#define XHCI_CMD_INTE (1 << 2)
-#define XHCI_CMD_HSEE (1 << 3)
-#define XHCI_CMD_LHCRST (1 << 7)
-#define XHCI_CMD_CSS (1 << 8)
-#define XHCI_CMD_CRS (1 << 9)
-#define XHCI_CMD_EWE (1 << 10)
-#define XHCI_CMD_EU3S (1 << 11)
+    // ==========================================
+    // 第三阵营：集线器专用 (Hub Specific) - 事实上的独立类
+    // 前提: bDeviceClass == 0x09 (Hub)
+    // ==========================================
+    USB_DESC_TYPE_HUB                   = 0x29, // USB 2.0 集线器描述符
+    USB_DESC_TYPE_SS_HUB                = 0x2A  // USB 3.0 超高速集线器描述符
 
-    // 04h: 状态寄存器 (USBSTS)
-    uint32 usbsts; /* - HCH (位 0): 主机控制器停止（1=已停止，0=运行中）
-                      - HSE (位 2): 主机系统错误（1=错误发生）
-                      - EINT (位 3): 事件中断（1=有事件中断待处理）
-                      - PCD (位 4): 端口变化检测（1=端口状态变化）
-                      - SSS (位 8): 保存状态状态
-                      - RSS (位 9): 恢复状态状态
-                      - SRE (位 10): 保存/恢复错误
-                      - CNR (位 11): 控制器未就绪（1=未就绪）
-                      - HCE (位 12): 主机控制器错误*/
-#define XHCI_STS_HCH (1 << 0)
-#define XHCI_STS_HSE (1 << 2)
-#define XHCI_STS_EINT (1 << 3)
-#define XHCI_STS_PCD (1 << 4)
-#define XHCI_STS_SSS (1 << 8)
-#define XHCI_STS_RSS (1 << 9)
-#define XHCI_STS_SRE (1 << 10)
-#define XHCI_STS_CNR (1 << 11)
-#define XHCI_STS_HCE (1 << 12)
-
-    // 08h: 页面大小寄存器 (PAGESIZE)
-    uint32 pagesize; // 控制器支持的页面大小*0x1000
-
-    // 0Ch: 保留 [RsvdZ]
-    uint32 reserved0[2];
-
-    //0x14: 设备通知控制寄存器 (DNCTRL)
-    uint32 dnctrl; // - 每位对应一个设备槽的使能（0=禁用，1=使能）
-
-    //0x18 命令环控制寄存器 (CRCR)
-    uint64 crcr;
-    /*- 位[0] - RCS（Ring Cycle State，环周期状态）：当RCS=1时，主机控制器从命令环中获取的TRB需要其Cycle Bit为1才会被处理；当RCS=0时，则处理Cycle Bit为0的TRB。
-                      - 位[1] - CS（Command Stop，命令停止）：当置1时，命令环在完成当前命令后停止运行。
-                      - 位[2] - CA（Command Abort，命令中止）：当置1时，命令环立即停止，当前正在执行的命令被中止。
-                      - 位[3] - CRR（Command Ring Running，命令环运行状态）：为1时表示命令环正在运行，为0时表示命令环已停止。
-                      - 位[6:63] - Command Ring Pointer（命令环指针）：指向命令环的64位基地址（物理地址）。低6位必须为0（即地址必须64字节对齐）*/
-
-    //0x20: 保留字段
-    uint64 reserved1[2];
-
-    //0x30h: 设备上下文基础地址数组指针 (DCBAAP)
-    uint64 dcbaap; // DCBAA的物理地址指针
-
-    // 38h: 配置寄存器 (CONFIG)
-    uint32 config; // [7:0] 启用的设备槽数 (值≤MaxSlots)
-
-    // 保留字段 (Reserved), 偏移 0x3C-0x3FF, 填充到端口寄存器之前
-    uint32 reserved2[241];
-
-    // 端口寄存器数组 (PORTSC, PORTPMSC, PORTLI, PORTHLPMC), 偏移 0x400起,每个端口占用16字节，按端口数量动态分配
-    struct {
-        // 端口状态和控制寄存器 (PORTSC), 32位
-        uint32 portsc; /*  - CCS (位 0): 当前连接状态（1=设备连接 0=设备未连接）
-                               - PED (位 1): 端口已启用/禁用 （1=启用 0=禁用）
-                               - TM  (位 2)：1=隧道模式 0=本地模式
-                               - OCA (位 3)：过电流激活 （1=该端口处于过流状态 0=该端口不存在过流情况）
-                               - PR (位 4): 端口复位 （1=端口复位信令已断言 0=端口未复位）
-                               - PLS (位 5-8): 端口链路状态 0x0：U0 /0x1：U1 /0x2：U2 /0x3：U3 /0x4：Disabled /0x5：RxDetect /0x6：Inactive /0x7：Polling /0x8：Recovery /0x9：Hot Reset /0xA：Compliance Mode /0xB：Test Mode /0xF：Resume
-                               - PP (位 9): 端口电源 默认=1
-                               - PortSpeed (位 10-13): 端口速度 0：未定义（通常表示端口还没被 reset 初始化出有效速率）/1：Full Speed /2：Low Speed /3：High Speed /4：SuperSpeed /5：SuperSpeedPlus（SSP） /6–15：保留
-                               - PIC (位 14-15): 端口指示器控制（0=端口指示灯关闭 1=琥珀色 2=绿色 3=未定义）
-                               - LWS (位 16): 链路状态写入选通
-                               - CSC (位 17): 连接状态变化
-                               - PEC (位 18): 端口使能/禁用变化
-                               - WRC (位 19): 热重置变化
-                               - OCC (位 20): 过流变化
-                               - PRC (位 21): 端口复位变化
-                               - PLC (位 22): 端口链路状态变化
-                               - CEC (位 23): 配置错误变化
-                               - CAS (位 24): 冷连接状态
-                               - WCE (位 25): 连接唤醒使能
-                               - WDE (位 26): 断开唤醒使能
-                               - WOE (位 27)：过流唤醒使能
-                               - DR  (位 30)：1=设备不可拆卸 0=设备可移动
-                               - WPR (位 31)：热端口复位 */
-#define XHCI_PORTSC_CCS (1 << 0)
-#define XHCI_PORTSC_PED (1 << 1)
-#define XHCI_PORTSC_OCA (1 << 3)
-#define XHCI_PORTSC_PR (1 << 4)
-#define XHCI_PORTSC_PLS_SHIFT 5
-#define XHCI_PORTSC_PLS_MASK 0xf
-#define XHCI_PORTSC_PP (1 << 9)
-#define XHCI_PORTSC_SPEED_SHIFT 10
-#define XHCI_PORTSC_SPEED_MASK 0xf
-#define XHCI_PORTSC_SPEED_FULL 1
-#define XHCI_PORTSC_SPEED_LOW 2
-#define XHCI_PORTSC_SPEED_HIGH 3
-#define XHCI_PORTSC_SPEED_SUPER 4
-#define XHCI_PORTSC_SPEED_SUPER_PLUS 5
-#define XHCI_PORTSC_PIC_SHIFT 14
-#define XHCI_PORTSC_PIC_MASK 0x3
-#define XHCI_PORTSC_W1C_MASK 0xFE0000
-#define XHCI_PORTSC_LWS (1 << 16)
-#define XHCI_PORTSC_CSC (1 << 17)
-#define XHCI_PORTSC_PEC (1 << 18)
-#define XHCI_PORTSC_WRC (1 << 19)
-#define XHCI_PORTSC_OCC (1 << 20)
-#define XHCI_PORTSC_PRC (1 << 21)
-#define XHCI_PORTSC_PLC (1 << 22)
-#define XHCI_PORTSC_CEC (1 << 23)
-#define XHCI_PORTSC_CAS (1 << 24)
-#define XHCI_PORTSC_WCE (1 << 25)
-#define XHCI_PORTSC_WDE (1 << 26)
-#define XHCI_PORTSC_WOE (1 << 27)
-#define XHCI_PORTSC_DR (1 << 30)
-#define XHCI_PORTSC_WPR (1 << 31)
-
-#define XHCI_PLS_U0              0   // 正常工作状态，USB 设备活跃，支持全速数据传输（USB 3.0 或 USB 2.0）
-#define XHCI_PLS_U1              1   // U1 低功耗状态，USB 设备进入轻度节能模式，快速恢复，适用于 USB 3.0
-#define XHCI_PLS_U2              2   // U2 低功耗状态，USB 设备进入更深节能模式，恢复时间稍长，适用于 USB 3.0
-#define XHCI_PLS_U3              3   // U3 挂起状态，USB 设备进入深度休眠，功耗最低，恢复时间较长，适用于 USB 3.0
-#define XHCI_PLS_DISABLED        4   // 禁用状态，USB 端口被禁用，无法通信
-#define XHCI_PLS_RX_DETECT       5   // 接收检测状态，USB 控制器正在检测是否有设备连接
-#define XHCI_PLS_INACTIVE        6   // 非活跃状态，USB 端口未连接设备或设备未响应
-#define XHCI_PLS_POLLING         7   // 轮询状态，USB 控制器正在初始化或尝试建立与设备的连接
-#define XHCI_PLS_RECOVERY        8   // 恢复状态，USB 端口从低功耗状态（如 U3）恢复到活跃状态
-#define XHCI_PLS_HOT_RESET       9   // 热重置状态，USB 端口正在执行热重置操作，重新初始化设备
-#define XHCI_PLS_COMPLIANCE_MODE 10  // 合规模式，用于 USB 设备或控制器的合规性测试
-#define XHCI_PLS_TEST_MODE       11  // 测试模式，USB 端口进入特定测试状态，用于硬件或协议测试
-#define XHCI_PLS_RESUME          15  // 恢复状态，USB 设备从挂起状态恢复，通常由主机发起
-
-        // 端口电源管理状态和控制寄存器 (PORTPMSC),控制电源管理和U1/U2状态,具体字段依赖于协议（USB2或USB3）
-        uint32 portpmsc;
-
-        // 端口链路信息寄存器 (PORTLI), 提供链路错误计数等信息
-        uint32 portli;
-
-        // 主机控制器端口电源管理控制寄存器 (PORTHLPMC), 仅用于USB2协议端口，控制高级电源管理
-        uint32 porthlpmc;
-    } portregs[256]; // 最大支持256个端口（根据HCSPARAMS1中的MaxPorts）
-} xhci_op_regs_t;
-
-// ===== 3. 运行时寄存器 (Runtime Registers) =====
-typedef struct {
-    // 00h: 微帧索引寄存器 (MFINDEX)
-    uint32 mfindex; // [13:0] 当前微帧索引（按125μs递增）
-
-    // 04h: 保留
-    uint32 reserved0[7];
-
-    // 中断管理数组 (IMAN) - 每个中断向量一个
-    struct {
-        // 中断管理寄存器 (IMAN), 偏移 0x00
-        uint32 iman; // 中断管理 [0]：IP中断挂起（1=有中断待处理），[1]：中断使能（1=使能，0=禁用）
-
-        //中断调节寄存器 (IMOD), 偏移 0x04,
-        uint32 imod; // 中断调制器 (位 0-15): 中断调节间隔（以250ns为单位，(位 16-31): 中断调节计数器（只读）
-
-        // 事件环段表大小寄存器 (ERSTSZ), 偏移 0x08, 32位
-        uint32 erstsz; // - ERST Size (位 0-15): 事件环段表条目数（最大4096）
-        uint32 reserved1;
-
-        // 事件环段表基地址寄存器 (ERSTBA), 偏移 0x10-0x17, 64位
-        uint64 erstba; //指向事件环段表的64位基地址（对齐到64字节)
-
-        // 事件环出队指针寄存器 (ERDP), 偏移 0x18-0x1F, 64位
-        uint64 erdp; /*指向事件环的当前出队指针
-                        - DESI (位 0-2): 出队事件环段索引
-                        - EHB (位 3): 事件处理忙碌（1=忙碌，写1清除）
-                        - Event Ring Dequeue Pointer (位 4-63): 出队指针地址*/
-#define XHCI_ERDP_EHB (1<<3)
-    } intr_regs[1024]; // 最大支持1024个中断器（根据HCSPARAMS1中的MaxIntrs）
-} xhci_rt_regs_t;
-
-// ===== 4. 门铃寄存器 (Doorbell Registers) =====
-// 门铃寄存器数组 (每个设备槽一个 + 主机控制器)
-typedef unsigned int xhci_db_regs_t;     /*最大支持256个设备槽(由HCSPARAMS1的MaxSlots决定）
-                                         - DB Target (位 0-7): 门铃目标
-                                         - 值为0：触发命令环（Command Ring）
-                                         - 值为1-31：触发特定端点（Endpoint 0-31）的传输环
-                                         - DB Stream ID (位 16-31): 流ID（仅用于支持流的设备）*/
-
-// ===== 5. 扩展寄存器 (HCCPARAMS2) =====
-// 当HCCPARAMS1[0] (AC64) 设置为1时出现
-typedef struct {
-    // 00h: U1设备退出延迟 (U1DEL)
-    uint32 u1del; // 默认U1退出延迟
-
-    // 04h: U2设备退出延迟 (U2DEL)
-    uint32 u2del; // 默认U2退出延迟
-
-    // ... 更多扩展寄存器 ...
-} xhci_ext_regs_t;
-
-/* 0x01: USB Legacy Support (USB 传统支持) */
-typedef struct {
-        uint32 usblegsup; /* 位16=1 bios控制，位24=1 os控制 */
-        uint32 usblegctlsts; /* 位0: USB SMI启用
-                                 位4: 主机系统错误SMI启用
-                                 位13: OS所有权变更SMI启用
-                                 位14: PCI命令变更SMI启用
-                                 位15: BAR变更SMI启用
-
-                                 === 高16位：SMI 状态/事件区域 ===
-                                 RO：只读
-                                 位16: 事件中断SMI状态(RO)
-                                 位19:17 保留 (RsvdP)
-                                 位20: 主机系统错误SMI状态(RO)
-                                 位28:21 保留 (RsvdZ)
-
-                                 RW1C：写1清除
-                                 位29: OS所有权变更SMI状态(RW1C)
-                                 位30: PCI命令变更SMI状态(RW1C)
-                                 位31: BAR变更SMI状态(RW1C)*/
-}xhci_ecap_legacy_support;
-
-/* 0x02: Supported Protocol Capability (支持的协议能力) */
-typedef struct {
-    uint32 protocol_ver;    /* 位 23:16 小修订版本0x10 = x.10
-                              位 31:24 主修订版本0x03 = 3.x */
-    char8 name[4];            /* 位 31:0 4个asci字符 */
-    uint32 port_info;         /* 位7:0 兼容端口偏移
-                              位15:8 兼容端口计数偏移
-                              位31:28 协议速度 ID 计数 - RO，PSI 字段数量 (0-15)*/
-    uint32 protocol_slot_type; /* 位4:0 协议插槽类型 */
-    uint32 protocol_speed[15]; /* PSIV = bits[3:0]：Protocol Speed ID Value（会出现在 PORTSC 的 Port Speed 字段里）
-                                  PSIE = bits[5:4]：指数档，决定单位（0=bit/s，1=Kb/s，2=Mb/s，3=Gb/s）
-                                  PLT = bits[7:6]：PSI 类型（0=对称，2=非对称Rx，3=非对称Tx；非对称必须成对）
-                                  PFD = bit[8]：是否全双工（1=全双工，0=半双工）
-                                  LP = bits[15:14]：Link Protocol。对 USB2（Major=02h）要求为 0，具体是 LS/FS/HS 由速率决定。
-                                  PSIM = bits[31:16]：速率尾数（mantissa）*/
-}xhci_ecap_supported_protocol;
-
-/* ERST条目结构 (16字节) */
-typedef struct {
-    uint64 ring_seg_base; // 段的64位物理基地址 (位[63:6]有效，位[5:0]为0)
-    uint32 ring_seg_size; // 段中TRB的数量 (16到4096)
-    uint32 reserved; // 保留位，初始化为0
-} xhci_erst_t;
+} usb_desc_type_e;
 
 typedef struct {
-    uint64 member0;
-    uint64 member1;
-} trb_t;
+    uint8 length; // 描述符长度
+    uint8 desc_type; // 描述符类型
+}usb_desc_head;
 
-//region 设备上下文结构
+/*usb设备描述符
+描述符长度，固定为 18 字节（0x12）
+描述符类型，固定为 0x01（设备描述符）*/
+typedef struct {
+    usb_desc_head head;
+    uint16 usb_version;         // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
+    uint8 device_class;         // 设备类代码，定义设备类别（如 0x00 表示类在接口描述符定义，0x03 表示 HID）
+    uint8 device_subclass;      // 设备子类代码，进一步细化设备类（如 HID 的子类）
+    uint8 device_protocol;      // 设备协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
+    uint8 max_packet_size0;     // 端点 0 的最大数据包大小（字节），USB 2.0 为 8/16/32/64，USB 3.x 为 9（表示 2^9=512 字节）
+    uint16 vendor_id;           // 供应商 ID（VID），由 USB-IF 分配，标识制造商
+    uint16 product_id;          // 产品 ID（PID），由厂商分配，标识具体产品
+    uint16 device_version;      // 设备发布版本，BCD 编码（如 0x0100 表示版本 1.00）
+    uint8 manufacturer_index;   // 制造商字符串描述符索引（0 表示无）
+    uint8 product_index;        // 产品字符串描述符索引（0 表示无）
+    uint8 serial_number_index;  // 序列号字符串描述符索引（0 表示无，建议提供唯一序列号）
+    uint8 num_configurations;   // 支持的配置描述符数量（通常为 1）
+} usb_dev_desc_t;
 
-#pragma pack(push, 1) // 必须强制 1 字节对齐，绝不允许编译器随意塞 padding
+/*usb配置描述符
+描述符长度，固定为 9 字节（0x09）
+描述符类型，固定为 0x02（配置描述符）*/
+typedef struct {
+    usb_desc_head head;
+    uint16 total_length; // 配置描述符总长度（包括所有子描述符，如接口、端点等），单位为字节
+    uint8 num_interfaces; // 该配置支持的接口数量
+    uint8 configuration_value; // 配置值，用于 SET_CONFIGURATION 请求（通常从 1 开始）
+    uint8 configuration_index; // 配置字符串描述符索引（0 表示无）
+    uint8 attributes; /*配置属性
+                                位7：固定为 1（保留）
+                                位6：1=自供电，0=总线供电
+                                位5：1=支持远程唤醒，0=不支持
+                                位4-0：保留，置 0*/
+    uint8 max_power; // 最大功耗，单位为 2mA（USB 2.0）或 8mA（USB 3.x）例如：50 表示 USB 2.0 的 100mA 或 USB 3.x 的 400mA
+} usb_cfg_desc_t;
+
+/*USB 字符串描述符
+描述符长度（含头部和字符串）
+描述符类型 = 0x03*/
+typedef struct {
+    usb_desc_head head;
+    uint16 string[]; // UTF-16LE 编码的字符串内容（变长数组）
+} usb_string_desc_t;
+
+/*接口描述符
+描述符长度，固定为 9 字节（0x09）
+描述符类型，固定为 0x04（接口描述符）*/
+typedef struct {
+    usb_desc_head head;
+    uint8 interface_number; // 接口编号，从 0 开始，标识该接口
+    uint8 alternate_setting; // 备用设置编号，同一接口的不同配置（通常为 0）
+    uint8 num_endpoints; // 该接口使用的端点数量（不包括端点 0）
+    uint8 interface_class; // 接口类代码，定义接口功能（如 0x03 表示 HID，0x08 表示 Mass Storage）
+    uint8 interface_subclass; // 接口子类代码，进一步细化接口类（如 HID 的子类）
+    uint8 interface_protocol; // 接口协议代码，定义类内协议（如 HID 的 0x01 表示键盘）
+    uint8 interface_index; // 接口字符串描述符索引（0 表示无）
+} usb_if_desc_t;
+
+/*端点描述符
+描述符长度（固定7字节）
+描述符类型：0x05 = 端点描述符*/
+typedef struct {
+    usb_desc_head head;
+    uint8 endpoint_address; // 端点地址：位7方向(0=OUT,主机→设备 1=IN，设备→主机)，位3-0端点号
+    uint8 attributes; // 传输类型：0x00=控制，0x01=Isochronous，0x02=Bulk，0x03=Interrupt
+    uint16 max_packet_size; // 该端点的最大包长（不同速度有不同限制）
+    uint8 interval; // 轮询间隔（仅中断/同步传输有意义）
+} usb_ep_desc_t;
+
+/*  超高速端点伴随描述符
+ *  uint8  bLength;            // 固定 6
+    uint8  bDescriptorType;    // 0x30 表示 SuperSpeed Endpoint Companion Descriptor*/
+typedef struct {
+    usb_desc_head head;
+    uint8 max_burst; // 每次突发包数（0-15），实际表示突发数+1
+    uint8 attributes; // 位 4:0 Streams 支持数 (Bulk)，或多事务机会 (Isoch)
+    uint16 bytes_per_interval; // 对于 Isoch/Interrupt，最大字节数
+} usb_ss_comp_desc_t;
+
+/**
+ * @brief UAS (USB Attached SCSI) 管道用途标识符 (Pipe ID)
+ */
+typedef enum : uint8 {
+    // ==========================================
+    // 1. 控制平面 (Control Plane) - 负责下发指令和接收执行结果
+    // ==========================================
+    USB_UAS_PIPE_COMMAND_OUT = 1,  // [指令下发] 主机 -> U盘。用于发送 SCSI 命令块 (CDB)
+    USB_UAS_PIPE_STATUS_IN   = 2,  // [状态回执] U盘 -> 主机。用于接收命令执行成功与否的 Sense Data
+
+    // ==========================================
+    // 2. 数据平面 (Data Plane) - 负责极限速度的底层扇区搬运
+    // ==========================================
+    USB_UAS_PIPE_BULK_IN     = 3,  // [数据读取] U盘 -> 主机。你的 "Data-In Pipe" (你刚才抓包抓到的就是它！)
+    USB_UAS_PIPE_BULK_OUT    = 4   // [数据写入] 主机 -> U盘。你的 "Data-Out Pipe"
+} usb_uas_pipe_id_e;
+
+/* USA管道描述符
+ * uint8  bLength;            // 固定 4
+ * uint8  bDescriptorType;    // 0x24
+ */
+typedef struct {
+    usb_desc_head head;
+   usb_uas_pipe_id_e  pipe_id;              // 端点用途标识 1=command_out 2=status_in 3=bulk_in 4=bulk_out
+    uint8  reserved;
+} usb_uas_pipe_usage_desc_t;
+
+/*HID 类描述符（可选
+描述符长度
+描述符类型：0x21 = HID 描述符*/
+typedef struct {
+    usb_desc_head head;
+    uint16 hid; // HID 版本号
+    uint8 country_code; // 国家代码（0=无）
+    uint8 num_descriptors; // 后面跟随的子描述符数量
+    // 后面通常跟 HID 报告描述符（类型0x22）等
+} usb_hid_desc_t;
+
+/*HUB 类描述符（可选）
+描述符长度
+描述符类型：0x29 = HUB 描述符*/
+typedef struct {
+    usb_desc_head head;
+    uint8 num_ports; // hub 下行端口数量
+    uint16 hub_characteristics; // hub 特性位（供电方式、过流保护等）
+    uint8 power_on_to_power_good; // 端口上电到电源稳定的时间（单位2ms）
+    uint8 hub_control_current; // hub 控制器所需电流
+    // 之后还会跟一个可变长度的 DeviceRemovable 和 PortPwrCtrlMask
+} usb_hub_desc_t;
+
+/**
+ * @brief USB 2.0 集线器描述符 (Type: 0x29)
+ * 警告：这是一个变长结构体！最后两个数组的长度取决于 bNbrPorts。
+ */
+typedef struct {
+    uint8  bDescLength;         // 描述符总长度 (动态计算)
+    uint8  bDescriptorType;     // 0x29 (USB_DESC_TYPE_HUB)
+    uint8  bNbrPorts;           // ★ 下游端口总数 (极其关键，决定了你要轮询几次)
+
+    // wHubCharacteristics 包含了极其重要的位域：
+    // Bit 1:0 - 电源切换模式 (00=所有端口联动上电, 01=各端口独立上电, 11=无电源切换)
+    // Bit 4:3 - 过流保护模式 (00=全局过流保护, 01=单端口独立过流保护, 11=无保护)
+    uint16 wHubCharacteristics;
+
+    uint8  bPwrOn2PwrGood;      // 端口上电后，需要等多久电源才能稳定？(单位是 2ms，比如填 50 就是要等 100ms)
+    uint8  bHubContrCurrent;    // Hub 芯片自身工作需要的最大电流 (mA)
+
+    // ==========================================
+    // ⚠️ 变长警告：下面这两个字段在内存中紧挨着，但长度是不固定的！
+    // 它们的字节数 = (bNbrPorts / 8) + 1
+    // 比如 4 口 Hub，这里就是 1 个字节；10 口 Hub，这里就是 2 个字节。
+    // ==========================================
+
+    // uint8 DeviceRemovable[]; // 位图：指示每个端口上的设备是不是焊死的（比如笔记本内置摄像头）
+    // uint8 PortPwrCtrlMask[]; // 历史遗留字段，USB 1.1 的产物，USB 2.0 规定全填 0xFF
+
+} usb_hub2_desc_t;
+
+/**
+ * @brief USB 3.0 超高速集线器描述符 (Type: 0x2A)
+ * 优势：长度固定为 12 字节，无变长数组陷阱。
+ */
+typedef struct {
+    uint8  bLength;             // 永远是 12 (0x0C)
+    uint8  bDescriptorType;     // 0x2A (USB_DESC_TYPE_SS_HUB)
+    uint8  bNbrPorts;           // 下游端口总数 (由于规范限制，绝不会超过 15)
+    uint16 wHubCharacteristics; // 特性掩码 (与 USB 2.0 类似，但去掉了废弃位)
+    uint8  bPwrOn2PwrGood;      // 单位依然是 2ms
+    uint8  bHubContrCurrent;    // ★ 注意：USB 3.0 规范里，这里的单位变成了 2mA！
+
+    // ==========================================
+    // SuperSpeed 专属的新字段 (用于内核调度器评估总线延迟)
+    // ==========================================
+    uint8  bHubHdrDecLat;       // Hub 数据包头解码延迟 (Hub Header Decode Latency)
+    uint16 wHubDelay;           // Hub 转发数据块的纳秒级平均延迟 (单位: ns)
+
+    // ==========================================
+    // 曾经的变长数组，现在变成了固定的 16-bit 整数
+    // ==========================================
+    uint16 DeviceRemovable;     // 16位位图。Bit 1~15 代表对应的端口是否可移除。(Bit 0 保留)
+
+} usb_hub3_desc_t;
+
+//=============================================================
+
+
+
+
+//======================== 设备上下文结构 ==========================================
 
 // ============================================================================
 // Slot Context (32 字节核心部分，外部按需套一层 32/64 字节外壳)
@@ -1001,7 +1257,7 @@ typedef struct {
     uint64 reserved;
 } xhci_stream_ctx_t;
 
-//endregion
+//================================================================================
 
 #pragma pack(pop)
 

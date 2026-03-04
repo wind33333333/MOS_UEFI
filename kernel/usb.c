@@ -749,7 +749,7 @@ int usb_parse_endpoints(usb_dev_t *usb_dev, usb_if_alt_t *if_alt) {
             cur_ep->bytes_per_interval = 0;
             cur_ep->extras_desc = NULL;
         } else if (desc_head->descriptor_type == USB_SUPERSPEED_COMPANION_DESCRIPTOR) {
-            usb_superspeed_companion_descriptor_t *ss_desc = (usb_superspeed_companion_descriptor_t *) desc_head;
+            usb_ss_comp_desc_t *ss_desc = (usb_ss_comp_desc_t *) desc_head;
             cur_ep->max_burst = ss_desc->max_burst;
             cur_ep->bytes_per_interval = ss_desc->bytes_per_interval;
             cur_ep->max_streams = ss_desc->attributes & 0x1F;
