@@ -1172,8 +1172,6 @@ typedef struct {
 //=============================================================
 
 
-
-
 //======================== 设备上下文结构 ==========================================
 
 // ============================================================================
@@ -1250,7 +1248,6 @@ typedef struct input_ctrl_ctx_t{
 
 #define XHCI_DEVICE_CONTEXT_COUNT 32
 #define XHCI_INPUT_CONTEXT_COUNT 33
-
 
 typedef struct {
     uint64 tr_dequeue; // TR Dequeue Ptr+ DCS(位0)
