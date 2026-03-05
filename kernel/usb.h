@@ -94,7 +94,6 @@ typedef struct usb_dev_t{
     uint8                           *serial_number;    // 序列号ascii字符
     struct usb_dev_t                *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
     uint8                           parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
-
 } usb_dev_t;
 
 //获取需要input端点的上下文地址
@@ -144,7 +143,7 @@ void usb_dev_scan(struct pcie_dev_t *xhci_dev);
 int usb_set_config(usb_dev_t *usb_dev);
 int usb_set_interface(usb_if_t *usb_if);
 int usb_endpoint_init(usb_if_alt_t *if_alt);
-int32 usb_clear_feature_halt(usb_dev_t *usb_dev, uint8 ep_dci);
+int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci);
 
 //注册usb接口
 static inline void usb_if_register(usb_if_t* usb_if);
@@ -154,3 +153,8 @@ static inline void usb_dev_register(usb_dev_t *usb_dev);
 
 //注册usb驱动
 void usb_drv_register(usb_drv_t *usb_drv);
+
+
+int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci);
+
+int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_buf);

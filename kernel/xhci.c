@@ -99,7 +99,7 @@ xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd, uint64 wait_trb_pa, u
 
 //初始化环
 static inline int32 xhci_ring_init(xhci_ring_t *ring, uint32 align_size) {
-    ring->ring_base = kzalloc(align_up(TRB_COUNT * sizeof(trb_t), align_size));
+    ring->ring_base = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t), align_size));
     ring->index = 0;
     ring->cycle = 1;
 }

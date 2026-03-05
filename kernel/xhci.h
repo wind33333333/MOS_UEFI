@@ -1332,6 +1332,7 @@ typedef struct xhci_hcd_t{
 
 
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push);
+uint8 xhci_handle_common_error(xhci_trb_comp_code_e comp_code, uint64 trb_pa);
 xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd, uint64 wait_trb_pa, uint64 timeout_ms,xhci_trb_t *out_event_trb);
 static inline int32 xhci_ring_init(xhci_ring_t *ring, uint32 align_size);
 static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 value);
@@ -1340,7 +1341,7 @@ int32 xhci_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);
 int32 xhci_cmd_address_device(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctrl_ctx_t *input_ctx);
 int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctrl_ctx_t *input_ctx, uint8 slot_id, uint8 dc);
 int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_id);
-uint32 xhci_cmd_reset_endpoint(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
+uint32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
 int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctrl_ctx_t *input_ctx, uint8 slot_id);
 int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci_ring_t *transfer_ring);
 int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id);
