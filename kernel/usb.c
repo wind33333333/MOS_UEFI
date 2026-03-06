@@ -287,7 +287,20 @@ int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci) {
     return 0;
 }
 
+//获取usb设备描述符
+int32 usb_get_dev_desc(usb_dev_t *udev,usb_dev_desc_t *dev_desc,uint16 length) {
+    usb_req_pkg_t req_pkg = {0};
+    req_pkg.recipient = USB_RECIP_DEVICE;
+    req_pkg.req_type = USB_REQ_TYPE_STANDARD;
+    req_pkg.dtd = USB_DIR_IN;
+    req_pkg.request = USB_REQ_GET_DESCRIPTOR;
+    req_pkg.value = USB_DESC_TYPE_DEVICE<<8 | 0;
+    req_pkg.index = 0;
+    req_pkg.length = length;
 
+    usb_control_msg(udev,&req_pkg,dev_desc);
+    return 0;
+}
 
 //==================================================================
 
@@ -295,23 +308,10 @@ int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci) {
 //获取usb设备描述符
 int usb_get_device_descriptor(usb_dev_t *usb_dev) {
     xhci_hcd_t *xhcd = usb_dev->xhcd;
-    usb_device_descriptor_t *dev_desc = kzalloc(align_up(sizeof(usb_device_descriptor_t), 64));
+    usb_dev_desc_t *dev_desc = kzalloc(align_up(sizeof(usb_dev_desc_t), 64));
 
     //第一次先获取设备描述符前8字节，拿到max_pack_size后更新端点1，再重新获取描述符。
-    trb_t trb;
-    // Setup TRB
-    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x100, 0, 8, in_data_stage);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-    // Data TRB
-    data_stage_trb(&trb, va_to_pa(dev_desc), 8, trb_in);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-    // Status TRB
-    status_stage_trb(&trb, ENABLE_IOC, trb_out);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-
-    xhci_ring_doorbell(xhcd, usb_dev->slot_id, 1);
-    timing();
-    xhci_ering_dequeue(xhcd, &trb);
+    usb_get_dev_desc(usb_dev, dev_desc, 8);
 
     //更新端点0的最大包
     uint32 max_packe_size = dev_desc->usb_version >= 0x300
@@ -569,10 +569,10 @@ void usb_setup_slot_ep0_ctx(usb_dev_t *udev) {
 
     uint32 max_packet_size = 8; // 默认给 8
     // ★ 核心修复：使用 >= 4，一举拿下所有未来超高速设备！
-    if (port_speed >= 4) {
+    if (port_speed >= XHCI_PORTSC_SPEED_SUPER ) {
         // 涵盖 4(SS), 5(SSP), 6(SSP Gen2x2) 等所有现代超高速设备
         max_packet_size = 512;
-    } else if (port_speed == 3) {
+    } else if (port_speed == XHCI_PORTSC_SPEED_HIGH) {
         // 涵盖 3(HS), 标准 USB 2.0 高速设备
         max_packet_size = 64;
     } else {
