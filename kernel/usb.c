@@ -844,8 +844,8 @@ usb_dev_t *usb_dev_create(pcie_dev_t *xhci_dev, uint32 port_id) {
 }
 
 //usb设备初始化
-void usb_dev_scan(pcie_dev_t *xhci_dev) {
-    xhci_hcd_t *xhcd = xhci_dev->dev.drv_data;
+void usb_dev_scan(pcie_dev_t *xdev) {
+    xhci_hcd_t *xhcd = xdev->dev.drv_data;
     trb_t trb;
     for (uint8 i = 0; i < xhcd->max_ports; i++) {
         if ((xhcd->op_reg->portregs[i].portsc & XHCI_PORTSC_CCS) && xhcd->op_reg->portregs[i].
@@ -861,7 +861,7 @@ void usb_dev_scan(pcie_dev_t *xhci_dev) {
             }
             //usb3.x
             while (!(xhcd->op_reg->portregs[i].portsc & XHCI_PORTSC_PED)) asm_pause();
-            usb_dev_t *usb_dev = usb_dev_create(xhci_dev, i);
+            usb_dev_t *usb_dev = usb_dev_create(xdev, i);
             usb_dev_register(usb_dev);
             usb_if_create_register(usb_dev);
             color_printk(GREEN, BLACK, "ports[%d]:%#x    \n", i + 1, xhcd->op_reg->portregs[i].portsc);

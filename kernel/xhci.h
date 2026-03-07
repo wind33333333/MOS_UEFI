@@ -1289,7 +1289,6 @@ typedef struct xhci_hcd_t{
     // ==========================================
     uint8               major_bcd;          // 主版本号
     uint8               minor_bcd;          // 次版本号
-    uint32              align_size;         // xHCI 内存分配对齐边界 (PAGESIZE)
     uint8               ctx_size;           // 设备上下文字节数 (32 还是 64 字节)
     uint8               max_ports;          // 最大物理端口数量 (MaxPorts)
     uint8               max_slots;          // 最大逻辑插槽数量 (MaxSlots)
@@ -1325,8 +1324,7 @@ typedef struct xhci_hcd_t{
 
     // 注意：事件环不是一个，它是和中断器绑定的！这里根据 max_intrs 动态分配！
     xhci_ring_t         *event_rings;       // 事件环数组 (大小为 max_intrs)
-    void                *ersts;             // ERST 表数组 (同样与中断器对应)
-    uint32              erst_count;
+    uint16              enable_intr_count;  // 启用中断器数量，取cpu核心数量和max_intrs最小值
 
     //spinlock_t          lock;               // 保护整个 xHCI 状态机的全局自旋锁
 } xhci_hcd_t;
@@ -1335,7 +1333,7 @@ typedef struct xhci_hcd_t{
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push);
 uint8 xhci_handle_common_error(xhci_trb_comp_code_e comp_code, uint64 trb_pa);
 xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd, uint64 wait_trb_pa, uint64 timeout_ms,xhci_trb_t *out_event_trb);
-static inline int32 xhci_ring_init(xhci_ring_t *ring, uint32 align_size);
+static inline int32 xhci_ring_init(xhci_ring_t *ring);
 static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 value);
 int32 xhci_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id);
 int32 xhci_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);

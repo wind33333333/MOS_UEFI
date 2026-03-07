@@ -138,8 +138,7 @@ int usb_bus_match(device_t* dev,driver_t* drv);
 int usb_bus_probe(device_t* dev);
 void usb_bus_remove(device_t* dev);
 
-struct pcie_dev_t;
-void usb_dev_scan(struct pcie_dev_t *xhci_dev);
+void usb_dev_scan(struct pcie_dev_t *xdev);
 int usb_set_config(usb_dev_t *usb_dev);
 int usb_set_interface(usb_if_t *usb_if);
 int usb_endpoint_init(usb_if_alt_t *if_alt);

@@ -225,6 +225,10 @@ int32 kfree(void *va) {
     return 0;
 }
 
+static inline void* kzalloc_dma(uint64 size) {
+   return kzalloc(align_up(size,64));
+}
+
 //初始化slub分配器
 INIT_TEXT void init_slub(void) {
     //创建kmem_cache对象缓存池

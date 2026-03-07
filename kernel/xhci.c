@@ -98,8 +98,8 @@ xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd, uint64 wait_trb_pa, u
 }
 
 //初始化环
-static inline int32 xhci_ring_init(xhci_ring_t *ring, uint32 align_size) {
-    ring->ring_base = kzalloc(align_up(TRB_COUNT * sizeof(xhci_trb_t), align_size));
+static inline int32 xhci_ring_init(xhci_ring_t *ring) {
+    ring->ring_base = kzalloc(TRB_COUNT * sizeof(xhci_trb_t));
     ring->index = 0;
     ring->cycle = 1;
 }
@@ -526,14 +526,14 @@ int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id) {
 
 
 //xhic扩展能力搜索
-uint8 xhci_ecap_find(xhci_hcd_t *xhcd, void **ecap_arr, uint8 cap_id) {
+uint8 xhci_ecap_find(xhci_hcd_t *xhcd, void *ecap_arr, uint8 cap_id) {
     uint32 offset = xhcd->cap_reg->hccparams1 >> 16;
     uint32 *ecap = (uint32 *) xhcd->cap_reg;
     uint8 count = 0;
     while (offset) {
-        ecap = (void *) ecap + (offset << 2);
+        ecap += offset;
         if ((*ecap & 0xFF) == cap_id) {
-            ecap_arr[count++] = ecap;
+            ((uint64*)ecap_arr)[count++] = (uint64)ecap;
         };
         offset = (*ecap >> 8) & 0xFF;
     }
@@ -592,6 +592,18 @@ int32 xhci_start(xhci_hcd_t *xhcd) {
     return -1;
 }
 
+//启用xhci中断
+void xhci_enable_intr(xhci_hcd_t *xhcd,uint16 intr_number) {
+    xhcd->rt_reg->intr_regs[intr_number].iman |= 1<1;
+}
+
+//禁用xhci中断
+void xhci_disable_intr(xhci_hcd_t *xhcd,uint16 intr_number) {
+    xhcd->rt_reg->intr_regs[intr_number].iman &= ~(1<1);
+}
+
+
+
 //xhci设备探测初始化驱动
 int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xdev->dev.drv_data = kzalloc(sizeof(xhci_hcd_t)); //存放xhci相关信息
@@ -604,89 +616,137 @@ int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhcd->rt_reg = xdev->bar[0].vaddr + xhcd->cap_reg->rtsoff; //xhci运行时寄存器基地址
     xhcd->db_reg = xdev->bar[0].vaddr + xhcd->cap_reg->dboff; //xhci门铃寄存器基地址
 
-    /*停止复位xhci*/
-    xhci_reset(xhcd);
-
-    /*计算xhci内存对齐边界*/
-    xhcd->align_size = PAGE_4K_SIZE << asm_tzcnt(xhcd->op_reg->pagesize);
-
-    /*设备上下文字节数*/
-    xhcd->ctx_size = 32 << ((xhcd->cap_reg->hccparams1 & HCCP1_CSZ) >> 2);
-
-    /*初始化设备上下文*/
-    xhcd->max_slots = xhcd->cap_reg->hcsparams1 & 0xff;
-    xhcd->dcbaap = kzalloc(align_up((xhcd->max_slots + 1) << 3, xhcd->align_size));
-    //分配设备上下文插槽内存,最大插槽数量(插槽从1开始需要+1)*8字节内存
-    xhcd->op_reg->dcbaap = va_to_pa(xhcd->dcbaap); //把设备上下文基地址数组表的物理地址写入寄存器
-    xhcd->op_reg->config = xhcd->max_slots; //把最大插槽数量写入寄存器
-
-    /*初始化命令环*/
-    xhci_ring_init(&xhcd->cmd_ring, xhcd->align_size);
-    xhcd->op_reg->crcr = va_to_pa(xhcd->cmd_ring.ring_base) | 1; //命令环物理地址写入crcr寄存器，置位rcs
-
-    /*初始化事件环*/
-    xhci_ring_init(&xhcd->event_ring, xhcd->align_size);
-    xhci_erst_t *erstba = kmalloc(align_up(sizeof(xhci_erst_t), xhcd->align_size)); //分配单事件环段表内存
-    erstba->ring_seg_base = va_to_pa(xhcd->event_ring.ring_base); //段表中写入事件环物理地址
-    erstba->ring_seg_size = TRB_COUNT; //事件环最大trb个数
-    erstba->reserved = 0;
-    xhcd->rt_reg->intr_regs[0].erstsz = 1; //设置单事件环段
-    xhcd->rt_reg->intr_regs[0].erstba = va_to_pa(erstba); //事件环段表物理地址写入寄存器
-    xhcd->rt_reg->intr_regs[0].erdp = va_to_pa(xhcd->event_ring.ring_base); //事件环物理地址写入寄存器
-
-    /*初始化暂存器缓冲区*/
-    uint32 spb_number = (xhcd->cap_reg->hcsparams2 & 0x1f << 21) >> 16 | xhcd->cap_reg->
-                        hcsparams2
-                        >> 27;
-    if (spb_number) {
-        uint64 *spb_array = kzalloc(align_up(spb_number << 3, xhcd->align_size)); //分配暂存器缓冲区指针数组
-        for (uint32 i = 0; i < spb_number; i++) spb_array[i] = va_to_pa(kzalloc(xhcd->align_size));
-        //分配暂存器缓存区
-        xhcd->dcbaap[0] = va_to_pa(spb_array); //暂存器缓存去数组指针写入设备上下写文数组0
-    }
-
+    xhcd->ctx_size = 32 << ((xhcd->cap_reg->hccparams1 & HCCP1_CSZ) >> 2);     /*设备上下文字节数*/
     xhcd->major_bcd = xhcd->cap_reg->hciversion >> 8; //xhci主版本
     xhcd->minor_bcd = xhcd->cap_reg->hciversion & 0xFF; //xhci次版本
     xhcd->max_ports = xhcd->cap_reg->hcsparams1 >> 24; //xhci最大端口数
     xhcd->max_intrs = xhcd->cap_reg->hcsparams1 >> 8 & 0x7FF; //xhci最大中断数
 
-    /*获取协议支持能力*/
+    // =========================================================================
+    // 阶段 1：搜寻与分配 (寻找主板上所有的协议支持清单)
+    // =========================================================================
+
+    /* 定义一个指针数组，最多容纳 16 个协议能力块 (一般主板也就 2~3 个，如 USB 2.0 和 USB 3.0) */
     xhci_ecap_supported_protocol *ecap_spc_arr[16];
-    xhcd->spc_count = xhci_ecap_find(xhcd, ecap_spc_arr, 2);
+
+    /* 调用扩展能力雷达，寻找所有 ID 为 2 (Supported Protocol Capability) 的能力块 */
+    xhcd->spc_count = xhci_ecap_find(xhcd, (void **)ecap_spc_arr, 2);
+
+    /* 为软件端的协议抽象层 (xhci_spc_t) 分配连续的内存数组 */
     xhcd->spc = kzalloc(sizeof(xhci_spc_t) * xhcd->spc_count);
+
+    /* 为“端口号 -> 协议索引”的映射表分配内存 (极其关键的 O(1) 查表数组) */
     xhcd->port_to_spc = kmalloc(xhcd->max_ports);
+
+    /* 将映射表全部初始化为 0xFF，代表“尚未映射/无效端口” */
     asm_mem_set(xhcd->port_to_spc, 0xFF, xhcd->max_ports);
+
+    // =========================================================================
+    // 阶段 2：深度解析硬件协议表 (将硬件寄存器状态翻译为内核软件结构)
+    // =========================================================================
     for (uint8 i = 0; i < xhcd->spc_count; i++) {
-        xhci_spc_t *spc = &xhcd->spc[i];
-        xhci_ecap_supported_protocol *spc_ecap = ecap_spc_arr[i];
-        spc->major_bcd = spc_ecap->protocol_ver >> 24;
-        spc->minor_bcd = spc_ecap->protocol_ver >> 16 & 0xFF;
+        xhci_spc_t *spc = &xhcd->spc[i];                                // 软件结构指针
+        xhci_ecap_supported_protocol *spc_ecap = ecap_spc_arr[i];       // 硬件寄存器指针
+
+        /* 解析 USB 协议版本号 (例如：0x0300 代表 USB 3.0, 0x0200 代表 USB 2.0) */
+        spc->major_bcd = spc_ecap->protocol_ver >> 24;                  // 提取主版本号 (Major)
+        spc->minor_bcd = spc_ecap->protocol_ver >> 16 & 0xFF;           // 提取次版本号 (Minor)
+
+        /* 巧妙提取名称：直接进行 4 字节 (uint32) 的内存拷贝，通常是 "USB " */
         *(uint32 *) spc->name = *(uint32 *) spc_ecap->name;
+        /* 把第 4 个字符 (索引3) 强行置 0，将 "USB " 截断成完美的 C 语言字符串 "USB\0" */
         spc->name[3] = 0;
-        spc->proto_defined = spc_ecap->port_info >> 16 & 0x1FF;
-        spc->port_first = spc_ecap->port_info & 0xFF;
-        spc->port_count = spc_ecap->port_info >> 8 & 0xFF;
-        spc->slot_type = spc_ecap->protocol_slot_type & 0xF;
+
+        /* 解析协议自定义字段 (12 Bits)，通常用于集线器层级深度限制等高级特性 */
+        spc->proto_defined = spc_ecap->port_info >> 16 & 0xFFF;
+
+        /* ★ 核心拓扑数据 ★ */
+        spc->port_first = spc_ecap->port_info & 0xFF;                   // 属于该协议的起始端口号 (注意：硬件是从 1 开始的！)
+        spc->port_count = spc_ecap->port_info >> 8 & 0xFF;              // 属于该协议的连续端口总数
+
+        /* 解析协议插槽类型 (5 Bits)，用于后续设备上下文的初始化 */
+        spc->slot_type = spc_ecap->protocol_slot_type & 0x1F;
+
+        /* 解析自定义速率表 (PSI) 的数量 (4 Bits) */
         spc->psi_count = spc_ecap->port_info >> 28 & 0xF;
+
+        // =========================================================================
+        // 阶段 3：装载“动态速率翻译字典” (应对 USB 3.1+ 的非标准速率)
+        // =========================================================================
         if (spc->psi_count) {
+            /* 如果硬件提供了 PSI 表，为它们分配内存 */
             uint32 *psi = kzalloc(sizeof(uint32) * spc->psi_count);
             spc->psi = psi;
+            /* 将硬件提供的速率映射表一一拷贝到内核中，供以后查询 */
             for (uint8 j = 0; j < spc->psi_count; j++) {
                 psi[j] = spc_ecap->protocol_speed[j];
             }
         }
+
+        // =========================================================================
+        // 阶段 4：建立 O(1) 端口映射表 (极其关键的防雷区)
+        // =========================================================================
+        /* * 硬件大坑：spc->port_first 是从 1 开始计数的 (物理世界的习惯)
+         * 软件数组：xhcd->port_to_spc 是从 0 开始计数的 (C 语言的习惯)
+         * 所以必须使用 spc->port_first - 1 进行完美降维降级对齐！
+         */
         for (uint8 j = spc->port_first - 1; j < spc->port_first - 1 + spc->port_count; j++) {
+            /* 将逻辑端口号 j 映射到当前协议的索引 i 上 */
+            /* 以后只要知道端口号 j，读取 port_to_spc[j]，瞬间就能知道它是 USB 2.0 还是 3.0 */
             xhcd->port_to_spc[j] = i;
         }
     }
 
+    /*停止复位xhci*/
+    xhci_reset(xhcd);
+
+    /*初始化设备上下文*/
+    xhcd->max_slots = xhcd->cap_reg->hcsparams1 & 0xff;
+    xhcd->dcbaap = kzalloc_dma((xhcd->max_slots+1)<<3);
+    //分配设备上下文插槽内存,最大插槽数量(插槽从1开始需要+1)*8字节内存
+    xhcd->op_reg->dcbaap = va_to_pa(xhcd->dcbaap); //把设备上下文基地址数组表的物理地址写入寄存器
+    xhcd->op_reg->config = xhcd->max_slots; //把最大插槽数量写入寄存器
+
+    /*初始化命令环*/
+    xhci_ring_init(&xhcd->cmd_ring);
+    xhcd->op_reg->crcr = va_to_pa(xhcd->cmd_ring.ring_base) | 1; //命令环物理地址写入crcr寄存器，置位rcs
+
+    /*初始化事件环*/
+    //可以根据cpu核心和MaxIntrs取小值设置多事件环。暂时设置1个事件环
+    xhcd->enable_intr_count = 1;
+    for (uint16 i = 0; i < xhcd->enable_intr_count; i++) {
+        xhci_ring_init(&xhcd->event_rings[i]);
+        uint64 evt_pa = va_to_pa(xhcd->event_rings[i].ring_base);
+
+        xhci_erst_t *erstba = kzalloc_dma(sizeof(xhci_erst_t)); //分配事件环段表内存，单段只分配一个
+        erstba->ring_seg_base = evt_pa; //段表中写入事件环物理地址
+        erstba->ring_seg_size = TRB_COUNT; //事件环最大trb个数
+        erstba->reserved = 0;
+
+        xhci_disable_intr(xhcd,i);  //关闭中断
+        xhcd->rt_reg->intr_regs[i].erstsz = 1; //设置1,单事件环段
+        xhcd->rt_reg->intr_regs[i].erstba = va_to_pa(erstba); //事件环段表物理地址写入寄存器
+        xhcd->rt_reg->intr_regs[i].erdp = evt_pa; //事件环物理地址写入寄存器
+    }
+
+    /*初始化暂存器缓冲区*/
+    uint32 spb_number = (xhcd->cap_reg->hcsparams2 & 0x1f << 21) >> 16 | xhcd->cap_reg->hcsparams2>> 27;
+    if (spb_number) {
+        uint64 *spb_array = kzalloc_dma(spb_number << 3); //分配暂存器缓冲区指针数组
+        for (uint32 i = 0; i < spb_number; i++) spb_array[i] = va_to_pa(kzalloc(PAGE_4K_SIZE << asm_tzcnt(xhcd->op_reg->pagesize)));
+        //分配暂存器缓存区
+        xhcd->dcbaap[0] = va_to_pa(spb_array); //暂存器缓存去数组指针写入设备上下写文数组0
+    }
+
+    /*启动xhci*/
+    xhci_start(xhcd);
 
     color_printk(
         GREEN,BLACK,
         "XHCI Version:%x.%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d Dev_Ctx_Size:%d AlignSize:%d USBcmd:%#x USBsts:%#x    \n",
         xhcd->major_bcd, xhcd->minor_bcd, xhcd->max_slots,
         xhcd->max_intrs, xhcd->max_ports,
-        xhcd->ctx_size, xhcd->align_size, xhcd->op_reg->usbcmd,
+        xhcd->ctx_size, xhcd->op_reg->usbcmd,
         xhcd->op_reg->usbsts);
 
     for (uint8 i = 0; i < xhcd->spc_count; i++) {
@@ -695,9 +755,8 @@ int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
                      spc->major_bcd, spc->minor_bcd, spc->port_first, spc->port_count, spc->psi_count);
     }
 
-    /*启动xhci*/
-    xhci_start(xhcd);
 
+    extern void usb_dev_scan(struct pcie_dev_t *xdev);
     usb_dev_scan(xdev);
 
     color_printk(GREEN,BLACK, "\nUSBcmd:%#x  USBsts:%#x", xhcd->op_reg->usbcmd,

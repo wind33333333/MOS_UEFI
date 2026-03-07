@@ -24,5 +24,6 @@ void *kmem_cache_alloc(kmem_cache_t *cache);
 int32 kmem_cache_free(kmem_cache_t *cache, void *object);
 void *kmalloc(uint64 size);
 void *kzalloc(uint64 size);
+static inline void* kzalloc_dma(uint64 size);
 int32 kfree(void *va);
 
