@@ -43,7 +43,7 @@ uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
  */
 xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, uint64 wait_trb_pa, uint64 timeout_ms,
                                          xhci_trb_t *out_event_trb) {
-    xhci_ring_t *evt_ring = &xhcd->event_rings[intr_number];
+    xhci_ring_t *evt_ring = &xhcd->intr[intr_number].event_rings;
     xhci_trb_t local_trb;
     while (timeout_ms--) {
         //先从事件环取出当前事件trb,如果当前事件trb的cycle位相同则表示事件环有事件
@@ -57,7 +57,7 @@ xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, ui
             evt_ring->index = 0;
             evt_ring->cycle ^= 1;
         }
-        xhcd->rt_reg->intr_regs[0].erdp = va_to_pa(&evt_ring->ring_base[evt_ring->index]) | XHCI_ERDP_EHB;
+        xhcd->rt_reg->intr_regs[intr_number].erdp = va_to_pa(&evt_ring->ring_base[evt_ring->index]) | XHCI_ERDP_EHB;
 
         //如果是命令事件或传输事件则饭或trb和完成码给调用者
         if ((local_trb.cmd_comp_event.trb_type == XHCI_TRB_TYPE_TRANSFER_EVENT ||
@@ -179,7 +179,7 @@ xhci_trb_comp_code_e xhci_execute_command_sync(xhci_hcd_t *xhcd, xhci_trb_t *cmd
 
     // ★ 关键修改：把 out_event_trb 指针继续传递给底层的 wait 函数
     // 底层的 wait 函数在轮询/中断匹配到事件时，需要把那个 Event TRB 的 16 字节内容 copy 到这个指针里
-    xhci_trb_comp_code_e comp_code = xhci_wait_for_event(xhcd, cmd_pa, timeout_us, out_event_trb);
+    xhci_trb_comp_code_e comp_code = xhci_wait_for_event(xhcd,0, cmd_pa, timeout_us, out_event_trb);
 
     // ==========================================================
     // 第一关：极速放行 (Fast Path) - 99% 的情况走这里！
@@ -289,7 +289,7 @@ xhci_trb_comp_code_e xhci_execute_command_sync(xhci_hcd_t *xhcd, xhci_trb_t *cmd
 }
 
 //分配插槽
-int32 xhci_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
+int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
     xhci_trb_t evt_trb;
     xhci_trb_t cmd_trb = {0};
     cmd_trb.enable_slot.type = XHCI_TRB_TYPE_ENABLE_SLOT;
@@ -312,7 +312,7 @@ int32 xhci_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
  * @param usb_dev         要销毁的 USB 设备对象
  * @return int8           0 表示成功，-1 表示失败
  */
-int32 xhci_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id) {
+int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id) {
     if (xhcd == NULL || slot_id == 0) {
         return -1; // 非法参数或设备本就没分配槽位
     }
@@ -608,6 +608,7 @@ void xhci_disable_intr(xhci_hcd_t *xhcd,uint16 intr_number) {
 int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xdev->dev.drv_data = kzalloc(sizeof(xhci_hcd_t)); //存放xhci相关信息
     xhci_hcd_t *xhcd = xdev->dev.drv_data;
+    xhcd->xdev = xdev;
     xdev->bar[0].vaddr = iomap(xdev->bar[0].paddr, xdev->bar[0].size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
 
     /*初始化xhci寄存器*/
@@ -711,14 +712,17 @@ int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhci_ring_init(&xhcd->cmd_ring);
     xhcd->op_reg->crcr = va_to_pa(xhcd->cmd_ring.ring_base) | 1; //命令环物理地址写入crcr寄存器，置位rcs
 
-    /*初始化事件环*/
+    /*初始化中断器*/
     //可以根据cpu核心和MaxIntrs取小值设置多事件环。暂时设置1个事件环
     xhcd->enable_intr_count = 1;
+    xhci_intr *intr = kzalloc(sizeof(xhci_intr) * xhcd->enable_intr_count);
+    xhcd->intr = intr;
     for (uint16 i = 0; i < xhcd->enable_intr_count; i++) {
-        xhci_ring_init(&xhcd->event_rings[i]);
-        uint64 evt_pa = va_to_pa(xhcd->event_rings[i].ring_base);
+        xhci_ring_init(&intr[i].event_rings);
+        uint64 evt_pa = va_to_pa(intr[i].event_rings.ring_base);
 
         xhci_erst_t *erstba = kzalloc_dma(sizeof(xhci_erst_t)); //分配事件环段表内存，单段只分配一个
+        intr[i].erstba = erstba;
         erstba->ring_seg_base = evt_pa; //段表中写入事件环物理地址
         erstba->ring_seg_size = TRB_COUNT; //事件环最大trb个数
         erstba->reserved = 0;

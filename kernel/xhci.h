@@ -1,5 +1,6 @@
 #pragma once
 #include "moslib.h"
+#include "pcie.h"
 
 #pragma pack(push,1)
 
@@ -984,7 +985,7 @@ typedef enum : uint8 {
 
 typedef struct {
     uint8 length; // 描述符长度
-    uint8 desc_type; // 描述符类型
+    usb_desc_type_e desc_type; // 描述符类型
 }usb_desc_head;
 
 /*usb设备描述符
@@ -1305,10 +1306,10 @@ struct {
 #define XHCI_ERDP_EHB (1<<3)
 } intr_regs[1024]; // 最大支持1024个中断器（根据HCSPARAMS1中的MaxIntrs）
 
+//抽象xhci中断器结构
 typedef struct {
-    uint32 *iman;
     xhci_erst_t *erstba;
-    xhci_ring_t *event_rings;
+    xhci_ring_t event_rings;
 }xhci_intr;
 
 //xhci控制器
@@ -1352,22 +1353,22 @@ typedef struct xhci_hcd_t{
     // struct usb_dev_t    *udevs;             // 插槽到设备的逻辑映射 (通过 Slot ID 查找 usb_dev_t)
 
     // 注意：事件环不是一个，它是和中断器绑定的！这里根据 max_intrs 动态分配！
-
-    xhci_ring_t         *event_rings;       // 事件环数组 (大小为 max_intrs)
+    xhci_intr*          intr;
     uint16              enable_intr_count;  // 启用中断器数量，取cpu核心数量和max_intrs最小值
 
+    pcie_dev_t          *xdev;
     //spinlock_t          lock;               // 保护整个 xHCI 状态机的全局自旋锁
 } xhci_hcd_t;
 
 
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push);
 uint8 xhci_handle_common_error(xhci_trb_comp_code_e comp_code, uint64 trb_pa);
-xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd, uint64 wait_trb_pa, uint64 timeout_ms,xhci_trb_t *out_event_trb);
+xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, uint64 wait_trb_pa, uint64 timeout_ms,xhci_trb_t *out_event_trb) ;
 static inline int32 xhci_ring_init(xhci_ring_t *ring);
 static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 value);
-int32 xhci_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id);
-int32 xhci_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);
-int32 xhci_cmd_address_device(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctrl_ctx_t *input_ctx);
+int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id);
+int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);
+int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctrl_ctx_t *input_ctx);
 int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctrl_ctx_t *input_ctx, uint8 slot_id, uint8 dc);
 int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_id);
 uint32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
