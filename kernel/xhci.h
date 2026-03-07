@@ -1282,6 +1282,35 @@ typedef struct {
 } xhci_spc_t;
 
 
+// 中断管理数组 (IMAN) - 每个中断向量一个
+struct {
+    // 中断管理寄存器 (IMAN), 偏移 0x00
+    uint32 iman; // 中断管理 [0]：IP中断挂起（1=有中断待处理），[1]：中断使能（1=使能，0=禁用）
+
+    //中断调节寄存器 (IMOD), 偏移 0x04,
+    uint32 imod; // 中断调制器 (位 0-15): 中断调节间隔（以250ns为单位，(位 16-31): 中断调节计数器（只读）
+
+    // 事件环段表大小寄存器 (ERSTSZ), 偏移 0x08, 32位
+    uint32 erstsz; // - ERST Size (位 0-15): 事件环段表条目数（最大4096）
+    uint32 reserved1;
+
+    // 事件环段表基地址寄存器 (ERSTBA), 偏移 0x10-0x17, 64位
+    uint64 erstba; //指向事件环段表的64位基地址（对齐到64字节)
+
+    // 事件环出队指针寄存器 (ERDP), 偏移 0x18-0x1F, 64位
+    uint64 erdp; /*指向事件环的当前出队指针
+                    - DESI (位 0-2): 出队事件环段索引
+                    - EHB (位 3): 事件处理忙碌（1=忙碌，写1清除）
+                    - Event Ring Dequeue Pointer (位 4-63): 出队指针地址*/
+#define XHCI_ERDP_EHB (1<<3)
+} intr_regs[1024]; // 最大支持1024个中断器（根据HCSPARAMS1中的MaxIntrs）
+
+typedef struct {
+    uint32 *iman;
+    xhci_erst_t *erstba;
+    xhci_ring_t *event_rings;
+}xhci_intr;
+
 //xhci控制器
 typedef struct xhci_hcd_t{
     // ==========================================
@@ -1323,6 +1352,7 @@ typedef struct xhci_hcd_t{
     // struct usb_dev_t    *udevs;             // 插槽到设备的逻辑映射 (通过 Slot ID 查找 usb_dev_t)
 
     // 注意：事件环不是一个，它是和中断器绑定的！这里根据 max_intrs 动态分配！
+
     xhci_ring_t         *event_rings;       // 事件环数组 (大小为 max_intrs)
     uint16              enable_intr_count;  // 启用中断器数量，取cpu核心数量和max_intrs最小值
 

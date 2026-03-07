@@ -41,9 +41,9 @@ uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
  * @param wait_trb_pa: 我们刚才提交的那个 TRB 的物理地址 (用于比对)
  * @param timeout_ms: 超时时间
  */
-xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd, uint64 wait_trb_pa, uint64 timeout_ms,
+xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, uint64 wait_trb_pa, uint64 timeout_ms,
                                          xhci_trb_t *out_event_trb) {
-    xhci_ring_t *evt_ring = &xhcd->event_ring;
+    xhci_ring_t *evt_ring = &xhcd->event_rings[intr_number];
     xhci_trb_t local_trb;
     while (timeout_ms--) {
         //先从事件环取出当前事件trb,如果当前事件trb的cycle位相同则表示事件环有事件
@@ -756,8 +756,8 @@ int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     }
 
 
-    extern void usb_dev_scan(struct pcie_dev_t *xdev);
-    usb_dev_scan(xdev);
+    extern void usb_dev_scan(xhci_hcd_t *xhcd);
+    usb_dev_scan(xhcd);
 
     color_printk(GREEN,BLACK, "\nUSBcmd:%#x  USBsts:%#x", xhcd->op_reg->usbcmd,
                  xhcd->op_reg->usbsts);

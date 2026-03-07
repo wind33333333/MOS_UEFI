@@ -827,9 +827,8 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
 }
 
 //创建usb设备
-usb_dev_t *usb_dev_create(pcie_dev_t *xhci_dev, uint32 port_id) {
+usb_dev_t *usb_dev_create(xhci_hcd_t xhcd, uint32 port_id) {
     usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
-    usb_dev->xhcd = xhci_dev->dev.drv_data;
     usb_dev->port_id = port_id + 1;
     usb_dev->slot_id = xhci_enable_slot(usb_dev); //启用插槽
     xhci_address_device(usb_dev); //设置设备地址
@@ -844,8 +843,7 @@ usb_dev_t *usb_dev_create(pcie_dev_t *xhci_dev, uint32 port_id) {
 }
 
 //usb设备初始化
-void usb_dev_scan(pcie_dev_t *xdev) {
-    xhci_hcd_t *xhcd = xdev->dev.drv_data;
+void usb_dev_scan(xhci_hcd_t *xhcd){
     trb_t trb;
     for (uint8 i = 0; i < xhcd->max_ports; i++) {
         if ((xhcd->op_reg->portregs[i].portsc & XHCI_PORTSC_CCS) && xhcd->op_reg->portregs[i].
