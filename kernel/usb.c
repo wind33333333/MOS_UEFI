@@ -306,45 +306,32 @@ int32 usb_get_dev_desc(usb_dev_t *udev,usb_dev_desc_t *dev_desc,uint16 length) {
 
 
 //获取usb设备描述符
-int usb_get_device_descriptor(usb_dev_t *usb_dev) {
-    xhci_hcd_t *xhcd = usb_dev->xhcd;
+int usb_get_device_descriptor(usb_dev_t *udev) {
+    xhci_hcd_t *xhcd = udev->xhcd;
     usb_dev_desc_t *dev_desc = kzalloc(align_up(sizeof(usb_dev_desc_t), 64));
 
-    //第一次先获取设备描述符前8字节，拿到max_pack_size后更新端点1，再重新获取描述符。
-    usb_get_dev_desc(usb_dev, dev_desc, 8);
+    uint8 ctx_size = xhcd->ctx_size;
 
-    //更新端点0的最大包
-    uint32 max_packe_size = dev_desc->usb_version >= 0x300
-                                ? 1 << dev_desc->max_packet_size0
-                                : dev_desc->max_packet_size0;
-    xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhcd->align_size));
-    ep64_t ep_ctx;
-    xhci_context_read(usb_dev->dev_ctx, &ep_ctx, xhcd->ctx_size, 1);
-    ep_ctx.ep_type_size = 4 << 3 | max_packe_size << 16 | 3 << 1;
-    xhci_input_context_add(input_ctx, &ep_ctx, xhcd->ctx_size, 1);
-    evaluate_context_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
-    xhci_ring_enqueue(&xhcd->cmd_ring, &trb);
-    xhci_ring_doorbell(xhcd, 0, 0);
-    timing();
-    xhci_ering_dequeue(xhcd, &trb);
-    kfree(input_ctx);
+    //获取端口速率，全速端口先获取设备描述符前8字节得到max_packte_size修正端点0
+    uint8 port_speed = (xhcd->op_reg->portregs[udev->port_id - 1].portsc >> 10) & 0x0F;
+    if (port_speed == XHCI_PORTSC_SPEED_FULL) {
+        //第一次先获取设备描述符前8字节，拿到max_pack_size后更新端点1，再重新获取描述符。
+        usb_get_dev_desc(udev, dev_desc, 8);
 
-    //第二次获取整个设备描述符
-    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x100, 0,
-                    sizeof(usb_device_descriptor_t),in_data_stage);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-    // Data TRB
-    data_stage_trb(&trb, va_to_pa(dev_desc), sizeof(usb_device_descriptor_t), trb_in);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-    // Status TRB
-    status_stage_trb(&trb, ENABLE_IOC, trb_out);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
+        //配置input_ctx
+        xhci_input_ctrl_ctx_t *input_ctx = kzalloc(XHCI_INPUT_CONTEXT_COUNT*ctx_size);
+        xhci_ep_ctx_t *cur_ep0_ctx = xhci_get_ctx_addr(udev,1);
+        xhci_ep_ctx_t *input_ctx_ep0 = xhci_get_input_ctx_addr(xhcd,input_ctx,1);
+        asm_mem_cpy(cur_ep0_ctx,input_ctx_ep0,sizeof(xhci_ep_ctx_t));
+        input_ctx_ep0->max_packet_size = dev_desc->max_packet_size0;
+        input_ctx->add_context_flags |= 1<<1;
 
-    xhci_ring_doorbell(xhcd, usb_dev->slot_id, 1);
-    timing();
-    xhci_ering_dequeue(xhcd, &trb);
-
-    usb_dev->dev_desc = dev_desc;
+        xhci_cmd_eval_ctx(xhcd,input_ctx,udev->slot_id);
+        kfree(input_ctx);
+    }
+    //获取完整设备描述符
+    usb_get_dev_desc(udev, dev_desc, sizeof(usb_dev_desc_t));
+    udev->dev_desc = dev_desc;
     return 0;
 }
 

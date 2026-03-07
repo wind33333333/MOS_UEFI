@@ -1326,6 +1326,7 @@ typedef struct xhci_hcd_t{
     // 注意：事件环不是一个，它是和中断器绑定的！这里根据 max_intrs 动态分配！
     xhci_ring_t         *event_rings;       // 事件环数组 (大小为 max_intrs)
     void                *ersts;             // ERST 表数组 (同样与中断器对应)
+    uint32              erst_count;
 
     //spinlock_t          lock;               // 保护整个 xHCI 状态机的全局自旋锁
 } xhci_hcd_t;

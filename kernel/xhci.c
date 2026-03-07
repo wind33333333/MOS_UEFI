@@ -540,24 +540,72 @@ uint8 xhci_ecap_find(xhci_hcd_t *xhcd, void **ecap_arr, uint8 cap_id) {
     return count;
 }
 
+//停止xhci
+int32 xhci_stop(xhci_hcd_t *xhcd) {
+    xhcd->op_reg->usbcmd &= ~XHCI_CMD_RS; //停止xhci
+    uint32 times = 20000000;
+    while (times--) {
+        if ((xhcd->op_reg->usbsts & XHCI_STS_HCH) != 0)
+            return 0;
+    }
+    color_printk(RED, BLACK, "xHCI: Stop timeout! Controller refused to halt.\n");
+    return -1;
+}
+
+//复位xhci
+int32 xhci_reset(xhci_hcd_t *xhcd) {
+    // 规范防线：确保复位前已经停止！
+    if ((xhcd->op_reg->usbsts & XHCI_STS_HCH) == 0) {
+        color_printk(YELLOW, BLACK, "xHCI: Warning, halting controller before reset...\n");
+        xhci_stop(xhcd);
+    }
+
+    // 触发复位！主板 xHC 开始脑裂重启
+    xhcd->op_reg->usbcmd |= XHCI_CMD_HCRST;
+
+    uint32 times = 20000000;
+    while (times--) {
+        // 条件 1: 硬件完成复位操作后，会自动将 HCRST 清零
+        uint8 reset_done = (xhcd->op_reg->usbcmd & XHCI_CMD_HCRST) == 0;
+
+        // 条件 2: 硬件内部微码加载完毕，准备好接客，会将 CNR (未准备好) 清零
+        uint8 is_ready = ((xhcd->op_reg->usbsts & XHCI_STS_CNR) == 0);
+
+        if (reset_done && is_ready) {
+            return 0; // 完美复位并就绪！
+        }
+    }
+
+    color_printk(RED, BLACK, "xHCI: Reset timeout! Controller died during reset.\n");
+    return -1;
+}
+
+//启动xhci
+int32 xhci_start(xhci_hcd_t *xhcd) {
+    xhcd->op_reg->usbcmd |= XHCI_CMD_RS;
+    uint32 times = 20000000;
+    while (times--) {
+        if ((xhcd->op_reg->usbsts & XHCI_STS_HCH) == 0)
+            return 0;
+    }
+    color_printk(RED, BLACK, "xHCI: Start timeout! Controller refused to run.\n");
+    return -1;
+}
+
 //xhci设备探测初始化驱动
-int xhci_probe(pcie_dev_t *xhci_dev, pcie_id_t *id) {
-    xhci_dev->dev.drv_data = kzalloc(sizeof(xhci_hcd_t)); //存放xhci相关信息
-    xhci_hcd_t *xhcd = xhci_dev->dev.drv_data;
-    xhci_dev->bar[0].vaddr = iomap(xhci_dev->bar[0].paddr, xhci_dev->bar[0].size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
+    xdev->dev.drv_data = kzalloc(sizeof(xhci_hcd_t)); //存放xhci相关信息
+    xhci_hcd_t *xhcd = xdev->dev.drv_data;
+    xdev->bar[0].vaddr = iomap(xdev->bar[0].paddr, xdev->bar[0].size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
 
     /*初始化xhci寄存器*/
-    xhcd->cap_reg = xhci_dev->bar[0].vaddr; //xhci能力寄存器基地址
-    xhcd->op_reg = xhci_dev->bar[0].vaddr + xhcd->cap_reg->cap_length; //xhci操作寄存器基地址
-    xhcd->rt_reg = xhci_dev->bar[0].vaddr + xhcd->cap_reg->rtsoff; //xhci运行时寄存器基地址
-    xhcd->db_reg = xhci_dev->bar[0].vaddr + xhcd->cap_reg->dboff; //xhci门铃寄存器基地址
+    xhcd->cap_reg = xdev->bar[0].vaddr; //xhci能力寄存器基地址
+    xhcd->op_reg = xdev->bar[0].vaddr + xhcd->cap_reg->cap_length; //xhci操作寄存器基地址
+    xhcd->rt_reg = xdev->bar[0].vaddr + xhcd->cap_reg->rtsoff; //xhci运行时寄存器基地址
+    xhcd->db_reg = xdev->bar[0].vaddr + xhcd->cap_reg->dboff; //xhci门铃寄存器基地址
 
     /*停止复位xhci*/
-    xhcd->op_reg->usbcmd &= ~XHCI_CMD_RS; //停止xhci
-    while (!(xhcd->op_reg->usbsts & XHCI_STS_HCH)) asm_pause();
-    xhcd->op_reg->usbcmd |= XHCI_CMD_HCRST; //复位xhci
-    while (xhcd->op_reg->usbcmd & XHCI_CMD_HCRST) asm_pause();
-    while (xhcd->op_reg->usbsts & XHCI_STS_CNR) asm_pause();
+    xhci_reset(xhcd);
 
     /*计算xhci内存对齐边界*/
     xhcd->align_size = PAGE_4K_SIZE << asm_tzcnt(xhcd->op_reg->pagesize);
@@ -648,11 +696,9 @@ int xhci_probe(pcie_dev_t *xhci_dev, pcie_id_t *id) {
     }
 
     /*启动xhci*/
-    xhcd->op_reg->usbcmd |= XHCI_CMD_RS;
+    xhci_start(xhcd);
 
-    timing();
-
-    usb_dev_scan(xhci_dev);
+    usb_dev_scan(xdev);
 
     color_printk(GREEN,BLACK, "\nUSBcmd:%#x  USBsts:%#x", xhcd->op_reg->usbcmd,
                  xhcd->op_reg->usbsts);
