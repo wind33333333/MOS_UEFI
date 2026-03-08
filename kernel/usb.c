@@ -7,319 +7,21 @@
 device_type_t usb_dev_type = {"usb-dev"};
 device_type_t usb_if_type = {"usb-if"};
 
-//端点转Dci
-static inline uint8 epaddr_to_epdci(uint8 ep) {
-    asm volatile(
-        "rolb $1,%0"
-        :"+q"(ep)
-        :
-        :"cc");
-    return ep;
-}
-
-//Dci转端点
-static inline uint8 epdci_to_epaddr(uint8 dci) {
-    asm volatile(
-        "rorb $1,%0"
-        :"+q"(dci)
-        :
-        :"cc");
-    return dci;
-
-}
-
-
-/**
- * @brief 同步传输等待完成码并精细化处理完成码 (Transfer 专属专科门诊)
- * @param udev        通用 USB 设备对象
- * @param ep_dci      目标端点的 DCI (Device Context Index, 1~31)
- * @param wait_trb_pa 预期要核对的 TRB 物理地址
- * @param timeout_us  超时时间 (微秒)
- * @return xhci_trb_comp_code_e 最终的完成码
- */
-xhci_trb_comp_code_e xhci_wait_transfer_comp (usb_dev_t *udev, uint8 ep_dci, uint64 wait_trb_pa) {
-    xhci_hcd_t *xhcd = udev->xhcd;
-    uint8 slot_id = udev->slot_id;
-
-    // ==========================================================
-    // 第一关： 1. 挂起等待事件环 (Event Ring) 的回执
-    // ==========================================================
-    xhci_trb_comp_code_e comp_code = xhci_wait_for_event(xhcd, wait_trb_pa, 50000000, NULL);
-
-    // ==========================================================
-    // 2. 完美成功或可接受的短包 (直接放行)
-    // ==========================================================
-    if (comp_code == XHCI_COMP_SUCCESS) {
-        return comp_code;
-    }
-
-    // 在 BOT (Bulk-Only Transport) 协议的 Data IN 阶段，
-    // 设备实际发送的数据少于我们请求的长度是完全合法的（短包机制）
-    if (comp_code == XHCI_COMP_SHORT_PACKET) {
-        // 注意：后续实战中，这里需要通过 event->param (传输残余长度) 计算出真实收到的字节数
-        color_printk(YELLOW, BLACK, "[xHCI] Transfer: Normal Short Packet (DCI=%d)\n", ep_dci);
-        return comp_code;
-    }
-
-    // ==========================================================
-    // 3. 第二关：急诊室 (通用大病拦截)
-    // ==========================================================
-    if (xhci_handle_common_error(comp_code, wait_trb_pa) == 1) {
-        // 如果返回了 1，说明急诊室已经抢救或打印过致命日志了（如主机控制器挂掉、内存故障等）。
-        // 直接把这个致命错误码向上抛给业务层！
-        return comp_code;
-    }
-
-    // ==========================================================
-    // 4. 第三关：专科门诊 (传输事件专属错误分析)
-    // ==========================================================
-    switch (comp_code) {
-        // --- [极其致命：硬件 DMA 级错误] ---
-        case XHCI_COMP_DATA_BUFFER_ERROR:
-            // OS 提供的 DMA 物理地址非法，或者跨越了非连续的页边界
-            color_printk(RED, BLACK, "[xHCI] FATAL: Data Buffer Error! Invalid or page-crossing DMA phys address (DCI=%d)\n", ep_dci);
-            break;
-
-        // --- [严重故障：端点状态变为 Halted (死锁)，必须进行软复位抢救] ---
-        case XHCI_COMP_STALL_ERROR:
-            // 设备主动拒绝服务 (比如 U盘不支持某个下发的 SCSI 命令)
-            color_printk(RED, BLACK, "[xHCI] FAULT: STALL Error! Device rejected request, EP halted (DCI=%d)\n", ep_dci);
-            // 抢救第 1 步：主板级解挂 (强制从 Halted 拽回 Stopped)
-            xhci_cmd_reset_ep(xhcd, slot_id, ep_dci);
-            // 抢救第 2 步：跨越“坏死”的 TRB 尸体
-            xhci_cmd_set_tr_deq_ptr(xhcd, slot_id, ep_dci, &udev->eps[ep_dci - 1].transfer_ring);
-
-            if (ep_dci > 1) {
-                // 普通端点且是因为 STALL 挂起：必须发和解信
-                color_printk(YELLOW, BLACK, "xHCI: Sending Clear Feature to unlock physical endpoint...\n");
-                usb_clear_feature_halt(udev, ep_dci);
-            } else {
-                // EP0 的 STALL：靠下一个 Setup 包自动冲刷，什么都不用做
-                color_printk(GREEN, BLACK, "xHCI: EP0 STALL CPR complete.\n");
-            }
-            break;
-
-        case XHCI_COMP_USB_TRANSACTION_ERROR:
-            // 物理线路上发生了 CRC 校验失败或响应超时
-            color_printk(RED, BLACK, "[xHCI] FAULT: USB Transaction Error! Link timeout or CRC failure (DCI=%d)\n", ep_dci);
-            break;
-
-        case XHCI_COMP_BABBLE_ERROR:
-            // 设备发疯，狂发数据覆盖了主机内存 (超出了 TRB 预期长度)
-            color_printk(RED, BLACK, "[xHCI] FAULT: Babble Error! Device sent excess data (DCI=%d)\n", ep_dci);
-            break;
-
-        // --- [正常状态流转：传输环被内核软件主动刹车] ---
-        case XHCI_COMP_STOPPED:
-        case XHCI_COMP_STOPPED_LENGTH_INVALID:
-        case XHCI_COMP_STOPPED_SHORT_PACKET:
-            // 收到 Stop Endpoint 命令后的正常回执
-            color_printk(GREEN, BLACK, "[xHCI] STATUS: Transfer Ring successfully halted by Stop EP Command (DCI=%d)\n", ep_dci);
-            break;
-
-        // --- [带宽与链路异常] ---
-        case XHCI_COMP_BANDWIDTH_OVERRUN_ERROR:
-            // 设备试图占用超额的总线带宽
-            color_printk(RED, BLACK, "[xHCI] ERROR: Bandwidth Overrun! Device exceeded bus bandwidth (DCI=%d)\n", ep_dci);
-            break;
-        case XHCI_COMP_NO_PING_RESPONSE_ERROR:
-            // USB 3.0 链路维护检测失败
-            color_printk(YELLOW, BLACK, "[xHCI] WARN: No Ping Response on USB 3.0 Link (DCI=%d)\n", ep_dci);
-            break;
-        case XHCI_COMP_INCOMPATIBLE_DEVICE_ERROR:
-            // 设备协议与主板不兼容
-            color_printk(RED, BLACK, "[xHCI] FATAL: Incompatible Device Protocol (DCI=%d)\n", ep_dci);
-            break;
-        case XHCI_COMP_MAX_EXIT_LATENCY_TOO_LARGE:
-            // 链路从 U1/U2 低功耗休眠状态唤醒失败
-            color_printk(RED, BLACK, "[xHCI] ERROR: Failed to wake link from U1/U2 sleep (DCI=%d)\n", ep_dci);
-            break;
-
-        // --- [等时传输 (Isoch) 与 其他扩展协议专属] ---
-        case XHCI_COMP_RING_UNDERRUN:
-        case XHCI_COMP_RING_OVERRUN:
-        case XHCI_COMP_MISSED_SERVICE_ERROR:
-        case XHCI_COMP_ISOCH_BUFFER_OVERRUN:
-            // 音视频设备实时传输时的丢帧或速率不匹配警告
-            color_printk(YELLOW, BLACK, "[xHCI] WARN: Isoch rate mismatch or missed microframe (DCI=%d)\n", ep_dci);
-            break;
-        case XHCI_COMP_INVALID_STREAM_ID_ERROR:
-            // [UAS 协议专属] 发送了非法的 Stream ID 导致多路复用失败
-            color_printk(RED, BLACK, "[xHCI] ERROR: Invalid Stream ID sent [UAS Protocol] (DCI=%d)\n", ep_dci);
-            break;
-        case XHCI_COMP_SPLIT_TRANSACTION_ERROR:
-            // USB 2.0 Hub 拆分事务 (Split Transaction) 失败
-            color_printk(RED, BLACK, "[xHCI] ERROR: USB 2.0 Hub Split Transaction Error (DCI=%d)\n", ep_dci);
-            break;
-
-        // --- [漏网之鱼处理] ---
-        default:
-            color_printk(RED, BLACK, "[xHCI] UNKNOWN: Unhandled Transfer Completion Code: %d (DCI=%d)\n", comp_code, ep_dci);
-            break;
-    }
-
-    return comp_code;
-}
-
-/**
- * 标准 USB 控制传输统一封装函数 (EP0 专属) - 结构体传参版
- * @param udev       USB 设备上下文
- * @param usb_req_pkg           指向 8 字节标准 Setup 结构体的指针
- * @param data_buf      数据缓冲区指针 (无数据阶段填 NULL)
- * @param timeout_us    超时时间 (微秒)
- * @return int32        0 表示成功，其他为错误码
- */
-int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_buf) {
-    xhci_hcd_t *xhcd = udev->xhcd;
-    xhci_trb_t tr_trb;
-    uint64 setup_ptr, data_ptr = 0, status_ptr;
-    xhci_trb_comp_code_e comp_code;
-
-    uint16 length = usb_req_pkg->length;
-
-    // 解析trb方向
-    uint8 usb_req_dir = usb_req_pkg->dtd;
-
-    // ==========================================================
-    // 阶段 1：组装 Setup TRB
-    // ==========================================================
-    asm_mem_set(&tr_trb, 0, sizeof(xhci_trb_t));
-    asm_mem_cpy(usb_req_pkg,&tr_trb,sizeof(usb_req_pkg_t)); //拷贝USB请求包到TRB前8字节中
-    tr_trb.setup_stage.trb_tr_len = sizeof(usb_req_pkg_t); //steup trb必须8
-    tr_trb.setup_stage.int_target = 0;     //中断号暂时统一设置0
-    tr_trb.setup_stage.idt = TRB_IDT_ENABLE;   // setup trb 必须1
-    tr_trb.setup_stage.type = XHCI_TRB_TYPE_SETUP_STAGE;
-    tr_trb.setup_stage.chain = TRB_CHAIN_DISABLE;
-    tr_trb.setup_stage.ioc = TRB_IOC_ENABLE;
-    // 判断 TRT (Transfer Type)
-    if (length == 0) {
-        tr_trb.setup_stage.trt = TRB_TRT_NO_DATA;
-    } else if (usb_req_pkg->dtd == USB_DIR_IN) {
-        tr_trb.setup_stage.trt = TRB_TRT_IN_DATA;
-    } else {
-        tr_trb.setup_stage.trt = TRB_TRT_OUT_DATA;
-    }
-
-    setup_ptr = xhci_ring_enqueue(&udev->eps[0].transfer_ring, &tr_trb);
-
-    // ==========================================================
-    // 阶段 2：组装 Data TRB (如果有)
-    // ==========================================================
-    if (length != 0 && data_buf != NULL) {
-        asm_mem_set(&tr_trb, 0, sizeof(xhci_trb_t));
-        tr_trb.data_stage.data_buf_ptr = va_to_pa(data_buf); // 物理地址
-        tr_trb.data_stage.tr_len = length;
-        tr_trb.data_stage.type = XHCI_TRB_TYPE_DATA_STAGE;
-        tr_trb.data_stage.dir = usb_req_dir;  //数据阶段方向和usb.dtd方向一致
-        tr_trb.data_stage.chain = TRB_CHAIN_DISABLE; // 单个 Data TRB 必须为 0
-        tr_trb.data_stage.ioc = TRB_IOC_ENABLE;   // 开启中断防雷
-
-        data_ptr = xhci_ring_enqueue(&udev->eps[0].transfer_ring, &tr_trb);
-    }
-
-    // ==========================================================
-    // 阶段 3：组装 Status TRB
-    // ==========================================================
-    asm_mem_set(&tr_trb, 0, sizeof(xhci_trb_t));
-    tr_trb.status_stage.type = XHCI_TRB_TYPE_STATUS_STAGE;
-    tr_trb.status_stage.chain = TRB_CHAIN_DISABLE;
-    tr_trb.status_stage.ioc = TRB_IOC_ENABLE;
-    tr_trb.status_stage.dir = (length == 0 || usb_req_dir == USB_DIR_OUT) ? TRB_DIR_IN : TRB_DIR_OUT; // ★ 核心逻辑 2：Status 阶段的方向必须是相反的！
-
-    status_ptr = xhci_ring_enqueue(&udev->eps[0].transfer_ring, &tr_trb);
-
-
-    // ==========================================================
-    // ★ 阶段 4：一锤定音，唤醒硬件！
-    // 将 xhci_ring_doorbell 从 sync 函数中移出，放在这里执行。
-    // xHC 硬件会像高铁一样连续压过 Setup -> Data -> Status。
-    // ==========================================================
-    xhci_ring_doorbell(xhcd, udev->slot_id, 1); // EP0 的 DCI 是 1
-
-
-    // ==========================================================
-    // 阶段 5：步步为营的守护监听 (复用你写的完美错误处理函数)
-    // ==========================================================
-    // 监听 Setup 阶段
-    comp_code = xhci_wait_transfer_comp(udev, 1, setup_ptr);
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED,BLACK,"usb control msg setup stage error comp_code:%d  \n",comp_code);
-        return comp_code; // 如果 U 盘拒收命令，它会在这里 STALL 并被自动救活
-    }
-
-    // 监听 Data 阶段
-    if (length != 0 && data_buf != NULL) {
-        comp_code = xhci_wait_transfer_comp(udev, 1, data_ptr);
-        if (comp_code != XHCI_COMP_SUCCESS) {
-            color_printk(RED,BLACK,"usb control msg data stage error comp_code:%d  \n",comp_code);
-            return comp_code;
-        }
-    }
-
-    // 监听 Status 阶段
-    comp_code = xhci_wait_transfer_comp(udev, 1, status_ptr);
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED,BLACK,"usb control msg data status error comp_code:%d  \n",comp_code);
-        return comp_code;
-    }
-
-    return comp_code;
-}
-
-/**
- * 清除 USB 端点的 STALL/Halt 状态 (撬开大门)
- * @param udev      USB 设备上下文
- * @param ep_dci xHCI 的端点上下文索引 (DCI, 范围 2-31)
- */
-int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci) {
-    // 2. 组装 8 字节的标准 Setup 请求包
-    usb_req_pkg_t req_pkg = {0};
-    req_pkg.recipient = USB_RECIP_ENDPOINT;
-    req_pkg.req_type = USB_REQ_TYPE_STANDARD;
-    req_pkg.dtd = USB_DIR_OUT;
-    req_pkg.request = USB_REQ_CLEAR_FEATURE;
-    req_pkg.value = USB_FEATURE_ENDPOINT_HALT;
-    req_pkg.index = epdci_to_epaddr(ep_dci);
-    req_pkg.length = 0;
-
-    usb_control_msg(udev,&req_pkg,NULL);
-
-    return 0;
-}
-
-//获取usb设备描述符
-int32 usb_get_dev_desc(usb_dev_t *udev,usb_dev_desc_t *dev_desc,uint16 length) {
-    usb_req_pkg_t req_pkg = {0};
-    req_pkg.recipient = USB_RECIP_DEVICE;
-    req_pkg.req_type = USB_REQ_TYPE_STANDARD;
-    req_pkg.dtd = USB_DIR_IN;
-    req_pkg.request = USB_REQ_GET_DESCRIPTOR;
-    req_pkg.value = USB_DESC_TYPE_DEVICE<<8 | 0;
-    req_pkg.index = 0;
-    req_pkg.length = length;
-
-    usb_control_msg(udev,&req_pkg,dev_desc);
-    return 0;
-}
-
-//==================================================================
-
-
 //获取usb设备描述符
 int usb_get_device_descriptor(usb_dev_t *udev) {
     xhci_hcd_t *xhcd = udev->xhcd;
-    usb_dev_desc_t *dev_desc = kzalloc(align_up(sizeof(usb_dev_desc_t), 64));
+    usb_dev_desc_t *dev_desc = kzalloc_dma(sizeof(usb_dev_desc_t));
 
     uint8 ctx_size = xhcd->ctx_size;
 
     //获取端口速率，全速端口先获取设备描述符前8字节得到max_packte_size修正端点0
-    uint8 port_speed = (xhcd->op_reg->portregs[udev->port_id - 1].portsc >> 10) & 0x0F;
+    uint8 port_speed = xhci_get_port_speed(xhcd,udev->port_id);
     if (port_speed == XHCI_PORTSC_SPEED_FULL) {
         //第一次先获取设备描述符前8字节，拿到max_pack_size后更新端点1，再重新获取描述符。
-        usb_get_dev_desc(udev, dev_desc, 8);
+        usb_get_desc(udev, dev_desc, 8,USB_DESC_TYPE_DEVICE,0,0);
 
         //配置input_ctx
-        xhci_input_ctrl_ctx_t *input_ctx = kzalloc(XHCI_INPUT_CONTEXT_COUNT*ctx_size);
+        xhci_input_ctrl_ctx_t *input_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT*ctx_size);
         xhci_ep_ctx_t *cur_ep0_ctx = xhci_get_ctx_addr(udev,1);
         xhci_ep_ctx_t *input_ctx_ep0 = xhci_get_input_ctx_addr(xhcd,input_ctx,1);
         asm_mem_cpy(cur_ep0_ctx,input_ctx_ep0,sizeof(xhci_ep_ctx_t));
@@ -330,136 +32,73 @@ int usb_get_device_descriptor(usb_dev_t *udev) {
         kfree(input_ctx);
     }
     //获取完整设备描述符
-    usb_get_dev_desc(udev, dev_desc, sizeof(usb_dev_desc_t));
+    usb_get_desc(udev, dev_desc, sizeof(usb_dev_desc_t),USB_DESC_TYPE_DEVICE,0,0);
     udev->dev_desc = dev_desc;
     return 0;
 }
 
 //获取usb配置描述符
-int usb_get_config_descriptor(usb_dev_t *usb_dev) {
-    xhci_hcd_t *xhcd = usb_dev->xhcd;
-    usb_config_descriptor_t *config_desc = kzalloc(align_up(sizeof(usb_config_descriptor_t), 64));
+int usb_get_config_descriptor(usb_dev_t *udev) {
+    usb_cfg_desc_t *config_desc = kzalloc_dma(sizeof(usb_cfg_desc_t));
 
     //第一次先获取配置描述符前9字节
-    trb_t trb;
-    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x200, 0, 9, in_data_stage);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-    // Data TRB
-    data_stage_trb(&trb, va_to_pa(config_desc), 9, trb_in);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-    // Status TRB
-    status_stage_trb(&trb, ENABLE_IOC, trb_out);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-
-    // 响铃
-    xhci_ring_doorbell(xhcd, usb_dev->slot_id, 1);
-    timing();
-    xhci_ering_dequeue(xhcd, &trb);
+    usb_get_desc(udev, config_desc, 9,USB_DESC_TYPE_CONFIG,0,0);
 
     //第二次从配置描述符中得到总长度获取整个配置描述符
     uint16 config_desc_length = config_desc->total_length;
     kfree(config_desc);
-    config_desc = kzalloc(align_up(config_desc_length, 64));
 
-    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x200, 0,
-                    config_desc_length, in_data_stage);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-    // Data TRB
-    data_stage_trb(&trb, va_to_pa(config_desc), config_desc_length, trb_in);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-    // Status TRB
-    status_stage_trb(&trb, ENABLE_IOC, trb_out);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
+    config_desc = kzalloc_dma(config_desc_length);
 
-    // 响铃
-    xhci_ring_doorbell(xhcd, usb_dev->slot_id, 1);
-    timing();
-    xhci_ering_dequeue(xhcd, &trb);
+    usb_get_desc(udev, config_desc,config_desc_length, USB_DESC_TYPE_CONFIG,0,0);
 
-    usb_dev->config_desc = config_desc;
+    udev->config_desc = config_desc;
     return 0;
 }
 
 //获取字符串描述符
-int usb_get_string_descriptor(usb_dev_t *usb_dev) {
-    xhci_hcd_t *xhcd = usb_dev->xhcd;
-    trb_t trb;
+int usb_get_string_descriptor(usb_dev_t *udev) {
 
-    usb_string_descriptor_t *language_desc = kzalloc(8);
+    usb_desc_head *desc_head = kzalloc_dma(2);
+
     //获取语言ID描述符
-    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor, 0x300, 0, 8, in_data_stage);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-    // Data TRB
-    data_stage_trb(&trb, va_to_pa(language_desc), 8, trb_in);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-    // Status TRB
-    status_stage_trb(&trb, ENABLE_IOC, trb_out);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-
-    // 响铃
-    xhci_ring_doorbell(xhcd, usb_dev->slot_id, 1);
-    timing();
-    xhci_ering_dequeue(xhcd, &trb);
-
     uint16 language_id;
-    if (language_desc->head.descriptor_type == USB_STRING_DESCRIPTOR) {
+    usb_get_desc(udev, desc_head, 2, USB_DESC_TYPE_STRING, 0, 0);    // 刺探：只拿 2 字节的头部
+    usb_string_desc_t *language_desc = kzalloc_dma(desc_head->length);    // 分配真实长度的 DMA 内存
+
+    // 正式拉取
+    usb_get_desc(udev, language_desc, desc_head->length, USB_DESC_TYPE_STRING, 0, 0);
+    if (language_desc->head.desc_type == USB_DESC_TYPE_STRING) {
         language_id = language_desc->string[0];
-        usb_dev->language_desc = language_desc;
+        udev->language_desc = language_desc;
     }else {
         language_id = 0x0409;
+        udev->language_desc = 0;
         kfree(language_desc);
     }
 
+
     //默认设备都支持美式英语
     uint8 string_index[3] = {
-        usb_dev->dev_desc->manufacturer_index, usb_dev->dev_desc->product_index,
-        usb_dev->dev_desc->serial_number_index
+        udev->dev_desc->manufacturer_index, udev->dev_desc->product_index,udev->dev_desc->serial_number_index
     };
-    usb_string_descriptor_t *string_desc[3];
+    usb_string_desc_t *string_desc[3];
     uint8 *string_ascii[3];
-    usb_string_descriptor_t *string_desc_head = kzalloc(8);
 
     //获取制造商/产品型号/序列号字符串描述符
     for (uint8 i = 0; i < 3; i++) {
         if (string_index[i]) {
             //第一次先获取长度
-            setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor,
-                            0x300 | string_index[i], language_id, 2, in_data_stage);
-            xhci_ring_enqueue(&usb_dev->ep0, &trb);
-            // Data TRB
-            data_stage_trb(&trb, va_to_pa(string_desc_head), 2, trb_in);
-            xhci_ring_enqueue(&usb_dev->ep0, &trb);
-            // Status TRB
-            status_stage_trb(&trb, ENABLE_IOC, trb_out);
-            xhci_ring_enqueue(&usb_dev->ep0, &trb);
-
-            // 响铃
-            xhci_ring_doorbell(xhcd, usb_dev->slot_id, 1);
-            timing();
-            xhci_ering_dequeue(xhcd, &trb);
+            usb_get_desc(udev,desc_head,2,USB_DESC_TYPE_STRING,string_index[i],language_id);
 
             //分配内存
-            uint8 string_desc_length = string_desc_head->head.length;
-            string_desc[i] = kzalloc(string_desc_length);
+            string_desc[i] = kzalloc_dma(desc_head->length);
 
             //第二次先正式获取字符串描述符N
-            setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_in, usb_req_get_descriptor,
-                            0x300 | string_index[i], language_id, string_desc_length, in_data_stage);
-            xhci_ring_enqueue(&usb_dev->ep0, &trb);
-            // Data TRB
-            data_stage_trb(&trb, va_to_pa(string_desc[i]), string_desc_length, trb_in);
-            xhci_ring_enqueue(&usb_dev->ep0, &trb);
-            // Status TRB
-            status_stage_trb(&trb, ENABLE_IOC, trb_out);
-            xhci_ring_enqueue(&usb_dev->ep0, &trb);
-
-            // 响铃
-            xhci_ring_doorbell(xhcd, usb_dev->slot_id, 1);
-            timing();
-            xhci_ering_dequeue(xhcd, &trb);
+            usb_get_desc(udev,string_desc[i],desc_head->length,USB_DESC_TYPE_STRING,string_index[i],language_id);
 
             //解析字符串描述符
-            uint8 string_ascii_length = (string_desc_length-2)/2;
+            uint8 string_ascii_length = (desc_head->length-2)/2;
             string_ascii[i] = kzalloc(string_ascii_length+1);
             utf16le_to_ascii(string_desc[i]->string,string_ascii[i],string_ascii_length);
         }else {
@@ -467,13 +106,13 @@ int usb_get_string_descriptor(usb_dev_t *usb_dev) {
         }
     }
 
-    usb_dev->manufacturer_desc = string_desc[0];
-    usb_dev->product_desc = string_desc[1];
-    usb_dev->serial_number_desc = string_desc[2];
-    usb_dev->manufacturer = string_ascii[0];
-    usb_dev->product = string_ascii[1];
-    usb_dev->serial_number = string_ascii[2];
-    kfree(string_desc_head);
+    udev->manufacturer_desc = string_desc[0];
+    udev->product_desc = string_desc[1];
+    udev->serial_number_desc = string_desc[2];
+    udev->manufacturer = string_ascii[0];
+    udev->product = string_ascii[1];
+    udev->serial_number = string_ascii[2];
+    kfree(desc_head);
     return 0;
 }
 
@@ -582,30 +221,22 @@ void usb_setup_slot_ep0_ctx(usb_dev_t *udev) {
 }
 
 
-
-
-
-
 //初始化端点
 int usb_endpoint_init(usb_if_alt_t *if_alt) {
-    usb_dev_t *usb_dev = if_alt->usb_if->usb_dev;
-    xhci_hcd_t *xhcd = usb_dev->xhcd;
-    xhci_input_context_t *input_ctx = kzalloc(align_up(sizeof(xhci_input_context_t), xhcd->align_size));
-    slot64_t slot_ctx = {0};
-    ep64_t ep_ctx = {0};
-    trb_t trb;
+    usb_dev_t *udev = if_alt->usb_if->usb_dev;
+    xhci_hcd_t *xhcd = udev->xhcd;
+    xhci_input_ctrl_ctx_t *input_ctx = kzalloc(XHCI_INPUT_CONTEXT_COUNT*xhcd->ctx_size);
+
     //配置端点
     uint8 max_ep_num = 0;
     for (uint8 i = 0; i < if_alt->ep_count; i++) {
         usb_ep_t *ep_phy = &if_alt->eps[i];
-        uint8 ep_num = ep_phy->ep_dci;
-        if (ep_num > max_ep_num) max_ep_num = ep_num;
-        endpoint_t *ep_vir = &usb_dev->eps[ep_num];
-        uint32 ep_config = 0;
+        uint8 ep_dci = ep_phy->ep_dci;
+        if (ep_dci > max_ep_num) max_ep_num = ep_dci;
+        endpoint_t *ep_vir = &udev->eps[ep_dci];
         uint64 tr_dequeue_ptr = 0;
         uint32 max_streams = ep_phy->max_streams > MAX_STREAMS ? MAX_STREAMS : ep_phy->max_streams;
         if (max_streams) {
-            ep_config = (max_streams << 10) | (1 << 15); // MaxPStreams，LSA=1，如果使用线性数组（可选，根据实现）
             // 有流：分配Stream Context Array和per-stream rings
             uint32 streams_count = 1 << max_streams;
             uint32 streams_ctx_array_count = 1 << (max_streams + 1);
@@ -616,7 +247,7 @@ int usb_endpoint_init(usb_if_alt_t *if_alt) {
 
             for (uint32 s = 1; s <= streams_count; s++) {
                 // Stream ID从1开始
-                xhci_ring_init(&stream_rings[s], xhcd->align_size);
+                xhci_ring_init(&stream_rings[s]);
                 stream_ctx_array[s].tr_dequeue = va_to_pa(stream_rings[s].ring_base) | 1 | 1 << 1;
                 stream_ctx_array[s].reserved = 0;
             }
@@ -626,30 +257,30 @@ int usb_endpoint_init(usb_if_alt_t *if_alt) {
             tr_dequeue_ptr = va_to_pa(stream_ctx_array);
         } else {
             // 无流：单个Transfer Ring
-            xhci_ring_init(&ep_vir->transfer_ring, xhcd->align_size);
+            xhci_ring_init(&ep_vir->transfer_ring);
             tr_dequeue_ptr = va_to_pa(ep_vir->transfer_ring.ring_base) | 1; // DCS=1
-            ep_config = 0;
         }
-        ep_ctx.ep_config = ep_config;
-        ep_ctx.ep_type_size = ep_phy->ep_type << 3 | ep_phy->max_packet << 16 | ep_phy->max_burst << 8 | 3 << 1;
-        ep_ctx.tr_dequeue_ptr = tr_dequeue_ptr;
-        ep_ctx.trb_payload = 0;
-        xhci_input_context_add(input_ctx, &ep_ctx, xhcd->ctx_size, ep_num);
+
+        xhci_ep_ctx_t *ep_ctx = xhci_get_input_ctx_addr(xhcd,input_ctx,ep_dci);
+        ep_ctx->ep_type = ep_phy->ep_type;
+        ep_ctx->cerr = 3;
+        ep_ctx->max_packet_size = ep_phy->max_packet;
+        ep_ctx->max_burst_size = ep_phy->max_burst;
+        ep_ctx->max_pstreams = max_streams;
+        ep_ctx->lsa = 1;
+        ep_ctx->tr_dequeue_ptr = tr_dequeue_ptr;
+        input_ctx->add_context_flags |= 1<<ep_dci;
+
     }
-
     //配置slot
-    slot_ctx.route_speed = (max_ep_num << 27) | (
-                               (xhcd->op_reg->portregs[usb_dev->port_id - 1].portsc & 0x3C00) << 10);
-    slot_ctx.latency_hub = usb_dev->port_id << 16;
-    slot_ctx.parent_info = 0;
-    slot_ctx.addr_status = 0;
-    xhci_input_context_add(input_ctx, &slot_ctx, xhcd->ctx_size, 0);
+    xhci_slot_ctx_t *slot_ctx = xhci_get_input_ctx_addr(xhcd,input_ctx,0);
+    slot_ctx->port_speed = xhci_get_port_speed(xhcd,udev->port_id);
+    slot_ctx->context_entries = max_ep_num;
+    slot_ctx->root_hub_port_num = udev->port_id;
+    input_ctx->add_context_flags |= 1<<0;
 
-    config_endpoint_com_trb(&trb, va_to_pa(input_ctx), usb_dev->slot_id);
-    xhci_ring_enqueue(&xhcd->cmd_ring, &trb);
-    xhci_ring_doorbell(xhcd, 0, 0);
-    timing();
-    xhci_ering_dequeue(xhcd, &trb);
+    xhci_cmd_cfg_ep(xhcd,input_ctx,udev->slot_id,0);
+
     kfree(input_ctx);
     return 0;
 }
@@ -828,7 +459,7 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
 //创建usb设备
 usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
     usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
-    usb_dev->port_id = port_id + 1;
+    usb_dev->port_id = port_id;
     xhci_cmd_enable_slot(xhcd,&usb_dev->slot_id); //启用插槽
     usb_setup_slot_ep0_ctx(usb_dev); //设置设备地址
     usb_get_device_descriptor(usb_dev); //获取设备描述符
@@ -845,71 +476,71 @@ usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
 /**
  * @brief 对指定物理端口执行复位，并等待设备就绪 (使能)
  * @param xhcd     xHCI 控制器上下文
- * @param port_idx 物理端口索引 (0-based)
+ * @param port_id 物理端口索引 (0-based)
  * @return int32   0 表示复位成功且端口已使能，-1 表示超时或硬件故障
  */
-int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_idx) {
+int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     uint32 portsc;
 
     // 获取该端口对应的协议信息
-    uint8 spc_idx = xhcd->port_to_spc[port_idx];
+    uint8 spc_idx = xhcd->port_to_spc[port_id];
 
     // ==========================================
     // 阶段 1：区分协议执行复位握手与清理
     // ==========================================
     if (xhcd->spc[spc_idx].major_bcd < 0x3) {
         // --- [USB 2.0 专属逻辑：手动触发复位] ---
-        portsc = xhcd->op_reg->portregs[port_idx].portsc;
+        portsc = xhci_read_portsc(xhcd,port_id);
         portsc &= ~XHCI_PORTSC_W1C_MASK;
         portsc |= XHCI_PORTSC_PR; // 下发 Port Reset
-        xhcd->op_reg->portregs[port_idx].portsc = portsc;
+        xhci_write_portsc(xhcd,port_id,portsc);
 
         // 挂起等待主板硬件完成复位电平发送，并返回 Event TRB
-        xhci_wait_for_event(xhcd, 0, 0, 0x2000000, NULL);
-
+        xhci_wait_for_event(xhcd, 0, port_id, 0x2000000, NULL);
     }
     // --- [USB 3.x 自动完成复位，usb2/usb3共用状态清理逻辑] ---
-    portsc = xhcd->op_reg->portregs[port_idx].portsc;
+    portsc = xhci_read_portsc(xhcd,port_id);
     portsc &= ~XHCI_PORTSC_W1C_MASK;
     portsc |= XHCI_PORTSC_PRC | XHCI_PORTSC_PLC | XHCI_PORTSC_WRC | XHCI_PORTSC_CEC;
-    xhcd->op_reg->portregs[port_idx].portsc = portsc;
+    xhci_write_portsc(xhcd,port_id,portsc);
 
     // ==========================================
     // 阶段 2：终极确认端口已使能 (PED = 1)
     // ==========================================
     uint32 timeout = 500000;
-    while (((xhcd->op_reg->portregs[port_idx].portsc & XHCI_PORTSC_PED) == 0) && timeout > 0) {
+    while (((xhci_read_portsc(xhcd,port_id) & XHCI_PORTSC_PED) == 0) && timeout > 0) {
         asm_pause();
         timeout--;
     }
 
     if (timeout == 0) {
-        color_printk(RED, BLACK, "[xHCI] Port %d Reset & Enable Timeout! Bad Device?\n", port_idx);
+        color_printk(RED, BLACK, "[xHCI] Port %d Reset & Enable Timeout! Bad Device?\n", port_id);
         return -1; // 复位失败
     }
 
-    color_printk(GREEN, BLACK, "[xHCI] Port %d successfully reset and enabled.\n", port_idx);
+    color_printk(GREEN, BLACK, "[xHCI] Port %d successfully reset and enabled.\n", port_id);
     return 0; // 复位成功
 }
 
 //usb设备初始化
 void usb_dev_scan(xhci_hcd_t *xhcd){
     for (uint8 i = 0; i < xhcd->max_ports; i++) {
-        uint32 portsc = xhcd->op_reg->portregs[i].portsc;
+        uint8 port_id = ++i;
+        uint32 portsc = xhci_read_portsc(xhcd,port_id);
 
         // 检测是否有设备连接 (CCS) 并且发生了状态变化 (CSC)
         if ((portsc & XHCI_PORTSC_CCS) && (portsc & XHCI_PORTSC_CSC)) {
 
             // ★ 核心防御：看到插拔变化，立刻清理 CSC (阅后即焚)
-            uint32 clear_val = portsc & ~XHCI_PORTSC_W1C_MASK;
-            clear_val |= XHCI_PORTSC_CSC;
-            xhcd->op_reg->portregs[i].portsc = clear_val;
+            portsc &= ~XHCI_PORTSC_W1C_MASK;
+            portsc |= XHCI_PORTSC_CSC;
+            xhci_write_portsc(xhcd,port_id,portsc);
 
             // 调用独立的复位大炮，轰开物理层！
             if (xhci_port_reset(xhcd, i) == 0) {
 
                 // 此时硬件环境绝对干净且安全，正式开始内核软件层面的设备构建
-                usb_dev_t *usb_dev = usb_dev_create(xhcd, i);
+                usb_dev_t *usb_dev = usb_dev_create(xhcd, port_id);
                 usb_dev_register(usb_dev);
                 usb_if_create_register(usb_dev);
 

@@ -5,6 +5,7 @@
 #include "vmm.h"
 #include "driver.h"
 #include "vmalloc.h"
+#include "usb.h"
 
 //命令环/传输环入队列
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
@@ -38,10 +39,10 @@ uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
 /**
  * 等待特定 TRB 完成
  * @param xhci: 控制器实例
- * @param wait_trb_pa: 我们刚才提交的那个 TRB 的物理地址 (用于比对)
+ * @param value: 我们刚才提交的那个 TRB 的物理地址 (用于比对)
  * @param timeout_ms: 超时时间
  */
-xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, uint64 wait_trb_pa, uint64 timeout_ms,
+xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, uint64 value, uint64 timeout_ms,
                                          xhci_trb_t *out_event_trb) {
     xhci_ring_t *evt_ring = &xhcd->intr[intr_number].event_rings;
     xhci_trb_t local_trb;
@@ -62,11 +63,14 @@ xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, ui
         //如果是命令事件或传输事件则饭或trb和完成码给调用者
         if ((local_trb.cmd_comp_event.trb_type == XHCI_TRB_TYPE_TRANSFER_EVENT ||
              local_trb.cmd_comp_event.trb_type == XHCI_TRB_TYPE_CMD_COMPLETION) &&
-            local_trb.cmd_comp_event.cmd_trb_ptr == wait_trb_pa) {
+            local_trb.cmd_comp_event.cmd_trb_ptr == value) {
             if (out_event_trb != NULL) {
                 *out_event_trb = local_trb;
             }
             return local_trb.cmd_comp_event.comp_code;
+        }else if (local_trb.prot_status_change_event.trb_type == XHCI_TRB_TYPE_PORT_STATUS_CHG &&
+            local_trb.prot_status_change_event.port_id == value) {
+            return XHCI_COMP_SUCCESS;
         }
 
         // 其他类型的旁路事件处理与日志分发
@@ -97,17 +101,6 @@ xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, ui
     return XHCI_COMP_TIMEOUT;
 }
 
-//初始化环
-static inline int32 xhci_ring_init(xhci_ring_t *ring) {
-    ring->ring_base = kzalloc(TRB_COUNT * sizeof(xhci_trb_t));
-    ring->index = 0;
-    ring->cycle = 1;
-}
-
-//响铃
-static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 value) {
-    xhcd->db_reg[db_number] = value;
-}
 
 /**
  * @brief 处理 xHCI 通用的完成码 (命令环和传输环共享的系统级状态)
@@ -520,6 +513,280 @@ int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id) {
 
 
 //======================================= 传输环命令 ===========================================================
+
+/**
+ * @brief 同步传输等待完成码并精细化处理完成码 (Transfer 专属专科门诊)
+ * @param udev        通用 USB 设备对象
+ * @param ep_dci      目标端点的 DCI (Device Context Index, 1~31)
+ * @param wait_trb_pa 预期要核对的 TRB 物理地址
+ * @param timeout_us  超时时间 (微秒)
+ * @return xhci_trb_comp_code_e 最终的完成码
+ */
+xhci_trb_comp_code_e xhci_wait_transfer_comp (usb_dev_t *udev, uint8 ep_dci, uint64 wait_trb_pa) {
+    xhci_hcd_t *xhcd = udev->xhcd;
+    uint8 slot_id = udev->slot_id;
+
+    // ==========================================================
+    // 第一关： 1. 挂起等待事件环 (Event Ring) 的回执
+    // ==========================================================
+    xhci_trb_comp_code_e comp_code = xhci_wait_for_event(xhcd, 0,wait_trb_pa, 50000000, NULL);
+
+    // ==========================================================
+    // 2. 完美成功或可接受的短包 (直接放行)
+    // ==========================================================
+    if (comp_code == XHCI_COMP_SUCCESS) {
+        return comp_code;
+    }
+
+    // 在 BOT (Bulk-Only Transport) 协议的 Data IN 阶段，
+    // 设备实际发送的数据少于我们请求的长度是完全合法的（短包机制）
+    if (comp_code == XHCI_COMP_SHORT_PACKET) {
+        // 注意：后续实战中，这里需要通过 event->param (传输残余长度) 计算出真实收到的字节数
+        color_printk(YELLOW, BLACK, "[xHCI] Transfer: Normal Short Packet (DCI=%d)\n", ep_dci);
+        return comp_code;
+    }
+
+    // ==========================================================
+    // 3. 第二关：急诊室 (通用大病拦截)
+    // ==========================================================
+    if (xhci_handle_common_error(comp_code, wait_trb_pa) == 1) {
+        // 如果返回了 1，说明急诊室已经抢救或打印过致命日志了（如主机控制器挂掉、内存故障等）。
+        // 直接把这个致命错误码向上抛给业务层！
+        return comp_code;
+    }
+
+    // ==========================================================
+    // 4. 第三关：专科门诊 (传输事件专属错误分析)
+    // ==========================================================
+    switch (comp_code) {
+        // --- [极其致命：硬件 DMA 级错误] ---
+        case XHCI_COMP_DATA_BUFFER_ERROR:
+            // OS 提供的 DMA 物理地址非法，或者跨越了非连续的页边界
+            color_printk(RED, BLACK, "[xHCI] FATAL: Data Buffer Error! Invalid or page-crossing DMA phys address (DCI=%d)\n", ep_dci);
+            break;
+
+        // --- [严重故障：端点状态变为 Halted (死锁)，必须进行软复位抢救] ---
+        case XHCI_COMP_STALL_ERROR:
+            // 设备主动拒绝服务 (比如 U盘不支持某个下发的 SCSI 命令)
+            color_printk(RED, BLACK, "[xHCI] FAULT: STALL Error! Device rejected request, EP halted (DCI=%d)\n", ep_dci);
+            // 抢救第 1 步：主板级解挂 (强制从 Halted 拽回 Stopped)
+            xhci_cmd_reset_ep(xhcd, slot_id, ep_dci);
+            // 抢救第 2 步：跨越“坏死”的 TRB 尸体
+            xhci_cmd_set_tr_deq_ptr(xhcd, slot_id, ep_dci, &udev->eps[ep_dci - 1].transfer_ring);
+
+            if (ep_dci > 1) {
+                // 普通端点且是因为 STALL 挂起：必须发和解信
+                color_printk(YELLOW, BLACK, "xHCI: Sending Clear Feature to unlock physical endpoint...\n");
+                usb_clear_feature_halt(udev, ep_dci);
+            } else {
+                // EP0 的 STALL：靠下一个 Setup 包自动冲刷，什么都不用做
+                color_printk(GREEN, BLACK, "xHCI: EP0 STALL CPR complete.\n");
+            }
+            break;
+
+        case XHCI_COMP_USB_TRANSACTION_ERROR:
+            // 物理线路上发生了 CRC 校验失败或响应超时
+            color_printk(RED, BLACK, "[xHCI] FAULT: USB Transaction Error! Link timeout or CRC failure (DCI=%d)\n", ep_dci);
+            break;
+
+        case XHCI_COMP_BABBLE_ERROR:
+            // 设备发疯，狂发数据覆盖了主机内存 (超出了 TRB 预期长度)
+            color_printk(RED, BLACK, "[xHCI] FAULT: Babble Error! Device sent excess data (DCI=%d)\n", ep_dci);
+            break;
+
+        // --- [正常状态流转：传输环被内核软件主动刹车] ---
+        case XHCI_COMP_STOPPED:
+        case XHCI_COMP_STOPPED_LENGTH_INVALID:
+        case XHCI_COMP_STOPPED_SHORT_PACKET:
+            // 收到 Stop Endpoint 命令后的正常回执
+            color_printk(GREEN, BLACK, "[xHCI] STATUS: Transfer Ring successfully halted by Stop EP Command (DCI=%d)\n", ep_dci);
+            break;
+
+        // --- [带宽与链路异常] ---
+        case XHCI_COMP_BANDWIDTH_OVERRUN_ERROR:
+            // 设备试图占用超额的总线带宽
+            color_printk(RED, BLACK, "[xHCI] ERROR: Bandwidth Overrun! Device exceeded bus bandwidth (DCI=%d)\n", ep_dci);
+            break;
+        case XHCI_COMP_NO_PING_RESPONSE_ERROR:
+            // USB 3.0 链路维护检测失败
+            color_printk(YELLOW, BLACK, "[xHCI] WARN: No Ping Response on USB 3.0 Link (DCI=%d)\n", ep_dci);
+            break;
+        case XHCI_COMP_INCOMPATIBLE_DEVICE_ERROR:
+            // 设备协议与主板不兼容
+            color_printk(RED, BLACK, "[xHCI] FATAL: Incompatible Device Protocol (DCI=%d)\n", ep_dci);
+            break;
+        case XHCI_COMP_MAX_EXIT_LATENCY_TOO_LARGE:
+            // 链路从 U1/U2 低功耗休眠状态唤醒失败
+            color_printk(RED, BLACK, "[xHCI] ERROR: Failed to wake link from U1/U2 sleep (DCI=%d)\n", ep_dci);
+            break;
+
+        // --- [等时传输 (Isoch) 与 其他扩展协议专属] ---
+        case XHCI_COMP_RING_UNDERRUN:
+        case XHCI_COMP_RING_OVERRUN:
+        case XHCI_COMP_MISSED_SERVICE_ERROR:
+        case XHCI_COMP_ISOCH_BUFFER_OVERRUN:
+            // 音视频设备实时传输时的丢帧或速率不匹配警告
+            color_printk(YELLOW, BLACK, "[xHCI] WARN: Isoch rate mismatch or missed microframe (DCI=%d)\n", ep_dci);
+            break;
+        case XHCI_COMP_INVALID_STREAM_ID_ERROR:
+            // [UAS 协议专属] 发送了非法的 Stream ID 导致多路复用失败
+            color_printk(RED, BLACK, "[xHCI] ERROR: Invalid Stream ID sent [UAS Protocol] (DCI=%d)\n", ep_dci);
+            break;
+        case XHCI_COMP_SPLIT_TRANSACTION_ERROR:
+            // USB 2.0 Hub 拆分事务 (Split Transaction) 失败
+            color_printk(RED, BLACK, "[xHCI] ERROR: USB 2.0 Hub Split Transaction Error (DCI=%d)\n", ep_dci);
+            break;
+
+        // --- [漏网之鱼处理] ---
+        default:
+            color_printk(RED, BLACK, "[xHCI] UNKNOWN: Unhandled Transfer Completion Code: %d (DCI=%d)\n", comp_code, ep_dci);
+            break;
+    }
+
+    return comp_code;
+}
+
+/**
+ * 标准 USB 控制传输统一封装函数 (EP0 专属) - 结构体传参版
+ * @param udev       USB 设备上下文
+ * @param usb_req_pkg           指向 8 字节标准 Setup 结构体的指针
+ * @param data_buf      数据缓冲区指针 (无数据阶段填 NULL)
+ * @param timeout_us    超时时间 (微秒)
+ * @return int32        0 表示成功，其他为错误码
+ */
+int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_buf) {
+    xhci_hcd_t *xhcd = udev->xhcd;
+    xhci_trb_t tr_trb;
+    uint64 setup_ptr, data_ptr = 0, status_ptr;
+    xhci_trb_comp_code_e comp_code;
+
+    uint16 length = usb_req_pkg->length;
+
+    // 解析trb方向
+    uint8 usb_req_dir = usb_req_pkg->dtd;
+
+    // ==========================================================
+    // 阶段 1：组装 Setup TRB
+    // ==========================================================
+    asm_mem_set(&tr_trb, 0, sizeof(xhci_trb_t));
+    asm_mem_cpy(usb_req_pkg,&tr_trb,sizeof(usb_req_pkg_t)); //拷贝USB请求包到TRB前8字节中
+    tr_trb.setup_stage.trb_tr_len = sizeof(usb_req_pkg_t); //steup trb必须8
+    tr_trb.setup_stage.int_target = 0;     //中断号暂时统一设置0
+    tr_trb.setup_stage.idt = TRB_IDT_ENABLE;   // setup trb 必须1
+    tr_trb.setup_stage.type = XHCI_TRB_TYPE_SETUP_STAGE;
+    tr_trb.setup_stage.chain = TRB_CHAIN_DISABLE;
+    tr_trb.setup_stage.ioc = TRB_IOC_ENABLE;
+    // 判断 TRT (Transfer Type)
+    if (length == 0) {
+        tr_trb.setup_stage.trt = TRB_TRT_NO_DATA;
+    } else if (usb_req_pkg->dtd == USB_DIR_IN) {
+        tr_trb.setup_stage.trt = TRB_TRT_IN_DATA;
+    } else {
+        tr_trb.setup_stage.trt = TRB_TRT_OUT_DATA;
+    }
+
+    setup_ptr = xhci_ring_enqueue(&udev->eps[0].transfer_ring, &tr_trb);
+
+    // ==========================================================
+    // 阶段 2：组装 Data TRB (如果有)
+    // ==========================================================
+    if (length != 0 && data_buf != NULL) {
+        asm_mem_set(&tr_trb, 0, sizeof(xhci_trb_t));
+        tr_trb.data_stage.data_buf_ptr = va_to_pa(data_buf); // 物理地址
+        tr_trb.data_stage.tr_len = length;
+        tr_trb.data_stage.type = XHCI_TRB_TYPE_DATA_STAGE;
+        tr_trb.data_stage.dir = usb_req_dir;  //数据阶段方向和usb.dtd方向一致
+        tr_trb.data_stage.chain = TRB_CHAIN_DISABLE; // 单个 Data TRB 必须为 0
+        tr_trb.data_stage.ioc = TRB_IOC_ENABLE;   // 开启中断防雷
+
+        data_ptr = xhci_ring_enqueue(&udev->eps[0].transfer_ring, &tr_trb);
+    }
+
+    // ==========================================================
+    // 阶段 3：组装 Status TRB
+    // ==========================================================
+    asm_mem_set(&tr_trb, 0, sizeof(xhci_trb_t));
+    tr_trb.status_stage.type = XHCI_TRB_TYPE_STATUS_STAGE;
+    tr_trb.status_stage.chain = TRB_CHAIN_DISABLE;
+    tr_trb.status_stage.ioc = TRB_IOC_ENABLE;
+    tr_trb.status_stage.dir = (length == 0 || usb_req_dir == USB_DIR_OUT) ? TRB_DIR_IN : TRB_DIR_OUT; // ★ 核心逻辑 2：Status 阶段的方向必须是相反的！
+
+    status_ptr = xhci_ring_enqueue(&udev->eps[0].transfer_ring, &tr_trb);
+
+
+    // ==========================================================
+    // ★ 阶段 4：一锤定音，唤醒硬件！
+    // 将 xhci_ring_doorbell 从 sync 函数中移出，放在这里执行。
+    // xHC 硬件会像高铁一样连续压过 Setup -> Data -> Status。
+    // ==========================================================
+    xhci_ring_doorbell(xhcd, udev->slot_id, 1); // EP0 的 DCI 是 1
+
+
+    // ==========================================================
+    // 阶段 5：步步为营的守护监听 (复用你写的完美错误处理函数)
+    // ==========================================================
+    // 监听 Setup 阶段
+    comp_code = xhci_wait_transfer_comp(udev, 1, setup_ptr);
+    if (comp_code != XHCI_COMP_SUCCESS) {
+        color_printk(RED,BLACK,"usb control msg setup stage error comp_code:%d  \n",comp_code);
+        return comp_code; // 如果 U 盘拒收命令，它会在这里 STALL 并被自动救活
+    }
+
+    // 监听 Data 阶段
+    if (length != 0 && data_buf != NULL) {
+        comp_code = xhci_wait_transfer_comp(udev, 1, data_ptr);
+        if (comp_code != XHCI_COMP_SUCCESS) {
+            color_printk(RED,BLACK,"usb control msg data stage error comp_code:%d  \n",comp_code);
+            return comp_code;
+        }
+    }
+
+    // 监听 Status 阶段
+    comp_code = xhci_wait_transfer_comp(udev, 1, status_ptr);
+    if (comp_code != XHCI_COMP_SUCCESS) {
+        color_printk(RED,BLACK,"usb control msg data status error comp_code:%d  \n",comp_code);
+        return comp_code;
+    }
+
+    return comp_code;
+}
+
+/**
+ * 清除 USB 端点的 STALL/Halt 状态 (撬开大门)
+ * @param udev      USB 设备上下文
+ * @param ep_dci xHCI 的端点上下文索引 (DCI, 范围 2-31)
+ */
+int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci) {
+    // 2. 组装 8 字节的标准 Setup 请求包
+    usb_req_pkg_t req_pkg = {0};
+    req_pkg.recipient = USB_RECIP_ENDPOINT;
+    req_pkg.req_type = USB_REQ_TYPE_STANDARD;
+    req_pkg.dtd = USB_DIR_OUT;
+    req_pkg.request = USB_REQ_CLEAR_FEATURE;
+    req_pkg.value = USB_FEATURE_ENDPOINT_HALT;
+    req_pkg.index = epdci_to_epaddr(ep_dci);
+    req_pkg.length = 0;
+
+    usb_control_msg(udev,&req_pkg,NULL);
+
+    return 0;
+}
+
+//获取usb描述符
+int32 usb_get_desc(usb_dev_t *udev,void *desc_buf,uint16 length,usb_desc_type_e desc_type,uint8 desc_idx, uint16 req_idx) {
+    usb_req_pkg_t req_pkg = {0};
+    req_pkg.recipient = USB_RECIP_DEVICE;
+    req_pkg.req_type = USB_REQ_TYPE_STANDARD;
+    req_pkg.dtd = USB_DIR_IN;
+    req_pkg.request = USB_REQ_GET_DESCRIPTOR;
+    req_pkg.value = desc_type<<8 | desc_idx;
+    req_pkg.index = req_idx;
+    req_pkg.length = length;
+
+    usb_control_msg(udev,&req_pkg,desc_buf);
+    return 0;
+}
+
 
 
 //=============================================================================================================

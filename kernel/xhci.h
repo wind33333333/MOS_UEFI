@@ -157,8 +157,6 @@ typedef struct {
 #define XHCI_PORTSC_PLS_SHIFT 5
 #define XHCI_PORTSC_PLS_MASK 0xf
 #define XHCI_PORTSC_PP (1 << 9)
-#define XHCI_PORTSC_SPEED_SHIFT 10
-#define XHCI_PORTSC_SPEED_MASK 0xf
 #define XHCI_PORTSC_SPEED_FULL 1
 #define XHCI_PORTSC_SPEED_LOW 2
 #define XHCI_PORTSC_SPEED_HIGH 3
@@ -207,6 +205,7 @@ typedef struct {
         uint32 porthlpmc;
     } portregs[256]; // 最大支持256个端口（根据HCSPARAMS1中的MaxPorts）
 } xhci_op_regs_t;
+
 
 // ===== 3. 运行时寄存器 (Runtime Registers) =====
 typedef struct {
@@ -1362,11 +1361,61 @@ typedef struct xhci_hcd_t{
 } xhci_hcd_t;
 
 
+//读端口
+static inline uint32 xhci_read_portsc (xhci_hcd_t *xhcd,uint8 port_id) {
+    return xhcd->op_reg->portregs[port_id-1].portsc;
+}
+
+//写端口
+static inline void  xhci_write_portsc (xhci_hcd_t *xhcd,uint8 port_id,uint32 protsc) {
+    xhcd->op_reg->portregs[port_id-1].portsc = protsc;
+}
+
+//获取端口速率
+static inline uint8 xhci_get_port_speed (xhci_hcd_t *xhcd,uint8 port_id) {
+    uint32 portsc = xhci_read_portsc(xhcd,port_id);
+    return  (portsc >> 10) & 0xF;
+}
+
+//端点转Dci
+static inline uint8 epaddr_to_epdci(uint8 ep) {
+    asm volatile(
+        "rolb $1,%0"
+        :"+q"(ep)
+        :
+        :"cc");
+    return ep;
+}
+
+//Dci转端点
+static inline uint8 epdci_to_epaddr(uint8 dci) {
+    asm volatile(
+        "rorb $1,%0"
+        :"+q"(dci)
+        :
+        :"cc");
+    return dci;
+
+}
+
+extern void* kzalloc(uint64 size);
+//初始化环
+static inline int32 xhci_ring_init(xhci_ring_t *ring) {
+    ring->ring_base = kzalloc(TRB_COUNT * sizeof(xhci_trb_t));
+    ring->index = 0;
+    ring->cycle = 1;
+}
+
+//响铃
+static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 value) {
+    xhcd->db_reg[db_number] = value;
+}
+
+
+
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push);
 uint8 xhci_handle_common_error(xhci_trb_comp_code_e comp_code, uint64 trb_pa);
-xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, uint64 wait_trb_pa, uint64 timeout_ms,xhci_trb_t *out_event_trb) ;
-static inline int32 xhci_ring_init(xhci_ring_t *ring);
-static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 value);
+xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, uint64 value, uint64 timeout_ms,xhci_trb_t *out_event_trb) ;
 int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id);
 int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);
 int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctrl_ctx_t *input_ctx);
@@ -1376,6 +1425,8 @@ uint32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
 int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctrl_ctx_t *input_ctx, uint8 slot_id);
 int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci_ring_t *transfer_ring);
 int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id);
+
+int32 usb_get_desc(struct usb_dev_t *udev,void *desc_buf,uint16 length,usb_desc_type_e desc_type,uint8 desc_idx, uint16 req_idx);
 
 
 

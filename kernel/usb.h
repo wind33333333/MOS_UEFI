@@ -77,15 +77,15 @@ typedef struct endpoint_t{
 typedef struct usb_dev_t{
     uint8                           port_id;
     uint8                           slot_id;
-    usb_device_descriptor_t*        dev_desc;           //设备描述符
-    usb_config_descriptor_t*        config_desc;        //配置描述符
-    usb_string_descriptor_t*        language_desc;      //语言描述符
-    usb_string_descriptor_t*        manufacturer_desc;  //制造商描述符
-    usb_string_descriptor_t*        product_desc;       //产品型号名描述符
-    usb_string_descriptor_t*        serial_number_desc; //序列号描述符
+    usb_dev_desc_t*                 dev_desc;             //设备描述符
+    usb_cfg_desc_t*                 config_desc;          //配置描述符
+    usb_string_desc_t*              language_desc;      //语言描述符
+    usb_string_desc_t*              manufacturer_desc;  //制造商描述符
+    usb_string_desc_t*              product_desc;       //产品型号名描述符
+    usb_string_desc_t*              serial_number_desc; //序列号描述符
     void*                           dev_ctx;           // 设备上下文
     endpoint_t                      eps[32];           // 端点0-31
-    xhci_hcd_t*              xhcd;   // xhci控制器
+    xhci_hcd_t*                     xhcd;   // xhci控制器
     device_t                        dev;
     uint8                           interfaces_count;  // 接口数量
     usb_if_t                        *interfaces;       // 接口指针根据接口数量动态分配
@@ -132,7 +132,7 @@ static inline usb_if_alt_t *usb_find_alt_by_num(usb_if_t *usb_if, uint8 altsetti
 
 extern struct bus_type_t usb_bus_type;
 
-#define MAX_STREAMS 6  //最大支持流数量（2^6=64）
+#define MAX_STREAMS 6  //最多支持流数量（2^6=64）
 
 int usb_bus_match(device_t* dev,driver_t* drv);
 int usb_bus_probe(device_t* dev);
