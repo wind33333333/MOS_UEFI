@@ -309,7 +309,6 @@ typedef struct {
 
 
 
-
 //============================= TRB集合 ===============================================
 
 #define TRB_COUNT 256        //trb个数
@@ -656,6 +655,29 @@ typedef struct trb_status_stage_t {
     uint32          rsvd4 : 15;
 }trb_status_stage_t;
 
+// Normal TRB (TRB Type = 1) - 用于 Bulk(批量) 和 Interrupt(中断) 端点的数据传输
+typedef struct trb_normal_t{
+    // DW0 & DW1: 数据缓冲区的 64 位物理地址
+    uint64 data_buf_ptr;
+
+    // DW2
+    uint32 trb_tr_len : 17; // [16:0] 传输长度 (这一个 TRB 要传输多少字节)
+    uint32 td_size : 5;     // [21:17] 剩余包数的估算值 (TD Size)
+    uint32 int_target : 10; // [31:22] 中断目标 (指引硬件去敲哪个中断向量，通常填 0)
+
+    // DW3
+    uint32 cycle : 1;       // [0] Cycle Bit (C) - 拥有权流转标志
+    uint32 ent : 1;         // [1] Evaluate Next TRB (ENT) - 告诉硬件提前评估下一个 TRB
+    uint32 isp : 1;         // [2] Interrupt on Short Packet (ISP) - 遇到短包就立刻触发中断
+    uint32 ns : 1;          // [3] No Snoop (NS) - PCIe 缓存一致性优化 (通常填 0)
+    uint32 chain : 1;       // [4] Chain bit (CH) - 链条标志！极其重要！
+    uint32 ioc : 1;         // [5] Interrupt On Completion (IOC) - 跑完这个 TRB 后给我发个中断！
+    uint32 idt : 1;         // [6] Immediate Data (IDT) - 是否将数据直接塞在指针字段里 (Normal TRB 通常 0)
+    uint32 reserved_1: 3;   // [9:7] 保留
+    uint32 trb_type : 6;    // [15:10] TRB 类型 (Normal TRB 固定填 1)
+    uint32 reserved_2 : 16; // [31:16] 保留
+}trb_normal_t;
+
 //===================================================================
 
 
@@ -913,6 +935,7 @@ typedef union xhci_trb_t {
     trb_setup_stage_t        setup_stage;
     trb_data_stage_t         data_stage;
     trb_status_stage_t       status_stage;
+    trb_normal_t             normal;
     //bulk端点专用端点2-31专用，用于数据传输如read 10 write10等
 
     //事件trb
