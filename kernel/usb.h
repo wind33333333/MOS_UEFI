@@ -421,6 +421,29 @@ typedef struct usb_dev_t{
     uint8                           parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
 } usb_dev_t;
 
+#define MAX_STREAMS 6  //最多支持流数量（2^6=64）
+
+//端点转Dci
+static inline uint8 epaddr_to_epdci(uint8 ep) {
+    asm volatile(
+        "rolb $1,%0"
+        :"+q"(ep)
+        :
+        :"cc");
+    return ep;
+}
+
+//Dci转端点
+static inline uint8 epdci_to_epaddr(uint8 dci) {
+    asm volatile(
+        "rorb $1,%0"
+        :"+q"(dci)
+        :
+        :"cc");
+    return dci;
+
+}
+
 //获取需要input端点的上下文地址
 static inline void *xhci_get_input_ctx_addr(xhci_hcd_t *xhcd,xhci_input_ctrl_ctx_t *input_ctx, uint32 ep_dci) {
     uint8 ctx_size = xhcd->ctx_size;
@@ -435,12 +458,12 @@ static inline void *xhci_get_ctx_addr(usb_dev_t *udev, uint32 ep_dci) {
 
 
 //获取下一个描述符
-static inline void *usb_get_next_desc(usb_descriptor_head *head) {
+static inline void *usb_get_next_desc(usb_desc_head *head) {
     return (uint8*)head + head->length;
 }
 
 //配置描述符结束地址
-static inline void *usb_cfg_end(usb_config_descriptor_t *usb_config_desc)
+static inline void *usb_cfg_end(usb_cfg_desc_t *usb_config_desc)
 {
     return (uint8*)usb_config_desc + usb_config_desc->total_length;
 }
@@ -457,28 +480,21 @@ static inline usb_if_alt_t *usb_find_alt_by_num(usb_if_t *usb_if, uint8 altsetti
 
 extern struct bus_type_t usb_bus_type;
 
-#define MAX_STREAMS 6  //最多支持流数量（2^6=64）
 
+
+//注册usb接口
+static inline void usb_if_register(usb_if_t *usb_if) {
+    device_register(&usb_if->dev);
+}
+
+//注册usb设备
+static inline void usb_dev_register(usb_dev_t *usb_dev) {
+    device_register(&usb_dev->dev);
+}
+
+void usb_drv_register(usb_drv_t *usb_drv);//注册usb驱动
 int usb_bus_match(device_t* dev,driver_t* drv);
 int usb_bus_probe(device_t* dev);
 void usb_bus_remove(device_t* dev);
 
-void usb_dev_scan(xhci_hcd_t *xhcd);
-int usb_set_config(usb_dev_t *usb_dev);
-int usb_set_interface(usb_if_t *usb_if);
-int usb_endpoint_init(usb_if_alt_t *if_alt);
 int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci);
-
-//注册usb接口
-static inline void usb_if_register(usb_if_t* usb_if);
-
-//注册usb设备
-static inline void usb_dev_register(usb_dev_t *usb_dev);
-
-//注册usb驱动
-void usb_drv_register(usb_drv_t *usb_drv);
-
-
-int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci);
-
-int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_buf);

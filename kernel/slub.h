@@ -1,6 +1,7 @@
 #pragma once
 
 #include "moslib.h"
+#include "vmm.h"
 
 #define MAX_OBJECT_SIZE (1*1024*1024)
 #define KMALLOC_CACHE_SIZE 18
@@ -24,6 +25,8 @@ void *kmem_cache_alloc(kmem_cache_t *cache);
 int32 kmem_cache_free(kmem_cache_t *cache, void *object);
 void *kmalloc(uint64 size);
 void *kzalloc(uint64 size);
-static inline void* kzalloc_dma(uint64 size);
 int32 kfree(void *va);
 
+static inline void* kzalloc_dma(uint64 size) {
+    return kzalloc(align_up(size,64));
+}

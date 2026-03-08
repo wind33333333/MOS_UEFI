@@ -1,6 +1,7 @@
 #pragma once
 #include "moslib.h"
 #include "pcie.h"
+#include "slub.h"
 
 #pragma pack(push,1)
 
@@ -1056,7 +1057,7 @@ typedef struct xhci_hcd_t{
 
 
 //读端口
-static inline uint32 xhci_read_portsc (xhci_hcd_t *xhcd,uint8 port_id) {
+static inline uint32 xhci_read_portsc(xhci_hcd_t *xhcd,uint8 port_id) {
     return xhcd->op_reg->portregs[port_id-1].portsc;
 }
 
@@ -1071,31 +1072,9 @@ static inline uint8 xhci_get_port_speed (xhci_hcd_t *xhcd,uint8 port_id) {
     return  (portsc >> 10) & 0xF;
 }
 
-//端点转Dci
-static inline uint8 epaddr_to_epdci(uint8 ep) {
-    asm volatile(
-        "rolb $1,%0"
-        :"+q"(ep)
-        :
-        :"cc");
-    return ep;
-}
-
-//Dci转端点
-static inline uint8 epdci_to_epaddr(uint8 dci) {
-    asm volatile(
-        "rorb $1,%0"
-        :"+q"(dci)
-        :
-        :"cc");
-    return dci;
-
-}
-
-extern void* kzalloc(uint64 size);
 //初始化环
 static inline int32 xhci_ring_init(xhci_ring_t *ring) {
-    ring->ring_base = kzalloc(TRB_COUNT * sizeof(xhci_trb_t));
+    ring->ring_base = kzalloc_dma(TRB_COUNT * sizeof(xhci_trb_t));
     ring->index = 0;
     ring->cycle = 1;
 }

@@ -47,16 +47,6 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
         if (alts[i].if_protocol == 0x62) usb_if->cur_alt = &alts[i];
     }
 
-    timing();
-    color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_ctx->dev_ctx32.ep[0].ep_config,usb_dev->dev_ctx->dev_ctx32.ep[0].ep_type_size);
-
-    usb_set_interface(usb_if);   //切换接口备用配置
-
-    color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_ctx->dev_ctx32.ep[0].ep_config,usb_dev->dev_ctx->dev_ctx32.ep[0].ep_type_size);
-
-    usb_endpoint_init(usb_if->cur_alt);   //初始化端点
-
-
     scsi_host_t *shost;
 
     if (usb_if->cur_alt->if_protocol == 0x62) {        //uas协议初始化流程
@@ -73,18 +63,18 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
             uint8 ep_num = ep->ep_dci;
             uint32 streams = usb_dev->eps[ep_num].streams_count;
             if (streams && streams < mini_streams) mini_streams = streams;
-            usb_uas_pipe_usage_descriptor_t *pipe_usage_desc = ep->extras_desc;
+            usb_uas_pipe_usage_desc_t *pipe_usage_desc = ep->extras_desc;
             switch (pipe_usage_desc->pipe_id) {
-                case USB_PIPE_COMMAND_OUT:
+                case USB_UAS_PIPE_COMMAND_OUT:
                     uas_data->cmd_pipe = ep_num ;     //命令pipe
                     break;
-                case USB_PIPE_STATUS_IN:
+                case USB_UAS_PIPE_STATUS_IN:
                     uas_data->status_pipe = ep_num ; //状态pipe
                     break;
-                case USB_PIPE_BULK_IN:
+                case USB_UAS_PIPE_BULK_IN:
                     uas_data->data_in_pipe = ep_num ; //接收数据pipe
                     break;
-                case USB_PIPE_BULK_OUT:
+                case USB_UAS_PIPE_BULK_OUT:
                     uas_data->data_out_pipe = ep_num ; //发送数据pipe
             }
         }
@@ -95,7 +85,7 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
         uas_data->tag_bitmap <<= 1;
 
         //创建scsi_host
-        shost = scsi_create_host(&uas_host_template,uas_data,&usb_if->dev,0,"uas_host");
+        //shost = scsi_create_host(&uas_host_template,uas_data,&usb_if->dev,0,"uas_host");
 
     } else {        //bot协议初始化流程
         //创建bot_data
@@ -112,11 +102,11 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
         }
 
         //创建scsi_host
-        shost = scsi_create_host(&bot_host_template,bot_data,&usb_if->dev,99,"bot_host");
+        //shost = scsi_create_host(&bot_host_template,bot_data,&usb_if->dev,99,"bot_host");
 
     }
 
-    scsi_add_host(shost);
+    //scsi_add_host(shost);
 }
 
 void usb_storage_remove(usb_if_t *usb_if) {

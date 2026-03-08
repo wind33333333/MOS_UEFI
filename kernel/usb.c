@@ -317,35 +317,6 @@ int usb_set_if(usb_dev_t *udev,uint8 if_num,uint8 alt_num) {
 //=============================================================================================================
 
 
-//获取usb设备描述符
-int usb_get_device_descriptor(usb_dev_t *udev) {
-    xhci_hcd_t *xhcd = udev->xhcd;
-    usb_dev_desc_t *dev_desc = kzalloc_dma(sizeof(usb_dev_desc_t));
-
-    uint8 ctx_size = xhcd->ctx_size;
-
-    //获取端口速率，全速端口先获取设备描述符前8字节得到max_packte_size修正端点0
-    uint8 port_speed = xhci_get_port_speed(xhcd,udev->port_id);
-    if (port_speed == XHCI_PORTSC_SPEED_FULL) {
-        //第一次先获取设备描述符前8字节，拿到max_pack_size后更新端点1，再重新获取描述符。
-        usb_get_desc(udev, dev_desc, 8,USB_DESC_TYPE_DEVICE,0,0);
-
-        //配置input_ctx
-        xhci_input_ctrl_ctx_t *input_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT*ctx_size);
-        xhci_ep_ctx_t *cur_ep0_ctx = xhci_get_ctx_addr(udev,1);
-        xhci_ep_ctx_t *input_ctx_ep0 = xhci_get_input_ctx_addr(xhcd,input_ctx,1);
-        asm_mem_cpy(cur_ep0_ctx,input_ctx_ep0,sizeof(xhci_ep_ctx_t));
-        input_ctx_ep0->max_packet_size = dev_desc->max_packet_size0;
-        input_ctx->add_context_flags |= 1<<1;
-
-        xhci_cmd_eval_ctx(xhcd,input_ctx,udev->slot_id);
-        kfree(input_ctx);
-    }
-    //获取完整设备描述符
-    usb_get_desc(udev, dev_desc, sizeof(usb_dev_desc_t),USB_DESC_TYPE_DEVICE,0,0);
-    udev->dev_desc = dev_desc;
-    return 0;
-}
 
 //获取usb配置描述符
 int usb_get_config_descriptor(usb_dev_t *udev) {
@@ -427,59 +398,125 @@ int usb_get_string_descriptor(usb_dev_t *udev) {
 }
 
 
-//配置slot和ep0上下文
-void usb_setup_slot_ep0_ctx(usb_dev_t *udev) {
+/**
+ * @brief 阶段 1：分配设备上下文，配置 Slot 和 EP0，并赋予物理地址
+ * @param udev USB 设备对象
+ * @return int32 0 表示成功，-1 表示失败
+ */
+int32 usb_setup_slot_ep0(usb_dev_t *udev) {
     xhci_hcd_t *xhcd = udev->xhcd;
-
     uint8 ctx_size = xhcd->ctx_size;
-    //分配设备插槽上下文内存
-    udev->dev_ctx = kzalloc(XHCI_DEVICE_CONTEXT_COUNT*ctx_size);
+
+    // ============================
+    // 1. 分配并挂载硬件私有领地 (Device Context)
+    // ============================
+    udev->dev_ctx = kzalloc_dma(XHCI_DEVICE_CONTEXT_COUNT * ctx_size);
     xhcd->dcbaap[udev->slot_id] = va_to_pa(udev->dev_ctx);
 
-    //usb控制传输环初始化
+    // ============================
+    // 2. 初始化控制传输环 (EP0 Transfer Ring)
+    // ============================
     xhci_ring_t *uc_ring = &udev->eps[0].transfer_ring;
     xhci_ring_init(uc_ring);
 
-    //分配输入上下文空间
-    xhci_input_ctrl_ctx_t *input_ctx = kzalloc(XHCI_INPUT_CONTEXT_COUNT*ctx_size);
+    // ============================
+    // 3. 分配并装填软件申请表 (Input Context)
+    // ============================
+    xhci_input_ctrl_ctx_t *input_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * ctx_size);
+    uint8 port_speed = xhci_get_port_speed(xhcd, udev->port_id);
 
-    //获取端口速率
-    uint8 port_speed = (xhcd->op_reg->portregs[udev->port_id - 1].portsc >> 10) & 0x0F;
+    // --- 配置 Slot Context ---
+    xhci_slot_ctx_t *input_slot_ctx = xhci_get_input_ctx_addr(xhcd, input_ctx, 0);
+    input_slot_ctx->port_speed = port_speed;
+    input_slot_ctx->context_entries = 1;                  // 仅激活到 EP0
+    input_slot_ctx->root_hub_port_num = udev->port_id; // 精确锁定根集线器端口
 
-    //配置slot_ctx
-    xhci_slot_ctx_t *slot_ctx = xhci_get_input_ctx_addr(xhcd, input_ctx,0);
-    asm_mem_set(slot_ctx,0,sizeof(xhci_slot_ctx_t));
-    slot_ctx->port_speed = port_speed;
-    slot_ctx->context_entries = 1;
-    slot_ctx->context_entries = udev->port_id;
-    input_ctx->add_context_flags |= 1<<0;
-
-    uint32 max_packet_size = 8; // 默认给 8
-    // ★ 核心修复：使用 >= 4，一举拿下所有未来超高速设备！
-    if (port_speed >= XHCI_PORTSC_SPEED_SUPER ) {
-        // 涵盖 4(SS), 5(SSP), 6(SSP Gen2x2) 等所有现代超高速设备
+    // --- 计算初始 Max Packet Size ---
+    uint32 max_packet_size;
+    if (port_speed >= XHCI_PORTSC_SPEED_SUPER) {
         max_packet_size = 512;
     } else if (port_speed == XHCI_PORTSC_SPEED_HIGH) {
-        // 涵盖 3(HS), 标准 USB 2.0 高速设备
         max_packet_size = 64;
     } else {
-        // 涵盖 1(FS), 2(LS), 极其古老的 USB 1.1 设备
-        // 在正式读取设备描述符前，8 字节是 USB 1.1 的绝对安全保底值
-        max_packet_size = 8;
+        max_packet_size = 8; // FS/LS 设备的保底探针值
     }
 
-    //配置端点0上下文（控制传输端点）
-    xhci_ep_ctx_t *ep_ctx = xhci_get_input_ctx_addr(xhcd, input_ctx,1);
-    asm_mem_set(ep_ctx,0,sizeof(xhci_ep_ctx_t));
-    ep_ctx->cerr = 3;
-    ep_ctx->ep_type = 4;
-    ep_ctx->max_packet_size = max_packet_size;
-    ep_ctx->tr_dequeue_ptr = va_to_pa(uc_ring->ring_base) | 1;
-    input_ctx->add_context_flags |= 1<<1;
+    // --- 配置 EP0 Context ---
+    xhci_ep_ctx_t *input_ep0_ctx = xhci_get_input_ctx_addr(xhcd, input_ctx, 1);
+    input_ep0_ctx->cerr = 3;
+    input_ep0_ctx->ep_type = 4; // Control Endpoint
+    input_ep0_ctx->max_packet_size = max_packet_size;
+    input_ep0_ctx->tr_dequeue_ptr = va_to_pa(uc_ring->ring_base) | 1;
 
-    xhci_cmd_addr_dev(xhcd,udev->slot_id,input_ctx);
+    // --- 设置标志位并下发命令 ---
+    input_ctx->add_context_flags = (1 << 0) | (1 << 1); // 激活 Slot 和 EP0
+    input_ctx->drop_context_flags = 0;
 
-    kfree(input_ctx);
+    int32 ret = xhci_cmd_addr_dev(xhcd, udev->slot_id, input_ctx);
+
+    kfree(input_ctx); // 销毁申请表，保持内存纯洁
+    return ret;
+}
+
+/**
+ * @brief 阶段 2：通过 EP0 获取设备描述符，并动态修正全速设备的 MPS
+ * @param udev USB 设备对象
+ * @return int32 0 表示成功
+ */
+int32 usb_get_dev_desc(usb_dev_t *udev) {
+    xhci_hcd_t *xhcd = udev->xhcd;
+    uint8 port_speed = xhci_get_port_speed(xhcd, udev->port_id);
+
+    // 分配设备描述符的 DMA 内存
+    usb_dev_desc_t *dev_desc = kzalloc_dma(sizeof(usb_dev_desc_t));
+
+    // ============================
+    // 全速设备 (FS) 的 8 字节刺探与修正逻辑
+    // ============================
+    if (port_speed == XHCI_PORTSC_SPEED_FULL) {
+
+        // 探针：只拿前 8 字节
+        usb_get_desc(udev, dev_desc, 8, USB_DESC_TYPE_DEVICE, 0, 0);
+
+        if (dev_desc->max_packet_size0 != 8) {
+
+            // 发现真实 MPS 不是 8，准备下发 Evaluate Context 修正！
+            // 重新分配一个新的申请表
+            xhci_input_ctrl_ctx_t *eval_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * xhcd->ctx_size);
+
+            // ★ 架构师机密：如何安全地修改端点参数？
+            // 1. 获取硬件【当前】的真实状态 (只读的 Device Context)
+            xhci_ep_ctx_t *hw_ep0_ctx = xhci_get_ctx_addr(udev, 1);
+            // 2. 获取我们新申请表里的 EP0 位置
+            xhci_ep_ctx_t *in_ep0_ctx = xhci_get_input_ctx_addr(xhcd, eval_ctx, 1);
+
+            // 3. 把硬件状态【完全克隆】到申请表中
+            asm_mem_cpy(hw_ep0_ctx,in_ep0_ctx,sizeof(xhci_ep_ctx_t));
+
+            // 4. 精准修改申请表里的 MPS 字段
+            in_ep0_ctx->max_packet_size = dev_desc->max_packet_size0;
+
+            // 5. 告诉主板：请仅仅评估 EP0 (Bit 1)
+            eval_ctx->drop_context_flags = 0;
+            eval_ctx->add_context_flags = (1 << 1);
+
+            // 下发评估命令
+            xhci_cmd_eval_ctx(xhcd, eval_ctx, udev->slot_id);
+
+            // 用完即毁
+            kfree(eval_ctx);
+        }
+    }
+
+    // ============================
+    // 获取完整的 18 字节设备描述符
+    // ============================
+    usb_get_desc(udev, dev_desc, sizeof(usb_dev_desc_t), USB_DESC_TYPE_DEVICE, 0, 0);
+
+    // 挂载到内核对象树上
+    udev->dev_desc = dev_desc;
+
+    return 0;
 }
 
 
@@ -594,15 +631,7 @@ int usb_drv_probe(device_t *dev) {
 void usb_drv_remove(device_t *dev) {
 }
 
-//注册usb接口
-static inline void usb_if_register(usb_if_t *usb_if) {
-    device_register(&usb_if->dev);
-}
 
-//注册usb设备
-static inline void usb_dev_register(usb_dev_t *usb_dev) {
-    device_register(&usb_dev->dev);
-}
 
 //注册usb驱动
 void usb_drv_register(usb_drv_t *usb_drv) {
@@ -613,7 +642,7 @@ void usb_drv_register(usb_drv_t *usb_drv) {
 }
 
 //解析端点
-int usb_parse_endpoints(usb_dev_t *usb_dev, usb_if_alt_t *if_alt) {
+int usb_parse_ep(usb_dev_t *usb_dev, usb_if_alt_t *if_alt) {
     usb_ep_t *cur_ep = NULL;
     usb_desc_head *desc_head = usb_get_next_desc(&if_alt->if_desc->head);
     uint8 ep_idx = 0;
@@ -700,7 +729,7 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
             if_alt->eps = kzalloc(if_alt->ep_count * sizeof(usb_ep_t)); //给端点分配内存
             /* 可选：此处不解析端点，延后到 probe；或预解析以便 match/probe 快速使用 */
             /* usb_parse_alt_endpoints(usb_dev, alt); */
-            usb_parse_endpoints(usb_dev, if_alt);
+            usb_parse_ep(usb_dev, if_alt);
         }
         if_desc = usb_get_next_desc(&if_desc->head);
     }
@@ -725,13 +754,14 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
 //创建usb设备
 usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
     usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
+    usb_dev->xhcd = xhcd;
     usb_dev->port_id = port_id;
     xhci_cmd_enable_slot(xhcd,&usb_dev->slot_id); //启用插槽
-    usb_setup_slot_ep0_ctx(usb_dev); //设置设备地址
-    usb_get_device_descriptor(usb_dev); //获取设备描述符
+    usb_setup_slot_ep0(usb_dev); //设置设备地址
+    usb_get_dev_desc(usb_dev);
     usb_get_config_descriptor(usb_dev); //获取配置描述符
     usb_get_string_descriptor(usb_dev); //获取字符串描述符
-    usb_set_config(usb_dev); //激活配置
+    usb_set_cfg(usb_dev,usb_dev->config_desc->configuration_value); //激活配置
 
     usb_dev->dev.type = &usb_dev_type;
     usb_dev->dev.parent = &xhcd->xdev->dev;
@@ -749,7 +779,7 @@ int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     uint32 portsc;
 
     // 获取该端口对应的协议信息
-    uint8 spc_idx = xhcd->port_to_spc[port_id];
+    uint8 spc_idx = xhcd->port_to_spc[port_id-1];
 
     // ==========================================
     // 阶段 1：区分协议执行复位握手与清理
@@ -791,7 +821,7 @@ int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
 //usb设备初始化
 void usb_dev_scan(xhci_hcd_t *xhcd){
     for (uint8 i = 0; i < xhcd->max_ports; i++) {
-        uint8 port_id = ++i;
+        uint8 port_id = i+1;
         uint32 portsc = xhci_read_portsc(xhcd,port_id);
 
         // 检测是否有设备连接 (CCS) 并且发生了状态变化 (CSC)
@@ -803,7 +833,7 @@ void usb_dev_scan(xhci_hcd_t *xhcd){
             xhci_write_portsc(xhcd,port_id,portsc);
 
             // 调用独立的复位大炮，轰开物理层！
-            if (xhci_port_reset(xhcd, i) == 0) {
+            if (xhci_port_reset(xhcd, port_id) == 0) {
 
                 // 此时硬件环境绝对干净且安全，正式开始内核软件层面的设备构建
                 usb_dev_t *usb_dev = usb_dev_create(xhcd, port_id);

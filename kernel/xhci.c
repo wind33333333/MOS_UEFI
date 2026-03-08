@@ -619,7 +619,7 @@ int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhci_ecap_supported_protocol *ecap_spc_arr[16];
 
     /* 调用扩展能力雷达，寻找所有 ID 为 2 (Supported Protocol Capability) 的能力块 */
-    xhcd->spc_count = xhci_ecap_find(xhcd, (void **)ecap_spc_arr, 2);
+    xhcd->spc_count = xhci_ecap_find(xhcd, ecap_spc_arr, 2);
 
     /* 为软件端的协议抽象层 (xhci_spc_t) 分配连续的内存数组 */
     xhcd->spc = kzalloc(sizeof(xhci_spc_t) * xhcd->spc_count);
