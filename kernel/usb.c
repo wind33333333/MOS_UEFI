@@ -116,54 +116,6 @@ int usb_get_string_descriptor(usb_dev_t *udev) {
     return 0;
 }
 
-//激活usb配置
-int usb_set_config(usb_dev_t *usb_dev) {
-    xhci_hcd_t *xhcd = usb_dev->xhcd;
-    trb_t trb;
-
-    setup_stage_trb(&trb, setup_stage_device, setup_stage_norm, setup_stage_out, usb_req_set_config,
-                    usb_dev->config_desc->configuration_value, 0, 0, no_data_stage);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-
-    status_stage_trb(&trb, ENABLE_IOC, trb_in);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-
-    xhci_ring_doorbell(xhcd, usb_dev->slot_id, 1);
-    timing();
-    xhci_ering_dequeue(xhcd, &trb);
-    return 0;
-}
-
-//激活接口
-int usb_set_interface(usb_if_t *usb_if) {
-    usb_dev_t *usb_dev = usb_if->usb_dev;
-    xhci_hcd_t *xhcd = usb_dev->xhcd;
-    trb_t trb;
-
-    setup_stage_trb(&trb, setup_stage_interface, setup_stage_norm, setup_stage_out, usb_req_set_interface,
-                    usb_if->cur_alt->altsetting, usb_if->if_num, 0, no_data_stage);
-
-    uint64 setup_ptr = xhci_ring_enqueue(&usb_dev->ep0, &trb);
-
-    status_stage_trb(&trb, ENABLE_IOC, trb_in);
-
-    uint64 status_ptr = xhci_ring_enqueue(&usb_dev->ep0, &trb);
-
-    xhci_ring_doorbell(xhcd, usb_dev->slot_id, 1);
-
-    int32 comp_code = xhci_wait_for_completion(xhcd, setup_ptr, 20000000);
-    if (comp_code == -1) {
-        comp_code = xhci_wait_for_completion(xhcd, status_ptr, 20000000);
-    }
-
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED,BLACK,"ep0 c:%#x t:%#x \n",usb_dev->dev_ctx->dev_ctx32.ep[0].ep_config,usb_dev->dev_ctx->dev_ctx32.ep[0].ep_type_size);
-        color_printk(RED,BLACK,"usb set if error code:%#x   \n",comp_code);
-        while (1);
-    }
-
-    return 0;
-}
 
 //配置slot和ep0上下文
 void usb_setup_slot_ep0_ctx(usb_dev_t *udev) {

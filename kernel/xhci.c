@@ -775,7 +775,10 @@ int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci) {
 //获取usb描述符
 int32 usb_get_desc(usb_dev_t *udev,void *desc_buf,uint16 length,usb_desc_type_e desc_type,uint8 desc_idx, uint16 req_idx) {
     usb_req_pkg_t req_pkg = {0};
-    req_pkg.recipient = USB_RECIP_DEVICE;
+
+    // 注意：获取描述符的目标并不总是 Device！
+    // 如果获取的是普通描述符，发给 Device；如果是接口特定的(如 HID)，必须发给 Interface！
+    req_pkg.recipient = desc_type == USB_DESC_TYPE_HID_REPORT ? USB_RECIP_INTERFACE : USB_RECIP_DEVICE;
     req_pkg.req_type = USB_REQ_TYPE_STANDARD;
     req_pkg.dtd = USB_DIR_IN;
     req_pkg.request = USB_REQ_GET_DESCRIPTOR;
@@ -784,6 +787,36 @@ int32 usb_get_desc(usb_dev_t *udev,void *desc_buf,uint16 length,usb_desc_type_e 
     req_pkg.length = length;
 
     usb_control_msg(udev,&req_pkg,desc_buf);
+    return 0;
+}
+
+//激活usb配置
+int usb_set_cfg(usb_dev_t *udev,uint8 cfg_value) {
+    usb_req_pkg_t req_pkg = {0};
+    req_pkg.recipient = USB_RECIP_DEVICE;
+    req_pkg.req_type = USB_REQ_TYPE_STANDARD;
+    req_pkg.dtd = USB_DIR_OUT;
+    req_pkg.request = USB_REQ_SET_CONFIGURATION;
+    req_pkg.value = cfg_value;
+    req_pkg.index = 0;
+    req_pkg.length = 0;
+
+    usb_control_msg(udev,&req_pkg,NULL);
+    return 0;
+}
+
+//激活接口
+int usb_set_if(usb_dev_t *udev,uint8 if_num,uint8 alt_num) {
+    usb_req_pkg_t req_pkg = {0};
+    req_pkg.recipient = USB_RECIP_INTERFACE;
+    req_pkg.req_type = USB_REQ_TYPE_STANDARD;
+    req_pkg.dtd = USB_DIR_OUT;
+    req_pkg.request = USB_REQ_SET_INTERFACE;
+    req_pkg.value = alt_num;
+    req_pkg.index = if_num;
+    req_pkg.length = 0;
+
+    usb_control_msg(udev,&req_pkg,NULL);
     return 0;
 }
 
