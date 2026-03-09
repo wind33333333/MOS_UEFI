@@ -21,7 +21,7 @@ xhci_trb_comp_code_e xhci_wait_transfer_comp (usb_dev_t *udev, uint8 ep_dci, uin
     // ==========================================================
     // 第一关： 1. 挂起等待事件环 (Event Ring) 的回执
     // ==========================================================
-    xhci_trb_comp_code_e comp_code = xhci_wait_for_event(xhcd, 0,wait_trb_pa, 50000000, NULL);
+    xhci_trb_comp_code_e comp_code = xhci_wait_for_event(xhcd, 0,wait_trb_pa, 30000000, NULL);
 
     // ==========================================================
     // 2. 完美成功或可接受的短包 (直接放行)
@@ -782,7 +782,7 @@ int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     uint8 spc_idx = xhcd->port_to_spc[port_id-1];
 
     // ==========================================
-    // 阶段 1：区分协议执行复位握手与清理
+    // 阶段 1：复位区分协议usb2.0需要设置pr手动复位，3.0全自动
     // ==========================================
     if (xhcd->spc[spc_idx].major_bcd < 0x3) {
         // --- [USB 2.0 专属逻辑：手动触发复位] ---
@@ -792,54 +792,61 @@ int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
         xhci_write_portsc(xhcd,port_id,portsc);
 
         // 挂起等待主板硬件完成复位电平发送，并返回 Event TRB
-        xhci_wait_for_event(xhcd, 0, port_id, 0x2000000, NULL);
+        xhci_wait_for_event(xhcd, 0, port_id, 30000000, NULL);
     }
-    // --- [USB 3.x 自动完成复位，usb2/usb3共用状态清理逻辑] ---
-    portsc = xhci_read_portsc(xhcd,port_id);
-    portsc &= ~XHCI_PORTSC_W1C_MASK;
-    portsc |= XHCI_PORTSC_PRC | XHCI_PORTSC_PLC | XHCI_PORTSC_WRC | XHCI_PORTSC_CEC;
-    xhci_write_portsc(xhcd,port_id,portsc);
+
 
     // ==========================================
-    // 阶段 2：终极确认端口已使能 (PED = 1)
+    // 阶段 2：确认端口已使能 (PED = 1)
     // ==========================================
-    uint32 timeout = 500000;
-    while (((xhci_read_portsc(xhcd,port_id) & XHCI_PORTSC_PED) == 0) && timeout > 0) {
+    uint32 timeout = 30000000;
+    while (timeout--) {
+        portsc = xhci_read_portsc(xhcd, port_id);
+        // 1. PR (Bit 4) 必须归零，表示硬件不再强拉复位电平！
+        // 2. PED (Bit 1) 必须置 1，表示端口真正被启用了！
+        if (((portsc & XHCI_PORTSC_PR) == 0) && ((portsc & XHCI_PORTSC_PED) != 0)) {
+            break; // 完美命中！跳出循环
+        }
         asm_pause();
-        timeout--;
     }
 
     if (timeout == 0) {
-        color_printk(RED, BLACK, "[xHCI] Port %d Reset & Enable Timeout! Bad Device?\n", port_id);
         return -1; // 复位失败
     }
 
-    color_printk(GREEN, BLACK, "[xHCI] Port %d successfully reset and enabled.\n", port_id);
+    // ==========================================
+    // 阶段 3：清理状态位
+    // ==========================================
+    portsc = xhci_read_portsc(xhcd, port_id);
+    portsc = (portsc & (XHCI_PORTSC_CSC | XHCI_PORTSC_PEC |
+                                   XHCI_PORTSC_WRC | XHCI_PORTSC_OCC |
+                                   XHCI_PORTSC_PRC | XHCI_PORTSC_PLC |
+                                   XHCI_PORTSC_CEC)) | (portsc & ~XHCI_PORTSC_W1C_MASK);
+    xhci_write_portsc(xhcd, port_id, portsc);
+
     return 0; // 复位成功
 }
 
 //usb设备初始化
 void usb_dev_scan(xhci_hcd_t *xhcd){
+
+    //等待硬件完成端口初始化
+    // uint32 times = 20000000;
+    // while (times--) {
+    //     asm_pause();
+    // }
+
     for (uint8 i = 0; i < xhcd->max_ports; i++) {
         uint8 port_id = i+1;
         uint32 portsc = xhci_read_portsc(xhcd,port_id);
 
         // 检测是否有设备连接 (CCS) 并且发生了状态变化 (CSC)
-        if ((portsc & XHCI_PORTSC_CCS) && (portsc & XHCI_PORTSC_CSC)) {
-
-            // ★ 核心防御：看到插拔变化，立刻清理 CSC (阅后即焚)
-            portsc &= ~XHCI_PORTSC_W1C_MASK;
-            portsc |= XHCI_PORTSC_CSC;
-            xhci_write_portsc(xhcd,port_id,portsc);
-
-            // 调用独立的复位大炮，轰开物理层！
+        //if ((portsc & XHCI_PORTSC_CCS) && (portsc & XHCI_PORTSC_CSC))
+        if ((portsc & XHCI_PORTSC_CCS)) {//目前采用轮训等待方式暂时只要ccs置为就进行初始化
             if (xhci_port_reset(xhcd, port_id) == 0) {
-
-                // 此时硬件环境绝对干净且安全，正式开始内核软件层面的设备构建
                 usb_dev_t *usb_dev = usb_dev_create(xhcd, port_id);
                 usb_dev_register(usb_dev);
                 usb_if_create_register(usb_dev);
-
             } else {
                 // 如果复位失败，比如劣质 U 盘无法响应，直接跳过，保护操作系统不挂死
                 color_printk(YELLOW, BLACK, "[xHCI] Ignored faulty device on port %d.\n", i);

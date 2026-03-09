@@ -289,7 +289,7 @@ int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
     cmd_trb.enable_slot.slot_type = 0;
 
     // 1. 发送命令到命令环 (Command Ring)
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 5000000, &evt_trb);
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, &evt_trb);
 
     if (comp_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "xHCI: Failed to enable slot! Error: %d\n", comp_code);
@@ -317,7 +317,7 @@ int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id) {
     cmd_trb.disable_slot.slot_id  = slot_id;
 
     // 2. 发射命令并同步等待
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 2000000,NULL);
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
 
     if (comp_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "xHCI: Failed to disable Slot ID %d! Hardware code: %d\n", slot_id, comp_code);
@@ -338,7 +338,7 @@ int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctrl_ctx_t *i
     cmd_trb.addr_dev.slot_id = slot_id;
     cmd_trb.addr_dev.bsr = 0;
 
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 2000000,NULL);
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
 
     if (comp_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "xHCI: Failed to address device! Error: %d\n", comp_code);
@@ -356,7 +356,7 @@ uint32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci) {
     cmd_trb.rest_ep.ep_dci = ep_dci;
     cmd_trb.rest_ep.slot_id = slot_id;
 
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 2000000,NULL);
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
     if (comp_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "xHCI: Failed to reset endpiont! Error: %d\n", comp_code);
         return -1;
@@ -386,7 +386,7 @@ int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_id) {
 
     // 2. 发射命令并同步等待
     // 注意：刹车命令通常非常快，主板会在微秒级响应。
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 2000000, &evt_trb);
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, &evt_trb);
 
     if (comp_code != XHCI_COMP_SUCCESS) {
         // 如果连 Stop Endpoint 都失败了 (比如返回了 CONTEXT_STATE_ERROR 19)
@@ -435,7 +435,7 @@ int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,
     cmd_trb.set_tr_deq_ptr.ep_dci = ep_dci;
     cmd_trb.set_tr_deq_ptr.slot_id = slot_id;
 
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 2000000,NULL);
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
     if (comp_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "xHCI: Failed to set_tr_dequeue_pointer! Error: %d\n", comp_code);
         return -1;
@@ -458,7 +458,7 @@ int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctrl_ctx_t *input_ctx, uint8 
     cmd_trb.cfg_ep.dc = dc;
 
     // 敲响命令环门铃，等待主板评估带宽并分配资源
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 2000000, NULL);
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
     if (comp_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "xHCI: Failed to configure_endpoint! Error: %d\n", comp_code);
         return -1;
@@ -479,7 +479,7 @@ int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctrl_ctx_t *input_ctx, uint
     cmd_trb.eval_ctx.slot_id = slot_id;
 
     // 敲响命令环门铃，主板将读取并更新上下文
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 2000000, NULL);
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
     if (comp_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "xHCI: Failed to evaluate_context! Error: %d\n", comp_code);
         return -1;
@@ -501,7 +501,7 @@ int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id) {
 
     // 敲响门铃，主板将强行清空该 Slot 的所有业务端点状态
     // 敲响命令环门铃，主板将读取并更新上下文
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 2000000, NULL);
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
     if (comp_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "xHCI: Failed to reset_device! Error: %d\n", comp_code);
         return -1;
@@ -735,7 +735,7 @@ int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
 
     color_printk(
         GREEN,BLACK,
-        "XHCI Version:%x.%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d Dev_Ctx_Size:%d AlignSize:%d USBcmd:%#x USBsts:%#x    \n",
+        "XHCI Version:%x.%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d Dev_Ctx_Size:%d USBcmd:%#x USBsts:%#x    \n",
         xhcd->major_bcd, xhcd->minor_bcd, xhcd->max_slots,
         xhcd->max_intrs, xhcd->max_ports,
         xhcd->ctx_size, xhcd->op_reg->usbcmd,
@@ -751,7 +751,7 @@ int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     extern void usb_dev_scan(xhci_hcd_t *xhcd);
     usb_dev_scan(xhcd);
 
-    color_printk(GREEN,BLACK, "\nUSBcmd:%#x  USBsts:%#x", xhcd->op_reg->usbcmd,
+    color_printk(GREEN,BLACK, "\nUSBcmd:%#x  USBsts:%#x  \n", xhcd->op_reg->usbcmd,
                  xhcd->op_reg->usbsts);
 }
 
