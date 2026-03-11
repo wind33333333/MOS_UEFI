@@ -50,6 +50,7 @@ xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, ui
         //先从事件环取出当前事件trb,如果当前事件trb的cycle位相同则表示事件环有事件
         local_trb = evt_ring->ring_base[evt_ring->index];
         if (local_trb.cmd_comp_event.cycle != evt_ring->cycle) {
+            asm_pause();
             continue;
         }
         //事件trb向前移动一个 ，判断事件环是否满了
@@ -60,44 +61,59 @@ xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, ui
         }
         xhcd->rt_reg->intr_regs[intr_number].erdp = va_to_pa(&evt_ring->ring_base[evt_ring->index]) | XHCI_ERDP_EHB;
 
-        //如果是命令事件或传输事件则饭或trb和完成码给调用者
-        if ((local_trb.cmd_comp_event.trb_type == XHCI_TRB_TYPE_TRANSFER_EVENT ||
-             local_trb.cmd_comp_event.trb_type == XHCI_TRB_TYPE_CMD_COMPLETION) &&
-            local_trb.cmd_comp_event.cmd_trb_ptr == value) {
-            if (out_event_trb != NULL) {
-                *out_event_trb = local_trb;
-            }
-            return local_trb.cmd_comp_event.comp_code;
-        }else if (local_trb.prot_status_change_event.trb_type == XHCI_TRB_TYPE_PORT_STATUS_CHG &&
-            local_trb.prot_status_change_event.port_id == value) {
-            return XHCI_COMP_SUCCESS;
-        }
-
-        // 其他类型的旁路事件处理与日志分发
+        // ==========================================
+        // 统一事件路由分发
+        // ==========================================
         switch (local_trb.cmd_comp_event.trb_type) {
+            case XHCI_TRB_TYPE_TRANSFER_EVENT:
+            case XHCI_TRB_TYPE_CMD_COMPLETION:
+
+                // 1. 判断是否命中目标物理地址
+                if (local_trb.cmd_comp_event.cmd_trb_ptr == value) {
+                    if (out_event_trb != NULL) {  // ★ 核心修复：分离 NULL 判断
+                        *out_event_trb = local_trb;
+                    }
+                    // ★ 核心修复：命中目标，立刻全身而退！
+                    return local_trb.cmd_comp_event.comp_code;
+                }
+
+                // 没命中：说明是意料之外的丢包，打印警告后 break，进入下一次 while 循环继续等
+                color_printk(RED, BLACK, "[xHCI WARNING] Dropped unexpected event at PA %#llx!\n",
+                             local_trb.cmd_comp_event.cmd_trb_ptr);
+                break;
+
             case XHCI_TRB_TYPE_PORT_STATUS_CHG:
-                color_printk(YELLOW, BLACK, "[xHCI Event] Port Status Change! Device plugged/unplugged.\n");
+                // 1. 判断是否命中目标端口
+                if (local_trb.prot_status_change_event.port_id == value) {
+                    if (out_event_trb != NULL) {
+                        *out_event_trb = local_trb;
+                    }
+                    return XHCI_COMP_SUCCESS; // ★ 立刻全身而退！
+                }
+
+                // 没命中：旁路打印
+                color_printk(YELLOW, BLACK, "[xHCI Event] Async Port %d Status Change!\n",
+                             local_trb.prot_status_change_event.port_id);
                 break;
+
             case XHCI_TRB_TYPE_BANDWIDTH_REQ:
-                color_printk(BLUE, BLACK, "[xHCI Event] Bandwidth Request (Ignored).\n");
-                break;
             case XHCI_TRB_TYPE_DOORBELL:
-                color_printk(BLUE, BLACK, "[xHCI Event] Virtualization Doorbell (Ignored).\n");
+            case XHCI_TRB_TYPE_DEVICE_NOTIFY:
+            case XHCI_TRB_TYPE_MFINDEX_WRAP:
+                // 常规噪音，直接忽略
                 break;
+
             case XHCI_TRB_TYPE_HOST_CTRL:
                 color_printk(RED, BLACK, "[xHCI Event] Host Controller internal state change!\n");
                 break;
-            case XHCI_TRB_TYPE_DEVICE_NOTIFY:
-                color_printk(BLUE, BLACK, "[xHCI Event] Device Notification received (Ignored).\n");
-                break;
-            case XHCI_TRB_TYPE_MFINDEX_WRAP:
-                // 这个中断每 2 秒发生一次，不用打印，否则会刷屏
-                break;
+
             default:
                 color_printk(RED, BLACK, "[xHCI Event] Unknown TRB Type: %d\n", local_trb.cmd_comp_event.trb_type);
                 break;
         }
     }
+
+    // 只有把所有的 timeout_count 耗尽都没碰到 return，才会走到这里
     return XHCI_COMP_TIMEOUT;
 }
 
