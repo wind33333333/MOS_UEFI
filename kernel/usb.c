@@ -831,10 +831,10 @@ int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
 void usb_dev_scan(xhci_hcd_t *xhcd){
 
     //等待硬件完成端口初始化
-    // uint32 times = 20000000;
-    // while (times--) {
-    //     asm_pause();
-    // }
+    uint32 times = 20000000;
+    while (times--) {
+        asm_pause();
+    }
 
     for (uint8 i = 0; i < xhcd->max_ports; i++) {
         uint8 port_id = i+1;
@@ -842,7 +842,7 @@ void usb_dev_scan(xhci_hcd_t *xhcd){
 
         // 检测是否有设备连接 (CCS) 并且发生了状态变化 (CSC)
         //if ((portsc & XHCI_PORTSC_CCS) && (portsc & XHCI_PORTSC_CSC))
-        if ((portsc & XHCI_PORTSC_CCS)) {//目前采用轮训等待方式暂时只要ccs置为就进行初始化
+        if (portsc & XHCI_PORTSC_CCS ) {//目前采用轮训等待方式暂时只要ccs置为就进行初始化
             if (xhci_port_reset(xhcd, port_id) == 0) {
                 usb_dev_t *usb_dev = usb_dev_create(xhcd, port_id);
                 usb_dev_register(usb_dev);

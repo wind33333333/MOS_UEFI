@@ -78,7 +78,7 @@ xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, ui
                 }
 
                 // 没命中：说明是意料之外的丢包，打印警告后 break，进入下一次 while 循环继续等
-                color_printk(RED, BLACK, "[xHCI WARNING] Dropped unexpected event at PA %#llx!\n",
+                color_printk(RED, BLACK, "[xHCI WARNING] Dropped unexpected event at PA %#lx!\n",
                              local_trb.cmd_comp_event.cmd_trb_ptr);
                 break;
 
@@ -128,13 +128,13 @@ uint8 xhci_handle_common_error(xhci_trb_comp_code_e comp_code, uint64 trb_pa) {
     // 2. 拦截并处理所有的“通用级/系统级”硬件崩溃
     switch (comp_code) {
         case XHCI_COMP_TIMEOUT:
-            color_printk(RED, BLACK, "[xHCI General Error] TIMEOUT (-1) at PA %#llx: Hardware hang or event lost.\n",
+            color_printk(RED, BLACK, "[xHCI General Error] TIMEOUT (-1) at PA %#lx: Hardware hang or event lost.\n",
                          trb_pa);
             return 1;
 
         case XHCI_COMP_TRB_ERROR:
             color_printk(
-                RED, BLACK, "[xHCI General Error] TRB Error (5) at PA %#llx: Invalid TRB format (Chain/Type wrong).\n",
+                RED, BLACK, "[xHCI General Error] TRB Error (5) at PA %#lx: Invalid TRB format (Chain/Type wrong).\n",
                 trb_pa);
             return 1;
 
@@ -209,7 +209,7 @@ xhci_trb_comp_code_e xhci_execute_command_sync(xhci_hcd_t *xhcd, xhci_trb_t *cmd
     // ==========================================================
     // 第三关：专科门诊 (【命令环专属】的 10 种逻辑故障全覆盖)
     // ==========================================================
-    color_printk(RED, BLACK, "\nxHCI: [Command Error] Command rejected at PA %#llx!\n", cmd_pa);
+    color_printk(RED, BLACK, "\nxHCI: [Command Error] Command rejected at PA %#lx!\n", cmd_pa);
 
     switch (comp_code) {
         // ------------------------------------------------------
@@ -420,7 +420,7 @@ int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_id) {
 
     uint64 hardware_stopped_pa = evt_trb.cmd_comp_event.cmd_trb_ptr;
 
-    color_printk(YELLOW, BLACK, "xHCI: Emergency Stopped EP %d on Slot %d! HW halted at PA: %#llx\n",
+    color_printk(YELLOW, BLACK, "xHCI: Emergency Stopped EP %d on Slot %d! HW halted at PA: %#lx\n",
                  ep_id, slot_id, hardware_stopped_pa);
 
     return 0;
