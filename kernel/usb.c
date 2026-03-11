@@ -319,7 +319,7 @@ int usb_set_if(usb_dev_t *udev,uint8 if_num,uint8 alt_num) {
 
 
 //获取usb配置描述符
-int usb_get_config_descriptor(usb_dev_t *udev) {
+int usb_get_cfg_desc(usb_dev_t *udev) {
     usb_cfg_desc_t *config_desc = kzalloc_dma(sizeof(usb_cfg_desc_t));
 
     //第一次先获取配置描述符前9字节
@@ -338,7 +338,7 @@ int usb_get_config_descriptor(usb_dev_t *udev) {
 }
 
 //获取字符串描述符
-int usb_get_string_descriptor(usb_dev_t *udev) {
+int usb_get_string_desc(usb_dev_t *udev) {
 
     usb_desc_head *desc_head = kzalloc_dma(2);
 
@@ -426,7 +426,7 @@ int32 usb_setup_slot_ep0(usb_dev_t *udev) {
     uint8 port_speed = xhci_get_port_speed(xhcd, udev->port_id);
 
     // --- 配置 Slot Context ---
-    xhci_slot_ctx_t *input_slot_ctx = xhci_get_input_ctx_addr(xhcd, input_ctx, 0);
+    xhci_slot_ctx_t *input_slot_ctx = xhci_get_input_ctx_entry(xhcd, input_ctx, 0);
     input_slot_ctx->port_speed = port_speed;
     input_slot_ctx->context_entries = 1;                  // 仅激活到 EP0
     input_slot_ctx->root_hub_port_num = udev->port_id; // 精确锁定根集线器端口
@@ -442,7 +442,7 @@ int32 usb_setup_slot_ep0(usb_dev_t *udev) {
     }
 
     // --- 配置 EP0 Context ---
-    xhci_ep_ctx_t *input_ep0_ctx = xhci_get_input_ctx_addr(xhcd, input_ctx, 1);
+    xhci_ep_ctx_t *input_ep0_ctx = xhci_get_input_ctx_entry(xhcd, input_ctx, 1);
     input_ep0_ctx->cerr = 3;
     input_ep0_ctx->ep_type = 4; // Control Endpoint
     input_ep0_ctx->max_packet_size = max_packet_size;
@@ -486,9 +486,9 @@ int32 usb_get_dev_desc(usb_dev_t *udev) {
 
             // ★ 架构师机密：如何安全地修改端点参数？
             // 1. 获取硬件【当前】的真实状态 (只读的 Device Context)
-            xhci_ep_ctx_t *hw_ep0_ctx = xhci_get_ctx_addr(udev, 1);
+            xhci_ep_ctx_t *hw_ep0_ctx = xhci_get_dev_ctx_entry(udev, 1);
             // 2. 获取我们新申请表里的 EP0 位置
-            xhci_ep_ctx_t *in_ep0_ctx = xhci_get_input_ctx_addr(xhcd, eval_ctx, 1);
+            xhci_ep_ctx_t *in_ep0_ctx = xhci_get_input_ctx_entry(xhcd, eval_ctx, 1);
 
             // 3. 把硬件状态【完全克隆】到申请表中
             asm_mem_cpy(hw_ep0_ctx,in_ep0_ctx,sizeof(xhci_ep_ctx_t));
@@ -560,7 +560,7 @@ int usb_endpoint_init(usb_if_alt_t *if_alt) {
             tr_dequeue_ptr = va_to_pa(ep_vir->transfer_ring.ring_base) | 1; // DCS=1
         }
 
-        xhci_ep_ctx_t *ep_ctx = xhci_get_input_ctx_addr(xhcd,input_ctx,ep_dci);
+        xhci_ep_ctx_t *ep_ctx = xhci_get_input_ctx_entry(xhcd,input_ctx,ep_dci);
         ep_ctx->ep_type = ep_phy->ep_type;
         ep_ctx->cerr = 3;
         ep_ctx->max_packet_size = ep_phy->max_packet;
@@ -572,7 +572,7 @@ int usb_endpoint_init(usb_if_alt_t *if_alt) {
 
     }
     //配置slot
-    xhci_slot_ctx_t *slot_ctx = xhci_get_input_ctx_addr(xhcd,input_ctx,0);
+    xhci_slot_ctx_t *slot_ctx = xhci_get_input_ctx_entry(xhcd,input_ctx,0);
     slot_ctx->port_speed = xhci_get_port_speed(xhcd,udev->port_id);
     slot_ctx->context_entries = max_ep_num;
     slot_ctx->root_hub_port_num = udev->port_id;
@@ -759,8 +759,8 @@ usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
     xhci_cmd_enable_slot(xhcd,&usb_dev->slot_id); //启用插槽
     usb_setup_slot_ep0(usb_dev); //设置设备地址
     usb_get_dev_desc(usb_dev);
-    usb_get_config_descriptor(usb_dev); //获取配置描述符
-    usb_get_string_descriptor(usb_dev); //获取字符串描述符
+    usb_get_cfg_desc(usb_dev); //获取配置描述符
+    usb_get_string_desc(usb_dev); //获取字符串描述符
     usb_set_cfg(usb_dev,usb_dev->config_desc->configuration_value); //激活配置
 
     usb_dev->dev.type = &usb_dev_type;

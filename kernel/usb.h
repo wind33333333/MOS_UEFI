@@ -444,15 +444,15 @@ static inline uint8 epdci_to_epaddr(uint8 dci) {
 
 }
 
-//获取需要input端点的上下文地址
-static inline void *xhci_get_input_ctx_addr(xhci_hcd_t *xhcd,xhci_input_ctrl_ctx_t *input_ctx, uint32 ep_dci) {
+//获取 Input Context 数组中的指定条目
+static inline void *xhci_get_input_ctx_entry(xhci_hcd_t *xhcd,xhci_input_ctrl_ctx_t *input_ctx, uint32 ep_dci) {
     uint8 ctx_size = xhcd->ctx_size;
     return (uint8 *)input_ctx + ctx_size * (ep_dci + 1);
 }
 
 
-//获取需要端点的上下文地址
-static inline void *xhci_get_ctx_addr(usb_dev_t *udev, uint32 ep_dci) {
+//获取 Device Context 数组中的指定条目
+static inline void *xhci_get_dev_ctx_entry(usb_dev_t *udev, uint32 ep_dci) {
     return (uint8*)udev->dev_ctx + udev->xhcd->ctx_size * ep_dci;
 }
 
