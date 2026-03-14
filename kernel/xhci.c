@@ -346,7 +346,7 @@ int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id) {
 
 
 //设置设备地址
-int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctrl_ctx_t *input_ctx) {
+int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctx_t *input_ctx) {
     //配置和执行addr_dev命令
     xhci_trb_t cmd_trb = {0};
     cmd_trb.addr_dev.trb_type = XHCI_TRB_TYPE_ADDRESS_DEVICE;
@@ -358,6 +358,50 @@ int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctrl_ctx_t *i
 
     if (comp_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "xHCI: Failed to address device! Error: %d\n", comp_code);
+        return -1;
+    }
+    return 0;
+}
+
+/**
+ * @brief 底层指令：发送 Configure Endpoint 命令
+ * @param xhcd xHCI 控制器实例
+ * @param input_ctx_pa    Input Context 的物理地址 (必须64字节对齐)
+ * @param slot_id         目标 Slot ID
+ * @param dc              Deconfigure 标志 (0=配置端点, 1=一键清除所有业务端点)
+ */
+int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_id, uint8 dc) {
+    xhci_trb_t cmd_trb = {0};
+    cmd_trb.cfg_ep.trb_type = XHCI_TRB_TYPE_CONFIGURE_EP;
+    cmd_trb.cfg_ep.input_ctx_ptr = va_to_pa(input_ctx);
+    cmd_trb.cfg_ep.slot_id = slot_id;
+    cmd_trb.cfg_ep.dc = dc;
+
+    // 敲响命令环门铃，等待主板评估带宽并分配资源
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
+    if (comp_code != XHCI_COMP_SUCCESS) {
+        color_printk(RED, BLACK, "xHCI: Failed to configure_endpoint! Error: %d\n", comp_code);
+        return -1;
+    }
+    return 0;
+}
+
+/**
+ * @brief 底层指令：发送 Evaluate Context 命令
+ * @param xhci            xHCI 控制器实例
+ * @param input_ctx_pa    Input Context 的物理地址
+ * @param slot_id         目标 Slot ID
+ */
+int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_id) {
+    xhci_trb_t cmd_trb = {0};
+    cmd_trb.eval_ctx.trb_type = XHCI_TRB_TYPE_EVALUATE_CTX;
+    cmd_trb.eval_ctx.input_ctx_ptr = va_to_pa(input_ctx);
+    cmd_trb.eval_ctx.slot_id = slot_id;
+
+    // 敲响命令环门铃，主板将读取并更新上下文
+    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
+    if (comp_code != XHCI_COMP_SUCCESS) {
+        color_printk(RED, BLACK, "xHCI: Failed to evaluate_context! Error: %d\n", comp_code);
         return -1;
     }
     return 0;
@@ -454,50 +498,6 @@ int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,
     xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
     if (comp_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "xHCI: Failed to set_tr_dequeue_pointer! Error: %d\n", comp_code);
-        return -1;
-    }
-    return 0;
-}
-
-/**
- * @brief 底层指令：发送 Configure Endpoint 命令
- * @param xhcd xHCI 控制器实例
- * @param input_ctx_pa    Input Context 的物理地址 (必须64字节对齐)
- * @param slot_id         目标 Slot ID
- * @param dc              Deconfigure 标志 (0=配置端点, 1=一键清除所有业务端点)
- */
-int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctrl_ctx_t *input_ctx, uint8 slot_id, uint8 dc) {
-    xhci_trb_t cmd_trb = {0};
-    cmd_trb.cfg_ep.trb_type = XHCI_TRB_TYPE_CONFIGURE_EP;
-    cmd_trb.cfg_ep.input_ctx_ptr = va_to_pa(input_ctx);
-    cmd_trb.cfg_ep.slot_id = slot_id;
-    cmd_trb.cfg_ep.dc = dc;
-
-    // 敲响命令环门铃，等待主板评估带宽并分配资源
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "xHCI: Failed to configure_endpoint! Error: %d\n", comp_code);
-        return -1;
-    }
-    return 0;
-}
-
-/**
- * @brief 底层指令：发送 Evaluate Context 命令
- * @param xhci            xHCI 控制器实例
- * @param input_ctx_pa    Input Context 的物理地址
- * @param slot_id         目标 Slot ID
- */
-int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctrl_ctx_t *input_ctx, uint8 slot_id) {
-    xhci_trb_t cmd_trb = {0};
-    cmd_trb.eval_ctx.trb_type = XHCI_TRB_TYPE_EVALUATE_CTX;
-    cmd_trb.eval_ctx.input_ctx_ptr = va_to_pa(input_ctx);
-    cmd_trb.eval_ctx.slot_id = slot_id;
-
-    // 敲响命令环门铃，主板将读取并更新上下文
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "xHCI: Failed to evaluate_context! Error: %d\n", comp_code);
         return -1;
     }
     return 0;

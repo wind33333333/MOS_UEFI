@@ -348,6 +348,7 @@ typedef struct usb_drv_t{
     void (*remove)(struct usb_if_t *usb_if);
 } usb_drv_t;
 
+
 //usb端点
 typedef struct usb_ep_t {
     //端点描述符
@@ -361,6 +362,8 @@ typedef struct usb_ep_t {
     uint8       max_burst;         // USB3 bMaxBurst（0=1 burst；仅 SS/SSP 有意义）
     uint16      max_streams;         // bulk 端点支持的最大 stream 数（由 ss_comp->bmAttributes 解码，0 表示不支持 streams（BOT 一般用不到，UAS 可能需要）
     uint16      bytes_per_interval; // USB3 wBytesPerInterval（中断/等时重要）
+
+    uint64      trq_phys_addr;
 
     void        *extras_desc;    // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
 } usb_ep_t;
@@ -390,27 +393,29 @@ typedef struct usb_if_t {
 } usb_if_t;
 
 //端点
-typedef struct endpoint_t{
+typedef struct ep_ring_t{
     union {
         xhci_ring_t  transfer_ring;
         xhci_ring_t  *stream_rings;   // per-stream rings数组 (如果启用流)
     };
     uint32 streams_count;        // 2^max_streams_exp+1
-}endpoint_t;
+}ep_ring_t;
 
 //USB设备
 typedef struct usb_dev_t{
     uint8                           port_id;
     uint8                           slot_id;
-    usb_dev_desc_t*                 dev_desc;             //设备描述符
-    usb_cfg_desc_t*                 config_desc;          //配置描述符
-    usb_string_desc_t*              language_desc;      //语言描述符
-    usb_string_desc_t*              manufacturer_desc;  //制造商描述符
-    usb_string_desc_t*              product_desc;       //产品型号名描述符
-    usb_string_desc_t*              serial_number_desc; //序列号描述符
-    void*                           dev_ctx;           // 设备上下文
-    endpoint_t                      eps[32];           // 端点0-31
-    xhci_hcd_t*                     xhcd;   // xhci控制器
+    usb_dev_desc_t                  *dev_desc;             //设备描述符
+    usb_cfg_desc_t                  *config_desc;          //配置描述符
+    usb_string_desc_t               *language_desc;      //语言描述符
+    usb_string_desc_t               *manufacturer_desc;  //制造商描述符
+    usb_string_desc_t               *product_desc;       //产品型号名描述符
+    usb_string_desc_t               *serial_number_desc; //序列号描述符
+    void                            *dev_ctx;           // 设备上下文
+    xhci_input_ctx_t                *input_ctx;        // 输入上下文
+    uint32                          active_ep_map;      //当天活跃的端点图
+    ep_ring_t                       eps_ring[32];       // 端点0-31
+    xhci_hcd_t                      *xhcd;   // xhci控制器
     device_t                        dev;
     uint8                           interfaces_count;  // 接口数量
     usb_if_t                        *interfaces;       // 接口指针根据接口数量动态分配
@@ -445,7 +450,7 @@ static inline uint8 epdci_to_epaddr(uint8 dci) {
 }
 
 //获取 Input Context 数组中的指定条目
-static inline void *xhci_get_input_ctx_entry(xhci_hcd_t *xhcd,xhci_input_ctrl_ctx_t *input_ctx, uint32 ep_dci) {
+static inline void *xhci_get_input_ctx_entry(xhci_hcd_t *xhcd,xhci_input_ctx_t *input_ctx, uint32 ep_dci) {
     uint8 ctx_size = xhcd->ctx_size;
     return (uint8 *)input_ctx + ctx_size * (ep_dci + 1);
 }

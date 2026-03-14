@@ -793,7 +793,7 @@ typedef struct trb_transfer_event_t{
     uint32                    event_data:1;      // Dword 3 [2]: ED 位 (是否为纯事件数据)
     uint32                    rsvd2:7;           // Dword 3 [9:3]: 保留
     trb_type_e                trb_type:6;        // Dword 3 [15:10]: 必须是 32 (XHCI_TRB_TYPE_TRANSFER_EVENT)
-    uint32                    ep_id:5;           // Dword 3 [20:16]: 发生事件的端点 DCI (1 是 EP0，等)
+    uint32                    ep_dci:5;           // Dword 3 [20:16]: 发生事件的端点 DCI (1 是 EP0，等)
     uint32                    rsvd3:3;           // Dword 3 [23:21]: 保留
     uint32                    slot_id:8;         // Dword 3 [31:24]: 发生事件的设备槽位号
 } trb_transfer_event_t;
@@ -926,7 +926,7 @@ typedef struct input_ctrl_ctx_t{
     uint32 drop_context_flags;  // Dword 0: 位 0 = Slot, 位 1 = EP0, 位 2 = EP1...
     uint32 add_context_flags;   // Dword 1: 同上
     uint32 reserved[6];         // 填充至 32 字节
-} xhci_input_ctrl_ctx_t;
+} xhci_input_ctx_t;
 
 #define XHCI_DEVICE_CONTEXT_COUNT 32
 #define XHCI_INPUT_CONTEXT_COUNT 33
@@ -1079,6 +1079,11 @@ static inline int32 xhci_ring_init(xhci_ring_t *ring) {
     ring->cycle = 1;
 }
 
+//环释放
+static inline int32 xhci_ring_free(xhci_ring_t *ring) {
+    kfree(ring->ring_base);
+}
+
 //响铃
 static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 value) {
     xhcd->db_reg[db_number] = value;
@@ -1091,11 +1096,11 @@ uint8 xhci_handle_common_error(xhci_trb_comp_code_e comp_code, uint64 trb_pa);
 xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, uint64 value, uint64 timeout_ms,xhci_trb_t *out_event_trb) ;
 int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id);
 int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);
-int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctrl_ctx_t *input_ctx);
-int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctrl_ctx_t *input_ctx, uint8 slot_id, uint8 dc);
+int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctx_t *input_ctx);
+int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_id, uint8 dc);
 int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_id);
 uint32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
-int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctrl_ctx_t *input_ctx, uint8 slot_id);
+int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_id);
 int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci_ring_t *transfer_ring);
 int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id);
 

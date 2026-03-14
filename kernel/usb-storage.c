@@ -61,7 +61,7 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
         for (uint8 i = 0; i < 4; i++) {
             usb_ep_t *ep = &usb_if->cur_alt->eps[i];
             uint8 ep_num = ep->ep_dci;
-            uint32 streams = usb_dev->eps[ep_num].streams_count;
+            uint32 streams = usb_dev->eps_ring[ep_num].streams_count;
             if (streams && streams < mini_streams) mini_streams = streams;
             usb_uas_pipe_usage_desc_t *pipe_usage_desc = ep->extras_desc;
             switch (pipe_usage_desc->pipe_id) {

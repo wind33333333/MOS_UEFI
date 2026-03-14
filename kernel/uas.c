@@ -56,18 +56,18 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     // 3. 提交 TRB (关键顺序：Status -> Data -> Command) 先准备好“收”，再触发“发”，防止设备回包太快导致溢出
     // [Step A] 提交 Status Pipe 请求 (接收 Sense IU)
     normal_transfer_trb(&trb, va_to_pa(sense_iu), disable_ch, UAS_SENSE_IU_ALLOC_SIZE, ENABLE_IOC);
-    uint64 status_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[status_pipe].stream_rings[tag], &trb);
+    uint64 status_trb_ptr = xhci_ring_enqueue(&usb_dev->eps_ring[status_pipe].stream_rings[tag], &trb);
 
     // [Step B] 提交 Data Pipe 请求 (如果有数据)
     if (cmnd->data_buf && cmnd->data_len) {
         data_pipe = cmnd->dir == SCSI_DIR_IN ? uas_data->data_in_pipe : uas_data->data_out_pipe;
         normal_transfer_trb(&trb, va_to_pa(cmnd->data_buf), disable_ch, cmnd->data_len, DISABLE_IOC);
-        xhci_ring_enqueue(&usb_dev->eps[data_pipe].stream_rings[tag], &trb);
+        xhci_ring_enqueue(&usb_dev->eps_ring[data_pipe].stream_rings[tag], &trb);
     }
 
     // [Step C] 提交 Command Pipe 请求 (触发执行)
     normal_transfer_trb(&trb, va_to_pa(cmd_iu), disable_ch,uas_cmd_iu_alloc_size, DISABLE_IOC); //如果cdb超过了16字节需要加上扩展字节
-    xhci_ring_enqueue(&usb_dev->eps[cmd_pipe].transfer_ring,&trb);
+    xhci_ring_enqueue(&usb_dev->eps_ring[cmd_pipe].transfer_ring,&trb);
 
     // [Step D] 敲门铃 (Doorbell) status
     xhci_ring_doorbell(xhcd, slot_id, status_pipe | tag<<16);

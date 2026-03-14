@@ -118,7 +118,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 
     // 提交 TRB 到 Bulk OUT
     normal_transfer_trb(&trb, va_to_pa(cbw), disable_ch, sizeof(bot_cbw_t), ENABLE_IOC);
-    uint64 cbw_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[pipe_out].transfer_ring, &trb);
+    uint64 cbw_trb_ptr = xhci_ring_enqueue(&usb_dev->eps_ring[pipe_out].transfer_ring, &trb);
     xhci_ring_doorbell(xhcd, usb_dev->slot_id, pipe_out);
 
     // 等待 CBW 发送完成
@@ -139,7 +139,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 
         normal_transfer_trb(&trb, va_to_pa(cmnd->data_buf), disable_ch,cmnd->data_len , ENABLE_IOC);
         trb.member1 |= 1UL<<34;//设置短包中断
-        uint64 data_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[data_pipe].transfer_ring, &trb);
+        uint64 data_trb_ptr = xhci_ring_enqueue(&usb_dev->eps_ring[data_pipe].transfer_ring, &trb);
         xhci_ring_doorbell(xhcd, usb_dev->slot_id, data_pipe);
 
         timing();
@@ -175,7 +175,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 retry_csw:
     // 提交 TRB 到 Bulk IN (不管刚才数据是读是写，CSW 永远是读)
     normal_transfer_trb(&trb, va_to_pa(csw), disable_ch, sizeof(bot_csw_t), ENABLE_IOC);
-    uint64 csw_trb_ptr = xhci_ring_enqueue(&usb_dev->eps[pipe_in].transfer_ring, &trb);
+    uint64 csw_trb_ptr = xhci_ring_enqueue(&usb_dev->eps_ring[pipe_in].transfer_ring, &trb);
 
     xhci_ring_doorbell(xhcd, usb_dev->slot_id, pipe_in);
 

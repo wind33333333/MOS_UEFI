@@ -140,6 +140,27 @@ static inline uint8 asm_lzcnt(uint64 var) {
     return (uint8)result;
 }
 
+static inline uint8 asm_tzcnt32(uint32 var) {
+    uint64 result;
+    __asm__ __volatile__(
+        "tzcntl    %1,%0   \n\t"
+        :"=r"(result)
+        :"r"(var)
+        :"cc");
+    return (uint8)result;
+}
+
+
+static inline uint8 asm_lzcnt32(uint32 var) {
+    uint32 result;
+    __asm__ __volatile__(
+        "lzcntl    %1,%0   \n\t"
+        :"=r"(result)
+        :"r"(var)
+        :"cc");
+    return (uint8)result;
+}
+
 // 自旋锁
 static inline void spin_lock(volatile uint8 *lock_var) {
     __asm__ __volatile__ (
