@@ -96,28 +96,31 @@ int usb_endpoint_init(usb_if_alt_t *if_alt) {
 }
 
 //u盘驱动程序
-int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
-    usb_dev_t *udev = usb_if->udev;
+int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
+    usb_dev_t *udev = uif->udev;
+
+    color_printk(GREEN,BLACK,"usb_dev m:%s p:%s s:%s slot_id:%d port_id:%d port_speed:%d  \n",udev->manufacturer,udev->product,udev->serial_number,udev->slot_id,udev->port_id,udev->port_speed);
+    color_printk(GREEN,BLACK,"usb_if if_num:%d alt_count:%d \n",uif->if_num,uif->alt_count);
 
     //u盘是否支持uas协议，优先设置为uas协议
-    usb_if_alt_t *alts = usb_if->alts;
-    for (uint8 i = 0; i < usb_if->alt_count; i++) {
-        if (alts[i].if_protocol == 0x62) usb_if->cur_alt = &alts[i];
+    usb_if_alt_t *alts = uif->alts;
+    for (uint8 i = 0; i < uif->alt_count; i++) {
+        if (alts[i].if_protocol == 0x62) uif->cur_alt = &alts[i];
     }
 
     scsi_host_t *shost;
 
-    if (usb_if->cur_alt->if_protocol == 0x62) {        //uas协议初始化流程
+    if (uif->cur_alt->if_protocol == 0x62) {        //uas协议初始化流程
 
 
         //创建uas协议似有数据
         uas_data_t *uas_data = kzalloc(sizeof(uas_data_t));
-        uas_data->usb_if = usb_if;
+        uas_data->usb_if = uif;
 
         uint32 mini_streams = 1<<MAX_STREAMS;
         //解析pipe端点
         for (uint8 i = 0; i < 4; i++) {
-            usb_ep_t *ep = &usb_if->cur_alt->eps[i];
+            usb_ep_t *ep = &uif->cur_alt->eps[i];
             uint8 ep_dci = ep->ep_dci;
             uint32 streams = ep->streams_count;
             if (streams && streams < mini_streams) mini_streams = streams;
@@ -148,9 +151,9 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
     } else {        //bot协议初始化流程
         //创建bot_data
         bot_data_t *bot_data = kzalloc(sizeof(bot_data_t));
-        bot_data->usb_if = usb_if;
+        bot_data->usb_if = uif;
         for (uint8 i = 0; i < 2; i++) {
-            usb_ep_t *ep = &usb_if->cur_alt->eps[i];
+            usb_ep_t *ep = &uif->cur_alt->eps[i];
             uint8 ep_dci = ep->ep_dci;
             if (ep_dci & 1) {
                 bot_data->pipe_in = ep_dci;

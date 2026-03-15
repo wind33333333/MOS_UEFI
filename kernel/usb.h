@@ -419,8 +419,8 @@ typedef struct usb_if_t {
 
 //USB设备
 typedef struct usb_dev_t{
-    uint8                           port_id;
     uint8                           slot_id;
+    uint8                           port_id;
     uint8                           port_speed;
     uint16                          interrupter_target;
     usb_dev_desc_t                  *dev_desc;             //设备描述符
