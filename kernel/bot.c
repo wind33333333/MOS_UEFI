@@ -85,7 +85,7 @@ void bot_recovery_reset(usb_dev_t *usb_dev,uint8 if_num, uint8 pipe_in, uint8 pi
  */
 void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     bot_data_t *bot_data =host->hostdata;
-    usb_dev_t *usb_dev = bot_data->usb_if->usb_dev;
+    usb_dev_t *usb_dev = bot_data->usb_if->udev;
     xhci_hcd_t *xhcd = usb_dev->xhcd;
 
     // 管道定义 (BOT 通常只用两个 Bulk 管道)

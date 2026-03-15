@@ -39,7 +39,7 @@ extern scsi_host_template_t bot_host_template;
 
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
-    usb_dev_t *usb_dev = usb_if->usb_dev;
+    usb_dev_t *udev = usb_if->udev;
 
     //u盘是否支持uas协议，优先设置为uas协议
     usb_if_alt_t *alts = usb_if->alts;
@@ -60,22 +60,22 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
         //解析pipe端点
         for (uint8 i = 0; i < 4; i++) {
             usb_ep_t *ep = &usb_if->cur_alt->eps[i];
-            uint8 ep_num = ep->ep_dci;
-            uint32 streams = usb_dev->eps_ring[ep_num].streams_count;
+            uint8 ep_dci = ep->ep_dci;
+            uint32 streams = ep->streams_count;
             if (streams && streams < mini_streams) mini_streams = streams;
             usb_uas_pipe_usage_desc_t *pipe_usage_desc = ep->extras_desc;
             switch (pipe_usage_desc->pipe_id) {
                 case USB_UAS_PIPE_COMMAND_OUT:
-                    uas_data->cmd_pipe = ep_num ;     //命令pipe
+                    uas_data->cmd_pipe = ep_dci ;     //命令pipe
                     break;
                 case USB_UAS_PIPE_STATUS_IN:
-                    uas_data->status_pipe = ep_num ; //状态pipe
+                    uas_data->status_pipe = ep_dci ; //状态pipe
                     break;
                 case USB_UAS_PIPE_BULK_IN:
-                    uas_data->data_in_pipe = ep_num ; //接收数据pipe
+                    uas_data->data_in_pipe = ep_dci ; //接收数据pipe
                     break;
                 case USB_UAS_PIPE_BULK_OUT:
-                    uas_data->data_out_pipe = ep_num ; //发送数据pipe
+                    uas_data->data_out_pipe = ep_dci ; //发送数据pipe
             }
         }
 

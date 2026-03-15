@@ -411,7 +411,7 @@ typedef struct usb_if_alt_t {
 
 //usb接口
 typedef struct usb_if_t {
-    struct usb_dev_t *usb_dev;
+    struct usb_dev_t *udev;
     uint8 if_num;
     uint8 alt_count;
     usb_if_alt_t *alts;

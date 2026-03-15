@@ -722,27 +722,32 @@ int32 usb_get_dev_desc(usb_dev_t *udev) {
 
 //初始化端点
 int usb_endpoint_init(usb_if_alt_t *if_alt) {
-    usb_dev_t *udev = if_alt->usb_if->usb_dev;
+    usb_dev_t *udev = if_alt->usb_if->udev;
     xhci_hcd_t *xhcd = udev->xhcd;
-    xhci_input_ctx_t *input_ctx = kzalloc(XHCI_INPUT_CONTEXT_COUNT*xhcd->ctx_size);
 
     //配置端点
     uint8 max_ep_num = 0;
     for (uint8 i = 0; i < if_alt->ep_count; i++) {
-        usb_ep_t *ep_phy = &if_alt->eps[i];
-        uint8 ep_dci = ep_phy->ep_dci;
-        if (ep_dci > max_ep_num) max_ep_num = ep_dci;
-        ep_ring_t *ep_vir = &udev->eps_ring[ep_dci];
+        usb_ep_t *ep = &if_alt->eps[i];
+        uint8 ep_dci = ep->ep_dci;
+
+        usb_tx_begin(udev);
+
+        //指针放到udev.eps中
+        udev->eps[ep_dci] = ep;
+
         uint64 tr_dequeue_ptr = 0;
-        uint32 max_streams = ep_phy->max_streams > MAX_STREAMS ? MAX_STREAMS : ep_phy->max_streams;
+        uint32 max_streams = ep->max_streams > MAX_STREAMS ? MAX_STREAMS : ep->max_streams;
         if (max_streams) {
             // 有流：分配Stream Context Array和per-stream rings
             uint32 streams_count = 1 << max_streams;
             uint32 streams_ctx_array_count = 1 << (max_streams + 1);
             xhci_stream_ctx_t *stream_ctx_array = kzalloc(streams_ctx_array_count * sizeof(xhci_stream_ctx_t));
             xhci_ring_t *stream_rings = kzalloc(streams_ctx_array_count * sizeof(xhci_ring_t)); //streams0 保留内存需要对齐;
-            ep_vir->stream_rings = stream_rings;
-            ep_vir->streams_count = streams_count;
+            ep->stream_rings = stream_rings;
+            ep->streams_count = streams_count;
+            ep->lsa = 1;
+            ep->hid = 1;
 
             for (uint32 s = 1; s <= streams_count; s++) {
                 // Stream ID从1开始
@@ -756,31 +761,20 @@ int usb_endpoint_init(usb_if_alt_t *if_alt) {
             tr_dequeue_ptr = va_to_pa(stream_ctx_array);
         } else {
             // 无流：单个Transfer Ring
-            xhci_ring_init(&ep_vir->transfer_ring);
-            tr_dequeue_ptr = va_to_pa(ep_vir->transfer_ring.ring_base) | 1; // DCS=1
+            xhci_ring_init(&ep->transfer_ring);
+            tr_dequeue_ptr = va_to_pa(ep->transfer_ring.ring_base) | 1; // DCS=1
         }
 
-        xhci_ep_ctx_t *ep_ctx = xhci_get_input_ctx_entry(xhcd,input_ctx,ep_dci);
-        ep_ctx->ep_type = ep_phy->ep_type;
-        ep_ctx->cerr = 3;
-        ep_ctx->max_packet_size = ep_phy->max_packet_size;
-        ep_ctx->max_burst_size = ep_phy->max_burst;
-        ep_ctx->max_pstreams = max_streams;
-        ep_ctx->lsa = 1;
-        ep_ctx->tr_dequeue_ptr = tr_dequeue_ptr;
-        input_ctx->add_context_flags |= 1<<ep_dci;
+        ep->ep_type = ep->ep_type;
+        ep->cerr = 3;
+        ep->max_streams = max_streams;
+        ep->trq_phys_addr = tr_dequeue_ptr;
 
+        usb_prep_add_ep(udev,ep);
     }
-    //配置slot
-    xhci_slot_ctx_t *slot_ctx = xhci_get_input_ctx_entry(xhcd,input_ctx,0);
-    slot_ctx->port_speed = xhci_get_port_speed(xhcd,udev->port_id);
-    slot_ctx->context_entries = max_ep_num;
-    slot_ctx->root_hub_port_num = udev->port_id;
-    input_ctx->add_context_flags |= 1<<0;
 
-    xhci_cmd_cfg_ep(xhcd,input_ctx,udev->slot_id,0);
+    usb_commit_tx(udev,USB_TX_CMD_CFG_EP);
 
-    kfree(input_ctx);
     return 0;
 }
 
@@ -1011,7 +1005,7 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
             usb_if->if_num = i;
             usb_if->alt_count = alt_count[i];
             usb_if->alts = kzalloc(sizeof(usb_if_alt_t) * usb_if->alt_count);
-            usb_if->usb_dev = usb_dev;
+            usb_if->udev = usb_dev;
             usb_if->dev.type = &usb_if_type;
             usb_if->dev.parent = &usb_dev->dev;
             usb_if->dev.bus = &usb_bus_type;
