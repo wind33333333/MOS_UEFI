@@ -342,6 +342,13 @@ typedef struct usb_req_pkg_t {
 
 //=============================================================
 
+typedef enum : uint8 {
+    USB_TX_CMD_ADDR_DEV,    // 事务：分配地址 (无中生有创世)
+    USB_TX_CMD_EVAL_CTX,    // 事务：评估上下文 (微调参数，如 EP0 包长)
+    USB_TX_CMD_CFG_EP,      // 事务：配置端点 (常规增删业务端点，DC=0)
+    USB_TX_CMD_DECFG_ALL    // 事务：格式化端点 (一键抹除所有业务端点，保留 EP0，DC=1)
+} usb_tx_cmd_e;
+
 //usb驱动id表
 typedef struct usb_id_t {
     // interface class 匹配（最常用）
@@ -357,16 +364,16 @@ typedef struct usb_drv_t{
     void (*remove)(struct usb_if_t *usb_if);
 } usb_drv_t;
 
-
 //usb端点
 typedef struct usb_ep_t {
-    //端点描述符
-    uint8       ep_dci;            // 端点 1-31
+    //解析后的端点描述符
+    uint8       ep_dci;               // 端点 0-31
     uint8       ep_type;           // 端点：控制/批量/中断/等时
     uint16      max_packet_size;        // wMaxPacketSize 解码后的最大包长（基础值）
     uint8       interval;          // bInterval（中断/等时用；bulk 通常可忽略但保留）
+    uint8       cerr;
 
-    //超高速端点伴随描述符
+    //解析后的超高速端点伴随描述符
     uint8       max_burst;         // USB3 bMaxBurst（0=1 burst；仅 SS/SSP 有意义）
     uint16      max_streams;         // bulk 端点支持的最大 stream 数（由 ss_comp->bmAttributes 解码，0 表示不支持 streams（BOT 一般用不到，UAS 可能需要）
     uint16      bytes_per_interval; // USB3 wBytesPerInterval（中断/等时重要）
@@ -377,7 +384,15 @@ typedef struct usb_ep_t {
     uint16      average_trb_length;
     uint64      trq_phys_addr;
 
-    void        *extras_desc;    // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
+    //软件结构
+    union {
+        xhci_ring_t  transfer_ring;
+        xhci_ring_t  *stream_rings;   // per-stream rings数组 (如果启用流)
+    };
+    uint32 streams_count;        // 2^max_streams_exp+1
+
+    // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
+    void        *extras_desc;
 } usb_ep_t;
 
 //usb替用接口
@@ -404,19 +419,13 @@ typedef struct usb_if_t {
     device_t dev;
 } usb_if_t;
 
-//端点
-typedef struct ep_ring_t{
-    union {
-        xhci_ring_t  transfer_ring;
-        xhci_ring_t  *stream_rings;   // per-stream rings数组 (如果启用流)
-    };
-    uint32 streams_count;        // 2^max_streams_exp+1
-}ep_ring_t;
+
 
 //USB设备
 typedef struct usb_dev_t{
     uint8                           port_id;
     uint8                           slot_id;
+    uint16                          interrupter_target;
     usb_dev_desc_t                  *dev_desc;             //设备描述符
     usb_cfg_desc_t                  *config_desc;          //配置描述符
     usb_string_desc_t               *language_desc;      //语言描述符
@@ -426,7 +435,8 @@ typedef struct usb_dev_t{
     void                            *dev_ctx;           // 设备上下文
     xhci_input_ctx_t                *input_ctx;        // 输入上下文
     uint32                          active_ep_map;      //当天活跃的端点图
-    ep_ring_t                       eps_ring[32];       // 端点0-31
+    usb_ep_t                        ep0;                // 端点0
+    usb_ep_t                        *eps[32];           // 端点0-31 驱动把接口端点挂到usb_dev,方便usb_core层管理
     xhci_hcd_t                      *xhcd;   // xhci控制器
     device_t                        dev;
     uint8                           interfaces_count;  // 接口数量
@@ -436,6 +446,12 @@ typedef struct usb_dev_t{
     uint8                           *serial_number;    // 序列号ascii字符
     struct usb_dev_t                *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
     uint8                           parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
+    uint16                          max_exit_latency;
+
+    uint8                           is_hub;          // 是否为 Hub
+    uint8                           hub_num_ports;   // Hub 的端口数
+    uint8                           hub_mtt;         // 是否支持多事务翻译器
+    uint8                           hub_ttt;
 } usb_dev_t;
 
 #define MAX_STREAMS 6  //最多支持流数量（2^6=64）
