@@ -509,6 +509,23 @@ void usb_prep_reconfig_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
 }
 
 /**
+ * @brief [纯内存] 准备初始化 Slot Context 基座 (专用于 Address Device 创世阶段)
+ * @param udev       目标 USB 设备
+ * @param port_speed 设备的物理连接速度
+ */
+void usb_prep_init_slot(usb_dev_t *udev) {
+    // 1. 获取 Slot 图纸
+    xhci_slot_ctx_t *input_slot_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, 0);
+
+    // 2. 填入初始物理属性
+    input_slot_ctx->port_speed = udev->port_speed;
+    input_slot_ctx->root_hub_port_num = udev->port_id; // 精确锁定根集线器端口
+
+    // 3. 打上涂改标记 (Bit 0 特权)
+    udev->input_ctx->add_context_flags |= (1 << 0);
+}
+
+/**
  * @brief [纯内存] 准备微调 Slot 上下文 (仅限 Evaluate Context 使用)
  * @note 绝不能置位 Drop Flag (Slot 不能被 Drop，只能 Disable)！常用于设置 Hub 属性、省电参数或中断目标迁移。
  * @param udev 目标 USB 设备 (里面包含了软件层刚解析出的新全局属性)
@@ -618,61 +635,35 @@ int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     //启用插槽
     xhci_cmd_enable_slot(xhcd,&udev->slot_id); //启用插槽
 
-    // ============================
-    // 1. 分配并挂载设备上下文和input上下文
-    // ============================
+    //分配设备上下文
     uint8 ctx_size = xhcd->ctx_size;
     udev->dev_ctx = kzalloc_dma(XHCI_DEVICE_CONTEXT_COUNT * ctx_size);
     xhcd->dcbaap[udev->slot_id] = va_to_pa(udev->dev_ctx);
-    xhci_input_ctx_t *input_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * ctx_size);
-    udev->input_ctx = input_ctx;
 
-    // ============================
-    // 2. 初始化控制传输环 (EP0 Transfer Ring)
-    // ============================
-    xhci_ring_t *uc_ring = &udev->ep0.transfer_ring;
-    xhci_ring_init(uc_ring);
+    //分配input上下文
+    udev->input_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * ctx_size);
 
-    // ============================
-    // 3. 分配并装填软件申请表 (Input Context)
-    // ============================
-    uint8 port_speed = xhci_get_port_speed(xhcd, udev->port_id);
+    //给端点0分配传输环内存,挂载到 O(1) 路由表
+    usb_ep_t *ep0 = &udev->ep0;
+    xhci_ring_init(&ep0->transfer_ring);
+    udev->eps[1] = ep0;
 
-    // --- 配置 Slot Context ---
-    xhci_slot_ctx_t *input_slot_ctx = xhci_get_input_ctx_entry(xhcd, input_ctx, 0);
-    input_slot_ctx->port_speed = port_speed;
-    input_slot_ctx->context_entries = 1;                  // 仅激活到 EP0
-    input_slot_ctx->root_hub_port_num = udev->port_id; // 精确锁定根集线器端口
-
-
-
-    // --- 手动创建端点0配置信息 ---
     // --- 计算初始 Max Packet Size ---
-    uint32 max_packet_size = 8;// FS/LS 设备的保底探针值
-    if (port_speed >= XHCI_PORTSC_SPEED_SUPER) {
-        max_packet_size = 512;
-    } else if (port_speed == XHCI_PORTSC_SPEED_HIGH) {
-        max_packet_size = 64;
-    }
+    udev->port_speed = xhci_get_port_speed(xhcd, udev->port_id);
+    uint32 mps = (udev->port_speed >= XHCI_PORTSC_SPEED_SUPER) ? 512 :
+                 (udev->port_speed == XHCI_PORTSC_SPEED_HIGH)  ? 64  : 8;
 
-    usb_ep_t *ep0 = udev->eps[1];
+    // 端点0信息
     ep0->ep_dci = 1;
     ep0->cerr = 3;
     ep0->ep_type = 4; // Control Endpoint
-    ep0->max_packet_size = max_packet_size;
-    ep0->trq_phys_addr = va_to_pa(uc_ring->ring_base) | 1;
-    ep0->mult = 0;
-    ep0->lsa = 0;
-    ep0->interval = 0;
-    ep0->max_esit_payload = 0;
-    ep0->hid = 0;
-    ep0->max_burst = 0;
+    ep0->max_packet_size = mps;
     ep0->average_trb_length = 8;
-    ep0->max_streams = 0;
-    ep0->bytes_per_interval = 0;
+    ep0->trq_phys_addr = va_to_pa(ep0->transfer_ring.ring_base) | 1;
 
     // ---下发命令 ---
     usb_tx_begin(udev);
+    usb_prep_init_slot(udev);
     usb_prep_add_ep(udev,ep0);
     usb_commit_tx(udev,USB_TX_CMD_ADDR_DEV);
 
@@ -1057,7 +1048,6 @@ usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
     usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
     usb_dev->xhcd = xhcd;
     usb_dev->port_id = port_id;
-    usb_dev->eps[1] = &usb_dev->ep0;
     usb_enable_slot_ep0(usb_dev); //启用slot 和 ep0
     usb_get_dev_desc(usb_dev);
     usb_get_cfg_desc(usb_dev);    //获取配置描述符
@@ -1132,10 +1122,10 @@ int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
 void usb_dev_scan(xhci_hcd_t *xhcd){
 
     //等待硬件完成端口初始化
-    uint32 times = 20000000;
+    /*uint32 times = 20000000;
     while (times--) {
         asm_pause();
-    }
+    }*/
 
     for (uint8 i = 0; i < xhcd->max_ports; i++) {
         uint8 port_id = i+1;

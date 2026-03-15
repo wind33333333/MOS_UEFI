@@ -92,12 +92,12 @@ int32 usb_storage_probe(usb_if_t *usb_if,usb_id_t *id) {
         bot_data_t *bot_data = kzalloc(sizeof(bot_data_t));
         bot_data->usb_if = usb_if;
         for (uint8 i = 0; i < 2; i++) {
-            usb_ep_t *ep_phy = &usb_if->cur_alt->eps[i];
-            uint8 ep_num = ep_phy->ep_dci;
-            if (ep_num & 1) {
-                bot_data->pipe_in = ep_num;
+            usb_ep_t *ep = &usb_if->cur_alt->eps[i];
+            uint8 ep_dci = ep->ep_dci;
+            if (ep_dci & 1) {
+                bot_data->pipe_in = ep_dci;
             } else {
-                bot_data->pipe_out = ep_num;
+                bot_data->pipe_out = ep_dci;
             }
         }
 
