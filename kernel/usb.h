@@ -126,6 +126,15 @@ typedef struct {
     uint8 interface_index; // 接口字符串描述符索引（0 表示无）
 } usb_if_desc_t;
 
+// 定义 xHCI 的端点类型宏，方便代码阅读
+#define XHCI_EP_TYPE_ISOCH_OUT   1
+#define XHCI_EP_TYPE_BULK_OUT    2
+#define XHCI_EP_TYPE_INTR_OUT    3
+#define XHCI_EP_TYPE_CONTROL     4
+#define XHCI_EP_TYPE_ISOCH_IN    5
+#define XHCI_EP_TYPE_BULK_IN     6
+#define XHCI_EP_TYPE_INTR_IN     7
+
 /*端点描述符
 描述符长度（固定7字节）
 描述符类型：0x05 = 端点描述符*/
@@ -354,15 +363,18 @@ typedef struct usb_ep_t {
     //端点描述符
     uint8       ep_dci;            // 端点 1-31
     uint8       ep_type;           // 端点：控制/批量/中断/等时
-    uint16      max_packet;        // wMaxPacketSize 解码后的最大包长（基础值）
-    uint8       mult;              // USB 2.0 High-Speed 高带宽事务 (Mult) 处理 0=1 transaction, 1=2 trans, 2=3 trans
+    uint16      max_packet_size;        // wMaxPacketSize 解码后的最大包长（基础值）
     uint8       interval;          // bInterval（中断/等时用；bulk 通常可忽略但保留）
 
     //超高速端点伴随描述符
     uint8       max_burst;         // USB3 bMaxBurst（0=1 burst；仅 SS/SSP 有意义）
     uint16      max_streams;         // bulk 端点支持的最大 stream 数（由 ss_comp->bmAttributes 解码，0 表示不支持 streams（BOT 一般用不到，UAS 可能需要）
     uint16      bytes_per_interval; // USB3 wBytesPerInterval（中断/等时重要）
-
+    uint8       mult;              // USB 2.0 High-Speed 高带宽事务 (Mult) 处理 0=1 transaction, 1=2 trans, 2=3 trans
+    uint8       lsa;
+    uint32      max_esit_payload;
+    uint8       hid;
+    uint16      average_trb_length;
     uint64      trq_phys_addr;
 
     void        *extras_desc;    // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
