@@ -434,95 +434,39 @@ void usb_prep_add_ep(usb_dev_t *udev, usb_ep_t *ep) {
 
     // 3. 填入你的参数 (此时其他字段是刚才拷贝来的，绝对安全)
     xhci_ep_ctx_t *input_ep_ctx = xhci_get_input_ctx_entry(xhcd, input_ctx, dci);
-    input_ep_ctx->ep_type = ep->ep_type;
-    input_ep_ctx->cerr = 3;
-    input_ep_ctx->max_packet_size = ep->max_packet_size;
-    input_ep_ctx->max_burst_size = ep->max_burst;
+    input_ep_ctx->mult = ep->mult;
     input_ep_ctx->max_pstreams = ep->max_streams;
-    input_ep_ctx->lsa = 1;
-    input_ep_ctx->tr_dequeue_ptr = ep->trq_phys_addr;
-}
+    input_ep_ctx->lsa = ep->lsa;
+    input_ep_ctx->interval = ep->interval;
+    input_ep_ctx->max_esit_payload_hi = (ep->max_esit_payload>>16)&0xFF;
 
+    input_ep_ctx->cerr = 3;
+    input_ep_ctx->ep_type = ep->ep_type;
+    input_ep_ctx->hid = ep->hid;
+    input_ep_ctx->max_burst_size = ep->max_burst;
+    input_ep_ctx->max_packet_size = ep->max_packet_size;
+
+    input_ep_ctx->tr_dequeue_ptr = ep->trq_phys_addr;
+
+    input_ep_ctx->average_trb_length = ep->average_trb_length;
+    input_ep_ctx->max_esit_payload_lo = ep->max_esit_payload&0xFFFF;
+}
 
 /**
- * 添加slot上下文
+ * @brief [纯内存] 准备删除一个端点
  */
-void usb_input_add_slot(usb_dev_t *udev,xhci_input_ctx_t *input_ctx) {
-    xhci_hcd_t *xhcd = udev->xhcd;
+void usb_prep_drop_ep(xhci_hcd_t *xhcd, usb_dev_t *udev, uint8 dci) {
+    // 1. 打上死刑标记
+    udev->input_ctx->drop_context_flags |= (1 << dci);
 
-    udev->active_ep_map |= 1;
-    input_ctx->add_context_flags |= 1;
+    // 2. ★ 使用你的 O(1) 汇编魔法，算出删除后的新 context_entries
+    uint8 new_max_dci = 31 - asm_lzcnt32(udev->active_ep_map);
 
-    xhci_slot_ctx_t *slot_ctx = xhci_get_input_ctx_entry(xhcd,input_ctx,0);
-    slot_ctx->route_string = 0;  //暂时设置0
-    slot_ctx->port_speed = xhci_get_port_speed(xhcd, udev->port_id);
-    slot_ctx->mtt = 0;//暂时设置0
-    slot_ctx->is_hub = 0;//暂时设置0
-    slot_ctx->context_entries = 1;
-
-    slot_ctx->max_exit_latency =0;//暂时设置0
-    slot_ctx->root_hub_port_num = udev->port_id;
-    slot_ctx->num_ports = 0;//暂时设置0
-
-    slot_ctx->parent_hub_slot_id = 0;//暂时设置0
-    slot_ctx->parent_port_num = 0;//暂时设置0
-    slot_ctx->tt_think_time = 0; //暂时设置0
-    slot_ctx->interrupter_target = 0; //0号中断器
-}
-
-//动态装填端点上下文
-void usb_input_add_ep(usb_dev_t *udev,xhci_input_ctx_t *input_ctx,usb_ep_t *ep) {
-    xhci_hcd_t *xhcd = udev->xhcd;
-    uint8 ep_dci = ep->ep_dci;
-
-    // 1. 点亮 Add 标志位,和标记map
-    udev->active_ep_map |= 1<<ep_dci;
-    input_ctx->add_context_flags |= 1<<ep_dci;
-
-    // 2. 动态推高 context_entries
-    xhci_slot_ctx_t *slot_ctx = xhci_get_input_ctx_entry(xhcd, input_ctx, 0);
-    if (slot_ctx->context_entries < ep_dci) {
-        slot_ctx->context_entries = ep_dci;
+    xhci_slot_ctx_t *input_slot_ctx = xhci_get_input_ctx_entry(xhcd, udev->input_ctx, 0);
+    if (input_slot_ctx->context_entries != new_max_dci) {
+        input_slot_ctx->context_entries = new_max_dci;
+        udev->input_ctx->add_context_flags |= (1 << 0); // 声明 Slot 被降维了
     }
-
-    // 3.初始化端点
-    xhci_ep_ctx_t *input_ep_ctx = xhci_get_input_ctx_entry(xhcd,input_ctx,ep_dci);
-    ep_ring_t *ep_ring = &udev->eps_ring[ep_dci];
-    uint64 tr_dequeue_ptr = 0;
-    uint32 max_streams = ep->max_streams > MAX_STREAMS ? MAX_STREAMS : ep->max_streams;
-    if (max_streams) {
-        // 有流：分配Stream Context Array和per-stream rings
-        uint32 streams_count = 1 << max_streams;
-        uint32 streams_ctx_array_count = 1 << (max_streams + 1);
-        xhci_stream_ctx_t *stream_ctx_array = kzalloc_dma(streams_ctx_array_count * sizeof(xhci_stream_ctx_t));
-        xhci_ring_t *stream_rings = kzalloc(streams_ctx_array_count * sizeof(xhci_ring_t)); //streams0 保留内存需要对齐;
-        ep_ring->stream_rings = stream_rings;
-        ep_ring->streams_count = streams_count;
-
-        for (uint32 s = 1; s <= streams_count; s++) {
-            // Stream ID从1开始
-            xhci_ring_init(&stream_rings[s]);
-            stream_ctx_array[s].tr_dequeue = va_to_pa(stream_rings[s].ring_base) | 1 | 1 << 1;
-            stream_ctx_array[s].reserved = 0;
-        }
-        // Stream ID 0保留，通常设为0或无效
-        stream_ctx_array[0].tr_dequeue = 0;
-        stream_ctx_array[0].reserved = 0;
-        tr_dequeue_ptr = va_to_pa(stream_ctx_array);
-    } else {
-        // 无流：单个Transfer Ring
-        xhci_ring_init(&ep_ring->transfer_ring);
-        tr_dequeue_ptr = va_to_pa(ep_ring->transfer_ring.ring_base) | 1; // DCS=1
-    }
-
-    input_ep_ctx->ep_type = ep->ep_type;
-    input_ep_ctx->cerr = 3;
-    input_ep_ctx->max_packet_size = ep->max_packet_size;
-    input_ep_ctx->max_burst_size = ep->max_burst;
-    input_ep_ctx->max_pstreams = max_streams;
-    input_ep_ctx->lsa = 1;
-    input_ep_ctx->tr_dequeue_ptr = tr_dequeue_ptr;
-
 }
 
 //动态删除端点上下文
