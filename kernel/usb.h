@@ -127,13 +127,9 @@ typedef struct {
 } usb_if_desc_t;
 
 // 定义 xHCI 的端点类型宏，方便代码阅读
-#define XHCI_EP_TYPE_ISOCH_OUT   1
-#define XHCI_EP_TYPE_BULK_OUT    2
-#define XHCI_EP_TYPE_INTR_OUT    3
-#define XHCI_EP_TYPE_CONTROL     4
-#define XHCI_EP_TYPE_ISOCH_IN    5
-#define XHCI_EP_TYPE_BULK_IN     6
-#define XHCI_EP_TYPE_INTR_IN     7
+#define XHCI_EP_TYPE_ISOCH   1
+#define XHCI_EP_TYPE_BULK    2
+#define XHCI_EP_TYPE_INTR    3
 
 /*端点描述符
 描述符长度（固定7字节）
@@ -435,10 +431,10 @@ typedef struct usb_dev_t{
     usb_string_desc_t               *serial_number_desc; //序列号描述符
     void                            *dev_ctx;           // 设备上下文
     xhci_input_ctx_t                *input_ctx;        // 输入上下文
-    uint32                          active_ep_map;      //当天活跃的端点图
+    uint32                          active_ep_map;      //当前活跃的端点图
     usb_ep_t                        ep0;                // 端点0
     usb_ep_t                        *eps[32];           // 端点0-31 驱动把接口端点挂到usb_dev,方便usb_core层管理
-    xhci_hcd_t                      *xhcd;   // xhci控制器
+    xhci_hcd_t                      *xhcd;              // xhci控制器
     device_t                        dev;
     uint8                           interfaces_count;  // 接口数量
     usb_if_t                        *interfaces;       // 接口指针根据接口数量动态分配
