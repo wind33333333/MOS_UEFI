@@ -795,7 +795,8 @@ int32 usb_parse_ep_desc(usb_if_alt_t *if_alt) {
             cur_ep->ep_dci = epaddr_to_epdci(ep_desc->endpoint_address);
 
             // 将方向位 (Bit 7) 与 传输类型 (Bits 1:0) 完美无缝映射到 xHCI 要求的 1~7 号物理类型
-            cur_ep->ep_type = ((ep_desc->endpoint_address & 0x80) >> 5) + (ep_desc->attributes & 3);
+            ep_type = ep_desc->attributes & 3;
+            cur_ep->ep_type = ((ep_desc->endpoint_address & 0x80) >> 5) + ep_type;
 
             // 屏蔽高位控制信息，仅保留真实的 wMaxPacketSize 基础包长
             cur_ep->max_packet_size = ep_desc->max_packet_size & 0x07FF;
@@ -817,72 +818,66 @@ int32 usb_parse_ep_desc(usb_if_alt_t *if_alt) {
             cur_ep->lsa = 0;
             cur_ep->hid = 0;
 
-            // --- ★ 衍生参数计算 (基于当前 USB 2.0 认知的保守底稿) ---
-            // 计算生死攸关的带宽极限 (max_esit_payload)
-            ep_type =  ep_desc->attributes & 3;
-            if (ep_type == XHCI_EP_TYPE_ISOCH || ep_type == XHCI_EP_TYPE_INTR) {
-                    // USB 2.0 经典公式：最大包长 * (突发乘数 + 1)
+            // --- ★ 衍生参数与 DMA 启发值联合推导 (基于 USB 2.0 规格底稿) ---
+            switch (ep_type) {
+                case XHCI_EP_TYPE_ISOCH:
+                    // Isochronous 阵营：音视频流，要求极高的周期吞吐量
                     cur_ep->max_esit_payload = cur_ep->max_packet_size * (cur_ep->mult + 1);
-            } else if (ep_type == XHCI_EP_TYPE_BULK) {
-                    // Bulk 与 Control 端点吃 PCIe 闲置带宽，严禁申请固定带宽
-                    cur_ep->max_esit_payload = 0;
-            }
+                    // 等时流永远是满载发送，直接使用最大周期负荷作为平均值
+                    cur_ep->average_trb_length = cur_ep->max_esit_payload;
+                    break;
 
-            // --- ★ 启发式 DMA 搬运长度估算 (average_trb_length) ---
-            // 提前给主板内部 SRAM 缓存分配器提供情报
-            if (ep_type  == XHCI_EP_TYPE_BULK) {
-                // 黄金魔法值：3072 (3 个 USB 3.0 数据包)
-                // 完美平衡了 PCIe 连续突发读取效率与主板内部 FIFO 资源的消耗
-                cur_ep->average_trb_length = 3072;
-            } else if (ep_type == XHCI_EP_TYPE_INTR) {
-                // 中断端点数据极小，暗示硬件只分配最小所需缓存即可
-                cur_ep->average_trb_length = cur_ep->max_packet_size;
-            } else if (ep_type == XHCI_EP_TYPE_ISOCH){
-                // 等时端点使用周期满载值作为平均值
-                cur_ep->average_trb_length = cur_ep->max_esit_payload;
+                case XHCI_EP_TYPE_BULK:
+                    // Bulk 阵营：吃总线闲置带宽，无固定 ESIT 周期限制
+                    cur_ep->max_esit_payload = 0;
+                    // 黄金魔法值：3072 (3 个 USB 3.0 数据包) 完美平衡 PCIe 突发与硬件 FIFO
+                    cur_ep->average_trb_length = 3072;
+                    break;
+
+                case XHCI_EP_TYPE_INTR:
+                    // Interrupt 阵营：要求极其严苛的周期性带宽保证
+                    cur_ep->max_esit_payload = cur_ep->max_packet_size * (cur_ep->mult + 1);
+                    // 数据量极小，暗示主板硬件只需分配最小 SRAM 缓存即可
+                    cur_ep->average_trb_length = cur_ep->max_packet_size;
+                    break;
             }
 
         } else if (desc_head->desc_type == USB_DESC_TYPE_SS_ENDPOINT_COMPANION) {
             // ================================================================
             // 阶段 2：解析 USB 3.0 伴随描述符 (覆盖升级 USB 3.0 高阶参数)
             // ================================================================
-
-            // 致命防雷：防止劣质 U 盘固件错排描述符顺序导致内核蓝屏
-            if (!cur_ep) {
-                desc_head = usb_get_next_desc(desc_head);
-                continue;
-            }
-
             usb_ss_comp_desc_t *ss_desc = (usb_ss_comp_desc_t *) desc_head;
             cur_ep->max_burst = ss_desc->max_burst;
             cur_ep->bytes_per_interval = ss_desc->bytes_per_interval;
 
-            // ★ 物理隔离法则：伴随描述符的 bmAttributes 在不同端点下意义截然不同
-            if (ep_type == XHCI_EP_TYPE_BULK) {
-                // Bulk 阵营：提取最大支持的并发流数量 (Streams)
-                cur_ep->max_streams = ss_desc->attributes & 0x1F;
-            }
-            else if (ep_type == XHCI_EP_TYPE_ISOCH) {
-                // Isochronous 阵营：提取真实乘数，原地覆写掉第一阶段的 USB 2.0 伪值
-                cur_ep->mult = ss_desc->attributes & 0x03;
-            }
-            else if (ep_type == XHCI_EP_TYPE_INTR) {
-                // Interrupt 阵营：规范铁律要求此字段为保留位。强行清零，防止主板报 Parameter Error
-                cur_ep->mult = 0;
-                cur_ep->max_streams = 0;
-            }
+            // ★ 物理隔离与参数覆写：基于端点类型的高内聚升级
+            switch (ep_type) {
+                case XHCI_EP_TYPE_BULK:
+                    // Bulk 阵营：提取最大支持的并发流数量 (Streams)
+                    cur_ep->max_streams = ss_desc->attributes & 0x1F;
+                    break;
 
-            // --- ★ 衍生参数升级 (检测到 USB 3.0 特性，覆写旧带宽军令状) ---
-            if (ep_type == XHCI_EP_TYPE_INTR || ep_type == XHCI_EP_TYPE_ISOCH) {
-                if (cur_ep->bytes_per_interval > 0) {
-                    // 硬件直给：直接用出厂标定的周期诉求，替换掉 USB 2.0 的计算公式
-                    cur_ep->max_esit_payload = cur_ep->bytes_per_interval;
+                case XHCI_EP_TYPE_ISOCH:
+                    // Isochronous 阵营：提取真实乘数，原地覆写掉第一阶段的 USB 2.0 伪值
+                    cur_ep->mult = ss_desc->attributes & 0x03;
 
-                    // 同步升级 DMA 启发估算值
-                    if (ep_type == XHCI_EP_TYPE_ISOCH) {
-                        cur_ep->average_trb_length = cur_ep->max_esit_payload;
+                    // 衍生参数升级：直接用硬件出厂标定的周期诉求，替换掉 USB 2.0 的计算公式
+                    if (cur_ep->bytes_per_interval > 0) {
+                        cur_ep->max_esit_payload = cur_ep->bytes_per_interval;
+                        cur_ep->average_trb_length = cur_ep->max_esit_payload; // 同步升级 DMA 估算值
                     }
-                }
+                    break;
+
+                case XHCI_EP_TYPE_INTR:
+                    // Interrupt 阵营：规范铁律要求伴随属性为保留位。强行清零防止主板报错
+                    cur_ep->mult = 0;
+                    cur_ep->max_streams = 0;
+
+                    // 衍生参数升级：只升级周期诉求带宽，中断端点的 average_trb_length 保持极小值不变
+                    if (cur_ep->bytes_per_interval > 0) {
+                        cur_ep->max_esit_payload = cur_ep->bytes_per_interval;
+                    }
+                    break;
             }
 
         } else {
@@ -891,7 +886,7 @@ int32 usb_parse_ep_desc(usb_if_alt_t *if_alt) {
             // ================================================================
             // USB-Core 作为总线层看不懂这些私有业务协议（如 UVC 分辨率、UAC 音频采样率）
             // 仅保留第一块描述符的指针。挂载业务驱动时，由驱动自行强转指针去解析。
-            if (cur_ep && !cur_ep->extras_desc) {
+            if (cur_ep && cur_ep->extras_desc == NULL) {
                 cur_ep->extras_desc = desc_head;
             }
         }
