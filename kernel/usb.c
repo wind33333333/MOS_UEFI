@@ -169,7 +169,7 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
     tr_trb.setup_stage.idt = TRB_IDT_ENABLE;   // setup trb 必须1
     tr_trb.setup_stage.type = XHCI_TRB_TYPE_SETUP_STAGE;
     tr_trb.setup_stage.chain = TRB_CHAIN_DISABLE;
-    tr_trb.setup_stage.ioc = TRB_IOC_ENABLE;
+    tr_trb.setup_stage.ioc = TRB_IOC_DISABLE;
     // 判断 TRT (Transfer Type)
     if (length == 0) {
         tr_trb.setup_stage.trt = TRB_TRT_NO_DATA;
@@ -191,7 +191,7 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
         tr_trb.data_stage.type = XHCI_TRB_TYPE_DATA_STAGE;
         tr_trb.data_stage.dir = usb_req_dir;  //数据阶段方向和usb.dtd方向一致
         tr_trb.data_stage.chain = TRB_CHAIN_DISABLE; // 单个 Data TRB 必须为 0
-        tr_trb.data_stage.ioc = TRB_IOC_ENABLE;   // 开启中断防雷
+        tr_trb.data_stage.ioc = TRB_IOC_DISABLE;   // 开启中断防雷
 
         data_ptr = xhci_ring_enqueue(uc_ring, &tr_trb);
     }
@@ -320,7 +320,7 @@ int usb_set_if(usb_dev_t *udev,uint8 if_num,uint8 alt_num) {
 
 
 //获取usb配置描述符
-int usb_get_cfg_desc(usb_dev_t *udev) {
+static inline int usb_get_cfg_desc(usb_dev_t *udev) {
     usb_cfg_desc_t *config_desc = kzalloc_dma(sizeof(usb_cfg_desc_t));
 
     //第一次先获取配置描述符前9字节
@@ -339,7 +339,7 @@ int usb_get_cfg_desc(usb_dev_t *udev) {
 }
 
 //获取字符串描述符
-int usb_get_string_desc(usb_dev_t *udev) {
+static inline int usb_get_string_desc(usb_dev_t *udev) {
 
     usb_desc_head *desc_head = kzalloc_dma(2);
 
@@ -403,7 +403,7 @@ int usb_get_string_desc(usb_dev_t *udev) {
 /**
  * @brief [内部工具] 统一根据推演状态，更新 Slot 的 context_entries
  */
-static void usb_update_context_entries(usb_dev_t *udev) {
+static void update_context_entries(usb_dev_t *udev) {
     xhci_input_ctx_t *input_ctx = udev->input_ctx;
 
     // ★ 核心算法：计算出“事务成功后”的投影位图 (忽略 Slot 本身 Bit 0)
@@ -419,7 +419,7 @@ static void usb_update_context_entries(usb_dev_t *udev) {
     }
 }
 
-void usb_ep_cpy(usb_dev_t *udev, usb_ep_t *new_ep) {
+static void ep_copy(usb_dev_t *udev, usb_ep_t *new_ep) {
     xhci_ep_ctx_t *input_ep_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, new_ep->ep_dci);
     input_ep_ctx->mult = new_ep->mult;
     input_ep_ctx->max_pstreams = new_ep->max_streams;
@@ -465,10 +465,10 @@ void usb_prep_add_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
     udev->input_ctx->add_context_flags |= (1 << new_ep->ep_dci);
 
     // 2. 动态推高 context_entries
-    usb_update_context_entries(udev);
+    update_context_entries(udev);
 
     // 3.拷贝
-    usb_ep_cpy(udev,new_ep);
+    ep_copy(udev,new_ep);
 
 }
 
@@ -480,7 +480,7 @@ void usb_prep_drop_ep(usb_dev_t *udev, uint8 dci) {
     udev->input_ctx->drop_context_flags |= (1 << dci);
 
     // 2. ★ 使用你的 O(1) 汇编魔法，算出删除后的新 context_entries
-    usb_update_context_entries(udev);
+    update_context_entries(udev);
 }
 
 /**
@@ -492,7 +492,7 @@ void usb_prep_eval_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
     udev->input_ctx->add_context_flags |= (1 << new_ep->ep_dci);
 
     // 2. 拷贝新参数覆写图纸
-    usb_ep_cpy(udev, new_ep);
+    ep_copy(udev, new_ep);
 
 }
 
@@ -505,7 +505,7 @@ void usb_prep_reconfig_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
     udev->input_ctx->add_context_flags |= (1 << new_ep->ep_dci);
 
     // 3.拷贝
-    usb_ep_cpy(udev,new_ep);
+    ep_copy(udev,new_ep);
 }
 
 /**
@@ -513,7 +513,7 @@ void usb_prep_reconfig_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
  * @param udev       目标 USB 设备
  * @param port_speed 设备的物理连接速度
  */
-void usb_prep_init_slot(usb_dev_t *udev) {
+static void usb_prep_init_slot(usb_dev_t *udev) {
     // 1. 获取 Slot 图纸
     xhci_slot_ctx_t *input_slot_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, 0);
 
@@ -629,7 +629,7 @@ int32 usb_commit_tx(usb_dev_t *udev, usb_tx_cmd_e cmd_type) {
  * @param udev USB 设备对象
  * @return int32 0 表示成功，-1 表示失败
  */
-int32 usb_enable_slot_ep0(usb_dev_t *udev) {
+static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     xhci_hcd_t *xhcd = udev->xhcd;
 
     //启用插槽
@@ -675,7 +675,7 @@ int32 usb_enable_slot_ep0(usb_dev_t *udev) {
  * @param udev USB 设备对象
  * @return int32 0 表示成功
  */
-int32 usb_get_dev_desc(usb_dev_t *udev) {
+static inline int32 usb_get_dev_desc(usb_dev_t *udev) {
     xhci_hcd_t *xhcd = udev->xhcd;
     uint8 port_speed = xhci_get_port_speed(xhcd, udev->port_id);
 
@@ -710,182 +710,134 @@ int32 usb_get_dev_desc(usb_dev_t *udev) {
     return 0;
 }
 
-device_type_t usb_dev_type = {"usb-dev"};
-device_type_t usb_if_type = {"usb-if"};
+/**
+ * @brief [内部辅助] 解析并装填 USB 标准端点参数 (USB 2.0 规格底稿)
+ */
+static inline void usb_params_ep_desc(usb_ep_t *cur_ep, usb_ep_desc_t *ep_desc) {
+    // 提取纯粹的 USB 传输类型 (0~3)
+    uint8 usb_trans_type = ep_desc->attributes & 3;
 
-//匹配驱动id
-static inline usb_id_t *usb_match_id(usb_if_t *usb_if, driver_t *drv) {
-    usb_id_t *id_table = drv->id_table;
-    uint8 if_class = usb_if->cur_alt->if_class;
-    uint8 if_protocol = usb_if->cur_alt->if_protocol;
-    uint8 if_subclass = usb_if->cur_alt->if_subclass;
-    for (; id_table->if_class || id_table->if_protocol || id_table->if_subclass; id_table++) {
-        if (id_table->if_class == if_class && id_table->if_protocol == if_protocol && id_table->if_subclass ==
-            if_subclass)
-            return id_table;
+    // 基础物理映射
+    cur_ep->ep_dci = epaddr_to_epdci(ep_desc->endpoint_address);
+    cur_ep->ep_type = ((ep_desc->endpoint_address & 0x80) >> 5) + usb_trans_type;
+    cur_ep->max_packet_size = ep_desc->max_packet_size & 0x07FF;
+    cur_ep->mult = (ep_desc->max_packet_size >> 11) & 0x3;
+    cur_ep->interval = ep_desc->interval;
+
+    // 清空高阶扩展字段 (防野指针)
+    cur_ep->max_burst = 0;
+    cur_ep->max_streams = 0;
+    cur_ep->bytes_per_interval = 0;
+    cur_ep->extras_desc = NULL;
+    cur_ep->lsa = 0;
+    cur_ep->hid = 0;
+
+    // --- ★ 衍生参数与 DMA 启发值联合推导 (基于 USB 2.0 规格底稿) ---
+    switch (usb_trans_type) {
+        case XHCI_EP_TYPE_ISOCH:
+            // Isochronous 阵营：音视频流，要求极高的周期吞吐量
+            cur_ep->max_esit_payload = cur_ep->max_packet_size * (cur_ep->mult + 1);
+            // 等时流永远是满载发送，直接使用最大周期负荷作为平均值
+            cur_ep->average_trb_length = cur_ep->max_esit_payload;
+            break;
+
+        case XHCI_EP_TYPE_BULK:
+            // Bulk 阵营：吃总线闲置带宽，无固定 ESIT 周期限制
+            cur_ep->max_esit_payload = 0;
+            // 黄金魔法值：3072 (3 个 USB 3.0 数据包) 完美平衡 PCIe 突发与硬件 FIFO
+            cur_ep->average_trb_length = 3072;
+            break;
+
+        case XHCI_EP_TYPE_INTR:
+            // Interrupt 阵营：要求极其严苛的周期性带宽保证
+            cur_ep->max_esit_payload = cur_ep->max_packet_size * (cur_ep->mult + 1);
+            // 数据量极小，暗示主板硬件只需分配最小 SRAM 缓存即可
+            cur_ep->average_trb_length = cur_ep->max_packet_size;
+            break;
+
+        default:                 // 兜底 Control 及其它
+            cur_ep->max_esit_payload = 0;
+            cur_ep->average_trb_length = 8;
+            break;
     }
-    return NULL;
 }
 
-//usb总线层设备驱动匹配
-int usb_bus_match(device_t *dev, driver_t *drv) {
-    if (dev->type != &usb_if_type) return FALSE;
-    usb_if_t *usb_if = CONTAINER_OF(dev, usb_if_t, dev);
-    usb_id_t *id = usb_match_id(usb_if, drv);
-    return id ? 1 : 0;
+/**
+ * @brief [内部辅助] 解析并升级 USB 3.0 超高速伴随参数
+ */
+static inline void usb_params_ss_desc(usb_ep_t *cur_ep, usb_ss_comp_desc_t *ss_desc) {
+    // ★ 极客解码：直接从已经映射好的 xHCI 类型中，反向剥离出纯 USB 传输类型
+    uint8 usb_trans_type = cur_ep->ep_type & 3;
+
+    cur_ep->max_burst = ss_desc->max_burst;
+    cur_ep->bytes_per_interval = ss_desc->bytes_per_interval;
+
+    // ★ 物理隔离与参数覆写：基于端点类型的高内聚升级
+    switch (usb_trans_type) {
+        case XHCI_EP_TYPE_BULK:
+            // Bulk 阵营：提取最大支持的并发流数量 (Streams)
+            cur_ep->max_streams = ss_desc->attributes & 0x1F;
+            break;
+
+        case XHCI_EP_TYPE_ISOCH:
+            // Isochronous 阵营：提取真实乘数，原地覆写掉第一阶段的 USB 2.0 伪值
+            cur_ep->mult = ss_desc->attributes & 0x03;
+
+            // 衍生参数升级：直接用硬件出厂标定的周期诉求，替换掉 USB 2.0 的计算公式
+            if (cur_ep->bytes_per_interval > 0) {
+                cur_ep->max_esit_payload = cur_ep->bytes_per_interval;
+                cur_ep->average_trb_length = cur_ep->max_esit_payload; // 同步升级 DMA 估算值
+            }
+            break;
+
+        case XHCI_EP_TYPE_INTR:
+            // Interrupt 阵营：规范铁律要求伴随属性为保留位。强行清零防止主板报错
+            cur_ep->mult = 0;
+            cur_ep->max_streams = 0;
+
+            // 衍生参数升级：只升级周期诉求带宽，中断端点的 average_trb_length 保持极小值不变
+            if (cur_ep->bytes_per_interval > 0) {
+                cur_ep->max_esit_payload = cur_ep->bytes_per_interval;
+            }
+            break;
+    }
 }
-
-//usb总线层探测初始化回调
-int usb_bus_probe(device_t *dev) {
-}
-
-//usb总线层卸载在回调
-void usb_bus_remove(device_t *dev) {
-}
-
-//usb驱动层探测初始化回调
-int usb_drv_probe(device_t *dev) {
-    usb_if_t *usb_if = CONTAINER_OF(dev, usb_if_t, dev);
-    usb_drv_t *usb_if_drv = CONTAINER_OF(dev->drv, usb_drv_t, drv);
-    usb_id_t *id = usb_match_id(usb_if,dev->drv);
-    usb_if_drv->probe(usb_if, id);
-    return 0;
-}
-
-//usb驱动层卸载回调
-void usb_drv_remove(device_t *dev) {
-}
-
-
-
-//注册usb驱动
-void usb_drv_register(usb_drv_t *usb_drv) {
-    usb_drv->drv.bus = &usb_bus_type;
-    usb_drv->drv.probe = usb_drv_probe;
-    usb_drv->drv.remove = usb_drv_remove;
-    driver_register(&usb_drv->drv);
-}
-
 
 /**
  * @brief [工业级 O(N) 单次扫描] 解析 USB 接口下的所有端点及其伴随描述符
- * @note  采用 "Base + Upgrade (打底+覆写)" 模式，完美兼容 USB 2.0 与 USB 3.0
- * @param usb_dev 设备对象指针
- * @param if_alt  当前正在解析的备用接口对象指针
- * @return 0 表示成功
  */
-int32 usb_parse_ep_desc(usb_if_alt_t *if_alt) {
+static inline int32 usb_parse_alt_desc(usb_if_alt_t *if_alt) {
     usb_ep_t *cur_ep = NULL;
     usb_desc_head *desc_head = usb_get_next_desc(&if_alt->if_desc->head);
     uint8 ep_idx = 0;
-    void *cfg_end = usb_cfg_end(if_alt->usb_if->udev->config_desc);
-    uint8 ep_type = 0;
 
-    // 严密防御：限定搜索范围绝对不能超出整个配置描述符，且遇到下一个接口即停止
+    // 注意：假设你的指针名为 udev，如果有编译错误请改为 usb_dev
+    void *cfg_end = usb_cfg_end(if_alt->usb_if->udev->config_desc);
+
+    // 严密防御：限定搜索范围绝对不能超出整个配置描述符
     while ((desc_head < cfg_end) && (desc_head->desc_type != USB_DESC_TYPE_INTERFACE)) {
 
         if (desc_head->desc_type == USB_DESC_TYPE_ENDPOINT) {
-            // ================================================================
-            // 阶段 1：解析标准端点描述符 (提取基础信息 + USB 2.0 规格打底)
-            // ================================================================
-            usb_ep_desc_t *ep_desc = (usb_ep_desc_t *) desc_head;
-            cur_ep = &if_alt->eps[ep_idx++];
 
-            // 物理端点号转换 (如 EP1 IN 转换为 DCI=3)
-            cur_ep->ep_dci = epaddr_to_epdci(ep_desc->endpoint_address);
-
-            // 将方向位 (Bit 7) 与 传输类型 (Bits 1:0) 完美无缝映射到 xHCI 要求的 1~7 号物理类型
-            ep_type = ep_desc->attributes & 3;
-            cur_ep->ep_type = ((ep_desc->endpoint_address & 0x80) >> 5) + ep_type;
-
-            // 屏蔽高位控制信息，仅保留真实的 wMaxPacketSize 基础包长
-            cur_ep->max_packet_size = ep_desc->max_packet_size & 0x07FF;
-
-            // 预提取 USB 2.0 高速高带宽设备的突发乘数 (Mult)
-            // 若设备是 USB 3.0 等时端点，此值会在稍后的伴随描述符中被覆写
-            cur_ep->mult = (ep_desc->max_packet_size >> 11) & 0x3;
-            cur_ep->interval = ep_desc->interval;
-
-            // 初始化 USB 3.0 专属扩展字段为 0，防止野指针/脏数据
-            cur_ep->max_burst = 0;
-            cur_ep->max_streams = 0;
-            cur_ep->bytes_per_interval = 0;
-            cur_ep->extras_desc = NULL;
-
-            // --- ★ 策略隔离 (Policy Isolation) ---
-            // USB Core 必须保持中立，绝不擅自开启高阶特性。
-            // 线性流(LSA)与设备控制权(HID)必须默认关闭，留给具体业务驱动按需开启
-            cur_ep->lsa = 0;
-            cur_ep->hid = 0;
-
-            // --- ★ 衍生参数与 DMA 启发值联合推导 (基于 USB 2.0 规格底稿) ---
-            switch (ep_type) {
-                case XHCI_EP_TYPE_ISOCH:
-                    // Isochronous 阵营：音视频流，要求极高的周期吞吐量
-                    cur_ep->max_esit_payload = cur_ep->max_packet_size * (cur_ep->mult + 1);
-                    // 等时流永远是满载发送，直接使用最大周期负荷作为平均值
-                    cur_ep->average_trb_length = cur_ep->max_esit_payload;
-                    break;
-
-                case XHCI_EP_TYPE_BULK:
-                    // Bulk 阵营：吃总线闲置带宽，无固定 ESIT 周期限制
-                    cur_ep->max_esit_payload = 0;
-                    // 黄金魔法值：3072 (3 个 USB 3.0 数据包) 完美平衡 PCIe 突发与硬件 FIFO
-                    cur_ep->average_trb_length = 3072;
-                    break;
-
-                case XHCI_EP_TYPE_INTR:
-                    // Interrupt 阵营：要求极其严苛的周期性带宽保证
-                    cur_ep->max_esit_payload = cur_ep->max_packet_size * (cur_ep->mult + 1);
-                    // 数据量极小，暗示主板硬件只需分配最小 SRAM 缓存即可
-                    cur_ep->average_trb_length = cur_ep->max_packet_size;
-                    break;
+            // ★ 防御：防止恶意 U 盘制造端点数组越界！
+            if (ep_idx >= if_alt->ep_count) {
+                break;
             }
 
+            // 阶段 1：分发给标准解析器
+            cur_ep = &if_alt->eps[ep_idx++];
+            usb_params_ep_desc(cur_ep, (usb_ep_desc_t *) desc_head);
+
         } else if (desc_head->desc_type == USB_DESC_TYPE_SS_ENDPOINT_COMPANION) {
-            // ================================================================
-            // 阶段 2：解析 USB 3.0 伴随描述符 (覆盖升级 USB 3.0 高阶参数)
-            // ================================================================
-            usb_ss_comp_desc_t *ss_desc = (usb_ss_comp_desc_t *) desc_head;
-            cur_ep->max_burst = ss_desc->max_burst;
-            cur_ep->bytes_per_interval = ss_desc->bytes_per_interval;
 
-            // ★ 物理隔离与参数覆写：基于端点类型的高内聚升级
-            switch (ep_type) {
-                case XHCI_EP_TYPE_BULK:
-                    // Bulk 阵营：提取最大支持的并发流数量 (Streams)
-                    cur_ep->max_streams = ss_desc->attributes & 0x1F;
-                    break;
-
-                case XHCI_EP_TYPE_ISOCH:
-                    // Isochronous 阵营：提取真实乘数，原地覆写掉第一阶段的 USB 2.0 伪值
-                    cur_ep->mult = ss_desc->attributes & 0x03;
-
-                    // 衍生参数升级：直接用硬件出厂标定的周期诉求，替换掉 USB 2.0 的计算公式
-                    if (cur_ep->bytes_per_interval > 0) {
-                        cur_ep->max_esit_payload = cur_ep->bytes_per_interval;
-                        cur_ep->average_trb_length = cur_ep->max_esit_payload; // 同步升级 DMA 估算值
-                    }
-                    break;
-
-                case XHCI_EP_TYPE_INTR:
-                    // Interrupt 阵营：规范铁律要求伴随属性为保留位。强行清零防止主板报错
-                    cur_ep->mult = 0;
-                    cur_ep->max_streams = 0;
-
-                    // 衍生参数升级：只升级周期诉求带宽，中断端点的 average_trb_length 保持极小值不变
-                    if (cur_ep->bytes_per_interval > 0) {
-                        cur_ep->max_esit_payload = cur_ep->bytes_per_interval;
-                    }
-                    break;
+            // 阶段 2：分发给 USB 3.0 覆写器
+            if (cur_ep) {
+                usb_params_ss_desc(cur_ep, (usb_ss_comp_desc_t *) desc_head);
             }
 
         } else {
-            // ================================================================
-            // 阶段 3：收集未知/类专属描述符 (Class-Specific)
-            // ================================================================
-            // USB-Core 作为总线层看不懂这些私有业务协议（如 UVC 分辨率、UAC 音频采样率）
-            // 仅保留第一块描述符的指针。挂载业务驱动时，由驱动自行强转指针去解析。
+
+            // 阶段 3：收集类专属描述符
             if (cur_ep && cur_ep->extras_desc == NULL) {
                 cur_ep->extras_desc = desc_head;
             }
@@ -895,11 +847,14 @@ int32 usb_parse_ep_desc(usb_if_alt_t *if_alt) {
         desc_head = usb_get_next_desc(desc_head);
     }
 
-    return 0; // O(N) 一气呵成，当前接口下所有端点图纸绘制完毕！
+    return 0; // O(N) 一气呵成！
 }
 
+device_type_t usb_dev_type = {"usb-dev"};
+device_type_t usb_if_type = {"usb-if"};
+
 //usb接口创建并注册总线
-int usb_if_create_register(usb_dev_t *usb_dev) {
+static inline  int usb_if_create_register(usb_dev_t *usb_dev) {
     uint8 alt_count[256]; //每个接口的替用接口数量
     usb_if_t *usb_if_map[256]; //usb_if临时缓存区
     uint8 fill_idx[256]; //下一个alts计数
@@ -954,7 +909,7 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
             if_alt->eps = kzalloc(if_alt->ep_count * sizeof(usb_ep_t)); //给端点分配内存
             /* 可选：此处不解析端点，延后到 probe；或预解析以便 match/probe 快速使用 */
             /* usb_parse_alt_endpoints(usb_dev, alt); */
-            usb_parse_ep_desc(if_alt);
+            usb_parse_alt_desc(if_alt);
         }
         if_desc = usb_get_next_desc(&if_desc->head);
     }
@@ -977,7 +932,7 @@ int usb_if_create_register(usb_dev_t *usb_dev) {
 }
 
 //创建usb设备
-usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
+static inline usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
     usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
     usb_dev->xhcd = xhcd;
     usb_dev->port_id = port_id;
@@ -999,7 +954,7 @@ usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
  * @param port_id 物理端口索引 (0-based)
  * @return int32   0 表示复位成功且端口已使能，-1 表示超时或硬件故障
  */
-int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
+static inline  int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     uint32 portsc;
 
     // 获取该端口对应的协议信息
@@ -1077,4 +1032,59 @@ void usb_dev_scan(xhci_hcd_t *xhcd){
             }
         }
     }
+}
+
+//======================================= 驱动======================================
+
+//匹配驱动id
+static inline usb_id_t *usb_match_id(usb_if_t *usb_if, driver_t *drv) {
+    usb_id_t *id_table = drv->id_table;
+    uint8 if_class = usb_if->cur_alt->if_class;
+    uint8 if_protocol = usb_if->cur_alt->if_protocol;
+    uint8 if_subclass = usb_if->cur_alt->if_subclass;
+    for (; id_table->if_class || id_table->if_protocol || id_table->if_subclass; id_table++) {
+        if (id_table->if_class == if_class && id_table->if_protocol == if_protocol && id_table->if_subclass ==
+            if_subclass)
+            return id_table;
+    }
+    return NULL;
+}
+
+//usb总线层设备驱动匹配
+int usb_bus_match(device_t *dev, driver_t *drv) {
+    if (dev->type != &usb_if_type) return FALSE;
+    usb_if_t *usb_if = CONTAINER_OF(dev, usb_if_t, dev);
+    usb_id_t *id = usb_match_id(usb_if, drv);
+    return id ? 1 : 0;
+}
+
+//usb总线层探测初始化回调
+int usb_bus_probe(device_t *dev) {
+}
+
+//usb总线层卸载在回调
+void usb_bus_remove(device_t *dev) {
+}
+
+//usb驱动层探测初始化回调
+int usb_drv_probe(device_t *dev) {
+    usb_if_t *usb_if = CONTAINER_OF(dev, usb_if_t, dev);
+    usb_drv_t *usb_if_drv = CONTAINER_OF(dev->drv, usb_drv_t, drv);
+    usb_id_t *id = usb_match_id(usb_if,dev->drv);
+    usb_if_drv->probe(usb_if, id);
+    return 0;
+}
+
+//usb驱动层卸载回调
+void usb_drv_remove(device_t *dev) {
+}
+
+
+
+//注册usb驱动
+void usb_drv_register(usb_drv_t *usb_drv) {
+    usb_drv->drv.bus = &usb_bus_type;
+    usb_drv->drv.probe = usb_drv_probe;
+    usb_drv->drv.remove = usb_drv_remove;
+    driver_register(&usb_drv->drv);
 }
