@@ -845,7 +845,7 @@ static int32 alloc_alt_if_ep_ring(usb_if_alt_t *if_alt) {
     /**
  * @brief [阶段 3] 设置默认替用接口，并向系统总线注册
  */
-static void register_all_if(usb_dev_t *udev) {
+static inline void usb_all_if_register(usb_dev_t *udev) {
     for (uint32 i = 0; i < udev->interfaces_count; i++) {
         usb_if_t *usb_if = &udev->interfaces[i];
 
@@ -866,7 +866,7 @@ static void register_all_if(usb_dev_t *udev) {
 /**
  * @brief 解析配置描述符，创建 USB 接口树并注册到系统总线
  */
-static inline int32 usb_if_create_register(usb_dev_t *udev) {
+static inline int32 usb_if_create(usb_dev_t *udev) {
     // 局部极速缓存区（放在栈上，函数退出自动销毁，零内存碎片）
     // ★ 修复：使用 uint32 彻底杜绝自增整数溢出
     uint8 alt_count[256];
@@ -884,11 +884,6 @@ static inline int32 usb_if_create_register(usb_dev_t *udev) {
     // 阶段 2：填血肉 (解析接口与端点图纸)
     // =======================================================
     if_parse(udev, usb_if_map);
-
-    // =======================================================
-    // 阶段 3：注灵魂 (设置默认配置并向操作系统注册设备)
-    // =======================================================
-    register_all_if(udev);
 
     return 0; // 接口树构建完毕，成功交接给业务层驱动！
 }
@@ -1151,7 +1146,8 @@ void usb_dev_scan(xhci_hcd_t *xhcd){
             if (xhci_port_reset(xhcd, port_id) == 0) {
                 usb_dev_t *usb_dev = usb_dev_create(xhcd, port_id);
                 usb_dev_register(usb_dev);
-                usb_if_create_register(usb_dev);
+                usb_if_create(usb_dev);
+                usb_all_if_register(usb_dev);
             } else {
                 // 如果复位失败，比如劣质 U 盘无法响应，直接跳过，保护操作系统不挂死
                 color_printk(YELLOW, BLACK, "[xHCI] Ignored faulty device on port %d.\n", i);
