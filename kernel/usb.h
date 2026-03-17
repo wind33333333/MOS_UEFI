@@ -514,8 +514,14 @@ extern struct bus_type_t usb_bus_type;
 
 
 //注册usb接口
-static inline void usb_if_register(usb_if_t *usb_if) {
-    device_register(&usb_if->dev);
+static inline void usb_if_register(usb_dev_t *udev) {
+    for (uint32 i = 0; i < udev->interfaces_count; i++) {
+        usb_if_t *usb_if = &udev->interfaces[i];
+        if (usb_if != NULL) {
+            // 触发系统级的 match/probe (比如唤醒 bot.c 或 uas.c 驱动)
+            device_register(&usb_if->dev);
+        }
+    }
 }
 
 //注册usb设备

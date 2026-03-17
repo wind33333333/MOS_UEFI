@@ -842,26 +842,36 @@ static int32 alloc_alt_if_ep_ring(usb_if_alt_t *if_alt) {
 }
 
 
-    /**
- * @brief [阶段 3] 设置默认替用接口，并向系统总线注册
+/**
+ * @brief [硬件层] 配置所有接口的物理端点，并下发通电唤醒外设指令
+ * @return 0 成功，-1 硬件拒绝或通信失败
  */
-static inline void usb_all_if_register(usb_dev_t *udev) {
+static inline int32 set_alt0(usb_dev_t *udev) {
+    // 步骤 1：遍历所有接口，向主板硬件申请全套 DMA 高速公路
     for (uint32 i = 0; i < udev->interfaces_count; i++) {
         usb_if_t *usb_if = &udev->interfaces[i];
 
-        // 确保接口有效
         if (usb_if != NULL) {
-            // 默认激活 alt 0，如果找不到就用数组第 0 个兜底
+            // 默认锁定 alt 0 备用接口
             usb_if_alt_t *alt0 = usb_find_alt_by_num(usb_if, 0);
             usb_if->cur_alt = alt0 ? alt0 : &usb_if->alts[0];
-            alloc_alt_if_ep_ring(usb_if->cur_alt);
-            usb_set_cfg(udev,udev->config_desc->configuration_value); //激活配置
 
-            // 延迟注册：此时 uif 和 alt 数据已绝对完整，触发系统级的 match/probe
-            usb_if_register(usb_if);
+            // 呼叫主板：分配 Transfer Ring 并下发 Configure Endpoint
+            alloc_alt_if_ep_ring(usb_if->cur_alt);
         }
     }
+
+    // 步骤 2：全线高速公路竣工，向物理 U 盘下发唯一的一次“总闸通电”指令
+    int ret = usb_set_cfg(udev, udev->config_desc->configuration_value);
+    if (ret != 0) {
+        color_printk(RED, BLACK, "USB: Failed to Set Configuration! Device rejected.\n");
+        return -1; // 通电失败，拒绝挂载！
+    }
+
+    return 0; // 硬件全线贯通
 }
+
+
 
 /**
  * @brief 解析配置描述符，创建 USB 接口树并注册到系统总线
@@ -884,6 +894,9 @@ static inline int32 usb_if_create(usb_dev_t *udev) {
     // 阶段 2：填血肉 (解析接口与端点图纸)
     // =======================================================
     if_parse(udev, usb_if_map);
+
+
+    set_alt0(udev);
 
     return 0; // 接口树构建完毕，成功交接给业务层驱动！
 }
@@ -1147,7 +1160,7 @@ void usb_dev_scan(xhci_hcd_t *xhcd){
                 usb_dev_t *usb_dev = usb_dev_create(xhcd, port_id);
                 usb_dev_register(usb_dev);
                 usb_if_create(usb_dev);
-                usb_all_if_register(usb_dev);
+                usb_if_register(usb_dev);
             } else {
                 // 如果复位失败，比如劣质 U 盘无法响应，直接跳过，保护操作系统不挂死
                 color_printk(YELLOW, BLACK, "[xHCI] Ignored faulty device on port %d.\n", i);
