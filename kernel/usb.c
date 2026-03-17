@@ -548,6 +548,79 @@ int32 usb_commit_tx(usb_dev_t *udev, usb_tx_cmd_e cmd_type) {
 device_type_t usb_dev_type = {"usb-dev"};
 device_type_t usb_if_type = {"usb-if"};
 
+
+//给备用接口的所有端点分配环
+static int32 alloc_alt_if_ep_ring(usb_if_alt_t *if_alt) {
+    usb_dev_t *udev = if_alt->usb_if->udev;
+
+    // ★ 开启事务，拿出一张空白的 Configure Endpoint 申请表
+    usb_tx_begin(udev);
+
+    // 配置该接口下的所有端点
+    for (uint8 i = 0; i < if_alt->ep_count; i++) {
+        usb_ep_t *ep = &if_alt->eps[i];
+        uint8 ep_dci = ep->ep_dci;
+
+        // 指针放到udev.eps中，建立全局 DCI 快速索引
+        udev->eps[ep_dci] = ep;
+
+        uint64 tr_dequeue_ptr = 0;
+        uint32 max_streams = ep->max_streams > MAX_STREAMS ? MAX_STREAMS : ep->max_streams;
+
+        if (max_streams) {
+            // 有流：分配 Stream Context Array 和 per-stream rings
+            uint32 streams_count = 1 << max_streams;                 // 例如：2^4 = 16
+            uint32 streams_array_count = 1 << (max_streams + 1);     // 例如：2^5 = 32
+
+            // 给硬件 DMA 读的上下文数组 (必须 16 字节对齐)
+            xhci_stream_ctx_t *streams_ctx_array = kzalloc_dma(streams_array_count * sizeof(xhci_stream_ctx_t));
+            // 给软件管理的传输环数组 (只需要 16 + 1 = 17 个)
+            xhci_ring_t *streams_ring_array = kzalloc((streams_count + 1) * sizeof(xhci_ring_t));
+
+            // ★ 修复 1：必须保存 DMA 数组指针，否则未来无法 kfree 回收！
+            ep->streams_ctx_array = streams_ctx_array;
+            ep->streams_ring_array = streams_ring_array;
+            ep->enable_streams_count = streams_count;
+            ep->lsa = 1;
+            ep->hid = 1;
+
+            for (uint32 s = 1; s <= streams_count; s++) {
+                // Stream ID 从 1 开始
+                xhci_alloc_ring(&streams_ring_array[s]);
+                // SCT=1 (Primary TRB Ring: bit 1~3), DCS=1 (bit 0)
+                streams_ctx_array[s].tr_dequeue = va_to_pa(streams_ring_array[s].ring_base) | (1 << 1) | 1;
+                streams_ctx_array[s].reserved = 0;
+            }
+            // Stream ID 0 保留，硬件规定设为 0
+            streams_ctx_array[0].tr_dequeue = 0;
+            streams_ctx_array[0].reserved = 0;
+
+            tr_dequeue_ptr = va_to_pa(streams_ctx_array);
+        } else {
+            // 无流：最经典的单个 Transfer Ring
+            xhci_alloc_ring(&ep->transfer_ring);
+            tr_dequeue_ptr = va_to_pa(ep->transfer_ring.ring_base) | 1; // DCS=1
+
+            // ★ 修复 3：确保无流时状态干净
+            ep->lsa = 0;
+            ep->hid = 0;
+        }
+
+        ep->cerr = 3;
+        ep->max_streams = max_streams;
+        ep->trq_phys_addr = tr_dequeue_ptr; // 物理基址准备就绪
+
+        // ★ 将端点挂载到 Input Context 申请表中
+        usb_prep_add_ep(udev, ep);
+    }
+
+    // ★ 扣动扳机！将申请表通过 Command Ring 提交给主板，并敲响门铃
+    usb_commit_tx(udev, USB_TX_CMD_CFG_EP);
+
+    return 0;
+}
+
+
 /**
  * @brief [内部辅助] 解析并装填 USB 标准端点参数 (USB 2.0 规格底稿)
  */
@@ -733,14 +806,22 @@ static inline int32 alloc_if_mem(usb_dev_t *udev, uint8 *alt_count, usb_if_t **u
 /**
  * @brief [阶段 2] 填充替用接口参数，分配端点内存并触发解析
  */
-static inline void if_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
+/**
+ * @brief [核心阶段] 解析所有接口与端点图纸，配置 xHCI 硬件环，并下发激活设备的指令
+ * @param udev       USB 设备对象
+ * @param usb_if_map 接口映射缓存表
+ * @return 0 表示全线贯通成功，-1 表示设备拒绝激活
+ */
+static inline int32 if_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
     uint8 fill_idx[256];
     asm_mem_set(fill_idx, 0, sizeof(fill_idx)); // 用于记录每个接口当前填充到了第几个 alt
 
     usb_if_desc_t *if_desc = (usb_if_desc_t *)udev->config_desc;
     void *cfg_end = usb_cfg_end(udev->config_desc);
 
-    // 第二次遍历：精细化装填
+    // =================================================================
+    // 阶段 A：纯软件遍历，精细化装填所有接口和端点的“图纸”参数
+    // =================================================================
     while ((void *)if_desc < cfg_end) {
         if (if_desc->head.desc_type == USB_DESC_TYPE_INTERFACE) {
             uint8 if_num = if_desc->interface_number;
@@ -764,95 +845,18 @@ static inline void if_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
                 if_alt->eps = kzalloc(if_alt->ep_count * sizeof(usb_ep_t));
                 alt_if_parse(if_alt);
             }
-
         }
         if_desc = (usb_if_desc_t *)usb_get_next_desc(&if_desc->head);
     }
-}
 
-//给备用接口的所有端点分配环
-static int32 alloc_alt_if_ep_ring(usb_if_alt_t *if_alt) {
-    usb_dev_t *udev = if_alt->usb_if->udev;
-
-    // ★ 开启事务，拿出一张空白的 Configure Endpoint 申请表
-    usb_tx_begin(udev);
-
-    // 配置该接口下的所有端点
-    for (uint8 i = 0; i < if_alt->ep_count; i++) {
-        usb_ep_t *ep = &if_alt->eps[i];
-        uint8 ep_dci = ep->ep_dci;
-
-        // 指针放到udev.eps中，建立全局 DCI 快速索引
-        udev->eps[ep_dci] = ep;
-
-        uint64 tr_dequeue_ptr = 0;
-        uint32 max_streams = ep->max_streams > MAX_STREAMS ? MAX_STREAMS : ep->max_streams;
-
-        if (max_streams) {
-            // 有流：分配 Stream Context Array 和 per-stream rings
-            uint32 streams_count = 1 << max_streams;                 // 例如：2^4 = 16
-            uint32 streams_array_count = 1 << (max_streams + 1);     // 例如：2^5 = 32
-
-            // 给硬件 DMA 读的上下文数组 (必须 16 字节对齐)
-            xhci_stream_ctx_t *streams_ctx_array = kzalloc_dma(streams_array_count * sizeof(xhci_stream_ctx_t));
-            // 给软件管理的传输环数组 (只需要 16 + 1 = 17 个)
-            xhci_ring_t *streams_ring_array = kzalloc((streams_count + 1) * sizeof(xhci_ring_t));
-
-            // ★ 修复 1：必须保存 DMA 数组指针，否则未来无法 kfree 回收！
-            ep->streams_ctx_array = streams_ctx_array;
-            ep->streams_ring_array = streams_ring_array;
-            ep->enable_streams_count = streams_count;
-            ep->lsa = 1;
-            ep->hid = 1;
-
-            for (uint32 s = 1; s <= streams_count; s++) {
-                // Stream ID 从 1 开始
-                xhci_alloc_ring(&streams_ring_array[s]);
-                // SCT=1 (Primary TRB Ring: bit 1~3), DCS=1 (bit 0)
-                streams_ctx_array[s].tr_dequeue = va_to_pa(streams_ring_array[s].ring_base) | (1 << 1) | 1;
-                streams_ctx_array[s].reserved = 0;
-            }
-            // Stream ID 0 保留，硬件规定设为 0
-            streams_ctx_array[0].tr_dequeue = 0;
-            streams_ctx_array[0].reserved = 0;
-
-            tr_dequeue_ptr = va_to_pa(streams_ctx_array);
-        } else {
-            // 无流：最经典的单个 Transfer Ring
-            xhci_alloc_ring(&ep->transfer_ring);
-            tr_dequeue_ptr = va_to_pa(ep->transfer_ring.ring_base) | 1; // DCS=1
-
-            // ★ 修复 3：确保无流时状态干净
-            ep->lsa = 0;
-            ep->hid = 0;
-        }
-
-        ep->cerr = 3;
-        ep->max_streams = max_streams;
-        ep->trq_phys_addr = tr_dequeue_ptr; // 物理基址准备就绪
-
-        // ★ 将端点挂载到 Input Context 申请表中
-        usb_prep_add_ep(udev, ep);
-    }
-
-    // ★ 扣动扳机！将申请表通过 Command Ring 提交给主板，并敲响门铃
-    usb_commit_tx(udev, USB_TX_CMD_CFG_EP);
-
-    return 0;
-}
-
-
-/**
- * @brief [硬件层] 配置所有接口的物理端点，并下发通电唤醒外设指令
- * @return 0 成功，-1 硬件拒绝或通信失败
- */
-static inline int32 set_alt0(usb_dev_t *udev) {
-    // 步骤 1：遍历所有接口，向主板硬件申请全套 DMA 高速公路
+    // =================================================================
+    // 阶段 B：图纸绘制完毕，开始向主板申请硬件 DMA 高速公路
+    // =================================================================
     for (uint32 i = 0; i < udev->interfaces_count; i++) {
         usb_if_t *usb_if = &udev->interfaces[i];
 
         if (usb_if != NULL) {
-            // 默认锁定 alt 0 备用接口
+            // 默认锁定 alt 0 备用接口 (包含极其严密的兜底容错逻辑)
             usb_if_alt_t *alt0 = usb_find_alt_by_num(usb_if, 0);
             usb_if->cur_alt = alt0 ? alt0 : &usb_if->alts[0];
 
@@ -861,17 +865,17 @@ static inline int32 set_alt0(usb_dev_t *udev) {
         }
     }
 
-    // 步骤 2：全线高速公路竣工，向物理 U 盘下发唯一的一次“总闸通电”指令
+    // =================================================================
+    // 阶段 C：全线高速公路竣工，向物理 U 盘下发唯一的一次“总闸通电”指令
+    // =================================================================
     int ret = usb_set_cfg(udev, udev->config_desc->configuration_value);
     if (ret != 0) {
         color_printk(RED, BLACK, "USB: Failed to Set Configuration! Device rejected.\n");
         return -1; // 通电失败，拒绝挂载！
     }
 
-    return 0; // 硬件全线贯通
+    return 0; // 软硬全线贯通！
 }
-
-
 
 /**
  * @brief 解析配置描述符，创建 USB 接口树并注册到系统总线
@@ -895,8 +899,6 @@ static inline int32 usb_if_create(usb_dev_t *udev) {
     // =======================================================
     if_parse(udev, usb_if_map);
 
-
-    set_alt0(udev);
 
     return 0; // 接口树构建完毕，成功交接给业务层驱动！
 }
