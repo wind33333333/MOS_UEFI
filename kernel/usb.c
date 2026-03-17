@@ -769,6 +769,79 @@ static inline void if_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
         if_desc = (usb_if_desc_t *)usb_get_next_desc(&if_desc->head);
     }
 }
+
+//给备用接口的所有端点分配环
+static int32 alloc_alt_if_ep_ring(usb_if_alt_t *if_alt) {
+    usb_dev_t *udev = if_alt->usb_if->udev;
+
+    // ★ 开启事务，拿出一张空白的 Configure Endpoint 申请表
+    usb_tx_begin(udev);
+
+    // 配置该接口下的所有端点
+    for (uint8 i = 0; i < if_alt->ep_count; i++) {
+        usb_ep_t *ep = &if_alt->eps[i];
+        uint8 ep_dci = ep->ep_dci;
+
+        // 指针放到udev.eps中，建立全局 DCI 快速索引
+        udev->eps[ep_dci] = ep;
+
+        uint64 tr_dequeue_ptr = 0;
+        uint32 max_streams = ep->max_streams > MAX_STREAMS ? MAX_STREAMS : ep->max_streams;
+
+        if (max_streams) {
+            // 有流：分配 Stream Context Array 和 per-stream rings
+            uint32 streams_count = 1 << max_streams;                 // 例如：2^4 = 16
+            uint32 streams_array_count = 1 << (max_streams + 1);     // 例如：2^5 = 32
+
+            // 给硬件 DMA 读的上下文数组 (必须 16 字节对齐)
+            xhci_stream_ctx_t *streams_ctx_array = kzalloc_dma(streams_array_count * sizeof(xhci_stream_ctx_t));
+            // 给软件管理的传输环数组 (只需要 16 + 1 = 17 个)
+            xhci_ring_t *streams_ring_array = kzalloc((streams_count + 1) * sizeof(xhci_ring_t));
+
+            // ★ 修复 1：必须保存 DMA 数组指针，否则未来无法 kfree 回收！
+            ep->streams_ctx_array = streams_ctx_array;
+            ep->streams_ring_array = streams_ring_array;
+            ep->enable_streams_count = streams_count;
+            ep->lsa = 1;
+            ep->hid = 1;
+
+            for (uint32 s = 1; s <= streams_count; s++) {
+                // Stream ID 从 1 开始
+                xhci_alloc_ring(&streams_ring_array[s]);
+                // SCT=1 (Primary TRB Ring: bit 1~3), DCS=1 (bit 0)
+                streams_ctx_array[s].tr_dequeue = va_to_pa(streams_ring_array[s].ring_base) | (1 << 1) | 1;
+                streams_ctx_array[s].reserved = 0;
+            }
+            // Stream ID 0 保留，硬件规定设为 0
+            streams_ctx_array[0].tr_dequeue = 0;
+            streams_ctx_array[0].reserved = 0;
+
+            tr_dequeue_ptr = va_to_pa(streams_ctx_array);
+        } else {
+            // 无流：最经典的单个 Transfer Ring
+            xhci_alloc_ring(&ep->transfer_ring);
+            tr_dequeue_ptr = va_to_pa(ep->transfer_ring.ring_base) | 1; // DCS=1
+
+            // ★ 修复 3：确保无流时状态干净
+            ep->lsa = 0;
+            ep->hid = 0;
+        }
+
+        ep->cerr = 3;
+        ep->max_streams = max_streams;
+        ep->trq_phys_addr = tr_dequeue_ptr; // 物理基址准备就绪
+
+        // ★ 将端点挂载到 Input Context 申请表中
+        usb_prep_add_ep(udev, ep);
+    }
+
+    // ★ 扣动扳机！将申请表通过 Command Ring 提交给主板，并敲响门铃
+    usb_commit_tx(udev, USB_TX_CMD_CFG_EP);
+
+    return 0;
+}
+
+
     /**
  * @brief [阶段 3] 设置默认替用接口，并向系统总线注册
  */
@@ -781,6 +854,8 @@ static void register_all_if(usb_dev_t *udev) {
             // 默认激活 alt 0，如果找不到就用数组第 0 个兜底
             usb_if_alt_t *alt0 = usb_find_alt_by_num(usb_if, 0);
             usb_if->cur_alt = alt0 ? alt0 : &usb_if->alts[0];
+            alloc_alt_if_ep_ring(usb_if->cur_alt);
+            usb_set_cfg(udev,udev->config_desc->configuration_value); //激活配置
 
             // 延迟注册：此时 uif 和 alt 数据已绝对完整，触发系统级的 match/probe
             usb_if_register(usb_if);
@@ -791,7 +866,7 @@ static void register_all_if(usb_dev_t *udev) {
 /**
  * @brief 解析配置描述符，创建 USB 接口树并注册到系统总线
  */
-static inline int32 if_create_register(usb_dev_t *udev) {
+static inline int32 usb_if_create_register(usb_dev_t *udev) {
     // 局部极速缓存区（放在栈上，函数退出自动销毁，零内存碎片）
     // ★ 修复：使用 uint32 彻底杜绝自增整数溢出
     uint8 alt_count[256];
@@ -840,7 +915,7 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
 
     //给端点0分配传输环内存,挂载到 O(1) 路由表
     usb_ep_t *ep0 = &udev->ep0;
-    xhci_ring_init(&ep0->transfer_ring);
+    xhci_alloc_ring(&ep0->transfer_ring);
     udev->eps[1] = ep0;
 
     // --- 计算初始 Max Packet Size ---
@@ -986,19 +1061,18 @@ static inline int get_string_desc(usb_dev_t *udev) {
 
 //创建usb设备
 static inline usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
-    usb_dev_t *usb_dev = kzalloc(sizeof(usb_dev_t));
-    usb_dev->xhcd = xhcd;
-    usb_dev->port_id = port_id;
-    enable_slot_ep0(usb_dev); //启用slot 和 ep0
-    get_dev_desc(usb_dev);    //获取设备描述符
-    get_cfg_desc(usb_dev);    //获取配置描述符
-    get_string_desc(usb_dev); //获取字符串描述符
-    usb_set_cfg(usb_dev,usb_dev->config_desc->configuration_value); //激活配置
+    usb_dev_t *udev = kzalloc(sizeof(usb_dev_t));
+    udev->xhcd = xhcd;
+    udev->port_id = port_id;
+    enable_slot_ep0(udev); //启用slot 和 ep0
+    get_dev_desc(udev);    //获取设备描述符
+    get_cfg_desc(udev);    //获取配置描述符
+    get_string_desc(udev); //获取字符串描述符
 
-    usb_dev->dev.type = &usb_dev_type;
-    usb_dev->dev.parent = &xhcd->xdev->dev;
-    usb_dev->dev.bus = &usb_bus_type;
-    return usb_dev;
+    udev->dev.type = &usb_dev_type;
+    udev->dev.parent = &xhcd->xdev->dev;
+    udev->dev.bus = &usb_bus_type;
+    return udev;
 }
 
 /**
@@ -1063,10 +1137,10 @@ static inline  int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
 void usb_dev_scan(xhci_hcd_t *xhcd){
 
     //等待硬件完成端口初始化
-    uint32 times = 20000000;
-    while (times--) {
-        asm_pause();
-    }
+    // uint32 times = 20000000;
+    // while (times--) {
+    //     asm_pause();
+    // }
 
     for (uint8 i = 0; i < xhcd->max_ports; i++) {
         uint8 port_id = i+1;
@@ -1078,7 +1152,7 @@ void usb_dev_scan(xhci_hcd_t *xhcd){
             if (xhci_port_reset(xhcd, port_id) == 0) {
                 usb_dev_t *usb_dev = usb_dev_create(xhcd, port_id);
                 usb_dev_register(usb_dev);
-                if_create_register(usb_dev);
+                usb_if_create_register(usb_dev);
             } else {
                 // 如果复位失败，比如劣质 U 盘无法响应，直接跳过，保护操作系统不挂死
                 color_printk(YELLOW, BLACK, "[xHCI] Ignored faulty device on port %d.\n", i);

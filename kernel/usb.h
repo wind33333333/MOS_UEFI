@@ -380,12 +380,13 @@ typedef struct usb_ep_t {
     uint16      average_trb_length;
     uint64      trq_phys_addr;
 
+    void        *streams_ctx_array;
     //软件结构
     union {
         xhci_ring_t  transfer_ring;
-        xhci_ring_t  *stream_rings;   // per-stream rings数组 (如果启用流)
+        xhci_ring_t  *streams_ring_array;   // per-stream rings数组 (如果启用流)
     };
-    uint32 streams_count;        // 2^max_streams_exp+1
+    uint32 enable_streams_count;        // 2^max_streams_exp+1
 
     // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
     void        *extras_desc;

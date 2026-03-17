@@ -713,7 +713,7 @@ int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhcd->op_reg->config = xhcd->max_slots; //把最大插槽数量写入寄存器
 
     /*初始化命令环*/
-    xhci_ring_init(&xhcd->cmd_ring);
+    xhci_alloc_ring(&xhcd->cmd_ring);
     xhcd->op_reg->crcr = va_to_pa(xhcd->cmd_ring.ring_base) | 1; //命令环物理地址写入crcr寄存器，置位rcs
 
     /*初始化中断器*/
@@ -722,7 +722,7 @@ int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhci_intr *intr = kzalloc(sizeof(xhci_intr) * xhcd->enable_intr_count);
     xhcd->intr = intr;
     for (uint16 i = 0; i < xhcd->enable_intr_count; i++) {
-        xhci_ring_init(&intr[i].event_rings);
+        xhci_alloc_ring(&intr[i].event_rings);
         uint64 evt_pa = va_to_pa(intr[i].event_rings.ring_base);
 
         xhci_erst_t *erstba = kzalloc_dma(sizeof(xhci_erst_t)); //分配事件环段表内存，单段只分配一个

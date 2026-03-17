@@ -1073,14 +1073,14 @@ static inline uint8 xhci_get_port_speed (xhci_hcd_t *xhcd,uint8 port_id) {
 }
 
 //初始化环
-static inline int32 xhci_ring_init(xhci_ring_t *ring) {
+static inline int32 xhci_alloc_ring(xhci_ring_t *ring) {
     ring->ring_base = kzalloc_dma(TRB_COUNT * sizeof(xhci_trb_t));
     ring->index = 0;
     ring->cycle = 1;
 }
 
 //环释放
-static inline int32 xhci_ring_free(xhci_ring_t *ring) {
+static inline int32 xhci_free_ring(xhci_ring_t *ring) {
     kfree(ring->ring_base);
 }
 

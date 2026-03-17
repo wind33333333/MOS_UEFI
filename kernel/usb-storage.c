@@ -61,14 +61,14 @@ int usb_endpoint_init(usb_if_alt_t *if_alt) {
             uint32 streams_ctx_array_count = 1 << (max_streams + 1);
             xhci_stream_ctx_t *stream_ctx_array = kzalloc(streams_ctx_array_count * sizeof(xhci_stream_ctx_t));
             xhci_ring_t *stream_rings = kzalloc(streams_ctx_array_count * sizeof(xhci_ring_t)); //streams0 保留内存需要对齐;
-            ep->stream_rings = stream_rings;
-            ep->streams_count = streams_count;
+            ep->streams_ring_array = stream_rings;
+            ep->enable_streams_count = streams_count;
             ep->lsa = 1;
             ep->hid = 1;
 
             for (uint32 s = 1; s <= streams_count; s++) {
                 // Stream ID从1开始
-                xhci_ring_init(&stream_rings[s]);
+                xhci_alloc_ring(&stream_rings[s]);
                 stream_ctx_array[s].tr_dequeue = va_to_pa(stream_rings[s].ring_base) | 1 | 1 << 1;
                 stream_ctx_array[s].reserved = 0;
             }
@@ -78,7 +78,7 @@ int usb_endpoint_init(usb_if_alt_t *if_alt) {
             tr_dequeue_ptr = va_to_pa(stream_ctx_array);
         } else {
             // 无流：单个Transfer Ring
-            xhci_ring_init(&ep->transfer_ring);
+            xhci_alloc_ring(&ep->transfer_ring);
             tr_dequeue_ptr = va_to_pa(ep->transfer_ring.ring_base) | 1; // DCS=1
         }
 
@@ -122,7 +122,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
         for (uint8 i = 0; i < 4; i++) {
             usb_ep_t *ep = &uif->cur_alt->eps[i];
             uint8 ep_dci = ep->ep_dci;
-            uint32 streams = ep->streams_count;
+            uint32 streams = ep->enable_streams_count;
             if (streams && streams < mini_streams) mini_streams = streams;
             usb_uas_pipe_usage_desc_t *pipe_usage_desc = ep->extras_desc;
             switch (pipe_usage_desc->pipe_id) {
