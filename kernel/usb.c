@@ -169,7 +169,7 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
     tr_trb.setup_stage.idt = TRB_IDT_ENABLE;   // setup trb 必须1
     tr_trb.setup_stage.type = XHCI_TRB_TYPE_SETUP_STAGE;
     tr_trb.setup_stage.chain = TRB_CHAIN_DISABLE;
-    tr_trb.setup_stage.ioc = TRB_IOC_DISABLE;
+    tr_trb.setup_stage.ioc = TRB_IOC_ENABLE;
     // 判断 TRT (Transfer Type)
     if (length == 0) {
         tr_trb.setup_stage.trt = TRB_TRT_NO_DATA;
@@ -191,7 +191,7 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
         tr_trb.data_stage.type = XHCI_TRB_TYPE_DATA_STAGE;
         tr_trb.data_stage.dir = usb_req_dir;  //数据阶段方向和usb.dtd方向一致
         tr_trb.data_stage.chain = TRB_CHAIN_DISABLE; // 单个 Data TRB 必须为 0
-        tr_trb.data_stage.ioc = TRB_IOC_DISABLE;   // 开启中断防雷
+        tr_trb.data_stage.ioc = TRB_IOC_ENABLE;   // 开启中断防雷
 
         data_ptr = xhci_ring_enqueue(uc_ring, &tr_trb);
     }
@@ -947,7 +947,6 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
  */
 static inline int32 get_dev_desc(usb_dev_t *udev) {
     xhci_hcd_t *xhcd = udev->xhcd;
-    uint8 port_speed = xhci_get_port_speed(xhcd, udev->port_id);
 
     // 分配设备描述符的 DMA 内存
     usb_dev_desc_t *dev_desc = kzalloc_dma(sizeof(usb_dev_desc_t));
@@ -955,7 +954,7 @@ static inline int32 get_dev_desc(usb_dev_t *udev) {
     // ============================
     // 全速设备 (FS) 的 8 字节刺探与修正逻辑
     // ============================
-    if (port_speed == XHCI_PORTSC_SPEED_FULL) {
+    if (udev->port_speed == XHCI_PORTSC_SPEED_FULL) {
 
         // 探针：只拿前 8 字节
         usb_get_desc(udev, dev_desc, 8, USB_DESC_TYPE_DEVICE, 0, 0);
