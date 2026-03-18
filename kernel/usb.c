@@ -623,24 +623,22 @@ static int32 free_ep_ring(usb_ep_t *ep) {
 
     return 0; // ★ 修复：增加返回值
 }
-//切换备用接口
-int32 usb_switch_alt_if (usb_if_alt_t *old_alt,usb_if_alt_t *new_alt) {
+
+
+// 切换备用接口 (终极无死角防弹版)
+int32 usb_switch_alt_if (usb_if_alt_t *old_alt, usb_if_alt_t *new_alt) {
+    if (old_alt == new_alt) return 0;
+
     usb_if_t *uif = old_alt->uif;
     usb_dev_t *udev = uif->udev;
 
-    // ★ 开启事务，拿出一张空白的 Configure Endpoint 申请表
     usb_tx_begin(udev);
-
-    usb_ep_t *ep;
-    uint8 ep_dci;
-    uint8 ep_count;
 
     // ==========================================================
     // 阶段 1：[纸上谈兵] 圈出要 Drop 的旧端点
     // ==========================================================
     for (uint8 i = 0; i < old_alt->ep_count; i++) {
         usb_prep_drop_ep(udev, old_alt->eps[i].ep_dci);
-        // 绝对不能在这里释放物理内存和清空路由表！
     }
 
     // ==========================================================
@@ -648,8 +646,8 @@ int32 usb_switch_alt_if (usb_if_alt_t *old_alt,usb_if_alt_t *new_alt) {
     // ==========================================================
     for (uint8 i = 0; i < new_alt->ep_count; i++) {
         usb_ep_t *ep = &new_alt->eps[i];
-        alloc_ep_ring(ep);             // 为新端点真金白银地分配内存
-        usb_prep_add_ep(udev, ep);     // 在申请表上打上 Add 标记
+        alloc_ep_ring(ep);
+        usb_prep_add_ep(udev, ep);
     }
 
     // ==========================================================
@@ -657,43 +655,56 @@ int32 usb_switch_alt_if (usb_if_alt_t *old_alt,usb_if_alt_t *new_alt) {
     // ==========================================================
     if (usb_commit_tx(udev, USB_TX_CMD_CFG_EP) != 0) {
         color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, hardware rejected!\n");
-        // ★ 完美回滚：主板拒绝了！刚才给新端点预分配的内存必须当场销毁
-        for (uint8 i = 0; i < new_alt->ep_count; i++) {
-            free_ep_ring(&new_alt->eps[i]);
-        }
-        return -1; // 旧端点完全没受影响，U盘仍可正常工作！
-    }
-
-    // ==========================================================
-    // 阶段 4：[安全销毁与路由切换] 硬件已抛弃旧通道，可以安全收尸了！
-    // ==========================================================
-    // 4.1 清理旧端点
-    for (uint8 i = 0; i < old_alt->ep_count; i++) {
-        usb_ep_t *ep = &old_alt->eps[i];
-        udev->eps[ep->ep_dci] = NULL; // 撤销旧路由
-        free_ep_ring(ep);             // ★ 此时释放绝对安全！
-    }
-
-    // 4.2 建立新路由
-    for (uint8 i = 0; i < new_alt->ep_count; i++) {
-        usb_ep_t *ep = &new_alt->eps[i];
-        udev->eps[ep->ep_dci] = ep;   // 生效新路由
-    }
-
-    // ==========================================================
-    // 阶段 5：主板物理桥梁已搭好，最后去通知物理外设 (U盘) 切换频道
-    // ==========================================================
-    if (usb_set_if(udev, uif->if_num, new_alt->altsetting) != 0) {
-        color_printk(RED, BLACK, "USB: Device rejected Set Interface command!\n");
-        // 极度罕见：理论上这里需要反向操作切回旧接口，这里为保持清晰先返回错误
+        // 主板拒绝，销毁新分配的内存，安全退出
+        for (uint8 i = 0; i < new_alt->ep_count; i++) free_ep_ring(&new_alt->eps[i]);
         return -1;
     }
 
-    // 彻底成功，状态机翻页
+    // ==========================================================
+    // ★ 阶段 4：[防竞态] 提前挂载新路由！(兵马未动，粮草先行)
+    // 此时新通道硬件已通，但外设还未切换。我们先把接收器架好，防漏包！
+    // ==========================================================
+    for (uint8 i = 0; i < new_alt->ep_count; i++) {
+        usb_ep_t *ep = &new_alt->eps[i];
+        udev->eps[ep->ep_dci] = ep;
+    }
+
+    // ==========================================================
+    // ★ 阶段 5：主板软件均就绪，正式通知物理 U 盘切换频道！
+    // ==========================================================
+    if (usb_set_if(udev, uif->if_num, new_alt->altsetting) != 0) {
+        color_printk(RED, BLACK, "USB: Device rejected Set Interface command!\n");
+
+        // ！！！极品回滚逻辑 ！！！
+        // 1. 软件路由撤销 (把刚才挂上去的新路由摘下来)
+        for (uint8 i = 0; i < new_alt->ep_count; i++) udev->eps[new_alt->eps[i].ep_dci] = NULL;
+
+        // 2. 释放新环内存
+        for (uint8 i = 0; i < new_alt->ep_count; i++) free_ep_ring(&new_alt->eps[i]);
+
+        // 3. 将主板硬件强制回滚到旧状态 (反向 Drop 新的，Add 旧的)
+        usb_tx_begin(udev);
+        for (uint8 i = 0; i < new_alt->ep_count; i++) usb_prep_drop_ep(udev, new_alt->eps[i].ep_dci);
+        for (uint8 i = 0; i < old_alt->ep_count; i++) usb_prep_add_ep(udev, &old_alt->eps[i]);
+        usb_commit_tx(udev, USB_TX_CMD_CFG_EP);
+
+        return -1; // 经过这一套抢救，操作系统和设备完美回到切换前的健康状态！
+    }
+
+    // ==========================================================
+    // 阶段 6：[过河拆桥] 切换彻底成功，可以安全收缴旧端点的尸体了
+    // ==========================================================
+    for (uint8 i = 0; i < old_alt->ep_count; i++) {
+        usb_ep_t *ep = &old_alt->eps[i];
+        if (udev->eps[ep->ep_dci] == ep) udev->eps[ep->ep_dci] = NULL; // 清除旧路由
+        free_ep_ring(ep); // 彻底释放旧物理内存
+    }
+
+    // 状态机翻页
     uif->cur_alt = new_alt;
+    color_printk(GREEN, BLACK, "USB: IF %d successfully switched to Alt %d\n", uif->if_num, new_alt->altsetting);
 
     return 0;
-
 }
 
 
