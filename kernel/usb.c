@@ -603,25 +603,26 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
 //释放端点环
 static int32 free_ep_ring(usb_ep_t *ep) {
     uint32 enable_streams_count = ep->enable_streams_count;
+
     if (enable_streams_count) {
-
         xhci_ring_t *streams_ring_array = ep->streams_ring_array;
-
-        //释放流环
+        // 释放流环
         for (uint32 s = 1; s <= enable_streams_count; s++) {
-            // Stream ID 从 1 开始
             xhci_free_ring(&streams_ring_array[s]);
         }
-
         kfree(ep->streams_ring_array);
-        kfree(ep->streams_ctx_array);
+        kfree(ep->streams_ctx_array); // ★ 修复：必须是 kfree_dma
 
+        ep->streams_ring_array = NULL;
+        ep->streams_ctx_array = NULL;
+        ep->enable_streams_count = 0;
     } else {
         // 无流：最经典的单个 Transfer Ring
         xhci_free_ring(&ep->transfer_ring);
     }
-}
 
+    return 0; // ★ 修复：增加返回值
+}
 //切换备用接口
 int32 usb_switch_alt_if (usb_if_alt_t *old_alt,usb_if_alt_t *new_alt) {
     usb_if_t *uif = old_alt->uif;
@@ -629,51 +630,70 @@ int32 usb_switch_alt_if (usb_if_alt_t *old_alt,usb_if_alt_t *new_alt) {
 
     // ★ 开启事务，拿出一张空白的 Configure Endpoint 申请表
     usb_tx_begin(udev);
+
     usb_ep_t *ep;
     uint8 ep_dci;
     uint8 ep_count;
 
-    // 配置该接口下的所有端点
-    ep_count = old_alt->ep_count;
-    for (uint8 i = 0; i < ep_count; i++) {
-        ep = &old_alt->eps[i];
-        uint8 ep_dci = ep->ep_dci;
-
-        // 清空端点指针防止野指针
-        udev->eps[ep_dci] = NULL;
-
-        //释放端点环
-        free_ep_ring(ep);
-
-        // ★ 将端点挂载到 Input Context 申请表中
-        usb_prep_drop_ep(udev, ep_dci);
+    // ==========================================================
+    // 阶段 1：[纸上谈兵] 圈出要 Drop 的旧端点
+    // ==========================================================
+    for (uint8 i = 0; i < old_alt->ep_count; i++) {
+        usb_prep_drop_ep(udev, old_alt->eps[i].ep_dci);
+        // 绝对不能在这里释放物理内存和清空路由表！
     }
 
-    // 配置该接口下的所有端点
-    ep_count = new_alt->ep_count;
-    for (uint8 i = 0; i < ep_count; i++) {
-        ep = &new_alt->eps[i];
-        ep_dci = ep->ep_dci;
-
-        // 指针放到udev.eps中，建立全局 DCI 快速索引
-        udev->eps[ep_dci] = ep;
-
-        //给端点分配环
-        alloc_ep_ring(ep);
-
-        // ★ 将端点挂载到 Input Context 申请表中
-        usb_prep_add_ep(udev, ep);
+    // ==========================================================
+    // 阶段 2：[预分配] 为新端点画图纸并分配内存
+    // ==========================================================
+    for (uint8 i = 0; i < new_alt->ep_count; i++) {
+        usb_ep_t *ep = &new_alt->eps[i];
+        alloc_ep_ring(ep);             // 为新端点真金白银地分配内存
+        usb_prep_add_ep(udev, ep);     // 在申请表上打上 Add 标记
     }
 
-    // ★ 扣动扳机！将申请表通过 Command Ring 提交给主板，并敲响门铃
-    usb_commit_tx(udev, USB_TX_CMD_CFG_EP);
+    // ==========================================================
+    // 阶段 3：一锤定音！向 xHCI 提交图纸，等待硬件裁决
+    // ==========================================================
+    if (usb_commit_tx(udev, USB_TX_CMD_CFG_EP) != 0) {
+        color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, hardware rejected!\n");
+        // ★ 完美回滚：主板拒绝了！刚才给新端点预分配的内存必须当场销毁
+        for (uint8 i = 0; i < new_alt->ep_count; i++) {
+            free_ep_ring(&new_alt->eps[i]);
+        }
+        return -1; // 旧端点完全没受影响，U盘仍可正常工作！
+    }
 
-    //切换接口
-    usb_set_if(udev,uif->if_num,new_alt->altsetting);
+    // ==========================================================
+    // 阶段 4：[安全销毁与路由切换] 硬件已抛弃旧通道，可以安全收尸了！
+    // ==========================================================
+    // 4.1 清理旧端点
+    for (uint8 i = 0; i < old_alt->ep_count; i++) {
+        usb_ep_t *ep = &old_alt->eps[i];
+        udev->eps[ep->ep_dci] = NULL; // 撤销旧路由
+        free_ep_ring(ep);             // ★ 此时释放绝对安全！
+    }
 
+    // 4.2 建立新路由
+    for (uint8 i = 0; i < new_alt->ep_count; i++) {
+        usb_ep_t *ep = &new_alt->eps[i];
+        udev->eps[ep->ep_dci] = ep;   // 生效新路由
+    }
+
+    // ==========================================================
+    // 阶段 5：主板物理桥梁已搭好，最后去通知物理外设 (U盘) 切换频道
+    // ==========================================================
+    if (usb_set_if(udev, uif->if_num, new_alt->altsetting) != 0) {
+        color_printk(RED, BLACK, "USB: Device rejected Set Interface command!\n");
+        // 极度罕见：理论上这里需要反向操作切回旧接口，这里为保持清晰先返回错误
+        return -1;
+    }
+
+    // 彻底成功，状态机翻页
     uif->cur_alt = new_alt;
 
     return 0;
+
 }
 
 
