@@ -37,63 +37,7 @@ static inline uint8 bot_msc_read_max_lun(xhcd_t *xhcd, usb_dev_t *usb_dev,
 extern scsi_host_template_t uas_host_template;
 extern scsi_host_template_t bot_host_template;
 
-//初始化端点
-int usb_endpoint_init(usb_if_alt_t *if_alt) {
-    usb_dev_t *udev = if_alt->usb_if->udev;
-    xhci_hcd_t *xhcd = udev->xhcd;
 
-    //配置端点
-    uint8 max_ep_num = 0;
-    for (uint8 i = 0; i < if_alt->ep_count; i++) {
-        usb_ep_t *ep = &if_alt->eps[i];
-        uint8 ep_dci = ep->ep_dci;
-
-        usb_tx_begin(udev);
-
-        //指针放到udev.eps中
-        udev->eps[ep_dci] = ep;
-
-        uint64 tr_dequeue_ptr = 0;
-        uint32 max_streams = ep->max_streams > MAX_STREAMS ? MAX_STREAMS : ep->max_streams;
-        if (max_streams) {
-            // 有流：分配Stream Context Array和per-stream rings
-            uint32 streams_count = 1 << max_streams;
-            uint32 streams_ctx_array_count = 1 << (max_streams + 1);
-            xhci_stream_ctx_t *stream_ctx_array = kzalloc(streams_ctx_array_count * sizeof(xhci_stream_ctx_t));
-            xhci_ring_t *stream_rings = kzalloc(streams_ctx_array_count * sizeof(xhci_ring_t)); //streams0 保留内存需要对齐;
-            ep->streams_ring_array = stream_rings;
-            ep->enable_streams_count = streams_count;
-            ep->lsa = 1;
-            ep->hid = 1;
-
-            for (uint32 s = 1; s <= streams_count; s++) {
-                // Stream ID从1开始
-                xhci_alloc_ring(&stream_rings[s]);
-                stream_ctx_array[s].tr_dequeue = va_to_pa(stream_rings[s].ring_base) | 1 | 1 << 1;
-                stream_ctx_array[s].reserved = 0;
-            }
-            // Stream ID 0保留，通常设为0或无效
-            stream_ctx_array[0].tr_dequeue = 0;
-            stream_ctx_array[0].reserved = 0;
-            tr_dequeue_ptr = va_to_pa(stream_ctx_array);
-        } else {
-            // 无流：单个Transfer Ring
-            xhci_alloc_ring(&ep->transfer_ring);
-            tr_dequeue_ptr = va_to_pa(ep->transfer_ring.ring_base) | 1; // DCS=1
-        }
-
-        ep->ep_type = ep->ep_type;
-        ep->cerr = 3;
-        ep->max_streams = max_streams;
-        ep->trq_phys_addr = tr_dequeue_ptr;
-
-        usb_prep_add_ep(udev,ep);
-    }
-
-    usb_commit_tx(udev,USB_TX_CMD_CFG_EP);
-
-    return 0;
-}
 
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {

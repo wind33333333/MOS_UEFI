@@ -548,23 +548,10 @@ int32 usb_commit_tx(usb_dev_t *udev, usb_tx_cmd_e cmd_type) {
 device_type_t usb_dev_type = {"usb-dev"};
 device_type_t usb_if_type = {"usb-if"};
 
+//给备端点分配环
+static int32 alloc_ep_ring(usb_ep_t *ep) {
 
-//给备用接口的所有端点分配环
-static int32 alloc_alt_if_ep_ring(usb_if_alt_t *if_alt) {
-    usb_dev_t *udev = if_alt->usb_if->udev;
-
-    // ★ 开启事务，拿出一张空白的 Configure Endpoint 申请表
-    usb_tx_begin(udev);
-
-    // 配置该接口下的所有端点
-    for (uint8 i = 0; i < if_alt->ep_count; i++) {
-        usb_ep_t *ep = &if_alt->eps[i];
-        uint8 ep_dci = ep->ep_dci;
-
-        // 指针放到udev.eps中，建立全局 DCI 快速索引
-        udev->eps[ep_dci] = ep;
-
-        uint64 tr_dequeue_ptr = 0;
+        uint64 tr_dequeue_ptr;
         uint32 max_streams = ep->max_streams > MAX_STREAMS ? MAX_STREAMS : ep->max_streams;
 
         if (max_streams) {
@@ -609,6 +596,104 @@ static int32 alloc_alt_if_ep_ring(usb_if_alt_t *if_alt) {
         ep->cerr = 3;
         ep->max_streams = max_streams;
         ep->trq_phys_addr = tr_dequeue_ptr; // 物理基址准备就绪
+
+    return 0;
+}
+
+//释放端点环
+static int32 free_ep_ring(usb_ep_t *ep) {
+    uint32 enable_streams_count = ep->enable_streams_count;
+    if (enable_streams_count) {
+
+        xhci_ring_t *streams_ring_array = ep->streams_ring_array;
+
+        //释放流环
+        for (uint32 s = 1; s <= enable_streams_count; s++) {
+            // Stream ID 从 1 开始
+            xhci_free_ring(&streams_ring_array[s]);
+        }
+
+        kfree(ep->streams_ring_array);
+        kfree(ep->streams_ctx_array);
+
+    } else {
+        // 无流：最经典的单个 Transfer Ring
+        xhci_free_ring(&ep->transfer_ring);
+    }
+}
+
+//切换备用接口
+int32 usb_switch_alt_if (usb_if_alt_t *old_alt,usb_if_alt_t *new_alt) {
+    usb_if_t *uif = old_alt->uif;
+    usb_dev_t *udev = uif->udev;
+
+    // ★ 开启事务，拿出一张空白的 Configure Endpoint 申请表
+    usb_tx_begin(udev);
+    usb_ep_t *ep;
+    uint8 ep_dci;
+    uint8 ep_count;
+
+    // 配置该接口下的所有端点
+    ep_count = old_alt->ep_count;
+    for (uint8 i = 0; i < ep_count; i++) {
+        ep = &old_alt->eps[i];
+        uint8 ep_dci = ep->ep_dci;
+
+        // 清空端点指针防止野指针
+        udev->eps[ep_dci] = NULL;
+
+        //释放端点环
+        free_ep_ring(ep);
+
+        // ★ 将端点挂载到 Input Context 申请表中
+        usb_prep_drop_ep(udev, ep_dci);
+    }
+
+    // 配置该接口下的所有端点
+    ep_count = new_alt->ep_count;
+    for (uint8 i = 0; i < ep_count; i++) {
+        ep = &new_alt->eps[i];
+        ep_dci = ep->ep_dci;
+
+        // 指针放到udev.eps中，建立全局 DCI 快速索引
+        udev->eps[ep_dci] = ep;
+
+        //给端点分配环
+        alloc_ep_ring(ep);
+
+        // ★ 将端点挂载到 Input Context 申请表中
+        usb_prep_add_ep(udev, ep);
+    }
+
+    // ★ 扣动扳机！将申请表通过 Command Ring 提交给主板，并敲响门铃
+    usb_commit_tx(udev, USB_TX_CMD_CFG_EP);
+
+    //切换接口
+    usb_set_if(udev,uif->if_num,new_alt->altsetting);
+
+    uif->cur_alt = new_alt;
+
+    return 0;
+}
+
+
+//给备用接口的所有端点分配环
+static inline int32 enable_alt_if (usb_if_alt_t *if_alt) {
+    usb_dev_t *udev = if_alt->uif->udev;
+
+    // ★ 开启事务，拿出一张空白的 Configure Endpoint 申请表
+    usb_tx_begin(udev);
+
+    // 配置该接口下的所有端点
+    for (uint8 i = 0; i < if_alt->ep_count; i++) {
+        usb_ep_t *ep = &if_alt->eps[i];
+        uint8 ep_dci = ep->ep_dci;
+
+        // 指针放到udev.eps中，建立全局 DCI 快速索引
+        udev->eps[ep_dci] = ep;
+
+        //给端点分配环
+        alloc_ep_ring(ep);
 
         // ★ 将端点挂载到 Input Context 申请表中
         usb_prep_add_ep(udev, ep);
@@ -722,7 +807,7 @@ static inline int32 alt_if_parse(usb_if_alt_t *if_alt) {
     usb_desc_head *desc_head = usb_get_next_desc(&if_alt->if_desc->head);
     uint8 ep_idx = 0;
 
-    void *cfg_end = usb_cfg_end(if_alt->usb_if->udev->config_desc);
+    void *cfg_end = usb_cfg_end(if_alt->uif->udev->config_desc);
 
     // 严密防御：限定搜索范围绝对不能超出整个配置描述符
     while ((desc_head < cfg_end) && (desc_head->desc_type != USB_DESC_TYPE_INTERFACE)) {
@@ -832,7 +917,7 @@ static inline int32 if_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
             usb_if_alt_t *if_alt = &usb_if->alts[idx];
 
             // 填充业务属性
-            if_alt->usb_if = usb_if;
+            if_alt->uif = usb_if;
             if_alt->if_desc = if_desc;
             if_alt->altsetting = if_desc->alternate_setting;
             if_alt->if_class = if_desc->interface_class;
@@ -861,7 +946,7 @@ static inline int32 if_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
             usb_if->cur_alt = alt0 ? alt0 : &usb_if->alts[0];
 
             // 呼叫主板：分配 Transfer Ring 并下发 Configure Endpoint
-            alloc_alt_if_ep_ring(usb_if->cur_alt);
+            enable_alt_if(usb_if->cur_alt);
         }
     }
 
