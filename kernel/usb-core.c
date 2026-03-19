@@ -863,7 +863,7 @@ static inline int32 alt_if_parse(usb_if_alt_t *if_alt) {
  * @param usb_if_map 用于缓存接口指针的映射表 (外部传入的栈数组)
  * @return 0 成功，-1 内存分配失败或遭遇恶意描述符
  */
-static inline int32 alloc_if_mem(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_if_map) {
+static inline int32 alloc_if(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_if_map) {
     // 1. 根据配置描述符声明的接口数，分配顶层接口数组
     udev->interfaces_count = 0;
     udev->interfaces = kzalloc(sizeof(usb_if_t) * udev->config_desc->num_interfaces);
@@ -989,7 +989,7 @@ static inline int32 usb_if_create(usb_dev_t *udev) {
     // =======================================================
     // 阶段 1：搭骨架 (盘点拓扑与分配内存)
     // =======================================================
-    alloc_if_mem(udev, alt_count, usb_if_map);
+    alloc_if(udev, alt_count, usb_if_map);
 
     // =======================================================
     // 阶段 2：填血肉 (解析接口与端点图纸)
