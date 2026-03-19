@@ -1,6 +1,6 @@
 #include "bus.h"
 #include "pcie.h"
-#include "usb.h"
+#include "usb-core.h"
 
 //pcie总线
 bus_type_t pcie_bus_type;

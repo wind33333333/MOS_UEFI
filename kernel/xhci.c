@@ -5,7 +5,7 @@
 #include "vmm.h"
 #include "driver.h"
 #include "vmalloc.h"
-#include "usb.h"
+#include "usb-core.h"
 
 //命令环/传输环入队列
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {

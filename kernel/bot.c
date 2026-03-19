@@ -1,6 +1,6 @@
 #include "bot.h"
 #include "printk.h"
-#include "usb.h"
+#include "usb-core.h"
 #include "scsi.h"
 #include "slub.h"
 #include "uefi.h"

@@ -1,7 +1,7 @@
 #include  "uas.h"
 
 #include "printk.h"
-#include  "usb.h"
+#include  "usb-core.h"
 #include "scsi.h"
 
 //获取一个tag

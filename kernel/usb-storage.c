@@ -1,6 +1,6 @@
 #include "usb-storage.h"
 #include "xhci.h"
-#include "usb.h"
+#include "usb-core.h"
 #include "printk.h"
 #include "scsi.h"
 #include "uas.h"
