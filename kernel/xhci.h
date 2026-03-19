@@ -643,7 +643,7 @@ typedef struct trb_stop_ep_t{
     uint32 rsvd2:9;           // Bits [9:1]: 保留，填 0
     trb_type_e trb_type:6;        // Bits [15:10]: 必须是 15 (XHCI_TRB_TYPE_STOP_EP)
     // ★ 狙击目标：精准定位到具体的设备和具体的管道
-    uint32 ep_id:5;           // Bits [20:16]: 目标 Endpoint ID (1~31)
+    uint32 ep_dci:5;           // Bits [20:16]: 目标 Endpoint ID (1~31)
     uint32 rsvd3:2;           // Bits [22:21]: 保留，填 0
     // ★ 挂起位：0 = 彻底停止并丢弃内部缓存; 1 = 只是挂起(Suspend)，以后还能原样恢复。
     // 在超时抢救场景中，我们永远填 0（彻底停止）！
@@ -815,6 +815,22 @@ typedef struct trb_port_status_change_event_t{
     uint32      rsvd4:16;          // Dword 3 [31:16]: 保留
 }trb_port_status_change_event_t;
 
+// 主机控制器事件 TRB (类型 37：主板级遗言)
+typedef struct trb_host_ctrl_event_t {
+    uint32 reserved0;          // Dword 0: 0
+    uint32 reserved1;          // Dword 1: 0
+
+    // Dword 2
+    uint32 reserved2 : 24;     // Bit 0-23: 0
+    uint32 comp_code : 8;      // Bit 24-31: 完成码 (死因)
+
+    // Dword 3
+    uint32 cycle     : 1;      // Bit 0: 周期位
+    uint32 reserved3 : 9;      // Bit 1-9: 0
+    uint32 trb_type  : 6;      // Bit 10-15: 37 (XHCI_TRB_TYPE_HOST_CTRL)
+    uint32 reserved4 : 16;     // Bit 16-31: 0
+} trb_host_ctrl_event_t;
+
 //================================================================================================
 
 //trb集合
@@ -849,6 +865,7 @@ typedef union xhci_trb_t {
     trb_cmd_comp_event_t           cmd_comp_event;
     trb_transfer_event_t           transfer_event;
     trb_port_status_change_event_t prot_status_change_event;
+    trb_host_ctrl_event_t          host_ctrl_event;
 }xhci_trb_t;
 
 //=========================================================================================
@@ -1093,12 +1110,12 @@ static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 
 
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push);
 uint8 xhci_handle_common_error(xhci_trb_comp_code_e comp_code, uint64 trb_pa);
-xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number, uint64 value, uint64 timeout_ms,xhci_trb_t *out_event_trb) ;
+xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number,uint32 expected_type,uint64 expected_pa_or_port,uint8 slot_id,uint8 ep_dci,uint32 timeout_ms,xhci_trb_t *out_trb);
 int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id);
 int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);
 int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctx_t *input_ctx);
 int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_id, uint8 dc);
-int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_id);
+int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
 uint32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
 int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_id);
 int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci_ring_t *transfer_ring);
