@@ -149,8 +149,6 @@ xhci_trb_comp_code_e xhci_wait_transfer_comp (usb_dev_t *udev, uint8 ep_dci, uin
 int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_buf) {
     xhci_hcd_t *xhcd = udev->xhcd;
     xhci_trb_t tr_trb;
-    uint64 setup_ptr, data_ptr = 0, status_ptr;
-    xhci_trb_comp_code_e comp_code;
 
     xhci_ring_t *uc_ring = &udev->ep0.transfer_ring;
 
@@ -179,7 +177,7 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
         tr_trb.setup_stage.trt = TRB_TRT_OUT_DATA;
     }
 
-    setup_ptr = xhci_ring_enqueue(uc_ring, &tr_trb);
+    xhci_ring_enqueue(uc_ring, &tr_trb);
 
     // ==========================================================
     // 阶段 2：组装 Data TRB (如果有)
@@ -193,7 +191,7 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
         tr_trb.data_stage.chain = TRB_CHAIN_DISABLE; // 单个 Data TRB 必须为 0
         tr_trb.data_stage.ioc = TRB_IOC_DISABLE;   // 开启中断防雷
 
-        data_ptr = xhci_ring_enqueue(uc_ring, &tr_trb);
+     xhci_ring_enqueue(uc_ring, &tr_trb);
     }
 
     // ==========================================================
@@ -205,7 +203,7 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
     tr_trb.status_stage.ioc = TRB_IOC_ENABLE;
     tr_trb.status_stage.dir = (length == 0 || usb_req_dir == USB_DIR_OUT) ? TRB_DIR_IN : TRB_DIR_OUT; // ★ 核心逻辑 2：Status 阶段的方向必须是相反的！
 
-    status_ptr = xhci_ring_enqueue(uc_ring ,&tr_trb);
+    uint64 status_ptr = xhci_ring_enqueue(uc_ring ,&tr_trb);
 
 
     // ==========================================================
@@ -217,28 +215,11 @@ int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_bu
 
 
     // ==========================================================
-    // 阶段 5：步步为营的守护监听 (复用你写的完美错误处理函数)
+    // 阶段 5：监听 Status 阶段
     // ==========================================================
-    // 监听 Setup 阶段
-    comp_code = xhci_wait_transfer_comp(udev, 1, setup_ptr);
+    xhci_trb_comp_code_e comp_code = xhci_wait_transfer_comp(udev, 1, status_ptr);
     if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED,BLACK,"usb control msg setup stage error comp_code:%d  \n",comp_code);
-        return comp_code; // 如果 U 盘拒收命令，它会在这里 STALL 并被自动救活
-    }
-
-    // 监听 Data 阶段
-    if (length != 0 && data_buf != NULL) {
-        comp_code = xhci_wait_transfer_comp(udev, 1, data_ptr);
-        if (comp_code != XHCI_COMP_SUCCESS) {
-            color_printk(RED,BLACK,"usb control msg data stage error comp_code:%d  \n",comp_code);
-            return comp_code;
-        }
-    }
-
-    // 监听 Status 阶段
-    comp_code = xhci_wait_transfer_comp(udev, 1, status_ptr);
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED,BLACK,"usb control msg data status error comp_code:%d  \n",comp_code);
+        color_printk(RED, BLACK, "USB Control Msg failed! comp_code: %d\n", comp_code);
         return comp_code;
     }
 
