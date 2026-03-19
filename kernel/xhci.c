@@ -40,7 +40,7 @@ uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
 xhci_trb_comp_code_e xhci_wait_for_event(
     xhci_hcd_t *xhcd,
     uint16 intr_number,
-    uint32 expected_type,
+    trb_type_e expected_type,
     uint64 expected_pa_or_port,
     uint8 slot_id,
     uint8 ep_dci,
@@ -97,10 +97,9 @@ xhci_trb_comp_code_e xhci_wait_for_event(
             case XHCI_TRB_TYPE_CMD_COMPLETION: {
                 // 【类型 33：命令完成事件】(主板建桥图纸回执)
                 trb_pa = event_trb.cmd_comp_event.cmd_trb_ptr;
-                if (expected_type == XHCI_TRB_TYPE_CMD_COMPLETION) {
-                    if (trb_pa == expected_pa_or_port) {
-                        is_matched = TRUE;
-                    }
+                if (expected_type == XHCI_TRB_TYPE_CMD_COMPLETION && trb_pa == expected_pa_or_port) {
+                    is_matched = TRUE;
+
                 }
                 break;
             }
@@ -230,7 +229,7 @@ xhci_trb_comp_code_e xhci_execute_command_sync(xhci_hcd_t *xhcd, xhci_trb_t *cmd
 
     // ★ 关键修改：把 out_event_trb 指针继续传递给底层的 wait 函数
     // 底层的 wait 函数在轮询/中断匹配到事件时，需要把那个 Event TRB 的 16 字节内容 copy 到这个指针里
-    xhci_trb_comp_code_e comp_code = xhci_wait_for_event(xhcd,0, cmd_pa, timeout_us, out_event_trb);
+    xhci_trb_comp_code_e comp_code = xhci_wait_for_event(xhcd,0,XHCI_TRB_TYPE_CMD_COMPLETION ,cmd_pa,0,0, timeout_us, out_event_trb);
 
     // ==========================================================
     // 第一关：极速放行 (Fast Path) - 99% 的情况走这里！

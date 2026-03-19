@@ -581,7 +581,7 @@ typedef struct trb_normal_t{
     uint32 ioc : 1;         // [5] Interrupt On Completion (IOC) - 跑完这个 TRB 后给我发个中断！
     uint32 idt : 1;         // [6] Immediate Data (IDT) - 是否将数据直接塞在指针字段里 (Normal TRB 通常 0)
     uint32 reserved_1: 3;   // [9:7] 保留
-    uint32 trb_type : 6;    // [15:10] TRB 类型 (Normal TRB 固定填 1)
+    trb_type_e trb_type : 6;    // [15:10] TRB 类型 (Normal TRB 固定填 1)
     uint32 reserved_2 : 16; // [31:16] 保留
 }trb_normal_t;
 
@@ -822,12 +822,12 @@ typedef struct trb_host_ctrl_event_t {
 
     // Dword 2
     uint32 reserved2 : 24;     // Bit 0-23: 0
-    uint32 comp_code : 8;      // Bit 24-31: 完成码 (死因)
+    xhci_trb_comp_code_e comp_code : 8;      // Bit 24-31: 完成码 (死因)
 
     // Dword 3
     uint32 cycle     : 1;      // Bit 0: 周期位
     uint32 reserved3 : 9;      // Bit 1-9: 0
-    uint32 trb_type  : 6;      // Bit 10-15: 37 (XHCI_TRB_TYPE_HOST_CTRL)
+    trb_type_e trb_type  : 6;      // Bit 10-15: 37 (XHCI_TRB_TYPE_HOST_CTRL)
     uint32 reserved4 : 16;     // Bit 16-31: 0
 } trb_host_ctrl_event_t;
 
@@ -1110,7 +1110,7 @@ static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 
 
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push);
 uint8 xhci_handle_common_error(xhci_trb_comp_code_e comp_code, uint64 trb_pa);
-xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number,uint32 expected_type,uint64 expected_pa_or_port,uint8 slot_id,uint8 ep_dci,uint32 timeout_ms,xhci_trb_t *out_trb);
+xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number,trb_type_e expected_type,uint64 expected_pa_or_port,uint8 slot_id,uint8 ep_dci,uint32 timeout_ms,xhci_trb_t *out_trb);
 int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id);
 int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);
 int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctx_t *input_ctx);

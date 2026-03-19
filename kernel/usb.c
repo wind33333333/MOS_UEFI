@@ -21,7 +21,7 @@ xhci_trb_comp_code_e xhci_wait_transfer_comp (usb_dev_t *udev, uint8 ep_dci, uin
     // ==========================================================
     // 第一关： 1. 挂起等待事件环 (Event Ring) 的回执
     // ==========================================================
-    xhci_trb_comp_code_e comp_code = xhci_wait_for_event(xhcd, 0,wait_trb_pa, 30000000, NULL);
+    xhci_trb_comp_code_e comp_code = xhci_wait_for_event(xhcd, 0,XHCI_TRB_TYPE_TRANSFER_EVENT,wait_trb_pa,slot_id,ep_dci, 30000000, NULL);
 
     // ==========================================================
     // 2. 完美成功或可接受的短包 (直接放行)
@@ -1223,7 +1223,7 @@ static inline  int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
         xhci_write_portsc(xhcd,port_id,portsc);
 
         // 挂起等待主板硬件完成复位电平发送，并返回 Event TRB
-        xhci_wait_for_event(xhcd, 0, port_id, 30000000, NULL);
+        xhci_wait_for_event(xhcd, 0,XHCI_TRB_TYPE_PORT_STATUS_CHG ,port_id,0,0, 30000000, NULL);
     }
 
 
