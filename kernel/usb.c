@@ -305,7 +305,7 @@ int usb_set_if(usb_dev_t *udev,uint8 if_num,uint8 alt_num) {
 /**
  * @brief [内部工具] 统一根据推演状态，更新 Slot 的 context_entries
  */
-static void update_context_entries(usb_dev_t *udev) {
+static void ctx_update_entries(usb_dev_t *udev) {
     xhci_input_ctx_t *input_ctx = udev->input_ctx;
 
     // ★ 核心算法：计算出“事务成功后”的投影位图 (忽略 Slot 本身 Bit 0)
@@ -321,7 +321,7 @@ static void update_context_entries(usb_dev_t *udev) {
     }
 }
 
-static void ep_copy(usb_dev_t *udev, usb_ep_t *new_ep) {
+static void ctx_ep_copy(usb_dev_t *udev, usb_ep_t *new_ep) {
     xhci_ep_ctx_t *input_ep_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, new_ep->ep_dci);
     input_ep_ctx->mult = new_ep->mult;
     input_ep_ctx->max_pstreams = new_ep->max_streams;
@@ -344,7 +344,7 @@ static void ep_copy(usb_dev_t *udev, usb_ep_t *new_ep) {
 /**
  * @brief 开启一个事务：将硬件真实状态克隆到软件图纸上
  */
-void usb_tx_begin(usb_dev_t *udev) {
+void ctx_tx_begin(usb_dev_t *udev) {
     // 1. 物理清零管控中心 (Input Control Context，占 1 个 ctx_size)
     // 彻底消灭上一次下发命令残留的 Add/Drop 幽灵标志位
     xhci_input_ctx_t *input_ctx = udev->input_ctx;
@@ -362,44 +362,44 @@ void usb_tx_begin(usb_dev_t *udev) {
 /**
  * @brief [纯内存] 准备增加一个端点
  */
-void usb_prep_add_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
+void ctx_prep_add_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
     // 1. 打上新增标记
     udev->input_ctx->add_context_flags |= (1 << new_ep->ep_dci);
 
     // 2. 动态推高 context_entries
-    update_context_entries(udev);
+    ctx_update_entries(udev);
 
     // 3.拷贝
-    ep_copy(udev,new_ep);
+    ctx_ep_copy(udev,new_ep);
 
 }
 
 /**
  * @brief [纯内存] 准备删除一个端点
  */
-void usb_prep_drop_ep(usb_dev_t *udev, uint8 dci) {
+void ctx_prep_drop_ep(usb_dev_t *udev, uint8 dci) {
     // 1. 打上死刑标记
     udev->input_ctx->drop_context_flags |= (1 << dci);
 
     // 2. ★ 使用你的 O(1) 汇编魔法，算出删除后的新 context_entries
-    update_context_entries(udev);
+    ctx_update_entries(udev);
 }
 
 /**
  * @brief [纯内存] 准备微调端点参数 (仅限 Evaluate Context 使用)
  * @note 绝不能置位 Drop Flag！常用于修正 EP0 的包长。
  */
-void usb_prep_eval_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
+void ctx_prep_eval_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
     // 1. 仅打上添加(微调)标记
     udev->input_ctx->add_context_flags |= (1 << new_ep->ep_dci);
 
     // 2. 拷贝新参数覆写图纸
-    ep_copy(udev, new_ep);
+    ctx_ep_copy(udev, new_ep);
 
 }
 
 //重建端点
-void usb_prep_reconfig_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
+void ctx_prep_reconfig_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
     // 1. 打上死刑标记
     udev->input_ctx->drop_context_flags |= (1 << new_ep->ep_dci);
 
@@ -407,7 +407,7 @@ void usb_prep_reconfig_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
     udev->input_ctx->add_context_flags |= (1 << new_ep->ep_dci);
 
     // 3.拷贝
-    ep_copy(udev,new_ep);
+    ctx_ep_copy(udev,new_ep);
 }
 
 /**
@@ -415,7 +415,7 @@ void usb_prep_reconfig_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
  * @param udev       目标 USB 设备
  * @param port_speed 设备的物理连接速度
  */
-static void usb_prep_init_slot(usb_dev_t *udev) {
+static void ctx_prep_init_slot(usb_dev_t *udev) {
     // 1. 获取 Slot 图纸
     xhci_slot_ctx_t *input_slot_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, 0);
 
@@ -432,7 +432,7 @@ static void usb_prep_init_slot(usb_dev_t *udev) {
  * @note 绝不能置位 Drop Flag (Slot 不能被 Drop，只能 Disable)！常用于设置 Hub 属性、省电参数或中断目标迁移。
  * @param udev 目标 USB 设备 (里面包含了软件层刚解析出的新全局属性)
  */
-void usb_prep_eval_slot(usb_dev_t *udev) {
+void ctx_prep_eval_slot(usb_dev_t *udev) {
     xhci_input_ctx_t *input_ctx = udev->input_ctx;
 
     // 1. 核心指令：打上 Slot 图纸被涂改的标记 (Bit 0 专属特权)
@@ -469,7 +469,7 @@ void usb_prep_eval_slot(usb_dev_t *udev) {
  * @param cmd_type 事务指令类型
  * @return 0 表示成功，非 0 表示硬件拒绝并已回滚
  */
-int32 usb_commit_tx(usb_dev_t *udev, usb_tx_cmd_e cmd_type) {
+int32 ctx_commit_tx(usb_dev_t *udev, usb_tx_cmd_e cmd_type) {
     xhci_input_ctx_t *input_ctx = udev->input_ctx;
     int32 ret = -1;
 
@@ -613,13 +613,13 @@ int32 usb_switch_alt_if (usb_if_alt_t *old_alt, usb_if_alt_t *new_alt) {
     usb_if_t *uif = old_alt->uif;
     usb_dev_t *udev = uif->udev;
 
-    usb_tx_begin(udev);
+    ctx_tx_begin(udev);
 
     // ==========================================================
     // 阶段 1：[纸上谈兵] 圈出要 Drop 的旧端点
     // ==========================================================
     for (uint8 i = 0; i < old_alt->ep_count; i++) {
-        usb_prep_drop_ep(udev, old_alt->eps[i].ep_dci);
+        ctx_prep_drop_ep(udev, old_alt->eps[i].ep_dci);
     }
 
     // ==========================================================
@@ -628,13 +628,13 @@ int32 usb_switch_alt_if (usb_if_alt_t *old_alt, usb_if_alt_t *new_alt) {
     for (uint8 i = 0; i < new_alt->ep_count; i++) {
         usb_ep_t *ep = &new_alt->eps[i];
         alloc_ep_ring(ep);
-        usb_prep_add_ep(udev, ep);
+        ctx_prep_add_ep(udev, ep);
     }
 
     // ==========================================================
     // 阶段 3：一锤定音！向 xHCI 提交图纸，等待硬件裁决
     // ==========================================================
-    if (usb_commit_tx(udev, USB_TX_CMD_CFG_EP) != 0) {
+    if (ctx_commit_tx(udev, USB_TX_CMD_CFG_EP) != 0) {
         color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, hardware rejected!\n");
         // 主板拒绝，销毁新分配的内存，安全退出
         for (uint8 i = 0; i < new_alt->ep_count; i++) free_ep_ring(&new_alt->eps[i]);
@@ -664,10 +664,10 @@ int32 usb_switch_alt_if (usb_if_alt_t *old_alt, usb_if_alt_t *new_alt) {
         for (uint8 i = 0; i < new_alt->ep_count; i++) free_ep_ring(&new_alt->eps[i]);
 
         // 3. 将主板硬件强制回滚到旧状态 (反向 Drop 新的，Add 旧的)
-        usb_tx_begin(udev);
-        for (uint8 i = 0; i < new_alt->ep_count; i++) usb_prep_drop_ep(udev, new_alt->eps[i].ep_dci);
-        for (uint8 i = 0; i < old_alt->ep_count; i++) usb_prep_add_ep(udev, &old_alt->eps[i]);
-        usb_commit_tx(udev, USB_TX_CMD_CFG_EP);
+        ctx_tx_begin(udev);
+        for (uint8 i = 0; i < new_alt->ep_count; i++) ctx_prep_drop_ep(udev, new_alt->eps[i].ep_dci);
+        for (uint8 i = 0; i < old_alt->ep_count; i++) ctx_prep_add_ep(udev, &old_alt->eps[i]);
+        ctx_commit_tx(udev, USB_TX_CMD_CFG_EP);
 
         return -1; // 经过这一套抢救，操作系统和设备完美回到切换前的健康状态！
     }
@@ -694,7 +694,7 @@ static inline int32 enable_alt_if (usb_if_alt_t *if_alt) {
     usb_dev_t *udev = if_alt->uif->udev;
 
     // ★ 开启事务，拿出一张空白的 Configure Endpoint 申请表
-    usb_tx_begin(udev);
+    ctx_tx_begin(udev);
 
     // 配置该接口下的所有端点
     for (uint8 i = 0; i < if_alt->ep_count; i++) {
@@ -708,11 +708,11 @@ static inline int32 enable_alt_if (usb_if_alt_t *if_alt) {
         alloc_ep_ring(ep);
 
         // ★ 将端点挂载到 Input Context 申请表中
-        usb_prep_add_ep(udev, ep);
+        ctx_prep_add_ep(udev, ep);
     }
 
     // ★ 扣动扳机！将申请表通过 Command Ring 提交给主板，并敲响门铃
-    usb_commit_tx(udev, USB_TX_CMD_CFG_EP);
+    ctx_commit_tx(udev, USB_TX_CMD_CFG_EP);
 
     return 0;
 }
@@ -1039,10 +1039,10 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     ep0->trq_phys_addr = va_to_pa(ep0->transfer_ring.ring_base) | 1;
 
     // ---下发命令 ---
-    usb_tx_begin(udev);
-    usb_prep_init_slot(udev);
-    usb_prep_add_ep(udev,ep0);
-    usb_commit_tx(udev,USB_TX_CMD_ADDR_DEV);
+    ctx_tx_begin(udev);
+    ctx_prep_init_slot(udev);
+    ctx_prep_add_ep(udev,ep0);
+    ctx_commit_tx(udev,USB_TX_CMD_ADDR_DEV);
 
     return 0;
 }
@@ -1069,9 +1069,9 @@ static inline int32 get_dev_desc(usb_dev_t *udev) {
         if (dev_desc->max_packet_size0 != 8) {
             usb_ep_t *ep0 = udev->eps[1];
             ep0->max_packet_size = dev_desc->max_packet_size0;
-            usb_tx_begin(udev);
-            usb_prep_eval_ep(udev,ep0);
-            usb_commit_tx(udev,USB_TX_CMD_EVAL_CTX);
+            ctx_tx_begin(udev);
+            ctx_prep_eval_ep(udev,ep0);
+            ctx_commit_tx(udev,USB_TX_CMD_EVAL_CTX);
         }
     }
 
