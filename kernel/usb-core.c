@@ -1182,71 +1182,98 @@ static inline usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
 }
 
 /**
- * @brief 对指定物理端口执行复位，并等待设备就绪 (使能)
- * @param xhcd     xHCI 控制器上下文
- * @param port_id 物理端口索引 (0-based)
- * @return int32   0 表示复位成功且端口已使能，-1 表示超时或硬件故障
+ * @brief 内部辅助函数：无分支极速清理端口状态 (W1C 陷阱防御)
  */
-static inline  int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
-    uint32 portsc;
+static inline void xhci_clear_port_change_bits(xhci_hcd_t *xhcd, uint8 port_id, uint32 portsc) {
+    // 1. 保护现场：将读到的数值中所有的 W1C 位强行置 0，防止误杀其他未处理的中断
+    portsc &= ~XHCI_PORTSC_W1C_MASK;
 
-    // 获取该端口对应的协议信息
-    uint8 spc_idx = xhcd->port_to_spc[port_id-1];
+    // 2. 暴力美学，全量清零：
+    // 不分 2.0 和 3.0，把所有可能在复位/插入时产生的状态变化位一次性砸成 1！
+    // 对于 2.0 端口，WRC 和 PLC 写 1 纯属空操作，极其安全。
+    portsc |= XHCI_PORTSC_PRC |
+              XHCI_PORTSC_CSC |
+              XHCI_PORTSC_PEC |
+              XHCI_PORTSC_WRC |
+              XHCI_PORTSC_PLC;
 
-    // ==========================================
-    // 阶段 1：复位区分协议usb2.0需要设置pr手动复位，3.0全自动
-    // ==========================================
-    if (xhcd->spc[spc_idx].major_bcd < 0x3) {
-        // --- [USB 2.0 专属逻辑：手动触发复位] ---
-        portsc = xhci_read_portsc(xhcd,port_id);
-        portsc &= ~XHCI_PORTSC_W1C_MASK;
-        portsc |= XHCI_PORTSC_PR; // 下发 Port Reset
-        xhci_write_portsc(xhcd,port_id,portsc);
+    xhci_write_portsc(xhcd, port_id, portsc);
+}
 
-        // 挂起等待主板硬件完成复位电平发送，并返回 Event TRB
-        xhci_wait_for_event(xhcd, 0,XHCI_TRB_TYPE_PORT_STATUS_CHG ,port_id,0,0, 30000000, NULL);
+/**
+ * @brief xHCI 硬核物理复位引擎 (支持运行时错误抢救 & 2.0 初始化)
+ */
+static inline int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
+    uint32 portsc = xhci_read_portsc(xhcd, port_id);
+    if (!(portsc & XHCI_PORTSC_CCS)) return -1;
+
+    uint8 spc_idx = xhcd->port_to_spc[port_id - 1];
+    boolean is_usb3 = (xhcd->spc[spc_idx].major_bcd >= 0x03);
+
+    // ---------------------------------------------------------
+    // 【未来重构点】：这部分将成为 "Issue Reset" (动作下发)
+    // ---------------------------------------------------------
+    portsc &= ~XHCI_PORTSC_W1C_MASK;
+    if (is_usb3 && ((portsc>>XHCI_PORTSC_PLS_SHIFT) & XHCI_PORTSC_PLS_MASK) == XHCI_PLS_INACTIVE) {
+        portsc |= XHCI_PORTSC_WPR; // 暖复位抢救
+    } else {
+        portsc |= XHCI_PORTSC_PR;  // 热复位常规流程
     }
-
-
-    // ==========================================
-    // 阶段 2：确认端口已使能 (PED = 1)
-    // ==========================================
-    uint32 timeout = 30000000;
-    while (timeout--) {
-        portsc = xhci_read_portsc(xhcd, port_id);
-        // 1. PR (Bit 4) 必须归零，表示硬件不再强拉复位电平！
-        // 2. PED (Bit 1) 必须置 1，表示端口真正被启用了！
-        if (((portsc & XHCI_PORTSC_PR) == 0) && ((portsc & XHCI_PORTSC_PED) != 0)) {
-            break; // 完美命中！跳出循环
-        }
-        asm_pause();
-    }
-
-    if (timeout == 0) {
-        return -1; // 复位失败
-    }
-
-    // ==========================================
-    // 阶段 3：清理状态位
-    // ==========================================
-    portsc = xhci_read_portsc(xhcd, port_id);
-    portsc = (portsc & (XHCI_PORTSC_CSC | XHCI_PORTSC_PEC |
-                                   XHCI_PORTSC_WRC | XHCI_PORTSC_OCC |
-                                   XHCI_PORTSC_PRC | XHCI_PORTSC_PLC |
-                                   XHCI_PORTSC_CEC)) | (portsc & ~XHCI_PORTSC_W1C_MASK);
     xhci_write_portsc(xhcd, port_id, portsc);
 
-    return 0; // 复位成功
+    // ---------------------------------------------------------
+    // 【未来重构点】：这部分将被替换为 "Thread Sleep / Yield" (挂起线程)
+    // ---------------------------------------------------------
+    if ( xhci_wait_for_event(xhcd, 0,XHCI_TRB_TYPE_PORT_STATUS_CHG ,port_id,0,0, 30000000, NULL) == XHCI_COMP_TIMEOUT) {
+        return -1; // 超时失败
+    }
+
+    // ---------------------------------------------------------
+    // 【未来重构点】：这部分将成为 "Bottom Half" (中断唤醒后的收尾)
+    // ---------------------------------------------------------
+    uint32 timeout = 3000000;
+    while (timeout--) {
+        portsc = xhci_read_portsc(xhcd, port_id);
+        if ((portsc & XHCI_PORTSC_PR)==0 && (portsc & XHCI_PORTSC_WPR)==0 && (portsc & XHCI_PORTSC_PED)) break;
+        asm_pause();
+    }
+    if (timeout == 0) return -1;
+
+    // ★ 极其优雅的复用：直接调用刚才抽出来的清道夫函数！
+    xhci_clear_port_change_bits(xhcd, port_id, portsc);
+
+    return 0; // 彻底复位且使能成功！
+}
+
+/**
+ * @brief xHCI 端口枚举初始化 (专供 Hub 线程在设备插入时调用)
+ */
+static inline int32 xhci_port_init(xhci_hcd_t *xhcd, uint8 port_id) {
+    uint32 portsc = xhci_read_portsc(xhcd, port_id);
+    if (!(portsc & XHCI_PORTSC_CCS)) return -1;
+
+    // ==========================================
+    // USB 3.0 极速通道：硬件已搞定，清理现场后直接放行！
+    // ==========================================
+    if (portsc & XHCI_PORTSC_PED) {
+        xhci_clear_port_change_bits(xhcd, port_id, portsc);
+        return 0; // 成功！准备去分配 Address
+    }
+
+    // ==========================================
+    // USB 2.0 或假死兜底：委托给硬核复位引擎
+    // ==========================================
+    return xhci_port_reset(xhcd, port_id);
 }
 
 //usb设备初始化
 void usb_dev_scan(xhci_hcd_t *xhcd){
 
     //等待硬件完成端口初始化
-    // uint32 times = 20000000;
-    // while (times--) {
-    //     asm_pause();
-    // }
+    uint32 times = 20000000;
+    while (times--) {
+        asm_pause();
+    }
 
     for (uint8 i = 0; i < xhcd->max_ports; i++) {
         uint8 port_id = i+1;
@@ -1255,7 +1282,9 @@ void usb_dev_scan(xhci_hcd_t *xhcd){
         // 检测是否有设备连接 (CCS) 并且发生了状态变化 (CSC)
         //if ((portsc & XHCI_PORTSC_CCS) && (portsc & XHCI_PORTSC_CSC))
         if (portsc & XHCI_PORTSC_CCS ) {//目前采用轮训等待方式暂时只要ccs置为就进行初始化
-            if (xhci_port_reset(xhcd, port_id) == 0) {
+            color_printk(GREEN,BLACK,"portsc:%#x       \n",xhci_read_portsc(xhcd, port_id));
+            if (xhci_port_init(xhcd, port_id) == 0) {
+                color_printk(GREEN,BLACK,"portsc:%#x       \n",xhci_read_portsc(xhcd, port_id));
                 usb_dev_t *usb_dev = usb_dev_create(xhcd, port_id);
                 usb_dev_register(usb_dev);
                 usb_if_create(usb_dev);

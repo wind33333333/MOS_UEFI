@@ -155,7 +155,7 @@ xhci_trb_comp_code_e xhci_wait_for_event(
         // 如果 is_matched == FALSE，由于 index 已推进，会自动接续下一轮循环
     }
 
-    color_printk(RED, BLACK, "xHCI: Event Ring Timeout! Expected Type: %d, Target: 0x%llx\n", expected_type, expected_pa_or_port);
+    color_printk(RED, BLACK, "xHCI: Event Ring Timeout! Expected Type: %d, Target: %#lx\n", expected_type, expected_pa_or_port);
     return XHCI_COMP_TIMEOUT;
 }
 
