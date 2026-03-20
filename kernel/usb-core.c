@@ -1035,7 +1035,7 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     ep0->cerr = 3;
     ep0->ep_type = 4; // Control Endpoint
     ep0->max_packet_size = mps;
-    ep0->average_trb_length = 8;
+    ep0->average_trb_length = mps;
     ep0->trq_phys_addr = va_to_pa(ep0->transfer_ring.ring_base) | 1;
 
     // ---下发命令 ---
