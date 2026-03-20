@@ -1184,7 +1184,7 @@ static inline usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
 /**
  * @brief 内部辅助函数：无分支极速清理端口状态 (W1C 陷阱防御)
  */
-static inline void xhci_clear_port_change_bits(xhci_hcd_t *xhcd, uint8 port_id, uint32 portsc) {
+static void usb_clear_port_change(xhci_hcd_t *xhcd, uint8 port_id, uint32 portsc) {
     // 1. 保护现场：将读到的数值中所有的 W1C 位强行置 0，防止误杀其他未处理的中断
     portsc &= ~XHCI_PORTSC_W1C_MASK;
 
@@ -1203,12 +1203,12 @@ static inline void xhci_clear_port_change_bits(xhci_hcd_t *xhcd, uint8 port_id, 
 /**
  * @brief xHCI 硬核物理复位引擎 (支持运行时错误抢救 & 2.0 初始化)
  */
-static inline int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
+static int32 usb_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     uint32 portsc = xhci_read_portsc(xhcd, port_id);
     if (!(portsc & XHCI_PORTSC_CCS)) return -1;
 
     //清除状态
-    xhci_clear_port_change_bits(xhcd, port_id, portsc);
+    usb_clear_port_change(xhcd, port_id, portsc);
     portsc = xhci_read_portsc(xhcd, port_id); // 重新读取干净的状态
 
     uint8 spc_idx = xhcd->port_to_spc[port_id - 1];
@@ -1244,7 +1244,7 @@ static inline int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     if (timeout == 0) return -1;
 
     // ★ 极其优雅的复用：直接调用刚才抽出来的清道夫函数！
-    xhci_clear_port_change_bits(xhcd, port_id, portsc);
+    usb_clear_port_change(xhcd, port_id, portsc);
 
     return 0; // 彻底复位且使能成功！
 }
@@ -1252,7 +1252,7 @@ static inline int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
 /**
  * @brief xHCI 端口枚举初始化 (专供 Hub 线程在设备插入时调用)
  */
-static inline int32 xhci_port_init(xhci_hcd_t *xhcd, uint8 port_id) {
+static int32 usb_port_init(xhci_hcd_t *xhcd, uint8 port_id) {
     uint32 portsc = xhci_read_portsc(xhcd, port_id);
     if (!(portsc & XHCI_PORTSC_CCS)) return -1;
 
@@ -1260,14 +1260,14 @@ static inline int32 xhci_port_init(xhci_hcd_t *xhcd, uint8 port_id) {
     // USB 3.0 极速通道：硬件已搞定，清理现场后直接放行！
     // ==========================================
     if (portsc & XHCI_PORTSC_PED) {
-        xhci_clear_port_change_bits(xhcd, port_id, portsc);
+        usb_clear_port_change(xhcd, port_id, portsc);
         return 0; // 成功！准备去分配 Address
     }
 
     // ==========================================
     // USB 2.0 或假死兜底：委托给硬核复位引擎
     // ==========================================
-    return xhci_port_reset(xhcd, port_id);
+    return usb_port_reset(xhcd, port_id);
 }
 
 //usb设备初始化
@@ -1287,7 +1287,7 @@ void usb_dev_scan(xhci_hcd_t *xhcd){
         //if ((portsc & XHCI_PORTSC_CCS) && (portsc & XHCI_PORTSC_CSC))
         if (portsc & XHCI_PORTSC_CCS ) {//目前采用轮训等待方式暂时只要ccs置为就进行初始化
             color_printk(GREEN,BLACK,"portsc:%#x       \n",xhci_read_portsc(xhcd, port_id));
-            if (xhci_port_init(xhcd, port_id) == 0) {
+            if (usb_port_init(xhcd, port_id) == 0) {
                 color_printk(GREEN,BLACK,"portsc:%#x       \n",xhci_read_portsc(xhcd, port_id));
                 usb_dev_t *usb_dev = usb_dev_create(xhcd, port_id);
                 usb_dev_register(usb_dev);
