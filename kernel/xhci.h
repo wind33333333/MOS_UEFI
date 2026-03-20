@@ -155,17 +155,13 @@ typedef struct {
 #define XHCI_PORTSC_PED (1 << 1)
 #define XHCI_PORTSC_OCA (1 << 3)
 #define XHCI_PORTSC_PR (1 << 4)
-#define XHCI_PORTSC_PLS_SHIFT 5
-#define XHCI_PORTSC_PLS_MASK 0xf
 #define XHCI_PORTSC_PP (1 << 9)
 #define XHCI_PORTSC_SPEED_FULL 1
 #define XHCI_PORTSC_SPEED_LOW 2
 #define XHCI_PORTSC_SPEED_HIGH 3
 #define XHCI_PORTSC_SPEED_SUPER 4
 #define XHCI_PORTSC_SPEED_SUPER_PLUS 5
-#define XHCI_PORTSC_PIC_SHIFT 14
-#define XHCI_PORTSC_PIC_MASK 0x3
-#define XHCI_PORTSC_W1C_MASK 0xFE0000
+#define XHCI_PORTSC_PIC (3<<14)
 #define XHCI_PORTSC_LWS (1 << 16)
 #define XHCI_PORTSC_CSC (1 << 17)
 #define XHCI_PORTSC_PEC (1 << 18)
@@ -181,20 +177,22 @@ typedef struct {
 #define XHCI_PORTSC_DR (1 << 30)
 #define XHCI_PORTSC_WPR (1 << 31)
 
-#define XHCI_PLS_U0              0   // 正常工作状态，USB 设备活跃，支持全速数据传输（USB 3.0 或 USB 2.0）
-#define XHCI_PLS_U1              1   // U1 低功耗状态，USB 设备进入轻度节能模式，快速恢复，适用于 USB 3.0
-#define XHCI_PLS_U2              2   // U2 低功耗状态，USB 设备进入更深节能模式，恢复时间稍长，适用于 USB 3.0
-#define XHCI_PLS_U3              3   // U3 挂起状态，USB 设备进入深度休眠，功耗最低，恢复时间较长，适用于 USB 3.0
-#define XHCI_PLS_DISABLED        4   // 禁用状态，USB 端口被禁用，无法通信
-#define XHCI_PLS_RX_DETECT       5   // 接收检测状态，USB 控制器正在检测是否有设备连接
-#define XHCI_PLS_INACTIVE        6   // 非活跃状态，USB 端口未连接设备或设备未响应
-#define XHCI_PLS_POLLING         7   // 轮询状态，USB 控制器正在初始化或尝试建立与设备的连接
-#define XHCI_PLS_RECOVERY        8   // 恢复状态，USB 端口从低功耗状态（如 U3）恢复到活跃状态
-#define XHCI_PLS_HOT_RESET       9   // 热重置状态，USB 端口正在执行热重置操作，重新初始化设备
-#define XHCI_PLS_COMPLIANCE_MODE 10  // 合规模式，用于 USB 设备或控制器的合规性测试
-#define XHCI_PLS_TEST_MODE       11  // 测试模式，USB 端口进入特定测试状态，用于硬件或协议测试
-#define XHCI_PLS_RESUME          15  // 恢复状态，USB 设备从挂起状态恢复，通常由主机发起
-#define XHCI_PORTSC_W1C_MASK     0x00FE0002   //写1清0掩码
+#define XHCI_PORTSC_PLS_MASK     (0xf<<5)
+#define XHCI_PLS_U0              (0<<5)   // 正常工作状态，USB 设备活跃，支持全速数据传输（USB 3.0 或 USB 2.0）
+#define XHCI_PLS_U1              (1<<5)   // U1 低功耗状态，USB 设备进入轻度节能模式，快速恢复，适用于 USB 3.0
+#define XHCI_PLS_U2              (2<<5)   // U2 低功耗状态，USB 设备进入更深节能模式，恢复时间稍长，适用于 USB 3.0
+#define XHCI_PLS_U3              (3<<5)   // U3 挂起状态，USB 设备进入深度休眠，功耗最低，恢复时间较长，适用于 USB 3.0
+#define XHCI_PLS_DISABLED        (4<<5)   // 禁用状态，USB 端口被禁用，无法通信
+#define XHCI_PLS_RX_DETECT       (5<<5)   // 接收检测状态，USB 控制器正在检测是否有设备连接
+#define XHCI_PLS_INACTIVE        (6<<5)   // 非活跃状态，USB 端口未连接设备或设备未响应
+#define XHCI_PLS_POLLING         (7<<5)   // 轮询状态，USB 控制器正在初始化或尝试建立与设备的连接
+#define XHCI_PLS_RECOVERY        (8<<5)   // 恢复状态，USB 端口从低功耗状态（如 U3）恢复到活跃状态
+#define XHCI_PLS_HOT_RESET       (9<<5)   // 热重置状态，USB 端口正在执行热重置操作，重新初始化设备
+#define XHCI_PLS_COMPLIANCE_MODE (10<<5)  // 合规模式，用于 USB 设备或控制器的合规性测试
+#define XHCI_PLS_TEST_MODE       (11<<5)  // 测试模式，USB 端口进入特定测试状态，用于硬件或协议测试
+#define XHCI_PLS_RESUME          (12<<5)  // 恢复状态，USB 设备从挂起状态恢复，通常由主机发起
+
+#define XHCI_PORTSC_W1C_MASK     0xFE0002 //写1清0掩码
 
         // 端口电源管理状态和控制寄存器 (PORTPMSC),控制电源管理和U1/U2状态,具体字段依赖于协议（USB2或USB3）
         uint32 portpmsc;

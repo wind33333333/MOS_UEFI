@@ -1207,6 +1207,10 @@ static inline int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     uint32 portsc = xhci_read_portsc(xhcd, port_id);
     if (!(portsc & XHCI_PORTSC_CCS)) return -1;
 
+    //清除状态
+    xhci_clear_port_change_bits(xhcd, port_id, portsc);
+    portsc = xhci_read_portsc(xhcd, port_id); // 重新读取干净的状态
+
     uint8 spc_idx = xhcd->port_to_spc[port_id - 1];
     boolean is_usb3 = (xhcd->spc[spc_idx].major_bcd >= 0x03);
 
@@ -1214,7 +1218,7 @@ static inline int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     // 【未来重构点】：这部分将成为 "Issue Reset" (动作下发)
     // ---------------------------------------------------------
     portsc &= ~XHCI_PORTSC_W1C_MASK;
-    if (is_usb3 && ((portsc>>XHCI_PORTSC_PLS_SHIFT) & XHCI_PORTSC_PLS_MASK) == XHCI_PLS_INACTIVE) {
+    if (is_usb3 && (portsc & XHCI_PORTSC_PLS_MASK) == XHCI_PLS_INACTIVE) {
         portsc |= XHCI_PORTSC_WPR; // 暖复位抢救
     } else {
         portsc |= XHCI_PORTSC_PR;  // 热复位常规流程
@@ -1270,10 +1274,10 @@ static inline int32 xhci_port_init(xhci_hcd_t *xhcd, uint8 port_id) {
 void usb_dev_scan(xhci_hcd_t *xhcd){
 
     //等待硬件完成端口初始化
-    uint32 times = 20000000;
-    while (times--) {
-        asm_pause();
-    }
+    // uint32 times = 20000000;
+    // while (times--) {
+    //     asm_pause();
+    // }
 
     for (uint8 i = 0; i < xhcd->max_ports; i++) {
         uint8 port_id = i+1;
