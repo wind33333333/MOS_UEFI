@@ -607,12 +607,34 @@ static int32 free_ep_ring(usb_ep_t *ep) {
 
 
 // 切换备用接口 (终极无死角防弹版)
-int32 usb_switch_alt_if (usb_if_t *uif, usb_if_alt_t *new_alt) {
+int32 usb_switch_alt_if (usb_if_t *uif, uint8 alt_setting_num) {
 
-    if (uif==NULL || new_alt==NULL) return 0;
+    // 1. 基础入参防御 (非法参数返回 -1 而不是 0)
+    if (uif == NULL || uif->udev == NULL) return -1;
 
     usb_if_alt_t *old_alt = uif->cur_alt;
     usb_dev_t *udev = uif->udev;
+
+    // 2. 性能优化：如果当前已经是目标配置，直接光速返回
+    if (old_alt != NULL && old_alt->altsetting == alt_setting_num) {
+        return 0;
+    }
+
+    // 3. ★ 核心转换：根据传入的编号，在内核安全域内找出目标指针
+    usb_if_alt_t *new_alt = NULL;
+    for (uint8 i = 0; i < uif->alt_count; i++) {
+        if (uif->alts[i].altsetting == alt_setting_num) {
+            new_alt = &uif->alts[i];
+            break;
+        }
+    }
+
+    // 如果上层驱动瞎传了一个不存在的编号，直接拦截
+    if (new_alt == NULL) {
+        color_printk(RED, BLACK, "USB: Invalid altsetting %d for interface %d\n", alt_setting_num, uif->if_num);
+        return -1;
+    }
+
 
     ctx_tx_begin(udev);
 
