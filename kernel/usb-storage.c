@@ -44,9 +44,12 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
     usb_dev_t *udev = uif->udev;
 
     //u盘是否支持uas协议，优先设置为uas协议
-    usb_if_alt_t *alts = uif->alts;
+    usb_if_alt_t *next_alts = uif->alts;
+    usb_if_alt_t *uas_alt = NULL;
     for (uint8 i = 0; i < uif->alt_count; i++) {
-        if (alts[i].if_protocol == 0x62) uif->cur_alt = &alts[i];
+        if (next_alts[i].if_protocol == 0x62) {
+            usb_switch_alt_if(&next_alts[i]);
+        }
     }
 
     scsi_host_t *shost;

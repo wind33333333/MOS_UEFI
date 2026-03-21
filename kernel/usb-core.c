@@ -606,34 +606,22 @@ static int32 free_ep_ring(usb_ep_t *ep) {
 }
 
 
-// 切换备用接口 (终极无死角防弹版)
-int32 usb_switch_alt_if (usb_if_t *uif, uint8 alt_setting_num) {
+/**
+ * @brief 切换 USB 备用接口 (极简句柄版)
+ * @param new_alt 上层驱动通过 find_alt 系列函数搜索到的目标图纸句柄
+ * @return int32  0 表示成功，非 0 表示失败
+ */
+int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
+    // 1. 终极防御：如果搜索函数返回了 NULL，或者这是一个脏指针，直接拦截！
+    if (new_alt == NULL || new_alt->uif == NULL) return -1;
 
-    // 1. 基础入参防御 (非法参数返回 -1 而不是 0)
-    if (uif == NULL || uif->udev == NULL) return -1;
-
-    usb_if_alt_t *old_alt = uif->cur_alt;
+    // 2. 顺藤摸瓜：通过你的反向指针，直接拉出上层接口和设备对象！
+    usb_if_t *uif = new_alt->uif;
     usb_dev_t *udev = uif->udev;
+    usb_if_alt_t *old_alt = uif->cur_alt;
 
-    // 2. 性能优化：如果当前已经是目标配置，直接光速返回
-    if (old_alt != NULL && old_alt->altsetting == alt_setting_num) {
-        return 0;
-    }
-
-    // 3. ★ 核心转换：根据传入的编号，在内核安全域内找出目标指针
-    usb_if_alt_t *new_alt = NULL;
-    for (uint8 i = 0; i < uif->alt_count; i++) {
-        if (uif->alts[i].altsetting == alt_setting_num) {
-            new_alt = &uif->alts[i];
-            break;
-        }
-    }
-
-    // 如果上层驱动瞎传了一个不存在的编号，直接拦截
-    if (new_alt == NULL) {
-        color_printk(RED, BLACK, "USB: Invalid altsetting %d for interface %d\n", alt_setting_num, uif->if_num);
-        return -1;
-    }
+    // 3. 性能优化：如果想切换的就是当前正在用的，直接光速返回
+    if (old_alt == new_alt) return 0;
 
 
     ctx_tx_begin(udev);
