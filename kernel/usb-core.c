@@ -607,10 +607,11 @@ static int32 free_ep_ring(usb_ep_t *ep) {
 
 
 // 切换备用接口 (终极无死角防弹版)
-int32 usb_switch_alt_if (usb_if_alt_t *old_alt, usb_if_alt_t *new_alt) {
-    if (old_alt == new_alt) return 0;
+int32 usb_switch_alt_if (usb_if_t *uif, usb_if_alt_t *new_alt) {
 
-    usb_if_t *uif = old_alt->uif;
+    if (uif==NULL || new_alt==NULL) return 0;
+
+    usb_if_alt_t *old_alt = uif->cur_alt;
     usb_dev_t *udev = uif->udev;
 
     ctx_tx_begin(udev);
@@ -683,7 +684,6 @@ int32 usb_switch_alt_if (usb_if_alt_t *old_alt, usb_if_alt_t *new_alt) {
 
     // 状态机翻页
     uif->cur_alt = new_alt;
-    color_printk(GREEN, BLACK, "USB: IF %d successfully switched to Alt %d\n", uif->if_num, new_alt->altsetting);
 
     return 0;
 }

@@ -43,9 +43,6 @@ extern scsi_host_template_t bot_host_template;
 int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
     usb_dev_t *udev = uif->udev;
 
-    color_printk(GREEN,BLACK,"usb_dev m:%s p:%s s:%s slot_id:%d port_id:%d port_speed:%d  \n",udev->manufacturer,udev->product,udev->serial_number,udev->slot_id,udev->port_id,udev->port_speed);
-    color_printk(GREEN,BLACK,"usb_if if_num:%d alt_count:%d \n",uif->if_num,uif->alt_count);
-
     //u盘是否支持uas协议，优先设置为uas协议
     usb_if_alt_t *alts = uif->alts;
     for (uint8 i = 0; i < uif->alt_count; i++) {

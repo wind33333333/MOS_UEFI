@@ -536,3 +536,5 @@ int usb_bus_probe(device_t* dev);
 void usb_bus_remove(device_t* dev);
 
 int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci);
+
+
