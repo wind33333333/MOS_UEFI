@@ -44,11 +44,13 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
     usb_dev_t *udev = uif->udev;
 
     //u盘是否支持uas协议，优先设置为uas协议
-    usb_if_alt_t *next_alts = uif->alts;
-    usb_if_alt_t *uas_alt = NULL;
-    for (uint8 i = 0; i < uif->alt_count; i++) {
-        if (next_alts[i].if_protocol == 0x62) {
-            usb_switch_alt_if(&next_alts[i]);
+    if (uif->alt_count > 1) {
+        usb_if_alt_t *next_alts = uif->alts;
+        for (uint8 i = 0; i < uif->alt_count; i++) {
+            if (next_alts[i].if_protocol == 0x62) {
+                usb_switch_alt_if(&next_alts[i]);
+                break;
+            }
         }
     }
 
@@ -59,7 +61,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
 
         //创建uas协议似有数据
         uas_data_t *uas_data = kzalloc(sizeof(uas_data_t));
-        uas_data->usb_if = uif;
+        uas_data->uif = uif;
 
         uint32 mini_streams = 1<<MAX_STREAMS;
         //解析pipe端点
@@ -95,7 +97,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
     } else {        //bot协议初始化流程
         //创建bot_data
         bot_data_t *bot_data = kzalloc(sizeof(bot_data_t));
-        bot_data->usb_if = uif;
+        bot_data->uif = uif;
         for (uint8 i = 0; i < 2; i++) {
             usb_ep_t *ep = &uif->cur_alt->eps[i];
             uint8 ep_dci = ep->ep_dci;

@@ -85,7 +85,7 @@ void bot_recovery_reset(usb_dev_t *usb_dev,uint8 if_num, uint8 pipe_in, uint8 pi
  */
 void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     bot_data_t *bot_data =host->hostdata;
-    usb_dev_t *usb_dev = bot_data->usb_if->udev;
+    usb_dev_t *usb_dev = bot_data->uif->udev;
     xhci_hcd_t *xhcd = usb_dev->xhcd;
 
     // 管道定义 (BOT 通常只用两个 Bulk 管道)
@@ -126,7 +126,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     if (completion_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "BOT Stage 1: CBW Failed (%#x). Resetting...\n", completion_code);
         // CBW 阶段出错是极其致命的，直接上“核弹复位”
-        bot_recovery_reset(usb_dev, bot_data->usb_if->if_num,pipe_in, pipe_out);
+        bot_recovery_reset(usb_dev, bot_data->uif->if_num,pipe_in, pipe_out);
         cmnd->status = -1;
         goto cleanup;
     }
@@ -162,7 +162,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
             } else {
                 // 物理链路错误 (如 TX_ERR) 或者 DMA 错误
                 color_printk(RED, BLACK, "BOT Stage 2: Fatal Data Error (%#x).\n", completion_code);
-                bot_recovery_reset(usb_dev, bot_data->usb_if->if_num,pipe_in, pipe_out);
+                bot_recovery_reset(usb_dev, bot_data->uif->if_num,pipe_in, pipe_out);
                 cmnd->status = -2;
                 goto cleanup;
             }
@@ -193,7 +193,7 @@ retry_csw:
     // 异常 2: 硬件死机、短包、或者重试后依旧报错
     else if (completion_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "BOT Stage 3: CSW Fetch Failed (%#x). Resetting...\n", completion_code);
-        bot_recovery_reset(usb_dev, bot_data->usb_if->if_num,pipe_in, pipe_out);
+        bot_recovery_reset(usb_dev, bot_data->uif->if_num,pipe_in, pipe_out);
         cmnd->status = -3;
         goto cleanup;
     }
@@ -204,7 +204,7 @@ retry_csw:
     // 校验签名和 Tag 是否防伪串线
     if (csw->signature != BOT_CSW_SIGNATURE || csw->tag != tag) {
         color_printk(RED, BLACK, "BOT: CSW Signature/Tag Mismatch! Phase Error.\n");
-        bot_recovery_reset(usb_dev, bot_data->usb_if->if_num,pipe_in, pipe_out);
+        bot_recovery_reset(usb_dev, bot_data->uif->if_num,pipe_in, pipe_out);
         cmnd->status = -4;
         goto cleanup;
     }
@@ -223,7 +223,7 @@ retry_csw:
 
         case BOT_CSW_PHASE:      // 0x02
             color_printk(RED, BLACK, "BOT: CSW Reported Phase Error! Resetting...\n");
-            bot_recovery_reset(usb_dev, bot_data->usb_if->if_num,pipe_in, pipe_out);
+            bot_recovery_reset(usb_dev, bot_data->uif->if_num,pipe_in, pipe_out);
             cmnd->status = -5;
             break;
 

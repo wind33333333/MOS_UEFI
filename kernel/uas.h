@@ -55,7 +55,7 @@ typedef struct uas_task_mgmt_iu_t{
 // UAS (USB Attached SCSI) 专用结构
 typedef struct uas_data_t {
     // --- 硬件拓扑 ---
-    struct usb_if_t     *usb_if;          // 绑定的 USB 接口
+    struct usb_if_t     *uif;          // 绑定的 USB 接口
 
     // --- SCSI / LUN 管理 ---
     struct scsi_device_t *sdev;

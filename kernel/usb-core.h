@@ -387,7 +387,7 @@ typedef struct usb_ep_t {
         xhci_ring_t  *streams_ring_array;   // per-stream rings数组 (如果启用流)
     };
     void        *streams_ctx_array;
-    uint32      enable_streams_count;        // 2^max_streams_exp+1
+    uint32      enable_streams_count;
 
     // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
     void        *extras_desc;
