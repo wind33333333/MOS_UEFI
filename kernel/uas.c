@@ -32,7 +32,7 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     uint8 data_pipe;
 
     // 逻辑：如果传入 6, 10, 12, 16 字节，统一分配 16 字节空间 (标准 UAS 要求) 如果传入 > 16 字节，则分配实际长度
-    uint16 effective_cdb_len = (cmnd->cdb_len > 16) ? cmnd->cdb_len : 16;
+    uint16 effective_cdb_len = (cmnd->scsi_cdb_len > 16) ? cmnd->scsi_cdb_len : 16;
 
     // 总大小 = 头部(16字节) + 有效CDB长度 注意：sizeof(uas_cmd_iu_t) 因为 cdb[] 是柔性数组，所以等于 16
     uint32 uas_cmd_iu_alloc_size = sizeof(uas_cmd_iu_t) + effective_cdb_len;
@@ -47,7 +47,7 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     cmd_iu->prio_attr = 0x00;       // Simple Task
     cmd_iu->add_cdb_len = (effective_cdb_len - 16) >> 2;        // cdb_len <= 16字节填 0， cdb_len > 16字节填 (cdb_len-16)>>2
     cmd_iu->lun = asm_bswap64(cmnd->sdev->lun);   // 默认 LUN 0
-    asm_mem_cpy(cmnd->cdb,cmd_iu->scsi_cdb,cmnd->cdb_len);    //填充cdb
+    asm_mem_cpy(cmnd->scsi_cdb,cmd_iu->scsi_cdb,cmnd->scsi_cdb_len);    //填充cdb
 
 
     // 2. 准备 UAS Sense iu (用于接收状态)

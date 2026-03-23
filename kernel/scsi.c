@@ -44,8 +44,8 @@ int32 scsi_test_unit_ready(scsi_device_t *sdev) {
     //构造scsi_scmnd
     scsi_cmnd_t scmnd={
         .sdev = sdev,
-        .cdb = &cdb,
-        .cdb_len = sizeof(scsi_cdb_test_unit_t),
+        .scsi_cdb = &cdb,
+        .scsi_cdb_len = sizeof(scsi_cdb_test_unit_t),
         .dir = SCSI_DIR_NONE,
         .data_buf = NULL,
         .data_len = 0,
@@ -68,8 +68,8 @@ int32 scsi_request_sense(scsi_device_t *sdev,scsi_sense_t *sense) {
 
     scsi_cmnd_t scmnd={
         .sdev = sdev,
-        .cdb = &cdb,
-        .cdb_len = sizeof(scsi_cdb_request_sense_t),
+        .scsi_cdb = &cdb,
+        .scsi_cdb_len = sizeof(scsi_cdb_request_sense_t),
         .dir = SCSI_DIR_IN,
         .data_buf = sense,
         .data_len = SCSI_SENSE_ALLOC_SIZE,
@@ -94,8 +94,8 @@ int32 scsi_send_inquiry(scsi_device_t *sdev, scsi_inquiry_t *inquiry) {
 
     scsi_cmnd_t scmnd={
         .sdev = sdev,
-        .cdb = &cdb,
-        .cdb_len = sizeof(scsi_cdb_inquiry_t),
+        .scsi_cdb = &cdb,
+        .scsi_cdb_len = sizeof(scsi_cdb_inquiry_t),
         .data_buf = inquiry,
         .data_len = sizeof(scsi_inquiry_t),
         .dir = SCSI_DIR_IN,
@@ -121,8 +121,8 @@ int32 scsi_report_luns(scsi_device_t *sdev,scsi_report_luns_t *report_luns) {
 
     scsi_cmnd_t scmnd={
         .sdev = sdev,
-        .cdb = &cdb,
-        .cdb_len = sizeof(scsi_cdb_report_luns_t),
+        .scsi_cdb = &cdb,
+        .scsi_cdb_len = sizeof(scsi_cdb_report_luns_t),
         .data_buf = report_luns,
         .data_len = SCSI_LUN_BUF_LEN,
         .dir = SCSI_DIR_IN,
@@ -147,8 +147,8 @@ int32 scsi_read_capacity10(scsi_device_t *sdev,scsi_read_capacity10_t *read_capa
 
     scsi_cmnd_t scmnd={
         .sdev = sdev,
-        .cdb = &cdb,
-        .cdb_len = sizeof(scsi_cdb_read_capacity10_t),
+        .scsi_cdb = &cdb,
+        .scsi_cdb_len = sizeof(scsi_cdb_read_capacity10_t),
         .data_buf = read_capacity10,
         .data_len = sizeof(scsi_read_capacity10_t),
         .dir = SCSI_DIR_IN,
@@ -177,8 +177,8 @@ int32 scsi_read_capacity16(scsi_device_t *sdev,scsi_read_capacity16_t *read_capa
 
     scsi_cmnd_t scmnd={
         .sdev = sdev,
-        .cdb = &cdb,
-        .cdb_len = sizeof(scsi_cdb_read_capacity16_t),
+        .scsi_cdb = &cdb,
+        .scsi_cdb_len = sizeof(scsi_cdb_read_capacity16_t),
         .data_buf = read_capacity16,
         .data_len = sizeof(scsi_read_capacity16_t),
         .dir = SCSI_DIR_IN,
@@ -204,8 +204,8 @@ int32 scsi_read10(scsi_device_t *sdev,void *data_buf,uint32 lba,uint16 block_cou
 
     scsi_cmnd_t scmnd={
         .sdev = sdev,
-        .cdb = &cdb,
-        .cdb_len = sizeof(scsi_cdb_rw10_t),
+        .scsi_cdb = &cdb,
+        .scsi_cdb_len = sizeof(scsi_cdb_rw10_t),
         .data_buf = data_buf,
         .data_len = block_count*sdev->block_size,
         .dir = SCSI_DIR_IN,
@@ -232,8 +232,8 @@ int32 scsi_write10(scsi_device_t *sdev,void *data_buf,uint32 lba,uint16 block_co
 
     scsi_cmnd_t scmnd={
         .sdev = sdev,
-        .cdb = &cdb,
-        .cdb_len = sizeof(scsi_cdb_rw10_t),
+        .scsi_cdb = &cdb,
+        .scsi_cdb_len = sizeof(scsi_cdb_rw10_t),
         .data_buf = data_buf,
         .data_len = block_count*sdev->block_size,
         .dir = SCSI_DIR_OUT,
@@ -259,8 +259,8 @@ int32 scsi_read16(scsi_device_t *sdev,void *data_buf,uint64 lba,uint32 block_cou
 
     scsi_cmnd_t scmnd={
         .sdev = sdev,
-        .cdb = &cdb,
-        .cdb_len = sizeof(scsi_cdb_rw16_t),
+        .scsi_cdb = &cdb,
+        .scsi_cdb_len = sizeof(scsi_cdb_rw16_t),
         .data_buf = data_buf,
         .data_len = block_count * sdev->block_size,
         .dir = SCSI_DIR_IN,
@@ -286,8 +286,8 @@ int32 scsi_write16(scsi_device_t *sdev,void *data_buf,uint64 lba,uint32 block_co
 
     scsi_cmnd_t scmnd={
         .sdev = sdev,
-        .cdb = &cdb,
-        .cdb_len = sizeof(scsi_cdb_rw16_t),
+        .scsi_cdb = &cdb,
+        .scsi_cdb_len = sizeof(scsi_cdb_rw16_t),
         .data_buf = data_buf,
         .data_len = block_count*sdev->block_size,
         .dir = SCSI_DIR_OUT,

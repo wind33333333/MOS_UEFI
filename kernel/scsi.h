@@ -437,8 +437,8 @@ typedef struct scsi_cmnd_t{
     scsi_device_t *sdev;
 
     // --- SCSI 命令部分 ---
-    void   *cdb;        // SCSI 命令块
-    uint8  cdb_len;      // 有效命令长度 (通常为 6, 10, 12, 16)
+    void   *scsi_cdb;        // SCSI 命令块
+    uint8  scsi_cdb_len;      // 有效命令长度 (通常为 6, 10, 12, 16)
 
     // --- 数据传输部分 ---
     scsi_dir_t dir;        // 数据传输方向

@@ -575,9 +575,9 @@ typedef struct trb_normal_t{
     uint32 ent : 1;         // [1] Evaluate Next TRB (ENT) - 告诉硬件提前评估下一个 TRB
     uint32 isp : 1;         // [2] Interrupt on Short Packet (ISP) - 遇到短包就立刻触发中断
     uint32 ns : 1;          // [3] No Snoop (NS) - PCIe 缓存一致性优化 (通常填 0)
-    uint32 chain : 1;       // [4] Chain bit (CH) - 链条标志！极其重要！
-    uint32 ioc : 1;         // [5] Interrupt On Completion (IOC) - 跑完这个 TRB 后给我发个中断！
-    uint32 idt : 1;         // [6] Immediate Data (IDT) - 是否将数据直接塞在指针字段里 (Normal TRB 通常 0)
+    trb_chain_e chain : 1;       // [4] Chain bit (CH) - 链条标志！极其重要！
+    trb_ioc_e ioc : 1;         // [5] Interrupt On Completion (IOC) - 跑完这个 TRB 后给我发个中断！
+    trb_idt_e idt : 1;         // [6] Immediate Data (IDT) - 是否将数据直接塞在指针字段里 (Normal TRB 通常 0)
     uint32 reserved_1: 3;   // [9:7] 保留
     trb_type_e trb_type : 6;    // [15:10] TRB 类型 (Normal TRB 固定填 1)
     uint32 reserved_2 : 16; // [31:16] 保留
