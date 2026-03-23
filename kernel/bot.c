@@ -30,6 +30,7 @@ int32 bot_request_sense(bot_data_t *bot_data,scsi_cmnd_t *cmnd) {
  */
 void bot_recovery_reset(usb_dev_t *udev,uint8 if_num, uint8 pipe_in, uint8 pipe_out) {
     xhci_hcd_t *xhcd = udev->xhcd;
+    uint8 slot_id = udev->slot_id;
 
     // 动作 1：发送特定的 0xFF 控制命令，将 U 盘内部状态机重置
     usb_req_pkg_t usb_req_pkg = {0};
@@ -44,11 +45,11 @@ void bot_recovery_reset(usb_dev_t *udev,uint8 if_num, uint8 pipe_in, uint8 pipe_
     usb_control_msg(udev,&usb_req_pkg,NULL);
 
     // 动作 2：清理硬件与协议层面的 IN 管道挂起状态
-    xhci_cmd_reset_ep(udev->xhcd, udev->slot_id, pipe_in);
+    xhci_cmd_reset_ep(xhcd, slot_id, pipe_in);
     usb_clear_feature_halt(udev, pipe_in);
 
     // 动作 3：清理硬件与协议层面的 OUT 管道挂起状态
-    xhci_cmd_reset_ep(udev->xhcd, udev->slot_id, pipe_out);
+    xhci_cmd_reset_ep(xhcd, slot_id, pipe_out);
     usb_clear_feature_halt(udev, pipe_out);
 
     color_printk(GREEN, BLACK, "BOT: Reset Request!\n");
@@ -62,6 +63,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     bot_data_t *bot_data =host->hostdata;
     usb_dev_t *udev = bot_data->uif->udev;
     xhci_hcd_t *xhcd = udev->xhcd;
+    uint8 slot_id = udev->slot_id;;
 
     // 管道定义 (BOT 通常只用两个 Bulk 管道)
     uint8 pipe_out = bot_data->pipe_out;
@@ -69,8 +71,8 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 
     xhci_trb_t trb;
     int32 comp_code;
-    bot_csw_t *csw = kzalloc(sizeof(bot_csw_t));
-    bot_cbw_t *cbw = kzalloc(sizeof(bot_cbw_t));
+    bot_csw_t *csw = kzalloc_dma(sizeof(bot_csw_t));
+    bot_cbw_t *cbw = kzalloc_dma(sizeof(bot_cbw_t));
 
     // 1. 生成 Tag (BOT 的 Tag 只是为了配对 CSW，不用像 UAS 那样管理 Slot)
     uint32 tag = ++bot_data->tag;
@@ -97,7 +99,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     trb.normal.ioc = TRB_IOC_ENABLE;
     trb.normal.trb_type = XHCI_TRB_TYPE_NORMAL;
     uint64 cbw_trb_ptr = xhci_ring_enqueue(&udev->eps[pipe_out]->transfer_ring, &trb);
-    xhci_ring_doorbell(xhcd, udev->slot_id, pipe_out);
+    xhci_ring_doorbell(xhcd, slot_id, pipe_out);
 
     // 等待 CBW 发送完成
     comp_code = xhci_wait_transfer_comp(udev, pipe_out,cbw_trb_ptr); // 2秒超时
@@ -124,7 +126,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
         trb.normal.ioc = TRB_IOC_ENABLE;
         trb.normal.trb_type = XHCI_TRB_TYPE_NORMAL;
         uint64 data_trb_ptr = xhci_ring_enqueue(&udev->eps[data_pipe]->transfer_ring, &trb);
-        xhci_ring_doorbell(xhcd, udev->slot_id, data_pipe);
+        xhci_ring_doorbell(xhcd, slot_id, data_pipe);
 
         // 等待数据传输完成
         comp_code = xhci_wait_transfer_comp(udev, data_pipe,data_trb_ptr);
@@ -151,23 +153,23 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     // ============================================================
     // Stage 3: 接收 CSW (Command Status Wrapper)
     // ============================================================
+    uint8 csw_retry_count = 0;
 retry_csw:
     // 提交 TRB 到 Bulk IN (不管刚才数据是读是写，CSW 永远是读)
     trb.raw[0] = 0;
     trb.raw[1] = 0;
 
     trb.normal.data_buf_ptr = va_to_pa(csw);
-    trb.normal.trb_tr_len = cmnd->data_len;
+    trb.normal.trb_tr_len = sizeof(bot_csw_t);
     trb.normal.int_target = 0;
     trb.normal.ioc = TRB_IOC_ENABLE;
     trb.normal.trb_type = XHCI_TRB_TYPE_NORMAL;
     uint64 csw_trb_ptr = xhci_ring_enqueue(&udev->eps[pipe_in]->transfer_ring, &trb);
-    xhci_ring_doorbell(xhcd, udev->slot_id, pipe_in);
+    xhci_ring_doorbell(xhcd, slot_id, pipe_in);
 
     // 等待 CSW 接收完成
     comp_code = xhci_wait_transfer_comp(udev, pipe_in,csw_trb_ptr);
 
-    uint8 csw_retry_count = 0;
     // 异常 1: 请求 CSW 时发生 STALL (有些 U 盘会在发 CSW 前莫名其妙再卡一次)
     if (comp_code == XHCI_COMP_STALL_ERROR && csw_retry_count == 0) {
         color_printk(YELLOW, BLACK, "BOT Stage 3: CSW STALL. Clearing and retrying...\n");
