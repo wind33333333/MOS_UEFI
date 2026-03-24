@@ -55,6 +55,8 @@ void bot_recovery_reset(usb_dev_t *udev,uint8 if_num, uint8 pipe_in, uint8 pipe_
     color_printk(GREEN, BLACK, "BOT: Reset Request!\n");
 }
 
+
+
 /**
  * BOT 协议同步发送函数
  * 逻辑：CBW -> Data(可选) -> CSW
@@ -63,16 +65,19 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     bot_data_t *bot_data =host->hostdata;
     usb_dev_t *udev = bot_data->uif->udev;
     xhci_hcd_t *xhcd = udev->xhcd;
-    uint8 slot_id = udev->slot_id;;
+    uint8 slot_id = udev->slot_id;
+
+    bot_cbw_t *cbw = bot_data->cbw;
+    bot_csw_t *csw = bot_data->csw;
+    asm_mem_set(bot_data->cbw,0,sizeof(bot_cbw_t));
+    asm_mem_set(bot_data->csw,0,sizeof(bot_csw_t));
 
     // 管道定义 (BOT 通常只用两个 Bulk 管道)
     uint8 pipe_out = bot_data->pipe_out;
     uint8 pipe_in  = bot_data->pipe_in;
 
     xhci_trb_t trb;
-    int32 comp_code;
-    bot_csw_t *csw = kzalloc_dma(sizeof(bot_csw_t));
-    bot_cbw_t *cbw = kzalloc_dma(sizeof(bot_cbw_t));
+    xhci_trb_comp_code_e comp_code;
 
     // 1. 生成 Tag (BOT 的 Tag 只是为了配对 CSW，不用像 UAS 那样管理 Slot)
     uint32 tag = ++bot_data->tag;
@@ -117,15 +122,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     if (cmnd->data_buf && cmnd->data_len) {
         uint8 data_pipe = (cmnd->dir == SCSI_DIR_IN) ? pipe_in : pipe_out;
 
-        trb.raw[0] = 0;
-        trb.raw[1] = 0;
-
-        trb.normal.data_buf_ptr = va_to_pa(cmnd->data_buf);
-        trb.normal.trb_tr_len = cmnd->data_len;
-        trb.normal.int_target = 0;
-        trb.normal.ioc = TRB_IOC_ENABLE;
-        trb.normal.trb_type = XHCI_TRB_TYPE_NORMAL;
-        uint64 data_trb_ptr = xhci_ring_enqueue(&udev->eps[data_pipe]->transfer_ring, &trb);
+        uint64 data_trb_ptr = xhci_enqueue_data_trbs(&udev->eps[data_pipe]->transfer_ring,cmnd->data_buf,cmnd->data_len);
         xhci_ring_doorbell(xhcd, slot_id, data_pipe);
 
         // 等待数据传输完成
@@ -220,9 +217,6 @@ retry_csw:
     }
 
 cleanup:
-    // 释放资源
-    kfree(cbw);
-    kfree(csw);
 
     return;
 }

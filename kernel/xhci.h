@@ -1107,6 +1107,7 @@ static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 
 
 
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push);
+uint64 xhci_enqueue_data_trbs(xhci_ring_t *ring, void *data_buf, uint32 data_len);
 uint8 xhci_handle_common_error(xhci_trb_comp_code_e comp_code, uint64 trb_pa);
 xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number,trb_type_e expected_type,uint64 expected_pa_or_port,uint8 slot_id,uint8 ep_dci,uint32 timeout_ms,xhci_trb_t *out_trb);
 int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id);

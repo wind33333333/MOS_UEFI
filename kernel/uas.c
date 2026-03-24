@@ -21,11 +21,11 @@ static inline void uas_free_tag(uas_data_t *uas_data,uint16 nr) {
  */
 void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     uas_data_t *uas_data = host->hostdata;
-    usb_dev_t *usb_dev = uas_data->uif->udev;
-    xhci_hcd_t *xhcd = usb_dev->xhcd;
-    uint8 slot_id = usb_dev->slot_id;
+    usb_dev_t *udev = uas_data->uif->udev;
+    xhci_hcd_t *xhcd = udev->xhcd;
+    uint8 slot_id = udev->slot_id;
 
-    trb_t trb;
+    xhci_trb_t trb;
 
     uint8 cmd_pipe = uas_data->cmd_pipe;
     uint8 status_pipe = uas_data->status_pipe;
@@ -41,7 +41,7 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     uint16 tag = uas_alloc_tag(uas_data);
 
     // 1. 准备 UAS Command IU
-    uas_cmd_iu_t *cmd_iu = kzalloc(uas_cmd_iu_alloc_size);
+    uas_cmd_iu_t *cmd_iu = kzalloc_dma(uas_cmd_iu_alloc_size);
     cmd_iu->tag = asm_bswap16(tag);
     cmd_iu->iu_id = UAS_CMD_IU_ID;  // Command IU
     cmd_iu->prio_attr = 0x00;       // Simple Task
@@ -51,23 +51,36 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
 
 
     // 2. 准备 UAS Sense iu (用于接收状态)
-    uas_sense_iu_t *sense_iu = kzalloc(UAS_SENSE_IU_ALLOC_SIZE);
+    uas_sense_iu_t *sense_iu = kzalloc_dma(UAS_SENSE_IU_ALLOC_SIZE);
 
     // 3. 提交 TRB (关键顺序：Status -> Data -> Command) 先准备好“收”，再触发“发”，防止设备回包太快导致溢出
     // [Step A] 提交 Status Pipe 请求 (接收 Sense IU)
-    normal_transfer_trb(&trb, va_to_pa(sense_iu), disable_ch, UAS_SENSE_IU_ALLOC_SIZE, ENABLE_IOC);
-    uint64 status_trb_ptr = xhci_ring_enqueue(&usb_dev->eps_ring[status_pipe].stream_rings[tag], &trb);
+    trb.raw[0] = 0;
+    trb.raw[1] = 0;
+
+    trb.normal.data_buf_ptr = va_to_pa(sense_iu);
+    trb.normal.trb_tr_len = UAS_SENSE_IU_ALLOC_SIZE;
+    trb.normal.int_target = 0;
+    trb.normal.ioc = TRB_IOC_ENABLE;
+    trb.normal.trb_type = XHCI_TRB_TYPE_NORMAL;
+    uint64 status_trb_ptr = xhci_ring_enqueue(&udev->eps[status_pipe]->streams_ring_array[tag], &trb);
 
     // [Step B] 提交 Data Pipe 请求 (如果有数据)
     if (cmnd->data_buf && cmnd->data_len) {
         data_pipe = cmnd->dir == SCSI_DIR_IN ? uas_data->data_in_pipe : uas_data->data_out_pipe;
-        normal_transfer_trb(&trb, va_to_pa(cmnd->data_buf), disable_ch, cmnd->data_len, DISABLE_IOC);
-        xhci_ring_enqueue(&usb_dev->eps_ring[data_pipe].stream_rings[tag], &trb);
+        xhci_enqueue_data_trbs(&udev->eps[data_pipe]->streams_ring_array[tag],cmnd->data_buf,cmnd->data_len);
     }
 
     // [Step C] 提交 Command Pipe 请求 (触发执行)
-    normal_transfer_trb(&trb, va_to_pa(cmd_iu), disable_ch,uas_cmd_iu_alloc_size, DISABLE_IOC); //如果cdb超过了16字节需要加上扩展字节
-    xhci_ring_enqueue(&usb_dev->eps_ring[cmd_pipe].transfer_ring,&trb);
+    trb.raw[0] = 0;
+    trb.raw[1] = 0;
+
+    trb.normal.data_buf_ptr = va_to_pa(cmd_iu);
+    trb.normal.trb_tr_len = uas_cmd_iu_alloc_size;
+    trb.normal.int_target = 0;
+    trb.normal.ioc = TRB_IOC_DISABLE;
+    trb.normal.trb_type = XHCI_TRB_TYPE_NORMAL;
+    xhci_ring_enqueue(&udev->eps[cmd_pipe]->transfer_ring,&trb);
 
     // [Step D] 敲门铃 (Doorbell) status
     xhci_ring_doorbell(xhcd, slot_id, status_pipe | tag<<16);
@@ -79,15 +92,15 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
 
     //[Step F] 敲门铃 (Doorbell) cmd
     xhci_ring_doorbell(xhcd, slot_id, cmd_pipe);
-    int32 completion_code = xhci_wait_for_completion(xhcd,status_trb_ptr,0x20000000);
+    xhci_trb_comp_code_e com_code = xhci_wait_transfer_comp(udev, cmd_pipe,status_trb_ptr);
 
     //检测TRB是否发送成功
-    if (completion_code == XHCI_COMP_SUCCESS || completion_code == XHCI_COMP_SHORT_PACKET) {   //TRB发送成功
+    if (com_code == XHCI_COMP_SUCCESS || com_code == XHCI_COMP_SHORT_PACKET) {   //TRB发送成功
         if (sense_iu->status == SCSI_STATUS_CHECK_CONDITION && cmnd->sense) {                  //如果sense_iu报错着把错误拷贝传给调用者
             asm_mem_cpy(sense_iu->scsi_sense,cmnd->sense,asm_bswap16(sense_iu->scsi_sense_len));
         }
     }else {//TRB发送错误处理流程
-        color_printk(RED,BLACK,"UAS send Error: %#x   \n",completion_code);
+        color_printk(RED,BLACK,"UAS send Error: %#x   \n",com_code);
         while (1);
     }
 

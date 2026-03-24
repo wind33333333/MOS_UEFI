@@ -4,7 +4,7 @@
 
 #pragma pack(push,1)
 
-typedef struct {
+typedef struct bot_cbw_t{
     uint32   signature;    // [0-3] 签名标志 (Signature)固定值：0x43425355 (小端序 ASCII = "USBC")
     uint32   tag;          // [4-7] 标签 (Tag)由主机生成的唯一 ID。设备在返回 CSW 时必须原样返回这个值。用于将命令和状态回执配对。
     uint32   data_tran_len; // [8-11] 数据传输长度 (Data Transfer Length)主机期望在数据阶段传输的字节数。如果是 0，表示没有数据阶段（如 TEST UNIT READY）。
@@ -52,8 +52,8 @@ typedef struct bot_data_t {
 
     // --- 协议缓冲区 (DMA Coherent) ---
     // BOT 协议每次传输都需要这两个包头
-    struct bot_cbw    *cbw;           // Command Block Wrapper (31 Bytes)
-    struct bot_csw    *csw;           // Command Status Wrapper (13 Bytes)
+    bot_cbw_t    *cbw;           // Command Block Wrapper (31 Bytes)
+    bot_csw_t    *csw;           // Command Status Wrapper (13 Bytes)
 
 } bot_data_t;
 
