@@ -68,6 +68,8 @@ typedef struct uas_data_t {
     uint8            status_pipe;    // Bulk IN (接收 Sense IU)
     uint8            data_in_pipe;   // Bulk IN (Read Data)
     uint8            data_out_pipe;  // Bulk OUT (Write Data)
+    uas_cmd_iu_t     **cmd_iu;
+    uas_sense_iu_t   **sense_iu;
     uint64           tag_bitmap;      // UAS Tag管理,tag号对应stream
 } uas_data_t;
 
