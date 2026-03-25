@@ -54,16 +54,6 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     uas_sense_iu_t *sense_iu = kzalloc_dma(UAS_SENSE_IU_ALLOC_SIZE);
 
     // 3. 提交 TRB (关键顺序：Status -> Data -> Command) 先准备好“收”，再触发“发”，防止设备回包太快导致溢出
-    // [Step A] 提交 Status Pipe 请求 (接收 Sense IU)
-    // trb.raw[0] = 0;
-    // trb.raw[1] = 0;
-    //
-    // trb.normal.data_buf_ptr = va_to_pa(sense_iu);
-    // trb.normal.trb_tr_len = UAS_SENSE_IU_ALLOC_SIZE;
-    // trb.normal.int_target = 0;
-    // trb.normal.ioc = TRB_IOC_ENABLE;
-    // trb.normal.trb_type = XHCI_TRB_TYPE_NORMAL;
-    // uint64 status_trb_ptr = xhci_ring_enqueue(&udev->eps[status_pipe]->streams_ring_array[tag], &trb);
     uint64 status_trb_ptr = usb_enqueue_transfer(&udev->eps[status_pipe]->streams_ring_array[tag],sense_iu,UAS_SENSE_IU_ALLOC_SIZE,TRB_IOC_ENABLE);
 
     // [Step B] 提交 Data Pipe 请求 (如果有数据)
@@ -73,15 +63,6 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     }
 
     // [Step C] 提交 Command Pipe 请求 (触发执行)
-    // trb.raw[0] = 0;
-    // trb.raw[1] = 0;
-    //
-    // trb.normal.data_buf_ptr = va_to_pa(cmd_iu);
-    // trb.normal.trb_tr_len = uas_cmd_iu_alloc_size;
-    // trb.normal.int_target = 0;
-    // trb.normal.ioc = TRB_IOC_DISABLE;
-    // trb.normal.trb_type = XHCI_TRB_TYPE_NORMAL;
-    // xhci_ring_enqueue(&udev->eps[cmd_pipe]->transfer_ring,&trb);
     usb_enqueue_transfer(&udev->eps[cmd_pipe]->transfer_ring,cmd_iu,uas_cmd_iu_alloc_size,TRB_IOC_DISABLE);
 
     // [Step D] 敲门铃 (Doorbell) status

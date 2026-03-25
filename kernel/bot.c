@@ -76,7 +76,6 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     uint8 pipe_out = bot_data->pipe_out;
     uint8 pipe_in  = bot_data->pipe_in;
 
-    xhci_trb_t trb;
     xhci_trb_comp_code_e comp_code;
 
     // 1. 生成 Tag (BOT 的 Tag 只是为了配对 CSW，不用像 UAS 那样管理 Slot)
@@ -95,15 +94,6 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     asm_mem_cpy(cmnd->scsi_cdb, cbw->scsi_cdb, cmnd->scsi_cdb_len);
 
     // 提交 TRB 到 Bulk OUT
-    // trb.raw[0] = 0;
-    // trb.raw[1] = 0;
-
-    // trb.normal.data_buf_ptr = va_to_pa(cbw);
-    // trb.normal.trb_tr_len = sizeof(bot_cbw_t);
-    // trb.normal.int_target = 0;
-    // trb.normal.ioc = TRB_IOC_ENABLE;
-    // trb.normal.trb_type = XHCI_TRB_TYPE_NORMAL;
-    // uint64 cbw_trb_ptr = xhci_ring_enqueue(&udev->eps[pipe_out]->transfer_ring, &trb);
     uint64 cbw_trb_ptr = usb_enqueue_transfer(&udev->eps[pipe_out]->transfer_ring,cbw,sizeof(bot_cbw_t),TRB_IOC_ENABLE);
     xhci_ring_doorbell(xhcd, slot_id, pipe_out);
 
@@ -153,16 +143,6 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     // ============================================================
     uint8 csw_retry_count = 0;
 retry_csw:
-    // 提交 TRB 到 Bulk IN (不管刚才数据是读是写，CSW 永远是读)
-    // trb.raw[0] = 0;
-    // trb.raw[1] = 0;
-
-    // trb.normal.data_buf_ptr = va_to_pa(csw);
-    // trb.normal.trb_tr_len = sizeof(bot_csw_t);
-    // trb.normal.int_target = 0;
-    // trb.normal.ioc = TRB_IOC_ENABLE;
-    // trb.normal.trb_type = XHCI_TRB_TYPE_NORMAL;
-    // uint64 csw_trb_ptr = xhci_ring_enqueue(&udev->eps[pipe_in]->transfer_ring, &trb);
     uint64 csw_trb_ptr = usb_enqueue_transfer(&udev->eps[pipe_in]->transfer_ring,csw,sizeof(bot_csw_t),TRB_IOC_ENABLE);
     xhci_ring_doorbell(xhcd, slot_id, pipe_in);
 
