@@ -36,68 +36,6 @@ uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
     return va_to_pa(trb_ptr);
 }
 
-/**
- * @brief xHCI 大容量数据自动切片引擎 (极致性能无分支版)
- * @param ring       目标传输环 (Bulk IN 或 Bulk OUT)
- * @param data_buf   连续虚拟内存首地址
- * @param data_len   总传输长度 (支持大于 64KB，自动防物理越界)
- * @return uint64    最后一个 TRB 的物理地址 (用于挂起等待完成中断)
- */
-uint64 xhci_enqueue_data_trbs(xhci_ring_t *ring, void *data_buf, uint32 data_len,trb_ioc_e ioc) {
-
-    uint32 left_len = data_len;
-    uint64 current_pa = va_to_pa(data_buf); // 获取起始物理地址
-    uint64 last_trb_pa = 0;
-    xhci_trb_t trb;
-
-    // ==========================================================
-    // 🚀 优化阶段 1：循环不变量预处理 (彻底干掉 memset)
-    // ==========================================================
-    // 利用 64 位指针对 16 字节的 TRB 进行极速暴力清零
-    trb.raw[0] = 0;
-    trb.raw[1] = 0;
-
-    // 预设整列“火车”永远不变的通用属性
-    trb.normal.trb_type   = XHCI_TRB_TYPE_NORMAL;
-    trb.normal.int_target = 0;
-
-    // ==========================================================
-    // 🚀 优化阶段 2：极速无分支 (Branchless) 切片大循环
-    // ==========================================================
-    while (left_len > 0) {
-        // 1. 物理安全边界计算：距离下一个 64KB (0xFFFF) 物理墙还有多远？
-        uint32 space_to_boundary = 65536 - (current_pa & 0xFFFF);
-
-        // 2. 核心状态提取：利用关系运算 (>) 直接得出 1 或 0
-        // has_more = 1 (还会撞墙，没传完)； has_more = 0 (这是最后一块了)
-        uint8 has_more = (left_len > space_to_boundary);
-
-        // 3. 无分支计算当前 TRB 长度 (编译器会优化为 CMOV 条件传送指令)
-        uint32 chunk_len = has_more ? space_to_boundary : left_len;
-
-        // 4. 填入当前数据块的专属游标
-        trb.normal.data_buf_ptr = current_pa;
-        trb.normal.trb_tr_len   = chunk_len;
-
-        // 5. 👑 终极无分支映射：完美消灭 if-else 分支预测惩罚
-        // 有剩余(1) -> 挂锁链(chain=1), 闭嘴不中断(ioc=0)
-        // 没剩余(0) -> 断锁链(chain=0), 敲响中断(ioc=1)
-        trb.normal.chain = has_more;
-        trb.normal.ioc   = !has_more & ioc;
-
-        // 6. 将当前车厢压入主板的物理传输环
-        last_trb_pa = xhci_ring_enqueue(ring, &trb);
-
-        // 7. 游标向后推进，进入下一轮切片
-        current_pa += chunk_len;
-        left_len   -= chunk_len;
-    }
-
-    // 整个大块的 Transfer Descriptor 入队完毕，返回最后一块的物理地址
-    return last_trb_pa;
-}
-
-
 xhci_trb_comp_code_e xhci_wait_for_event(
     xhci_hcd_t *xhcd,
     uint16 intr_number,
