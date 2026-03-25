@@ -43,7 +43,7 @@ uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
  * @param data_len   总传输长度 (支持大于 64KB，自动防物理越界)
  * @return uint64    最后一个 TRB 的物理地址 (用于挂起等待完成中断)
  */
-uint64 xhci_enqueue_data_trbs(xhci_ring_t *ring, void *data_buf, uint32 data_len) {
+uint64 xhci_enqueue_data_trbs(xhci_ring_t *ring, void *data_buf, uint32 data_len,trb_ioc_e ioc) {
 
     uint32 left_len = data_len;
     uint64 current_pa = va_to_pa(data_buf); // 获取起始物理地址
@@ -83,7 +83,7 @@ uint64 xhci_enqueue_data_trbs(xhci_ring_t *ring, void *data_buf, uint32 data_len
         // 有剩余(1) -> 挂锁链(chain=1), 闭嘴不中断(ioc=0)
         // 没剩余(0) -> 断锁链(chain=0), 敲响中断(ioc=1)
         trb.normal.chain = has_more;
-        trb.normal.ioc   = !has_more;
+        trb.normal.ioc   = !has_more & ioc;
 
         // 6. 将当前车厢压入主板的物理传输环
         last_trb_pa = xhci_ring_enqueue(ring, &trb);

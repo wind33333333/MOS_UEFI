@@ -68,7 +68,7 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     // [Step B] 提交 Data Pipe 请求 (如果有数据)
     if (cmnd->data_buf && cmnd->data_len) {
         data_pipe = cmnd->dir == SCSI_DIR_IN ? uas_data->data_in_pipe : uas_data->data_out_pipe;
-        xhci_enqueue_data_trbs(&udev->eps[data_pipe]->streams_ring_array[tag],cmnd->data_buf,cmnd->data_len);
+        xhci_enqueue_data_trbs(&udev->eps[data_pipe]->streams_ring_array[tag],cmnd->data_buf,cmnd->data_len,TRB_IOC_DISABLE);
     }
 
     // [Step C] 提交 Command Pipe 请求 (触发执行)
@@ -92,7 +92,7 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
 
     //[Step F] 敲门铃 (Doorbell) cmd
     xhci_ring_doorbell(xhcd, slot_id, cmd_pipe);
-    xhci_trb_comp_code_e com_code = xhci_wait_transfer_comp(udev, cmd_pipe,status_trb_ptr);
+    xhci_trb_comp_code_e com_code = xhci_wait_transfer_comp(udev, status_pipe,status_trb_ptr);
 
     //检测TRB是否发送成功
     if (com_code == XHCI_COMP_SUCCESS || com_code == XHCI_COMP_SHORT_PACKET) {   //TRB发送成功

@@ -122,7 +122,7 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     if (cmnd->data_buf && cmnd->data_len) {
         uint8 data_pipe = (cmnd->dir == SCSI_DIR_IN) ? pipe_in : pipe_out;
 
-        uint64 data_trb_ptr = xhci_enqueue_data_trbs(&udev->eps[data_pipe]->transfer_ring,cmnd->data_buf,cmnd->data_len);
+        uint64 data_trb_ptr = xhci_enqueue_data_trbs(&udev->eps[data_pipe]->transfer_ring,cmnd->data_buf,cmnd->data_len,TRB_IOC_ENABLE);
         xhci_ring_doorbell(xhcd, slot_id, data_pipe);
 
         // 等待数据传输完成
