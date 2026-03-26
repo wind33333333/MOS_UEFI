@@ -88,8 +88,11 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
 
         //初始化tag_bitmap
         uas_data->tag_bitmap = 0xFFFFFFFFFFFFFFFFUL;
-        uas_data->tag_bitmap <<= (mini_streams-1);
-        uas_data->tag_bitmap <<= 1;
+        uas_data->tag_bitmap <<= mini_streams;
+
+        //初始化cmd_iu和sense_iu内存池
+        uas_data->cmd_iu_pool = kmalloc(sizeof(uas_cmd_iu_t)*mini_streams);
+        uas_data->sense_iu_pool = kmalloc(sizeof(uas_sense_iu_t)*mini_streams);
 
         //创建scsi_host
         shost = scsi_create_host(&uas_host_template,uas_data,&uif->dev,0,"uas_host");

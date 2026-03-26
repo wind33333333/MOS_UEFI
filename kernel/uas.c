@@ -6,14 +6,55 @@
 
 //获取一个tag
 static inline uint16 uas_alloc_tag(uas_data_t *uas_data) {
-    uint16 nr = asm_tzcnt(~uas_data->tag_bitmap);
-    uas_data->tag_bitmap = asm_bts(uas_data->tag_bitmap,nr);
-    return ++nr;
+    uint16 tag = asm_tzcnt(~uas_data->tag_bitmap);
+    uas_data->tag_bitmap = asm_bts(uas_data->tag_bitmap,tag);
+    return tag;
 }
 
 //释放一个tag
-static inline void uas_free_tag(uas_data_t *uas_data,uint16 nr) {
-    uas_data->tag_bitmap = asm_btr(uas_data->tag_bitmap,nr-1);
+static inline void uas_free_tag(uas_data_t *uas_data,uint16 tag) {
+    uas_data->tag_bitmap = asm_btr(uas_data->tag_bitmap,tag-1);
+}
+
+/**
+ * @brief 一站式分配 UAS 事务 (Tag + Cmd槽位 + Sense槽位) 并自动清零
+ * @param uas_data  设备上下文
+ * @param cmd_out   [出参] 用于接收分配好的 Command IU 指针
+ * @param sense_out [出参] 用于接收分配好的 Sense IU 指针
+ * @return int16    返回分配到的 Tag (0~63)，如果池满则返回 -1
+ */
+static inline int32 uas_alloc_request(uas_data_t *uas_data, uas_cmd_iu_t **cmd_out, uas_sense_iu_t **sense_out, uint16 *tag_out) {
+
+    // 1. 极速扫描 Bitmap 寻找空闲 Tag
+    uint16 tag = uas_alloc_tag(uas_data);
+    //如果tag大于等于64表示没有空闲tag
+    if (tag >= (1<<MAX_STREAMS)) {
+        return -1;
+    }
+
+    // 3. O(1) 极速寻址获取物理图纸 /tag从1开始而
+    uas_cmd_iu_t   *cmd = &uas_data->cmd_iu_pool[tag];
+    uas_sense_iu_t *sense = &uas_data->sense_iu_pool[tag];
+
+    // 4. 瞬间抹除上一次 I/O 的历史痕迹 (清零)
+    asm_mem_set(cmd, 0, sizeof(uas_cmd_iu_t));
+    asm_mem_set(sense, 0, sizeof(uas_sense_iu_t));
+
+    // 5. 通过双重指针将图纸交接给上层调用者
+    *cmd_out = cmd;
+    *sense_out = sense;
+    *tag_out = ++tag;  //tag从1开始所以需要+1
+
+    return 0;
+}
+
+/**
+ * @brief 一站式释放 UAS 事务 (归还通行证，物理图纸自动回归池中)
+ * @param uas_data 设备上下文
+ * @param tag      需要归还的事务 ID (0~63)
+ */
+static inline void uas_free_request(uas_data_t *uas_data, int16 tag) {
+    uas_free_tag(uas_data,tag);
 }
 
 /**
@@ -25,36 +66,26 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     xhci_hcd_t *xhcd = udev->xhcd;
     uint8 slot_id = udev->slot_id;
 
-    xhci_trb_t trb;
-
     uint8 cmd_pipe = uas_data->cmd_pipe;
     uint8 status_pipe = uas_data->status_pipe;
     uint8 data_pipe;
 
-    // 逻辑：如果传入 6, 10, 12, 16 字节，统一分配 16 字节空间 (标准 UAS 要求) 如果传入 > 16 字节，则分配实际长度
-    uint16 effective_cdb_len = (cmnd->scsi_cdb_len > 16) ? cmnd->scsi_cdb_len : 16;
-
-    // 总大小 = 头部(16字节) + 有效CDB长度 注意：sizeof(uas_cmd_iu_t) 因为 cdb[] 是柔性数组，所以等于 16
-    uint32 uas_cmd_iu_alloc_size = sizeof(uas_cmd_iu_t) + effective_cdb_len;
-
     // 获取一个空闲的 Tag (事务 ID)
-    uint16 tag = uas_alloc_tag(uas_data);
+    uint16 tag;
+    uas_cmd_iu_t *cmd_iu;
+    uas_sense_iu_t *sense_iu;
+    uas_alloc_request(uas_data,&cmd_iu,&sense_iu,&tag);
 
     // 1. 准备 UAS Command IU
-    uas_cmd_iu_t *cmd_iu = kzalloc_dma(uas_cmd_iu_alloc_size);
     cmd_iu->tag = asm_bswap16(tag);
     cmd_iu->iu_id = UAS_CMD_IU_ID;  // Command IU
     cmd_iu->prio_attr = 0x00;       // Simple Task
-    cmd_iu->add_cdb_len = (effective_cdb_len - 16) >> 2;        // cdb_len <= 16字节填 0， cdb_len > 16字节填 (cdb_len-16)>>2
+    cmd_iu->add_cdb_len = 0;        // cdb_len <= 16字节填 0， cdb_len > 16字节填 (cdb_len-16)>>2
     cmd_iu->lun = asm_bswap64(cmnd->sdev->lun);   // 默认 LUN 0
     asm_mem_cpy(cmnd->scsi_cdb,cmd_iu->scsi_cdb,cmnd->scsi_cdb_len);    //填充cdb
 
-
-    // 2. 准备 UAS Sense iu (用于接收状态)
-    uas_sense_iu_t *sense_iu = kzalloc_dma(UAS_SENSE_IU_ALLOC_SIZE);
-
     // 3. 提交 TRB (关键顺序：Status -> Data -> Command) 先准备好“收”，再触发“发”，防止设备回包太快导致溢出
-    uint64 status_trb_ptr = usb_enqueue_transfer(&udev->eps[status_pipe]->streams_ring_array[tag],sense_iu,UAS_SENSE_IU_ALLOC_SIZE,TRB_IOC_ENABLE);
+    uint64 status_trb_ptr = usb_enqueue_transfer(&udev->eps[status_pipe]->streams_ring_array[tag],sense_iu,UAS_MAX_SENSE_LEN,TRB_IOC_ENABLE);
 
     // [Step B] 提交 Data Pipe 请求 (如果有数据)
     if (cmnd->data_buf && cmnd->data_len) {
@@ -63,7 +94,7 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     }
 
     // [Step C] 提交 Command Pipe 请求 (触发执行)
-    usb_enqueue_transfer(&udev->eps[cmd_pipe]->transfer_ring,cmd_iu,uas_cmd_iu_alloc_size,TRB_IOC_DISABLE);
+    usb_enqueue_transfer(&udev->eps[cmd_pipe]->transfer_ring,cmd_iu,sizeof(uas_cmd_iu_t),TRB_IOC_DISABLE);
 
     // [Step D] 敲门铃 (Doorbell) status
     xhci_ring_doorbell(xhcd, slot_id, status_pipe | tag<<16);
@@ -88,9 +119,7 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     }
 
     cmnd->status = sense_iu->status;
-    kfree(sense_iu);
-    kfree(cmd_iu);
-    uas_free_tag(uas_data, tag);
+    uas_free_request(uas_data, tag);
     return;
 }
 
