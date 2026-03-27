@@ -538,7 +538,8 @@ void usb_bus_remove(device_t* dev);
 
 xhci_trb_comp_code_e xhci_wait_transfer_comp (usb_dev_t *udev, uint8 ep_dci, uint64 wait_trb_pa);
 int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_buf);
-uint64 usb_enqueue_transfer(xhci_ring_t *ring, void *buf, uint32 len,trb_ioc_e ioc);
+uint64 usb_submit_transfer(xhci_hcd_t *xhcd, uint8 slot_id, uint32 db_target,
+                           xhci_ring_t *ring, void *buf, uint32 len, trb_ioc_e ioc);
 int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci);
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
 

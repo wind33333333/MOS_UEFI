@@ -94,8 +94,9 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     asm_mem_cpy(cmnd->scsi_cdb, cbw->scsi_cdb, cmnd->scsi_cdb_len);
 
     // 提交 TRB 到 Bulk OUT
-    uint64 cbw_trb_ptr = usb_enqueue_transfer(&udev->eps[pipe_out]->transfer_ring,cbw,sizeof(bot_cbw_t),TRB_IOC_ENABLE);
-    xhci_ring_doorbell(xhcd, slot_id, pipe_out);
+    uint64 cbw_trb_ptr = usb_submit_transfer(xhcd, slot_id, pipe_out,
+                                                 &udev->eps[pipe_out]->transfer_ring,
+                                                 cbw, sizeof(bot_cbw_t), TRB_IOC_ENABLE);
 
     // 等待 CBW 发送完成
     comp_code = xhci_wait_transfer_comp(udev, pipe_out,cbw_trb_ptr); // 2秒超时
@@ -113,8 +114,9 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     if (cmnd->data_buf && cmnd->data_len) {
         uint8 data_pipe = (cmnd->dir == SCSI_DIR_IN) ? pipe_in : pipe_out;
 
-        uint64 data_trb_ptr = usb_enqueue_transfer(&udev->eps[data_pipe]->transfer_ring,cmnd->data_buf,cmnd->data_len,TRB_IOC_ENABLE);
-        xhci_ring_doorbell(xhcd, slot_id, data_pipe);
+        uint64 data_trb_ptr = usb_submit_transfer(xhcd, slot_id, data_pipe,
+                                                          &udev->eps[data_pipe]->transfer_ring,
+                                                          cmnd->data_buf, cmnd->data_len, TRB_IOC_ENABLE);
 
         // 等待数据传输完成
         comp_code = xhci_wait_transfer_comp(udev, data_pipe,data_trb_ptr);
@@ -143,8 +145,9 @@ void bot_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     // ============================================================
     uint8 csw_retry_count = 0;
 retry_csw:
-    uint64 csw_trb_ptr = usb_enqueue_transfer(&udev->eps[pipe_in]->transfer_ring,csw,sizeof(bot_csw_t),TRB_IOC_ENABLE);
-    xhci_ring_doorbell(xhcd, slot_id, pipe_in);
+    uint64 csw_trb_ptr = usb_submit_transfer(xhcd, slot_id, pipe_in,
+                                             &udev->eps[pipe_in]->transfer_ring,
+                                             csw, sizeof(bot_csw_t), TRB_IOC_ENABLE);
 
     // 等待 CSW 接收完成
     comp_code = xhci_wait_transfer_comp(udev, pipe_in,csw_trb_ptr);

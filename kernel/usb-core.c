@@ -299,20 +299,24 @@ int usb_set_if(usb_dev_t *udev,uint8 if_num,uint8 alt_num) {
 
 //=============================================================================================================
 
-//==============================================业务端点trb入队列================================================
+//==============================================业务端点传输trb================================================
 /**
- * @brief xHCI 终极通用传输引擎 (协议控制包 & 大块数据切片 二合一)
- * @param ring       目标传输环 (Bulk IN / Bulk OUT / Streams)
- * @param buf        虚拟内存首地址 (CBW/CSW/IU 或者 真实数据流)
- * @param len        总传输长度 (如果是小包则自动单发，如果是大包则自动切片防越界)
- * @param enable_ioc 是否在最后一块数据触发完成中断 (1=开启, 0=关闭)
- * @return uint64    整个传输块最后一个 TRB 的物理地址
+ * @brief xHCI 终极一键提交引擎 (切片入队 + 敲门铃)
+ * @param xhcd      主机控制器指针
+ * @param slot_id   设备槽位号
+ * @param db_target 门铃目标值 (DCI 或 DCI | StreamID<<16)
+ * @param ring      目标传输环
+ * @param buf       虚拟内存首地址
+ * @param len       总传输长度
+ * @param ioc       是否在最后一块触发完成中断
+ * @return uint64   整个传输块最后一个 TRB 的物理地址
  */
-uint64 usb_enqueue_transfer(xhci_ring_t *ring, void *buf, uint32 len,trb_ioc_e ioc) {
-    if (len == 0) return 0; // 防御性拦截
+uint64 usb_submit_transfer(xhci_hcd_t *xhcd, uint8 slot_id, uint32 db_target,
+                           xhci_ring_t *ring, void *buf, uint32 len, trb_ioc_e ioc) {
+    if (len == 0) return 0; // 防御性拦截，无数据不敲门铃
 
     uint32 left_len = len;
-    uint64 current_pa = va_to_pa(buf); // 获取起始物理地址
+    uint64 current_pa = va_to_pa(buf);
     uint64 last_trb_pa = 0;
     xhci_trb_t trb;
 
@@ -325,29 +329,23 @@ uint64 usb_enqueue_transfer(xhci_ring_t *ring, void *buf, uint32 len,trb_ioc_e i
 
     // 🚀 极速无分支传输大循环
     while (left_len > 0) {
-        // 1. 计算距离下一个 64KB 物理对齐边界的距离
         uint32 space_to_boundary = 65536 - (current_pa & 0xFFFF);
-
-        // 2. has_more = 1 (要切片)； has_more = 0 (最后一块或小包一波流)
         uint8 has_more = (left_len > space_to_boundary);
-
-        // 3. 计算当前 TRB 长度
         uint32 chunk_len = has_more ? space_to_boundary : left_len;
 
         trb.normal.data_buf_ptr = current_pa;
         trb.normal.trb_tr_len   = chunk_len;
-
-        // 4. 无分支逻辑赋值
         trb.normal.chain = has_more;
         trb.normal.ioc   = (!has_more) & ioc;
 
-        // 5. 压入物理环
         last_trb_pa = xhci_ring_enqueue(ring, &trb);
 
-        // 6. 游标推进
         current_pa += chunk_len;
         left_len   -= chunk_len;
     }
+
+    // 👑 终极一步：图纸画完，精确敲响门铃！
+    xhci_ring_doorbell(xhcd, slot_id, db_target);
 
     return last_trb_pa;
 }
