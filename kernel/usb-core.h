@@ -434,7 +434,7 @@ typedef struct usb_dev_t{
     void                            *dev_ctx;           // 设备上下文
     xhci_input_ctx_t                *input_ctx;        // 输入上下文
     uint32                          active_ep_map;      //当前活跃的端点图
-    usb_ep_t                        ep0;                // 端点0
+    usb_ep_t                        ep0;                // 端点0，控制端点
     usb_ep_t                        *eps[31];           // 端点0-30 驱动把接口端点挂到usb_dev,方便usb_core层管理
     xhci_hcd_t                      *xhcd;              // xhci控制器
     device_t                        dev;
