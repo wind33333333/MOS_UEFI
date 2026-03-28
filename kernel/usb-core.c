@@ -250,7 +250,7 @@ static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_ring_t *ri
  * * @param urb 已经由上层驱动填好的 URB 标准电子面单
  * @return int 0 表示提交成功，负数表示失败
  */
-int usb_submit_urb(usb_urb_t *urb) {
+int32 usb_submit_urb(usb_urb_t *urb) {
     // ==========================================================
     // 1. 终极防御：面单防呆校验
     // ==========================================================
@@ -291,10 +291,8 @@ int usb_submit_urb(usb_urb_t *urb) {
     // ==========================================================
 
     // 从端点上下文中提取真实的端点类型 (枚举时解析到的)
-    uint8 xfer_type = ep->ep_type;
-
-    switch (xfer_type) {
-
+    uint8 usb_trans_type = ep->ep_type & 3;
+    switch (usb_trans_type) {
         // 👑 路由 1：控制传输 (专属的三阶段状态机)
         case USB_EP_TYPE_CONTROL:
             if (urb->setup_packet == NULL) return -1; // 致命错误拦截
@@ -374,11 +372,10 @@ void usb_free_urb(usb_urb_t *urb) {
     kfree(urb);
 }
 
-
 /**
  * @brief 快速初始化 控制传输 (Control Transfer) URB
  */
-static inline void usb_fill_control_urb(usb_urb_t *urb,
+void usb_fill_control_urb(usb_urb_t *urb,
                                         usb_dev_t *udev,
                                         uint8 ep_dci,
                                         usb_setup_packet_t *setup_packet,
@@ -400,7 +397,7 @@ static inline void usb_fill_control_urb(usb_urb_t *urb,
 /**
  * @brief 快速初始化 批量传输 (Bulk Transfer) URB
  */
-static inline void usb_fill_bulk_urb(usb_urb_t *urb,
+void usb_fill_bulk_urb(usb_urb_t *urb,
                                      usb_dev_t *udev,
                                      uint8 ep_dci,
                                      void *transfer_buf,
@@ -415,6 +412,33 @@ static inline void usb_fill_bulk_urb(usb_urb_t *urb,
     urb->transfer_flags = 0;
     urb->status         = 0;
     urb->actual_length  = 0;
+}
+
+
+//同步发送控制传输
+int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void *data_buf) {
+    // 1. 动态申请 URB 面单 (再也不用栈内存了！)
+    usb_urb_t *urb = usb_alloc_urb();
+    if (!urb) return -1;
+
+    // 2. 使用填单助手，一键压制参数
+    usb_fill_control_urb(urb, udev, 1, setup_pkg, data_buf, setup_pkg->length);
+
+    // 3. 将面单抛给底层调度引擎
+    if (usb_submit_urb(urb) < 0) {
+        usb_free_urb(urb); // 提交失败，销毁面单
+        return -1;
+    }
+
+    // 4. 等待硬件中断 (同步过渡期做法)
+    xhci_trb_comp_code_e comp_code = xhci_wait_transfer_comp(udev, 1, urb->last_trb_pa);
+
+    int32 ret = (comp_code == XHCI_COMP_SUCCESS) ? 0 : -1;
+
+    // 5. 过河拆桥：任务完成，彻底销毁 URB 面单！
+    usb_free_urb(urb);
+
+    return ret;
 }
 
 
@@ -435,12 +459,7 @@ int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci) {
     req_pkg.index = epdci_to_epaddr(ep_dci);
     req_pkg.length = 0;
 
-    usb_urb_t urb = {
-
-    };
-
-    usb_submit_urb();
-    usb_control_msg(udev,&req_pkg,NULL);
+    usb_control_msg_sync(udev,&req_pkg,NULL);
 
     return 0;
 }
@@ -459,7 +478,7 @@ int32 usb_get_desc(usb_dev_t *udev,void *desc_buf,uint16 length,usb_desc_type_e 
     req_pkg.index = req_idx;
     req_pkg.length = length;
 
-    usb_control_msg(udev,&req_pkg,desc_buf);
+    usb_control_msg_sync(udev,&req_pkg,desc_buf);
     return 0;
 }
 
@@ -474,7 +493,7 @@ int usb_set_cfg(usb_dev_t *udev,uint8 cfg_value) {
     req_pkg.index = 0;
     req_pkg.length = 0;
 
-    usb_control_msg(udev,&req_pkg,NULL);
+    usb_control_msg_sync(udev,&req_pkg,NULL);
     return 0;
 }
 
@@ -489,7 +508,7 @@ int usb_set_if(usb_dev_t *udev,uint8 if_num,uint8 alt_num) {
     req_pkg.index = if_num;
     req_pkg.length = 0;
 
-    usb_control_msg(udev,&req_pkg,NULL);
+    usb_control_msg_sync(udev,&req_pkg,NULL);
     return 0;
 }
 

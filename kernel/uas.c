@@ -58,25 +58,22 @@ static inline void uas_free_request(uas_data_t *uas_data, int16 tag) {
 }
 
 /**
- * 同步发送 SCSI 命令并等待结果 (UAS 协议)
+ * @brief 异步并发投递、同步等待结果 (UAS 协议标准事务执行器)
  */
-void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
+void uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     uas_data_t *uas_data = host->hostdata;
     usb_dev_t *udev = uas_data->uif->udev;
-    xhci_hcd_t *xhcd = udev->xhcd;
-    uint8 slot_id = udev->slot_id;
 
-    uint8 cmd_pipe = uas_data->cmd_pipe;
+    uint8 cmd_pipe    = uas_data->cmd_pipe;
     uint8 status_pipe = uas_data->status_pipe;
     uint8 data_pipe;
 
-    // 获取一个空闲的 Tag (事务 ID)
     uint16 tag;
     uas_cmd_iu_t *cmd_iu;
     uas_sense_iu_t *sense_iu;
     uas_alloc_request(uas_data, &cmd_iu, &sense_iu, &tag);
 
-    // 1. 准备 UAS Command IU
+    // 1. 准备 UAS Command IU (命令信息单元)
     cmd_iu->tag = asm_bswap16(tag);
     cmd_iu->iu_id = UAS_CMD_IU_ID;  // Command IU
     cmd_iu->prio_attr = 0x00;       // Simple Task
@@ -84,43 +81,83 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
     cmd_iu->lun = asm_bswap64(cmnd->sdev->lun);
     asm_mem_cpy(cmnd->scsi_cdb, cmd_iu->scsi_cdb, cmnd->scsi_cdb_len);
 
-    // 👑 3. 提交传输并自动敲门铃 (关键顺序：Status -> Data -> Command)
+    // ============================================================
+    // 👑 2. 面单分发 (UAS 的精髓在于并发投递，需分配独立 URB)
+    // ============================================================
+    usb_urb_t *urb_status = usb_alloc_urb();
+    usb_urb_t *urb_data   = NULL;
+    usb_urb_t *urb_cmd    = usb_alloc_urb();
 
-    // [Step A] 提交 Status Pipe 请求 (门铃目标包含 Tag Stream ID)
-    uint32 status_db = status_pipe | ((uint32)tag << 16);
-    uint64 status_trb_ptr = usb_submit_transfer(xhcd, slot_id, status_db,
-                                                &udev->eps[status_pipe]->streams_ring_array[tag],
-                                                sense_iu, UAS_MAX_SENSE_LEN, TRB_IOC_ENABLE);
-
-    // [Step B] 提交 Data Pipe 请求 (如果有数据)
-    if (cmnd->data_buf && cmnd->data_len) {
-        data_pipe = (cmnd->dir == SCSI_DIR_IN) ? uas_data->data_in_pipe : uas_data->data_out_pipe;
-        uint32 data_db = data_pipe | ((uint32)tag << 16);
-
-        usb_submit_transfer(xhcd, slot_id, data_db,
-                            &udev->eps[data_pipe]->streams_ring_array[tag],
-                            cmnd->data_buf, cmnd->data_len, TRB_IOC_DISABLE);
+    if (!urb_status || !urb_cmd) {
+        color_printk(RED, BLACK, "UAS: URB allocation failed!\n");
+        cmnd->status = -1;
+        goto cleanup_alloc;
     }
 
-    // [Step C] 提交 Command Pipe 请求 (非 Stream 端点，不需要 Tag 偏移)
-    usb_submit_transfer(xhcd, slot_id, cmd_pipe,
-                        &udev->eps[cmd_pipe]->transfer_ring,
-                        cmd_iu, sizeof(uas_cmd_iu_t), TRB_IOC_DISABLE);
+    if (cmnd->data_buf && cmnd->data_len) {
+        urb_data = usb_alloc_urb();
+        if (!urb_data) {
+            cmnd->status = -1;
+            goto cleanup_alloc;
+        }
+    }
 
-    // 4. 等待硬件中断反馈
-    xhci_trb_comp_code_e com_code = xhci_wait_transfer_comp(udev, status_pipe, status_trb_ptr);
+    // ============================================================
+    // 👑 3. 提交传输并自动敲门铃 (关键顺序：Status -> Data -> Command)
+    // ============================================================
 
-    // 5. 检测 TRB 是否发送成功
-    if (com_code == XHCI_COMP_SUCCESS || com_code == XHCI_COMP_SHORT_PACKET) {
+    // [Step A] 提交 Status Pipe (等待设备回传 Sense/Status)
+    usb_fill_bulk_urb(urb_status, udev, status_pipe, sense_iu, UAS_MAX_SENSE_LEN);
+    urb_status->stream_id = tag; // ★ 核心：绑定 Stream ID (引擎会自动算门铃)
+    // 默认不加 URB_NO_INTERRUPT，因为我们就是要等它的硬件中断来唤醒！
+    if (usb_submit_urb(urb_status) < 0) goto cleanup_submit;
+
+    // [Step B] 提交 Data Pipe (准备好 DMA 数据通道)
+    if (urb_data) {
+        data_pipe = (cmnd->dir == SCSI_DIR_IN) ? uas_data->data_in_pipe : uas_data->data_out_pipe;
+        usb_fill_bulk_urb(urb_data, udev, data_pipe, cmnd->data_buf, cmnd->data_len);
+        urb_data->stream_id = tag; // ★ 绑定 Stream ID
+
+        // 👑 性能黑科技：数据传完不需要打扰 CPU，静音！
+        urb_data->transfer_flags |= URB_NO_INTERRUPT;
+        if (usb_submit_urb(urb_data) < 0) goto cleanup_submit;
+    }
+
+    // [Step C] 提交 Command Pipe (下达开火指令)
+    usb_fill_bulk_urb(urb_cmd, udev, cmd_pipe, cmd_iu, sizeof(uas_cmd_iu_t));
+    urb_cmd->stream_id = 0; // Command Pipe 通常不是 Stream 端点
+
+    // 👑 性能黑科技：命令发完也不需要打扰 CPU，静音！
+    urb_cmd->transfer_flags |= URB_NO_INTERRUPT;
+    if (usb_submit_urb(urb_cmd) < 0) goto cleanup_submit;
+
+
+    // ============================================================
+    // 4. 挂起等待 (只认 Status Pipe 的最后一个 TRB 中断)
+    // ============================================================
+    xhci_trb_comp_code_e comp_code = xhci_wait_transfer_comp(udev, status_pipe, urb_status->last_trb_pa);
+
+    // 5. 状态机解析
+    if (comp_code == XHCI_COMP_SUCCESS || comp_code == XHCI_COMP_SHORT_PACKET) {
         if (sense_iu->status == SCSI_STATUS_CHECK_CONDITION && cmnd->sense) {
             asm_mem_cpy(sense_iu->scsi_sense, cmnd->sense, asm_bswap16(sense_iu->scsi_sense_len));
         }
     } else {
-        color_printk(RED, BLACK, "UAS send Error: %#x\n", com_code);
-        while (1);
+        color_printk(RED, BLACK, "UAS Exec Error: %#x\n", comp_code);
+        // 此处未来可拓展 Error Recovery (如 Abort Task)
+        cmnd->status = -2;
+        goto cleanup_submit;
     }
 
     cmnd->status = sense_iu->status;
+
+cleanup_submit:
+cleanup_alloc:
+    // 👑 过河拆桥：统一回收所有并发申请的面单
+    if (urb_status) usb_free_urb(urb_status);
+    if (urb_data)   usb_free_urb(urb_data);
+    if (urb_cmd)    usb_free_urb(urb_cmd);
+
     uas_free_request(uas_data, tag);
 }
 
@@ -128,7 +165,7 @@ void uas_send_scsi_cmd_sync(scsi_host_t *host, scsi_cmnd_t *cmnd){
 //uas协议模板
 scsi_host_template_t uas_host_template = {
     .name = "uas",
-    .queue_command = uas_send_scsi_cmd_sync,
+    .queue_command = uas_bulk_transport_sync,
     .reset_host = NULL,
     .abort_command = NULL,
 };
