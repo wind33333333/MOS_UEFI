@@ -57,31 +57,35 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
 
     if (uif->cur_alt->if_protocol == 0x62) {        //uas协议初始化流程
 
-
-        //创建uas协议似有数据
+        // 创建 UAS 协议私有数据
         uas_data_t *uas_data = kzalloc(sizeof(uas_data_t));
+        if (!uas_data) return -1;
         uas_data->uif = uif;
 
-        uint32 mini_streams = 1<<MAX_STREAMS;
-        //解析pipe端点
+        uint32 mini_streams = 1 << MAX_STREAMS;
+
+        // ==========================================================
+        // 1. 解析 Pipe 端点与流能力侦测 (修复无差别误杀 Bug)
+        // ==========================================================
         for (uint8 i = 0; i < 4; i++) {
             usb_ep_t *ep = &uif->cur_alt->eps[i];
             uint8 ep_dci = ep->ep_dci;
-            uint32 streams = ep->enable_streams_count;
-            if (streams && streams < mini_streams) mini_streams = streams;
+            uint32 streams = ep->enable_streams_count; // 采用上一轮重构的单一事实状态
+
             usb_uas_pipe_usage_desc_t *pipe_usage_desc = ep->extras_desc;
+            if (!pipe_usage_desc) continue;
+
+            // ★ 核心修复：排除 Command 端点，只对三大主力并发端点进行短板考核！动态寻找这三者的最短板
+            if (pipe_usage_desc->pipe_id != USB_UAS_PIPE_COMMAND_OUT && streams < mini_streams) {
+                mini_streams = streams;
+            }
+
+            // 路由赋值
             switch (pipe_usage_desc->pipe_id) {
-                case USB_UAS_PIPE_COMMAND_OUT:
-                    uas_data->cmd_pipe = ep_dci ;     //命令pipe
-                    break;
-                case USB_UAS_PIPE_STATUS_IN:
-                    uas_data->status_pipe = ep_dci ; //状态pipe
-                    break;
-                case USB_UAS_PIPE_BULK_IN:
-                    uas_data->data_in_pipe = ep_dci ; //接收数据pipe
-                    break;
-                case USB_UAS_PIPE_BULK_OUT:
-                    uas_data->data_out_pipe = ep_dci ; //发送数据pipe
+                case USB_UAS_PIPE_COMMAND_OUT: uas_data->cmd_pipe = ep_dci;      break;
+                case USB_UAS_PIPE_STATUS_IN:   uas_data->status_pipe = ep_dci;   break;
+                case USB_UAS_PIPE_BULK_IN:     uas_data->data_in_pipe = ep_dci;  break;
+                case USB_UAS_PIPE_BULK_OUT:    uas_data->data_out_pipe = ep_dci; break;
             }
         }
 
