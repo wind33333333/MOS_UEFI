@@ -127,9 +127,10 @@ typedef struct {
 } usb_if_desc_t;
 
 // 定义 xHCI 的端点类型宏，方便代码阅读
-#define XHCI_EP_TYPE_ISOCH   1
-#define XHCI_EP_TYPE_BULK    2
-#define XHCI_EP_TYPE_INTR    3
+#define USB_EP_TYPE_CONTROL 0  // 00: 控制传输 (Control) - 仅 EP0 使用，发命令/枚举
+#define USB_EP_TYPE_ISOCH   1  // 01: 同步传输 (Isochronous) - 摄像头/声卡，保证实时性，不保证到达
+#define USB_EP_TYPE_BULK    2  // 10: 批量传输 (Bulk) - U盘/硬盘，保证到达，不保证实时性
+#define USB_EP_TYPE_INTR    3  // 11: 中断传输 (Interrupt) - 键盘/鼠标，周期性轮询
 
 /*端点描述符
 描述符长度（固定7字节）
@@ -435,7 +436,7 @@ typedef struct usb_dev_t{
     xhci_input_ctx_t                *input_ctx;        // 输入上下文
     uint32                          active_ep_map;      //当前活跃的端点图
     usb_ep_t                        ep0;                // 端点0，控制端点
-    usb_ep_t                        *eps[31];           // 端点0-30 驱动把接口端点挂到usb_dev,方便usb_core层管理
+    usb_ep_t                        *eps[32];           // 端点0-30 驱动把接口端点挂到usb_dev,方便usb_core层管理 eps[0]不可用仅占位，eps[1] = 端点0,以此内推。
     xhci_hcd_t                      *xhcd;              // xhci控制器
     device_t                        dev;
     uint8                           interfaces_count;  // 接口数量
@@ -525,15 +526,15 @@ static inline uint8 epdci_to_epaddr(uint8 dci) {
 }
 
 //获取 Input Context 数组中的指定条目
-static inline void *xhci_get_input_ctx_entry(xhci_hcd_t *xhcd,xhci_input_ctx_t *input_ctx, uint32 ep_dci) {
+static inline void *xhci_get_input_ctx_entry(xhci_hcd_t *xhcd,xhci_input_ctx_t *input_ctx, uint32 dci) {
     uint8 ctx_size = xhcd->ctx_size;
-    return (uint8 *)input_ctx + ctx_size * (ep_dci + 1);
+    return (uint8 *)input_ctx + ctx_size * (dci + 1);
 }
 
 
 //获取 Device Context 数组中的指定条目
-static inline void *xhci_get_dev_ctx_entry(usb_dev_t *udev, uint32 ep_dci) {
-    return (uint8*)udev->dev_ctx + udev->xhcd->ctx_size * ep_dci;
+static inline void *xhci_get_dev_ctx_entry(usb_dev_t *udev, uint32 dci) {
+    return (uint8*)udev->dev_ctx + udev->xhcd->ctx_size * dci;
 }
 
 
@@ -585,9 +586,7 @@ void usb_bus_remove(device_t* dev);
 
 
 xhci_trb_comp_code_e xhci_wait_transfer_comp (usb_dev_t *udev, uint8 ep_dci, uint64 wait_trb_pa);
-int32 usb_control_msg(usb_dev_t *udev, usb_setup_packet_t *usb_req_pkg, void *data_buf);
-uint64 usb_submit_transfer(xhci_hcd_t *xhcd, uint8 slot_id, uint32 db_target,
-                           xhci_ring_t *ring, void *buf, uint32 len, trb_ioc_e ioc);
+int usb_submit_urb(usb_urb_t *urb);
 int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci);
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
 

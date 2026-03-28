@@ -268,7 +268,7 @@ int usb_submit_urb(usb_urb_t *urb) {
     xhci_hcd_t  *xhcd    = urb->udev->xhcd;
     uint8       slot_id  = urb->udev->slot_id;
     uint32      dci      = urb->ep_dci;
-    usb_ep_t    *ep = urb->udev->eps[dci-1];
+    usb_ep_t    *ep = urb->udev->eps[dci];
 
     // 👑 智能定位目标 Ring (考虑 UAS 协议的 Stream 特性)
     xhci_ring_t *ring;
@@ -296,24 +296,24 @@ int usb_submit_urb(usb_urb_t *urb) {
     switch (xfer_type) {
 
         // 👑 路由 1：控制传输 (专属的三阶段状态机)
-        case USB_ENDPOINT_XFER_CONTROL:
+        case USB_EP_TYPE_CONTROL:
             if (urb->setup_packet == NULL) return -1; // 致命错误拦截
             last_trb_pa = xhci_submit_control_transfer(urb, ring, wants_ioc);
             break;
 
-            // 👑 路由 2：批量传输 (U盘) & 中断传输 (键鼠)
-            // 它们在 xHCI 底层完全共享 Normal TRB 切片大循环！
-        case USB_ENDPOINT_XFER_BULK:
-        case USB_ENDPOINT_XFER_INT:
-            last_trb_pa = xhci_submit_normal_transfer(urb, ring, wants_ioc);
-            break;
-
-            // 👑 路由 3：同步传输 (摄像头/麦克风/声卡)
-        case USB_ENDPOINT_XFER_ISOC:
+            // 👑 路由 2：同步传输 (摄像头/麦克风/声卡)
+        case USB_EP_TYPE_ISOCH:
             // 以后写多媒体驱动时，在这里挂载 Isoch TRB 引擎
             // last_trb_pa = xhci_submit_isoc_transfer(urb, ring, wants_ioc);
             color_printk(RED, BLACK, "ISOC Transfer not implemented yet!\n");
             return -1;
+
+            // 👑 路由 3：批量传输 (U盘) & 中断传输 (键鼠)
+            // 它们在 xHCI 底层完全共享 Normal TRB 切片大循环！
+        case USB_EP_TYPE_BULK:
+        case USB_EP_TYPE_INTR:
+            last_trb_pa = xhci_submit_normal_transfer(urb, ring, wants_ioc);
+            break;
 
         default:
             color_printk(RED, BLACK, "Unknown Endpoint Type!\n");
@@ -334,6 +334,90 @@ int usb_submit_urb(usb_urb_t *urb) {
     return 0;
 }
 
+/**
+ * @brief 动态分配一个纯净的 URB 面单
+ * @return usb_urb_t* 成功返回指针，失败返回 NULL
+ */
+usb_urb_t *usb_alloc_urb(void) {
+    // 1. 从内核堆内存中申请一块空间
+    usb_urb_t *urb = (usb_urb_t *)kzalloc(sizeof(usb_urb_t));
+    if (urb == NULL) {
+        color_printk(RED, BLACK, "USB Core: Failed to allocate URB!\n");
+        return NULL;
+    }
+
+    // 以后如果引入了引用计数 (kref) 或自旋锁，也会在这里初始化
+
+    return urb;
+}
+
+/**
+ * @brief 安全销毁一个 URB 面单，并智能回收载荷内存
+ * @param urb 需要销毁的 URB 指针
+ */
+void usb_free_urb(usb_urb_t *urb) {
+    if (urb == NULL) return; // 防御性拦截
+
+    // 👑 架构师彩蛋：智能内存托管 (对应 Linux 的 URB_FREE_BUFFER)
+    // 如果上层驱动在提交时打了这个标志，USB Core 会在销毁 URB 时，
+    // “顺手”把挂载的数据缓冲区也给释放掉，极大减轻上层驱动的内存管理心智负担！
+    if (urb->transfer_flags & URB_FREE_BUFFER) {
+        if (urb->transfer_buf != NULL) {
+            kfree(urb->transfer_buf);
+        }
+        if (urb->setup_packet != NULL) {
+            kfree(urb->setup_packet);
+        }
+    }
+
+    // 彻底释放 URB 面单本身的内存
+    kfree(urb);
+}
+
+
+/**
+ * @brief 快速初始化 控制传输 (Control Transfer) URB
+ */
+static inline void usb_fill_control_urb(usb_urb_t *urb,
+                                        usb_dev_t *udev,
+                                        uint8 ep_dci,
+                                        usb_setup_packet_t *setup_packet,
+                                        void *transfer_buf,
+                                        uint32 transfer_len) {
+    urb->udev         = udev;
+    urb->ep_dci       = ep_dci;       // 控制端点通常传 1
+    urb->stream_id    = 0;            // 控制传输没有 Stream
+    urb->setup_packet = setup_packet; // 必填：8字节协议头
+    urb->transfer_buf = transfer_buf;
+    urb->transfer_len = transfer_len;
+
+    // 默认标志位设为 0 (表示开启中断、不开启ZLP等标准行为)
+    urb->transfer_flags = 0;
+    urb->status         = 0;
+    urb->actual_length  = 0;
+}
+
+/**
+ * @brief 快速初始化 批量传输 (Bulk Transfer) URB
+ */
+static inline void usb_fill_bulk_urb(usb_urb_t *urb,
+                                     usb_dev_t *udev,
+                                     uint8 ep_dci,
+                                     void *transfer_buf,
+                                     uint32 transfer_len) {
+    urb->udev         = udev;
+    urb->ep_dci       = ep_dci;
+    urb->stream_id    = 0;
+    urb->setup_packet = NULL;         // 👑 核心标志：批量传输绝对没有 Setup 包
+    urb->transfer_buf = transfer_buf;
+    urb->transfer_len = transfer_len;
+
+    urb->transfer_flags = 0;
+    urb->status         = 0;
+    urb->actual_length  = 0;
+}
+
+
 
 /**
  * 清除 USB 端点的 STALL/Halt 状态 (撬开大门)
@@ -351,6 +435,11 @@ int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci) {
     req_pkg.index = epdci_to_epaddr(ep_dci);
     req_pkg.length = 0;
 
+    usb_urb_t urb = {
+
+    };
+
+    usb_submit_urb();
     usb_control_msg(udev,&req_pkg,NULL);
 
     return 0;
@@ -860,21 +949,21 @@ static inline void ep_desc_params(usb_ep_t *cur_ep, usb_ep_desc_t *ep_desc) {
 
     // --- ★ 衍生参数与 DMA 启发值联合推导 (基于 USB 2.0 规格底稿) ---
     switch (usb_trans_type) {
-        case XHCI_EP_TYPE_ISOCH:
+        case USB_EP_TYPE_ISOCH:
             // Isochronous 阵营：音视频流，要求极高的周期吞吐量
             cur_ep->max_esit_payload = cur_ep->max_packet_size * (cur_ep->mult + 1);
             // 等时流永远是满载发送，直接使用最大周期负荷作为平均值
             cur_ep->average_trb_length = cur_ep->max_esit_payload;
             break;
 
-        case XHCI_EP_TYPE_BULK:
+        case USB_EP_TYPE_BULK:
             // Bulk 阵营：吃总线闲置带宽，无固定 ESIT 周期限制
             cur_ep->max_esit_payload = 0;
             // 黄金魔法值：3072 (3 个 USB 3.0 数据包) 完美平衡 PCIe 突发与硬件 FIFO
             cur_ep->average_trb_length = 3072;
             break;
 
-        case XHCI_EP_TYPE_INTR:
+        case USB_EP_TYPE_INTR:
             // Interrupt 阵营：要求极其严苛的周期性带宽保证
             cur_ep->max_esit_payload = cur_ep->max_packet_size * (cur_ep->mult + 1);
             // 数据量极小，暗示主板硬件只需分配最小 SRAM 缓存即可
@@ -900,12 +989,12 @@ static inline void ss_desc_params(usb_ep_t *cur_ep, usb_ss_comp_desc_t *ss_desc)
 
     // ★ 物理隔离与参数覆写：基于端点类型的高内聚升级
     switch (usb_trans_type) {
-        case XHCI_EP_TYPE_BULK:
+        case USB_EP_TYPE_BULK:
             // Bulk 阵营：提取最大支持的并发流数量 (Streams)
             cur_ep->max_streams = ss_desc->attributes & 0x1F;
             break;
 
-        case XHCI_EP_TYPE_ISOCH:
+        case USB_EP_TYPE_ISOCH:
             // Isochronous 阵营：提取真实乘数，原地覆写掉第一阶段的 USB 2.0 伪值
             cur_ep->mult = ss_desc->attributes & 0x03;
 
@@ -916,7 +1005,7 @@ static inline void ss_desc_params(usb_ep_t *cur_ep, usb_ss_comp_desc_t *ss_desc)
             }
             break;
 
-        case XHCI_EP_TYPE_INTR:
+        case USB_EP_TYPE_INTR:
             // Interrupt 阵营：规范铁律要求伴随属性为保留位。强行清零防止主板报错
             cur_ep->mult = 0;
             cur_ep->max_streams = 0;
@@ -1141,7 +1230,7 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     //给端点0分配传输环内存,挂载到 O(1) 路由表
     usb_ep_t *ep0 = &udev->ep0;
     xhci_alloc_ring(&ep0->transfer_ring);
-    udev->eps[1] = ep0;
+    udev->eps[1] = ep0;  //警告端点0为eps1，方便后续通过ep-dci查找端点。
 
     // --- 计算初始 Max Packet Size ---
     udev->port_speed = xhci_get_port_speed(xhcd, udev->port_id);
