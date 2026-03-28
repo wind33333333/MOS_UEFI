@@ -1279,7 +1279,7 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
  * @return int32 0 表示成功
  */
 static inline int32 get_dev_desc(usb_dev_t *udev) {
-    xhci_hcd_t *xhcd = udev->xhcd;
+
 
     // 分配设备描述符的 DMA 内存
     usb_dev_desc_t *dev_desc = kzalloc_dma(sizeof(usb_dev_desc_t));
