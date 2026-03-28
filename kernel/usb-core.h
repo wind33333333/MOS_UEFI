@@ -381,12 +381,10 @@ typedef struct usb_ep_t {
     uint16      average_trb_length;
     uint64      trq_phys_addr;
 
-
-    //软件结构
-    union {
-        xhci_ring_t  transfer_ring;
-        xhci_ring_t  *streams_ring_array;   // per-stream rings数组 (如果启用流)
-    };
+    // ★ 统一传输环数组：
+    // 情况 A (非流模式): 分配大小为 1 的数组。rings[0] 就是普通的 transfer_ring。
+    // 情况 B (流模式)  : 分配大小为 num_streams + 1 的数组。rings[1...N] 是流环。
+    xhci_ring_t *rings;
     void        *streams_ctx_array;
     uint32      enable_streams_count;
 
