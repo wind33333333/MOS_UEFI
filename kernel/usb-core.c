@@ -146,84 +146,57 @@ xhci_trb_comp_code_e xhci_wait_transfer_comp (usb_dev_t *udev, uint8 ep_dci, uin
  * @param timeout_us    超时时间 (微秒)
  * @return int32        0 表示成功，其他为错误码
  */
-int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_buf) {
-    xhci_hcd_t *xhcd = udev->xhcd;
-    xhci_trb_t tr_trb;
+static inline uint64 usb_control_transfer_enqueue(usb_urb_t *urb) {
+    xhci_trb_t trb;
+    xhci_ring_t *ep0_ring = &urb->udev->ep0.transfer_ring;
 
-    xhci_ring_t *uc_ring = &udev->ep0.transfer_ring;
+    uint16 length  = urb->setup_packet->length;
+        uint8  req_dir = urb->setup_packet->dtd; // USB_DIR_IN 或 USB_DIR_OUT
 
-    uint16 length = usb_req_pkg->length;
+        // [阶段 1: Setup TRB]
+        trb.raw[0] = 0;
+        trb.raw[1] = 0;
+        asm_mem_cpy(urb->setup_packet, &trb, sizeof(usb_setup_packet_t)); // 拷贝 8 字节控制包
+        trb.setup_stage.trb_tr_len = 8; //steup trb必须8字节
+        trb.setup_stage.idt        = TRB_IDT_ENABLE; // Immediate Data 必须为 1
+        trb.setup_stage.type       = XHCI_TRB_TYPE_SETUP_STAGE;
+        trb.setup_stage.chain      = TRB_CHAIN_DISABLE;
+        trb.setup_stage.ioc        = TRB_IOC_DISABLE; // Setup 阶段不触发中断
 
-    // 解析trb方向
-    uint8 usb_req_dir = usb_req_pkg->dtd;
+        // 智能判断传输类型 (TRT)
+        if (length == 0) {
+            trb.setup_stage.trt = TRB_TRT_NO_DATA;
+        } else if (req_dir == USB_DIR_IN) {
+            trb.setup_stage.trt = TRB_TRT_IN_DATA;
+        } else {
+            trb.setup_stage.trt = TRB_TRT_OUT_DATA;
+        }
+        xhci_ring_enqueue(ep0_ring, &trb);
 
-    // ==========================================================
-    // 阶段 1：组装 Setup TRB
-    // ==========================================================
-    asm_mem_set(&tr_trb, 0, sizeof(xhci_trb_t));
-    asm_mem_cpy(usb_req_pkg,&tr_trb,sizeof(usb_req_pkg_t)); //拷贝USB请求包到TRB前8字节中
-    tr_trb.setup_stage.trb_tr_len = sizeof(usb_req_pkg_t); //steup trb必须8
-    tr_trb.setup_stage.int_target = 0;     //中断号暂时统一设置0
-    tr_trb.setup_stage.idt = TRB_IDT_ENABLE;   // setup trb 必须1
-    tr_trb.setup_stage.type = XHCI_TRB_TYPE_SETUP_STAGE;
-    tr_trb.setup_stage.chain = TRB_CHAIN_DISABLE;
-    tr_trb.setup_stage.ioc = TRB_IOC_DISABLE;
-    // 判断 TRT (Transfer Type)
-    if (length == 0) {
-        tr_trb.setup_stage.trt = TRB_TRT_NO_DATA;
-    } else if (usb_req_pkg->dtd == USB_DIR_IN) {
-        tr_trb.setup_stage.trt = TRB_TRT_IN_DATA;
-    } else {
-        tr_trb.setup_stage.trt = TRB_TRT_OUT_DATA;
-    }
+        // [阶段 2: Data TRB] (如果有数据负载)
+        if (length != 0 && urb->transfer_buf != NULL) {
+            trb.raw[0] = 0;
+            trb.raw[1] = 0;
+            trb.data_stage.data_buf_ptr = va_to_pa(urb->transfer_buf);
+            trb.data_stage.tr_len       = length;
+            trb.data_stage.type         = XHCI_TRB_TYPE_DATA_STAGE;
+            trb.data_stage.dir          = req_dir;
+            trb.data_stage.chain        = TRB_CHAIN_DISABLE;
+            trb.data_stage.ioc          = TRB_IOC_DISABLE; // Data 阶段不触发中断
+            xhci_ring_enqueue(ep0_ring, &trb);
+        }
 
-    xhci_ring_enqueue(uc_ring, &tr_trb);
+        // [阶段 3: Status TRB]
+        trb.raw[0] = 0;
+        trb.raw[1] = 0;
+        trb.status_stage.type  = XHCI_TRB_TYPE_STATUS_STAGE;
+        trb.status_stage.chain = TRB_CHAIN_DISABLE;
+        trb.status_stage.ioc   = wants_ioc;// ★ 将上层的中断诉求 (wants_ioc) 应用到控制传输的最后一步
 
-    // ==========================================================
-    // 阶段 2：组装 Data TRB (如果有)
-    // ==========================================================
-    if (length != 0 && data_buf != NULL) {
-        asm_mem_set(&tr_trb, 0, sizeof(xhci_trb_t));
-        tr_trb.data_stage.data_buf_ptr = va_to_pa(data_buf); // 物理地址
-        tr_trb.data_stage.tr_len = length;
-        tr_trb.data_stage.type = XHCI_TRB_TYPE_DATA_STAGE;
-        tr_trb.data_stage.dir = usb_req_dir;  //数据阶段方向和usb.dtd方向一致
-        tr_trb.data_stage.chain = TRB_CHAIN_DISABLE; // 单个 Data TRB 必须为 0
-        tr_trb.data_stage.ioc = TRB_IOC_DISABLE;   // 开启中断防雷
+        // ★ 核心协议：Status 阶段的数据流向必须与 Data 阶段严格相反！
+        trb.status_stage.dir   = (length == 0 || req_dir == USB_DIR_OUT) ? TRB_DIR_IN : TRB_DIR_OUT;
 
-     xhci_ring_enqueue(uc_ring, &tr_trb);
-    }
-
-    // ==========================================================
-    // 阶段 3：组装 Status TRB
-    // ==========================================================
-    asm_mem_set(&tr_trb, 0, sizeof(xhci_trb_t));
-    tr_trb.status_stage.type = XHCI_TRB_TYPE_STATUS_STAGE;
-    tr_trb.status_stage.chain = TRB_CHAIN_DISABLE;
-    tr_trb.status_stage.ioc = TRB_IOC_ENABLE;
-    tr_trb.status_stage.dir = (length == 0 || usb_req_dir == USB_DIR_OUT) ? TRB_DIR_IN : TRB_DIR_OUT; // ★ 核心逻辑 2：Status 阶段的方向必须是相反的！
-
-    uint64 status_ptr = xhci_ring_enqueue(uc_ring ,&tr_trb);
-
-
-    // ==========================================================
-    // ★ 阶段 4：一锤定音，唤醒硬件！
-    // 将 xhci_ring_doorbell 从 sync 函数中移出，放在这里执行。
-    // xHC 硬件会像高铁一样连续压过 Setup -> Data -> Status。
-    // ==========================================================
-    xhci_ring_doorbell(xhcd, udev->slot_id, 1); // EP0 的 DCI 是 1
-
-
-    // ==========================================================
-    // 阶段 5：监听 Status 阶段
-    // ==========================================================
-    xhci_trb_comp_code_e comp_code = xhci_wait_transfer_comp(udev, 1, status_ptr);
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "USB Control Msg failed! comp_code: %d\n", comp_code);
-        return comp_code;
-    }
-
-    return comp_code;
+        last_trb_pa = xhci_ring_enqueue(ring, &trb);
 }
 
 /**
@@ -277,13 +250,185 @@ uint64 usb_submit_transfer(xhci_hcd_t *xhcd, uint8 slot_id, uint32 db_target,
 }
 
 /**
+ * @brief xHCI 终极大一统提交引擎 (URB 核心调度器)
+ * 职责：解析纯逻辑的 URB 面单，将其翻译为 xHCI 硬件认识的 TRB 物理切片，
+ * 压入对应的传输环，精确处理 ZLP 与中断边界，并最终敲响物理门铃。
+ * * @param urb 已经由上层驱动填好的 URB 标准电子面单
+ * @return int 0 表示提交成功，负数表示失败
+ */
+int usb_submit_urb(usb_urb_t *urb) {
+    // ==========================================================
+    // 1. 终极防御：面单防呆校验
+    // ==========================================================
+    if (!urb || !urb->udev) return -1;
+
+    // 如果是普通传输且没有数据，也没有强行要求发 0 字节包，直接视为成功返回
+    if (urb->setup_packet == NULL && urb->transfer_len == 0 &&
+        !(urb->transfer_flags & URB_ZERO_PACKET)) {
+        return 0;
+    }
+
+    // ==========================================================
+    // 2. 自动解包：提取物理寻址信息
+    // ==========================================================
+    xhci_hcd_t  *xhcd    = urb->udev->xhcd;
+    uint8       slot_id  = urb->udev->slot_id;
+    uint32      dci      = urb->ep_dci;
+    usb_ep_t    *ep = urb->udev->eps[dci];
+
+    // 👑 智能定位目标 Ring (考虑 UAS 协议的 Stream 特性)
+    xhci_ring_t *ring;
+    if (urb->stream_id > 0) {
+        ring = &ep->streams_ring_array[urb->stream_id];
+    } else {
+        ring = &ep->transfer_ring;
+    }
+
+    // 计算真实的敲门铃目标值 (DCI + Stream ID 偏移)
+    uint32 db_target = dci | ((uint32)urb->stream_id << 16);
+
+    // 👑 标志位翻译哲学：默认开启中断，除非显式指定了 URB_NO_INTERRUPT
+    uint8 wants_ioc = !(urb->transfer_flags & URB_NO_INTERRUPT);
+
+    uint64 last_trb_pa = 0;
+    xhci_trb_t trb;
+
+    // ==========================================================
+    // 分支 A：控制传输 (EP0 专属 - Setup / Data / Status 三阶段)
+    // 触发条件：URB 中附带了 setup_packet
+    // ==========================================================
+    if (urb->setup_packet != NULL) {
+        uint16 length  = urb->setup_packet->length;
+        uint8  req_dir = urb->setup_packet->dtd; // USB_DIR_IN 或 USB_DIR_OUT
+
+        // [阶段 1: Setup TRB]
+        trb.raw[0] = 0;
+        trb.raw[1] = 0;
+        asm_mem_cpy(urb->setup_packet, &trb, sizeof(usb_setup_packet_t)); // 拷贝 8 字节控制包
+        trb.setup_stage.trb_tr_len = 8; //steup trb必须8字节
+        trb.setup_stage.idt        = TRB_IDT_ENABLE; // Immediate Data 必须为 1
+        trb.setup_stage.type       = XHCI_TRB_TYPE_SETUP_STAGE;
+        trb.setup_stage.chain      = TRB_CHAIN_DISABLE;
+        trb.setup_stage.ioc        = TRB_IOC_DISABLE; // Setup 阶段不触发中断
+
+        // 智能判断传输类型 (TRT)
+        if (length == 0) {
+            trb.setup_stage.trt = TRB_TRT_NO_DATA;
+        } else if (req_dir == USB_DIR_IN) {
+            trb.setup_stage.trt = TRB_TRT_IN_DATA;
+        } else {
+            trb.setup_stage.trt = TRB_TRT_OUT_DATA;
+        }
+        xhci_ring_enqueue(ring, &trb);
+
+        // [阶段 2: Data TRB] (如果有数据负载)
+        if (length != 0 && urb->transfer_buf != NULL) {
+            trb.raw[0] = 0;
+            trb.raw[1] = 0;
+            trb.data_stage.data_buf_ptr = va_to_pa(urb->transfer_buf);
+            trb.data_stage.tr_len       = length;
+            trb.data_stage.type         = XHCI_TRB_TYPE_DATA_STAGE;
+            trb.data_stage.dir          = req_dir;
+            trb.data_stage.chain        = TRB_CHAIN_DISABLE;
+            trb.data_stage.ioc          = TRB_IOC_DISABLE; // Data 阶段不触发中断
+            xhci_ring_enqueue(ring, &trb);
+        }
+
+        // [阶段 3: Status TRB]
+        trb.raw[0] = 0;
+        trb.raw[1] = 0;
+        trb.status_stage.type  = XHCI_TRB_TYPE_STATUS_STAGE;
+        trb.status_stage.chain = TRB_CHAIN_DISABLE;
+        trb.status_stage.ioc   = wants_ioc;// ★ 将上层的中断诉求 (wants_ioc) 应用到控制传输的最后一步
+
+        // ★ 核心协议：Status 阶段的数据流向必须与 Data 阶段严格相反！
+        trb.status_stage.dir   = (length == 0 || req_dir == USB_DIR_OUT) ? TRB_DIR_IN : TRB_DIR_OUT;
+
+        last_trb_pa = xhci_ring_enqueue(ring, &trb);
+    }
+    // ==========================================================
+    // 分支 B：普通批量/中断传输 (Bulk/Int - 大块数据自动切片引擎)
+    // 触发条件：URB 的 setup_packet 为 NULL
+    // ==========================================================
+    else {
+        uint32 left_len = urb->transfer_len;
+
+        // 👑 DMA 优化判断
+        uint64 current_pa = (urb->transfer_flags & URB_NO_TRANSFER_DMA_MAP) ?
+                            urb->transfer_dma : va_to_pa(urb->transfer_buf);
+
+        // 1. 动态解析最大包长 (wMaxPacketSize)，防范写死魔数和除零异常
+        uint16 max_packet = urb->udev->eps[dci]->max_packet_size;
+        if (max_packet == 0) max_packet = 512;
+
+        // 2. 完美无死角的 ZLP (Zero Length Packet) 判定公式
+        uint8 needs_zlp = (urb->transfer_flags & URB_ZERO_PACKET) &&
+                          (urb->transfer_len > 0) &&
+                          ((urb->transfer_len % max_packet) == 0);
+
+        // 极速双 64 位清零
+        trb.raw[0] = 0;
+        trb.raw[1] = 0;
+        trb.normal.trb_type = XHCI_TRB_TYPE_NORMAL;
+
+        // 🚀 3. 切片大循环 (自动防 64KB 物理跨页溢出)
+        while (left_len > 0) {
+            uint32 space_to_boundary = 65536 - (current_pa & 0xFFFF);
+            uint8  has_more_data = (left_len > space_to_boundary);
+            uint32 chunk_len = has_more_data ? space_to_boundary : left_len;
+
+            trb.normal.data_buf_ptr = current_pa;
+            trb.normal.trb_tr_len   = chunk_len;
+
+            // ★ 修复：如果数据没发完，或者虽然数据发完了但必须跟一个 ZLP，Chain 都必须为 1
+            trb.normal.chain = has_more_data || needs_zlp;
+
+            // ★ 修复：全村唯一的 IOC 只能在绝对的最后一块 TRB 上点亮 (防双重中断风暴)
+            trb.normal.ioc   = (!has_more_data && !needs_zlp) ? wants_ioc : 0;
+
+            last_trb_pa = xhci_ring_enqueue(ring, &trb);
+
+            current_pa += chunk_len;
+            left_len   -= chunk_len;
+        }
+
+        // 🎁 4. 极客彩蛋追加：精准下发 ZLP 空车厢
+        if (needs_zlp) {
+            trb.raw[0] = 0;
+            trb.raw[1] = 0;
+            trb.normal.trb_type     = XHCI_TRB_TYPE_NORMAL;
+            trb.normal.data_buf_ptr = current_pa; // 指针停在哪无所谓，长度为 0
+            trb.normal.trb_tr_len   = 0;          // 核心：0 字节载荷！
+            trb.normal.chain        = 0;          // 绝对的最后一环，拉断链条
+            trb.normal.ioc          = wants_ioc;  // 👑 赋予这节空车厢唤醒 CPU 的权利
+
+            last_trb_pa = xhci_ring_enqueue(ring, &trb);
+        }
+    }
+
+    // ==========================================================
+    // ★ 终极一击：精确敲响对应端点 / Stream 的物理门铃！
+    // ==========================================================
+    xhci_ring_doorbell(xhcd, slot_id, db_target);
+
+    // ==========================================================
+    // 3. 状态回填供上层同步等待使用
+    // ==========================================================
+    urb->last_trb_pa = last_trb_pa;
+    urb->status = 0; // 标记提交成功 (-EINPROGRESS 异步机制留到未来重构)
+
+    return 0;
+}
+
+
+/**
  * 清除 USB 端点的 STALL/Halt 状态 (撬开大门)
  * @param udev      USB 设备上下文
  * @param ep_dci xHCI 的端点上下文索引 (DCI, 范围 2-31)
  */
 int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci) {
     // 2. 组装 8 字节的标准 Setup 请求包
-    usb_req_pkg_t req_pkg = {0};
+    usb_setup_packet_t req_pkg = {0};
     req_pkg.recipient = USB_RECIP_ENDPOINT;
     req_pkg.req_type = USB_REQ_TYPE_STANDARD;
     req_pkg.dtd = USB_DIR_OUT;
@@ -299,7 +444,7 @@ int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci) {
 
 //获取描述符
 int32 usb_get_desc(usb_dev_t *udev,void *desc_buf,uint16 length,usb_desc_type_e desc_type,uint8 desc_idx, uint16 req_idx) {
-    usb_req_pkg_t req_pkg = {0};
+    usb_setup_packet_t req_pkg = {0};
 
     // 注意：获取描述符的目标并不总是 Device！
     // 如果获取的是普通描述符，发给 Device；如果是接口特定的(如 HID)，必须发给 Interface！
@@ -317,7 +462,7 @@ int32 usb_get_desc(usb_dev_t *udev,void *desc_buf,uint16 length,usb_desc_type_e 
 
 //激活配置
 int usb_set_cfg(usb_dev_t *udev,uint8 cfg_value) {
-    usb_req_pkg_t req_pkg = {0};
+    usb_setup_packet_t req_pkg = {0};
     req_pkg.recipient = USB_RECIP_DEVICE;
     req_pkg.req_type = USB_REQ_TYPE_STANDARD;
     req_pkg.dtd = USB_DIR_OUT;
@@ -332,7 +477,7 @@ int usb_set_cfg(usb_dev_t *udev,uint8 cfg_value) {
 
 //激活接口
 int usb_set_if(usb_dev_t *udev,uint8 if_num,uint8 alt_num) {
-    usb_req_pkg_t req_pkg = {0};
+    usb_setup_packet_t req_pkg = {0};
     req_pkg.recipient = USB_RECIP_INTERFACE;
     req_pkg.req_type = USB_REQ_TYPE_STANDARD;
     req_pkg.dtd = USB_DIR_OUT;

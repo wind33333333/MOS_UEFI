@@ -317,7 +317,7 @@ typedef enum : uint16 {
 /*
  * usb 8字节请求包
  */
-typedef struct usb_req_pkg_t {
+typedef struct usb_setup_packet_t {
     //bmRequestType
     usb_recipient_e recipient : 5;
     usb_req_type_e  req_type  : 2;
@@ -334,7 +334,7 @@ typedef struct usb_req_pkg_t {
 
     //wLength
     uint16          length; //数据阶段的传输长度（字节）主机到设备：发送的数据长度 设备到主机：请求的数据长度
-}usb_req_pkg_t;
+}usb_setup_packet_t;
 
 //=============================================================
 
@@ -435,7 +435,7 @@ typedef struct usb_dev_t{
     xhci_input_ctx_t                *input_ctx;        // 输入上下文
     uint32                          active_ep_map;      //当前活跃的端点图
     usb_ep_t                        ep0;                // 端点0
-    usb_ep_t                        *eps[32];           // 端点0-31 驱动把接口端点挂到usb_dev,方便usb_core层管理
+    usb_ep_t                        *eps[31];           // 端点0-30 驱动把接口端点挂到usb_dev,方便usb_core层管理
     xhci_hcd_t                      *xhcd;              // xhci控制器
     device_t                        dev;
     uint8                           interfaces_count;  // 接口数量
@@ -486,7 +486,7 @@ typedef struct usb_urb_t {
     uint16      stream_id;      // UAS 协议专用的 Stream ID
 
     // === 2. 业务载荷区 ===
-    usb_req_pkg_t *setup_packet;// EP0 控制包指针
+    usb_setup_packet_t *setup_packet;// EP0 控制包指针
     void        *transfer_buf;  // 数据缓冲区虚拟地址
     uint32      transfer_len;   // 期望传输总长度
 
@@ -585,7 +585,7 @@ void usb_bus_remove(device_t* dev);
 
 
 xhci_trb_comp_code_e xhci_wait_transfer_comp (usb_dev_t *udev, uint8 ep_dci, uint64 wait_trb_pa);
-int32 usb_control_msg(usb_dev_t *udev, usb_req_pkg_t *usb_req_pkg, void *data_buf);
+int32 usb_control_msg(usb_dev_t *udev, usb_setup_packet_t *usb_req_pkg, void *data_buf);
 uint64 usb_submit_transfer(xhci_hcd_t *xhcd, uint8 slot_id, uint32 db_target,
                            xhci_ring_t *ring, void *buf, uint32 len, trb_ioc_e ioc);
 int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci);

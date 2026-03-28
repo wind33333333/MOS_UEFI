@@ -33,7 +33,7 @@ void bot_recovery_reset(usb_dev_t *udev,uint8 if_num, uint8 pipe_in, uint8 pipe_
     uint8 slot_id = udev->slot_id;
 
     // 动作 1：发送特定的 0xFF 控制命令，将 U 盘内部状态机重置
-    usb_req_pkg_t usb_req_pkg = {0};
+    usb_setup_packet_t usb_req_pkg = {0};
     usb_req_pkg.recipient = USB_RECIP_INTERFACE;
     usb_req_pkg.req_type = USB_REQ_TYPE_CLASS;
     usb_req_pkg.dtd = USB_DIR_OUT;
