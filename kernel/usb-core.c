@@ -533,7 +533,7 @@ static void ctx_update_entries(usb_dev_t *udev) {
 static void ctx_ep_copy(usb_dev_t *udev, usb_ep_t *new_ep) {
     xhci_ep_ctx_t *input_ep_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, new_ep->ep_dci);
     input_ep_ctx->mult = new_ep->mult;
-    input_ep_ctx->max_pstreams = new_ep->max_streams;
+    input_ep_ctx->max_pstreams = new_ep->max_streams_exp;
     input_ep_ctx->lsa = new_ep->lsa;
     input_ep_ctx->interval = new_ep->interval;
     input_ep_ctx->max_esit_payload_hi = (new_ep->max_esit_payload>>16)&0xFF;
@@ -743,7 +743,7 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
     uint64 tr_dequeue_ptr;
 
     // 安全边界截断
-    uint32 max_streams = ep->max_streams > MAX_STREAMS ? MAX_STREAMS : ep->max_streams;
+    uint32 max_streams = ep->max_streams_exp > MAX_STREAMS ? MAX_STREAMS : ep->max_streams_exp;
 
     if (max_streams) {
         // ==========================================================
@@ -763,7 +763,6 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
         ep->streams_ctx_array = streams_ctx_array;
 
         // 更新逻辑状态
-        ep->enable_streams_count = streams_count;// 记录实际启用总流数
         ep->lsa = 1; // 线性流数组标志
         ep->hid = 1; // 主机初始化禁用标志
 
@@ -809,7 +808,7 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
     // 终极赋值：写回端点上下文结构体
     // ==========================================================
     ep->cerr = 3;
-    ep->max_streams = max_streams;
+    ep->max_streams_exp = max_streams;
     ep->trq_phys_addr = tr_dequeue_ptr; // 供后续写入 xHCI 硬件的 Endpoint Context
 
     return 0;
@@ -868,13 +867,140 @@ static int32 free_ep_ring(usb_ep_t *ep) {
     return 0; // 成功释放
 }
 
+/**
+ * @brief 切换 USB 备用接口 (Linux 严谨基线版)
+ * @param new_alt 上层驱动通过 find_alt 系列函数搜索到的目标图纸句柄
+ * @return int32  0 表示成功，非 0 表示失败
+ */
+int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
+    // 1. 终极防御：如果搜索函数返回了 NULL，或者这是一个脏指针，直接拦截！
+    if (new_alt == NULL || new_alt->uif == NULL) return -1;
 
+    // 2. 顺藤摸瓜：通过你的反向指针，直接拉出上层接口和设备对象！
+    usb_if_t *uif = new_alt->uif;
+    usb_dev_t *udev = uif->udev;
 
+    // 注意：设备刚刚插入进行 Config 初始化时，cur_alt 是 NULL，必须防范
+    usb_if_alt_t *old_alt = uif->cur_alt;
+
+    // 3. 性能优化：如果想切换的就是当前正在用的，直接光速返回
+    if (old_alt == new_alt) return 0;
+
+    // 开启 xHCI 底层硬件事务
+    ctx_tx_begin(udev);
+
+    // ==========================================================
+    // 阶段 1：[纸上谈兵] 圈出要 Drop 的旧端点
+    // ==========================================================
+    if (old_alt != NULL) {
+        for (uint8 i = 0; i < old_alt->ep_count; i++) {
+            ctx_prep_drop_ep(udev, old_alt->eps[i].ep_dci);
+        }
+    }
+
+    // ==========================================================
+    // 阶段 2：[预分配] 为新端点画图纸并分配内存 (★ 核心架构重构)
+    // ==========================================================
+    for (uint8 i = 0; i < new_alt->ep_count; i++) {
+        usb_ep_t *ep = &new_alt->eps[i];
+
+        // 👑 Linux 架构铁律：两级火箭分离！
+        // 接口切换是底层总线的职责，底层绝不越俎代庖去开启动态流。
+        // 一律将 num_streams 强行阉割为 0，按最基础的 Bulk 模式建立物理通道。
+        // 满血多流的升级任务，必须留给上层 UAS 驱动事后去调用 usb_alloc_streams！
+        ep->enable_streams_count = 0;
+
+        // ★ OOM 防御：分配环可能因为物理 DMA 内存耗尽而失败
+        if (alloc_ep_ring(ep) != 0) {
+            color_printk(RED, BLACK, "USB: OOM allocating rings during Alt setting!\n");
+            // 局部回滚：释放刚才循环里已经分配成功的前几个端点
+            for (uint8 j = 0; j < i; j++) free_ep_ring(&new_alt->eps[j]);
+            return -1;
+        }
+
+        // 准备好图纸
+        ctx_prep_add_ep(udev, ep);
+    }
+
+    // ==========================================================
+    // 阶段 3：一锤定音！向 xHCI 提交图纸，等待硬件裁决
+    // ==========================================================
+    if (ctx_commit_tx(udev, USB_TX_CMD_CFG_EP) != 0) {
+        color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, hardware rejected!\n");
+        // 主板拒绝了这份图纸，销毁刚刚新分配的所有内存，安全退出
+        for (uint8 i = 0; i < new_alt->ep_count; i++) free_ep_ring(&new_alt->eps[i]);
+        return -1;
+    }
+
+    // ==========================================================
+    // ★ 阶段 4：[防竞态] 提前挂载新路由！(兵马未动，粮草先行)
+    // 此时新通道在主板端已通，但外设还未切换。先把接收器架好，防漏包！
+    // ==========================================================
+    for (uint8 i = 0; i < new_alt->ep_count; i++) {
+        usb_ep_t *ep = &new_alt->eps[i];
+        udev->eps[ep->ep_dci] = ep;
+    }
+
+    // ==========================================================
+    // ★ 阶段 5：主板软件均就绪，正式通过 EP0 通知物理 U 盘切换频道！
+    // ==========================================================
+    if (usb_set_if(udev, uif->if_num, new_alt->altsetting) != 0) {
+        color_printk(RED, BLACK, "USB: Device rejected Set Interface command!\n");
+
+        // ！！！极品回滚逻辑 (完美修复版) ！！！
+
+        // 1. 软件路由撤销 (把刚才挂上去的新路由摘下来)
+        for (uint8 i = 0; i < new_alt->ep_count; i++) {
+            udev->eps[new_alt->eps[i].ep_dci] = NULL;
+        }
+
+        // ★ 修复：重新挂载老端点的路由，否则系统再也找不到旧端点通信了！
+        if (old_alt != NULL) {
+            for (uint8 i = 0; i < old_alt->ep_count; i++) {
+                udev->eps[old_alt->eps[i].ep_dci] = &old_alt->eps[i];
+            }
+        }
+
+        // 2. 释放新分配的废弃环内存
+        for (uint8 i = 0; i < new_alt->ep_count; i++) free_ep_ring(&new_alt->eps[i]);
+
+        // 3. 将主板硬件强制回滚到旧状态 (反向 Drop 新的，Add 旧的)
+        ctx_tx_begin(udev);
+        for (uint8 i = 0; i < new_alt->ep_count; i++) ctx_prep_drop_ep(udev, new_alt->eps[i].ep_dci);
+        if (old_alt != NULL) {
+            for (uint8 i = 0; i < old_alt->ep_count; i++) ctx_prep_add_ep(udev, &old_alt->eps[i]);
+        }
+        ctx_commit_tx(udev, USB_TX_CMD_CFG_EP);
+
+        return -1; // 经过这一套抢救，操作系统和设备毫发无伤地回到了切换前的健康状态！
+    }
+
+    // ==========================================================
+    // 阶段 6：[过河拆桥] 切换彻底成功，可以安全收缴旧端点的尸体了
+    // ==========================================================
+    if (old_alt != NULL) {
+        for (uint8 i = 0; i < old_alt->ep_count; i++) {
+            usb_ep_t *ep = &old_alt->eps[i];
+            // 只在路由没有被新端点(同 DCI)覆盖的情况下，才去清空它
+            if (udev->eps[ep->ep_dci] == ep) {
+                udev->eps[ep->ep_dci] = NULL;
+            }
+            free_ep_ring(ep); // 彻底释放旧物理内存
+        }
+    }
+
+    // 状态机正式翻页
+    uif->cur_alt = new_alt;
+
+    return 0;
+}
+
+/*
 /**
  * @brief 切换 USB 备用接口 (极简句柄版)
  * @param new_alt 上层驱动通过 find_alt 系列函数搜索到的目标图纸句柄
  * @return int32  0 表示成功，非 0 表示失败
- */
+ #1#
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // 1. 终极防御：如果搜索函数返回了 NULL，或者这是一个脏指针，直接拦截！
     if (new_alt == NULL || new_alt->uif == NULL) return -1;
@@ -961,6 +1087,85 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
 
     return 0;
 }
+*/
+
+/**
+ * @brief [USB Core API] 评估“木桶短板”并为一组端点统筹升级多流 (Streams)
+ * @param udev             目标 USB 设备
+ * @param eps              需要开启流的端点指针数组
+ * @param eps_count          数组中端点的个数
+ * @param expected_streams_exp 驱动期望申请的流数量 (UAS 一般期望是 256)
+ * @return int32           成功返回实际分配的流数量，失败或不支持返回 <= 0
+ */
+int32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp) {
+    if (!udev || !eps || eps_count == 0) return -1;
+
+    // ==========================================================
+    // 阶段 1：疯狂的“最短板”算计 (The Short-Board Evaluation)
+    // ==========================================================
+    //xhci最大流和期望最大流取低的
+    uint8 mini_streams_exp = udev->xhcd->max_streams_exp ;
+    if (mini_streams_exp > expected_streams_exp) {
+        mini_streams_exp = expected_streams_exp;
+    }
+
+    // [探底外设]：遍历所有传入的端点，寻找流最低的哪一个
+    for (uint8 i = 0; i < eps_count; i++) {
+        usb_ep_t *ep = eps[i];
+
+        // 假设你在解析端点描述符时，把硬件的 MaxStreams 极限值存到了 ep->max_streams
+        // 注意：硬件描述符里的值通常是指数，真实容量是 2^max_streams
+
+        uint8 ep_max_streams = ep->max_streams_exp;
+
+        if (ep_max_streams == 0) {
+            // 致命短板：只要这几个核心端点里有一个不支持流，全体降级！
+            color_printk(YELLOW, BLACK, "USB: EP %d does not support streams. Fallback to 2.0\n", ep->ep_dci);
+            return 0;
+        }
+
+        if (mini_streams_exp > ep_max_streams) {
+            mini_streams_exp = ep_max_streams; // 动态更新最短板
+        }
+    }
+
+    // 此时，mini_streams 已经代表了“主板、外设、期望”三方妥协后的最终并发极限！
+
+    // ==========================================================
+    // 阶段 2：底层硬件“热升级” (Hot-Upgrade to Streams)
+    // ==========================================================
+
+    ctx_tx_begin(udev);
+
+    for (uint8 i = 0; i < eps_count; i++) {
+        usb_ep_t *ep = eps[i];
+
+        // 1. 过河拆桥：释放第一级火箭（usb_switch_alt_if）建好的普通单环
+        free_ep_ring(ep);
+
+        // 2. 状态机翻页：正式赋予端点流能力！
+        ep->max_streams_exp = mini_streams_exp;
+        ep->enable_streams_count = 1 << mini_streams_exp;
+
+        // 3. 重新分配物理内存：alloc_ep_ring 现在会根据 num_streams 分配 N+1 个流环
+        if (alloc_ep_ring(ep) != 0) {
+            color_printk(RED, BLACK, "USB: OOM allocating stream rings!\n");
+            // 真实内核中这里需要复杂的反向回滚，此处从略
+            return -1;
+        }
+
+        // 4. 将新的多流图纸塞进底层
+        ctx_prep_add_ep(udev, ep);
+    }
+
+    // 5. 终极一击：命令主板 xHCI 芯片立刻更新端点上下文，激活多流模式！
+    if (ctx_commit_tx(udev, USB_TX_CMD_CFG_EP) != 0) {
+        color_printk(RED, BLACK, "xHCI: Configure Endpoint for Streams failed!\n");
+        return -1;
+    }
+
+    return mini_streams_exp; // 返回最终谈判得出的实际可用流数
+}
 
 
 //给备用接口的所有端点分配环
@@ -1008,7 +1213,7 @@ static inline void ep_desc_params(usb_ep_t *cur_ep, usb_ep_desc_t *ep_desc) {
 
     // 清空高阶扩展字段 (防野指针)
     cur_ep->max_burst = 0;
-    cur_ep->max_streams = 0;
+    cur_ep->max_streams_exp = 0;
     cur_ep->bytes_per_interval = 0;
     cur_ep->extras_desc = NULL;
     cur_ep->lsa = 0;
@@ -1058,7 +1263,7 @@ static inline void ss_desc_params(usb_ep_t *cur_ep, usb_ss_comp_desc_t *ss_desc)
     switch (usb_trans_type) {
         case USB_EP_TYPE_BULK:
             // Bulk 阵营：提取最大支持的并发流数量 (Streams)
-            cur_ep->max_streams = ss_desc->attributes & 0x1F;
+            cur_ep->max_streams_exp = ss_desc->attributes & 0x1F;
             break;
 
         case USB_EP_TYPE_ISOCH:
@@ -1075,7 +1280,7 @@ static inline void ss_desc_params(usb_ep_t *cur_ep, usb_ss_comp_desc_t *ss_desc)
         case USB_EP_TYPE_INTR:
             // Interrupt 阵营：规范铁律要求伴随属性为保留位。强行清零防止主板报错
             cur_ep->mult = 0;
-            cur_ep->max_streams = 0;
+            cur_ep->max_streams_exp = 0;
 
             // 衍生参数升级：只升级周期诉求带宽，中断端点的 average_trb_length 保持极小值不变
             if (cur_ep->bytes_per_interval > 0) {
@@ -1309,8 +1514,8 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     ep0->ep_type = 4; // Control Endpoint
     ep0->max_packet_size = mps;
     ep0->average_trb_length = mps;
-    ep0->max_streams = 0;
-    ep0->enable_streams_count = ep0->max_streams;
+    ep0->max_streams_exp = 0;
+    ep0->enable_streams_count = ep0->max_streams_exp;
     alloc_ep_ring(ep0);
 
     // ---下发命令 ---

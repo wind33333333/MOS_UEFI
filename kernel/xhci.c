@@ -666,6 +666,7 @@ int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhcd->minor_bcd = xhcd->cap_reg->hciversion & 0xFF; //xhci次版本
     xhcd->max_ports = xhcd->cap_reg->hcsparams1 >> 24; //xhci最大端口数
     xhcd->max_intrs = xhcd->cap_reg->hcsparams1 >> 8 & 0x7FF; //xhci最大中断数
+    xhcd->max_streams_exp = ((xhcd->cap_reg->hccparams1 >> 12) & 0xF)+1; //计算xhci支持的最大流 2^(N+1)
 
     // =========================================================================
     // 阶段 1：搜寻与分配 (寻找主板上所有的协议支持清单)

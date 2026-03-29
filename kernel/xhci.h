@@ -38,7 +38,7 @@ typedef struct {
                               - LHRC (位 5): 轻量级主机路由能力
                               - LTC (位 6): 延迟容忍能力
                               - NSS (位 7): 无嗅探能力
-                              - MaxPSASize (位 12-15): 最大主控制器流数组大小
+                              - MaxPSASize (位 12-15): 最大主控制器流数组大小 2^(N+1)
                               - ECPA(位16-31)：扩展能力链表偏移地址 = 偏移<<2 */
 #define HCCP1_CSZ   (1<<2)
 
@@ -1033,6 +1033,7 @@ typedef struct xhci_hcd_t{
     uint8               max_ports;          // 最大物理端口数量 (MaxPorts)
     uint8               max_slots;          // 最大逻辑插槽数量 (MaxSlots)
     uint16              max_intrs;          // 最大中断器数量 (MaxIntrs)
+    uint8               max_streams_exp;    //  最大支持流指数2^(n+1)
 
     // ==========================================
     // 2. 协议支持扩展 (Supported Protocol Capability)

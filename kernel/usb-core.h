@@ -372,7 +372,7 @@ typedef struct usb_ep_t {
 
     //解析后的超高速端点伴随描述符
     uint8       max_burst;         // USB3 bMaxBurst（0=1 burst；仅 SS/SSP 有意义）
-    uint16      max_streams;         // bulk 端点支持的最大 stream 数（由 ss_comp->bmAttributes 解码，0 表示不支持 streams（BOT 一般用不到，UAS 可能需要）
+    uint16      max_streams_exp;    // bulk 端点支持的最大 stream 数（由 ss_comp->bmAttributes 解码，0 表示不支持 streams（BOT 一般用不到，UAS 可能需要）
     uint16      bytes_per_interval; // USB3 wBytesPerInterval（中断/等时重要）
     uint8       mult;              // USB 2.0 High-Speed 高带宽事务 (Mult) 处理 0=1 transaction, 1=2 trans, 2=3 trans
     uint8       lsa;
@@ -500,7 +500,7 @@ typedef struct usb_urb_t {
     // void (*complete)(struct usb_urb *urb); // 未来做全异步驱动时，这里放回调函数
 } usb_urb_t;
 
-#define MAX_STREAMS 6  //最多支持流数量（2^6=64）
+#define MAX_STREAMS 5  //最多支持流数量（2^5=32）
 
 //端点转Dci
 static inline uint8 epaddr_to_epdci(uint8 ep) {
