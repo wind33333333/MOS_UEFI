@@ -796,7 +796,7 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
         xhci_alloc_ring(&ep->rings[0]);
 
         // 更新逻辑状态
-        ep->enable_streams_count = 0;// ★ 标记为非流模式
+        ep->enable_streams_exp = 0;// ★ 标记为非流模式
         ep->lsa = 0;
         ep->hid = 0;
 
@@ -823,7 +823,7 @@ static int32 free_ep_ring(usb_ep_t *ep) {
         return 0;
     }
 
-    uint32 enable_streams_count = ep->enable_streams_count;
+    uint32 enable_streams_count = ep->enable_streams_exp;
 
     if (enable_streams_count > 0) {
         // ==========================================================
@@ -859,7 +859,7 @@ static int32 free_ep_ring(usb_ep_t *ep) {
     ep->rings = NULL;
 
     // 清理端点逻辑状态，恢复出厂设置，防止悬空指针引发 Use-After-Free
-    ep->enable_streams_count = 0; // 如果你结构体里还没删干净，顺手清一下
+    ep->enable_streams_exp = 0; // 如果你结构体里还没删干净，顺手清一下
     ep->lsa = 0;
     ep->hid = 0;
     ep->trq_phys_addr = 0;
@@ -908,7 +908,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
         // 接口切换是底层总线的职责，底层绝不越俎代庖去开启动态流。
         // 一律将 num_streams 强行阉割为 0，按最基础的 Bulk 模式建立物理通道。
         // 满血多流的升级任务，必须留给上层 UAS 驱动事后去调用 usb_alloc_streams！
-        ep->enable_streams_count = 0;
+        ep->enable_streams_exp = 0;
 
         // ★ OOM 防御：分配环可能因为物理 DMA 内存耗尽而失败
         if (alloc_ep_ring(ep) != 0) {
@@ -1116,16 +1116,16 @@ int32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 
         // 假设你在解析端点描述符时，把硬件的 MaxStreams 极限值存到了 ep->max_streams
         // 注意：硬件描述符里的值通常是指数，真实容量是 2^max_streams
 
-        uint8 ep_max_streams = ep->max_streams_exp;
+        uint8 ep_max_streams_exp = ep->max_streams_exp;
 
-        if (ep_max_streams == 0) {
+        if (ep_max_streams_exp == 0) {
             // 致命短板：只要这几个核心端点里有一个不支持流，全体降级！
             color_printk(YELLOW, BLACK, "USB: EP %d does not support streams. Fallback to 2.0\n", ep->ep_dci);
             return 0;
         }
 
-        if (mini_streams_exp > ep_max_streams) {
-            mini_streams_exp = ep_max_streams; // 动态更新最短板
+        if (mini_streams_exp > ep_max_streams_exp) {
+            mini_streams_exp = ep_max_streams_exp; // 动态更新最短板
         }
     }
 
@@ -1145,7 +1145,7 @@ int32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 
 
         // 2. 状态机翻页：正式赋予端点流能力！
         ep->max_streams_exp = mini_streams_exp;
-        ep->enable_streams_count = 1 << mini_streams_exp;
+        ep->enable_streams_exp = 1 << mini_streams_exp;
 
         // 3. 重新分配物理内存：alloc_ep_ring 现在会根据 num_streams 分配 N+1 个流环
         if (alloc_ep_ring(ep) != 0) {
@@ -1515,7 +1515,7 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     ep0->max_packet_size = mps;
     ep0->average_trb_length = mps;
     ep0->max_streams_exp = 0;
-    ep0->enable_streams_count = ep0->max_streams_exp;
+    ep0->enable_streams_exp = ep0->max_streams_exp;
     alloc_ep_ring(ep0);
 
     // ---下发命令 ---

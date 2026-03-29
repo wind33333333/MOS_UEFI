@@ -70,7 +70,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
         for (uint8 i = 0; i < 4; i++) {
             usb_ep_t *ep = &uif->cur_alt->eps[i];
             uint8 ep_dci = ep->ep_dci;
-            uint32 streams = ep->enable_streams_count; // 采用上一轮重构的单一事实状态
+            uint32 streams = ep->enable_streams_exp; // 采用上一轮重构的单一事实状态
 
             usb_uas_pipe_usage_desc_t *pipe_usage_desc = ep->extras_desc;
             if (!pipe_usage_desc) continue;

@@ -386,7 +386,7 @@ typedef struct usb_ep_t {
     // 情况 B (流模式)  : 分配大小为 num_streams + 1 的数组。rings[1...N] 是流环。
     xhci_ring_t *rings;
     void        *streams_ctx_array;
-    uint32      enable_streams_count;
+    uint8       enable_streams_exp;
 
     // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
     void        *extras_desc;
