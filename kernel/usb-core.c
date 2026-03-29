@@ -1236,6 +1236,10 @@ static inline void ep_desc_params(usb_ep_t *cur_ep, usb_ep_desc_t *ep_desc) {
     cur_ep->lsa = 0;
     cur_ep->hid = 0;
 
+    cur_ep->rings = NULL;
+    cur_ep->streams_ctx_array = NULL;
+    cur_ep->enable_streams_exp = 0;
+
     // --- ★ 衍生参数与 DMA 启发值联合推导 (基于 USB 2.0 规格底稿) ---
     switch (usb_trans_type) {
         case USB_EP_TYPE_ISOCH:
