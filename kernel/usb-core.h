@@ -386,7 +386,7 @@ typedef struct usb_ep_t {
     // 情况 B (流模式)  : 分配大小为 num_streams + 1 的数组。rings[1...N] 是流环。
     xhci_ring_t *rings;
     void        *streams_ctx_array;
-    uint8       enable_streams_exp;
+    uint8       enable_streams_exp;  //实际启用的流指数
 
     // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
     void        *extras_desc;
@@ -500,7 +500,7 @@ typedef struct usb_urb_t {
     // void (*complete)(struct usb_urb *urb); // 未来做全异步驱动时，这里放回调函数
 } usb_urb_t;
 
-#define MAX_STREAMS 5  //最多支持流数量（2^5=32）
+#define MAX_STREAMS_EXP 5  //最多支持流数量（2^5=32）
 
 //端点转Dci
 static inline uint8 epaddr_to_epdci(uint8 ep) {
@@ -592,5 +592,5 @@ void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,uint8 ep_dci,void *transfe
 int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void *data_buf);
 int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci);
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
-
+int32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp);
 

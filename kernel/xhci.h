@@ -1097,7 +1097,12 @@ static inline int32 xhci_alloc_ring(xhci_ring_t *ring) {
 
 //环释放
 static inline int32 xhci_free_ring(xhci_ring_t *ring) {
-    kfree(ring->ring_base);
+    if (ring->ring_base != NULL) {
+        kfree(ring->ring_base);
+        ring->ring_base = NULL;
+    }
+    ring->index = 0;
+    ring->cycle = 0;
 }
 
 //响铃

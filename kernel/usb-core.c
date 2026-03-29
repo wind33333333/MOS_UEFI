@@ -533,7 +533,7 @@ static void ctx_update_entries(usb_dev_t *udev) {
 static void ctx_ep_copy(usb_dev_t *udev, usb_ep_t *new_ep) {
     xhci_ep_ctx_t *input_ep_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, new_ep->ep_dci);
     input_ep_ctx->mult = new_ep->mult;
-    input_ep_ctx->max_pstreams = new_ep->max_streams_exp;
+    input_ep_ctx->max_pstreams = new_ep->enable_streams_exp;
     input_ep_ctx->lsa = new_ep->lsa;
     input_ep_ctx->interval = new_ep->interval;
     input_ep_ctx->max_esit_payload_hi = (new_ep->max_esit_payload>>16)&0xFF;
@@ -607,16 +607,19 @@ void ctx_prep_eval_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
 
 }
 
-//重建端点
+/**
+ * @brief [纯内存] 重建/热更新端点参数 (用于开启多流等核心属性变更)
+ * @note 必须由 Configure Endpoint Command 提交。硬件会先拆除旧端点，再同屏无缝建立新端点。
+ */
 void ctx_prep_reconfig_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
-    // 1. 打上死刑标记
+    // 1. 打上死刑标记 (告诉硬件：旧的图纸作废了)
     udev->input_ctx->drop_context_flags |= (1 << new_ep->ep_dci);
 
-    // 2. 标记添加
+    // 2. 打上新生标记 (告诉硬件：在同一个位置，按新图纸原地重建)
     udev->input_ctx->add_context_flags |= (1 << new_ep->ep_dci);
 
-    // 3.拷贝
-    ctx_ep_copy(udev,new_ep);
+    // 4. 拷贝包含新属性 (如 max_streams 等) 的图纸
+    ctx_ep_copy(udev, new_ep);
 }
 
 /**
@@ -743,21 +746,21 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
     uint64 tr_dequeue_ptr;
 
     // 安全边界截断
-    uint32 max_streams = ep->max_streams_exp > MAX_STREAMS ? MAX_STREAMS : ep->max_streams_exp;
+    uint32 streams_exp = ep->enable_streams_exp;
 
-    if (max_streams) {
+    if (streams_exp) {
         // ==========================================================
         // 👑 情况 B：流模式 (Stream Mode - 适用于 USB 3.0 UAS 等)
         // ==========================================================
-        uint32 streams_count = 1 << max_streams;                 // 例如：2^4 = 16
-        uint32 streams_array_count = 1 << (max_streams + 1);     // 例如：2^5 = 32
+        uint32 streams_count = (1 << streams_exp)+1;           // 流环的第0个不能用，所以需要：2^4 +1 = 17
+        uint32 streams_array_count = 1 << (streams_exp + 1);     // 硬件要求流数组需要按倍数对齐，例如streams_exp=4,则2^5 = 32
 
         // 1. 给硬件 DMA 读的上下文数组 (必须 16 字节对齐)
         xhci_stream_ctx_t *streams_ctx_array = kzalloc_dma(streams_array_count * sizeof(xhci_stream_ctx_t));
 
         // 2. ★ 核心重构：给软件管理的统一环数组 (分配 N+1 个)
         // 索引 0 闲置防越界，索引 1~N 对应真实的 Stream ID
-        ep->rings = kzalloc((streams_count + 1) * sizeof(xhci_ring_t));
+        ep->rings = kzalloc(streams_count * sizeof(xhci_ring_t));
 
         // 记录上下文，方便后续释放内存
         ep->streams_ctx_array = streams_ctx_array;
@@ -767,7 +770,7 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
         ep->hid = 1; // 主机初始化禁用标志
 
         // 初始化每一个流环
-        for (uint32 s = 1; s <= streams_count; s++) {
+        for (uint32 s = 1; s < streams_count; s++) {
             // 对数组中的每一个环进行物理分配
             xhci_alloc_ring(&ep->rings[s]);
 
@@ -796,7 +799,6 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
         xhci_alloc_ring(&ep->rings[0]);
 
         // 更新逻辑状态
-        ep->enable_streams_exp = 0;// ★ 标记为非流模式
         ep->lsa = 0;
         ep->hid = 0;
 
@@ -808,7 +810,6 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
     // 终极赋值：写回端点上下文结构体
     // ==========================================================
     ep->cerr = 3;
-    ep->max_streams_exp = max_streams;
     ep->trq_phys_addr = tr_dequeue_ptr; // 供后续写入 xHCI 硬件的 Endpoint Context
 
     return 0;
@@ -823,15 +824,14 @@ static int32 free_ep_ring(usb_ep_t *ep) {
         return 0;
     }
 
-    uint32 enable_streams_count = ep->enable_streams_exp;
-
-    if (enable_streams_count > 0) {
+    if (ep->enable_streams_exp > 0) {
         // ==========================================================
         // 👑 情况 B：流模式 (Stream Mode) 的销毁
         // ==========================================================
 
         // 1. 释放每一个具体的流环 (TRB 物理内存)
-        for (uint32 s = 1; s <= enable_streams_count; s++) {
+        uint32 enable_streams_count = (1<<ep->enable_streams_exp)+1;
+        for (uint32 s = 1; s < enable_streams_count; s++) {
             xhci_free_ring(&ep->rings[s]);
         }
 
@@ -1093,8 +1093,8 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
  * @brief [USB Core API] 评估“木桶短板”并为一组端点统筹升级多流 (Streams)
  * @param udev             目标 USB 设备
  * @param eps              需要开启流的端点指针数组
- * @param eps_count          数组中端点的个数
- * @param expected_streams_exp 驱动期望申请的流数量 (UAS 一般期望是 256)
+ * @param eps_count        数组中端点的个数
+ * @param expected_streams_exp 驱动期望申请的流数量 (UAS 一般期望是 8，即 256 流)
  * @return int32           成功返回实际分配的流数量，失败或不支持返回 <= 0
  */
 int32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp) {
@@ -1103,23 +1103,22 @@ int32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 
     // ==========================================================
     // 阶段 1：疯狂的“最短板”算计 (The Short-Board Evaluation)
     // ==========================================================
-    //xhci最大流和期望最大流取低的
-    uint8 mini_streams_exp = udev->xhcd->max_streams_exp ;
+
+    // 1. xHCI最大流和期望最大流取极小值
+    uint8 mini_streams_exp = udev->xhcd->max_streams_exp;
     if (mini_streams_exp > expected_streams_exp) {
         mini_streams_exp = expected_streams_exp;
     }
 
-    // [探底外设]：遍历所有传入的端点，寻找流最低的哪一个
+    // 2. [探底外设]：遍历所有传入的端点，寻找流能力最低的那一个
     for (uint8 i = 0; i < eps_count; i++) {
         usb_ep_t *ep = eps[i];
 
-        // 假设你在解析端点描述符时，把硬件的 MaxStreams 极限值存到了 ep->max_streams
-        // 注意：硬件描述符里的值通常是指数，真实容量是 2^max_streams
-
+        // 读取端点描述符里解析出的硬件原始流指数极限
         uint8 ep_max_streams_exp = ep->max_streams_exp;
 
         if (ep_max_streams_exp == 0) {
-            // 致命短板：只要这几个核心端点里有一个不支持流，全体降级！
+            // 致命短板：只要这几个核心端点里有一个完全不支持流，全体降级！
             color_printk(YELLOW, BLACK, "USB: EP %d does not support streams. Fallback to 2.0\n", ep->ep_dci);
             return 0;
         }
@@ -1129,42 +1128,60 @@ int32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 
         }
     }
 
-    // 此时，mini_streams 已经代表了“主板、外设、期望”三方妥协后的最终并发极限！
+    // 此时，mini_streams_exp 已经代表了“主板、外设、期望”三方妥协后的最终并发极限！
 
     // ==========================================================
-    // 阶段 2：底层硬件“热升级” (Hot-Upgrade to Streams)
+    // 阶段 2：底层硬件“多流升级” (xHCI 规范强制要求的两段式提交)
     // ==========================================================
 
+    // ----------------------------------------------------------
+    // 🚀 事务一：彻底拆除旧端点 (迫使其进入 Disabled 状态)
+    // ----------------------------------------------------------
+    ctx_tx_begin(udev);
+
+    for (uint8 i = 0; i < eps_count; i++) {
+        usb_ep_t *ep = eps[i];
+        ctx_prep_drop_ep(udev, ep->ep_dci); // 仅仅打上 Drop 标记
+    }
+
+    // 提交事务一：主板收到后，会正式解除对这些端点旧物理内存的占用！
+    if (ctx_commit_tx(udev, USB_TX_CMD_CFG_EP) != 0) {
+        color_printk(RED, BLACK, "xHCI: Failed to drop endpoints for stream setup!\n");
+        return -1;
+    }
+
+    // ----------------------------------------------------------
+    // 🚀 事务二：以多流姿态原地复活 (从 Disabled 切换回 Running)
+    // ----------------------------------------------------------
     ctx_tx_begin(udev);
 
     for (uint8 i = 0; i < eps_count; i++) {
         usb_ep_t *ep = eps[i];
 
-        // 1. 过河拆桥：释放第一级火箭（usb_switch_alt_if）建好的普通单环
+        // 1. 此时硬件已经彻底放手，旧内存绝对安全了！放心 Free！
         free_ep_ring(ep);
 
-        // 2. 状态机翻页：正式赋予端点流能力！
-        ep->max_streams_exp = mini_streams_exp;
-        ep->enable_streams_exp = 1 << mini_streams_exp;
+        // 2. 状态机翻页：正式赋予端点流能力参数
+        ep->enable_streams_exp = mini_streams_exp;
 
-        // 3. 重新分配物理内存：alloc_ep_ring 现在会根据 num_streams 分配 N+1 个流环
+        // 3. 重新分配物理内存：alloc_ep_ring 会根据 enable_streams_exp 分配 2^(N+1) 个流环
         if (alloc_ep_ring(ep) != 0) {
             color_printk(RED, BLACK, "USB: OOM allocating stream rings!\n");
-            // 真实内核中这里需要复杂的反向回滚，此处从略
+            // 注意：此时端点处于 Disabled，若 OOM，整个设备只能重新复位或降级
             return -1;
         }
 
-        // 4. 将新的多流图纸塞进底层
+        // 4. 将带有流参数的新端点加入图纸 (仅仅打上 Add 标记)
         ctx_prep_add_ep(udev, ep);
     }
 
-    // 5. 终极一击：命令主板 xHCI 芯片立刻更新端点上下文，激活多流模式！
+    // 提交事务二：主板看到端点从 Disabled 醒来，且带有多流参数，完美接受！
     if (ctx_commit_tx(udev, USB_TX_CMD_CFG_EP) != 0) {
-        color_printk(RED, BLACK, "xHCI: Configure Endpoint for Streams failed!\n");
+        color_printk(RED, BLACK, "xHCI: Failed to add endpoints with streams!\n");
         return -1;
     }
 
-    return mini_streams_exp; // 返回最终谈判得出的实际可用流数
+    return mini_streams_exp; // 返回协商后的最终指数，供上层分配 Tag
 }
 
 
@@ -1515,7 +1532,7 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     ep0->max_packet_size = mps;
     ep0->average_trb_length = mps;
     ep0->max_streams_exp = 0;
-    ep0->enable_streams_exp = ep0->max_streams_exp;
+    ep0->enable_streams_exp = 0;
     alloc_ep_ring(ep0);
 
     // ---下发命令 ---

@@ -64,8 +64,8 @@ void uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     uas_data_t *uas_data = host->hostdata;
     usb_dev_t *udev = uas_data->uif->udev;
 
-    uint8 cmd_pipe    = uas_data->cmd_pipe;
-    uint8 status_pipe = uas_data->status_pipe;
+    uint8 cmd_pipe    = uas_data->cmd_ep;
+    uint8 status_pipe = uas_data->status_ep;
     uint8 data_pipe;
 
     uint16 tag;
@@ -114,7 +114,7 @@ void uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 
     // [Step B] 提交 Data Pipe (准备好 DMA 数据通道)
     if (urb_data) {
-        data_pipe = (cmnd->dir == SCSI_DIR_IN) ? uas_data->data_in_pipe : uas_data->data_out_pipe;
+        data_pipe = (cmnd->dir == SCSI_DIR_IN) ? uas_data->data_in_ep : uas_data->data_out_ep;
         usb_fill_bulk_urb(urb_data, udev, data_pipe, cmnd->data_buf, cmnd->data_len);
         urb_data->stream_id = tag; // ★ 绑定 Stream ID
 

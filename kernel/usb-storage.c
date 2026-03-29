@@ -62,43 +62,52 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
         if (!uas_data) return -1;
         uas_data->uif = uif;
 
-        uint32 mini_streams = 1 << MAX_STREAMS;
+
 
         // ==========================================================
         // 1. 解析 Pipe 端点与流能力侦测 (修复无差别误杀 Bug)
         // ==========================================================
         for (uint8 i = 0; i < 4; i++) {
             usb_ep_t *ep = &uif->cur_alt->eps[i];
-            uint8 ep_dci = ep->ep_dci;
-            uint32 streams = ep->enable_streams_exp; // 采用上一轮重构的单一事实状态
 
             usb_uas_pipe_usage_desc_t *pipe_usage_desc = ep->extras_desc;
             if (!pipe_usage_desc) continue;
 
-            // ★ 核心修复：排除 Command 端点，只对三大主力并发端点进行短板考核！动态寻找这三者的最短板
-            if (pipe_usage_desc->pipe_id != USB_UAS_PIPE_COMMAND_OUT && streams < mini_streams) {
-                mini_streams = streams;
-            }
-
             // 路由赋值
             switch (pipe_usage_desc->pipe_id) {
-                case USB_UAS_PIPE_COMMAND_OUT: uas_data->cmd_pipe = ep_dci;      break;
-                case USB_UAS_PIPE_STATUS_IN:   uas_data->status_pipe = ep_dci;   break;
-                case USB_UAS_PIPE_BULK_IN:     uas_data->data_in_pipe = ep_dci;  break;
-                case USB_UAS_PIPE_BULK_OUT:    uas_data->data_out_pipe = ep_dci; break;
+                case USB_UAS_PIPE_COMMAND_OUT: uas_data->cmd_ep = ep;      break;
+                case USB_UAS_PIPE_STATUS_IN:   uas_data->status_ep = ep;   break;
+                case USB_UAS_PIPE_BULK_IN:     uas_data->data_in_ep = ep;  break;
+                case USB_UAS_PIPE_BULK_OUT:    uas_data->data_out_ep = ep; break;
             }
         }
 
+        //重新分配流
+        usb_ep_t *streams_ep[3] = {
+            uas_data->status_ep,
+            uas_data->data_in_ep,
+            uas_data->data_out_ep,
+        };
+        uint8 streams_exp = usb_alloc_streams(uif->udev,streams_ep,3,MAX_STREAMS_EXP);
+        uint32 streams_count = 0;
         //初始化tag_bitmap
         uas_data->tag_bitmap = 0xFFFFFFFFFFFFFFFFUL;
-        uas_data->tag_bitmap <<= mini_streams;
+        if (streams_exp != 0) {
+            streams_count = (1<<streams_exp)+1;
+            uas_data->tag_bitmap <<= streams_count; //标记可用流
+            uas_data->tag_bitmap |= 1;   //标记流0是不可用的
+
+        }else {
+            streams_count = 1;
+            uas_data->tag_bitmap &= 0xFFFFFFFFFFFFFFFEUL; //无流情况仅0可以用
+        }
 
         //初始化cmd_iu和sense_iu内存池
-        uas_data->cmd_iu_pool = kmalloc(sizeof(uas_cmd_iu_t)*mini_streams);
-        uas_data->sense_iu_pool = kmalloc(sizeof(uas_sense_iu_t)*mini_streams);
+        uas_data->cmd_iu_pool = kmalloc(sizeof(uas_cmd_iu_t)*streams_count);
+        uas_data->sense_iu_pool = kmalloc(sizeof(uas_sense_iu_t)*streams_count);
 
         //创建scsi_host
-        shost = scsi_create_host(&uas_host_template,uas_data,&uif->dev,0,"uas_host");
+        //shost = scsi_create_host(&uas_host_template,uas_data,&uif->dev,0,"uas_host");
 
     } else {        //bot协议初始化流程
         //创建bot_data
@@ -117,11 +126,11 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
         }
 
         //创建scsi_host
-        shost = scsi_create_host(&bot_host_template,bot_data,&uif->dev,99,"bot_host");
+        //shost = scsi_create_host(&bot_host_template,bot_data,&uif->dev,99,"bot_host");
 
     }
 
-    scsi_add_host(shost);
+    //scsi_add_host(shost);
 }
 
 void usb_storage_remove(usb_if_t *usb_if) {

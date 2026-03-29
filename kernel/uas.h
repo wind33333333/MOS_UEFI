@@ -1,5 +1,6 @@
 #pragma once
 #include "moslib.h"
+#include "usb-core.h"
 
 #pragma pack(push,1)
 //UAS Command IU (主机 -> 设备)
@@ -62,12 +63,11 @@ typedef struct uas_data_t {
     list_head_t         lun_list;       // 挂载的逻辑单元 (LUN) 链表
     uint8               max_lun;        // 最大 LUN 编号
 
-    // --- 管道 (Pipes) ---
-    // UAS 分离了命令、状态和数据管道
-    uint8            cmd_pipe;       // Bulk OUT (发送 Command IU)
-    uint8            status_pipe;    // Bulk IN (接收 Sense IU)
-    uint8            data_in_pipe;   // Bulk IN (Read Data)
-    uint8            data_out_pipe;  // Bulk OUT (Write Data)
+    // UAS 命令、状态和数据
+    usb_ep_t         *cmd_ep;       // Bulk OUT (发送 Command IU)
+    usb_ep_t         *status_ep;    // Bulk IN (接收 Sense IU)
+    usb_ep_t         *data_in_ep;   // Bulk IN (Read Data)
+    usb_ep_t         *data_out_ep;  // Bulk OUT (Write Data)
     uas_cmd_iu_t     *cmd_iu_pool;
     uas_sense_iu_t   *sense_iu_pool;
     uint64           tag_bitmap;      // UAS Tag管理,tag号对应stream
