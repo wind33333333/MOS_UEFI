@@ -363,6 +363,9 @@ typedef struct usb_drv_t{
 
 //usb端点
 typedef struct usb_ep_t {
+    //端点上下文状态
+    xhci_ep_ctx_t *ep_ctx;
+
     //解析后的端点描述符
     uint8       ep_dci;               // 端点 0-31
     uint8       ep_type;           // 端点：控制/批量/中断/等时
@@ -387,9 +390,6 @@ typedef struct usb_ep_t {
     xhci_ring_t *rings;
     void        *streams_ctx_array;
     uint8       enable_streams_exp;  //实际启用的流指数
-
-    //端点上下文状态
-    xhci_ep_ctx_t *ep_ctx;
 
     // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
     void        *extras_desc;
