@@ -420,36 +420,43 @@ typedef struct usb_if_t {
 
 //USB设备
 typedef struct usb_dev_t{
-    uint8                           slot_id;
-    uint8                           port_id;
-    uint8                           port_speed;
-    uint16                          interrupter_target;
+    // 1. 通用总线拓扑与设备模型 (完全独立于硬件)
+    device_t                        dev;
+    struct usb_dev_t                *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
+    uint8                           parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
+    uint8                           port_id;           //
+    uint8                           port_speed;        // 速率
+    uint8                           is_hub;            // 是否为 Hub
+    uint8                           hub_num_ports;     // Hub 的端口数
+    uint8                           hub_mtt;         // 是否支持多事务翻译器
+    uint8                           hub_ttt;
+    uint16                          max_exit_latency;
+
+    // 2. 纯 USB 协议概念 (描述符与配置)
     usb_dev_desc_t                  *dev_desc;             //设备描述符
     usb_cfg_desc_t                  *config_desc;          //配置描述符
-    usb_string_desc_t               *language_desc;      //语言描述符
-    usb_string_desc_t               *manufacturer_desc;  //制造商描述符
-    usb_string_desc_t               *product_desc;       //产品型号名描述符
-    usb_string_desc_t               *serial_number_desc; //序列号描述符
-    void                            *dev_ctx;            // 设备上下文
-    xhci_input_ctx_t                *input_ctx;          // 输入上下文
-    uint32                          active_ep_map;       //当前活跃的端点图
-    usb_ep_t                        ep0;                 // 端点0，控制端点
-    usb_ep_t                        *eps[32];           // 端点0-30 驱动把接口端点挂到usb_dev,方便usb_core层管理 eps[0]不可用仅占位，eps[1] = 端点0,以此内推。
-    xhci_hcd_t                      *xhcd;              // xhci控制器
-    device_t                        dev;
-    uint8                           interfaces_count;  // 接口数量
-    usb_if_t                        *interfaces;       // 接口指针根据接口数量动态分配
+    usb_string_desc_t               *language_desc;        //语言描述符
+    usb_string_desc_t               *manufacturer_desc;    //制造商描述符
+    usb_string_desc_t               *product_desc;         //产品型号名描述符
+    usb_string_desc_t               *serial_number_desc;   //序列号描述符
+
     uint8                           *manufacturer;     // 制造商ascii字符
     uint8                           *product;          // 产品型号ascii字符
     uint8                           *serial_number;    // 序列号ascii字符
-    struct usb_dev_t                *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
-    uint8                           parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
-    uint16                          max_exit_latency;
 
-    uint8                           is_hub;          // 是否为 Hub
-    uint8                           hub_num_ports;   // Hub 的端口数
-    uint8                           hub_mtt;         // 是否支持多事务翻译器
-    uint8                           hub_ttt;
+    // 3. 逻辑端点与接口路由 (暴露给业务层驱动的资源)
+    uint8                           interfaces_count;  // 接口数量
+    usb_if_t                        *interfaces;       // 接口指针根据接口数量动态分配
+    usb_ep_t                        ep0;               // 端点0，控制端点
+    usb_ep_t                        *eps[32];          // 端点0-30 驱动把接口端点挂到usb_dev,方便usb_core层管理 eps[0]不可用仅占位，eps[1] = 端点0,以此内推。
+
+    // 4. 仅为xhci定制强绑定
+    uint8                           slot_id;
+    uint16                          interrupter_target;
+    void                            *dev_ctx;            // 设备上下文
+    xhci_input_ctx_t                *input_ctx;          // 输入上下文
+    uint32                          active_ep_map;       //当前活跃的端点图
+    xhci_hcd_t                      *xhcd;              // xhci控制器
 } usb_dev_t;
 
 /* ========================================================================
