@@ -363,21 +363,18 @@ typedef struct usb_drv_t{
 
 //usb端点
 typedef struct usb_ep_t {
-    //端点上下文状态
-    xhci_ep_ctx_t *ep_ctx;
-
     //解析后的端点描述符
-    uint8       ep_dci;               // 端点 0-31
+    uint8       ep_dci;            // 端点 0-31
     uint8       ep_type;           // 端点：控制/批量/中断/等时
-    uint16      max_packet_size;        // wMaxPacketSize 解码后的最大包长（基础值）
+    uint16      max_packet_size;   // wMaxPacketSize 解码后的最大包长（基础值）
     uint8       interval;          // bInterval（中断/等时用；bulk 通常可忽略但保留）
     uint8       cerr;
 
     //解析后的超高速端点伴随描述符
-    uint8       max_burst;         // USB3 bMaxBurst（0=1 burst；仅 SS/SSP 有意义）
+    uint8       max_burst;          // USB3 bMaxBurst（0=1 burst；仅 SS/SSP 有意义）
     uint16      max_streams_exp;    // bulk 端点支持的最大 stream 数（由 ss_comp->bmAttributes 解码，0 表示不支持 streams（BOT 一般用不到，UAS 可能需要）
     uint16      bytes_per_interval; // USB3 wBytesPerInterval（中断/等时重要）
-    uint8       mult;              // USB 2.0 High-Speed 高带宽事务 (Mult) 处理 0=1 transaction, 1=2 trans, 2=3 trans
+    uint8       mult;               // USB 2.0 High-Speed 高带宽事务 (Mult) 处理 0=1 transaction, 1=2 trans, 2=3 trans
     uint8       lsa;
     uint32      max_esit_payload;
     uint8       hid;
@@ -433,11 +430,10 @@ typedef struct usb_dev_t{
     usb_string_desc_t               *manufacturer_desc;  //制造商描述符
     usb_string_desc_t               *product_desc;       //产品型号名描述符
     usb_string_desc_t               *serial_number_desc; //序列号描述符
-    void                            *dev_ctx;           // 设备上下文
-    xhci_input_ctx_t                *input_ctx;        // 输入上下文
-    xhci_slot_ctx_t                 *slot_ctx;          //slot上下文状态
-    uint32                          active_ep_map;      //当前活跃的端点图
-    usb_ep_t                        ep0;                // 端点0，控制端点
+    void                            *dev_ctx;            // 设备上下文
+    xhci_input_ctx_t                *input_ctx;          // 输入上下文
+    uint32                          active_ep_map;       //当前活跃的端点图
+    usb_ep_t                        ep0;                 // 端点0，控制端点
     usb_ep_t                        *eps[32];           // 端点0-30 驱动把接口端点挂到usb_dev,方便usb_core层管理 eps[0]不可用仅占位，eps[1] = 端点0,以此内推。
     xhci_hcd_t                      *xhcd;              // xhci控制器
     device_t                        dev;

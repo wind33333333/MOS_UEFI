@@ -580,9 +580,6 @@ void usb_tx_add_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
     // 3.拷贝
     ctx_ep_copy(udev,new_ep);
 
-    //绑定端点上下文
-    new_ep->ep_ctx = xhci_get_dev_ctx_entry(udev,new_ep->ep_dci);
-
 }
 
 /**
@@ -1521,7 +1518,6 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     //分配设备上下文
     uint8 ctx_size = xhcd->ctx_size;
     udev->dev_ctx = kzalloc_dma(XHCI_DEVICE_CONTEXT_COUNT * ctx_size);
-    udev->slot_ctx = udev->dev_ctx;
     xhcd->dcbaap[udev->slot_id] = va_to_pa(udev->dev_ctx);
 
     //分配input上下文
