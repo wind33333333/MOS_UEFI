@@ -589,6 +589,7 @@ usb_urb_t *usb_alloc_urb(void);
 void usb_free_urb(usb_urb_t *urb);
 void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfer_buf,uint32 transfer_len);
 void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfer_buf,uint32 transfer_len);
+
 int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void *data_buf);
 int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci);
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
