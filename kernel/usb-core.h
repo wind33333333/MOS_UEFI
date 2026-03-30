@@ -490,7 +490,7 @@ typedef struct usb_urb_t {
     uint32      transfer_len;   // 期望传输总长度
 
     // 👑 核心换血：用标志位取代具体的硬件配置
-    unsigned int transfer_flags; // 传输控制组合掩码 (如 URB_SHORT_NOT_OK | URB_NO_INTERRUPT)
+    uint32      transfer_flags; // 传输控制组合掩码 (如 URB_SHORT_NOT_OK | URB_NO_INTERRUPT)
 
     // === 3. 状态与回调区 ===
     uint32      actual_length;  // [新增] 实际成功传输的字节数 (硬件回填)
