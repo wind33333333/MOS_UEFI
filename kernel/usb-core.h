@@ -388,6 +388,9 @@ typedef struct usb_ep_t {
     void        *streams_ctx_array;
     uint8       enable_streams_exp;  //实际启用的流指数
 
+    //端点上下文状态
+    xhci_ep_ctx_t *ep_ctx;
+
     // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
     void        *extras_desc;
 } usb_ep_t;
@@ -432,6 +435,7 @@ typedef struct usb_dev_t{
     usb_string_desc_t               *serial_number_desc; //序列号描述符
     void                            *dev_ctx;           // 设备上下文
     xhci_input_ctx_t                *input_ctx;        // 输入上下文
+    xhci_slot_ctx_t                 *slot_ctx;          //slot上下文状态
     uint32                          active_ep_map;      //当前活跃的端点图
     usb_ep_t                        ep0;                // 端点0，控制端点
     usb_ep_t                        *eps[32];           // 端点0-30 驱动把接口端点挂到usb_dev,方便usb_core层管理 eps[0]不可用仅占位，eps[1] = 端点0,以此内推。
@@ -500,7 +504,7 @@ typedef struct usb_urb_t {
     // void (*complete)(struct usb_urb *urb); // 未来做全异步驱动时，这里放回调函数
 } usb_urb_t;
 
-#define MAX_STREAMS_EXP 5  //最多支持流数量（2^5=32）
+#define MAX_STREAMS_EXP 6  //最多支持流数量（2^6=64）
 
 //端点转Dci
 static inline uint8 epaddr_to_epdci(uint8 ep) {

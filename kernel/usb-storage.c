@@ -57,6 +57,8 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
 
     if (uif->cur_alt->if_protocol == 0x62) {        //uas协议初始化流程
 
+        color_printk(GREEN,BLACK,"uas mode  \n");
+
         // 创建 UAS 协议私有数据
         uas_data_t *uas_data = kzalloc(sizeof(uas_data_t));
         if (!uas_data) return -1;
@@ -86,7 +88,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
             uas_data->data_in_ep,
             uas_data->data_out_ep,
         };
-        uint8 streams_exp = usb_alloc_streams(uif->udev,streams_ep,3,0);
+        uint8 streams_exp = usb_alloc_streams(uif->udev,streams_ep,3,MAX_STREAMS_EXP);
         uint16 streams_pool_size = 0;
         //初始化tag_bitmap
         uas_data->tag_bitmap = 0xFFFFFFFFFFFFFFFFUL; //bit0 对应tag1
