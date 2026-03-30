@@ -585,9 +585,9 @@ void usb_tx_add_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
 /**
  * @brief [纯内存] 准备删除一个端点
  */
-void usb_tx_drop_ep(usb_dev_t *udev, uint8 dci) {
+void usb_tx_drop_ep(usb_dev_t *udev, usb_ep_t *ep) {
     // 1. 打上死刑标记
-    udev->input_ctx->drop_context_flags |= (1 << dci);
+    udev->input_ctx->drop_context_flags |= (1 << ep->ep_dci);
 
     // 2. ★ 使用你的 O(1) 汇编魔法，算出删除后的新 context_entries
     ctx_update_entries(udev);
@@ -894,7 +894,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // ==========================================================
     if (old_alt != NULL) {
         for (uint8 i = 0; i < old_alt->ep_count; i++) {
-            usb_tx_drop_ep(udev, old_alt->eps[i].ep_dci);
+            usb_tx_drop_ep(udev, &old_alt->eps[i]);
         }
     }
 
@@ -966,7 +966,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
 
         // 3. 将主板硬件强制回滚到旧状态 (反向 Drop 新的，Add 旧的)
         usb_tx_begin(udev);
-        for (uint8 i = 0; i < new_alt->ep_count; i++) usb_tx_drop_ep(udev, new_alt->eps[i].ep_dci);
+        for (uint8 i = 0; i < new_alt->ep_count; i++) usb_tx_drop_ep(udev, &new_alt->eps[i]);
         if (old_alt != NULL) {
             for (uint8 i = 0; i < old_alt->ep_count; i++) usb_tx_add_ep(udev, &old_alt->eps[i]);
         }
@@ -1142,7 +1142,7 @@ uint32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8
 
     for (uint8 i = 0; i < eps_count; i++) {
         usb_ep_t *ep = eps[i];
-        usb_tx_drop_ep(udev, ep->ep_dci); // 仅仅打上 Drop 标记
+        usb_tx_drop_ep(udev, ep); // 仅仅打上 Drop 标记
     }
 
     // 提交事务一：主板收到后，会正式解除对这些端点旧物理内存的占用！
