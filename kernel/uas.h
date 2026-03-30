@@ -71,5 +71,6 @@ typedef struct uas_data_t {
     uas_cmd_iu_t     *cmd_iu_pool;
     uas_sense_iu_t   *sense_iu_pool;
     uint64           tag_bitmap;      // UAS Tag管理,tag号对应stream
+    uint32           max_streams;
 } uas_data_t;
 

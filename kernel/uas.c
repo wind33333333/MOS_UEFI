@@ -13,7 +13,7 @@ static inline uint16 uas_alloc_tag(uas_data_t *uas_data) {
 
 //释放一个tag
 static inline void uas_free_tag(uas_data_t *uas_data,uint16 tag) {
-    uas_data->tag_bitmap = asm_btr(uas_data->tag_bitmap,tag-1);
+    uas_data->tag_bitmap = asm_btr(uas_data->tag_bitmap,--tag);
 }
 
 /**
@@ -23,12 +23,12 @@ static inline void uas_free_tag(uas_data_t *uas_data,uint16 tag) {
  * @param sense_out [出参] 用于接收分配好的 Sense IU 指针
  * @return int16    返回分配到的 Tag (0~63)，如果池满则返回 -1
  */
-static inline int32 uas_alloc_request(uas_data_t *uas_data, uas_cmd_iu_t **cmd_out, uas_sense_iu_t **sense_out, uint16 *tag_out) {
+static inline int32 uas_alloc_request(uas_data_t *uas_data, uas_cmd_iu_t **cmd_out, uas_sense_iu_t **sense_out, uint16 *tag_out,uint16 *stream_id_out) {
 
     // 1. 极速扫描 Bitmap 寻找空闲 Tag
     uint16 tag = uas_alloc_tag(uas_data);
     //如果tag大于等于64表示没有空闲tag
-    if (tag >= (1<<MAX_STREAMS)) {
+    if (tag > uas_data->max_streams) {
         return -1;
     }
 
@@ -41,9 +41,11 @@ static inline int32 uas_alloc_request(uas_data_t *uas_data, uas_cmd_iu_t **cmd_o
     asm_mem_set(sense, 0, sizeof(uas_sense_iu_t));
 
     // 5. 通过双重指针将图纸交接给上层调用者
+    ++tag;
     *cmd_out = cmd;
     *sense_out = sense;
-    *tag_out = ++tag;  //tag从1开始所以需要+1
+    *tag_out = tag;
+    *stream_id_out = uas_data->max_streams == 0 ? 0:tag;
 
     return 0;
 }
@@ -64,14 +66,10 @@ void uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     uas_data_t *uas_data = host->hostdata;
     usb_dev_t *udev = uas_data->uif->udev;
 
-    uint8 cmd_pipe    = uas_data->cmd_ep;
-    uint8 status_pipe = uas_data->status_ep;
-    uint8 data_pipe;
-
-    uint16 tag;
+    uint16 tag,stream_id;
     uas_cmd_iu_t *cmd_iu;
     uas_sense_iu_t *sense_iu;
-    uas_alloc_request(uas_data, &cmd_iu, &sense_iu, &tag);
+    uas_alloc_request(uas_data, &cmd_iu, &sense_iu, &tag,&stream_id);
 
     // 1. 准备 UAS Command IU (命令信息单元)
     cmd_iu->tag = asm_bswap16(tag);
@@ -107,16 +105,16 @@ void uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     // ============================================================
 
     // [Step A] 提交 Status Pipe (等待设备回传 Sense/Status)
-    usb_fill_bulk_urb(urb_status, udev, status_pipe, sense_iu, UAS_MAX_SENSE_LEN);
-    urb_status->stream_id = tag; // ★ 核心：绑定 Stream ID (引擎会自动算门铃)
+    usb_fill_bulk_urb(urb_status, udev, uas_data->status_ep, sense_iu, UAS_MAX_SENSE_LEN);
+    urb_status->stream_id = stream_id; // ★ 核心：绑定 Stream ID (引擎会自动算门铃)
     // 默认不加 URB_NO_INTERRUPT，因为我们就是要等它的硬件中断来唤醒！
     if (usb_submit_urb(urb_status) < 0) goto cleanup_submit;
 
     // [Step B] 提交 Data Pipe (准备好 DMA 数据通道)
     if (urb_data) {
-        data_pipe = (cmnd->dir == SCSI_DIR_IN) ? uas_data->data_in_ep : uas_data->data_out_ep;
-        usb_fill_bulk_urb(urb_data, udev, data_pipe, cmnd->data_buf, cmnd->data_len);
-        urb_data->stream_id = tag; // ★ 绑定 Stream ID
+        usb_ep_t *data_ep = (cmnd->dir == SCSI_DIR_IN) ? uas_data->data_in_ep : uas_data->data_out_ep;
+        usb_fill_bulk_urb(urb_data, udev, data_ep, cmnd->data_buf, cmnd->data_len);
+        urb_data->stream_id = stream_id; // ★ 绑定 Stream ID
 
         // 👑 性能黑科技：数据传完不需要打扰 CPU，静音！
         urb_data->transfer_flags |= URB_NO_INTERRUPT;
@@ -124,7 +122,7 @@ void uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     }
 
     // [Step C] 提交 Command Pipe (下达开火指令)
-    usb_fill_bulk_urb(urb_cmd, udev, cmd_pipe, cmd_iu, sizeof(uas_cmd_iu_t));
+    usb_fill_bulk_urb(urb_cmd, udev, uas_data->cmd_ep, cmd_iu, sizeof(uas_cmd_iu_t));
     urb_cmd->stream_id = 0; // Command Pipe 通常不是 Stream 端点
 
     // 👑 性能黑科技：命令发完也不需要打扰 CPU，静音！
@@ -135,7 +133,7 @@ void uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     // ============================================================
     // 4. 挂起等待 (只认 Status Pipe 的最后一个 TRB 中断)
     // ============================================================
-    xhci_trb_comp_code_e comp_code = xhci_wait_transfer_comp(udev, status_pipe, urb_status->last_trb_pa);
+    xhci_trb_comp_code_e comp_code = xhci_wait_transfer_comp(udev, uas_data->status_ep->ep_dci, urb_status->last_trb_pa);
 
     // 5. 状态机解析
     if (comp_code == XHCI_COMP_SUCCESS || comp_code == XHCI_COMP_SHORT_PACKET) {

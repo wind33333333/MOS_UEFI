@@ -86,26 +86,28 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
             uas_data->data_in_ep,
             uas_data->data_out_ep,
         };
-        uint8 streams_exp = usb_alloc_streams(uif->udev,streams_ep,3,MAX_STREAMS_EXP);
-        uint32 streams_count = 0;
+        uint8 streams_exp = usb_alloc_streams(uif->udev,streams_ep,3,0);
+        uint16 streams_pool_size = 0;
         //初始化tag_bitmap
-        uas_data->tag_bitmap = 0xFFFFFFFFFFFFFFFFUL;
-        if (streams_exp != 0) {
-            streams_count = (1<<streams_exp)+1;
-            uas_data->tag_bitmap <<= streams_count; //标记可用流
-            uas_data->tag_bitmap |= 1;   //标记流0是不可用的
+        uas_data->tag_bitmap = 0xFFFFFFFFFFFFFFFFUL; //bit0 对应tag1
+        if (streams_exp > 0) {
+            uas_data->max_streams = 1<<streams_exp;
+            streams_pool_size = uas_data->max_streams;
+            uas_data->tag_bitmap <<= uas_data->max_streams; //标记可用流
 
         }else {
-            streams_count = 1;
-            uas_data->tag_bitmap &= 0xFFFFFFFFFFFFFFFEUL; //无流情况仅0可以用
+            uas_data->max_streams = 0;
+            streams_pool_size = 1;
+            uas_data->tag_bitmap <<= 1; //无流情况仅1可以用
         }
 
         //初始化cmd_iu和sense_iu内存池
-        uas_data->cmd_iu_pool = kmalloc(sizeof(uas_cmd_iu_t)*streams_count);
-        uas_data->sense_iu_pool = kmalloc(sizeof(uas_sense_iu_t)*streams_count);
+        uas_data->cmd_iu_pool = kmalloc(sizeof(uas_cmd_iu_t)*streams_pool_size);
+        uas_data->sense_iu_pool = kmalloc(sizeof(uas_sense_iu_t)*streams_pool_size);
 
         //创建scsi_host
-        //shost = scsi_create_host(&uas_host_template,uas_data,&uif->dev,0,"uas_host");
+        shost = scsi_create_host(&uas_host_template,uas_data,&uif->dev,0,"uas_host");
+        scsi_add_host(shost);
 
     } else {        //bot协议初始化流程
         //创建bot_data

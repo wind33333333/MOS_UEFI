@@ -201,7 +201,7 @@ static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_ring_t *ri
 
     uint64 current_pa = va_to_pa(urb->transfer_buf);
 
-    uint16 max_packet = urb->udev->eps[urb->ep_dci]->max_packet_size;
+    uint16 max_packet = urb->ep->max_packet_size;
     if (max_packet == 0) max_packet = 512;
 
     uint8 needs_zlp = (urb->transfer_flags & URB_ZERO_PACKET) &&
@@ -267,12 +267,11 @@ int32 usb_submit_urb(usb_urb_t *urb) {
     // ==========================================================
     xhci_hcd_t  *xhcd    = urb->udev->xhcd;
     uint8       slot_id  = urb->udev->slot_id;
-    uint32      dci      = urb->ep_dci;
-    usb_ep_t    *ep = urb->udev->eps[dci];
+    usb_ep_t    *ep = urb->ep;
     xhci_ring_t *ring = &ep->rings[urb->stream_id];
 
     // 计算真实的敲门铃目标值 (DCI + Stream ID 偏移)
-    uint32 db_target = dci | ((uint32)urb->stream_id << 16);
+    uint32 db_target = ep->ep_dci | ((uint32)urb->stream_id << 16);
 
     // 👑 标志位翻译哲学：默认开启中断，除非显式指定了 URB_NO_INTERRUPT
     uint8 wants_ioc = !(urb->transfer_flags & URB_NO_INTERRUPT);
@@ -370,12 +369,12 @@ void usb_free_urb(usb_urb_t *urb) {
  */
 void usb_fill_control_urb(usb_urb_t *urb,
                                         usb_dev_t *udev,
-                                        uint8 ep_dci,
+                                        usb_ep_t *ep,
                                         usb_setup_packet_t *setup_packet,
                                         void *transfer_buf,
                                         uint32 transfer_len) {
     urb->udev         = udev;
-    urb->ep_dci       = ep_dci;       // 控制端点通常传 1
+    urb->ep           = ep;       // 控制端点通常传 1
     urb->stream_id    = 0;            // 控制传输没有 Stream
     urb->setup_packet = setup_packet; // 必填：8字节协议头
     urb->transfer_buf = transfer_buf;
@@ -392,11 +391,11 @@ void usb_fill_control_urb(usb_urb_t *urb,
  */
 void usb_fill_bulk_urb(usb_urb_t *urb,
                                      usb_dev_t *udev,
-                                     uint8 ep_dci,
+                                     usb_ep_t *ep,
                                      void *transfer_buf,
                                      uint32 transfer_len) {
     urb->udev         = udev;
-    urb->ep_dci       = ep_dci;
+    urb->ep           = ep;
     urb->stream_id    = 0;
     urb->setup_packet = NULL;         // 👑 核心标志：批量传输绝对没有 Setup 包
     urb->transfer_buf = transfer_buf;
@@ -415,7 +414,7 @@ int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void 
     if (!urb) return -1;
 
     // 2. 使用填单助手，一键压制参数
-    usb_fill_control_urb(urb, udev, 1, setup_pkg, data_buf, setup_pkg->length);
+    usb_fill_control_urb(urb, udev, udev->eps[1], setup_pkg, data_buf, setup_pkg->length);
 
     // 3. 将面单抛给底层调度引擎
     if (usb_submit_urb(urb) < 0) {
@@ -1097,8 +1096,9 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
  * @param expected_streams_exp 驱动期望申请的流数量 (UAS 一般期望是 8，即 256 流)
  * @return int32           成功返回实际分配的流数量，失败或不支持返回 <= 0
  */
-int32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp) {
+uint32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp) {
     if (!udev || !eps || eps_count == 0) return -1;
+    if (expected_streams_exp == 0) return 0;
 
     // ==========================================================
     // 阶段 1：疯狂的“最短板”算计 (The Short-Board Evaluation)
@@ -1184,6 +1184,8 @@ int32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 
     return mini_streams_exp; // 返回协商后的最终指数，供上层分配 Tag
 }
 
+
+//===================================================== 解析描述符非配资源 ============================================
 
 //给备用接口的所有端点分配环
 static inline int32 enable_alt_if (usb_if_alt_t *if_alt) {
@@ -1314,7 +1316,7 @@ static inline void ss_desc_params(usb_ep_t *cur_ep, usb_ss_comp_desc_t *ss_desc)
 /**
  * @brief [工业级 O(N) 单次扫描] 解析 USB 接口下的所有端点及其伴随描述符
  */
-static inline int32 alt_if_parse(usb_if_alt_t *if_alt) {
+static inline int32 alt_if_desc_parse(usb_if_alt_t *if_alt) {
     usb_ep_t *cur_ep = NULL;
     usb_desc_head *desc_head = usb_get_next_desc(&if_alt->if_desc->head);
     uint8 ep_idx = 0;
@@ -1409,7 +1411,7 @@ static inline int32 alloc_if(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_i
  * @param usb_if_map 接口映射缓存表
  * @return 0 表示全线贯通成功，-1 表示设备拒绝激活
  */
-static inline int32 if_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
+static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
     uint8 fill_idx[256];
     asm_mem_set(fill_idx, 0, sizeof(fill_idx)); // 用于记录每个接口当前填充到了第几个 alt
 
@@ -1440,7 +1442,7 @@ static inline int32 if_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
             // 为该 alt 分配端点内存，并触发底层解析引擎
             if (if_alt->ep_count > 0) {
                 if_alt->eps = kzalloc(if_alt->ep_count * sizeof(usb_ep_t));
-                alt_if_parse(if_alt);
+                alt_if_desc_parse(if_alt);
             }
         }
         if_desc = (usb_if_desc_t *)usb_get_next_desc(&if_desc->head);
@@ -1494,7 +1496,7 @@ static inline int32 usb_if_create(usb_dev_t *udev) {
     // =======================================================
     // 阶段 2：填血肉 (解析接口与端点图纸)
     // =======================================================
-    if_parse(udev, usb_if_map);
+    if_desc_parse(udev, usb_if_map);
 
 
     return 0; // 接口树构建完毕，成功交接给业务层驱动！
