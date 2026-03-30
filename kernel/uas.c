@@ -1,5 +1,4 @@
 #include  "uas.h"
-
 #include "printk.h"
 #include  "usb-core.h"
 #include "scsi.h"

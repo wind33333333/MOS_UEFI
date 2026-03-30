@@ -36,7 +36,7 @@ ${BUILD}/kernel.elf: ${BUILD}/head.o ${BUILD}/main.o ${BUILD}/printk.o ${BUILD}/
 				 ${BUILD}/slub.o ${BUILD}/kernel_page_table.o ${BUILD}/vmalloc.o ${BUILD}/rbtree.o \
 				 ${BUILD}/uefi.o ${BUILD}/bus.o ${BUILD}/device.o $(BUILD)/driver.o ${BUILD}/pcie.o \
 				 ${BUILD}/xhci.o ${BUILD}/usb-core.o ${BUILD}/scsi.o ${BUILD}/usb-storage.o \
-				 ${BUILD}/uas.o
+				 ${BUILD}/bot.o	${BUILD}/uas.o
 	ld -b elf64-x86-64 -z muldefs -o $@ $^ -T $(KERNEL)/Kernel.lds
 
 $(BUILD)/%.o: $(BUILD)/%.s

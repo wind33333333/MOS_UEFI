@@ -41,13 +41,13 @@ typedef struct bot_data_t {
     // --- SCSI / LUN 管理 ---
     struct scsi_device_t *sdev;
 
-    list_head_t         lun_list;       // 挂载的逻辑单元 (LUN) 链表
-    uint8               max_lun;        // 最大 LUN 编号
+    list_head_t       lun_list;       // 挂载的逻辑单元 (LUN) 链表
+    uint8             max_lun;        // 最大 LUN 编号
 
     // --- 管道 (Pipes) ---
-    // BOT 只有两个管道，数据和状态共用
-    uint8             pipe_in;        // Bulk IN (Data Read + CSW)
-    uint8             pipe_out;       // Bulk OUT (CBW + Data Write)
+    // BOT 只有两个端点，命令/数据和状态共用
+    struct usb_ep_t   *in_ep;        // Bulk IN (Data Read + CSW)
+    struct usb_ep_t   *out_ep;       // Bulk OUT (CBW + Data Write)
     uint32            tag;
 
     // --- 协议缓冲区 (DMA Coherent) ---

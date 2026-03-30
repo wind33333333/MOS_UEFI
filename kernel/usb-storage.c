@@ -88,7 +88,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
             uas_data->data_in_ep,
             uas_data->data_out_ep,
         };
-        uint8 streams_exp = usb_alloc_streams(uif->udev,streams_ep,3,0);
+        uint8 streams_exp = usb_alloc_streams(uif->udev,streams_ep,3,MAX_STREAMS_EXP);
         uint16 streams_pool_size = 0;
         //初始化tag_bitmap
         uas_data->tag_bitmap = 0xFFFFFFFFFFFFFFFFUL; //bit0 对应tag1
@@ -109,7 +109,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
 
         //创建scsi_host
         shost = scsi_create_host(&uas_host_template,uas_data,&uif->dev,0,"uas_host");
-        scsi_add_host(shost);
+
 
     } else {        //bot协议初始化流程
         //创建bot_data
@@ -117,22 +117,23 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
         bot_data->uif = uif;
         bot_data->cbw = kzalloc_dma(sizeof(bot_csw_t));
         bot_data->csw = kzalloc_dma(sizeof(bot_csw_t));
+        bot_data->tag = 0;
+
         for (uint8 i = 0; i < 2; i++) {
             usb_ep_t *ep = &uif->cur_alt->eps[i];
-            uint8 ep_dci = ep->ep_dci;
-            if (ep_dci & 1) {
-                bot_data->pipe_in = ep_dci;
+            if (ep->ep_dci & 1) {
+                bot_data->in_ep = ep;
             } else {
-                bot_data->pipe_out = ep_dci;
+                bot_data->out_ep = ep;
             }
         }
 
         //创建scsi_host
-        //shost = scsi_create_host(&bot_host_template,bot_data,&uif->dev,99,"bot_host");
+        shost = scsi_create_host(&bot_host_template,bot_data,&uif->dev,99,"bot_host");
 
     }
 
-    //scsi_add_host(shost);
+    scsi_add_host(shost);
 }
 
 void usb_storage_remove(usb_if_t *usb_if) {

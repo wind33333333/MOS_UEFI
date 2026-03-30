@@ -63,13 +63,14 @@ void bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     bot_data_t *bot_data = host->hostdata;
     usb_dev_t *udev = bot_data->uif->udev;
 
+    usb_ep_t *in_ep = bot_data->in_ep;
+    usb_ep_t *out_ep = bot_data->out_ep;
+
     bot_cbw_t *cbw = bot_data->cbw;
     bot_csw_t *csw = bot_data->csw;
     asm_mem_set(bot_data->cbw, 0, sizeof(bot_cbw_t));
     asm_mem_set(bot_data->csw, 0, sizeof(bot_csw_t));
 
-    uint8 pipe_out = bot_data->pipe_out;
-    uint8 pipe_in  = bot_data->pipe_in;
     xhci_trb_comp_code_e comp_code;
 
     // 1. 生成 Tag
@@ -95,17 +96,17 @@ void bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     asm_mem_cpy(cmnd->scsi_cdb, cbw->scsi_cdb, cmnd->scsi_cdb_len);
 
     // 👑 填单并发车：使用内联助手自动打包参数
-    usb_fill_bulk_urb(urb, udev, pipe_out, cbw, sizeof(bot_cbw_t));
+    usb_fill_bulk_urb(urb, udev, out_ep, cbw, sizeof(bot_cbw_t));
     if (usb_submit_urb(urb) < 0) {
         cmnd->status = -1;
         goto cleanup;
     }
 
     // 等待 CBW 发送完成 (利用 URB 回填的 last_trb_pa)
-    comp_code = xhci_wait_transfer_comp(udev, pipe_out, urb->last_trb_pa);
+    comp_code = xhci_wait_transfer_comp(udev, out_ep->ep_dci, urb->last_trb_pa);
     if (comp_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "BOT Stage 1: CBW Failed (%#x). Resetting...\n", comp_code);
-        bot_recovery_reset(udev, bot_data->uif->if_num, pipe_in, pipe_out);
+        bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
         cmnd->status = -1;
         goto cleanup;
     }
@@ -114,16 +115,16 @@ void bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     // Stage 2: 数据传输 (Data Stage) - 可选
     // ============================================================
     if (cmnd->data_buf && cmnd->data_len) {
-        uint8 data_pipe = (cmnd->dir == SCSI_DIR_IN) ? pipe_in : pipe_out;
+        usb_ep_t *ep = (cmnd->dir == SCSI_DIR_IN) ? in_ep : out_ep;
 
         // 👑 原地复用 URB，重新填单，之前的 flag 和状态会被安全重置
-        usb_fill_bulk_urb(urb, udev, data_pipe, cmnd->data_buf, cmnd->data_len);
+        usb_fill_bulk_urb(urb, udev, ep, cmnd->data_buf, cmnd->data_len);
         if (usb_submit_urb(urb) < 0) {
             cmnd->status = -2;
             goto cleanup;
         }
 
-        comp_code = xhci_wait_transfer_comp(udev, data_pipe, urb->last_trb_pa);
+        comp_code = xhci_wait_transfer_comp(udev, ep->ep_dci, urb->last_trb_pa);
         if (comp_code != XHCI_COMP_SUCCESS) {
             if (comp_code == XHCI_COMP_SHORT_PACKET) {
                 color_printk(YELLOW, BLACK, "BOT Stage 2: Short Packet (Normal).\n");
@@ -132,7 +133,7 @@ void bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
                 //xhci_recover_stalled_endpoint(udev, data_pipe);
             } else {
                 color_printk(RED, BLACK, "BOT Stage 2: Fatal Data Error (%#x).\n", comp_code);
-                bot_recovery_reset(udev, bot_data->uif->if_num, pipe_in, pipe_out);
+                bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
                 cmnd->status = -2;
                 goto cleanup;
             }
@@ -145,13 +146,13 @@ void bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     uint8 csw_retry_count = 0;
 retry_csw:
     // 👑 再次复用 URB，一键下达接收指令
-    usb_fill_bulk_urb(urb, udev, pipe_in, csw, sizeof(bot_csw_t));
+    usb_fill_bulk_urb(urb, udev, in_ep, csw, sizeof(bot_csw_t));
     if (usb_submit_urb(urb) < 0) {
         cmnd->status = -3;
         goto cleanup;
     }
 
-    comp_code = xhci_wait_transfer_comp(udev, pipe_in, urb->last_trb_pa);
+    comp_code = xhci_wait_transfer_comp(udev, in_ep->ep_dci, urb->last_trb_pa);
 
     if (comp_code == XHCI_COMP_STALL_ERROR && csw_retry_count == 0) {
         color_printk(YELLOW, BLACK, "BOT Stage 3: CSW STALL. Clearing and retrying...\n");
@@ -161,7 +162,7 @@ retry_csw:
     }
     else if (comp_code != XHCI_COMP_SUCCESS) {
         color_printk(RED, BLACK, "BOT Stage 3: CSW Fetch Failed (%#x). Resetting...\n", comp_code);
-        bot_recovery_reset(udev, bot_data->uif->if_num, pipe_in, pipe_out);
+        bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
         cmnd->status = -3;
         goto cleanup;
     }
@@ -171,7 +172,7 @@ retry_csw:
     // ============================================================
     if (csw->signature != BOT_CSW_SIGNATURE || csw->tag != tag) {
         color_printk(RED, BLACK, "BOT: CSW Signature/Tag Mismatch! Phase Error.\n");
-        bot_recovery_reset(udev, bot_data->uif->if_num, pipe_in, pipe_out);
+        bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
         cmnd->status = -4;
         goto cleanup;
     }
@@ -186,7 +187,7 @@ retry_csw:
             break;
         case BOT_CSW_PHASE:
             color_printk(RED, BLACK, "BOT: CSW Reported Phase Error! Resetting...\n");
-            bot_recovery_reset(udev, bot_data->uif->if_num, pipe_in, pipe_out);
+            bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
             cmnd->status = -5;
             break;
         default:
