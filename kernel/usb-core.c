@@ -442,65 +442,87 @@ int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void 
  */
 int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci) {
     // 2. 组装 8 字节的标准 Setup 请求包
-    usb_setup_packet_t req_pkg = {0};
-    req_pkg.recipient = USB_RECIP_ENDPOINT;
-    req_pkg.req_type = USB_REQ_TYPE_STANDARD;
-    req_pkg.dtd = USB_DIR_OUT;
-    req_pkg.request = USB_REQ_CLEAR_FEATURE;
-    req_pkg.value = USB_FEATURE_ENDPOINT_HALT;
-    req_pkg.index = epdci_to_epaddr(ep_dci);
-    req_pkg.length = 0;
+    usb_setup_packet_t setup_pkg = {0};
+    setup_pkg.recipient = USB_RECIP_ENDPOINT;
+    setup_pkg.req_type = USB_REQ_TYPE_STANDARD;
+    setup_pkg.dtd = USB_DIR_OUT;
+    setup_pkg.request = USB_REQ_CLEAR_FEATURE;
+    setup_pkg.value = USB_FEATURE_ENDPOINT_HALT;
+    setup_pkg.index = epdci_to_epaddr(ep_dci);
+    setup_pkg.length = 0;
 
-    usb_control_msg_sync(udev,&req_pkg,NULL);
+    usb_control_msg_sync(udev,&setup_pkg,NULL);
 
     return 0;
 }
 
+
+//获取bot协议设备最大lun数量
+uint8 usb_get_bot_max_lun(usb_dev_t *udev,uint8 if_num) {
+    usb_setup_packet_t setup_pkg = {0};
+    setup_pkg.recipient = USB_RECIP_INTERFACE;
+    setup_pkg.req_type = USB_REQ_TYPE_CLASS;
+    setup_pkg.dtd = USB_DIR_IN;
+    setup_pkg.request = BOT_REQ_GET_MAX_LUN;
+    setup_pkg.value = 0;
+    setup_pkg.index = if_num;
+    setup_pkg.length = 1;
+
+    uint8 lun_count = 0;
+    uint8 *max_lun = kzalloc_dma(64);
+    usb_control_msg_sync(udev,&setup_pkg,max_lun);
+    lun_count = *max_lun;
+    lun_count++;
+    kfree(max_lun);
+    return  lun_count;
+}
+
+
 //获取描述符
 int32 usb_get_desc(usb_dev_t *udev,void *desc_buf,uint16 length,usb_desc_type_e desc_type,uint8 desc_idx, uint16 req_idx) {
-    usb_setup_packet_t req_pkg = {0};
+    usb_setup_packet_t setup_pkg = {0};
 
     // 注意：获取描述符的目标并不总是 Device！
     // 如果获取的是普通描述符，发给 Device；如果是接口特定的(如 HID)，必须发给 Interface！
-    req_pkg.recipient = desc_type == USB_DESC_TYPE_HID_REPORT ? USB_RECIP_INTERFACE : USB_RECIP_DEVICE;
-    req_pkg.req_type = USB_REQ_TYPE_STANDARD;
-    req_pkg.dtd = USB_DIR_IN;
-    req_pkg.request = USB_REQ_GET_DESCRIPTOR;
-    req_pkg.value = desc_type<<8 | desc_idx;
-    req_pkg.index = req_idx;
-    req_pkg.length = length;
+    setup_pkg.recipient = desc_type == USB_DESC_TYPE_HID_REPORT ? USB_RECIP_INTERFACE : USB_RECIP_DEVICE;
+    setup_pkg.req_type = USB_REQ_TYPE_STANDARD;
+    setup_pkg.dtd = USB_DIR_IN;
+    setup_pkg.request = USB_REQ_GET_DESCRIPTOR;
+    setup_pkg.value = desc_type<<8 | desc_idx;
+    setup_pkg.index = req_idx;
+    setup_pkg.length = length;
 
-    usb_control_msg_sync(udev,&req_pkg,desc_buf);
+    usb_control_msg_sync(udev,&setup_pkg,desc_buf);
     return 0;
 }
 
 //激活配置
 int usb_set_cfg(usb_dev_t *udev,uint8 cfg_value) {
-    usb_setup_packet_t req_pkg = {0};
-    req_pkg.recipient = USB_RECIP_DEVICE;
-    req_pkg.req_type = USB_REQ_TYPE_STANDARD;
-    req_pkg.dtd = USB_DIR_OUT;
-    req_pkg.request = USB_REQ_SET_CONFIGURATION;
-    req_pkg.value = cfg_value;
-    req_pkg.index = 0;
-    req_pkg.length = 0;
+    usb_setup_packet_t setup_pkg = {0};
+    setup_pkg.recipient = USB_RECIP_DEVICE;
+    setup_pkg.req_type = USB_REQ_TYPE_STANDARD;
+    setup_pkg.dtd = USB_DIR_OUT;
+    setup_pkg.request = USB_REQ_SET_CONFIGURATION;
+    setup_pkg.value = cfg_value;
+    setup_pkg.index = 0;
+    setup_pkg.length = 0;
 
-    usb_control_msg_sync(udev,&req_pkg,NULL);
+    usb_control_msg_sync(udev,&setup_pkg,NULL);
     return 0;
 }
 
 //激活接口
 int usb_set_if(usb_dev_t *udev,uint8 if_num,uint8 alt_num) {
-    usb_setup_packet_t req_pkg = {0};
-    req_pkg.recipient = USB_RECIP_INTERFACE;
-    req_pkg.req_type = USB_REQ_TYPE_STANDARD;
-    req_pkg.dtd = USB_DIR_OUT;
-    req_pkg.request = USB_REQ_SET_INTERFACE;
-    req_pkg.value = alt_num;
-    req_pkg.index = if_num;
-    req_pkg.length = 0;
+    usb_setup_packet_t setup_pkg = {0};
+    setup_pkg.recipient = USB_RECIP_INTERFACE;
+    setup_pkg.req_type = USB_REQ_TYPE_STANDARD;
+    setup_pkg.dtd = USB_DIR_OUT;
+    setup_pkg.request = USB_REQ_SET_INTERFACE;
+    setup_pkg.value = alt_num;
+    setup_pkg.index = if_num;
+    setup_pkg.length = 0;
 
-    usb_control_msg_sync(udev,&req_pkg,NULL);
+    usb_control_msg_sync(udev,&setup_pkg,NULL);
     return 0;
 }
 

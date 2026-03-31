@@ -55,6 +55,7 @@ void bot_recovery_reset(usb_dev_t *udev,uint8 if_num, uint8 pipe_in, uint8 pipe_
     color_printk(GREEN, BLACK, "BOT: Reset Request!\n");
 }
 
+
 /**
  * BOT 协议同步发送函数
  * 逻辑：CBW -> Data(可选) -> CSW

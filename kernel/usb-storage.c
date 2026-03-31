@@ -6,37 +6,9 @@
 #include "uas.h"
 #include "bot.h"
 
-//测试逻辑单元是否有效
-/*
-
-//获取最大逻辑单元
-static inline uint8 bot_msc_read_max_lun(xhcd_t *xhcd, usb_dev_t *usb_dev,
-                                         usb_bot_msc_t *bot_msc) {
-    trb_t trb;
-    setup_stage_trb(&trb, setup_stage_interface, setup_stage_calss, setup_stage_in, usb_req_get_max_lun, 0, 0,
-                    bot_msc->interface_num,in_data_stage);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-
-    uint8 *max_lun = kzalloc(64);
-    data_stage_trb(&trb, va_to_pa(max_lun), 1, trb_in);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-
-    status_stage_trb(&trb, enable_ioc, trb_out);
-    xhci_ring_enqueue(&usb_dev->ep0, &trb);
-
-    xhci_ring_doorbell(xhcd, usb_dev->slot_id, 1);
-    timing();
-    xhci_ering_dequeue(xhcd, &trb);
-
-    uint8 lun_count = ++*max_lun;
-    kfree(max_lun);
-    return lun_count;
-}
-*/
 
 extern scsi_host_template_t uas_host_template;
 extern scsi_host_template_t bot_host_template;
-
 
 
 //u盘驱动程序
@@ -128,8 +100,10 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
             }
         }
 
+        uint8 max_lun = usb_get_bot_max_lun(uif->udev,uif->if_num);
+
         //创建scsi_host
-        shost = scsi_create_host(&bot_host_template,bot_data,&uif->dev,99,"bot_host");
+        shost = scsi_create_host(&bot_host_template,bot_data,&uif->dev,max_lun,"bot_host");
 
     }
 
