@@ -353,15 +353,18 @@ static void scsi_probe_lun(scsi_host_t *shost) {
     // 4. 发送 TEST UNIT READY (消费掉刚上电的 Unit Attention)
     //scsi_test_unit_ready(sdev);
 
+    int32 status;
 
-    //探测lun
-    scsi_report_luns_t *report_luns = kzalloc(SCSI_LUN_BUF_LEN);
-    int32 status = scsi_report_luns(sdev,report_luns);
-    if (status == 0 && report_luns->lun_list_length) {
-        shost->max_lun = asm_bswap32(report_luns->lun_list_length);
+    //如果shost中的max lun数量为0则发送scsi命令探测lun数量
+    if (shost->max_lun == 0) {
+        scsi_report_luns_t *report_luns = kzalloc(SCSI_LUN_BUF_LEN);
+        status = scsi_report_luns(sdev,report_luns);
+        if (status == 0 && report_luns->lun_list_length) {
+            shost->max_lun = asm_bswap32(report_luns->lun_list_length);
+        }
+        kfree(report_luns);
+        color_printk(GREEN,BLACK,"%s max lun:%d    \n",shost->dev.name,shost->max_lun);
     }
-    kfree(report_luns);
-    color_printk(GREEN,BLACK,"%s max lun:%d    \n",shost->dev.name,shost->max_lun);
 
     //while (1);
 
