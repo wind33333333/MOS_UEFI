@@ -592,8 +592,6 @@ int usb_bus_match(device_t* dev,driver_t* drv);
 int usb_bus_probe(device_t* dev);
 void usb_bus_remove(device_t* dev);
 
-
-xhci_trb_comp_code_e xhci_wait_transfer_comp (usb_dev_t *udev, uint8 ep_dci, uint64 wait_trb_pa);
 int32 usb_submit_urb(usb_urb_t *urb);
 usb_urb_t *usb_alloc_urb(void);
 void usb_free_urb(usb_urb_t *urb);

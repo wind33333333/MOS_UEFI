@@ -6,6 +6,8 @@
 #include "driver.h"
 #include "vmalloc.h"
 #include "usb-core.h"
+#include "errno.h"
+
 
 //命令环/传输环入队列
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
@@ -158,184 +160,246 @@ xhci_trb_comp_code_e xhci_wait_for_event(
     return XHCI_COMP_TIMEOUT;
 }
 
+
+
 /**
- * @brief 处理 xHCI 通用的完成码 (命令环和传输环共享的系统级状态)
- * @param comp_code  要检查的完成码
- * @param trb_pa     出事的 TRB 物理地址 (用于日志定位)
- * @return uint8_t   如果命中了通用码返回 1 (true)，否则返回 0 (false)
+ * @brief 将 xHCI 硬件完成码转换为人类可读的字符串 (全量 37 种完成码全覆盖)
  */
-uint8 xhci_handle_common_error(xhci_trb_comp_code_e comp_code, uint64 trb_pa) {
-    // 2. 拦截并处理所有的“通用级/系统级”硬件崩溃
+static const char* xhci_get_comp_code_str(xhci_trb_comp_code_e comp_code) {
     switch (comp_code) {
+        // ==========================================
+        // 1. 通用与系统级事件
+        // ==========================================
+        case XHCI_COMP_TIMEOUT:                      return "Hardware Timeout";
+        case XHCI_COMP_INVALID:                      return "Invalid TRB/State";
+        case XHCI_COMP_SUCCESS:                      return "Success";
+        case XHCI_COMP_TRB_ERROR:                    return "TRB Format Error";
+        case XHCI_COMP_RESOURCE_ERROR:               return "xHC Resource Exhausted";
+        case XHCI_COMP_VF_EVENT_RING_FULL_ERROR:     return "VF Event Ring Full";
+        case XHCI_COMP_EVENT_RING_FULL_ERROR:        return "Event Ring Full";
+        case XHCI_COMP_EVENT_LOST_ERROR:             return "Event Lost (Ring Overflow)";
+        case XHCI_COMP_UNDEFINED_ERROR:              return "Undefined Fatal Hardware Error";
+
+        // ==========================================
+        // 2. 命令事件专属
+        // ==========================================
+        case XHCI_COMP_BANDWIDTH_ERROR:              return "Bandwidth Error";
+        case XHCI_COMP_NO_SLOTS_AVAILABLE_ERROR:     return "No Slots Available";
+        case XHCI_COMP_INVALID_STREAM_TYPE_ERROR:    return "Invalid Stream Type";
+        case XHCI_COMP_SLOT_NOT_ENABLED_ERROR:       return "Slot Not Enabled";
+        case XHCI_COMP_ENDPOINT_NOT_ENABLED_ERROR:   return "Endpoint Not Enabled";
+        case XHCI_COMP_PARAMETER_ERROR:              return "Context Parameter Error";
+        case XHCI_COMP_CONTEXT_STATE_ERROR:          return "Context State Error";
+        case XHCI_COMP_COMMAND_RING_STOPPED:         return "Command Ring Stopped";
+        case XHCI_COMP_COMMAND_ABORTED:              return "Command Aborted";
+        case XHCI_COMP_SECONDARY_BANDWIDTH_ERROR:    return "Secondary Bandwidth Error";
+
+        // ==========================================
+        // 3. 传输事件专属
+        // ==========================================
+        case XHCI_COMP_DATA_BUFFER_ERROR:            return "Data Buffer Error (DMA)";
+        case XHCI_COMP_BABBLE_ERROR:                 return "Babble Error (Device going crazy)";
+        case XHCI_COMP_USB_TRANSACTION_ERROR:        return "USB Transaction Error (CRC/Timeout)";
+        case XHCI_COMP_STALL_ERROR:                  return "STALL (Device Rejected)";
+        case XHCI_COMP_SHORT_PACKET:                 return "Short Packet";
+        case XHCI_COMP_RING_UNDERRUN:                return "Isoch Ring Underrun";
+        case XHCI_COMP_RING_OVERRUN:                 return "Isoch Ring Overrun";
+        case XHCI_COMP_BANDWIDTH_OVERRUN_ERROR:      return "Bandwidth Overrun";
+        case XHCI_COMP_NO_PING_RESPONSE_ERROR:       return "No Ping Response (USB 3.0 Link)";
+        case XHCI_COMP_INCOMPATIBLE_DEVICE_ERROR:    return "Incompatible Device";
+        case XHCI_COMP_MISSED_SERVICE_ERROR:         return "Missed Isoch Service";
+        case XHCI_COMP_STOPPED:                      return "Transfer Stopped";
+        case XHCI_COMP_STOPPED_LENGTH_INVALID:       return "Transfer Stopped (Length Invalid)";
+        case XHCI_COMP_STOPPED_SHORT_PACKET:         return "Transfer Stopped (Short Packet)";
+        case XHCI_COMP_MAX_EXIT_LATENCY_TOO_LARGE:   return "Max Exit Latency Too Large (U1/U2 Wake)";
+        case XHCI_COMP_ISOCH_BUFFER_OVERRUN:         return "Isoch Buffer Overrun";
+        case XHCI_COMP_INVALID_STREAM_ID_ERROR:      return "Invalid Stream ID (UAS)";
+        case XHCI_COMP_SPLIT_TRANSACTION_ERROR:      return "Split Transaction Error (Hub)";
+
+        default:                                     return "Unknown/Unhandled Error";
+    }
+}
+
+/**
+ * @brief [核心映射] 将 xHCI 硬件方言翻译为 POSIX 全宇宙通用错误码 (全量覆盖)
+ */
+static int xhci_translate_error(xhci_trb_comp_code_e comp_code) {
+    switch (comp_code) {
+        // ------------------------------------------------------------------
+        // [正常放行类]
+        // ------------------------------------------------------------------
+        case XHCI_COMP_SUCCESS:
+        case XHCI_COMP_SHORT_PACKET:
+            return 0;                 // 完美成功
+
+        // ------------------------------------------------------------------
+        // [管道与连接超时类]
+        // ------------------------------------------------------------------
+        case XHCI_COMP_STALL_ERROR:
+            return -EPIPE;            // (32) Broken pipe：管道破裂 (设备明确拒绝)
+
         case XHCI_COMP_TIMEOUT:
-            color_printk(RED, BLACK, "[xHCI General Error] TIMEOUT (-1) at PA %#lx: Hardware hang or event lost.\n",
-                         trb_pa);
-            return 1;
+        case XHCI_COMP_NO_PING_RESPONSE_ERROR:
+        case XHCI_COMP_MAX_EXIT_LATENCY_TOO_LARGE:
+            return -ETIMEDOUT;        // (110) Connection timed out：硬件通信或唤醒超时
 
-        case XHCI_COMP_TRB_ERROR:
-            color_printk(
-                RED, BLACK, "[xHCI General Error] TRB Error (5) at PA %#lx: Invalid TRB format (Chain/Type wrong).\n",
-                trb_pa);
-            return 1;
+        // ------------------------------------------------------------------
+        // [参数与状态非法类] (写代码时最容易踩的坑)
+        // ------------------------------------------------------------------
+        case XHCI_COMP_PARAMETER_ERROR:
+        case XHCI_COMP_INVALID_STREAM_TYPE_ERROR:
+        case XHCI_COMP_INVALID_STREAM_ID_ERROR:
+        case XHCI_COMP_CONTEXT_STATE_ERROR:
+            return -EINVAL;           // (22) Invalid argument：图纸参数填错，或状态机不合规
 
+        // ------------------------------------------------------------------
+        // [内存、资源与缓冲区耗尽类]
+        // ------------------------------------------------------------------
         case XHCI_COMP_RESOURCE_ERROR:
-            color_printk(
-                RED, BLACK,
-                "[xHCI General Error] Resource Error (7): Controller internal memory/resources exhausted.\n");
-            return 1;
-
-        case XHCI_COMP_VF_EVENT_RING_FULL_ERROR:
-            color_printk(RED, BLACK, "[xHCI General Error] VF Event Ring Full (16): SR-IOV ring overflow.\n");
-            return 1;
+        case XHCI_COMP_NO_SLOTS_AVAILABLE_ERROR:
+            return -ENOMEM;           // (12) Out of memory：xHCI 内部表项耗尽
 
         case XHCI_COMP_EVENT_RING_FULL_ERROR:
-            color_printk(RED, BLACK, "[xHCI General Error] Event Ring Full (21): OS interrupt handling too slow!\n");
-            return 1;
+        case XHCI_COMP_VF_EVENT_RING_FULL_ERROR:
+        case XHCI_COMP_RING_UNDERRUN:
+        case XHCI_COMP_RING_OVERRUN:
+        case XHCI_COMP_ISOCH_BUFFER_OVERRUN:
+            return -ENOBUFS;          // (105) No buffer space available：环爆了或溢出
 
+        // ------------------------------------------------------------------
+        // [设备与端点缺失类]
+        // ------------------------------------------------------------------
+        case XHCI_COMP_ENDPOINT_NOT_ENABLED_ERROR:
+        case XHCI_COMP_SLOT_NOT_ENABLED_ERROR:
+        case XHCI_COMP_INCOMPATIBLE_DEVICE_ERROR:
+            return -ENODEV;           // (19) No such device：试图操作一个没激活或不支持的设备
+
+        // ------------------------------------------------------------------
+        // [总线带宽耗尽类]
+        // ------------------------------------------------------------------
+        case XHCI_COMP_BANDWIDTH_ERROR:
+        case XHCI_COMP_BANDWIDTH_OVERRUN_ERROR:
+        case XHCI_COMP_SECONDARY_BANDWIDTH_ERROR:
+            return -ENOSPC;           // (28) No space left on device：总线带宽已被其他设备榨干
+
+        // ------------------------------------------------------------------
+        // [软件主动中止类]
+        // ------------------------------------------------------------------
+        case XHCI_COMP_STOPPED:
+        case XHCI_COMP_STOPPED_SHORT_PACKET:
+        case XHCI_COMP_STOPPED_LENGTH_INVALID:
+        case XHCI_COMP_COMMAND_ABORTED:
+        case XHCI_COMP_COMMAND_RING_STOPPED:
+            return -ECANCELED;        // (125) Operation Canceled：被上层驱动主动 Stop 或 Abort
+
+        // ------------------------------------------------------------------
+        // [协议与链路严重故障类] (Linux 核心标准用法)
+        // ------------------------------------------------------------------
+        case XHCI_COMP_BABBLE_ERROR:
+        case XHCI_COMP_USB_TRANSACTION_ERROR:
+        case XHCI_COMP_SPLIT_TRANSACTION_ERROR:
+            return -EPROTO;           // (71) Protocol error：物理层的严重通讯事故 (CRC失败、包发疯等)
+
+        // ------------------------------------------------------------------
+        // [致命 I/O 错误兜底]
+        // ------------------------------------------------------------------
+        case XHCI_COMP_TRB_ERROR:
+        case XHCI_COMP_DATA_BUFFER_ERROR:
         case XHCI_COMP_EVENT_LOST_ERROR:
-            color_printk(
-                RED, BLACK, "[xHCI General Error] Event Lost (32): Event ring overflowed, hardware dropped events!\n");
-            return 1;
-
         case XHCI_COMP_UNDEFINED_ERROR:
-            color_printk(RED, BLACK, "[xHCI General Error] Undefined Error (33): Fatal hardware crash!\n");
-            return 1;
-
+        case XHCI_COMP_MISSED_SERVICE_ERROR:
+        case XHCI_COMP_INVALID:
         default:
-            // 走到这里，说明这不是通用错误！它是命令环或传输环的专属错误。
-            // 返回 0，把皮球踢回给调用者的特定 switch-case 里去处理。
-            return 0;
+            return -EIO;              // (5) I/O error：底层发生灾难性硬件/DMA错误
     }
+}
+
+
+/**
+ * @brief xHCI 统一命令环发射器 (POSIX 返回值规范)
+ * @return int 返回 0 表示成功，返回负数表示 POSIX 错误码
+ */
+int32 xhci_execute_command_sync(xhci_hcd_t *xhcd, xhci_trb_t *cmd_trb, uint32 timeout_us, xhci_trb_t *out_event_trb) {
+    // 1. 命令入队并敲门铃
+    uint64 cmd_pa = xhci_ring_enqueue(&xhcd->cmd_ring, cmd_trb);
+    xhci_ring_doorbell(xhcd, 0, 0);
+
+    // 2. 等待底层硬件事件
+    xhci_trb_comp_code_e comp_code = xhci_wait_for_event(xhcd, 0, XHCI_TRB_TYPE_CMD_COMPLETION, cmd_pa, 0, 0, timeout_us, out_event_trb);
+
+    // 3. 翻译并判断 (O(1) 复杂度)
+    int posix_err = xhci_translate_error(comp_code);
+
+    if (posix_err == 0 || posix_err == -ECANCELED) {
+        return posix_err; // 成功或被合法中止
+    }
+
+    // 4. 统一的终极报错日志
+    color_printk(RED, BLACK, "[xHCI Command Error] %s (HW Code: %d) at PA %#lx\n",
+                 xhci_get_comp_code_str(comp_code), comp_code, cmd_pa);
+
+    return posix_err; // 向上抛出标准负数错误码 (如 -ENOMEM)
+}
+
+
+/**
+ * @brief 处理端点 STALL 死锁恢复 (硬件抢救三板斧)
+ */
+static inline  void xhci_recover_stall(usb_dev_t *udev, uint8 ep_dci) {
+    color_printk(YELLOW, BLACK, "[xHCI CPR] Executing STALL recovery for DCI=%d\n", ep_dci);
+
+    // 抢救第 1 步：主板级解挂 (强制从 Halted 拽回 Stopped)
+    xhci_cmd_reset_ep(udev->xhcd, udev->slot_id, ep_dci);
+
+    // 抢救第 2 步：跨越“坏死”的 TRB 尸体，重置出队指针
+    xhci_cmd_set_tr_deq_ptr(udev->xhcd, udev->slot_id, ep_dci, udev->eps[ep_dci]->rings);
+
+    if (ep_dci > 1) {
+        // 普通端点必须向 U 盘固件发送 Clear Feature 和解信
+        color_printk(YELLOW, BLACK, "[xHCI CPR] Sending Clear Feature to unlock physical endpoint...\n");
+        usb_clear_feature_halt(udev, ep_dci);
+    } else {
+        // EP0 的 STALL 会靠下一个 Setup 包自动冲刷，无需和解信
+        color_printk(GREEN, BLACK, "[xHCI CPR] EP0 STALL cleared automatically.\n");
+    }
+}
+
+/**
+ * @brief 同步传输等待与状态机恢复 (传输环专科门诊，POSIX 规范)
+ * @return int 返回 0 表示成功，返回负数表示 POSIX 错误码
+ */
+int32 xhci_wait_transfer_comp(usb_dev_t *udev, uint8 ep_dci, uint64 wait_trb_pa) {
+    xhci_hcd_t *xhcd = udev->xhcd;
+    uint8 slot_id = udev->slot_id;
+
+    // 1. 挂起等待传输事件
+    xhci_trb_comp_code_e comp_code = xhci_wait_for_event(xhcd, 0, XHCI_TRB_TYPE_TRANSFER_EVENT, wait_trb_pa, slot_id, ep_dci, 30000000, NULL);
+
+    // 2. 翻译为标准 POSIX 错误
+    int posix_err = xhci_translate_error(comp_code);
+
+    // 3. 完美成功或短包 (均视为 0)
+    if (posix_err == 0) {
+        if (comp_code == XHCI_COMP_SHORT_PACKET) {
+            color_printk(YELLOW, BLACK, "[xHCI Transfer] Normal Short Packet received (DCI=%d)\n", ep_dci);
+        }
+        return 0;
+    }
+
+    // 4. 统一错误日志拦截
+    color_printk(RED, BLACK, "[xHCI Transfer Error] %s (HW Code: %d) on DCI %d\n",
+                 xhci_get_comp_code_str(comp_code), comp_code, ep_dci);
+
+    // 5. 动作分流：唯一需要物理介入抢救的就是 STALL
+    if (posix_err == -EPIPE) {
+        xhci_recover_stall(udev, ep_dci);
+    }
+
+    // 向上抛出标准负数错误码 (如 -EPIPE, -ETIMEDOUT)
+    return posix_err;
 }
 
 //======================================= 命令环命令 ===========================================================
-
-/**
- * @brief xHCI 统一的命令环 (Command Ring) 发射与严厉诊断函数 (带数据回传功能)
- * @param xhcd          xHCI 控制器上下文指针
- * @param cmd_trb       已经组装好具体字段的 Command TRB 指针
- * @param timeout_us    超时时间 (通常 2000000us)
- * @param out_event_trb [输出参数] 用于接收主板返回的完整事件 TRB。如果不关心返回数据，可传入 NULL。
- * @return xhci_comp_code_t 返回强类型的硬件完成码
- */
-xhci_trb_comp_code_e xhci_execute_command_sync(xhci_hcd_t *xhcd, xhci_trb_t *cmd_trb,
-                                               uint32 timeout_us, xhci_trb_t *out_event_trb) {
-    //命令如队列
-    uint64 cmd_pa = xhci_ring_enqueue(&xhcd->cmd_ring, cmd_trb);
-
-    //命令环响铃
-    xhci_ring_doorbell(xhcd, 0, 0);
-
-    // ★ 关键修改：把 out_event_trb 指针继续传递给底层的 wait 函数
-    // 底层的 wait 函数在轮询/中断匹配到事件时，需要把那个 Event TRB 的 16 字节内容 copy 到这个指针里
-    xhci_trb_comp_code_e comp_code = xhci_wait_for_event(xhcd,0,XHCI_TRB_TYPE_CMD_COMPLETION ,cmd_pa,0,0, timeout_us, out_event_trb);
-
-    // ==========================================================
-    // 第一关：极速放行 (Fast Path) - 99% 的情况走这里！
-    // ==========================================================
-    if (comp_code == XHCI_COMP_SUCCESS) {
-        return XHCI_COMP_SUCCESS; // 直接凯旋！外面的调用者收到 1，皆大欢喜。
-    }
-
-    // ==========================================================
-    // 第二关：急诊室 (通用大病拦截)
-    // ==========================================================
-    if (xhci_handle_common_error(comp_code, cmd_pa) == 1) {
-        // 如果这里返回了 1，说明急诊室已经抢救/打印过红字日志了。
-        // 我们直接把这个致命错误码 (比如 -1) 向上抛给业务层！
-        return comp_code;
-    }
-
-    // ==========================================================
-    // 第三关：专科门诊 (【命令环专属】的 10 种逻辑故障全覆盖)
-    // ==========================================================
-    color_printk(RED, BLACK, "\nxHCI: [Command Error] Command rejected at PA %#lx!\n", cmd_pa);
-
-    switch (comp_code) {
-        // ------------------------------------------------------
-        // 1. 资源与配额分配类 (通常发生在 Enable Slot / Configure Endpoint)
-        // ------------------------------------------------------
-        case XHCI_COMP_NO_SLOTS_AVAILABLE_ERROR: // 9
-            color_printk(YELLOW, BLACK,
-                         "[Diag] No Slots Available (9):\n"
-                         "  -> Check: Did you exceed the 'MaxSlotsEn' limit configured in CONFIG register?\n");
-            break;
-
-        case XHCI_COMP_BANDWIDTH_ERROR: // 8
-            color_printk(YELLOW, BLACK,
-                         "[Diag] Bandwidth Error (8):\n"
-                         "  -> Check: USB bus bandwidth is fully reserved. Cannot configure this endpoint.\n");
-            break;
-
-        case XHCI_COMP_SECONDARY_BANDWIDTH_ERROR: // 35
-            color_printk(YELLOW, BLACK,
-                         "[Diag] Secondary Bandwidth Error (35):\n"
-                         "  -> Check: Failed to allocate secondary bandwidth for the endpoint.\n");
-            break;
-
-        // ------------------------------------------------------
-        // 2. 目标未就绪类 (对没有激活的对象发号施令)
-        // ------------------------------------------------------
-        case XHCI_COMP_SLOT_NOT_ENABLED_ERROR: // 11
-            color_printk(YELLOW, BLACK,
-                         "[Diag] Slot Not Enabled (11):\n"
-                         "  -> Check: You issued a command to a Slot ID that hasn't been enabled yet.\n");
-            break;
-
-        case XHCI_COMP_ENDPOINT_NOT_ENABLED_ERROR: // 12
-            color_printk(YELLOW, BLACK,
-                         "[Diag] Endpoint Not Enabled (12):\n"
-                         "  -> Check: You are trying to manage an Endpoint (DCI) that is not configured.\n");
-            break;
-
-        // ------------------------------------------------------
-        // 3. 数据结构与参数填错类 (最常见的代码 Bug！)
-        // ------------------------------------------------------
-        case XHCI_COMP_PARAMETER_ERROR: // 17
-            color_printk(YELLOW, BLACK,
-                         "[Diag] Parameter Error (17):\n"
-                         "  -> Check 1: Is your Input Context physically 64-byte aligned?\n"
-                         "  -> Check 2: Are the Drop/Add Context flags conflicting?\n"
-                         "  -> Check 3: Did you set reserved bits to 1?\n");
-            break;
-
-        case XHCI_COMP_INVALID_STREAM_TYPE_ERROR: // 10
-            color_printk(YELLOW, BLACK,
-                         "[Diag] Invalid Stream Type Error (10):\n"
-                         "  -> Check: Primary Stream Array (PSA) configuration mismatch for Bulk endpoint.\n");
-            break;
-
-        // ------------------------------------------------------
-        // 4. 状态机时序错乱类 (试图打破物理规律)
-        // ------------------------------------------------------
-        case XHCI_COMP_CONTEXT_STATE_ERROR: // 19
-            color_printk(YELLOW, BLACK,
-                         "[Diag] Context State Error (19):\n"
-                         "  -> Check: Are you trying to Reset an endpoint that is NOT in the 'Halted' state?\n"
-                         "  -> Check: Are you modifying a Slot that is in the 'Default' state?\n");
-            break;
-
-        // ------------------------------------------------------
-        // 5. 正常的控制流回执 (不算是错误，但需要拦截)
-        // ------------------------------------------------------
-        case XHCI_COMP_COMMAND_RING_STOPPED: // 24
-            color_printk(GREEN, BLACK, "[Diag] Command Ring Stopped (24): Normal completion.\n");
-            break;
-
-        case XHCI_COMP_COMMAND_ABORTED: // 25
-            color_printk(GREEN, BLACK, "[Diag] Command Aborted (25): Normal completion.\n");
-            break;
-
-        // ------------------------------------------------------
-        // 兜底防御
-        // ------------------------------------------------------
-        default:
-            color_printk(YELLOW, BLACK, "[Diag] Unhandled Command Specific Error Code: %d\n", comp_code);
-            break;
-    }
-
-    return comp_code;
-}
 
 //分配插槽
 int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
@@ -344,14 +408,17 @@ int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
     cmd_trb.enable_slot.type = XHCI_TRB_TYPE_ENABLE_SLOT;
     cmd_trb.enable_slot.slot_type = 0;
 
-    // 1. 发送命令到命令环 (Command Ring)
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, &evt_trb);
+    // 1. 发送命令并同步等待
+    int32 posix_err = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, &evt_trb);
 
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "xHCI: Failed to enable slot! Error: %d\n", comp_code);
-        return -1;
+    // 2. 异常情况：尽早拦截并向外抛出 (Early Return)
+    if (posix_err < 0) {
+        return posix_err;
     }
+
+    // 3. 正常情况：执行成功后的赋值
     *out_slot_id = evt_trb.cmd_comp_event.slot_id;
+
     return 0;
 }
 
@@ -373,15 +440,7 @@ int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id) {
     cmd_trb.disable_slot.slot_id  = slot_id;
 
     // 2. 发射命令并同步等待
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
-
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "xHCI: Failed to disable Slot ID %d! Hardware code: %d\n", slot_id, comp_code);
-        // 注意：即使硬件注销失败，某些情况下我们依然需要强行清理软件层内存，防止泄漏。
-        // 但通常硬件注销失败意味着控制器状态机已经出大问题了。
-        return -1;
-    }
-    return 0;
+    return xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
 }
 
 
@@ -394,13 +453,8 @@ int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctx_t *input_
     cmd_trb.addr_dev.slot_id = slot_id;
     cmd_trb.addr_dev.bsr = 0;
 
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
+    return  xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
 
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "xHCI: Failed to address device! Error: %d\n", comp_code);
-        return -1;
-    }
-    return 0;
 }
 
 /**
@@ -418,12 +472,8 @@ int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_
     cmd_trb.cfg_ep.dc = dc;
 
     // 敲响命令环门铃，等待主板评估带宽并分配资源
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "xHCI: Failed to configure_endpoint! Error: %d\n", comp_code);
-        return -1;
-    }
-    return 0;
+    return xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
+
 }
 
 /**
@@ -439,12 +489,8 @@ int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slo
     cmd_trb.eval_ctx.slot_id = slot_id;
 
     // 敲响命令环门铃，主板将读取并更新上下文
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "xHCI: Failed to evaluate_context! Error: %d\n", comp_code);
-        return -1;
-    }
-    return 0;
+    return xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
+
 }
 
 
@@ -456,59 +502,34 @@ uint32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci) {
     cmd_trb.rest_ep.ep_dci = ep_dci;
     cmd_trb.rest_ep.slot_id = slot_id;
 
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "xHCI: Failed to reset endpiont! Error: %d\n", comp_code);
-        return -1;
-    }
-    return 0;
+    return xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
 }
 
 /**
- * @brief 紧急刹车：停止指定设备的指定端点 (用于超时抢救)
- * @param xhcd xHCI 控制器上下文
- * @param slot_id         出事设备的 Slot ID
- * @param ep_id           出事端点的 EP ID (注意: EP0 的 ep_id 是 1)
- * @return int8           0 表示成功刹车，-1 表示灾难升级
+ * @brief 紧急刹车：停止指定设备的指定端点 (用于超时或STALL抢救)
+ * @param xhcd    xHCI 控制器上下文
+ * @param slot_id 出事设备的 Slot ID
+ * @param ep_dci  出事端点的 DCI (注意: EP0 的 DCI 是 1)
+ * @return int32  0 表示成功刹车，负数表示 POSIX 错误码 (如 -EINVAL)
  */
-int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_id) {
-    if (slot_id == 0 || ep_id == 0 || ep_id > 31) {
-        return -1; // 参数非法
+int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci) {
+    // 1. POSIX 标准参数防呆拦截
+    if (xhcd == NULL || slot_id == 0 || ep_dci == 0 || ep_dci > 31) {
+        return -EINVAL; // Invalid argument: 非法参数
     }
 
-    xhci_trb_t cmd_trb = {0},evt_trb;
+    xhci_trb_t cmd_trb = {0};
 
-    // 1. 组装“拔管”命令
+    // 2. 组装“拔管”命令
     cmd_trb.stop_ep.trb_type = XHCI_TRB_TYPE_STOP_EP; // 15
     cmd_trb.stop_ep.slot_id  = slot_id;
-    cmd_trb.stop_ep.ep_dci    = ep_id;
-    cmd_trb.stop_ep.suspend  = 0; // 坚决不挂起，直接要求主板废弃当前内部缓存的坏状态！
+    cmd_trb.stop_ep.ep_dci   = ep_dci;
+    cmd_trb.stop_ep.suspend  = 0; // 坚决不挂起，要求主板彻底停下传输环
 
-    // 2. 发射命令并同步等待
-    // 注意：刹车命令通常非常快，主板会在微秒级响应。
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, &evt_trb);
-
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        // 如果连 Stop Endpoint 都失败了 (比如返回了 CONTEXT_STATE_ERROR 19)
-        // 意味着该端点可能已经处于 Halted(死机) 或者 Disabled(未启用) 状态。
-        color_printk(RED, BLACK, "xHCI: Failed to Stop EP %d on Slot %d! Hardware code: %d\n", ep_id, slot_id, comp_code);
-        return -1;
-    }
-
-    // ==========================================================
-    // 3. ★ 架构师核心机密：提取刹车痕迹！
-    // ==========================================================
-    // 当主板成功停下端点时，它返回的 Event TRB 中，
-    // cmd_trb_ptr 字段记录的，正是主板【刹车时，硬件指针停留的那个物理地址】！
-    // 这个地址对于你接下来的抢救（挪动指针跨过坏点）有着极其关键的决定性作用！
-
-    uint64 hardware_stopped_pa = evt_trb.cmd_comp_event.cmd_trb_ptr;
-
-    color_printk(YELLOW, BLACK, "xHCI: Emergency Stopped EP %d on Slot %d! HW halted at PA: %#lx\n",
-                 ep_id, slot_id, hardware_stopped_pa);
-
-    return 0;
+    // 3. 发射命令并同步等待，直接获取 POSIX 错误码
+    return xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
 }
+
 
 /**
  * @brief 发送 Set TR Dequeue Pointer Command，强制移动端点底层的出队指针
@@ -535,12 +556,7 @@ int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,
     cmd_trb.set_tr_deq_ptr.ep_dci = ep_dci;
     cmd_trb.set_tr_deq_ptr.slot_id = slot_id;
 
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "xHCI: Failed to set_tr_dequeue_pointer! Error: %d\n", comp_code);
-        return -1;
-    }
-    return 0;
+    return  xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
 }
 
 /**
@@ -557,12 +573,8 @@ int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id) {
 
     // 敲响门铃，主板将强行清空该 Slot 的所有业务端点状态
     // 敲响命令环门铃，主板将读取并更新上下文
-    xhci_trb_comp_code_e comp_code = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "xHCI: Failed to reset_device! Error: %d\n", comp_code);
-        return -1;
-    }
-    return 0;
+    return xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
+
 }
 
 //=============================================================================================================
