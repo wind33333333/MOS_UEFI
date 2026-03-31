@@ -363,33 +363,36 @@ typedef struct usb_drv_t{
 
 //usb端点
 typedef struct usb_ep_t {
-    //解析后的端点描述符
-    uint8       ep_dci;            // 端点 0-31
+    // 1. 通用 USB 逻辑特性 (完全独立于硬件，直接来源于描述符)
     uint8       ep_type;           // 端点：控制/批量/中断/等时
-    uint16      max_packet_size;   // wMaxPacketSize 解码后的最大包长（基础值）
-    uint8       interval;          // bInterval（中断/等时用；bulk 通常可忽略但保留）
-    uint8       cerr;
+    uint16      max_packet_size;   //wMaxPacketSize：解码后的单次最大包长
+    uint8       interval;          //bInterval：轮询间隔（中断/等时用；bulk 通常可忽略但保留）
 
-    //解析后的超高速端点伴随描述符
+    // USB 3.0 超高速伴随特性 (SuperSpeed Companion)
     uint8       max_burst;          // USB3 bMaxBurst（0=1 burst；仅 SS/SSP 有意义）
     uint16      max_streams_exp;    // bulk 端点支持的最大 stream 数（由 ss_comp->bmAttributes 解码，0 表示不支持 streams（BOT 一般用不到，UAS 可能需要）
-    uint16      bytes_per_interval; // USB3 wBytesPerInterval（中断/等时重要）
+    uint16      bytes_per_interval; // wBytesPerInterval：周期性端点每 ESIT 传输字节数
     uint8       mult;               // USB 2.0 High-Speed 高带宽事务 (Mult) 处理 0=1 transaction, 1=2 trans, 2=3 trans
-    uint8       lsa;
-    uint32      max_esit_payload;
-    uint8       hid;
-    uint16      average_trb_length;
-    uint64      trq_phys_addr;
+
+    // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
+    void        *extras_desc;
+
+    // 2. 仅为 xHCI 定制的强绑定硬件特性 (Endpoint Context 推导值与 DMA 资源)
+    uint8       ep_dci;            // xHCI 专属的设备上下文索引 (Device Context Index, 1~31)
+    uint8       cerr;              // xHCI 错误重试计数 (通常设为 3)
+    uint8       lsa;               // xHCI 线性流数组标志 (Linear Stream Array)
+    uint8       hid;               // xHCI 主机发起禁用标志 (Host Initiate Disable)
+    uint32      max_esit_payload;  // xHCI 周期端点有效载荷 (基于通用参数推导计算)
+    uint16      average_trb_length;// xHCI 专用的 DMA 预取启发值 (Average TRB Length)
+    uint64      trq_phys_addr;     // xHCI 硬件出队指针 (TR Dequeue Pointer) 物理地址
 
     // ★ 统一传输环数组：
     // 情况 A (非流模式): 分配大小为 1 的数组。rings[0] 就是普通的 transfer_ring。
     // 情况 B (流模式)  : 分配大小为 num_streams + 1 的数组。rings[1...N] 是流环。
-    xhci_ring_t *rings;
-    void        *streams_ctx_array;
-    uint8       enable_streams_exp;  //实际启用的流指数
+    uint8       enable_streams_exp;// xHCI 实际向主板申请并启用的流指数
+    xhci_ring_t *rings;            // xHCI 传输环数组 (普通模式大小为1，流模式大小为 N+1)
+    void        *streams_ctx_array;// xHCI 流上下文数组的 DMA 内存基地址
 
-    // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
-    void        *extras_desc;
 } usb_ep_t;
 
 //usb替用接口
