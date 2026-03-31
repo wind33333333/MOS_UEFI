@@ -225,9 +225,7 @@ void usb_free_urb(usb_urb_t *urb) {
     if (urb->transfer_flags & URB_FREE_BUFFER) {
         if (urb->transfer_buf != NULL) {
             kfree(urb->transfer_buf);
-        }
-        if (urb->setup_packet != NULL) {
-            kfree(urb->setup_packet);
+            urb->transfer_buf = NULL;
         }
     }
 
@@ -278,123 +276,150 @@ void usb_fill_bulk_urb(usb_urb_t *urb,
 }
 
 
-//同步发送控制传输
+/**
+ * @brief 同步发送控制传输 (USB Core 的核心枢纽)
+ * @return int32 0 表示成功，负数表示 POSIX 标准错误码
+ */
 int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void *data_buf) {
-    // 1. 动态申请 URB 面单 (再也不用栈内存了！)
+    // 1. 动态申请 URB 面单
     usb_urb_t *urb = usb_alloc_urb();
-    if (!urb) return -1;
+    if (!urb) {
+        return -ENOMEM; // ★ POSIX 修正：内存耗尽
+    }
 
     // 2. 使用填单助手，一键压制参数
+    // 注意：这里的 udev->eps[1] 对应的是控制端点 EP0 (DCI=1)
     usb_fill_control_urb(urb, udev, udev->eps[1], setup_pkg, data_buf, setup_pkg->length);
 
     // 3. 将面单抛给底层调度引擎
-    if (usb_submit_urb(urb) < 0) {
-        usb_free_urb(urb); // 提交失败，销毁面单
-        return -1;
+    int32 posix_err = usb_submit_urb(urb);
+    if (posix_err < 0) {
+        usb_free_urb(urb);
+        return posix_err; // ★ POSIX 修正：入队失败，直接向上抛出详细错误码
     }
 
     // 4. 等待硬件中断 (同步过渡期做法)
-    xhci_trb_comp_code_e comp_code = xhci_wait_transfer_comp(udev, 1, urb->last_trb_pa);
-
-    int32 ret = (comp_code == XHCI_COMP_SUCCESS) ? 0 : -1;
+    // ★ POSIX 修正：上一轮咱们已经把 xhci_wait_transfer_comp 改为返回 int32 的错误码了
+    posix_err = xhci_wait_transfer_comp(udev, 1, urb->last_trb_pa);
 
     // 5. 过河拆桥：任务完成，彻底销毁 URB 面单！
     usb_free_urb(urb);
 
-    return ret;
+    // ★ POSIX 修正：拒绝粗暴的 return -1，完美透传底层状态！
+    return posix_err;
 }
-
 
 
 /**
- * 清除 USB 端点的 STALL/Halt 状态 (撬开大门)
- * @param udev      USB 设备上下文
+ * @brief 清除 USB 端点的 STALL/Halt 状态 (撬开大门)
+ * @param udev   USB 设备上下文
  * @param ep_dci xHCI 的端点上下文索引 (DCI, 范围 2-31)
+ * @return int32 0 表示成功，负数表示失败
  */
 int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci) {
-    // 2. 组装 8 字节的标准 Setup 请求包
     usb_setup_packet_t setup_pkg = {0};
     setup_pkg.recipient = USB_RECIP_ENDPOINT;
-    setup_pkg.req_type = USB_REQ_TYPE_STANDARD;
-    setup_pkg.dtd = USB_DIR_OUT;
-    setup_pkg.request = USB_REQ_CLEAR_FEATURE;
-    setup_pkg.value = USB_FEATURE_ENDPOINT_HALT;
-    setup_pkg.index = epdci_to_epaddr(ep_dci);
-    setup_pkg.length = 0;
+    setup_pkg.req_type  = USB_REQ_TYPE_STANDARD;
+    setup_pkg.dtd       = USB_DIR_OUT;
+    setup_pkg.request   = USB_REQ_CLEAR_FEATURE;
+    setup_pkg.value     = USB_FEATURE_ENDPOINT_HALT;
+    setup_pkg.index     = epdci_to_epaddr(ep_dci);
+    setup_pkg.length    = 0;
 
-    usb_control_msg_sync(udev,&setup_pkg,NULL);
-
-    return 0;
+    // ★ POSIX 修正：直接把底层的执行结果透传给调用者
+    return usb_control_msg_sync(udev, &setup_pkg, NULL);
 }
 
 
-//获取bot协议设备最大lun数量
-uint8 usb_get_bot_max_lun(usb_dev_t *udev,uint8 if_num) {
+/**
+ * @brief 获取 BOT 协议设备最大 LUN 数量
+ * @return uint8 哪怕失败了，也要做最坏的打算 (返回 1 个 LUN)
+ */
+uint8 usb_get_bot_max_lun(usb_dev_t *udev, uint8 if_num) {
     usb_setup_packet_t setup_pkg = {0};
     setup_pkg.recipient = USB_RECIP_INTERFACE;
-    setup_pkg.req_type = USB_REQ_TYPE_CLASS;
-    setup_pkg.dtd = USB_DIR_IN;
-    setup_pkg.request = BOT_REQ_GET_MAX_LUN;
-    setup_pkg.value = 0;
-    setup_pkg.index = if_num;
-    setup_pkg.length = 1;
+    setup_pkg.req_type  = USB_REQ_TYPE_CLASS;
+    setup_pkg.dtd       = USB_DIR_IN;
+    setup_pkg.request   = BOT_REQ_GET_MAX_LUN;
+    setup_pkg.value     = 0;
+    setup_pkg.index     = if_num;
+    setup_pkg.length    = 1;
 
-    uint8 lun_count = 0;
     uint8 *max_lun = kzalloc_dma(64);
-    usb_control_msg_sync(udev,&setup_pkg,max_lun);
-    lun_count = *max_lun;
-    lun_count++;
+    if (!max_lun) {
+        return 1; // ★ 物理防御：内存分配失败时，保底认为有 1 个 LUN
+    }
+
+    // ★ 架构防御：必须捕获错误码！因为 90% 的低端 U 盘会在这里返回 STALL (-EPIPE)
+    int32 posix_err = usb_control_msg_sync(udev, &setup_pkg, max_lun);
+
+    uint8 lun_count;
+    if (posix_err < 0) {
+        // U 盘傲娇抗议 (STALL) 或通信失败，根据 USB 规范，原谅它并默认为 0（加上面的+1后为1个LUN）
+        color_printk(YELLOW, BLACK, "BOT: Get Max LUN failed/STALL (%d). Defaulting to 1 LUN.\n", posix_err);
+        lun_count = 1;
+    } else {
+        lun_count = (*max_lun) + 1;
+    }
+
     kfree(max_lun);
-    return  lun_count;
+    return lun_count;
 }
 
 
-//获取描述符
-int32 usb_get_desc(usb_dev_t *udev,void *desc_buf,uint16 length,usb_desc_type_e desc_type,uint8 desc_idx, uint16 req_idx) {
+/**
+ * @brief 获取描述符
+ * @return int32 获取成功返回 0，失败务必返回 POSIX 错误码 (调用者必须检查！)
+ */
+int32 usb_get_desc(usb_dev_t *udev, void *desc_buf, uint16 length, usb_desc_type_e desc_type, uint8 desc_idx, uint16 req_idx) {
     usb_setup_packet_t setup_pkg = {0};
 
-    // 注意：获取描述符的目标并不总是 Device！
-    // 如果获取的是普通描述符，发给 Device；如果是接口特定的(如 HID)，必须发给 Interface！
     setup_pkg.recipient = desc_type == USB_DESC_TYPE_HID_REPORT ? USB_RECIP_INTERFACE : USB_RECIP_DEVICE;
-    setup_pkg.req_type = USB_REQ_TYPE_STANDARD;
-    setup_pkg.dtd = USB_DIR_IN;
-    setup_pkg.request = USB_REQ_GET_DESCRIPTOR;
-    setup_pkg.value = desc_type<<8 | desc_idx;
-    setup_pkg.index = req_idx;
-    setup_pkg.length = length;
+    setup_pkg.req_type  = USB_REQ_TYPE_STANDARD;
+    setup_pkg.dtd       = USB_DIR_IN;
+    setup_pkg.request   = USB_REQ_GET_DESCRIPTOR;
+    setup_pkg.value     = (desc_type << 8) | desc_idx;
+    setup_pkg.index     = req_idx;
+    setup_pkg.length    = length;
 
-    usb_control_msg_sync(udev,&setup_pkg,desc_buf);
-    return 0;
+    // ★ POSIX 修正：坚决不能丢弃获取描述符的状态！
+    return usb_control_msg_sync(udev, &setup_pkg, desc_buf);
 }
 
-//激活配置
-int usb_set_cfg(usb_dev_t *udev,uint8 cfg_value) {
+
+/**
+ * @brief 激活配置
+ */
+int32 usb_set_cfg(usb_dev_t *udev, uint8 cfg_value) {
     usb_setup_packet_t setup_pkg = {0};
     setup_pkg.recipient = USB_RECIP_DEVICE;
-    setup_pkg.req_type = USB_REQ_TYPE_STANDARD;
-    setup_pkg.dtd = USB_DIR_OUT;
-    setup_pkg.request = USB_REQ_SET_CONFIGURATION;
-    setup_pkg.value = cfg_value;
-    setup_pkg.index = 0;
-    setup_pkg.length = 0;
+    setup_pkg.req_type  = USB_REQ_TYPE_STANDARD;
+    setup_pkg.dtd       = USB_DIR_OUT;
+    setup_pkg.request   = USB_REQ_SET_CONFIGURATION;
+    setup_pkg.value     = cfg_value;
+    setup_pkg.index     = 0;
+    setup_pkg.length    = 0;
 
-    usb_control_msg_sync(udev,&setup_pkg,NULL);
-    return 0;
+    // ★ POSIX 修正：透传错误
+    return usb_control_msg_sync(udev, &setup_pkg, NULL);
 }
 
-//激活接口
-int usb_set_if(usb_dev_t *udev,uint8 if_num,uint8 alt_num) {
+
+/**
+ * @brief 激活接口
+ */
+int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
     usb_setup_packet_t setup_pkg = {0};
     setup_pkg.recipient = USB_RECIP_INTERFACE;
-    setup_pkg.req_type = USB_REQ_TYPE_STANDARD;
-    setup_pkg.dtd = USB_DIR_OUT;
-    setup_pkg.request = USB_REQ_SET_INTERFACE;
-    setup_pkg.value = alt_num;
-    setup_pkg.index = if_num;
-    setup_pkg.length = 0;
+    setup_pkg.req_type  = USB_REQ_TYPE_STANDARD;
+    setup_pkg.dtd       = USB_DIR_OUT;
+    setup_pkg.request   = USB_REQ_SET_INTERFACE;
+    setup_pkg.value     = alt_num;
+    setup_pkg.index     = if_num;
+    setup_pkg.length    = 0;
 
-    usb_control_msg_sync(udev,&setup_pkg,NULL);
-    return 0;
+    // ★ POSIX 修正：透传错误
+    return usb_control_msg_sync(udev, &setup_pkg, NULL);
 }
 
 
