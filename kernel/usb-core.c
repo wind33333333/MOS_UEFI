@@ -3,6 +3,7 @@
 #include "vmm.h"
 #include "printk.h"
 #include "pcie.h"
+#include "errno.h"
 
 //======================================= 传输环命令 ===========================================================
 
@@ -122,7 +123,9 @@ int32 usb_submit_urb(usb_urb_t *urb) {
     // ==========================================================
     // 1. 终极防御：面单防呆校验
     // ==========================================================
-    if (!urb || !urb->udev) return -1;
+    if (!urb || !urb->udev || !urb->ep) {
+        return -EINVAL; // (22) Invalid argument: 面单要素不全
+    }
 
     // 如果是普通传输且没有数据，也没有强行要求发 0 字节包，直接视为成功返回
     if (urb->setup_packet == NULL && urb->transfer_len == 0 &&
@@ -155,7 +158,7 @@ int32 usb_submit_urb(usb_urb_t *urb) {
     switch (usb_trans_type) {
         // 👑 路由 1：控制传输 (专属的三阶段状态机)
         case USB_EP_TYPE_CONTROL:
-            if (urb->setup_packet == NULL) return -1; // 致命错误拦截
+            if (urb->setup_packet == NULL) return -EINVAL; // 控制传输必须有 Setup 包
             last_trb_pa = xhci_submit_control_transfer(urb, ring, wants_ioc);
             break;
 
@@ -164,7 +167,7 @@ int32 usb_submit_urb(usb_urb_t *urb) {
             // 以后写多媒体驱动时，在这里挂载 Isoch TRB 引擎
             // last_trb_pa = xhci_submit_isoc_transfer(urb, ring, wants_ioc);
             color_printk(RED, BLACK, "ISOC Transfer not implemented yet!\n");
-            return -1;
+            return -ENOSYS; // (38) Function not implemented: 驱动暂未实现该功能
 
             // 👑 路由 3：批量传输 (U盘) & 中断传输 (键鼠)
             // 它们在 xHCI 底层完全共享 Normal TRB 切片大循环！
@@ -175,7 +178,7 @@ int32 usb_submit_urb(usb_urb_t *urb) {
 
         default:
             color_printk(RED, BLACK, "Unknown Endpoint Type!\n");
-            return -1;
+            return -EPROTO; // (71) Protocol error: 端点描述符解析出错了
     }
 
     // ==========================================================
@@ -187,7 +190,7 @@ int32 usb_submit_urb(usb_urb_t *urb) {
     // 3. 状态回填供上层同步等待使用
     // ==========================================================
     urb->last_trb_pa = last_trb_pa;
-    urb->status = 0; // 标记提交成功 (-EINPROGRESS 异步机制留到未来重构)
+    urb->status = -EINPROGRESS; // (115) Operation now in progress: 异步操作已入队，正在执行！
 
     return 0;
 }
