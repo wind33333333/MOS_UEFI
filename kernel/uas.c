@@ -29,7 +29,7 @@ static inline int32 uas_alloc_request(uas_data_t *uas_data, uas_cmd_iu_t **cmd_o
 
     // 2. ★ POSIX 修正：硬件队列防满拦截
     // 如果返回的索引大于等于池子的容量，说明当前没有空闲的并发槽位了
-    if (tag >= uas_data->max_streams) {
+    if (tag > uas_data->max_streams) {
         // 返回 -EBUSY，明确告诉上层 SCSI 调度引擎：“U盘并发队列满了，请稍等片刻再发新指令！”
         return -EBUSY;
     }
@@ -124,7 +124,7 @@ int32 uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     if (posix_err < 0) goto cleanup;
 
     // [Step B] 提交 Data Pipe (静音传输)
-    if (urb_data) {
+    if (urb_data != NULL) {
         usb_ep_t *data_ep = (cmnd->dir == SCSI_DIR_IN) ? uas_data->data_in_ep : uas_data->data_out_ep;
         usb_fill_bulk_urb(urb_data, udev, data_ep, cmnd->data_buf, cmnd->data_len);
         urb_data->stream_id = stream_id;
