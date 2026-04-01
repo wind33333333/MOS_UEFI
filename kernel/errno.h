@@ -10,7 +10,8 @@
 #define ENOSPC      28  /* No space left on device (总线带宽耗尽) */
 #define ENOSYS      38  /* Function not implemented: 驱动暂未实现该功能 */
 #define EPIPE       32  /* Broken pipe (管道破裂/设备STALL) */
-#define EPROTO      71  /* Protocol error (协议错误，如 CRC/Babble) */
+#define EPROTO      71  /* Protocol error (协议错误，如签名不匹配) */
+#define EILSEQ      84  /* Illegal byte sequence (数据非法/相位错误) */
 #define ENOBUFS    105 /* No buffer space available (环满爆/下溢出) */
 #define ETIMEDOUT  110  /* Connection timed out (事件环/传输环等待超时) */
 #define EINPROGRESS 115 /* Operation now in progress 异步操作已入队，正在执行！*/

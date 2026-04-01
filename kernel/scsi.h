@@ -350,7 +350,7 @@ typedef struct scsi_host_template_t {
 
     // 【核心接口】派发 SCSI 任务给底层硬件
     // 返回值通常为 0 (成功接收并处理) 或错误码
-    void (*queue_command)(struct scsi_host_t *host, struct scsi_cmnd_t *cmnd);
+    int32 (*queue_command)(struct scsi_host_t *host, struct scsi_cmnd_t *cmnd);
 
     // 【可选接口】复位整个主机控制器 (当设备彻底卡死时调用)
     int32 (*reset_host)(struct scsi_host_t *host);

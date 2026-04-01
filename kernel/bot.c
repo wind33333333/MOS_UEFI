@@ -1,4 +1,6 @@
 #include "bot.h"
+
+#include "errno.h"
 #include "printk.h"
 #include "usb-core.h"
 #include "scsi.h"
@@ -60,7 +62,7 @@ void bot_recovery_reset(usb_dev_t *udev,uint8 if_num, uint8 pipe_in, uint8 pipe_
  * BOT 协议同步发送函数
  * 逻辑：CBW -> Data(可选) -> CSW
  */
-void bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
+int32 bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     bot_data_t *bot_data = host->hostdata;
     usb_dev_t *udev = bot_data->uif->udev;
 
@@ -72,17 +74,14 @@ void bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     asm_mem_set(bot_data->cbw, 0, sizeof(bot_cbw_t));
     asm_mem_set(bot_data->csw, 0, sizeof(bot_csw_t));
 
-    xhci_trb_comp_code_e comp_code;
-
     // 1. 生成 Tag
     uint32 tag = ++bot_data->tag;
+    int32 posix_err;
 
     // 👑 动态申请通用 URB 面单 (整个函数生命周期内复用)
     usb_urb_t *urb = usb_alloc_urb();
     if (urb == NULL) {
-        color_printk(RED, BLACK, "BOT: Failed to allocate URB!\n");
-        cmnd->status = -1;
-        return;
+        return -ENOMEM;
     }
 
     // ============================================================
@@ -98,17 +97,15 @@ void bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 
     // 👑 填单并发车：使用内联助手自动打包参数
     usb_fill_bulk_urb(urb, udev, out_ep, cbw, sizeof(bot_cbw_t));
-    if (usb_submit_urb(urb) < 0) {
-        cmnd->status = -1;
+    posix_err = usb_submit_urb(urb);
+    if (posix_err < 0) {
         goto cleanup;
     }
 
     // 等待 CBW 发送完成 (利用 URB 回填的 last_trb_pa)
-    comp_code = xhci_wait_transfer_comp(udev, out_ep->ep_dci, urb->last_trb_pa);
-    if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "BOT Stage 1: CBW Failed (%#x). Resetting...\n", comp_code);
+    posix_err = xhci_wait_transfer_comp(udev, out_ep->ep_dci, urb->last_trb_pa);
+    if (posix_err < 0) {
         bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
-        cmnd->status = -1;
         goto cleanup;
     }
 
@@ -120,22 +117,23 @@ void bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 
         // 👑 原地复用 URB，重新填单，之前的 flag 和状态会被安全重置
         usb_fill_bulk_urb(urb, udev, ep, cmnd->data_buf, cmnd->data_len);
-        if (usb_submit_urb(urb) < 0) {
-            cmnd->status = -2;
+        posix_err = usb_submit_urb(urb);
+        if (posix_err < 0) {
             goto cleanup;
         }
 
-        comp_code = xhci_wait_transfer_comp(udev, ep->ep_dci, urb->last_trb_pa);
-        if (comp_code != XHCI_COMP_SUCCESS) {
-            if (comp_code == XHCI_COMP_SHORT_PACKET) {
-                color_printk(YELLOW, BLACK, "BOT Stage 2: Short Packet (Normal).\n");
-            } else if (comp_code == XHCI_COMP_STALL_ERROR) {
+        posix_err= xhci_wait_transfer_comp(udev, ep->ep_dci, urb->last_trb_pa);
+        if (posix_err < 0) {
+            if (posix_err == -EPIPE) {
                 color_printk(YELLOW, BLACK, "BOT Stage 2: STALL. Clearing Halt...\n");
-                //xhci_recover_stalled_endpoint(udev, data_pipe);
+                // ★ 核心修复 1：必须真刀真枪地去清除硬件 STALL 状态！
+                // 不然端点一直处于 Halted 状态，Stage 3 绝对会失败！
+                usb_clear_feature_halt(udev, ep->ep_dci);
+
+                // STALL 并不意味着整个 SCSI 流程终结，强行放行，去拿 CSW 看具体死因
+                posix_err = 0;
             } else {
-                color_printk(RED, BLACK, "BOT Stage 2: Fatal Data Error (%#x).\n", comp_code);
                 bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
-                cmnd->status = -2;
                 goto cleanup;
             }
         }
@@ -148,60 +146,54 @@ void bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 retry_csw:
     // 👑 再次复用 URB，一键下达接收指令
     usb_fill_bulk_urb(urb, udev, in_ep, csw, sizeof(bot_csw_t));
-    if (usb_submit_urb(urb) < 0) {
-        cmnd->status = -3;
+    posix_err = usb_submit_urb(urb);
+    if (posix_err < 0) {
         goto cleanup;
     }
 
-    comp_code = xhci_wait_transfer_comp(udev, in_ep->ep_dci, urb->last_trb_pa);
+    posix_err = xhci_wait_transfer_comp(udev, in_ep->ep_dci, urb->last_trb_pa);
 
-    if (comp_code == XHCI_COMP_STALL_ERROR && csw_retry_count == 0) {
+    if (posix_err == -EPIPE && csw_retry_count == 0) {
         color_printk(YELLOW, BLACK, "BOT Stage 3: CSW STALL. Clearing and retrying...\n");
-        //xhci_recover_stalled_endpoint(udev, pipe_in);
         csw_retry_count++;
         goto retry_csw;
-    }
-    else if (comp_code != XHCI_COMP_SUCCESS) {
-        color_printk(RED, BLACK, "BOT Stage 3: CSW Fetch Failed (%#x). Resetting...\n", comp_code);
+    }else if (posix_err < 0) {
         bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
-        cmnd->status = -3;
         goto cleanup;
     }
 
     // ============================================================
-    // Stage 4: 解析 CSW 结果
+    // Stage 4: 解析 CSW 结果 (在这里才终于动用 cmnd->status！)
     // ============================================================
     if (csw->signature != BOT_CSW_SIGNATURE || csw->tag != tag) {
-        color_printk(RED, BLACK, "BOT: CSW Signature/Tag Mismatch! Phase Error.\n");
         bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
-        cmnd->status = -4;
+        posix_err = -EPROTO; // 签名不对，依然归类为底层的协议错误
         goto cleanup;
     }
 
+    // 👑 只有大巴车完美抵达，包裹也没破损，我们才拆开包裹，看里面的回执！
     switch (csw->status) {
         case BOT_CSW_PASS:
             cmnd->status = SCSI_STATUS_GOOD;
             break;
         case BOT_CSW_FAIL:
             cmnd->status = SCSI_STATUS_CHECK_CONDITION;
-            bot_request_sense(bot_data, cmnd);
+            // （注意：标准的内核中，获取 Sense 通常由外层的 SCSI 错误处理线程来做，不在此处阻塞调用）
+            // bot_request_sense(bot_data, cmnd);
             break;
         case BOT_CSW_PHASE:
-            color_printk(RED, BLACK, "BOT: CSW Reported Phase Error! Resetting...\n");
             bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
-            cmnd->status = -5;
+            posix_err = -EILSEQ;
             break;
         default:
-            cmnd->status = -6;
+            posix_err = -EPROTO;
             break;
     }
 
 cleanup:
     // 👑 过河拆桥：无论是成功还是报错跳到这里，统一销毁动态申请的 URB 面单
-    if (urb != NULL) {
-        usb_free_urb(urb);
-    }
-    return;
+    if (urb != NULL) usb_free_urb(urb);
+    return posix_err;
 }
 
 
