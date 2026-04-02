@@ -8,6 +8,137 @@
 //======================================= 传输环命令 ===========================================================
 
 /**
+ * @brief 纯物理层的主板级 STALL 抢救 (只救主板，不救 U 盘)
+ * @return int32 0 表示主板端点恢复成功，负数表示主板硬件已物理级死亡
+ */
+static inline int32 xhci_recover_stall(usb_dev_t *udev, uint8 ep_dci) {
+    int32 posix_err;
+    color_printk(YELLOW, BLACK, "[xHCI CPR] Executing Host-side STALL recovery for DCI=%d\n", ep_dci);
+
+    // 抢救第 1 步：主板级解挂
+    posix_err = xhci_cmd_reset_ep(udev->xhcd, udev->slot_id, ep_dci);
+    if (posix_err < 0) {
+        color_printk(RED, BLACK, "[xHCI CPR FATAL] Reset EP Command failed: %d\n", posix_err);
+        return posix_err; // 抢救失败，主板拒绝解挂！
+    }
+
+    // 抢救第 2 步：重置出队指针
+    posix_err = xhci_cmd_set_tr_deq_ptr(udev->xhcd, udev->slot_id, ep_dci, udev->eps[ep_dci]->rings);
+    if (posix_err < 0) {
+        color_printk(RED, BLACK, "[xHCI CPR FATAL] Set TR Deq Ptr Command failed: %d\n", posix_err);
+        return posix_err; // 指针重置失败，传输环彻底报废！
+    }
+
+    return 0; // 主板端点抢救成功，可以接受新一轮的投递了
+}
+
+
+/**
+ * @brief xHCI 多路 URB 同步轮询引擎 (终极大一统版)
+ * 依赖: xhci_fetch_next_event() 提供纯血 POSIX 非阻塞抓取
+ *
+ * @param udev       USB 设备上下文
+ * @param urbs       需要盯防的 URB 数组指针
+ * @param num_urbs   数组中的 URB 数量
+ * @return int32     0 表示所有预期事件完美成功，负数表示底层报错 (如 -EPIPE, -ETIMEDOUT)
+ */
+int32 xhci_wait_urb_group(usb_dev_t *udev,usb_urb_t **urbs, uint8 num_urbs) {
+    xhci_hcd_t *xhcd = udev->xhcd;
+    uint32 timeout_ms = 30000000; // 建议在实机压测时根据 CPU 频率调整倍率
+
+    // 1. 统计需要等待成功的“哨兵”数量 (排除打了 URB_NO_INTERRUPT 标签的静音面单)
+    uint8 target_completions = 0;
+    uint8 current_completions = 0;
+    for (int i = 0; i < num_urbs; i++) {
+        if (urbs[i] && !(urbs[i]->transfer_flags & URB_NO_INTERRUPT)) {
+            target_completions++;
+        }
+    }
+
+    int32 posix_err = 0;
+
+    // 2. 局部死循环监听 (上帝视角)
+    while (timeout_ms--) {
+        xhci_trb_t event_trb;
+
+        // ==========================================================
+        // 3. 一句话收割事件 (纯正 POSIX 非阻塞语义)
+        // ==========================================================
+        posix_err = xhci_event_ring_dequeue(xhcd, 0, &event_trb);
+
+        if (posix_err == -EAGAIN) {
+            // 环是空的，暂时没事件，让 CPU 稍微喘口气
+            asm_pause();
+            continue;
+        } else if (posix_err < 0) {
+            // 抓取时发生致命系统级错误 (未来可扩展支持主板掉线等严重中断)
+            color_printk(RED, BLACK, "[xHCI Group] Fetch Error: %d\n", posix_err);
+            return posix_err;
+        }
+
+        // ==========================================================
+        // 4. 事件比对与状态机推进 (抓到了新鲜事件)
+        // ==========================================================
+        if (event_trb.cmd_comp_event.trb_type == XHCI_TRB_TYPE_TRANSFER_EVENT) {
+            uint64 trb_pa     = event_trb.transfer_event.tr_trb_ptr;
+            uint8  evt_ep_dci = event_trb.transfer_event.ep_dci;
+            xhci_trb_comp_code_e comp_code = event_trb.transfer_event.comp_code;
+
+            posix_err = xhci_translate_error(comp_code);
+
+            // 👑 遍历比对传入的 URB 数组 (核心多路复用逻辑)
+            for (int i = 0; i < num_urbs; i++) {
+                if (!urbs[i]) continue;
+
+                // 物理地址和端点号都对上了，说明这就是这个 URB 的回执！
+                if (trb_pa == urbs[i]->last_trb_pa && evt_ep_dci == urbs[i]->ep->ep_dci) {
+                    urbs[i]->status = posix_err; // 实时回填面单状态
+
+                    if (posix_err == 0) {
+                        // 完美成功或短包
+                        if (comp_code == XHCI_COMP_SHORT_PACKET) {
+                            color_printk(YELLOW, BLACK, "[xHCI Group] Short Packet on DCI %d\n", evt_ep_dci);
+                        }
+                        // 只有没开启静音的 URB 成功了，才算推进了进度条
+                        if (!(urbs[i]->transfer_flags & URB_NO_INTERRUPT)) {
+                            current_completions++;
+                        }
+                    } else {
+                        // ★ 专科门诊拦截网：捕获到任何一个 URB 发生物理报错！
+                        color_printk(RED, BLACK, "[xHCI Group Error] DCI %d Failed: %d\n", evt_ep_dci, posix_err);
+
+                        // 硬件抢救介入：只有 STALL (-EPIPE) 需要物理层解挂
+                        if (posix_err == -EPIPE) {
+                            xhci_recover_stall(udev, evt_ep_dci);
+                        }
+
+                        // 只要有任何一环崩了，直接向外抛出致命错误，终止群组等待！
+                        return posix_err;
+                    }
+
+                    break; // 这个事件已经认领完毕，跳出内部 URB 遍历
+                }
+            }
+        }
+        else if (event_trb.cmd_comp_event.trb_type == XHCI_TRB_TYPE_HOST_CTRL) {
+            color_printk(RED, BLACK, "[xHCI Group Error] Fatal Host Controller Event!\n");
+            return -EIO;
+        }
+
+        // ==========================================================
+        // 5. 胜利出口
+        // ==========================================================
+        // 如果所有需要等成功的 URB 都到位了，大功告成！
+        if (current_completions >= target_completions) {
+            return 0;
+        }
+    }
+
+    color_printk(RED, BLACK, "[xHCI Group Error] Transfer Timeout!\n");
+    return -ETIMEDOUT;
+}
+
+/**
  * @brief [内联执行器] 处理 EP0 控制传输 (三阶段)
  */
 static inline uint64 xhci_submit_control_transfer(usb_urb_t *urb, xhci_ring_t *ring, uint8 wants_ioc) {
@@ -299,8 +430,7 @@ int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void 
     }
 
     // 4. 等待硬件中断 (同步过渡期做法)
-    // ★ POSIX 修正：上一轮咱们已经把 xhci_wait_transfer_comp 改为返回 int32 的错误码了
-    posix_err = xhci_wait_transfer_comp(udev, 1, urb->last_trb_pa);
+    xhci_wait_urb_group(udev,&urb,1);
 
     // 5. 过河拆桥：任务完成，彻底销毁 URB 面单！
     usb_free_urb(urb);
@@ -1557,6 +1687,10 @@ static int32 usb_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     // ---------------------------------------------------------
     // 【未来重构点】：这部分将被替换为 "Thread Sleep / Yield" (挂起线程)
     // ---------------------------------------------------------
+    uint32 times = 30000000;
+    while (times--) {
+
+    }
     if ( xhci_wait_for_event(xhcd, 0,XHCI_TRB_TYPE_PORT_STATUS_CHG ,port_id,0,0, 30000000, NULL) == XHCI_COMP_TIMEOUT) {
         return -1; // 超时失败
     }

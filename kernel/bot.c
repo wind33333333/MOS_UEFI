@@ -103,7 +103,7 @@ int32 bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     }
 
     // 等待 CBW 发送完成 (利用 URB 回填的 last_trb_pa)
-    posix_err = xhci_wait_transfer_comp(udev, out_ep->ep_dci, urb->last_trb_pa);
+    posix_err = xhci_wait_urb_group(udev,&urb,1);
     if (posix_err < 0) {
         bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
         goto cleanup;
@@ -122,7 +122,7 @@ int32 bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
             goto cleanup;
         }
 
-        posix_err= xhci_wait_transfer_comp(udev, ep->ep_dci, urb->last_trb_pa);
+        posix_err= xhci_wait_urb_group(udev,&urb,1);
         if (posix_err < 0) {
             if (posix_err == -EPIPE) {
                 color_printk(YELLOW, BLACK, "BOT Stage 2: STALL. Clearing Halt...\n");
@@ -151,7 +151,7 @@ retry_csw:
         goto cleanup;
     }
 
-    posix_err = xhci_wait_transfer_comp(udev, in_ep->ep_dci, urb->last_trb_pa);
+    posix_err = xhci_wait_urb_group(udev,&urb,1);
 
     if (posix_err == -EPIPE && csw_retry_count == 0) {
         color_printk(YELLOW, BLACK, "BOT Stage 3: CSW STALL. Clearing and retrying...\n");

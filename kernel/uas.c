@@ -78,6 +78,11 @@ int32 uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     uas_cmd_iu_t *cmd_iu;
     uas_sense_iu_t *sense_iu;
 
+    xhci_ep_ctx_t *status_ep_ctx = xhci_get_dev_ctx_entry(udev,uas_data->status_ep->ep_dci);
+    xhci_ep_ctx_t *cmd_ep_ctx = xhci_get_dev_ctx_entry(udev,uas_data->cmd_ep->ep_dci);
+    xhci_ep_ctx_t *in_ep_ctx = xhci_get_dev_ctx_entry(udev,uas_data->data_in_ep->ep_dci);
+    xhci_ep_ctx_t *out_ep_ctx = xhci_get_dev_ctx_entry(udev,uas_data->data_out_ep->ep_dci);
+
     // 1. 获取图纸与并发槽位
     posix_err = uas_alloc_request(uas_data, &cmd_iu, &sense_iu, &tag, &stream_id);
     if (posix_err < 0) {
@@ -99,6 +104,8 @@ int32 uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     usb_urb_t *urb_status = usb_alloc_urb();
     usb_urb_t *urb_data   = NULL;
     usb_urb_t *urb_cmd    = usb_alloc_urb();
+    usb_urb_t *urb_arr[3] = {urb_status, urb_cmd,urb_data};
+    uint8 urb_arr_count = 2;
 
     if (urb_status == NULL || urb_cmd == NULL) {
         posix_err = -ENOMEM;
@@ -107,6 +114,8 @@ int32 uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 
     if (cmnd->data_buf && cmnd->data_len) {
         urb_data = usb_alloc_urb();
+        urb_arr[2] = urb_data;
+        urb_arr_count++;
         if (urb_data == NULL) {
             posix_err = -ENOMEM;
             goto cleanup;
@@ -146,13 +155,29 @@ int32 uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 
 
     // ============================================================
-    // 5. 挂起等待 (只盯紧 Status Pipe 的最后一张回执)
+    // 5. 挂起等待
     // ============================================================
-    posix_err = xhci_wait_transfer_comp(udev, uas_data->status_ep->ep_dci, urb_status->last_trb_pa);
+    posix_err = xhci_wait_urb_group(udev,urb_arr,urb_arr_count);
 
-    // 如果总线发生超时、STALL 等物理故障，直接跳走，绝不碰 cmnd->status！
     if (posix_err < 0) {
-        color_printk(RED, BLACK, "UAS: Bus transfer failed with POSIX error: %d\n", posix_err);
+        color_printk(RED, BLACK, "UAS: Bus transfer failed (%d). Teardown!\n", posix_err);
+
+        // 1. 业务层大局观：不管什么错，先把还在跑的哨兵管子停了！
+        xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, uas_data->status_ep->ep_dci);
+        if (urb_data) {
+            xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, urb_data->ep->ep_dci);
+        }
+        xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, uas_data->cmd_ep->ep_dci);
+
+        // 2. 只有在此刻（所有并发管子都安全停下后），UAS 业务层才去向 U 盘固件发起和解！
+        if (posix_err == -EPIPE) {
+            if (urb_data && urb_data->status == -EPIPE) {
+                usb_clear_feature_halt(udev, urb_data->ep->ep_dci);
+            }
+            if (urb_status->status == -EPIPE) {
+                usb_clear_feature_halt(udev, uas_data->status_ep->ep_dci);
+            }
+        }
         goto cleanup;
     }
 

@@ -1113,8 +1113,11 @@ static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 
 
 
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push);
-xhci_trb_comp_code_e xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number,trb_type_e expected_type,uint64 expected_pa_or_port,uint8 slot_id,uint8 ep_dci,uint32 timeout_ms,xhci_trb_t *out_trb);
-int32 xhci_wait_transfer_comp(struct usb_dev_t *udev, uint8 ep_dci, uint64 wait_trb_pa);
+int32 xhci_event_ring_dequeue(xhci_hcd_t *xhcd, uint8 intr_num, xhci_trb_t *out_event);
+int32 xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number,trb_type_e expected_type,uint64 expected_pa_or_port,uint8 slot_id,uint8 ep_dci,uint32 timeout_ms,xhci_trb_t *out_trb);
+int32 xhci_translate_error(xhci_trb_comp_code_e comp_code);
+
+char* xhci_get_comp_code_str(xhci_trb_comp_code_e comp_code);
 int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id);
 int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);
 int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctx_t *input_ctx);
