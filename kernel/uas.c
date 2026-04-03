@@ -1,10 +1,10 @@
 #include  "uas.h"
-
-#include <asm-generic/errno-base.h>
-
 #include "printk.h"
 #include  "usb-core.h"
 #include "scsi.h"
+#include "errno.h"
+
+
 
 //获取一个tag
 static inline uint16 uas_alloc_tag(uas_data_t *uas_data) {
@@ -19,18 +19,22 @@ static inline void uas_free_tag(uas_data_t *uas_data,uint16 tag) {
 }
 
 /**
- * @brief 动态分配 UAS 请求图纸 (Command IU & Sense IU)
- * @return int32 0 表示成功，负数表示 POSIX 错误码
+ * @brief 泛型化 UAS 槽位分配器 (支持 Command IU 与 Task Management IU)
+ * @param req_out  泛型输出：可以接收 uas_cmd_iu_t** 或 uas_tm_iu_t**
+ * @param resp_out 泛型输出：可以接收 uas_sense_iu_t** 或 uas_response_iu_t**
  */
-static inline int32 uas_alloc_request(uas_data_t *uas_data, uas_cmd_iu_t **cmd_out, uas_sense_iu_t **sense_out, uint16 *tag_out, uint16 *stream_id_out) {
-
+static int32 uas_alloc_request(
+    uas_data_t *uas_data,
+    void **req_out,
+    void **resp_out,
+    uint16 *tag_out,
+    uint16 *stream_id_out)
+{
     // 1. 极速扫描 Bitmap 寻找空闲 Tag (内部数组索引从 0 开始)
     uint16 tag = uas_alloc_tag(uas_data);
 
     // 2. ★ POSIX 修正：硬件队列防满拦截
-    // 如果返回的索引大于等于池子的容量，说明当前没有空闲的并发槽位了
     if (tag > uas_data->max_streams) {
-        // 返回 -EBUSY，明确告诉上层 SCSI 调度引擎：“U盘并发队列满了，请稍等片刻再发新指令！”
         return -EBUSY;
     }
 
@@ -38,7 +42,9 @@ static inline int32 uas_alloc_request(uas_data_t *uas_data, uas_cmd_iu_t **cmd_o
     uas_cmd_iu_t   *cmd   = &uas_data->cmd_iu_pool[tag];
     uas_sense_iu_t *sense = &uas_data->sense_iu_pool[tag];
 
-    // 4. 瞬间抹除上一次 I/O 的历史痕迹 (清零，防止脏数据干扰)
+    // 4. ★ 架构师核心防御：最大化内存抹除
+    // 不管外层是申请小巧的 TM_IU 还是庞大的 CMD_IU，底层统统按照最大尺寸 (cmd/sense) 清空。
+    // 这绝对保证了即使强转为 TM_IU，其尾部的残留内存也是 0，绝不会干扰总线。
     asm_mem_set(cmd, 0, sizeof(uas_cmd_iu_t));
     asm_mem_set(sense, 0, sizeof(uas_sense_iu_t));
 
@@ -46,12 +52,15 @@ static inline int32 uas_alloc_request(uas_data_t *uas_data, uas_cmd_iu_t **cmd_o
     // UAS 规范要求 Task Tag 不能为 0，所以对外暴露的真实 Tag 必须 +1
     ++tag;
 
-    *cmd_out   = cmd;
-    *sense_out = sense;
-    *tag_out   = tag;
+    // ★ 泛型指针交接：外层传什么类型的指针地址，这里就塞入什么
+    if (req_out)  *req_out  = cmd;
+    if (resp_out) *resp_out = sense;
+    if (tag_out) *tag_out = tag;
 
     // 只有在 Bulk Endpoint 支持 Streams 特性时，Stream ID 才生效并与 Tag 对齐绑定；否则为 0
-    *stream_id_out = uas_data->max_streams == 0 ? 0 : tag;
+    if (stream_id_out) {
+        *stream_id_out = (uas_data->max_streams == 0) ? 0 : tag;
+    }
 
     return 0; // 完美分配
 }
@@ -63,6 +72,107 @@ static inline int32 uas_alloc_request(uas_data_t *uas_data, uas_cmd_iu_t **cmd_o
 static inline void uas_free_request(uas_data_t *uas_data, int16 tag) {
     uas_free_tag(uas_data,tag);
 }
+
+
+/**
+ * @brief 执行 UAS 任务中止 (精准狙击僵尸任务)
+ * @param host        SCSI 主机上下文
+ * @param scsi_lun    发生错误的逻辑单元号
+ * @param target_tag  需要被中止的死亡任务的 Tag (0~63)
+ * @return int32      0 表示击杀成功，负数表示底层崩溃
+ */
+int32 uas_abort_task(scsi_host_t *host, uint64 scsi_lun, uint16 target_tag) {
+    uas_data_t *uas_data = host->hostdata;
+    usb_dev_t *udev = uas_data->uif->udev;
+    int32 posix_err = 0;
+
+    uint16 tag, stream_id;
+    uas_tm_iu_t *tm_iu ;
+    uas_response_iu_t *resp_iu;
+
+    // 1. 为我们的“杀手任务”也去申请一套合法的 Tag 和并发槽位
+    posix_err = uas_alloc_request(uas_data, (void **)&tm_iu, (void **)&resp_iu, &tag, &stream_id);
+    if (posix_err < 0) {
+        return posix_err; // 槽位耗尽，连发 TMF 的资源都没了
+    }
+
+    // 2. 填写暗杀名单 (TM IU 填充，严格大端序)
+    asm_mem_set(tm_iu, 0, sizeof(uas_tm_iu_t));
+    tm_iu->iu_id = UAS_TASK_MGMT_IU_ID; // 0x02 = Task Management IU
+    tm_iu->tag = asm_bswap16(tag);
+    tm_iu->tm_function = UAS_TMF_ABORT_TASK;
+    tm_iu->task_tag = asm_bswap16(target_tag); // ★ 告诉固件：杀掉它！
+    tm_iu->lun = asm_bswap64(scsi_lun);
+
+    // 3. 构建 URB 监听组 (TMF 只需要 Status 和 Command 两个管子)
+    usb_urb_t *urb_status = usb_alloc_urb();
+    usb_urb_t *urb_cmd    = usb_alloc_urb();
+    usb_urb_t *urb_arr[2] = {urb_status, urb_cmd};
+
+    if (!urb_status || !urb_cmd) {
+        posix_err = -ENOMEM;
+        goto cleanup;
+    }
+
+    // [Step A] 提前放置 Status 哨兵，等 U 盘的回执
+    usb_fill_bulk_urb(urb_status, udev, uas_data->status_ep, resp_iu, sizeof(uas_response_iu_t));
+    urb_status->stream_id = stream_id; // TMF 也是走流并发的
+    posix_err = usb_submit_urb(urb_status);
+    if (posix_err < 0) goto cleanup;
+
+    // [Step B] 投递 TMF 暗杀令
+    usb_fill_bulk_urb(urb_cmd, udev, uas_data->cmd_ep, tm_iu, sizeof(uas_tm_iu_t));
+    urb_cmd->stream_id = 0; // Command 管道规范要求流 ID 填 0
+    urb_cmd->transfer_flags |= URB_NO_INTERRUPT; // 静音传输
+    posix_err = usb_submit_urb(urb_cmd);
+
+    if (posix_err < 0) {
+        // TMF 发送失败，必须把前面的 Status 哨兵也撤回来
+        xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, uas_data->status_ep->ep_dci);
+        goto cleanup;
+    }
+
+    // ============================================================
+    // 4. 等待 U 盘执行处决
+    // ============================================================
+    posix_err = xhci_wait_urb_group(udev, urb_arr, 2);
+
+    if (posix_err < 0) {
+        // TMF 自己在传输时都崩了，说明 U 盘内部状态机彻底烂掉，不接受任何指令。
+        // 猛踩刹车撤回 TMF，并准备向上层汇报最坏的消息
+        color_printk(RED, BLACK, "UAS: TMF transfer completely failed (%d)!\n", posix_err);
+        xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, uas_data->status_ep->ep_dci);
+        xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, uas_data->cmd_ep->ep_dci);
+        goto cleanup;
+    }
+
+    // ============================================================
+    // 5. 检查 U 盘主控的回执确认单
+    // ============================================================
+    if (resp_iu->response_code == 0x00) {
+        // 0x00 成功，僵尸已被清理
+        color_printk(GREEN, BLACK, "UAS: Successfully aborted zombie Task %d\n", target_tag);
+    } else if (resp_iu->response_code == 0x04) {
+        // 0x04 任务不存在。这也是好消息，说明僵尸自己死透了，达到了我们要的目的
+        color_printk(YELLOW, BLACK, "UAS: Task %d already dead/not found\n", target_tag);
+    } else {
+        // 其他回复（如 0x05 非法 LUN，或 U 盘拒绝处理）
+        color_printk(RED, BLACK, "UAS: Abort Task rejected, Response Code: 0x%02x\n", resp_iu->response_code);
+        posix_err = -EIO; // 升维为不可逆 I/O 错误
+    }
+
+cleanup:
+    // 回收资源
+    if (urb_status) usb_free_urb(urb_status);
+    if (urb_cmd)    usb_free_urb(urb_cmd);
+
+    // 把“杀手任务”的 tag 还给 UAS 并发槽
+    uas_free_request(uas_data, tag);
+
+    return posix_err;
+}
+
+
 
 /**
  * UAS 协议同步发送函数 (流式并发引擎)
@@ -84,7 +194,7 @@ int32 uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     xhci_ep_ctx_t *out_ep_ctx = xhci_get_dev_ctx_entry(udev,uas_data->data_out_ep->ep_dci);
 
     // 1. 获取图纸与并发槽位
-    posix_err = uas_alloc_request(uas_data, &cmd_iu, &sense_iu, &tag, &stream_id);
+    posix_err = uas_alloc_request(uas_data, (void **)&cmd_iu, (void **)&sense_iu, &tag, &stream_id);
     if (posix_err < 0) {
         return posix_err; // 槽位耗尽 (-EBUSY)，直接向上抛出，让调度器重试
     }
@@ -160,24 +270,55 @@ int32 uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     posix_err = xhci_wait_urb_group(udev,urb_arr,urb_arr_count);
 
     if (posix_err < 0) {
-        color_printk(RED, BLACK, "UAS: Bus transfer failed (%d). Teardown!\n", posix_err);
+        color_printk(RED, BLACK, "UAS: Bus transfer failed (%d). Initiating Error Handling...\n", posix_err);
 
-        // 1. 业务层大局观：不管什么错，先把还在跑的哨兵管子停了！
+        // ==========================================================
+        // 🛑 【步骤 2：业务层猛踩刹车 (防踩踏)】
+        // 不管什么错误，先把还在跑的管子全勒停，防止主机内存被“僵尸 DMA”破坏
+        // ==========================================================
         xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, uas_data->status_ep->ep_dci);
         if (urb_data) {
             xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, urb_data->ep->ep_dci);
         }
         xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, uas_data->cmd_ep->ep_dci);
 
-        // 2. 只有在此刻（所有并发管子都安全停下后），UAS 业务层才去向 U 盘固件发起和解！
+        // ==========================================================
+        // 🎯 针对 STALL 的特化抢救连招 (步骤 3 & 4)
+        // ==========================================
         if (posix_err == -EPIPE) {
-            if (urb_data && urb_data->status == -EPIPE) {
-                usb_clear_feature_halt(udev, urb_data->ep->ep_dci);
-            }
-            if (urb_status->status == -EPIPE) {
-                usb_clear_feature_halt(udev, uas_data->status_ep->ep_dci);
+            color_printk(YELLOW, BLACK, "UAS: STALL detected. Executing TMF Abort Task...\n");
+
+            // 🗡️ 【步骤 3：逻辑死刑宣判 (杀僵尸任务)】
+            // 调用之前写的 TMF 引擎，精准狙击当前出错的这个 tag
+            int32 abort_err = uas_abort_task(host, cmnd->sdev->lun, tag);
+
+            if (abort_err == 0) {
+                // 只有 U 盘明确回复了“任务已中止”，才允许去开门！
+                color_printk(GREEN, BLACK, "UAS: TMF successful. Clearing Halt feature...\n");
+
+                // 🔑 【步骤 4：物理大门开锁 (发送 Clear Feature)】
+                // 谁报了 EPIPE，就解挂谁。
+                // ★ 极其关键：这里传的必须是端点的 USB 标准地址 (ep_addr)，绝不能是 DCI！
+                if (urb_data && urb_data->status == -EPIPE) {
+                    usb_control_feature_halt(udev, urb_data->ep->ep_dci,USB_REQ_CLEAR_FEATURE);
+                }
+
+                // 极小概率 Status 端点也会 STALL，防患于未然
+                if (urb_status->status == -EPIPE) {
+                    usb_control_feature_halt(udev, uas_data->status_ep->ep_dci,USB_REQ_CLEAR_FEATURE);
+                }
+
+                // 清理完毕，此时系统已经恢复到完美初始状态。
+            } else {
+                // 如果 ABORT TASK 都发不出去，说明 U 盘内部状态机彻底崩溃
+                color_printk(RED, BLACK, "UAS: TMF Abort Task failed (%d)! Device needs port reset.\n", abort_err);
+
+                // 放弃治疗，把错误升维成致命 I/O 错误，交由上层直接复位 USB 接口
+                posix_err = -EIO;
             }
         }
+
+        // 带着最终的错误码，去释放面单内存
         goto cleanup;
     }
 
@@ -204,6 +345,9 @@ cleanup:
     // 👑 唯一出口：向 SCSI 中间层汇报总线物理状态
     return posix_err;
 }
+
+
+
 
 //uas协议模板
 scsi_host_template_t uas_host_template = {

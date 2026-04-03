@@ -1,6 +1,7 @@
 #include "scsi.h"
 #include "slub.h"
 #include "printk.h"
+#include "usb-core.h"
 
 // 统一的 SCSI 任务执行器和错误处理逻辑
 int32 scsi_execute(scsi_cmnd_t *scmnd) {

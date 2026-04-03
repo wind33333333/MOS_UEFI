@@ -48,11 +48,11 @@ void bot_recovery_reset(usb_dev_t *udev,uint8 if_num, uint8 pipe_in, uint8 pipe_
 
     // 动作 2：清理硬件与协议层面的 IN 管道挂起状态
     xhci_cmd_reset_ep(xhcd, slot_id, pipe_in);
-    usb_clear_feature_halt(udev, pipe_in);
+    usb_control_feature_halt(udev, pipe_in,USB_REQ_CLEAR_FEATURE);
 
     // 动作 3：清理硬件与协议层面的 OUT 管道挂起状态
     xhci_cmd_reset_ep(xhcd, slot_id, pipe_out);
-    usb_clear_feature_halt(udev, pipe_out);
+    usb_control_feature_halt(udev, pipe_out,USB_REQ_CLEAR_FEATURE);
 
     color_printk(GREEN, BLACK, "BOT: Reset Request!\n");
 }
@@ -128,7 +128,7 @@ int32 bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
                 color_printk(YELLOW, BLACK, "BOT Stage 2: STALL. Clearing Halt...\n");
                 // ★ 核心修复 1：必须真刀真枪地去清除硬件 STALL 状态！
                 // 不然端点一直处于 Halted 状态，Stage 3 绝对会失败！
-                usb_clear_feature_halt(udev, ep->ep_dci);
+                usb_control_feature_halt(udev, ep->ep_dci,USB_REQ_CLEAR_FEATURE);
 
                 // STALL 并不意味着整个 SCSI 流程终结，强行放行，去拿 CSW 看具体死因
                 posix_err = 0;

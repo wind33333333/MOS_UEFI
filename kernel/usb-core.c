@@ -104,15 +104,19 @@ int32 xhci_wait_urb_group(usb_dev_t *udev,usb_urb_t **urbs, uint8 num_urbs) {
                             current_completions++;
                         }
                     } else {
-                        // ★ 专科门诊拦截网：捕获到任何一个 URB 发生物理报错！
-                        color_printk(RED, BLACK, "[xHCI Group Error] DCI %d Failed: %d\n", evt_ep_dci, posix_err);
-
-                        // 硬件抢救介入：只有 STALL (-EPIPE) 需要物理层解挂
                         if (posix_err == -EPIPE) {
-                            xhci_recover_stall(udev, evt_ep_dci);
+                            // 调用我们之前写好的，纯主板层面的 xhci_cmd_reset_ep 逻辑
+                            int32 cpr_err = xhci_recover_stall(udev, evt_ep_dci);
+
+                            if (cpr_err < 0) {
+                                // 如果主板死活救不回来，把错误升维，直接判死刑
+                                color_printk(RED, BLACK, "[xHCI CPR FATAL] Host recovery failed!\n");
+                                return cpr_err;
+                            }
                         }
 
-                        // 只要有任何一环崩了，直接向外抛出致命错误，终止群组等待！
+                        // 主板抢救成功，但 U 盘还是死锁的。
+                        // 把 -EPIPE 原封不动地抛给 UAS 业务层，让上面去擦屁股！
                         return posix_err;
                     }
 
@@ -439,27 +443,29 @@ int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void 
     return posix_err;
 }
 
-
-/**
- * @brief 清除 USB 端点的 STALL/Halt 状态 (撬开大门)
- * @param udev   USB 设备上下文
- * @param ep_dci xHCI 的端点上下文索引 (DCI, 范围 2-31)
- * @return int32 0 表示成功，负数表示失败
+/* @param udev   USB 设备上下文
+ * @param ep_dci xHCI 的端点上下文索引 (DCI)
+ * @param is_set USB_REQ_CLEAR_FEATURE(解锁)， USB_REQ_SET_FEATURE(上锁)
+ * @return int32 0 表示成功，负数表示底层 POSIX 错误
  */
-int32 usb_clear_feature_halt(usb_dev_t *udev, uint8 ep_dci) {
+int32 usb_control_feature_halt(usb_dev_t *udev, uint8 ep_dci, usb_request_e is_set) {
     usb_setup_packet_t setup_pkg = {0};
+
+    // 组装标准 Setup 包
     setup_pkg.recipient = USB_RECIP_ENDPOINT;
     setup_pkg.req_type  = USB_REQ_TYPE_STANDARD;
-    setup_pkg.dtd       = USB_DIR_OUT;
-    setup_pkg.request   = USB_REQ_CLEAR_FEATURE;
+    setup_pkg.dtd       = USB_DIR_OUT;           // 方向：主机发往设备
+
+    // ★ 核心差异点：根据 is_set 动态切换指令
+    setup_pkg.request   = is_set;
+
     setup_pkg.value     = USB_FEATURE_ENDPOINT_HALT;
     setup_pkg.index     = epdci_to_epaddr(ep_dci);
     setup_pkg.length    = 0;
 
-    // ★ POSIX 修正：直接把底层的执行结果透传给调用者
+    // 直接通过 EP0 发送控制传输并透传错误码
     return usb_control_msg_sync(udev, &setup_pkg, NULL);
 }
-
 
 /**
  * @brief 获取 BOT 协议设备最大 LUN 数量

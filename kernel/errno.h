@@ -7,6 +7,7 @@
 #define EIO          5  /* I/O error (底层硬件/总线读写错误) */
 #define EAGAIN      11  /* Try again (资源暂时不可用) */
 #define ENOMEM      12  /* Out of memory (资源或内存耗尽) */
+#define	EBUSY		16	/* Device or resource busy 设备或资源繁忙 */
 #define ENODEV      19  /* No such device (设备被拔出或端点未激活) */
 #define EINVAL      22  /* Invalid argument (上下文图纸参数配置错误) */
 #define ENOSPC      28  /* No space left on device (总线带宽耗尽) */
