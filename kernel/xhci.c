@@ -132,97 +132,106 @@ char* xhci_get_comp_code_str(xhci_trb_comp_code_e comp_code) {
     }
 }
 
+
+
+#include <errno.h> // 确保包含了 POSIX 错误码头文件
+
 /**
- * @brief [核心映射] 将 xHCI 硬件方言翻译为 POSIX 全宇宙通用错误码 (全量覆盖)
+ * @brief 将 xHCI 硬件专属的 TRB 完成码，翻译成全宇宙通用的 POSIX 错误码
+ * @param comp_code  xHCI 硬件抛出的完成码
+ * @return int32     返回 0 表示正常，负数表示各种 POSIX 异常
  */
 int32 xhci_translate_error(xhci_trb_comp_code_e comp_code) {
     switch (comp_code) {
-        // ------------------------------------------------------------------
-        // [正常放行类]
-        // ------------------------------------------------------------------
+
+        // ==========================================================
+        // 🟢 【第一梯队：和平时期 (Happy Path)】
+        // 处理策略：一路绿灯，继续推进业务状态机
+        // ==========================================================
         case XHCI_COMP_SUCCESS:
-        case XHCI_COMP_SHORT_PACKET:
-            return 0;                 // 完美成功
+        case XHCI_COMP_SHORT_PACKET:        // 短包在 BOT/UAS 中是合法的结束标志
+            return 0;
 
-        // ------------------------------------------------------------------
-        // [管道与连接超时类]
-        // ------------------------------------------------------------------
+        // ==========================================================
+        // 🔵 【第二梯队：优雅刹车 (Graceful Stop)】
+        // 出现场景：上层主动调用了 Stop Endpoint 或 Abort Command
+        // 处理策略：清理残留的面单内存，不需要物理抢救
+        // ==========================================================
+        case XHCI_COMP_COMMAND_RING_STOPPED:
+        case XHCI_COMP_COMMAND_ABORTED:
+        case XHCI_COMP_STOPPED:
+        case XHCI_COMP_STOPPED_LENGTH_INVALID:
+        case XHCI_COMP_STOPPED_SHORT_PACKET:
+            return -ESHUTDOWN;              // POSIX: 传输端点已被安全关闭/停机
+
+        // ==========================================================
+        // 🟡 【第三梯队：数据与协议死锁 (Data/Protocol Halt)】
+        // 出现场景：Data 环或 Cmd 环报错，硬件端点坠入 `Halted` 状态。
+        // 处理策略：调用 `xhci_cmd_reset_ep` 抢救主板，上发 TMF/ClearHalt 安抚 U 盘。
+        // ==========================================================
         case XHCI_COMP_STALL_ERROR:
-            return -EPIPE;            // (32) Broken pipe：管道破裂 (设备明确拒绝)
+            return -EPIPE;                  // POSIX: 管道破裂 (U 盘主动拒绝)
 
-        case XHCI_COMP_TIMEOUT:
-        case XHCI_COMP_NO_PING_RESPONSE_ERROR:
-        case XHCI_COMP_MAX_EXIT_LATENCY_TOO_LARGE:
-            return -ETIMEDOUT;        // (110) Connection timed out：硬件通信或唤醒超时
+        case XHCI_COMP_USB_TRANSACTION_ERROR:
+            return -EPROTO;                 // POSIX: 协议错误 (线缆松动、CRC校验错、超时)
 
-        // ------------------------------------------------------------------
-        // [参数与状态非法类] (写代码时最容易踩的坑)
-        // ------------------------------------------------------------------
-        case XHCI_COMP_PARAMETER_ERROR:
-        case XHCI_COMP_INVALID_STREAM_TYPE_ERROR:
+        case XHCI_COMP_BABBLE_ERROR:
+        case XHCI_COMP_RING_OVERRUN:
+        case XHCI_COMP_ISOCH_BUFFER_OVERRUN:
+        case XHCI_COMP_BANDWIDTH_OVERRUN_ERROR:
+            return -EOVERFLOW;              // POSIX: 数值溢出 (设备像漏水一样疯狂发数据)
+
+        case XHCI_COMP_SPLIT_TRANSACTION_ERROR:
+            return -ECOMM;                  // POSIX: 发送时通信错误 (通常是 USB Hub 级错误)
+
+        case XHCI_COMP_TRB_ERROR:
+        case XHCI_COMP_DATA_BUFFER_ERROR:
         case XHCI_COMP_INVALID_STREAM_ID_ERROR:
-        case XHCI_COMP_CONTEXT_STATE_ERROR:
-            return -EINVAL;           // (22) Invalid argument：图纸参数填错，或状态机不合规
+            return -EILSEQ;                 // POSIX: 非法的字节序/操作 (驱动传给主板的 TRB 地址乱了)
 
-        // ------------------------------------------------------------------
-        // [内存、资源与缓冲区耗尽类]
-        // ------------------------------------------------------------------
-        case XHCI_COMP_RESOURCE_ERROR:
+        // ==========================================================
+        // 🟠 【第四梯队：资源与配置拒绝 (Config Rejection)】
+        // 出现场景：主板发脾气，拒绝执行你的 Configure Endpoint 等配置命令。
+        // 处理策略：向上层汇报设备无法接入，释放分配的上下文内存。
+        // ==========================================================
+        case XHCI_COMP_BANDWIDTH_ERROR:
+        case XHCI_COMP_SECONDARY_BANDWIDTH_ERROR:
+            return -ENOSPC;                 // POSIX: 设备上没有空间 (总线带宽被其他设备占满了)
+
         case XHCI_COMP_NO_SLOTS_AVAILABLE_ERROR:
-            return -ENOMEM;           // (12) Out of memory：xHCI 内部表项耗尽
+        case XHCI_COMP_RESOURCE_ERROR:
+            return -ENOMEM;                 // POSIX: 内存分配不足 (主板内部寄存器/内存池枯竭)
+
+        case XHCI_COMP_INVALID_STREAM_TYPE_ERROR:
+        case XHCI_COMP_PARAMETER_ERROR:
+            return -EINVAL;                 // POSIX: 无效的参数 (驱动代码写 Bug 了，填错了结构体)
+
+        case XHCI_COMP_SLOT_NOT_ENABLED_ERROR:
+        case XHCI_COMP_ENDPOINT_NOT_ENABLED_ERROR:
+        case XHCI_COMP_INCOMPATIBLE_DEVICE_ERROR:
+        case XHCI_COMP_NO_PING_RESPONSE_ERROR:
+            return -ENODEV;                 // POSIX: 没有这样的设备 (端点未激活 或 U 盘休眠叫不醒)
+
+        case XHCI_COMP_CONTEXT_STATE_ERROR:
+            return -EPERM;                  // POSIX: 操作不允许 (状态机时序违规，如在 Running 时改指针)
+
+        // ==========================================================
+        // 🔴 【第五梯队：灾难级系统崩溃 (Catastrophic Error)】
+        // 出现场景：中断系统瘫痪，或主板硬件发生物理级坏死。
+        // 处理策略：触发内核级总线大复位 (Host Controller Reset)，甚至 Kernel Panic。
+        // ==========================================================
+        case XHCI_COMP_TIMEOUT:
+            return -ETIMEDOUT;              // POSIX: 连接超时 (咱们驱动层自己定义的超时)
 
         case XHCI_COMP_EVENT_RING_FULL_ERROR:
         case XHCI_COMP_VF_EVENT_RING_FULL_ERROR:
-        case XHCI_COMP_RING_UNDERRUN:
-        case XHCI_COMP_RING_OVERRUN:
-        case XHCI_COMP_ISOCH_BUFFER_OVERRUN:
-            return -ENOBUFS;          // (105) No buffer space available：环爆了或溢出
-
-        // ------------------------------------------------------------------
-        // [设备与端点缺失类]
-        // ------------------------------------------------------------------
-        case XHCI_COMP_ENDPOINT_NOT_ENABLED_ERROR:
-        case XHCI_COMP_SLOT_NOT_ENABLED_ERROR:
-        case XHCI_COMP_INCOMPATIBLE_DEVICE_ERROR:
-            return -ENODEV;           // (19) No such device：试图操作一个没激活或不支持的设备
-
-        // ------------------------------------------------------------------
-        // [总线带宽耗尽类]
-        // ------------------------------------------------------------------
-        case XHCI_COMP_BANDWIDTH_ERROR:
-        case XHCI_COMP_BANDWIDTH_OVERRUN_ERROR:
-        case XHCI_COMP_SECONDARY_BANDWIDTH_ERROR:
-            return -ENOSPC;           // (28) No space left on device：总线带宽已被其他设备榨干
-
-        // ------------------------------------------------------------------
-        // [软件主动中止类]
-        // ------------------------------------------------------------------
-        case XHCI_COMP_STOPPED:
-        case XHCI_COMP_STOPPED_SHORT_PACKET:
-        case XHCI_COMP_STOPPED_LENGTH_INVALID:
-        case XHCI_COMP_COMMAND_ABORTED:
-        case XHCI_COMP_COMMAND_RING_STOPPED:
-            return -ECANCELED;        // (125) Operation Canceled：被上层驱动主动 Stop 或 Abort
-
-        // ------------------------------------------------------------------
-        // [协议与链路严重故障类] (Linux 核心标准用法)
-        // ------------------------------------------------------------------
-        case XHCI_COMP_BABBLE_ERROR:
-        case XHCI_COMP_USB_TRANSACTION_ERROR:
-        case XHCI_COMP_SPLIT_TRANSACTION_ERROR:
-            return -EPROTO;           // (71) Protocol error：物理层的严重通讯事故 (CRC失败、包发疯等)
-
-        // ------------------------------------------------------------------
-        // [致命 I/O 错误兜底]
-        // ------------------------------------------------------------------
-        case XHCI_COMP_TRB_ERROR:
-        case XHCI_COMP_DATA_BUFFER_ERROR:
         case XHCI_COMP_EVENT_LOST_ERROR:
+            return -ENOBUFS;                // POSIX: 没有可用的缓冲区 (你的死循环事件泵卡了，主板回执爆仓)
+
         case XHCI_COMP_UNDEFINED_ERROR:
-        case XHCI_COMP_MISSED_SERVICE_ERROR:
         case XHCI_COMP_INVALID:
         default:
-            return -EIO;              // (5) I/O error：底层发生灾难性硬件/DMA错误
+            return -EIO;                    // POSIX: 物理输入/输出错误 (万劫不复的底线错误)
     }
 }
 
