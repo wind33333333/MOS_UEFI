@@ -298,6 +298,7 @@ cleanup:
 //uas协议模板
 scsi_host_template_t uas_host_template = {
     .name = "uas",
+    .max_sectors = 2048, //uas协议一次传输1MB，2048*512字节
     .queue_command = uas_bulk_transport_sync,
     .reset_host = NULL,
     .abort_command = NULL,

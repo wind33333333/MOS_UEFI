@@ -348,6 +348,8 @@ typedef struct {
 typedef struct scsi_host_template_t {
     const char *name;                    // 驱动名称，例如 "usb-bot", "usb-uas", "ahci"
 
+    uint32 max_sectors;
+
     // 【核心接口】派发 SCSI 任务给底层硬件
     // 返回值通常为 0 (成功接收并处理) 或错误码
     int32 (*queue_command)(struct scsi_host_t *host, struct scsi_cmnd_t *cmnd);

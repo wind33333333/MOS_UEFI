@@ -200,6 +200,7 @@ cleanup:
 //uas协议模板
 scsi_host_template_t bot_host_template = {
     .name = "bot",
+    .max_sectors = 256, //bot协议一次传输128kb 256*512字节
     .queue_command = bot_bulk_transport_sync,
     .reset_host = NULL,
     .abort_command = NULL,
