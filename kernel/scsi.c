@@ -15,7 +15,7 @@ int32 scsi_execute(scsi_cmnd_t *scmnd) {
         if (scmnd->status == 0) {
             // 如果成功，直接返回
             break;
-        }else if(scmnd->status == 2 && scmnd->sense->flags_key == 0x06 && scmnd->sense->asc == 0x29) {
+        }else if(scmnd->status == 2 && scmnd->sense->flags_key == 0x06 && (scmnd->sense->asc == 0x29 || scmnd->sense->asc == 0x28)) {
             // 这Unit Attention (设备刚上电/复位) 是良性错误，静默重试
             retry_count--;
         }else{
@@ -352,7 +352,7 @@ static void scsi_probe_lun(scsi_host_t *shost) {
     sdev->lun  = 0;     //lun0 所有scsi设备都必须存在
 
     // 4. 发送 TEST UNIT READY (消费掉刚上电的 Unit Attention)
-    //scsi_test_unit_ready(sdev);
+    scsi_test_unit_ready(sdev);
 
     int32 status;
 
@@ -361,13 +361,12 @@ static void scsi_probe_lun(scsi_host_t *shost) {
         scsi_report_luns_t *report_luns = kzalloc(SCSI_LUN_BUF_LEN);
         status = scsi_report_luns(sdev,report_luns);
         if (status == 0 && report_luns->lun_list_length) {
-            shost->max_lun = asm_bswap32(report_luns->lun_list_length);
+            shost->max_lun = asm_bswap32(report_luns->lun_list_length)/8;
         }
         kfree(report_luns);
-        color_printk(GREEN,BLACK,"%s max lun:%d    \n",shost->dev.name,shost->max_lun);
     }
+    color_printk(GREEN,BLACK,"%s max lun:%d    \n",shost->dev.name,shost->max_lun);
 
-    //while (1);
 
     // 2. 发送 INQUIRY 命令查身份
     scsi_inquiry_t *inq = kzalloc(sizeof(scsi_inquiry_t));
@@ -421,7 +420,7 @@ static void scsi_probe_lun(scsi_host_t *shost) {
 
     uint8 *data_buf = kmalloc(655372);
     asm_mem_set(data_buf,0x8,655372);
-    scsi_read10(sdev, data_buf, 0,1280);
+    scsi_write10(sdev, data_buf, 0,1280);
 
     // 6. 组装设备树，将其挂载到 SCSI 总线上！
     // sdev->dev.parent = &shost->dev;         // 认 Host 为父

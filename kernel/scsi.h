@@ -91,7 +91,7 @@ typedef struct {
     // [Byte 12] 附加感测码 (ASC - Additional Sense Code)
     // ------------------------------------------------------------
     // 【核心错误子码】 详细描述错误原因。
-    // 例如：Key=06 时，ASC=29 表示 "Power On/Reset" (复位)。
+    // 例如：Key=06 时，ASC=0x29 0x28 表示 "Power On/Reset" (复位)。
     uint8 asc;
 
     // [Byte 13] 附加感测码限定符 (ASCQ - Additional Sense Code Qualifier)

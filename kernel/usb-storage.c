@@ -89,6 +89,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
         bot_data->uif = uif;
         bot_data->cbw = kzalloc_dma(sizeof(bot_csw_t));
         bot_data->csw = kzalloc_dma(sizeof(bot_csw_t));
+        bot_data->sense = kzalloc_dma(SCSI_SENSE_ALLOC_SIZE);
         bot_data->tag = 0;
 
         for (uint8 i = 0; i < 2; i++) {
@@ -100,10 +101,10 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
             }
         }
 
-        uint8 max_lun = bot_get_max_lun(uif->udev,uif->if_num);
+        //uint8 max_lun = bot_get_max_lun(uif->udev,uif->if_num);
 
         //创建scsi_host
-        shost = scsi_create_host(&bot_host_template,bot_data,&uif->dev,max_lun,"bot_host");
+        shost = scsi_create_host(&bot_host_template,bot_data,&uif->dev,1,"bot_host");
 
     }
 

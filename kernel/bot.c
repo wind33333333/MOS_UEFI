@@ -8,19 +8,19 @@
 /* @brief 执行 Request Sense 命令获取错误详情
  * @return int32 0 表示成功获取 Sense 数据，负数表示 POSIX 错误码
  */
-static int32 bot_request_sense(bot_data_t *bot_data, scsi_cmnd_t *cmnd) {
+static int32 bot_request_sense(scsi_cmnd_t *cmnd,scsi_sense_t *sense_buf) {
     // 1. 防死循环拦截与空指针校验
     if (cmnd->sense == NULL || *(uint8*)cmnd->scsi_cdb == SCSI_REQUEST_SENSE) {
         // ★ 规范化：使用 -EINVAL (Invalid argument) 代替 -1
         return -EINVAL;
     }
 
+
     // 2. 架构提升：直接使用该设备在 Probe 时预分配好的专属抢救内存 (DMA 安全)
-    scsi_sense_t *sense_buf = bot_data->sense;
     asm_mem_set(sense_buf, 0, SCSI_SENSE_ALLOC_SIZE);
 
     // 3. 发起请求 (假设底层的 scsi_request_sense 已经正确返回 POSIX 错误码)
-    int32 posix_err = scsi_request_sense(bot_data->sdev, sense_buf);
+    int32 posix_err = scsi_request_sense(cmnd->sdev, sense_buf);
 
     if (posix_err == 0) {
         // 4. 防御性长度计算
@@ -84,8 +84,16 @@ uint8 bot_get_max_lun(usb_dev_t *udev, uint8 if_num) {
 static int32 bot_ep_reset(usb_dev_t *udev,uint8 ep_dci) {
     xhci_hcd_t *xhcd = udev->xhcd;
     uint8 slot_id = udev->slot_id;
-    xhci_cmd_reset_ep(xhcd, slot_id, ep_dci);
-    usb_ep_halt_control(udev, ep_dci,USB_REQ_CLEAR_FEATURE);
+    uint32 posix_err = 0;
+    posix_err = xhci_cmd_reset_ep(xhcd, slot_id, ep_dci);
+    if (posix_err > 0) {
+       color_printk(RED,BLACK,"XHCI CMD RESET EP posix_err:%d slot_id:%d ep_dci:%d  \n",posix_err,slot_id,ep_dci);
+    }
+
+    posix_err = usb_ep_halt_control(udev, ep_dci,USB_REQ_CLEAR_FEATURE);
+    if (posix_err > 0) {
+        color_printk(RED,BLACK,"USB EP HALT CONTROL  \n!  \n");
+    }
     return 0;
 }
 
@@ -189,6 +197,7 @@ int32 bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
         goto cleanup;
     }
 
+
     // ============================================================
     // 🟡 Stage 2: 数据传输 (Data Stage) - 可选
     // ============================================================
@@ -241,6 +250,7 @@ retry_csw:
         goto cleanup;
     }
 
+
     // ============================================================
     // 🟢 Stage 4: 解析 CSW 结果
     // ============================================================
@@ -259,7 +269,7 @@ retry_csw:
             break;
         case BOT_CSW_FAIL:
             cmnd->status = SCSI_STATUS_CHECK_CONDITION;
-            bot_request_sense(bot_data,cmnd);
+            bot_request_sense(cmnd,bot_data->sense);
             break;
         case BOT_CSW_PHASE:
             color_printk(RED, BLACK, "BOT: Device reported Phase Error.\n");
