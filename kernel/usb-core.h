@@ -284,6 +284,7 @@ typedef enum : uint8 {
     USB_REQ_GET_INTERFACE     = 0x0A, // 获取当前接口备用设置
     USB_REQ_SET_INTERFACE     = 0x0B, // 设置接口备用设置 (常见于带麦克风和音响的复合 USB 耳机切换采样率)
     USB_REQ_SYNCH_FRAME       = 0x0C, // 同步帧 (仅用于等时传输，如音频/视频设备同步时间戳)
+
     // ------------------------------------------------------------------------
     // 【Mass Storage (BOT) 类专属请求】(当 qtype == USB_REQ_TYPE_CLASS 时有效)
     // ------------------------------------------------------------------------
@@ -600,8 +601,7 @@ void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfe
 
 int32 xhci_wait_urb_group(usb_dev_t *udev,usb_urb_t **urbs, uint8 num_urbs);
 int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void *data_buf);
-int32 usb_control_feature_halt(usb_dev_t *udev, uint8 ep_dci, usb_request_e is_set);
-uint8 usb_get_bot_max_lun(usb_dev_t *udev,uint8 if_num);
+int32 usb_ep_halt_control(usb_dev_t *udev, uint8 ep_dci, usb_request_e is_set);
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
 int32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp);
 

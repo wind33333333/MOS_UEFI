@@ -443,12 +443,14 @@ int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void 
     return posix_err;
 }
 
+
+
 /* @param udev   USB 设备上下文
  * @param ep_dci xHCI 的端点上下文索引 (DCI)
  * @param is_set USB_REQ_CLEAR_FEATURE(解锁)， USB_REQ_SET_FEATURE(上锁)
  * @return int32 0 表示成功，负数表示底层 POSIX 错误
  */
-int32 usb_control_feature_halt(usb_dev_t *udev, uint8 ep_dci, usb_request_e is_set) {
+int32 usb_ep_halt_control(usb_dev_t *udev, uint8 ep_dci, usb_request_e halt_action) {
     usb_setup_packet_t setup_pkg = {0};
 
     // 组装标准 Setup 包
@@ -456,8 +458,8 @@ int32 usb_control_feature_halt(usb_dev_t *udev, uint8 ep_dci, usb_request_e is_s
     setup_pkg.req_type  = USB_REQ_TYPE_STANDARD;
     setup_pkg.dtd       = USB_DIR_OUT;           // 方向：主机发往设备
 
-    // ★ 核心差异点：根据 is_set 动态切换指令
-    setup_pkg.request   = is_set;
+    // ★ 核心差异点：根据 halt_action 动态切换指令
+    setup_pkg.request   = halt_action;
 
     setup_pkg.value     = USB_FEATURE_ENDPOINT_HALT;
     setup_pkg.index     = epdci_to_epaddr(ep_dci);
@@ -467,40 +469,6 @@ int32 usb_control_feature_halt(usb_dev_t *udev, uint8 ep_dci, usb_request_e is_s
     return usb_control_msg_sync(udev, &setup_pkg, NULL);
 }
 
-/**
- * @brief 获取 BOT 协议设备最大 LUN 数量
- * @return uint8 哪怕失败了，也要做最坏的打算 (返回 1 个 LUN)
- */
-uint8 usb_get_bot_max_lun(usb_dev_t *udev, uint8 if_num) {
-    usb_setup_packet_t setup_pkg = {0};
-    setup_pkg.recipient = USB_RECIP_INTERFACE;
-    setup_pkg.req_type  = USB_REQ_TYPE_CLASS;
-    setup_pkg.dtd       = USB_DIR_IN;
-    setup_pkg.request   = BOT_REQ_GET_MAX_LUN;
-    setup_pkg.value     = 0;
-    setup_pkg.index     = if_num;
-    setup_pkg.length    = 1;
-
-    uint8 *max_lun = kzalloc_dma(64);
-    if (!max_lun) {
-        return 1; // ★ 物理防御：内存分配失败时，保底认为有 1 个 LUN
-    }
-
-    // ★ 架构防御：必须捕获错误码！因为 90% 的低端 U 盘会在这里返回 STALL (-EPIPE)
-    int32 posix_err = usb_control_msg_sync(udev, &setup_pkg, max_lun);
-
-    uint8 lun_count;
-    if (posix_err < 0) {
-        // U 盘傲娇抗议 (STALL) 或通信失败，根据 USB 规范，原谅它并默认为 0（加上面的+1后为1个LUN）
-        color_printk(YELLOW, BLACK, "BOT: Get Max LUN failed/STALL (%d). Defaulting to 1 LUN.\n", posix_err);
-        lun_count = 1;
-    } else {
-        lun_count = (*max_lun) + 1;
-    }
-
-    kfree(max_lun);
-    return lun_count;
-}
 
 
 /**

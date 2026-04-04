@@ -27,10 +27,45 @@ int32 bot_request_sense(bot_data_t *bot_data,scsi_cmnd_t *cmnd) {
 }
 
 /**
+ * @brief 获取 BOT 协议设备最大 LUN 数量
+ * @return uint8 哪怕失败了，也要做最坏的打算 (返回 1 个 LUN)
+ */
+uint8 bot_get_max_lun(usb_dev_t *udev, uint8 if_num) {
+    uint8 *max_lun = kzalloc_dma(64);
+    if (!max_lun) {
+        return -ENOMEM; // ★ 物理防御：内存分配失败时，保底认为有 1 个 LUN
+    }
+
+    usb_setup_packet_t setup_pkg = {0};
+    setup_pkg.recipient = USB_RECIP_INTERFACE;
+    setup_pkg.req_type  = USB_REQ_TYPE_CLASS;
+    setup_pkg.dtd       = USB_DIR_IN;
+    setup_pkg.request   = BOT_REQ_GET_MAX_LUN;
+    setup_pkg.value     = 0;
+    setup_pkg.index     = if_num;
+    setup_pkg.length    = 1;
+
+    // ★ 架构防御：必须捕获错误码！因为 90% 的低端 U 盘会在这里返回 STALL (-EPIPE)
+    int32 posix_err = usb_control_msg_sync(udev, &setup_pkg, max_lun);
+    uint8 lun_count;
+    if (posix_err < 0) {
+        // U 盘傲娇抗议 (STALL) 或通信失败，根据 USB 规范，原谅它并默认为 0（加上面的+1后为1个LUN）
+        color_printk(YELLOW, BLACK, "BOT: Get Max LUN failed/STALL (%d). Defaulting to 1 LUN.\n", posix_err);
+        lun_count = 1;
+    } else {
+        lun_count = (*max_lun) + 1;
+    }
+
+    kfree(max_lun);
+    return lun_count;
+}
+
+
+/**
  * BOT 终极错误恢复 (Bulk-Only Mass Storage Reset)
  * 用于应对协议阶段错误或致命的卡死。
  */
-void bot_recovery_reset(usb_dev_t *udev,uint8 if_num, uint8 pipe_in, uint8 pipe_out) {
+int32 bot_recovery_reset(usb_dev_t *udev,uint8 if_num, uint8 in_epdci, uint8 out_epdci) {
     xhci_hcd_t *xhcd = udev->xhcd;
     uint8 slot_id = udev->slot_id;
 
@@ -44,15 +79,19 @@ void bot_recovery_reset(usb_dev_t *udev,uint8 if_num, uint8 pipe_in, uint8 pipe_
     usb_setup_pkg.index = if_num;
     usb_setup_pkg.length = 0;
 
-    usb_control_msg_sync(udev,&usb_setup_pkg,NULL);
+    int32 posix_err =usb_control_msg_sync(udev,&usb_setup_pkg,NULL);
+    if (posix_err < 0) {
+        color_printk(RED,BLACK,"Bot Recovery Reset Fail! \n");
+        return posix_err;
+    }
 
     // 动作 2：清理硬件与协议层面的 IN 管道挂起状态
-    xhci_cmd_reset_ep(xhcd, slot_id, pipe_in);
-    usb_control_feature_halt(udev, pipe_in,USB_REQ_CLEAR_FEATURE);
+    xhci_cmd_reset_ep(xhcd, slot_id, in_epdci);
+    usb_ep_halt_control(udev, in_epdci,USB_REQ_CLEAR_FEATURE);
 
     // 动作 3：清理硬件与协议层面的 OUT 管道挂起状态
-    xhci_cmd_reset_ep(xhcd, slot_id, pipe_out);
-    usb_control_feature_halt(udev, pipe_out,USB_REQ_CLEAR_FEATURE);
+    xhci_cmd_reset_ep(xhcd, slot_id, out_epdci);
+    usb_ep_halt_control(udev, out_epdci,USB_REQ_CLEAR_FEATURE);
 
     color_printk(GREEN, BLACK, "BOT: Reset Request!\n");
 }
@@ -128,7 +167,7 @@ int32 bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
                 color_printk(YELLOW, BLACK, "BOT Stage 2: STALL. Clearing Halt...\n");
                 // ★ 核心修复 1：必须真刀真枪地去清除硬件 STALL 状态！
                 // 不然端点一直处于 Halted 状态，Stage 3 绝对会失败！
-                usb_control_feature_halt(udev, ep->ep_dci,USB_REQ_CLEAR_FEATURE);
+                usb_ep_halt_control(udev, ep->ep_dci,USB_REQ_CLEAR_FEATURE);
 
                 // STALL 并不意味着整个 SCSI 流程终结，强行放行，去拿 CSW 看具体死因
                 posix_err = 0;
