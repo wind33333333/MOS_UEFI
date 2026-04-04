@@ -9,7 +9,7 @@
 #define ENOMEM      12  /* Out of memory (资源或内存耗尽) */
 #define	EBUSY		16	/* Device or resource busy 设备或资源繁忙 */
 #define ENODEV      19  /* No such device (设备被拔出或端点未激活) */
-#define EINVAL      22  /* Invalid argument (上下文图纸参数配置错误) */
+#define EINVAL      22  /* nvalid Argument，无效参数 */
 #define ENOSPC      28  /* No space left on device (总线带宽耗尽) */
 #define ENOSYS      38  /* Function not implemented: 驱动暂未实现该功能 */
 #define EPIPE       32  /* Broken pipe (管道破裂/设备STALL) */

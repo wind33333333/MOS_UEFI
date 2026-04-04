@@ -611,7 +611,7 @@ int32 xhci_stop(xhci_hcd_t *xhcd) {
             return 0;
     }
     color_printk(RED, BLACK, "xHCI: Stop timeout! Controller refused to halt.\n");
-    return -1;
+    return -ETIMEDOUT;
 }
 
 //复位xhci
@@ -639,7 +639,7 @@ int32 xhci_reset(xhci_hcd_t *xhcd) {
     }
 
     color_printk(RED, BLACK, "xHCI: Reset timeout! Controller died during reset.\n");
-    return -1;
+    return -ETIMEDOUT;
 }
 
 //启动xhci
@@ -651,7 +651,7 @@ int32 xhci_start(xhci_hcd_t *xhcd) {
             return 0;
     }
     color_printk(RED, BLACK, "xHCI: Start timeout! Controller refused to run.\n");
-    return -1;
+    return -ETIMEDOUT;
 }
 
 //启用xhci中断
@@ -678,6 +678,11 @@ int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhcd->op_reg = xdev->bar[0].vaddr + xhcd->cap_reg->cap_length; //xhci操作寄存器基地址
     xhcd->rt_reg = xdev->bar[0].vaddr + xhcd->cap_reg->rtsoff; //xhci运行时寄存器基地址
     xhcd->db_reg = xdev->bar[0].vaddr + xhcd->cap_reg->dboff; //xhci门铃寄存器基地址
+
+    /*停止复位xhci*/
+    if (xhci_reset(xhcd) == -ETIMEDOUT) {
+        while (1);
+    }
 
     xhcd->ctx_size = 32 << ((xhcd->cap_reg->hccparams1 & HCCP1_CSZ) >> 2);     /*设备上下文字节数*/
     xhcd->major_bcd = xhcd->cap_reg->hciversion >> 8; //xhci主版本
@@ -761,8 +766,6 @@ int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
         }
     }
 
-    /*停止复位xhci*/
-    xhci_reset(xhcd);
 
     /*初始化设备上下文*/
     xhcd->max_slots = xhcd->cap_reg->hcsparams1 & 0xff;

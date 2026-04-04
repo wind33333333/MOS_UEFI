@@ -737,7 +737,7 @@ void usb_tx_eval_slot(usb_dev_t *udev) {
  */
 int32 usb_tx_commit(usb_dev_t *udev, usb_tx_cmd_e cmd_type) {
     xhci_input_ctx_t *input_ctx = udev->input_ctx;
-    int32 ret = -1;
+    int32 ret = 0;
 
     // ==========================================
     // 阶段 1：根据指令类型，扣动对应的物理硬件扳机
@@ -761,7 +761,9 @@ int32 usb_tx_commit(usb_dev_t *udev, usb_tx_cmd_e cmd_type) {
             break;
 
         default:
-            return -1; // 非法指令
+            // ★ POSIX 修正：调用者传入了驱动不支持的指令宏，属于极其严重的传参错误
+            color_printk(RED, BLACK, "xHCI: Invalid commit command type: %d\n", cmd_type);
+            return -EINVAL;
     }
 
     // ==========================================
@@ -875,7 +877,7 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
 static int32 free_ep_ring(usb_ep_t *ep) {
     // 0. 防御性拦截：如果根本没分配过，直接返回
     if (ep == NULL || ep->rings == NULL) {
-        return 0;
+        return -EINVAL;
     }
 
     if (ep->enable_streams_exp > 0) {
@@ -928,7 +930,9 @@ static int32 free_ep_ring(usb_ep_t *ep) {
  */
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // 1. 终极防御：如果搜索函数返回了 NULL，或者这是一个脏指针，直接拦截！
-    if (new_alt == NULL || new_alt->uif == NULL) return -1;
+    if (new_alt == NULL || new_alt->uif == NULL) return -EINVAL;
+
+    int32 posix = 0;
 
     // 2. 顺藤摸瓜：通过你的反向指针，直接拉出上层接口和设备对象！
     usb_if_t *uif = new_alt->uif;
@@ -938,7 +942,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     usb_if_alt_t *old_alt = uif->cur_alt;
 
     // 3. 性能优化：如果想切换的就是当前正在用的，直接光速返回
-    if (old_alt == new_alt) return 0;
+    if (old_alt == new_alt) return -EINVAL;
 
     // 开启 xHCI 底层硬件事务
     usb_tx_begin(udev);
@@ -965,11 +969,12 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
         ep->enable_streams_exp = 0;
 
         // ★ OOM 防御：分配环可能因为物理 DMA 内存耗尽而失败
-        if (alloc_ep_ring(ep) != 0) {
+        posix = alloc_ep_ring(ep);
+        if (posix < 0) {
             color_printk(RED, BLACK, "USB: OOM allocating rings during Alt setting!\n");
             // 局部回滚：释放刚才循环里已经分配成功的前几个端点
             for (uint8 j = 0; j < i; j++) free_ep_ring(&new_alt->eps[j]);
-            return -1;
+            return posix;
         }
 
         // 准备好图纸
@@ -979,11 +984,12 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // ==========================================================
     // 阶段 3：一锤定音！向 xHCI 提交图纸，等待硬件裁决
     // ==========================================================
-    if (usb_tx_commit(udev, USB_TX_CMD_CFG_EP) != 0) {
+    posix = usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
+    if (posix < 0) {
         color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, hardware rejected!\n");
         // 主板拒绝了这份图纸，销毁刚刚新分配的所有内存，安全退出
         for (uint8 i = 0; i < new_alt->ep_count; i++) free_ep_ring(&new_alt->eps[i]);
-        return -1;
+        return posix;
     }
 
     // ==========================================================
@@ -998,7 +1004,8 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // ==========================================================
     // ★ 阶段 5：主板软件均就绪，正式通过 EP0 通知物理 U 盘切换频道！
     // ==========================================================
-    if (usb_set_if(udev, uif->if_num, new_alt->altsetting) != 0) {
+    posix = usb_set_if(udev, uif->if_num, new_alt->altsetting);
+    if (posix < 0) {
         color_printk(RED, BLACK, "USB: Device rejected Set Interface command!\n");
 
         // ！！！极品回滚逻辑 (完美修复版) ！！！
@@ -1024,9 +1031,12 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
         if (old_alt != NULL) {
             for (uint8 i = 0; i < old_alt->ep_count; i++) usb_tx_add_ep(udev, &old_alt->eps[i]);
         }
-        usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
-
-        return -1; // 经过这一套抢救，操作系统和设备毫发无伤地回到了切换前的健康状态！
+        int32 tx_err = usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
+        if (tx_err < 0) {
+            color_printk(RED,BLACK, "xHCI: Device rejected Committed Config Command!\n");
+            return tx_err;
+        }
+        return posix; // 经过这一套抢救，操作系统和设备毫发无伤地回到了切换前的健康状态！
     }
 
     // ==========================================================
@@ -1051,16 +1061,21 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
 
 
 /**
- * @brief [USB Core API] 评估“木桶短板”并为一组端点统筹升级多流 (Streams)
- * @param udev             目标 USB 设备
- * @param eps              需要开启流的端点指针数组
- * @param eps_count        数组中端点的个数
- * @param expected_streams_exp 驱动期望申请的流数量 (UAS 一般期望是 8，即 256 流)
- * @return int32           成功返回实际分配的流数量，失败或不支持返回 <= 0
+ * @brief 为 USB 端点组协商并分配流(Streams)模式物理内存
+ * @param udev 外设上下文
+ * @param eps 需要开启流模式的端点数组 (比如 UAS 的 Data IN 和 Data OUT)
+ * @param eps_count 端点数量
+ * @param expected_streams_exp 期望的流指数 (并发量 = 2^exp)
+ * * @return int32
+ * < 0 : 底层 POSIX 错误码 (如 -EINVAL, -ENOMEM)，表示配置彻底失败。
+ * == 0: 降级为传统普通模式 (主板或外设不支持，或入参期望为0)。
+ * > 0 : 成功开启流模式，返回最终多方妥协后的流指数 (Stream Exponent)。
  */
-uint32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp) {
-    if (!udev || !eps || eps_count == 0) return -1;
+int32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp) {
+    if (!udev || !eps || eps_count == 0) return -EINVAL;
     if (expected_streams_exp == 0) return 0;
+
+    int32 posix_err = 0;
 
     // ==========================================================
     // 阶段 1：疯狂的“最短板”算计 (The Short-Board Evaluation)
@@ -1107,9 +1122,10 @@ uint32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8
     }
 
     // 提交事务一：主板收到后，会正式解除对这些端点旧物理内存的占用！
-    if (usb_tx_commit(udev, USB_TX_CMD_CFG_EP) != 0) {
+    posix_err = usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
+    if (posix_err < 0) {
         color_printk(RED, BLACK, "xHCI: Failed to drop endpoints for stream setup!\n");
-        return -1;
+        return posix_err;
     }
 
     // ----------------------------------------------------------
@@ -1121,16 +1137,20 @@ uint32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8
         usb_ep_t *ep = eps[i];
 
         // 1. 此时硬件已经彻底放手，旧内存绝对安全了！放心 Free！
-        free_ep_ring(ep);
+        posix_err = free_ep_ring(ep);
+        if (posix_err < 0) {
+            return  posix_err;
+        }
 
         // 2. 状态机翻页：正式赋予端点流能力参数
         ep->enable_streams_exp = mini_streams_exp;
 
         // 3. 重新分配物理内存：alloc_ep_ring 会根据 enable_streams_exp 分配 2^(N+1) 个流环
-        if (alloc_ep_ring(ep) != 0) {
+        posix_err = alloc_ep_ring(ep);
+        if (posix_err < 0) {
             color_printk(RED, BLACK, "USB: OOM allocating stream rings!\n");
             // 注意：此时端点处于 Disabled，若 OOM，整个设备只能重新复位或降级
-            return -1;
+            return posix_err;
         }
 
         // 4. 将带有流参数的新端点加入图纸 (仅仅打上 Add 标记)
@@ -1138,9 +1158,10 @@ uint32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8
     }
 
     // 提交事务二：主板看到端点从 Disabled 醒来，且带有多流参数，完美接受！
-    if (usb_tx_commit(udev, USB_TX_CMD_CFG_EP) != 0) {
+    posix_err = usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
+    if (posix_err < 0) {
         color_printk(RED, BLACK, "xHCI: Failed to add endpoints with streams!\n");
-        return -1;
+        return posix_err;
     }
 
     return mini_streams_exp; // 返回协商后的最终指数，供上层分配 Tag
@@ -1152,6 +1173,8 @@ uint32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8
 //给备用接口的所有端点分配环
 static inline int32 enable_alt_if (usb_if_alt_t *if_alt) {
     usb_dev_t *udev = if_alt->uif->udev;
+
+    int32 posix_err = 0;
 
     // ★ 开启事务，拿出一张空白的 Configure Endpoint 申请表
     usb_tx_begin(udev);
@@ -1165,14 +1188,20 @@ static inline int32 enable_alt_if (usb_if_alt_t *if_alt) {
         udev->eps[ep_dci] = ep;
 
         //给端点分配环
-        alloc_ep_ring(ep);
+        posix_err = alloc_ep_ring(ep);
+        if (posix_err < 0) {
+            return posix_err;
+        }
 
         // ★ 将端点挂载到 Input Context 申请表中
         usb_tx_add_ep(udev, ep);
     }
 
     // ★ 扣动扳机！将申请表通过 Command Ring 提交给主板，并敲响门铃
-    usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
+    posix_err = usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
+    if (posix_err < 0) {
+        return posix_err;
+    }
 
     return 0;
 }

@@ -188,11 +188,6 @@ int32 uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     uas_cmd_iu_t *cmd_iu;
     uas_sense_iu_t *sense_iu;
 
-    xhci_ep_ctx_t *status_ep_ctx = xhci_get_dev_ctx_entry(udev,uas_data->status_ep->ep_dci);
-    xhci_ep_ctx_t *cmd_ep_ctx = xhci_get_dev_ctx_entry(udev,uas_data->cmd_ep->ep_dci);
-    xhci_ep_ctx_t *in_ep_ctx = xhci_get_dev_ctx_entry(udev,uas_data->data_in_ep->ep_dci);
-    xhci_ep_ctx_t *out_ep_ctx = xhci_get_dev_ctx_entry(udev,uas_data->data_out_ep->ep_dci);
-
     // 1. 获取图纸与并发槽位
     posix_err = uas_alloc_request(uas_data, (void **)&cmd_iu, (void **)&sense_iu, &tag, &stream_id);
     if (posix_err < 0) {
@@ -268,57 +263,8 @@ int32 uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     // 5. 挂起等待
     // ============================================================
     posix_err = xhci_wait_urb_group(udev,urb_arr,urb_arr_count);
-
     if (posix_err < 0) {
         color_printk(RED, BLACK, "UAS: Bus transfer failed (%d). Initiating Error Handling...\n", posix_err);
-
-        // ==========================================================
-        // 🛑 【步骤 2：业务层猛踩刹车 (防踩踏)】
-        // 不管什么错误，先把还在跑的管子全勒停，防止主机内存被“僵尸 DMA”破坏
-        // ==========================================================
-        xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, uas_data->status_ep->ep_dci);
-        if (urb_data) {
-            xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, urb_data->ep->ep_dci);
-        }
-        xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, uas_data->cmd_ep->ep_dci);
-
-        // ==========================================================
-        // 🎯 针对 STALL 的特化抢救连招 (步骤 3 & 4)
-        // ==========================================
-        if (posix_err == -EPIPE) {
-            color_printk(YELLOW, BLACK, "UAS: STALL detected. Executing TMF Abort Task...\n");
-
-            // 🗡️ 【步骤 3：逻辑死刑宣判 (杀僵尸任务)】
-            // 调用之前写的 TMF 引擎，精准狙击当前出错的这个 tag
-            int32 abort_err = uas_abort_task(host, cmnd->sdev->lun, tag);
-
-            if (abort_err == 0) {
-                // 只有 U 盘明确回复了“任务已中止”，才允许去开门！
-                color_printk(GREEN, BLACK, "UAS: TMF successful. Clearing Halt feature...\n");
-
-                // 🔑 【步骤 4：物理大门开锁 (发送 Clear Feature)】
-                // 谁报了 EPIPE，就解挂谁。
-                // ★ 极其关键：这里传的必须是端点的 USB 标准地址 (ep_addr)，绝不能是 DCI！
-                if (urb_data && urb_data->status == -EPIPE) {
-                    usb_control_feature_halt(udev, urb_data->ep->ep_dci,USB_REQ_CLEAR_FEATURE);
-                }
-
-                // 极小概率 Status 端点也会 STALL，防患于未然
-                if (urb_status->status == -EPIPE) {
-                    usb_control_feature_halt(udev, uas_data->status_ep->ep_dci,USB_REQ_CLEAR_FEATURE);
-                }
-
-                // 清理完毕，此时系统已经恢复到完美初始状态。
-            } else {
-                // 如果 ABORT TASK 都发不出去，说明 U 盘内部状态机彻底崩溃
-                color_printk(RED, BLACK, "UAS: TMF Abort Task failed (%d)! Device needs port reset.\n", abort_err);
-
-                // 放弃治疗，把错误升维成致命 I/O 错误，交由上层直接复位 USB 接口
-                posix_err = -EIO;
-            }
-        }
-
-        // 带着最终的错误码，去释放面单内存
         goto cleanup;
     }
 

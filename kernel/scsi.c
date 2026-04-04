@@ -406,31 +406,32 @@ static void scsi_probe_lun(scsi_host_t *shost) {
     kfree(inq);
 
     color_printk(GREEN,BLACK,"vendor:%s model:%s rev:%s   \n",sdev->vendor,sdev->model,sdev->rev);
-    //while (1);
 
-
-    /*// 5. 如果是磁盘设备 (Type 0)，尝试获取容量
+    // 5. 如果是磁盘设备 (Type 0)，尝试获取容量
     if (sdev->type == 0x00) {
-        scsi_read_capacity10_t cap = {0};
+        scsi_read_capacity10_t *cap = kzalloc_dma(sizeof(scsi_read_capacity10_t));
         // 注意：这里哪怕没获取到容量(如读卡器没插卡)，也要把 sdev 留着，只是标记 is_ready = 0
-        if (scsi_read_capacity10(sdev, &cap) == 0) {
-            sdev->block_size = asm_bswap32(cap.block_size);
-            sdev->max_lba    = asm_bswap32(cap.max_lba);
+        if (scsi_read_capacity10(sdev, cap) == 0) {
+            sdev->block_size = asm_bswap32(cap->block_size);
+            sdev->max_lba    = asm_bswap32(cap->max_lba);
             sdev->is_ready   = 1;
         }
+        kfree(cap);
     }
 
+
+
     // 6. 组装设备树，将其挂载到 SCSI 总线上！
-    sdev->dev.parent = &shost->dev;         // 认 Host 为父
-    sdev->dev.bus    = &scsi_bus_type;      // 挂载到 SCSI 总线
-    sdev->dev.type   = &scsi_dev_type;     // 身份标记为 scsi_device
+    // sdev->dev.parent = &shost->dev;         // 认 Host 为父
+    // sdev->dev.bus    = &scsi_bus_type;      // 挂载到 SCSI 总线
+    // sdev->dev.type   = &scsi_dev_type;     // 身份标记为 scsi_device
 
     // 挂入 Host 的设备链表中，方便统一管理
-    list_add_tail( &shost->devices_list,&sdev->siblings);
+    //list_add_tail( &shost->devices_list,&sdev->siblings);
 
     // 7. 正式注册设备！
     // 【核心联动】这行代码会唤醒 SCSI 总线，总线会拿着 sdev->type 去找对应的驱动 (如 sd_driver)
-    device_register(&sdev->dev);*/
+    //device_register(&sdev->dev);
 
 }
 
