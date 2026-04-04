@@ -1,29 +1,48 @@
 #include "bot.h"
-
 #include "errno.h"
 #include "printk.h"
 #include "usb-core.h"
 #include "scsi.h"
 #include "slub.h"
 
-/**
- * 执行 Request Sense 命令获取错误详情
+/* @brief 执行 Request Sense 命令获取错误详情
+ * @return int32 0 表示成功获取 Sense 数据，负数表示 POSIX 错误码
  */
-int32 bot_request_sense(bot_data_t *bot_data,scsi_cmnd_t *cmnd) {
-    if (!cmnd->sense || *(uint8*)cmnd->scsi_cdb == SCSI_REQUEST_SENSE) return -1;
-
-    scsi_sense_t *sense = kzalloc(SCSI_SENSE_ALLOC_SIZE);
-
-    int32 status = scsi_request_sense(bot_data->sdev,sense);
-
-    if (status == 0) {
-        asm_mem_cpy(sense,cmnd->sense,8+sense->add_sense_len);
-    }else {
-        //连获取错误信息都失败了设备可能挂了
+static int32 bot_request_sense(bot_data_t *bot_data, scsi_cmnd_t *cmnd) {
+    // 1. 防死循环拦截与空指针校验
+    if (cmnd->sense == NULL || *(uint8*)cmnd->scsi_cdb == SCSI_REQUEST_SENSE) {
+        // ★ 规范化：使用 -EINVAL (Invalid argument) 代替 -1
+        return -EINVAL;
     }
 
-    kfree(sense);
-    return status;
+    // 2. 架构提升：直接使用该设备在 Probe 时预分配好的专属抢救内存 (DMA 安全)
+    scsi_sense_t *sense_buf = bot_data->sense;
+    asm_mem_set(sense_buf, 0, SCSI_SENSE_ALLOC_SIZE);
+
+    // 3. 发起请求 (假设底层的 scsi_request_sense 已经正确返回 POSIX 错误码)
+    int32 posix_err = scsi_request_sense(bot_data->sdev, sense_buf);
+
+    if (posix_err == 0) {
+        // 4. 防御性长度计算
+        uint32 copy_len = 8 + sense_buf->add_sense_len;
+        if (copy_len > SCSI_SENSE_ALLOC_SIZE) {
+            copy_len = SCSI_SENSE_ALLOC_SIZE;
+        }
+
+        asm_mem_cpy(sense_buf, cmnd->sense, copy_len);
+
+    } else {
+        color_printk(RED, BLACK, "BOT: Failed to fetch Sense Data (%d). Device may be dead.\n", posix_err);
+
+        // ★ 规范化：确保向上层传递的一定是负数的 POSIX 错误码
+        // 如果底层的 status 是非 0 的正数（某些怪异的设备返回状态），将其强转为底层 I/O 错误
+        if (posix_err > 0) {
+            posix_err = -EIO; // EIO: I/O error
+        }
+    }
+
+    // 无需 kfree，这块内存永远属于 bot_data，随设备拔出才销毁
+    return posix_err;
 }
 
 /**
@@ -61,13 +80,19 @@ uint8 bot_get_max_lun(usb_dev_t *udev, uint8 if_num) {
 }
 
 
-/**
- * BOT 终极错误恢复 (Bulk-Only Mass Storage Reset)
- * 用于应对协议阶段错误或致命的卡死。
- */
-int32 bot_recovery_reset(usb_dev_t *udev,uint8 if_num, uint8 in_epdci, uint8 out_epdci) {
+//清除xhci和u盘端点挂起状态
+static int32 bot_ep_reset(usb_dev_t *udev,uint8 ep_dci) {
     xhci_hcd_t *xhcd = udev->xhcd;
     uint8 slot_id = udev->slot_id;
+    xhci_cmd_reset_ep(xhcd, slot_id, ep_dci);
+    usb_ep_halt_control(udev, ep_dci,USB_REQ_CLEAR_FEATURE);
+    return 0;
+}
+
+/**
+ * bot协议u盘重置
+ */
+static int32 bot_mass_storage_reset(usb_dev_t *udev,uint8 if_num) {
 
     // 动作 1：发送特定的 0xFF 控制命令，将 U 盘内部状态机重置
     usb_setup_packet_t usb_setup_pkg = {0};
@@ -85,143 +110,161 @@ int32 bot_recovery_reset(usb_dev_t *udev,uint8 if_num, uint8 in_epdci, uint8 out
         return posix_err;
     }
 
-    // 动作 2：清理硬件与协议层面的 IN 管道挂起状态
-    xhci_cmd_reset_ep(xhcd, slot_id, in_epdci);
-    usb_ep_halt_control(udev, in_epdci,USB_REQ_CLEAR_FEATURE);
-
-    // 动作 3：清理硬件与协议层面的 OUT 管道挂起状态
-    xhci_cmd_reset_ep(xhcd, slot_id, out_epdci);
-    usb_ep_halt_control(udev, out_epdci,USB_REQ_CLEAR_FEATURE);
-
-    color_printk(GREEN, BLACK, "BOT: Reset Request!\n");
+    return 0;
 }
 
 
 /**
- * BOT 协议同步发送函数
- * 逻辑：CBW -> Data(可选) -> CSW
+ * @brief BOT 终极错误恢复完整序列 (The 3-Step Reset Sequence)
+ * 当 CBW 发送失败，或 CSW 发生 Phase Error 时调用。
+ * 规范强硬要求：0xFF -> 清 IN 端点 -> 清 OUT 端点。
+ */
+int32 bot_execute_full_recovery(usb_dev_t *udev, uint8 if_num, uint8 in_ep_dci, uint8 out_ep_dci) {
+    int32 err;
+
+    // 第一步：砸碎内部状态机 (0xFF)
+    err = bot_mass_storage_reset(udev, if_num);
+    if (err < 0) return err; // 如果连 EP0 控制通道都断了，这 U 盘可以直接拔了
+
+    // 第二步：解挂 IN 数据管道
+    err = bot_ep_reset(udev, in_ep_dci);
+    if (err < 0) return err;
+
+    // 第三步：解挂 OUT 数据管道
+    err = bot_ep_reset(udev, out_ep_dci);
+    if (err < 0) return err;
+
+    color_printk(GREEN, BLACK, "BOT: Full Error Recovery Sequence Completed!\n");
+    return 0;
+}
+
+
+/**
+ * @brief BOT 协议同步发送引擎 (The Bulk-Only Transport State Machine)
+ * 严格遵循 USB Mass Storage Class BOT 规范进行 3 阶段传输与错误抢救。
  */
 int32 bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     bot_data_t *bot_data = host->hostdata;
     usb_dev_t *udev = bot_data->uif->udev;
+    uint8 if_num = bot_data->uif->if_num;
 
     usb_ep_t *in_ep = bot_data->in_ep;
     usb_ep_t *out_ep = bot_data->out_ep;
 
     bot_cbw_t *cbw = bot_data->cbw;
     bot_csw_t *csw = bot_data->csw;
-    asm_mem_set(bot_data->cbw, 0, sizeof(bot_cbw_t));
-    asm_mem_set(bot_data->csw, 0, sizeof(bot_csw_t));
+    asm_mem_set(cbw, 0, sizeof(bot_cbw_t));
+    asm_mem_set(csw, 0, sizeof(bot_csw_t));
 
-    // 1. 生成 Tag
+    // 1. 生成全局唯一 Tag
     uint32 tag = ++bot_data->tag;
-    int32 posix_err;
+    int32 posix_err = 0;
 
-    // 👑 动态申请通用 URB 面单 (整个函数生命周期内复用)
+    // 动态申请通用 URB 面单 (整个函数生命周期内复用)
     usb_urb_t *urb = usb_alloc_urb();
     if (urb == NULL) {
         return -ENOMEM;
     }
 
     // ============================================================
-    // Stage 1: 发送 CBW (Command Block Wrapper)
+    // 🔴 Stage 1: 发送 CBW (Command Block Wrapper)
     // ============================================================
-    cbw->signature = BOT_CBW_SIGNATURE; // "USBC"
-    cbw->tag       = tag;
+    cbw->signature     = BOT_CBW_SIGNATURE; // "USBC"
+    cbw->tag           = tag;
     cbw->data_tran_len = cmnd->data_len;
-    cbw->flags     = (cmnd->dir == SCSI_DIR_IN) ? BOT_CBW_DATA_IN : BOT_CBW_DATA_OUT;
-    cbw->lun       = cmnd->sdev->lun;
+    cbw->flags         = (cmnd->dir == SCSI_DIR_IN) ? BOT_CBW_DATA_IN : BOT_CBW_DATA_OUT;
+    cbw->lun           = cmnd->sdev->lun;
     cbw->scsi_cdb_len  = cmnd->scsi_cdb_len;
     asm_mem_cpy(cmnd->scsi_cdb, cbw->scsi_cdb, cmnd->scsi_cdb_len);
 
-    // 👑 填单并发车：使用内联助手自动打包参数
     usb_fill_bulk_urb(urb, udev, out_ep, cbw, sizeof(bot_cbw_t));
     posix_err = usb_submit_urb(urb);
-    if (posix_err < 0) {
-        goto cleanup;
-    }
+    if (posix_err < 0) goto cleanup;
 
-    // 等待 CBW 发送完成 (利用 URB 回填的 last_trb_pa)
-    posix_err = xhci_wait_urb_group(udev,&urb,1);
+    posix_err = xhci_wait_urb_group(udev, &urb, 1);
     if (posix_err < 0) {
-        bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
+        color_printk(RED, BLACK, "BOT: CBW Failed (%d). Executing Full Recovery...\n", posix_err);
+        // ⚔️ 错误处理：CBW 失败，主机与设备完全失步，直接呼叫“核弹”全局重置
+        bot_execute_full_recovery(udev, if_num, in_ep->ep_dci, out_ep->ep_dci);
         goto cleanup;
     }
 
     // ============================================================
-    // Stage 2: 数据传输 (Data Stage) - 可选
+    // 🟡 Stage 2: 数据传输 (Data Stage) - 可选
     // ============================================================
     if (cmnd->data_buf && cmnd->data_len) {
         usb_ep_t *ep = (cmnd->dir == SCSI_DIR_IN) ? in_ep : out_ep;
 
-        // 👑 原地复用 URB，重新填单，之前的 flag 和状态会被安全重置
         usb_fill_bulk_urb(urb, udev, ep, cmnd->data_buf, cmnd->data_len);
         posix_err = usb_submit_urb(urb);
-        if (posix_err < 0) {
-            goto cleanup;
-        }
+        if (posix_err < 0) goto cleanup;
 
-        posix_err= xhci_wait_urb_group(udev,&urb,1);
+        posix_err = xhci_wait_urb_group(udev, &urb, 1);
         if (posix_err < 0) {
             if (posix_err == -EPIPE) {
-                color_printk(YELLOW, BLACK, "BOT Stage 2: STALL. Clearing Halt...\n");
-                // ★ 核心修复 1：必须真刀真枪地去清除硬件 STALL 状态！
-                // 不然端点一直处于 Halted 状态，Stage 3 绝对会失败！
-                usb_ep_halt_control(udev, ep->ep_dci,USB_REQ_CLEAR_FEATURE);
+                color_printk(YELLOW, BLACK, "BOT Stage 2: Data STALL. Clearing Halt...\n");
+                // ⚔️ 错误处理：短包早退是常态。使用“狙击枪”单点疏通 (软硬双解锁)
+                bot_ep_reset(udev, ep->ep_dci);
 
-                // STALL 并不意味着整个 SCSI 流程终结，强行放行，去拿 CSW 看具体死因
+                // 强制放行，必须去拿 CSW 探明死因
                 posix_err = 0;
             } else {
-                bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
+                color_printk(RED, BLACK, "BOT Stage 2: Fatal Error (%d).\n", posix_err);
+                // ⚔️ 错误处理：非 STALL 的严重错误 (如总线断开)，呼叫“核弹”
+                bot_execute_full_recovery(udev, if_num, in_ep->ep_dci, out_ep->ep_dci);
                 goto cleanup;
             }
         }
     }
 
     // ============================================================
-    // Stage 3: 接收 CSW (Command Status Wrapper)
+    // 🟠 Stage 3: 接收 CSW (Command Status Wrapper)
     // ============================================================
     uint8 csw_retry_count = 0;
 retry_csw:
-    // 👑 再次复用 URB，一键下达接收指令
     usb_fill_bulk_urb(urb, udev, in_ep, csw, sizeof(bot_csw_t));
     posix_err = usb_submit_urb(urb);
-    if (posix_err < 0) {
-        goto cleanup;
-    }
+    if (posix_err < 0) goto cleanup;
 
-    posix_err = xhci_wait_urb_group(udev,&urb,1);
+    posix_err = xhci_wait_urb_group(udev, &urb, 1);
 
     if (posix_err == -EPIPE && csw_retry_count == 0) {
         color_printk(YELLOW, BLACK, "BOT Stage 3: CSW STALL. Clearing and retrying...\n");
+        // ⚔️ 错误处理：第一次读回执失败，给一次机会。必须先开锁，再重试！
+        bot_ep_reset(udev, in_ep->ep_dci);
         csw_retry_count++;
         goto retry_csw;
-    }else if (posix_err < 0) {
-        bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
+    } else if (posix_err < 0) {
+        color_printk(RED, BLACK, "BOT Stage 3: CSW Failed (%d).\n", posix_err);
+        // ⚔️ 错误处理：回执死活拿不到 (二次 STALL 或其他错误)，直接呼叫“核弹”
+        bot_execute_full_recovery(udev, if_num, in_ep->ep_dci, out_ep->ep_dci);
         goto cleanup;
     }
 
     // ============================================================
-    // Stage 4: 解析 CSW 结果 (在这里才终于动用 cmnd->status！)
+    // 🟢 Stage 4: 解析 CSW 结果
     // ============================================================
     if (csw->signature != BOT_CSW_SIGNATURE || csw->tag != tag) {
-        bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
-        posix_err = -EPROTO; // 签名不对，依然归类为底层的协议错误
+        color_printk(RED, BLACK, "BOT: CSW Signature/Tag mismatch! Phase Error.\n");
+        // ⚔️ 错误处理：包裹送错人 (Phase Error)，呼叫“核弹”
+        bot_execute_full_recovery(udev, if_num, in_ep->ep_dci, out_ep->ep_dci);
+        posix_err = -EPROTO;
         goto cleanup;
     }
 
-    // 👑 只有大巴车完美抵达，包裹也没破损，我们才拆开包裹，看里面的回执！
+    // 翻译设备状态码到 SCSI 状态码
     switch (csw->status) {
         case BOT_CSW_PASS:
             cmnd->status = SCSI_STATUS_GOOD;
             break;
         case BOT_CSW_FAIL:
             cmnd->status = SCSI_STATUS_CHECK_CONDITION;
-            // （注意：标准的内核中，获取 Sense 通常由外层的 SCSI 错误处理线程来做，不在此处阻塞调用）
-            // bot_request_sense(bot_data, cmnd);
+            bot_request_sense(bot_data,cmnd);
             break;
         case BOT_CSW_PHASE:
-            bot_recovery_reset(udev, bot_data->uif->if_num, in_ep->ep_dci, out_ep->ep_dci);
+            color_printk(RED, BLACK, "BOT: Device reported Phase Error.\n");
+            // ⚔️ 错误处理：设备主动承认自己大脑错乱，满足它，呼叫“核弹”
+            bot_execute_full_recovery(udev, if_num, in_ep->ep_dci, out_ep->ep_dci);
             posix_err = -EILSEQ;
             break;
         default:
@@ -230,7 +273,6 @@ retry_csw:
     }
 
 cleanup:
-    // 👑 过河拆桥：无论是成功还是报错跳到这里，统一销毁动态申请的 URB 面单
     if (urb != NULL) usb_free_urb(urb);
     return posix_err;
 }

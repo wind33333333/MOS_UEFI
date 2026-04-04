@@ -100,7 +100,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
             }
         }
 
-        uint8 max_lun = usb_get_bot_max_lun(uif->udev,uif->if_num);
+        uint8 max_lun = bot_get_max_lun(uif->udev,uif->if_num);
 
         //创建scsi_host
         shost = scsi_create_host(&bot_host_template,bot_data,&uif->dev,max_lun,"bot_host");

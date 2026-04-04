@@ -54,6 +54,9 @@ typedef struct bot_data_t {
     // BOT 协议每次传输都需要这两个包头
     bot_cbw_t    *cbw;           // Command Block Wrapper (31 Bytes)
     bot_csw_t    *csw;           // Command Status Wrapper (13 Bytes)
+    void         *sense;
 
 } bot_data_t;
 
+struct usb_dev_t;
+uint8 bot_get_max_lun(struct usb_dev_t *udev, uint8 if_num);

@@ -143,7 +143,7 @@ typedef struct {
     uint8    control;
 } scsi_cdb_request_sense_t;
 #define SCSI_REQUEST_SENSE 0x03
-#define SCSI_SENSE_ALLOC_SIZE 255
+#define SCSI_SENSE_ALLOC_SIZE 252
 
 // 1. SCSI INQUIRY CDB (6字节标准)
 typedef struct{
