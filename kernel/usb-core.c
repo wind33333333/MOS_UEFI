@@ -1740,10 +1740,10 @@ static int32 usb_port_init(xhci_hcd_t *xhcd, uint8 port_id) {
 void usb_dev_scan(xhci_hcd_t *xhcd){
 
     //等待硬件完成端口初始化
-    uint32 times = 20000000;
-    while (times--) {
-        asm_pause();
-    }
+    // uint32 times = 20000000;
+    // while (times--) {
+    //     asm_pause();
+    // }
 
     for (uint8 i = 0; i < xhcd->max_ports; i++) {
         uint8 port_id = i+1;
