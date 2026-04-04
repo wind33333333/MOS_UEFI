@@ -419,7 +419,9 @@ static void scsi_probe_lun(scsi_host_t *shost) {
         kfree(cap);
     }
 
-
+    uint8 *data_buf = kmalloc(655372);
+    asm_mem_set(data_buf,0x8,655372);
+    scsi_read10(sdev, data_buf, 0,1280);
 
     // 6. 组装设备树，将其挂载到 SCSI 总线上！
     // sdev->dev.parent = &shost->dev;         // 认 Host 为父

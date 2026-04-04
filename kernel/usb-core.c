@@ -218,7 +218,7 @@ static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_ring_t *ri
     trb.normal.int_target = 0;
 
     while (left_len > 0) {
-        uint32 space_to_boundary = 65536 - (current_pa & 0xFFFF);
+        uint32 space_to_boundary = 0x10000 - (current_pa & 0xFFFF);
         uint8  has_more_data = (left_len > space_to_boundary);
         uint32 chunk_len = has_more_data ? space_to_boundary : left_len;
 
