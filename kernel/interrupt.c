@@ -273,8 +273,6 @@ static exception_handler_t exception_table[32] = {
 };
 
 
-///////====================================================================
-
 // 1. 定义 IDT
 static idt_gate_t idt[IDT_ENTRIES] __attribute__((aligned(16)));
 
