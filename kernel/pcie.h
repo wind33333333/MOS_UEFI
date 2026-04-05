@@ -109,6 +109,18 @@ typedef struct {
     uint16 msg_data;     //中断消息数据（写入Message Address的值，用于触发中断）。
 }msi_cap_t;
 
+// MSI-X能力结构（ID 0x11）
+typedef struct {
+    cap_head_t head;
+    uint16 msg_control; // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
+    // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
+    // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
+    uint32 table_offset; // 位 0-2：BAR 指示器（Base Address Register Index）
+    // 位 3-31：MSI-X 表偏移地址（相对于 BAR 的基地址）
+    uint32 pba_offset;   // 位 0-2：BAR 指示器
+    // 位 3-31：PBA 偏移地址（相对于 BAR 的基地址）
+} msix_cap_t;
+
 // PCIe能力结构（ID 0x10）
 typedef struct {
     cap_head_t head;
@@ -133,19 +145,6 @@ typedef struct {
     uint16 link_status2;           // 链路状态寄存器2，反映更新链路状态
 } pcie_cap_t;
 
-// MSI-X能力结构（ID 0x11）
-typedef struct {
-    cap_head_t head;
-    uint16 msg_control; // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
-    // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
-    // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
-    uint32 table_offset; // 位 0-2：BAR 指示器（Base Address Register Index）
-    // 位 3-31：MSI-X 表偏移地址（相对于 BAR 的基地址）
-    uint32 pba_offset;   // 位 0-2：BAR 指示器
-    // 位 3-31：PBA 偏移地址（相对于 BAR 的基地址）
-} msix_cap_t;
-
-#pragma pack(pop)
 
 typedef struct {
     uint16 msg_control;/*- 位0：MSI Enable（1=启用，0=禁用）。
@@ -164,7 +163,22 @@ typedef struct {
     uint32 msg_addr_hi;    // 消息地址高32位 (如果64位)
     uint32 msg_data;       // 消息数据值
     uint32 vector_control; // 向量控制 (通常Bit0=Per Vector Mask)
-} msix_table_t;
+} msix_t;
+
+struct {
+    /* MSI-X 向量信息（可按需精简） */
+    uint16  *msg_control;   // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
+    // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
+    // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
+    uint8   table_bir;        /* table 在哪个 BAR（BIR） */
+    uint32  table_offset;     /* table 偏移 */
+    uint8   pba_bir;          /* PBA 在哪个 BAR（BIR） */
+    uint32  pba_offset;       /* PBA 偏移 */
+} msix_s;
+
+#pragma pack(pop)
+
+
 
 //pcie根复合体
 typedef struct pcie_root_complex_t {
@@ -187,9 +201,20 @@ typedef struct pcie_bar {
     uint64  size;                 /* BAR 大小（探测得到） */
 } pcie_bar_t;
 
+
+// 定义 PCIe 设备当前使用的中断类型
+typedef enum {
+    PCIE_IRQ_NONE = 0,
+    PCIE_IRQ_MSI  = 1,
+    PCIE_IRQ_MSIX = 2
+} pcie_irq_type_t;
+
+// 假设一个设备最多申请 64 个中断队列 (针对高端 NVMe/网卡足够了)
+#define PCIE_MAX_VECTORS 64
+
 //pcie设备
 typedef struct pcie_dev_t{
-    device_t dev;                    //内嵌设备通用结构
+    device_t    dev;                    //内嵌设备通用结构
     uint16      vendor;
     uint16      device;
     uint32      class_code;
@@ -198,21 +223,15 @@ typedef struct pcie_dev_t{
     uint8       bus_num; /* 总线号 */
     pcie_config_space_t *pcie_config_space; /* pcie配置空间 */
     pcie_bar_t   bar[6]; /*bar*/
-    uint8 msi_x_flags;    // 1 = 支持msi_x 0 = 不支持msi_x
-    union {
-        msi_t *msi;
 
-        struct {
-            /* MSI-X 向量信息（可按需精简） */
-            uint16  *msg_control;   // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
-                                    // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
-                                    // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
-            uint8   table_bir;        /* table 在哪个 BAR（BIR） */
-            uint32  table_offset;     /* table 偏移 */
-            uint8   pba_bir;          /* PBA 在哪个 BAR（BIR） */
-            uint32  pba_offset;       /* PBA 偏移 */
-        } msi_x;
-    };
+    pcie_irq_type_t active_irq_type;           // 当前激活的是 MSI 还是 MSI-X
+    uint8         allocated_vectors;         // 成功申请到了几个中断向量
+    uint8         cpu_vectors[PCIE_MAX_VECTORS]; // 保存内核分配给它的绝对向量号 (32~255)
+
+    msi_t *msi;
+
+
+
 } pcie_dev_t;
 
 

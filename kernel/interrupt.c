@@ -367,12 +367,88 @@ int32 register_isr(int32 vector, irq_handler_t handler, void *dev_id, const char
 }
 
 /**
+ * @brief 分配连续且对齐的中断向量 (专供纯 MSI 多消息使用)
+ * @param count            申请的数量 (必须是 2 的幂：1, 2, 4, 8, 16, 32)
+ * @param out_base_vector  [输出] 成功时写入基准向量号
+ * @return 0 成功，负数失败
+ */
+int32 alloc_contiguous_irq(uint8 count) {
+    if (count == 0 || count > 32) return -EINVAL;
+    
+    // 确保 count 是 2 的整数次幂 (位运算魔法)
+    if ((count & (count - 1)) != 0) return -EINVAL;
+
+    // 从 32 开始找，直到 255 - count
+    for (int32 i = 32; i <= IDT_ENTRIES - count; i++) {
+        
+        // ★ 核心物理铁律：基准向量必须向 count 对齐！
+        // 如果 count = 4，基准向量必须是 40, 44, 48...
+        if ((i % count) != 0) {
+            continue; 
+        }
+
+        // 检查这连续的 count 个位置是否全都是 FREE
+        boolean all_free = TRUE;
+        for (uint8 j = 0; j < count; j++) {
+            if (irq_table[i + j].state != IRQ_STATE_FREE) {
+                all_free = FALSE;
+                break;
+            }
+        }
+
+        // 如果找到了这块完美的“风水宝地”
+        if (all_free) {
+            // 批量占坑
+            for (uint8 j = 0; j < count; j++) {
+                irq_table[i + j].state = IRQ_STATE_ALLOCATED;
+            }
+            return i; // 成功
+        }
+    }
+
+    return -ENOSPC; // 碎片化太严重，找不到连续对齐的空间了
+}
+
+/**
+ * @brief 释放连续的中断向量 (归还给中断池)
+ * @param base_vector  之前分配得到的基准向量号 (起始号)
+ * @param count        当初申请的数量 (2, 4, 8, 16, 32)
+ */
+void free_contiguous_irq(uint8 base_vector, uint8 count) {
+    // 1. 基础物理边界检查
+    if (base_vector < 32 || (uint16)base_vector + count > IDT_ENTRIES) {
+        color_printk(RED, BLACK, "IRQ: Attempt to free invalid vector range [%d, %d)\n",
+                     base_vector, base_vector + count);
+        return;
+    }
+
+    // 2. 逐个抹除状态，回归池中
+    for (uint8 i = 0; i < count; i++) {
+        uint8 v = base_vector + i;
+
+        // 如果这里已经是 FREE 状态，说明驱动程序逻辑有误（重复释放）
+        if (irq_table[v].state == IRQ_STATE_FREE) {
+            color_printk(YELLOW, BLACK, "Warning: IRQ %d is already FREE!\n", v);
+            continue;
+        }
+
+        // ★ 核心：执行彻底的状态回退
+        irq_table[v].state   = IRQ_STATE_FREE;
+        irq_table[v].handler = NULL;
+        irq_table[v].dev_id  = NULL;
+        irq_table[v].name = NULL; // 清空深拷贝的名称
+    }
+
+    // 此时这块连续的 Vector 空间已经可以被下一个 MSI 设备重新申请了
+}
+
+/**
  * @brief 分配一个空闲的中断向量号 (不挂载业务)
- * @return 成功返回 Vector 号 (40~255)，失败返回 -EAGAIN
+ * @return 成功返回 Vector 号 (32~255)，失败返回 -EAGAIN
  */
 int32 alloc_irq(void) {
-    // 留出 32~39 给传统 ISA 兜底，从 40 开始找
-    for (uint8 i = 40; i < IDT_ENTRIES; i++) {
+    // 32开始找
+    for (uint8 i = 32; i < IDT_ENTRIES; i++) {
         if (irq_table[i].state == IRQ_STATE_FREE) {
             irq_table[i].state = IRQ_STATE_ALLOCATED; // 👑 先占坑，宣示主权
             return i;

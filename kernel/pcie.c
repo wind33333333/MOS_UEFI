@@ -5,6 +5,7 @@
 #include "vmalloc.h"
 #include "vmm.h"
 #include "bus.h"
+#include "errno.h"
 
 struct {
     uint32 class_code;
@@ -267,6 +268,84 @@ void pcie_drv_register(pcie_drv_t *pcie_drv) {
     pcie_drv->drv.probe = pcie_drv_probe;
     pcie_drv->drv.remove = pcie_drv_remove;
     driver_register(&pcie_drv->drv);
+}
+
+int32_t pcie_alloc_irqs(pcie_dev_t *pdev, uint8_t count) {
+    if (count == 0 || count > PCIE_MAX_VECTORS) return -EINVAL;
+    if (pdev->allocated_vectors > 0) return -EBUSY;
+
+    // ========== 路线 A：MSI-X 降维打击 (支持稀疏分布) ==========
+    if (pdev->msix_cap_offset != 0) {
+        pdev->active_irq_type = PCIE_IRQ_MSIX;
+
+        uint8_t allocated = 0;
+        for (uint8_t i = 0; i < count; i++) {
+            uint8_t vector = 0;
+            // MSI-X 随便拿，哪里有空位塞哪里
+            if (alloc_irq_vector(&vector) < 0) break;
+            pdev->cpu_vectors[i] = vector;
+            allocated++;
+        }
+
+        if (allocated == 0) goto fail;
+        pdev->allocated_vectors = allocated;
+        return allocated;
+    }
+
+    // ========== 路线 B：古董 MSI 戴着镣铐跳舞 ==========
+    else if (pdev->msi_cap_offset != 0) {
+        pdev->active_irq_type = PCIE_IRQ_MSI;
+
+        // 规范化 count：MSI 必须申请 2 的次幂，如果驱动要 3 个，只能强行升到 4 个
+        uint8_t power2_count = 1;
+        while (power2_count < count) { power2_count <<= 1; }
+        // PCIe 规范规定单个设备 MSI 最多申请 32 个
+        if (power2_count > 32) power2_count = 32;
+
+        uint8_t base_vector = 0;
+        // 呼叫咱们刚写的连续对齐分配大招！
+        int32_t err = alloc_contiguous_irq_vectors(power2_count, &base_vector);
+
+        if (err < 0) {
+            // ★ 工业级 OS 容错降级：如果连续分配失败，内核不能直接拒绝！
+            // 而是强行降级为只分配 1 个中断！让网卡多队列退化为单队列运行。
+            color_printk(YELLOW, BLACK, "PCIE MSI: Contiguous alloc failed. Downgrading to 1 vector.\n");
+            if (alloc_irq_vector(&base_vector) < 0) goto fail;
+            pdev->cpu_vectors[0] = base_vector;
+            pdev->allocated_vectors = 1;
+            return 1;
+        }
+
+        // 成功拿到了连续的队列
+        for (uint8_t i = 0; i < power2_count; i++) {
+            pdev->cpu_vectors[i] = base_vector + i;
+        }
+        pdev->allocated_vectors = power2_count;
+        return power2_count;
+    }
+
+    fail:
+        pdev->active_irq_type = PCIE_IRQ_NONE;
+    return -ENOSPC;
+}
+
+//释放中断号和apic
+void pcie_free_irqs(pcie_dev_t *pdev) {
+    if (pdev->allocated_vectors == 0) return;
+
+    if (pdev->active_irq_type == PCIE_IRQ_MSI) {
+        // MSI 是连续分配的，调用连续释放函数
+        free_contiguous_irq_vectors(pdev->cpu_vectors[0], pdev->allocated_vectors);
+    }
+    else if (pdev->active_irq_type == PCIE_IRQ_MSIX) {
+        // MSI-X 可能是稀疏分配的，所以必须逐个释放
+        for (uint8_t i = 0; i < pdev->allocated_vectors; i++) {
+            free_irq_vector(pdev->cpu_vectors[i]); // 你之前写的单向量释放函数
+        }
+    }
+
+    pdev->allocated_vectors = 0;
+    pdev->active_irq_type = PCIE_IRQ_NONE;
 }
 
 /*

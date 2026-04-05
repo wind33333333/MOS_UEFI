@@ -80,7 +80,7 @@ typedef struct {
 
 #pragma pack(pop)
 
-// 专门为 CPU 异常设计的极简函数签名
+//CPU异常函数签名
 typedef void (*exception_handler_t)(cpu_registers_t *regs);
 
 // 3. 独占式 (MSI/MSI-X) 中断路由表数据结构
@@ -90,6 +90,7 @@ typedef enum:int8 {
     IRQ_WAKE_THREAD = 2  // 留给未来的底半部唤醒标志
 } irqreturn_t;
 
+//cpu中断函数签名
 typedef irqreturn_t (*irq_handler_t)(cpu_registers_t *regs, void *dev_id);
 
 // 定义中断向量的 3 种核心生命周期状态
@@ -118,6 +119,8 @@ static inline void asm_lidt(idtr_t *idt_ptr) {
 
 // 对外暴露的 API
 void idt_init(void);
+int32 alloc_contiguous_irq(uint8 count);
+void free_contiguous_irq(uint8 base_vector, uint8 count);
 int32 alloc_irq(void);
 void free_irq(int32 vector);
 int32 register_isr(int32 vector, irq_handler_t handler, void *dev_id, const char *name);
