@@ -169,9 +169,6 @@ INIT_TEXT void init_bsp(void){
     init_gdt();                                //初始化GDT
     init_tss();                                //初始化TSS
     idt_init();                                //初始化IDT
-
-    uint8 i = 4/0;
-
     init_apic();                               //初始化apic
     init_syscall();                            //初始化系统调用
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
