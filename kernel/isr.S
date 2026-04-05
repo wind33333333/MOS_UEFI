@@ -1,4 +1,5 @@
-.section .text "ax"
+.code64
+.section    .text, "ax"
 
 # 宏：没有错误码的中断 (如除零、定时器、所有外部 MSI 中断)
 .macro ISR_NOERRCODE vector

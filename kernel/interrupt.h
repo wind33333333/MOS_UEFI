@@ -55,9 +55,9 @@ typedef struct {
 } idt_gate_t;
 
 // IDTR 寄存器结构
-typedef struct {
+typedef struct idtr_t{
     uint16 limit;
-    uint64 base;
+    void   *base;
 }idtr_t;
 
 // 2. 汇编层压入的 CPU 现场上下文 (严格匹配 push 顺序)
@@ -80,18 +80,45 @@ typedef struct {
 
 #pragma pack(pop)
 
+// 专门为 CPU 异常设计的极简函数签名
+typedef void (*exception_handler_t)(cpu_registers_t *regs);
 
 // 3. 独占式 (MSI/MSI-X) 中断路由表数据结构
-typedef int32_t (*irq_handler_t)(cpu_registers_t *regs, void *dev_id);
+typedef enum:int8 {
+    IRQ_NONE        = 0, // 硬件没数据，虚假唤醒
+    IRQ_HANDLED     = 1, // 已成功处理
+    IRQ_WAKE_THREAD = 2  // 留给未来的底半部唤醒标志
+} irqreturn_t;
+
+typedef irqreturn_t (*irq_handler_t)(cpu_registers_t *regs, void *dev_id);
+
+// 定义中断向量的 3 种核心生命周期状态
+typedef enum:int8 {
+    IRQ_STATE_FREE       = 0, // [空闲]：池中可用，无人问津
+    IRQ_STATE_ALLOCATED  = 1, // [占坑]：已分配给某个驱动，但业务函数还未就绪
+    IRQ_STATE_REGISTERED = 2  // [服役]：业务函数已挂载，随时准备处理硬件中断
+} irq_state_t;
 
 typedef struct {
+    irq_state_t   state;     // 状态
     irq_handler_t handler;   // 独占处理函数
     void *dev_id;            // 设备实例上下文 (如 xhci_t*)
-    char name[32];           // 驱动名称标识
+    const char *name;        // 驱动名称标识
 } irq_desc_t;
+
+
+static inline void asm_lidt(idtr_t *idt_ptr) {
+    __asm__ __volatile__(
+            "lidt %0 \n\t"  // 加载 IDT 描述符地址
+            :
+            : "m"(*idt_ptr)    // 输入：IDT 描述符的地址
+            : "memory"        // 防止编译器重排序内存操作
+            );
+}
 
 // 对外暴露的 API
 void idt_init(void);
-int32 allocate_msi_irq(irq_handler_t handler, void *dev_id, const char *name);
-void free_msi_irq(uint8 vector);
+int32 alloc_irq(void);
+void free_irq(int32 vector);
+int32 register_isr(int32 vector, irq_handler_t handler, void *dev_id, const char *name);
 

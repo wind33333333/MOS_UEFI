@@ -66,16 +66,19 @@ void enable_apic_time (uint64 time,uint32 model,uint32 ivt);
 #define APIC_PERIODIC  0x20000      //周期性定时模式
 #define APIC_TSC_DEADLINE 0x40000   //TSC截止期限模式
 
+
 //中断结束发送EOI
-#define EOI() \
-        do {  \
-          __asm__ __volatile__( \
-           "xorl     %%edx,%%edx   \n\t" \
-           "xorl     %%eax,%%eax   \n\t" \
-           "movl     $0x80B,%%ecx  \n\t" \
-           "wrmsr                  \n\t"  \
-            :::"%rdx","%rax");    \
-          } while(0)
+static inline void apic_send_eoi(void) {
+    __asm__ __volatile__(
+        "xorl %%edx, %%edx \n\t"
+        "xorl %%eax, %%eax \n\t"
+        "movl $0x80B, %%ecx \n\t"
+        "wrmsr             \n\t"
+        : /* 无输出 */
+        : /* 无输入 */
+        : "%rax", "%rcx", "%rdx", "memory" // 明确告知编译器这三个寄存器被破坏了
+    );
+}
 
 
 #define DISABLE_APIC_TIME() \

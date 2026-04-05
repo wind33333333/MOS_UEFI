@@ -1,9 +1,8 @@
 #include "cpu.h"
-#include "idt.h"
 #include "apic.h"
 #include "gdt.h"
 #include "tss.h"
-#include "kernel_page_table.h"
+#include "interrupt.h"
 #include "syscall.h"
 #include "printk.h"
 #include "vmm.h"
@@ -169,7 +168,7 @@ INIT_TEXT void init_bsp(void){
     get_cpu_info();                            //获取cpu信息
     init_gdt();                                //初始化GDT
     init_tss();                                //初始化TSS
-    init_idt();                                //初始化IDT
+    idt_init();                                //初始化IDT
     init_apic();                               //初始化apic
     init_syscall();                            //初始化系统调用
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
@@ -209,10 +208,10 @@ INIT_TEXT void ap_main(void){
     asm_cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);        //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);
     enable_cpu_advanced_features();
-    asm_set_cr3(kpml4t_ptr);
+    //asm_set_cr3(kpml4t_ptr);
     asm_lgdt(&gdt_ptr,0x8,0x10);
     asm_ltr(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);
-    asm_lidt(&idt_ptr);
+    //asm_lidt(&idt_ptr);
     init_apic();
     init_syscall();
     color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);

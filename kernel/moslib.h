@@ -200,14 +200,7 @@ static inline void asm_lgdt(void *gdt_ptr, uint16 code64_sel, uint16 data64_sel)
             );
 }
 
-static inline void asm_lidt(void *idt_ptr) {
-    __asm__ __volatile__(
-            "lidt (%0) \n\t"  // 加载 IDT 描述符地址
-            :
-            : "r"(idt_ptr)    // 输入：IDT 描述符的地址
-            : "memory"        // 防止编译器重排序内存操作
-            );
-}
+
 
 static inline void asm_ltr(uint16 tss_sel) {
     __asm__ __volatile__(
