@@ -21,4 +21,5 @@ typedef struct{
 
 extern idt_ptr_t idt_ptr;
 
+
 void init_idt(void);
