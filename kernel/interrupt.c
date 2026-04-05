@@ -427,7 +427,7 @@ void idt_init(void) {
         }
 
         // IST 默认不使用(0)。后续你可以为 #DF(8) 专门指派独立的 IST
-        idt_set_descriptor(i, isr_stub_table[i], attr, 0);
+        idt_set_descriptor(i, isr_stub_table[i], attr, 1);
     }
 
     // 装载 IDTR
