@@ -4,6 +4,8 @@
 #include "apic.h"
 #include "errno.h"
 
+/*********************************************************** 系统异常处理函数 *****************************************************************************/
+
 void do_divide_error(cpu_registers_t *regs) {
     color_printk(RED, BLACK, "do_divide_error(0),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
@@ -246,6 +248,11 @@ void do_virtualization_exception(cpu_registers_t *regs) {
     while (1);
 }
 
+/*******************************************************************************************************************************/
+
+//定义 IDT
+static idt_gate_t idt[IDT_ENTRIES] __attribute__((aligned(16)));
+
 // 异常不会动态卸载，直接静态写死极其安全
 static exception_handler_t exception_table[32] = {
     [0]  = do_divide_error,                 // #DE: 除零错误 (Divide Error)
@@ -273,62 +280,60 @@ static exception_handler_t exception_table[32] = {
 };
 
 
-// 1. 定义 IDT
-static idt_gate_t idt[IDT_ENTRIES] __attribute__((aligned(16)));
-
-// 2. MSI/MSI-X 专属 O(1) 独占路由表 (静态分配，快如闪电)
+//MSI/MSI-X 专属 O(1) 独占路由表 (静态分配，快如闪电)
 static irq_desc_t irq_table[IDT_ENTRIES] = {0};
 
 // 引入汇编里暴露的地址表 (极其优雅，免去了写 256 行 extern)
 extern uint64 isr_stub_table[];
 
-/**
- * @brief 内部函数：组装 16 字节的 IDT 描述符
- */
-static void idt_set_descriptor(uint8 vector, uint64 isr_addr, uint8 attributes, uint8 ist) {
-    idt_gate_t *desc = &idt[vector];
-
-    desc->offset_low       = isr_addr & 0xFFFF;
-    desc->segment_selector = 0x08; // 你的内核代码段选择子 (根据你的 GDT 调整)
-    desc->ist              = ist & 0x07;
-    desc->attributes       = attributes;
-    desc->offset_mid       = (isr_addr >> 16) & 0xFFFF;
-    desc->offset_high      = (isr_addr >> 32) & 0xFFFFFFFF;
-    desc->reserved         = 0; // 必须为 0
-}
 
 /**
- * @brief 初始化 IDT (在内核早期初始化时调用)
+ * @brief 👑 C 语言大管家 (所有中断的终极交汇点)
+ * 汇编层已完全保护现场，并穿透参数，核心只需做 O(1) 分发。
  */
-void idt_init(void) {
-    asm_mem_set(idt, 0, sizeof(idt));
+void c_interrupt_dispatcher(cpu_registers_t *regs) {
+    uint64 int_no = regs->int_no;
 
-    // 循环挂载 256 个中断门
-    for (int i = 0; i < IDT_ENTRIES; i++) {
-        // 默认全部设为硬件中断门 (关中断执行)
-        uint8 attr = IDT_GATE_INTERRUPT;
-
-        // 特例：如果是供用户态引发的异常/系统调用，可以改属性
-        if (i == 3 || i == 4) {
-            attr = IDT_GATE_USER; 
+    // ==========================================
+    // 1. CPU 内部异常处理 (0~31)
+    // ==========================================
+    if (int_no < 32) {
+        exception_handler_t exception = exception_table[int_no];
+        if (exception != NULL) {
+            // 调用注册好的处理函数
+            exception(regs);
+        } else {
+            // 对于保留的异常，或者没有注册的异常，直接 panic
+            color_printk(RED, BLACK, "Unhandled Exception: %d, ERROR_CODE: %#018lx\n", int_no, regs->err_code);
+            while(1);
         }
 
-        // IST 默认不使用(0)。后续你可以为 #DF(8) 专门指派独立的 IST
-        idt_set_descriptor(i, isr_stub_table[i], attr, 0);
+        // 🚨 极其重要：异常处理完毕必须直接返回！
+        // 异常是 CPU 内部产生的，绝对不能向外设 APIC 发送 EOI！
+        return;
     }
 
-    // 装载 IDTR
-    idtr_t idtr = {
-        .limit = sizeof(idt) - 1,
-        .base = idt,
-    };
-    asm_lidt(&idtr);
-    
-    // 打开 CPU 全局中断标志
-    asm_sti();
+    // 2. 硬件中断 O(1) 极速分发 (32~255)
+    irq_desc_t *irq_desc = &irq_table[int_no];
+    if (irq_desc->handler != NULL) {
+        // 精确制导，将上下文和设备私有指针送达驱动核心
+        irq_desc->handler(regs, irq_desc->dev_id);
+    } else {
+        color_printk(YELLOW, BLACK, "Spurious Interrupt Vector: %d\n", int_no);
+    }
 
-    color_printk(GREEN, BLACK, "IDT Initialized with 256 vectors.\n");
+    // ==========================================
+    // 3. 发送 EOI (End of Interrupt)
+    // ==========================================
+    // 假设你将 255 (0xFF) 设为了 APIC Spurious Interrupt Vector
+    // Intel 手册规定：发生伪中断时，不需要也不应该发送 EOI
+    if (int_no != 255) {
+        // 通知主板：“本官已审理完毕，允许发送下一批案卷”
+        apic_send_eoi();
+    }
 }
+
+
 
 /**
  * @brief 在已分配的向量上挂载具体的处理例程
@@ -388,49 +393,52 @@ void free_irq(int32 vector) {
     }
 }
 
+
 /**
- * @brief 👑 C 语言大管家 (所有中断的终极交汇点)
- * 汇编层已完全保护现场，并穿透参数，核心只需做 O(1) 分发。
+ * @brief 内部函数：组装 16 字节的 IDT 描述符
  */
-void c_interrupt_dispatcher(cpu_registers_t *regs) {
-    uint64 int_no = regs->int_no;
+static void idt_set_descriptor(uint8 vector, uint64 isr_addr, uint8 attributes, uint8 ist) {
+    idt_gate_t *desc = &idt[vector];
 
-    // ==========================================
-    // 1. CPU 内部异常处理 (0~31)
-    // ==========================================
-    if (int_no < 32) {
-        exception_handler_t exception = exception_table[int_no];
-        if (exception != NULL) {
-            // 调用注册好的处理函数
-            exception(regs);
-        } else {
-            // 对于保留的异常，或者没有注册的异常，直接 panic
-            color_printk(RED, BLACK, "Unhandled Exception: %d, ERROR_CODE: %#018lx\n", int_no, regs->err_code);
-            while(1);
-        }
-
-        // 🚨 极其重要：异常处理完毕必须直接返回！
-        // 异常是 CPU 内部产生的，绝对不能向外设 APIC 发送 EOI！
-        return;
-    }
-
-    // 2. 硬件中断 O(1) 极速分发 (32~255)
-    irq_desc_t *irq_desc = &irq_table[int_no];
-    if (irq_desc->handler != NULL) {
-        // 精确制导，将上下文和设备私有指针送达驱动核心
-        irq_desc->handler(regs, irq_desc->dev_id);
-    } else {
-        color_printk(YELLOW, BLACK, "Spurious Interrupt Vector: %d\n", int_no);
-    }
-
-    // ==========================================
-    // 3. 发送 EOI (End of Interrupt)
-    // ==========================================
-    // 假设你将 255 (0xFF) 设为了 APIC Spurious Interrupt Vector
-    // Intel 手册规定：发生伪中断时，不需要也不应该发送 EOI
-    if (int_no != 255) {
-        // 通知主板：“本官已审理完毕，允许发送下一批案卷”
-        apic_send_eoi();
-    }
+    desc->offset_low       = isr_addr & 0xFFFF;
+    desc->segment_selector = 0x08; // 你的内核代码段选择子 (根据你的 GDT 调整)
+    desc->ist              = ist & 0x07;
+    desc->attributes       = attributes;
+    desc->offset_mid       = (isr_addr >> 16) & 0xFFFF;
+    desc->offset_high      = (isr_addr >> 32) & 0xFFFFFFFF;
+    desc->reserved         = 0; // 必须为 0
 }
 
+
+/**
+ * @brief 初始化 IDT (在内核早期初始化时调用)
+ */
+void idt_init(void) {
+    asm_mem_set(idt, 0, sizeof(idt));
+
+    // 循环挂载 256 个中断门
+    for (int i = 0; i < IDT_ENTRIES; i++) {
+        // 默认全部设为硬件中断门 (关中断执行)
+        uint8 attr = IDT_GATE_INTERRUPT;
+
+        // 特例：如果是供用户态引发的异常/系统调用，可以改属性
+        if (i == 3 || i == 4) {
+            attr = IDT_GATE_USER;
+        }
+
+        // IST 默认不使用(0)。后续你可以为 #DF(8) 专门指派独立的 IST
+        idt_set_descriptor(i, isr_stub_table[i], attr, 0);
+    }
+
+    // 装载 IDTR
+    idtr_t idtr = {
+        .limit = sizeof(idt) - 1,
+        .base = idt,
+    };
+    asm_lidt(&idtr);
+
+    // 打开 CPU 全局中断标志
+    asm_sti();
+
+    color_printk(GREEN, BLACK, "IDT Initialized with 256 vectors.\n");
+}
