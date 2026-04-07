@@ -96,17 +96,32 @@ typedef struct {
     uint16 pmcsr; // 控制/状态寄存器
 } power_mgmt_cap_t;
 
-//msi能力结构（ID 0x5）
+
 typedef struct {
-    cap_head_t head;
     uint16 msg_control;/*- 位0：MSI Enable（1=启用，0=禁用）。
                      - 位1-3：Multiple Message Capable（支持的向量数：0=1，1=2，2=4，3=8，4=16，5=32）。
                      - 位4-6：Multiple Message Enable（启用的向量数）。
                      - 位7：64-bit Address Capable（1=支持64位地址）。
                      - 位8-15：保留。*/
     uint32 msg_addr_lo;  //32位消息地址（MSI中断写入的内存地址）,位12-19 指向local apic。
-    uint32 msg_addr_hi;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
-    uint16 msg_data;     //中断消息数据（写入Message Address的值，用于触发中断）。
+    union {
+        struct {
+            uint32 msg_addr_hi;   //64位地址的高32位（仅当64-bit Address Capable=1时有效），如果高位不存在msg_data顶上这个位置。
+            uint16 msg_data;
+            uint16 reserved;      // 为了对齐
+        } _64bit;
+
+        struct {
+            uint16 msg_data;      // 32-bit 时直接在这里
+            uint16 reserved;
+        } _32bit;
+    };
+}msi_t;
+
+//msi能力结构（ID 0x5）
+typedef struct {
+    cap_head_t head;
+    msi_t   msi;
 }msi_cap_t;
 
 // MSI-X能力结构（ID 0x11）
@@ -146,35 +161,22 @@ typedef struct {
 } pcie_cap_t;
 
 
-typedef struct {
-    uint16 msg_control;/*- 位0：MSI Enable（1=启用，0=禁用）。
-                 - 位1-3：Multiple Message Capable（支持的向量数：0=1，1=2，2=4，3=8，4=16，5=32）。
-                 - 位4-6：Multiple Message Enable（启用的向量数）。
-                 - 位7：64-bit Address Capable（1=支持64位地址）。
-                 - 位8-15：保留。*/
-    uint32 msg_addr_lo;  //32位消息地址（MSI中断写入的内存地址）,位12-19 指向local apic。
-    uint32 msg_addr_hi;  //64位地址的高32位（仅当64-bit Address Capable=1时有效）。
-    uint16 msg_data;     //中断消息数据（写入Message Address的值，用于触发中断）。
-}msi_t;
-
 // MSI-X Table条目 (16字节)
 typedef struct {
     uint32 msg_addr_lo;    // 消息地址低32位,位12-19 指向local apic
     uint32 msg_addr_hi;    // 消息地址高32位 (如果64位)
     uint32 msg_data;       // 消息数据值
     uint32 vector_control; // 向量控制 (通常Bit0=Per Vector Mask)
-} msix_t;
+} msix_entry_t;
 
-struct {
+typedef struct {
     /* MSI-X 向量信息（可按需精简） */
     uint16  *msg_control;   // 位 0-10：MSI-X 表大小（N-1 编码，实际向量数 = vector_count + 1）
-    // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
-    // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
-    uint8   table_bir;        /* table 在哪个 BAR（BIR） */
-    uint32  table_offset;     /* table 偏移 */
-    uint8   pba_bir;          /* PBA 在哪个 BAR（BIR） */
-    uint32  pba_offset;       /* PBA 偏移 */
-} msix_s;
+                            // 位 14：全局掩码（1 = 禁用所有 MSI-X 中断，0 = 启用）
+                            // 位 15：MSI-X 启用（1 = 启用 MSI-X，0 = 禁用）
+    msix_entry_t  *msix_entry;
+    uint64  *pba;
+} msix_t;
 
 #pragma pack(pop)
 
@@ -229,8 +231,7 @@ typedef struct pcie_dev_t{
     uint8         cpu_vectors[PCIE_MAX_VECTORS]; // 保存内核分配给它的绝对向量号 (32~255)
 
     msi_t *msi;
-
-
+    msix_t msix;
 
 } pcie_dev_t;
 

@@ -47,32 +47,12 @@ struct {
     {0x000000, NULL}
 };
 
-//启用msi中断
-void pcie_enable_msi_intrs(pcie_dev_t *pcie_dev) {
-    if (pcie_dev->msi_x_flags) {
-        *pcie_dev->msi_x.msg_control |= 0x8000;
-        *pcie_dev->msi_x.msg_control &= ~0x4000;
-    }else {
-        pcie_dev->msi->msg_control |= 1;
-    }
-}
-
-//禁用msi中断
-void pcie_disable_msi_intrs(pcie_dev_t *pcie_dev) {
-    if (pcie_dev->msi_x_flags) {
-        *pcie_dev->msi_x.msg_control |= 0x4000;
-    }else {
-        pcie_dev->msi->msg_control &= ~1;
-    }
-
-}
-
 /*
  *获取msi-x表bar号
  *参数pcie_config_space_t
  *数量
  */
-static inline uint8 get_msi_x_bir(msix_cap_t *msix_cap) {
+static inline uint8 get_msix_bir(msix_cap_t *msix_cap) {
     uint32 bir = msix_cap->table_offset;
     return bir & 0x7;
 }
@@ -80,7 +60,7 @@ static inline uint8 get_msi_x_bir(msix_cap_t *msix_cap) {
 /*
  * 获取msi-x表相对bar偏移量
  */
-static inline uint32 get_msi_x_offset(msix_cap_t *msix_cap) {
+static inline uint32 get_msix_offset(msix_cap_t *msix_cap) {
     uint32 table_offset = msix_cap->table_offset;
     return table_offset & ~0x7;
 }
@@ -161,22 +141,23 @@ void *pcie_cap_find(pcie_dev_t *pcie_dev, cap_type_e cap_type) {
 
 //pcie设备msi中断功能初始化
 void pcie_msi_intrpt_init(pcie_dev_t *pcie_dev) {
+    msi_cap_t *msi_cap = pcie_cap_find(pcie_dev,msi_e);
+    if (msi_cap) {
+        //启用msi中断
+        pcie_dev->active_irq_type = PCIE_IRQ_MSI;
+        pcie_dev->msi = &msi_cap->msi;
+    }
+
+    //msi-x中断,优先启用
     msix_cap_t *msix_cap = pcie_cap_find(pcie_dev,msi_x_e);
-    //优先启用msi-x中断
     if (msix_cap) {
         //初始化msi-x中断表
-        pcie_dev->msi_x_flags = 1;
-        pcie_dev->msi_x.msg_control = &msix_cap->msg_control;
-        pcie_dev->msi_x.table_bir = get_msi_x_bir(msix_cap);
-        pcie_dev->msi_x.table_offset = get_msi_x_offset(msix_cap);
-        pcie_dev->msi_x.pba_bir = get_pda_bir(msix_cap);
-        pcie_dev->msi_x.pba_offset = get_pda_offset(msix_cap);
-    }else {
-        //启用msi中断
-        pcie_dev->msi_x_flags = 0;
-        msi_cap_t *msi_cap = pcie_cap_find(pcie_dev,msi_e);
-        pcie_dev->msi = &msi_cap->msg_control;
+        pcie_dev->active_irq_type = PCIE_IRQ_MSIX;
+        pcie_dev->msix.msg_control = &msix_cap->msg_control;
+        pcie_dev->msix.msix_entry = pcie_dev->bar[get_msix_bir(msix_cap)].vaddr+get_msix_offset(msix_cap); //计算msix表起始地址
+        pcie_dev->msix.pba = pcie_dev->bar[get_pda_bir(msix_cap)].vaddr+get_pda_offset(msix_cap);
     }
+
 }
 
 //匹配驱动id
@@ -270,7 +251,7 @@ void pcie_drv_register(pcie_drv_t *pcie_drv) {
     driver_register(&pcie_drv->drv);
 }
 
-int32_t pcie_alloc_irqs(pcie_dev_t *pdev, uint8_t count) {
+int32 pcie_alloc_irqs(pcie_dev_t *pdev, int8 count) {
     if (count == 0 || count > PCIE_MAX_VECTORS) return -EINVAL;
     if (pdev->allocated_vectors > 0) return -EBUSY;
 
@@ -278,9 +259,9 @@ int32_t pcie_alloc_irqs(pcie_dev_t *pdev, uint8_t count) {
     if (pdev->msix_cap_offset != 0) {
         pdev->active_irq_type = PCIE_IRQ_MSIX;
 
-        uint8_t allocated = 0;
-        for (uint8_t i = 0; i < count; i++) {
-            uint8_t vector = 0;
+        int8 allocated = 0;
+        for (int8 i = 0; i < count; i++) {
+            int8 vector = 0;
             // MSI-X 随便拿，哪里有空位塞哪里
             if (alloc_irq_vector(&vector) < 0) break;
             pdev->cpu_vectors[i] = vector;
@@ -297,14 +278,14 @@ int32_t pcie_alloc_irqs(pcie_dev_t *pdev, uint8_t count) {
         pdev->active_irq_type = PCIE_IRQ_MSI;
 
         // 规范化 count：MSI 必须申请 2 的次幂，如果驱动要 3 个，只能强行升到 4 个
-        uint8_t power2_count = 1;
+        int8 power2_count = 1;
         while (power2_count < count) { power2_count <<= 1; }
         // PCIe 规范规定单个设备 MSI 最多申请 32 个
         if (power2_count > 32) power2_count = 32;
 
-        uint8_t base_vector = 0;
+        int8 base_vector = 0;
         // 呼叫咱们刚写的连续对齐分配大招！
-        int32_t err = alloc_contiguous_irq_vectors(power2_count, &base_vector);
+        int32 err = alloc_contiguous_irq(power2_count, &base_vector);
 
         if (err < 0) {
             // ★ 工业级 OS 容错降级：如果连续分配失败，内核不能直接拒绝！
@@ -317,7 +298,7 @@ int32_t pcie_alloc_irqs(pcie_dev_t *pdev, uint8_t count) {
         }
 
         // 成功拿到了连续的队列
-        for (uint8_t i = 0; i < power2_count; i++) {
+        for (int8 i = 0; i < power2_count; i++) {
             pdev->cpu_vectors[i] = base_vector + i;
         }
         pdev->allocated_vectors = power2_count;
@@ -339,7 +320,7 @@ void pcie_free_irqs(pcie_dev_t *pdev) {
     }
     else if (pdev->active_irq_type == PCIE_IRQ_MSIX) {
         // MSI-X 可能是稀疏分配的，所以必须逐个释放
-        for (uint8_t i = 0; i < pdev->allocated_vectors; i++) {
+        for (int8 i = 0; i < pdev->allocated_vectors; i++) {
             free_irq_vector(pdev->cpu_vectors[i]); // 你之前写的单向量释放函数
         }
     }
@@ -347,6 +328,100 @@ void pcie_free_irqs(pcie_dev_t *pdev) {
     pdev->allocated_vectors = 0;
     pdev->active_irq_type = PCIE_IRQ_NONE;
 }
+
+/**
+ * @brief 注册中断服务函数
+ * @param index 设备的第几个中断队列 (0 ~ allocated_vectors-1)
+ */
+int32 pcie_register_isr(pcie_dev_t *pdev, int8 index, irq_handler_t isr, const char *name) {
+    if (index >= pdev->allocated_vectors) return -EINVAL;
+
+    int8 vector = pdev->cpu_vectors[index];
+    // 调用大管家的注册接口
+    return register_isr(vector, isr, pdev, name);
+}
+
+/**
+ * @brief 卸载中断服务函数
+ */
+void pcie_unregister_isr(pcie_dev_t *pdev, int8 index) {
+    if (index < pdev->allocated_vectors) {
+        unregister_isr(pdev->cpu_vectors[index]);
+    }
+}
+
+// x86 架构下的 Local APIC MSI 魔法地址
+#define X86_MSI_ADDRESS 0xFEE00000
+
+/**
+ * @brief 启用设备中断 (写硬件寄存器)
+ * 这一步告诉 PCIe 设备：“有事往 x86_MSI_ADDRESS 写，数据内容就是 Vector 号！”
+ */
+int32 pcie_enable_irqs(pcie_dev_t *pdev) {
+    if (pdev->allocated_vectors == 0) return -EINVAL;
+
+    if (pdev->active_irq_type == PCIE_IRQ_MSI) {
+        // ========== 启用纯 MSI ==========
+        int8 cap = pdev->msi_cap_offset;
+
+        // 1. 填入 x86 APIC 接收地址
+        pci_config_write32(pdev->bus, pdev->dev, pdev->func, cap + 4, X86_MSI_ADDRESS);
+
+        // 2. 填入中断向量号 (MSI 要求多个向量必须连续，这里我们只取首个向量演示)
+        uint16_t msg_data = pdev->cpu_vectors[0];
+        pci_config_write16(pdev->bus, pdev->dev, pdev->func, cap + 8, msg_data);
+
+        // 3. 修改 Message Control 寄存器，打开 MSI Enable 位 (Bit 0)
+        uint16_t ctrl = pci_config_read16(pdev->bus, pdev->dev, pdev->func, cap + 2);
+        ctrl |= 0x0001;
+        pci_config_write16(pdev->bus, pdev->dev, pdev->func, cap + 2, ctrl);
+
+        return 0;
+
+    } else if (pdev->active_irq_type == PCIE_IRQ_MSIX) {
+        // ========== 启用 MSI-X ==========
+        // MSI-X 的地址和数据不在配置空间里，而是在 BAR 映射的内存表 (MSI-X Table) 中！
+        // 驱动需要提前解析 MSI-X Table 的 BAR，遍历写入每一个 Vector
+        // 这里提供核心伪代码逻辑：
+
+        /* for (int i = 0; i < pdev->allocated_vectors; i++) {
+            msix_table[i].msg_addr = X86_MSI_ADDRESS;
+            msix_table[i].msg_data = pdev->cpu_vectors[i];
+            msix_table[i].vector_ctrl &= ~0x1; // 清除 Mask 位，允许触发
+        }
+        */
+
+        // 修改 MSI-X Control 寄存器，打开 MSI-X Enable 位 (Bit 15)
+        int8 cap = pdev->msix_cap_offset;
+        uint16_t ctrl = pci_config_read16(pdev->bus, pdev->dev, pdev->func, cap + 2);
+        ctrl |= 0x8000;
+        pci_config_write16(pdev->bus, pdev->dev, pdev->func, cap + 2, ctrl);
+
+        return 0;
+    }
+
+    return -ENOTSUP;
+}
+
+
+/**
+ * @brief 关闭设备中断 (写硬件寄存器，让设备闭嘴)
+ */
+void pcie_disable_irqs(pcie_dev_t *pdev) {
+    if (pdev->active_irq_type == PCIE_IRQ_MSI) {
+        int8 cap = pdev->msi_cap_offset;
+        uint16_t ctrl = pci_config_read16(pdev->bus, pdev->dev, pdev->func, cap + 2);
+        ctrl &= ~0x0001; // 清除 Enable 位
+        pci_config_write16(pdev->bus, pdev->dev, pdev->func, cap + 2, ctrl);
+
+    } else if (pdev->active_irq_type == PCIE_IRQ_MSIX) {
+        int8 cap = pdev->msix_cap_offset;
+        uint16_t ctrl = pci_config_read16(pdev->bus, pdev->dev, pdev->func, cap + 2);
+        ctrl &= ~0x8000; // 清除 Enable 位
+        pci_config_write16(pdev->bus, pdev->dev, pdev->func, cap + 2, ctrl);
+    }
+}
+
 
 /*
  * pcie配置空间地址计算
