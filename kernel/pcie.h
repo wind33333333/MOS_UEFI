@@ -2,8 +2,12 @@
 #include "moslib.h"
 #include "device.h"
 #include "driver.h"
+#include "interrupt.h"
 
 #pragma pack(push,1)
+
+// x86 架构下的 Local APIC MSI 魔法地址
+#define X86_MSI_ADDRESS 0xFEE00000
 
 typedef struct {
     /* PCI 通用配置头（前 64 字节）*/
@@ -233,6 +237,7 @@ typedef struct pcie_dev_t{
     msi_t *msi;
     msix_t msix;
 
+    void *priv_data;    // 供具体设备驱动 (如 xHCI, NVMe, E1000 网卡) 挂载自己专属的结构体
 } pcie_dev_t;
 
 
@@ -293,10 +298,15 @@ typedef enum {
 #define CANBUS_CLASS_CODE              0x0C0900  // CANbus 控制器
 #define SERIAL_BUS_OTHER_CLASS_CODE    0x0C8000  // 其他串行总线控制器
 
-void pcie_enable_msi_intrs(pcie_dev_t *pcie_dev);
-void pcie_disable_msi_intrs(pcie_dev_t *pcie_dev);
 
 int pcie_bus_match(device_t *dev,driver_t *drv);
 int pcie_bus_probe(device_t *dev);
 void pcie_bus_remove(device_t *dev);
 void pcie_bus_init(void);
+
+int32 pcie_alloc_irqs(pcie_dev_t *pdev, int8 count);
+void pcie_free_irqs(pcie_dev_t *pdev);
+int32 pcie_register_isr(pcie_dev_t *pdev, int8 index, irq_handler_t isr, const char *name);
+void pcie_unregister_isr(pcie_dev_t *pdev, int8 index);
+int32 pcie_enable_irqs(pcie_dev_t *pdev);
+void pcie_disable_irqs(pcie_dev_t *pdev);

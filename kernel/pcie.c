@@ -7,6 +7,7 @@
 #include "bus.h"
 #include "errno.h"
 
+
 struct {
     uint32 class_code;
     char *name;
@@ -256,58 +257,49 @@ int32 pcie_alloc_irqs(pcie_dev_t *pdev, int8 count) {
     if (pdev->allocated_vectors > 0) return -EBUSY;
 
     // ========== 路线 A：MSI-X 降维打击 (支持稀疏分布) ==========
-    if (pdev->msix_cap_offset != 0) {
-        pdev->active_irq_type = PCIE_IRQ_MSIX;
-
+    if (pdev->active_irq_type == PCIE_IRQ_MSIX) {
         int8 allocated = 0;
         for (int8 i = 0; i < count; i++) {
-            int8 vector = 0;
-            // MSI-X 随便拿，哪里有空位塞哪里
-            if (alloc_irq_vector(&vector) < 0) break;
+            int32 vector = alloc_irq();
+            if (vector < 0) break;
             pdev->cpu_vectors[i] = vector;
             allocated++;
         }
 
-        if (allocated == 0) goto fail;
+        if (allocated == 0) return -ENOSPC;;
         pdev->allocated_vectors = allocated;
         return allocated;
     }
 
     // ========== 路线 B：古董 MSI 戴着镣铐跳舞 ==========
-    else if (pdev->msi_cap_offset != 0) {
-        pdev->active_irq_type = PCIE_IRQ_MSI;
-
+    else if (pdev->active_irq_type == PCIE_IRQ_MSI) {
         // 规范化 count：MSI 必须申请 2 的次幂，如果驱动要 3 个，只能强行升到 4 个
         int8 power2_count = 1;
         while (power2_count < count) { power2_count <<= 1; }
         // PCIe 规范规定单个设备 MSI 最多申请 32 个
         if (power2_count > 32) power2_count = 32;
 
-        int8 base_vector = 0;
         // 呼叫咱们刚写的连续对齐分配大招！
-        int32 err = alloc_contiguous_irq(power2_count, &base_vector);
+        int32 vector = alloc_contiguous_irq(power2_count);
 
-        if (err < 0) {
+        if (vector < 0) {
             // ★ 工业级 OS 容错降级：如果连续分配失败，内核不能直接拒绝！
             // 而是强行降级为只分配 1 个中断！让网卡多队列退化为单队列运行。
             color_printk(YELLOW, BLACK, "PCIE MSI: Contiguous alloc failed. Downgrading to 1 vector.\n");
-            if (alloc_irq_vector(&base_vector) < 0) goto fail;
-            pdev->cpu_vectors[0] = base_vector;
+            vector = alloc_irq();
+            if (vector < 0) return -ENOSPC;
+            pdev->cpu_vectors[0] = vector;
             pdev->allocated_vectors = 1;
             return 1;
         }
 
         // 成功拿到了连续的队列
         for (int8 i = 0; i < power2_count; i++) {
-            pdev->cpu_vectors[i] = base_vector + i;
+            pdev->cpu_vectors[i] = vector + i;
         }
         pdev->allocated_vectors = power2_count;
         return power2_count;
     }
-
-    fail:
-        pdev->active_irq_type = PCIE_IRQ_NONE;
-    return -ENOSPC;
 }
 
 //释放中断号和apic
@@ -316,17 +308,16 @@ void pcie_free_irqs(pcie_dev_t *pdev) {
 
     if (pdev->active_irq_type == PCIE_IRQ_MSI) {
         // MSI 是连续分配的，调用连续释放函数
-        free_contiguous_irq_vectors(pdev->cpu_vectors[0], pdev->allocated_vectors);
+        free_contiguous_irq(pdev->cpu_vectors[0], pdev->allocated_vectors);
     }
     else if (pdev->active_irq_type == PCIE_IRQ_MSIX) {
         // MSI-X 可能是稀疏分配的，所以必须逐个释放
         for (int8 i = 0; i < pdev->allocated_vectors; i++) {
-            free_irq_vector(pdev->cpu_vectors[i]); // 你之前写的单向量释放函数
+            free_irq(pdev->cpu_vectors[i]); // 你之前写的单向量释放函数
         }
     }
 
     pdev->allocated_vectors = 0;
-    pdev->active_irq_type = PCIE_IRQ_NONE;
 }
 
 /**
@@ -350,9 +341,6 @@ void pcie_unregister_isr(pcie_dev_t *pdev, int8 index) {
     }
 }
 
-// x86 架构下的 Local APIC MSI 魔法地址
-#define X86_MSI_ADDRESS 0xFEE00000
-
 /**
  * @brief 启用设备中断 (写硬件寄存器)
  * 这一步告诉 PCIe 设备：“有事往 x86_MSI_ADDRESS 写，数据内容就是 Vector 号！”
@@ -362,41 +350,44 @@ int32 pcie_enable_irqs(pcie_dev_t *pdev) {
 
     if (pdev->active_irq_type == PCIE_IRQ_MSI) {
         // ========== 启用纯 MSI ==========
-        int8 cap = pdev->msi_cap_offset;
+        msi_t *msi = pdev->msi;
+        msi->msg_addr_lo = X86_MSI_ADDRESS;
+        uint16 ctrl = msi->msg_control;
+        if (ctrl & 0x80) {
+            msi->_64bit.msg_addr_hi = 0;
+            msi->_64bit.msg_data = pdev->cpu_vectors[0];
+        }else {
+            msi->_32bit.msg_data = pdev->cpu_vectors[0];
+        }
 
-        // 1. 填入 x86 APIC 接收地址
-        pci_config_write32(pdev->bus, pdev->dev, pdev->func, cap + 4, X86_MSI_ADDRESS);
+        // 3. 配置多消息使能 (Multiple Message Enable: Bits 4-6)
+        // 根据实际分配的向量数 (allocated_vectors)，计算对应的 2的幂次
+        uint8 log2_count = 0;
+        while ((1 << log2_count) < pdev->allocated_vectors && log2_count < 5) {
+            log2_count++;
+        }
+        ctrl &= ~(0x07 << 4);      // 先清空 Bits 4-6
+        ctrl |= (log2_count << 4); // 填入启用的数量
 
-        // 2. 填入中断向量号 (MSI 要求多个向量必须连续，这里我们只取首个向量演示)
-        uint16_t msg_data = pdev->cpu_vectors[0];
-        pci_config_write16(pdev->bus, pdev->dev, pdev->func, cap + 8, msg_data);
-
-        // 3. 修改 Message Control 寄存器，打开 MSI Enable 位 (Bit 0)
-        uint16_t ctrl = pci_config_read16(pdev->bus, pdev->dev, pdev->func, cap + 2);
         ctrl |= 0x0001;
-        pci_config_write16(pdev->bus, pdev->dev, pdev->func, cap + 2, ctrl);
-
+        msi->msg_control = ctrl;
         return 0;
 
     } else if (pdev->active_irq_type == PCIE_IRQ_MSIX) {
         // ========== 启用 MSI-X ==========
-        // MSI-X 的地址和数据不在配置空间里，而是在 BAR 映射的内存表 (MSI-X Table) 中！
-        // 驱动需要提前解析 MSI-X Table 的 BAR，遍历写入每一个 Vector
-        // 这里提供核心伪代码逻辑：
-
-        /* for (int i = 0; i < pdev->allocated_vectors; i++) {
-            msix_table[i].msg_addr = X86_MSI_ADDRESS;
-            msix_table[i].msg_data = pdev->cpu_vectors[i];
-            msix_table[i].vector_ctrl &= ~0x1; // 清除 Mask 位，允许触发
+        msix_entry_t *msix_entry = pdev->msix.msix_entry;
+         for (int i = 0; i < pdev->allocated_vectors; i++) {
+            msix_entry[i].msg_addr_lo = X86_MSI_ADDRESS;
+            msix_entry[i].msg_addr_hi = 0;
+            msix_entry[i].msg_data = pdev->cpu_vectors[i];
+            msix_entry[i].vector_control &= ~0x1; // 清除 Mask 位，允许触发
         }
-        */
 
         // 修改 MSI-X Control 寄存器，打开 MSI-X Enable 位 (Bit 15)
-        int8 cap = pdev->msix_cap_offset;
-        uint16_t ctrl = pci_config_read16(pdev->bus, pdev->dev, pdev->func, cap + 2);
+        uint16 ctrl = *pdev->msix.msg_control;
         ctrl |= 0x8000;
-        pci_config_write16(pdev->bus, pdev->dev, pdev->func, cap + 2, ctrl);
-
+        ctrl &= ~0x4000;
+        *pdev->msix.msg_control = ctrl;
         return 0;
     }
 
@@ -405,20 +396,48 @@ int32 pcie_enable_irqs(pcie_dev_t *pdev) {
 
 
 /**
- * @brief 关闭设备中断 (写硬件寄存器，让设备闭嘴)
+ * @brief 关闭设备中断 (拉下硬件总闸，让设备彻底闭嘴)
  */
 void pcie_disable_irqs(pcie_dev_t *pdev) {
+    if (!pdev) return;
+
     if (pdev->active_irq_type == PCIE_IRQ_MSI) {
-        int8 cap = pdev->msi_cap_offset;
-        uint16_t ctrl = pci_config_read16(pdev->bus, pdev->dev, pdev->func, cap + 2);
-        ctrl &= ~0x0001; // 清除 Enable 位
-        pci_config_write16(pdev->bus, pdev->dev, pdev->func, cap + 2, ctrl);
+        // ==========================================
+        // 关闭纯 MSI (风格统一，极简操作)
+        // ==========================================
+        msi_t *msi = pdev->msi;
+        uint16 ctrl = msi->msg_control;
+
+        ctrl &= ~0x0001; // 清除 Bit 0: MSI Enable
+        msi->msg_control = ctrl;
 
     } else if (pdev->active_irq_type == PCIE_IRQ_MSIX) {
-        int8 cap = pdev->msix_cap_offset;
-        uint16_t ctrl = pci_config_read16(pdev->bus, pdev->dev, pdev->func, cap + 2);
-        ctrl &= ~0x8000; // 清除 Enable 位
-        pci_config_write16(pdev->bus, pdev->dev, pdev->func, cap + 2, ctrl);
+        // ==========================================
+        // 关闭 MSI-X (废弃旧宏，全面拥抱结构体指针)
+        // ==========================================
+
+        // ==========================================
+        //  👑 你的神级补漏：逐个屏蔽 Table 中的独立 Entry
+        // ==========================================
+        msix_entry_t *msix_entry = pdev->msix.msix_entry;
+        for (int i = 0; i < pdev->allocated_vectors; i++) {
+            // 动作 A：设置 Bit 0，独立屏蔽该向量 (Per-Vector Mask)
+            msix_entry[i].vector_control |= 0x1;
+
+            // 动作 B：极其硬核的防御性编程，清空残留的旧地址和旧向量号
+            // 这样即使硬件发疯，发出的也是目标地址为 0 的无效写，不会打乱 CPU 中断表
+            msix_entry[i].msg_addr_lo = 0;
+            msix_entry[i].msg_addr_hi = 0;
+            msix_entry[i].msg_data    = 0;
+        }
+
+        // 注意：这里直接使用你在 enable 时定义的 msg_control 指针！
+        uint16 ctrl = *pdev->msix.msg_control;
+
+        ctrl &= ~0x8000; // 👑 动作 1：清除 Bit 15 (MSI-X Enable)，关闭总闸
+        ctrl |= 0x4000;  // 🛡️ 动作 2：设置 Bit 14 (Function Mask)，开启全局屏蔽！
+
+        *pdev->msix.msg_control = ctrl;
     }
 }
 

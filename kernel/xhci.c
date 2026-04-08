@@ -7,6 +7,7 @@
 #include "vmalloc.h"
 #include "usb-core.h"
 #include "errno.h"
+#include "interrupt.h"
 
 
 //命令环/传输环入队列
@@ -665,12 +666,21 @@ void xhci_disable_intr(xhci_hcd_t *xhcd,uint16 intr_number) {
 }
 
 
+//xhci中断服务程序
+irqreturn_t xhci_isr (cpu_registers_t *regs,void *dev_id) {
+    pcie_dev_t *xdev = dev_id;
+    xhci_hcd_t *xhcd = xdev->priv_data;
+    color_printk(RED, BLACK, "xHCI: Interrupt handler registered.\n");
+    while (1);
+}
+
 
 //xhci设备探测初始化驱动
-int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
+int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xdev->dev.drv_data = kzalloc(sizeof(xhci_hcd_t)); //存放xhci相关信息
     xhci_hcd_t *xhcd = xdev->dev.drv_data;
     xhcd->xdev = xdev;
+    xdev->priv_data = xhcd;
     xdev->bar[0].vaddr = iomap(xdev->bar[0].paddr, xdev->bar[0].size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
 
     /*初始化xhci寄存器*/
@@ -824,6 +834,9 @@ int xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
         color_printk(GREEN,BLACK, "spc%d %s%x.%x port_first:%d port_count:%d psi_count:%d    \n", i, spc->name,
                      spc->major_bcd, spc->minor_bcd, spc->port_first, spc->port_count, spc->psi_count);
     }
+
+    pcie_alloc_irqs(xdev,1);
+    pcie_regis
 
 
     extern void usb_dev_scan(xhci_hcd_t *xhcd);

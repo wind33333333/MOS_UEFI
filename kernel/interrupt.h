@@ -124,4 +124,5 @@ void free_contiguous_irq(uint8 base_vector, uint8 count);
 int32 alloc_irq(void);
 void free_irq(int32 vector);
 int32 register_isr(int32 vector, irq_handler_t handler, void *dev_id, const char *name);
+int32 unregister_isr(int32 vector);
 

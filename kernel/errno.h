@@ -17,6 +17,7 @@
 #define EPROTO      71  /* Protocol error (协议错误，如签名不匹配) */
 #define EOVERFLOW   75  /* Value too large for defined data type (数值溢出/缓冲区溢出) */
 #define EILSEQ      84  /* Illegal byte sequence (数据非法/相位错误) */
+#define ENOTSUP     95  /* Operation not supported 不支持该操作” 或 “不支持该功能 */
 #define ENOBUFS     105  /* No buffer space available (环满爆/下溢出) */
 #define ESHUTDOWN   108  /* Cannot send after transport endpoint shutdown (端点已关闭/停机) */
 #define ETIMEDOUT   110  /* Connection timed out (事件环/传输环等待超时) */

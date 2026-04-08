@@ -367,6 +367,39 @@ int32 register_isr(int32 vector, irq_handler_t handler, void *dev_id, const char
 }
 
 /**
+ * @brief 注销中断服务例程 (拆除业务，但保留向量分配状态)
+ * @param vector 要注销的中断向量号
+ * @return 0 成功，负数表示失败
+ */
+int32 unregister_isr(int32 vector) {
+    // 1. 基础物理边界防御
+    if (vector < 32 || vector >= IDT_ENTRIES) return -EINVAL;
+
+    // ★ 防火墙 1：防误杀！如果是一块连地皮都没买过的空地，直接报错
+    if (irq_table[vector].state == IRQ_STATE_FREE) {
+        color_printk(RED, BLACK, "IRQ %d is completely free, nothing to unregister!\n", vector);
+        return -EPERM;
+    }
+
+    // ★ 防火墙 2：防空拆！如果这块地只是买下来了，还没盖房子，也不需要拆
+    if (irq_table[vector].state == IRQ_STATE_ALLOCATED) {
+        color_printk(YELLOW, BLACK, "IRQ %d is allocated but no ISR registered.\n", vector);
+        return 0; // 某种意义上不算致命错误，可以直接返回成功或特定警告码
+    }
+
+    // 2. 状态倒退：正式退役 (REGISTERED -> ALLOCATED)
+    // 核心架构思想：仅仅是拆掉业务逻辑，坑位（Vector）依然归当前设备所有！
+    irq_table[vector].state = IRQ_STATE_ALLOCATED;
+
+    // 3. 清理残留指针，防止大管家 (Dispatcher) 误调引发野指针蓝屏
+    irq_table[vector].handler = NULL;
+    irq_table[vector].dev_id  = NULL;
+    irq_table[vector].name    = NULL; // 配合你的指针设计，直接置空
+
+    return 0;
+}
+
+/**
  * @brief 分配连续且对齐的中断向量 (专供纯 MSI 多消息使用)
  * @param count            申请的数量 (必须是 2 的幂：1, 2, 4, 8, 16, 32)
  * @param out_base_vector  [输出] 成功时写入基准向量号
