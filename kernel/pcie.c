@@ -119,6 +119,7 @@ void pcie_bar_init(pcie_dev_t *pcie_dev) {
         addr &= 0xFFFFFFFFFFFFFFF0UL;
         pcie_dev->bar[i].paddr = addr;
         pcie_dev->bar[i].size = size;
+        pcie_dev->bar[i].vaddr = iomap(addr,size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
         i++;
         bir++;
     }
@@ -155,8 +156,8 @@ void pcie_msi_intrpt_init(pcie_dev_t *pcie_dev) {
         //初始化msi-x中断表
         pcie_dev->active_irq_type = PCIE_IRQ_MSIX;
         pcie_dev->msix.msg_control = &msix_cap->msg_control;
-        pcie_dev->msix.msix_entry = pcie_dev->bar[get_msix_bir(msix_cap)].vaddr+get_msix_offset(msix_cap); //计算msix表起始地址
-        pcie_dev->msix.pba = pcie_dev->bar[get_pda_bir(msix_cap)].vaddr+get_pda_offset(msix_cap);
+        pcie_dev->msix.msix_entry = (void*)(pcie_dev->bar[get_msix_bir(msix_cap)].vaddr+get_msix_offset(msix_cap)); //计算msix表起始地址
+        pcie_dev->msix.pba = (void*)(pcie_dev->bar[get_pda_bir(msix_cap)].vaddr+get_pda_offset(msix_cap));
     }
 
 }

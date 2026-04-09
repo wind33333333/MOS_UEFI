@@ -643,26 +643,50 @@ int32 xhci_reset(xhci_hcd_t *xhcd) {
     return -ETIMEDOUT;
 }
 
-//启动xhci
+
+/**
+ * @brief 启动 xHCI 控制器
+ */
 int32 xhci_start(xhci_hcd_t *xhcd) {
-    xhcd->op_reg->usbcmd |= XHCI_CMD_RS;
+    if (!xhcd || !xhcd->op_reg) return -EINVAL;
+
+    // 1. 读取当前的 USBCMD 寄存器值
+    // 💡 架构师习惯：尽量避免直接对硬件寄存器使用 |= 操作符，
+    // 先读到局部变量，修改完再统一写回，防止引发意料之外的总线写事务。
+    uint32 cmd = xhcd->op_reg->usbcmd;
+
+    // 2. ★ 核心修正：同时开启运行、中断和系统错误报警！
+    cmd |= (XHCI_CMD_RS | XHCI_CMD_INTE | XHCI_CMD_HSEE);
+
+    // 3. 点火！写入硬件
+    xhcd->op_reg->usbcmd = cmd;
+
+    // 4. ★ 科学的超时等待 (xHCI 规范指出 HCH 通常在 16ms 内清零)
+    // 我们给予 50 毫秒的宽限期，使用内核标准的 mdelay (毫秒级延时)
     uint32 times = 20000000;
     while (times--) {
         if ((xhcd->op_reg->usbsts & XHCI_STS_HCH) == 0)
             return 0;
     }
-    color_printk(RED, BLACK, "xHCI: Start timeout! Controller refused to run.\n");
+
+    // 5. 如果 50ms 后 HCH 依然为 1，说明芯片死机或硬件故障
+    color_printk(RED, BLACK, "xHCI: Start timeout! Controller refused to run. USBSTS: %#x\n",
+                 xhcd->op_reg->usbsts);
     return -ETIMEDOUT;
 }
 
 //启用xhci中断
 void xhci_enable_intr(xhci_hcd_t *xhcd,uint16 intr_number) {
-    xhcd->rt_reg->intr_regs[intr_number].iman |= 1<1;
+    uint32 iman = xhcd->rt_reg->intr_regs[intr_number].iman;
+    iman |= XHCI_IMAN_IE;
+    xhcd->rt_reg->intr_regs[intr_number].iman = iman;
 }
 
 //禁用xhci中断
 void xhci_disable_intr(xhci_hcd_t *xhcd,uint16 intr_number) {
-    xhcd->rt_reg->intr_regs[intr_number].iman &= ~(1<1);
+    int32 iman = xhcd->rt_reg->intr_regs[intr_number].iman;
+    iman &= ~XHCI_IMAN_IE;
+    xhcd->rt_reg->intr_regs[intr_number].iman = iman;
 }
 
 
@@ -670,6 +694,46 @@ void xhci_disable_intr(xhci_hcd_t *xhcd,uint16 intr_number) {
 irqreturn_t xhci_isr (cpu_registers_t *regs,void *dev_id) {
     pcie_dev_t *xdev = dev_id;
     xhci_hcd_t *xhcd = xdev->priv_data;
+
+    // 假设绑定的是 0 号中断器
+    uint8 intr_idx = 0;
+    xhci_intr *intr = &xhcd->intr[intr_idx];
+
+    // =================================================================
+    // 👑 动作 1：不再查岗 IMAN！直接开始干活！
+    // 既然能进这个函数，就绝对是 0 号队列来了数据。
+    // =================================================================
+
+    // 遍历 Event Ring (事件环)，一直读到没有新事件为止 (判断 Cycle bit)
+    boolean processed_any = FALSE;
+    while (xhci_has_new_event(intr)) { // 你需要自己实现这个检查 TRB Cycle 位的逻辑
+
+        xhci_process_single_event(xhcd, intr); // 解析拔插事件、传输完成事件等
+
+        // 软件层面的出队指针向前走一步
+        intr->dequeue_ptr++;
+        if (intr->dequeue_ptr == TRB_COUNT) {
+            intr->dequeue_ptr = 0;
+            intr->ccs ^= 1; // 翻转 Consumer Cycle State
+        }
+        processed_any = true;
+    }
+
+    // =================================================================
+    // 👑 动作 2：签收与解套 (极其致命的一步！)
+    // =================================================================
+    if (processed_any) {
+        // 计算当前出队指针对应的 物理地址
+        uint64 erdp_pa = va_to_pa(&intr->event_rings.ring_base[intr->dequeue_ptr]);
+
+        // ★ xHCI 续命神招：向 ERDP 写回地址时，必须将 Bit 3 (EHB) 置为 1！
+        // 硬件看到你向 EHB 写 1，就会把内部的挂起状态清空，允许发射下一个 MSI-X 中断。
+        erdp_pa |= (1 << 3);
+
+        // 写入硬件
+        xhcd->rt_reg->intr_regs[intr_idx].erdp = erdp_pa;
+    }
+
     color_printk(RED, BLACK, "xHCI: Interrupt handler registered.\n");
     while (1);
 }
@@ -818,7 +882,26 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
         xhcd->dcbaap[0] = va_to_pa(spb_array); //暂存器缓存去数组指针写入设备上下写文数组0
     }
 
-    /*启动xhci*/
+    // =========================================================================
+    // 👑 必须先铺设“中断管线” (从 CPU 到 PCIe 总线)
+    // =========================================================================
+    /* 1. 向大管家申请中断向量号 */
+    pcie_alloc_irqs(xdev, 1);
+
+    /* 2. 注册内核软件 ISR (此时 CPU 准备好接客了) */
+    pcie_register_isr(xdev, 0, xhci_isr, xdev->dev.name);
+
+    /* 3. 填入 MSI-X Table 并拉下总线电闸 (此时 PCIe 链路打通) */
+    pcie_enable_irqs(xdev);
+
+    // =========================================================================
+    // 🚀 管线铺好后，最后一步才能“放水” (启动 xHCI 外设)
+    // =========================================================================
+    /* 4. 打开具体的事件环阀门 (配置 IMAN 寄存器，启用 0 号队列) */
+    xhci_enable_intr(xhcd, 0);
+
+    /* 5. 轰鸣点火！启动全局 xHCI 控制器 (此时 USBCMD.RS 和 INTE 置 1) */
+    /* 一旦执行完这句代码，随时可能有真实的硬件中断砸进 xhci_isr！*/
     xhci_start(xhcd);
 
     color_printk(
@@ -834,9 +917,6 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
         color_printk(GREEN,BLACK, "spc%d %s%x.%x port_first:%d port_count:%d psi_count:%d    \n", i, spc->name,
                      spc->major_bcd, spc->minor_bcd, spc->port_first, spc->port_count, spc->psi_count);
     }
-
-    pcie_alloc_irqs(xdev,1);
-    pcie_regis
 
 
     extern void usb_dev_scan(xhci_hcd_t *xhcd);
