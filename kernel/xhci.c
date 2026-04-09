@@ -758,6 +758,15 @@ irqreturn_e xhci_isr(cpu_registers_t *regs,void *dev_id) {
     xhci_intr *intr = &xhcd->intr[intr_idx];
     xhci_ring_t *evt_ring = &intr->event_rings;
 
+    // =================================================================
+    // 🛡️ 硬件级防御：清除可能残留的 IMAN_IP (防老旧/非标主板中断风暴)
+    // =================================================================
+    uint32 iman = xhcd->rt_reg->intr_regs[intr_idx].iman;
+    if (iman & XHCI_IMAN_IP) {
+        // RW1C: iman 变量里的 IP 位此时是 1，直接写回，触发硬件清零！
+        // 这一步也顺便保持了 IE (Interrupt Enable) 位的原状态不变
+        xhcd->rt_reg->intr_regs[intr_idx].iman = iman;
+    }
 
     boolean processed_any = FALSE;
     xhci_trb_t current_trb; // 在栈上分配 16 字节，极其高效且安全
