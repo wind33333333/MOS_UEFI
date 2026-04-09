@@ -306,7 +306,7 @@ void pcie_bus_init(void);
 
 int32 pcie_alloc_irqs(pcie_dev_t *pdev, int8 count);
 void pcie_free_irqs(pcie_dev_t *pdev);
-int32 pcie_register_isr(pcie_dev_t *pdev, int8 index, irq_handler_t isr, const char *name);
+int32 pcie_register_isr(pcie_dev_t *pdev, int8 index, irq_handler_f isr, const char *name);
 void pcie_unregister_isr(pcie_dev_t *pdev, int8 index);
 int32 pcie_enable_irqs(pcie_dev_t *pdev);
 void pcie_disable_irqs(pcie_dev_t *pdev);

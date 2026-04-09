@@ -325,7 +325,7 @@ void pcie_free_irqs(pcie_dev_t *pdev) {
  * @brief 注册中断服务函数
  * @param index 设备的第几个中断队列 (0 ~ allocated_vectors-1)
  */
-int32 pcie_register_isr(pcie_dev_t *pdev, int8 index, irq_handler_t isr, const char *name) {
+int32 pcie_register_isr(pcie_dev_t *pdev, int8 index, irq_handler_f isr, const char *name) {
     if (index >= pdev->allocated_vectors) return -EINVAL;
 
     int8 vector = pdev->cpu_vectors[index];

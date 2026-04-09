@@ -135,8 +135,6 @@ char* xhci_get_comp_code_str(xhci_trb_comp_code_e comp_code) {
 
 
 
-#include <errno.h> // 确保包含了 POSIX 错误码头文件
-
 /**
  * @brief 将 xHCI 硬件专属的 TRB 完成码，翻译成全宇宙通用的 POSIX 错误码
  * @param comp_code  xHCI 硬件抛出的完成码
@@ -690,52 +688,98 @@ void xhci_disable_intr(xhci_hcd_t *xhcd,uint16 intr_number) {
 }
 
 
-//xhci中断服务程序
-irqreturn_t xhci_isr (cpu_registers_t *regs,void *dev_id) {
+/**
+ * @brief 尝试从事件环中取出一个新事件
+ * @param intr 当前队列的中断上下文结构体
+ * @param out_trb 用于输出的 TRB 指针 (拷贝到外层，防止 DMA 竞争)
+ * @return true 成功取到新事件，false 环已空
+ */
+boolean xhci_get_next_event(xhci_ring_t *evt_ring, xhci_trb_t *out_trb) {
+    // 1. 定位到当前指针指向的 TRB
+    xhci_trb_t *current_trb = &evt_ring->ring_base[evt_ring->index];
+
+    // 2. 检查 Cycle 位：如果硬件还没把事件写进来，直接返回 0
+    if (current_trb->cmd_comp_event.cycle != evt_ring->cycle) {
+        return -FALSE;
+    }
+
+    // 3. 提取事件数据！
+    // 💡 架构师极力推荐：把这 16 字节拷贝出来！
+    // 为什么？因为直接返回 DMA 内存的指针，如果硬件在极端情况下发生回卷覆盖，会导致数据错乱。
+    // 拷贝到软件栈(Stack)上是最安全的做法！
+    *out_trb = *current_trb;
+
+    // 4. 指针向前走一步 (完全接管环形队列的维护)
+    evt_ring->index++;
+    if (evt_ring->index >= TRB_COUNT) {
+        evt_ring->index = 0;
+        evt_ring->cycle ^= 1; // 环绕时翻转 Cycle 预期
+    }
+
+    return TRUE;
+}
+
+
+/**
+ * @brief 解析并分发单一事件 (纯业务逻辑)
+ */
+void xhci_process_single_event(xhci_hcd_t *xhcd, xhci_trb_t *trb) {
+    trb_type_e trb_type = trb->cmd_comp_event.trb_type;
+    xhci_trb_comp_code_e comp_code = trb->cmd_comp_event.comp_code;
+
+    switch (trb_type) {
+        case XHCI_TRB_TYPE_TRANSFER_EVENT:
+            // 【类型 32：传输事件】(U 盘业务收发)
+            // xhci_handle_transfer_event(xhcd, trb);
+            break;
+        case XHCI_TRB_TYPE_CMD_COMPLETION:
+            // 【类型 33：命令完成事件】(主板建桥图纸回执)
+            // xhci_handle_cmd_completion(xhcd, trb);
+            break;
+        case XHCI_TRB_TYPE_PORT_STATUS_CHG:
+            // 【类型 34：端口状态改变事件】(物理插拔感知)
+            // xhci_handle_port_status_change(xhcd, trb);
+            break;
+        case XHCI_TRB_TYPE_HOST_CTRL:
+            // 【类型 37：主板级遗言】
+            color_printk(RED, BLACK, "\n[FATAL KERNEL PANIC] xHCI Host Controller Event Triggered!\n");
+        default:
+            break;
+    }
+}
+
+
+//xhci中断服务函数
+irqreturn_e xhci_isr(cpu_registers_t *regs,void *dev_id) {
     pcie_dev_t *xdev = dev_id;
     xhci_hcd_t *xhcd = xdev->priv_data;
 
-    // 假设绑定的是 0 号中断器
     uint8 intr_idx = 0;
     xhci_intr *intr = &xhcd->intr[intr_idx];
+    xhci_ring_t *evt_ring = &intr->event_rings;
 
-    // =================================================================
-    // 👑 动作 1：不再查岗 IMAN！直接开始干活！
-    // 既然能进这个函数，就绝对是 0 号队列来了数据。
-    // =================================================================
 
-    // 遍历 Event Ring (事件环)，一直读到没有新事件为止 (判断 Cycle bit)
     boolean processed_any = FALSE;
-    while (xhci_has_new_event(intr)) { // 你需要自己实现这个检查 TRB Cycle 位的逻辑
+    xhci_trb_t current_trb; // 在栈上分配 16 字节，极其高效且安全
 
-        xhci_process_single_event(xhcd, intr); // 解析拔插事件、传输完成事件等
+    // =================================================================
+    // 👑 优雅的迭代循环：一边取，一边分发！
+    // =================================================================
+    while (xhci_get_next_event(evt_ring, &current_trb)) {
+        xhci_process_single_event(xhcd, &current_trb);
+        processed_any = TRUE;
 
-        // 软件层面的出队指针向前走一步
-        intr->dequeue_ptr++;
-        if (intr->dequeue_ptr == TRB_COUNT) {
-            intr->dequeue_ptr = 0;
-            intr->ccs ^= 1; // 翻转 Consumer Cycle State
-        }
-        processed_any = true;
     }
 
     // =================================================================
-    // 👑 动作 2：签收与解套 (极其致命的一步！)
+    // 签收中断，归还硬件控制权
     // =================================================================
     if (processed_any) {
-        // 计算当前出队指针对应的 物理地址
-        uint64 erdp_pa = va_to_pa(&intr->event_rings.ring_base[intr->dequeue_ptr]);
-
-        // ★ xHCI 续命神招：向 ERDP 写回地址时，必须将 Bit 3 (EHB) 置为 1！
-        // 硬件看到你向 EHB 写 1，就会把内部的挂起状态清空，允许发射下一个 MSI-X 中断。
-        erdp_pa |= (1 << 3);
-
-        // 写入硬件
+        // 由于 xhci_get_next_event 已经帮我们把 dequeue_ptr 移到了最新位置
+        // 这里直接计算物理地址，写入 ERDP 即可// 置 EHB 位为 1，清除硬件挂起状态
+        uint64 erdp_pa = va_to_pa(&evt_ring->ring_base[evt_ring->index]) | XHCI_ERDP_EHB;
         xhcd->rt_reg->intr_regs[intr_idx].erdp = erdp_pa;
     }
-
-    color_printk(RED, BLACK, "xHCI: Interrupt handler registered.\n");
-    while (1);
 }
 
 

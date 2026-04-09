@@ -88,21 +88,21 @@ typedef enum:int8 {
     IRQ_NONE        = 0, // 硬件没数据，虚假唤醒
     IRQ_HANDLED     = 1, // 已成功处理
     IRQ_WAKE_THREAD = 2  // 留给未来的底半部唤醒标志
-} irqreturn_t;
+} irqreturn_e;
 
 //cpu中断函数签名
-typedef irqreturn_t (*irq_handler_t)(cpu_registers_t *regs, void *dev_id);
+typedef irqreturn_e (*irq_handler_f)(cpu_registers_t *regs, void *dev_id);
 
 // 定义中断向量的 3 种核心生命周期状态
 typedef enum:int8 {
     IRQ_STATE_FREE       = 0, // [空闲]：池中可用，无人问津
     IRQ_STATE_ALLOCATED  = 1, // [占坑]：已分配给某个驱动，但业务函数还未就绪
     IRQ_STATE_REGISTERED = 2  // [服役]：业务函数已挂载，随时准备处理硬件中断
-} irq_state_t;
+} irq_state_e;
 
 typedef struct {
-    irq_state_t   state;     // 状态
-    irq_handler_t handler;   // 独占处理函数
+    irq_state_e   state;     // 状态
+    irq_handler_f handler;   // 独占处理函数
     void *dev_id;            // 设备实例上下文 (如 xhci_t*)
     const char *name;        // 驱动名称标识
 } irq_desc_t;
@@ -123,6 +123,6 @@ int32 alloc_contiguous_irq(uint8 count);
 void free_contiguous_irq(uint8 base_vector, uint8 count);
 int32 alloc_irq(void);
 void free_irq(int32 vector);
-int32 register_isr(int32 vector, irq_handler_t handler, void *dev_id, const char *name);
+int32 register_isr(int32 vector, irq_handler_f handler, void *dev_id, const char *name);
 int32 unregister_isr(int32 vector);
 

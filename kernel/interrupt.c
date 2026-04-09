@@ -342,7 +342,7 @@ void c_interrupt_dispatcher(cpu_registers_t *regs) {
  * @param dev_id   设备上下文
  * @param name     驱动标识名
  */
-int32 register_isr(int32 vector, irq_handler_t handler, void *dev_id, const char *name) {
+int32 register_isr(int32 vector, irq_handler_f handler, void *dev_id, const char *name) {
     if (vector < 32 || vector >= IDT_ENTRIES) return -EINVAL;
 
     // ★ 防火墙 1：不准在没买过的地皮上盖房！
