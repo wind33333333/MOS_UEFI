@@ -87,7 +87,7 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 		-smp sockets=2,cores=2,threads=2 \
 		-bios OVMF.fd \
 	  -drive if=none,id=bootdisk,format=raw,file=fat:rw:./esp \
-	  -device qemu-xhci,id=xhci \
+	  -device qemu-xhci,id=xhci,msi=on,msix=on \
 	  -device usb-storage,drive=bootdisk,bus=xhci.0,bootindex=1 \
 	  -drive if=none,id=uasdisk,file=/home/wind3/disk-uas.img,format=raw \
 	  -device usb-uas,id=uas,bus=xhci.0 \
