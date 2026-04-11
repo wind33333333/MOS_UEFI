@@ -939,7 +939,7 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     // 👑 必须先铺设“中断管线” (从 CPU 到 PCIe 总线)
     // =========================================================================
     /* 1. 向大管家申请中断向量号 */
-    pcie_alloc_irqs(xdev, 1);
+    pcie_alloc_irq(xdev, 1);
 
     /* 2. 注册内核软件 ISR (此时 CPU 准备好接客了) */
     pcie_register_isr(xdev, 0, xhci_isr, xdev->dev.name);
