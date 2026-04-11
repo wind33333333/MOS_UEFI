@@ -621,8 +621,8 @@ static inline boolean list_find(list_head_t *head,list_head_t *node) {
 
 static inline boolean list_empty(list_head_t *head) {
     if (head->next == NULL && head->prev == NULL)
-        return 1;
-    return 0;
+        return TRUE;
+    return FALSE;
 }
 
 // 16 位大小端序转换

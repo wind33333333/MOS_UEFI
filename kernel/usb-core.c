@@ -42,7 +42,7 @@ static inline int32 xhci_recover_stall(usb_dev_t *udev, uint8 ep_dci) {
  * @param num_urbs   数组中的 URB 数量
  * @return int32     0 表示所有预期事件完美成功，负数表示底层报错 (如 -EPIPE, -ETIMEDOUT)
  */
-int32 xhci_wait_urb_group(usb_dev_t *udev,usb_urb_t **urbs, uint8 num_urbs) {
+/*int32 xhci_wait_urb_group(usb_dev_t *udev,usb_urb_t **urbs, uint8 num_urbs) {
     xhci_hcd_t *xhcd = udev->xhcd;
     uint32 timeout_ms = 30000000; // 建议在实机压测时根据 CPU 频率调整倍率
 
@@ -140,7 +140,7 @@ int32 xhci_wait_urb_group(usb_dev_t *udev,usb_urb_t **urbs, uint8 num_urbs) {
 
     color_printk(RED, BLACK, "[xHCI Group Error] Transfer Timeout!\n");
     return -ETIMEDOUT;
-}
+}*/
 
 /**
  * @brief [内联执行器] 处理 EP0 控制传输 (三阶段)
@@ -317,15 +317,19 @@ int32 usb_submit_urb(usb_urb_t *urb) {
     }
 
     // ==========================================================
-    // ★ 终极一击：精确敲响对应端点 / Stream 的物理门铃！
-    // ==========================================================
-    xhci_ring_doorbell(xhcd, slot_id, db_target);
-
-    // ==========================================================
     // 3. 状态回填供上层同步等待使用
     // ==========================================================
     urb->last_trb_pa = last_trb_pa;
     urb->status = -EINPROGRESS; // (115) Operation now in progress: 异步操作已入队，正在执行！
+    urb->is_done = FALSE;    // 🌟 初始化为未完成
+
+    // 将 URB 挂到端点的待办列表中，供 ISR 查找
+    list_add_tail(&urb->ep->pending_urbs, &urb->node);
+
+    // ==========================================================
+    // ★ 终极一击：精确敲响对应端点 / Stream 的物理门铃！
+    // ==========================================================
+    xhci_ring_doorbell(xhcd, slot_id, db_target);
 
     return 0;
 }
@@ -434,7 +438,7 @@ int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void 
     }
 
     // 4. 等待硬件中断 (同步过渡期做法)
-    xhci_wait_urb_group(udev,&urb,1);
+    // xhci_wait_urb_group(udev,&urb,1);
 
     // 5. 过河拆桥：任务完成，彻底销毁 URB 面单！
     usb_free_urb(urb);
@@ -1477,6 +1481,7 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     uint8 ctx_size = xhcd->ctx_size;
     udev->dev_ctx = kzalloc_dma(XHCI_DEVICE_CONTEXT_COUNT * ctx_size);
     xhcd->dcbaap[udev->slot_id] = va_to_pa(udev->dev_ctx);
+    xhcd->udevs[udev->slot_id] = udev;
 
     //分配input上下文
     udev->input_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * ctx_size);
@@ -1694,9 +1699,9 @@ static int32 usb_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     while (times--) {
 
     }
-    if ( xhci_wait_for_event(xhcd, 0,XHCI_TRB_TYPE_PORT_STATUS_CHG ,port_id,0,0, 30000000, NULL) == XHCI_COMP_TIMEOUT) {
-        return -1; // 超时失败
-    }
+    // if ( xhci_wait_for_event(xhcd, 0,XHCI_TRB_TYPE_PORT_STATUS_CHG ,port_id,0,0, 30000000, NULL) == XHCI_COMP_TIMEOUT) {
+    //     return -1; // 超时失败
+    // }
 
     // ---------------------------------------------------------
     // 【未来重构点】：这部分将成为 "Bottom Half" (中断唤醒后的收尾)

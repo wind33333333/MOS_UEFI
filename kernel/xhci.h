@@ -1030,7 +1030,7 @@ typedef struct {
     // 绝对不能把它优化进 CPU 寄存器里！每次必须老老实实去内存里读！
     volatile boolean is_done;
     uint64 command_trb_pa;
-    uint32 comp_code;
+    xhci_trb_comp_code_e comp_code;
     uint8  slot_id;
 } xhci_pending_cmd_t;
 
@@ -1073,7 +1073,7 @@ typedef struct xhci_hcd_t{
     // 5. 软硬件映射与并发控制 (Software State)
     // ==========================================
     // xhci_port_t         *ports;             // 端口逻辑对象数组
-    // struct usb_dev_t    *udevs;             // 插槽到设备的逻辑映射 (通过 Slot ID 查找 usb_dev_t)
+    struct usb_dev_t    **udevs;           // 插槽到设备的逻辑映射 (通过 Slot ID 查找 usb_dev_t)
 
     // 注意：事件环不是一个，它是和中断器绑定的！这里根据 max_intrs 动态分配！
     xhci_intr*          intr;
@@ -1127,8 +1127,7 @@ static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 
 
 
 uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push);
-int32 xhci_event_ring_dequeue(xhci_hcd_t *xhcd, uint8 intr_num, xhci_trb_t *out_event);
-int32 xhci_wait_for_event(xhci_hcd_t *xhcd,uint16 intr_number,trb_type_e expected_type,uint64 expected_pa_or_port,uint8 slot_id,uint8 ep_dci,uint32 timeout_ms,xhci_trb_t *out_trb);
+
 int32 xhci_translate_error(xhci_trb_comp_code_e comp_code);
 
 char* xhci_get_comp_code_str(xhci_trb_comp_code_e comp_code);

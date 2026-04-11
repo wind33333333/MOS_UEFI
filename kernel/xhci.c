@@ -40,40 +40,35 @@ uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
 }
 
 /**
- * @brief 从事件环中抓取下一个事件 (纯粹的底层收割机)
- * @param xhcd       控制器的上下文
- * @param intr_num   中断器索引 (目前单核轮询填 0 即可)
- * @param out_event  [输出参数] 用于接收 16 字节事件 TRB 现场的指针
- * @return int32     1 表示抓到了新事件，0 表示没有新事件
+ * @brief 尝试从事件环中取出一个新事件
+ * @param intr 当前队列的中断上下文结构体
+ * @param out_evt 用于输出的 TRB 指针 (拷贝到外层，防止 DMA 竞争)
+ * @return true 成功取到新事件，false 环已空
  */
-int32 xhci_event_ring_dequeue(xhci_hcd_t *xhcd, uint8 intr_num, xhci_trb_t *out_event) {
-    xhci_ring_t *evt_ring = &xhcd->intr[intr_num].event_rings;
-    xhci_trb_t *trb = &evt_ring->ring_base[evt_ring->index];
+int32 xhci_event_ring_dequeue(xhci_ring_t *evt_ring, xhci_trb_t *out_evt) {
+    // 1. 定位到当前指针指向的 TRB
+    xhci_trb_t *current_trb = &evt_ring->ring_base[evt_ring->index];
 
-    // 1. 检查 Cycle 位：如果硬件还没把事件写进来，直接返回 0
-    if (trb->cmd_comp_event.cycle != evt_ring->cycle) {
+    // 2. 检查 Cycle 位：如果硬件还没把事件写进来，直接返回 0
+    if (current_trb->cmd_comp_event.cycle != evt_ring->cycle) {
         return -EAGAIN;
     }
 
-    // 2. 完美拷贝出这 16 字节的案发现场
-    *out_event = *trb;
+    // 3. 提取事件数据！
+    // 💡 架构师极力推荐：把这 16 字节拷贝出来！
+    // 为什么？因为直接返回 DMA 内存的指针，如果硬件在极端情况下发生回卷覆盖，会导致数据错乱。
+    // 拷贝到软件栈(Stack)上是最安全的做法！
+    *out_evt = *current_trb;
 
-    // 3. 推进软件出队指针
+    // 4. 指针向前走一步 (完全接管环形队列的维护)
     evt_ring->index++;
     if (evt_ring->index >= TRB_COUNT) {
         evt_ring->index = 0;
         evt_ring->cycle ^= 1; // 环绕时翻转 Cycle 预期
     }
 
-    // 4. ★ 核心防御：敲击 ERDP 寄存器！
-    // 告诉主板：“这个事件我吃掉了，你可以把它的空间回收给后续的新事件了！”
-    // 加上 XHCI_ERDP_EHB (Event Handler Busy) 标志，清除主板的未决中断状态
-    xhcd->rt_reg->intr_regs[intr_num].erdp =
-        va_to_pa(&evt_ring->ring_base[evt_ring->index]) | XHCI_ERDP_EHB;
-
     return 0;
 }
-
 
 /**
  * @brief 将 xHCI 硬件完成码转换为人类可读的字符串 (全量 37 种完成码全覆盖)
@@ -239,191 +234,50 @@ int32 xhci_translate_error(xhci_trb_comp_code_e comp_code) {
  * @brief xHCI 统一命令环发射器 (POSIX 返回值规范)
  * @return int 返回 0 表示成功，返回负数表示 POSIX 错误码
  */
-int32 xhci_execute_command_sync(xhci_hcd_t *xhcd, xhci_trb_t *cmd_trb, uint32 timeout_us, xhci_trb_t *out_event_trb) {
-    // 1. 命令入队并敲门铃
+int32 xhci_execute_command_sync(xhci_hcd_t *xhcd, xhci_trb_t *cmd_trb) {
+    // 1. 命令入队
     uint64 cmd_pa = xhci_ring_enqueue(&xhcd->cmd_ring, cmd_trb);
+
+    // 2. 清洗信使状态
+    xhcd->pending_cmd.command_trb_pa = cmd_pa;
+    xhcd->pending_cmd.comp_code = 0;
+    xhcd->pending_cmd.slot_id = 0;
+    xhcd->pending_cmd.is_done = FALSE;    // ★ 将完成标志置为 false，一定要在敲门铃前设置！
+
+    //3.并敲门铃
     xhci_ring_doorbell(xhcd, 0, 0);
 
-    while (timeout_us--) {
-        xhci_trb_t event;
-
-        // 尝试抓取事件
-        int32 posix_err = xhci_event_ring_dequeue(xhcd, 0, &event);
-
-        // 分支 1：没抓到 (最常见的情况，环是空的)
-        if (posix_err == -EAGAIN) {
-            asm_pause();
-            continue; // 歇一下，下一轮循环再试
-        }
-
-        // 分支 2：抓取时发生致命错误 (未来扩展用，比如内存指针越界/主板掉线)
-        if (posix_err < 0) {
-            return posix_err; // 直接把底层的致命错误抛给上层
-        }
-
-        // 分支 3：fetch_err == 0 (完美抓到了事件！)
-        if (event.cmd_comp_event.trb_type == XHCI_TRB_TYPE_CMD_COMPLETION &&
-            event.cmd_comp_event.cmd_trb_ptr == cmd_pa) {
-
-            if (out_event_trb) *out_event_trb = event; // 保存回执现场
-
-            return xhci_translate_error(event.cmd_comp_event.comp_code); // 返回 POSIX 错误
-            }
-    }
-    return -ETIMEDOUT;
-
-}
-
-/**
- * @brief 同步等待特定事件 (纯正 POSIX 语义版)
- * @return int32 0 表示完美命中且成功，负数表示底层报错 (如 -EPIPE, -ETIMEDOUT, -EIO)
- */
-int32 xhci_wait_for_event(
-    xhci_hcd_t *xhcd,
-    uint16 intr_number,
-    trb_type_e expected_type,
-    uint64 expected_pa_or_port,
-    uint8 slot_id,
-    uint8 ep_dci,
-    uint32 timeout_ms,
-    xhci_trb_t *out_trb)
-{
-
-    // 建议在实机压测时，将 timeout_ms 放大为真实的轮询次数 (比如 timeout_ms * 10000)
-    while (timeout_ms--) {
-        xhci_trb_t event;
-
-        // 尝试抓取事件
-        int32 posix_err = xhci_event_ring_dequeue(xhcd, intr_number, &event);
-
-        // 分支 1：没抓到 (最常见的情况，环是空的)
-        if (posix_err == -EAGAIN) {
-            asm_pause();
-            continue; // 歇一下，下一轮循环再试
-        }
-
-        // 防御性拦截：如果底层抓取器本身爆出致命错误，直接向上透传
-        if (posix_err < 0) {
-            return posix_err;
-        }
-
-        trb_type_e trb_type = event.cmd_comp_event.trb_type;
-        xhci_trb_comp_code_e comp_code = event.cmd_comp_event.comp_code;
-        boolean is_matched = FALSE;
-        uint64 trb_pa;
-
-        // ==========================================================
-        // ★ 阶段 2：三大护法事件的精准拦截与规范解码 (Switch 极速跳转表)
-        // ==========================================================
-        switch (trb_type) {
-
-            case XHCI_TRB_TYPE_TRANSFER_EVENT: {
-                // 【类型 32：传输事件】(U 盘业务收发)
-                uint8 evt_slot_id = event.transfer_event.slot_id;
-                uint8 evt_ep_dci  = event.transfer_event.ep_dci;
-                trb_pa = event.transfer_event.tr_trb_ptr;
-
-                if (expected_type == XHCI_TRB_TYPE_TRANSFER_EVENT) {
-                    if (trb_pa == expected_pa_or_port) {
-                        // 完美命中：物理地址完全一致 (比如等到了 Status TRB)
-                        is_matched = TRUE;
-                    } else if (evt_slot_id == slot_id && evt_ep_dci == ep_dci && comp_code != XHCI_COMP_SUCCESS) {
-                        // 神级容错：IOC=0 时硬件由于 STALL 等错误提前暴毙，抛出了错误事件。
-                        is_matched = TRUE;
-                    }
-                }
-                break;
-            }
-
-            case XHCI_TRB_TYPE_CMD_COMPLETION: {
-                // 【类型 33：命令完成事件】(主板建桥图纸回执)
-                trb_pa = event.cmd_comp_event.cmd_trb_ptr;
-                if (expected_type == XHCI_TRB_TYPE_CMD_COMPLETION && trb_pa == expected_pa_or_port) {
-                    is_matched = TRUE;
-                }
-                break;
-            }
-
-            case XHCI_TRB_TYPE_PORT_STATUS_CHG: {
-                // 【类型 34：端口状态改变事件】(物理插拔感知)
-                uint8 evt_port_id = event.prot_status_change_event.port_id;
-
-                if (expected_type == XHCI_TRB_TYPE_PORT_STATUS_CHG) {
-                    if (evt_port_id == (uint8)expected_pa_or_port || expected_pa_or_port == 0) {
-                        // 命中！(如果 expected_pa_or_port 为 0，表示监听任何端口的插拔事件)
-                        is_matched = TRUE;
-                    }
-                }
-                break;
-            }
-
-            case XHCI_TRB_TYPE_HOST_CTRL: {
-                // 【类型 37：主板级遗言】
-                color_printk(RED, BLACK, "\n[FATAL KERNEL PANIC] xHCI Host Controller Event Triggered!\n");
-
-                if (comp_code == 4) {
-                    color_printk(RED, BLACK, "Reason: PCIe/DMA Fatal System Error! Hardware is dead.\n");
-                } else if (comp_code == 21) {
-                    color_printk(RED, BLACK, "Reason: Event Ring Full! OS is too slow to process interrupts.\n");
-                } else {
-                    color_printk(RED, BLACK, "Reason Code: %d\n", comp_code);
-                }
-
-                // ★ POSIX 修正：主板已经物理死亡或环满爆，绝不能再等，直接抛出 I/O 错误！
-                return -EIO;
-            }
-
-            default: {
-                // 收到我们目前不关心的其他事件 (如微帧翻转、门铃等)
-                // 默默吃掉，不做处理，等待下一轮 while 循环
-                break;
-            }
-        }
-
-        // ==========================================================
-        // 阶段 4：命中出口
-        // ==========================================================
-        if (is_matched) {
-            if (out_trb != NULL) {
-                // 留下完整的现场供外层查阅法医鉴定
-                *out_trb = event;
-            }
-            // ★ POSIX 核心重构：将硬件枚举翻译为标准 POSIX 错误码抛出
-            return xhci_translate_error(comp_code);
-        }
-
-        // 如果 is_matched == FALSE，由于 index 已由底层的 dequeue 推进，会自动接续下一轮循环
+    // 4. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
+    while (xhcd->pending_cmd.is_done == FALSE) {
+        asm_pause();
     }
 
-    color_printk(RED, BLACK, "xHCI: Event Ring Timeout! Expected Type: %d, Target: %#lx\n", expected_type, expected_pa_or_port);
+    int32 posix_err = xhci_translate_error(xhcd->pending_cmd.comp_code);
+    if (posix_err < 0) {
+        char *err_str = xhci_get_comp_code_str(xhcd->pending_cmd.comp_code);
+        color_printk(RED,BLACK,"%s",err_str);
+    }
 
-    // ★ POSIX 修正：不再返回硬件枚举宏，而是标准的 -ETIMEDOUT (110)
-    return -ETIMEDOUT;
+    return posix_err;
 }
-
 
 
 //======================================= 命令环命令 ===========================================================
 
 //分配插槽
 int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
-    xhci_trb_t evt_trb;
     xhci_trb_t cmd_trb = {0};
     cmd_trb.enable_slot.type = XHCI_TRB_TYPE_ENABLE_SLOT;
     cmd_trb.enable_slot.slot_type = 0;
 
     // 1. 发送命令并同步等待
-    int32 posix_err = xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, &evt_trb);
+    int32 posix_err = xhci_execute_command_sync(xhcd, &cmd_trb);
 
     // 2. 异常情况：尽早拦截并向外抛出 (Early Return)
-    if (posix_err < 0) {
-        return posix_err;
+    if (posix_err == 0) {
+        *out_slot_id = xhcd->pending_cmd.slot_id;
     }
-
-    // 3. 正常情况：执行成功后的赋值
-    *out_slot_id = evt_trb.cmd_comp_event.slot_id;
-
-    return 0;
+    return posix_err;
 }
 
 /**
@@ -433,18 +287,12 @@ int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
  * @return int8           0 表示成功，-1 表示失败
  */
 int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id) {
-    if (xhcd == NULL || slot_id == 0) {
-        return -1; // 非法参数或设备本就没分配槽位
-    }
-
     xhci_trb_t cmd_trb = {0};
-
-    // 1. 组装注销命令
     cmd_trb.disable_slot.trb_type = XHCI_TRB_TYPE_DISABLE_SLOT;
     cmd_trb.disable_slot.slot_id  = slot_id;
 
     // 2. 发射命令并同步等待
-    return xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
+    return xhci_execute_command_sync(xhcd, &cmd_trb);
 }
 
 
@@ -457,7 +305,7 @@ int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctx_t *input_
     cmd_trb.addr_dev.slot_id = slot_id;
     cmd_trb.addr_dev.bsr = 0;
 
-    return  xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
+    return  xhci_execute_command_sync(xhcd, &cmd_trb);
 
 }
 
@@ -476,7 +324,7 @@ int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_
     cmd_trb.cfg_ep.dc = dc;
 
     // 敲响命令环门铃，等待主板评估带宽并分配资源
-    return xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
+    return xhci_execute_command_sync(xhcd, &cmd_trb);
 
 }
 
@@ -493,7 +341,7 @@ int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slo
     cmd_trb.eval_ctx.slot_id = slot_id;
 
     // 敲响命令环门铃，主板将读取并更新上下文
-    return xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
+    return xhci_execute_command_sync(xhcd, &cmd_trb);
 
 }
 
@@ -506,7 +354,7 @@ uint32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci) {
     cmd_trb.rest_ep.ep_dci = ep_dci;
     cmd_trb.rest_ep.slot_id = slot_id;
 
-    return xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
+    return xhci_execute_command_sync(xhcd, &cmd_trb);
 }
 
 /**
@@ -531,7 +379,7 @@ int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci) {
     cmd_trb.stop_ep.suspend  = 0; // 坚决不挂起，要求主板彻底停下传输环
 
     // 3. 发射命令并同步等待，直接获取 POSIX 错误码
-    return xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
+    return xhci_execute_command_sync(xhcd, &cmd_trb);
 }
 
 
@@ -560,7 +408,7 @@ int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,
     cmd_trb.set_tr_deq_ptr.ep_dci = ep_dci;
     cmd_trb.set_tr_deq_ptr.slot_id = slot_id;
 
-    return  xhci_execute_command_sync(xhcd, &cmd_trb, 30000000,NULL);
+    return  xhci_execute_command_sync(xhcd, &cmd_trb);
 }
 
 /**
@@ -577,7 +425,7 @@ int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id) {
 
     // 敲响门铃，主板将强行清空该 Slot 的所有业务端点状态
     // 敲响命令环门铃，主板将读取并更新上下文
-    return xhci_execute_command_sync(xhcd, &cmd_trb, 30000000, NULL);
+    return xhci_execute_command_sync(xhcd, &cmd_trb);
 
 }
 
@@ -688,41 +536,54 @@ void xhci_disable_intr(xhci_hcd_t *xhcd,uint16 intr_number) {
 }
 
 
-/**
- * @brief 尝试从事件环中取出一个新事件
- * @param intr 当前队列的中断上下文结构体
- * @param out_trb 用于输出的 TRB 指针 (拷贝到外层，防止 DMA 竞争)
- * @return true 成功取到新事件，false 环已空
- */
-boolean xhci_get_next_event(xhci_ring_t *evt_ring, xhci_trb_t *out_trb) {
-    // 1. 定位到当前指针指向的 TRB
-    xhci_trb_t *current_trb = &evt_ring->ring_base[evt_ring->index];
+//传输任务处理
+void xhci_handle_transfer_event(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
+    uint64 trb_pa     = evt_trb->transfer_event.tr_trb_ptr;
+    uint8  evt_ep_dci = evt_trb->transfer_event.ep_dci;
+    uint8  slot_id    = evt_trb->transfer_event.slot_id;
+    uint32 comp_code  = evt_trb->transfer_event.comp_code;
 
-    // 2. 检查 Cycle 位：如果硬件还没把事件写进来，直接返回 0
-    if (current_trb->cmd_comp_event.cycle != evt_ring->cycle) {
-        return -FALSE;
+    usb_dev_t *udev = xhcd->udevs[slot_id];
+    if (udev == NULL) return;
+    usb_ep_t *ep = udev->eps[evt_ep_dci];
+    if (ep == NULL) return;
+
+    // 遍历该端点上所有正在飞的面单
+    for (list_head_t *curr = ep->pending_urbs.next; curr != &ep->pending_urbs; curr = curr->next) {
+
+        usb_urb_t *urb = CONTAINER_OF(curr, usb_urb_t, node);
+
+        // 🎯 物理地址对上了！这就是硬件刚刚做完的任务
+        if (urb->last_trb_pa == trb_pa) {
+
+            // 1. 结算账单
+            urb->status = xhci_translate_error(comp_code);
+            urb->actual_length = urb->transfer_len - evt_trb->transfer_event.tr_len;
+
+            // 2. 从待办队列中安全摘除
+            list_del(&urb->node);
+
+            // 3. 🌟 敲碎主循环的枷锁！
+            // 当这行代码执行完毕，ISR 返回 (iretq) 后，主循环的 while 条件立马变成 false
+            urb->is_done = TRUE;
+
+            break;
+        }
     }
-
-    // 3. 提取事件数据！
-    // 💡 架构师极力推荐：把这 16 字节拷贝出来！
-    // 为什么？因为直接返回 DMA 内存的指针，如果硬件在极端情况下发生回卷覆盖，会导致数据错乱。
-    // 拷贝到软件栈(Stack)上是最安全的做法！
-    *out_trb = *current_trb;
-
-    // 4. 指针向前走一步 (完全接管环形队列的维护)
-    evt_ring->index++;
-    if (evt_ring->index >= TRB_COUNT) {
-        evt_ring->index = 0;
-        evt_ring->cycle ^= 1; // 环绕时翻转 Cycle 预期
-    }
-
-    return TRUE;
 }
 
 
 //命令完成事件trb处理程序
-void xhci_handle_cmd_completion(xhci_hcd_t *xhci_hcd,xhci_trb_t *trb) {
+void xhci_handle_cmd_completion(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
+    if (evt_trb->cmd_comp_event.cmd_trb_ptr == xhcd->pending_cmd.command_trb_pa) {
+        xhcd->pending_cmd.slot_id = evt_trb->cmd_comp_event.slot_id;
+        xhcd->pending_cmd.comp_code = evt_trb->cmd_comp_event.comp_code;
+        xhcd->pending_cmd.is_done = TRUE;
+    }
+}
 
+//端口状态处理
+void xhci_handle_port_status_change(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
 
 }
 
@@ -737,7 +598,7 @@ void xhci_process_single_event(xhci_hcd_t *xhcd, xhci_trb_t *trb) {
     switch (trb_type) {
         case XHCI_TRB_TYPE_TRANSFER_EVENT:
             // 【类型 32：传输事件】(U 盘业务收发)
-            // xhci_handle_transfer_event(xhcd, trb);
+            xhci_handle_transfer_event(xhcd, trb);
             break;
         case XHCI_TRB_TYPE_CMD_COMPLETION:
             // 【类型 33：命令完成事件】(主板建桥图纸回执)
@@ -745,7 +606,7 @@ void xhci_process_single_event(xhci_hcd_t *xhcd, xhci_trb_t *trb) {
             break;
         case XHCI_TRB_TYPE_PORT_STATUS_CHG:
             // 【类型 34：端口状态改变事件】(物理插拔感知)
-            // xhci_handle_port_status_change(xhcd, trb);
+            xhci_handle_port_status_change(xhcd, trb);
             break;
         case XHCI_TRB_TYPE_HOST_CTRL:
             // 【类型 37：主板级遗言】
@@ -781,7 +642,7 @@ irqreturn_e xhci_isr(cpu_registers_t *regs,void *dev_id) {
     // =================================================================
     // 👑 优雅的迭代循环：一边取，一边分发！
     // =================================================================
-    while (xhci_get_next_event(evt_ring, &current_trb)) {
+    while (xhci_event_ring_dequeue(evt_ring, &current_trb) == 0) {
         xhci_process_single_event(xhcd, &current_trb);
         processed_any = TRUE;
 
@@ -908,6 +769,8 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhcd->op_reg->dcbaap = va_to_pa(xhcd->dcbaap); //把设备上下文基地址数组表的物理地址写入寄存器
     xhcd->op_reg->config = xhcd->max_slots; //把最大插槽数量写入寄存器
 
+    xhcd->udevs = kzalloc((xhcd->max_slots+1)<<3);
+
     /*初始化命令环*/
     xhci_alloc_ring(&xhcd->cmd_ring);
     xhcd->op_reg->crcr = va_to_pa(xhcd->cmd_ring.ring_base) | 1; //命令环物理地址写入crcr寄存器，置位rcs
@@ -952,7 +815,7 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     pcie_register_isr(xdev, 0, xhci_isr, xdev->dev.name);
 
     /* 3. 填入 MSI-X Table 并拉下总线电闸 (此时 PCIe 链路打通) */
-    pcie_enable_irqs(xdev);
+    pcie_enable_irq(xdev);
 
     // =========================================================================
     // 🚀 管线铺好后，最后一步才能“放水” (启动 xHCI 外设)

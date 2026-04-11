@@ -394,6 +394,9 @@ typedef struct usb_ep_t {
     xhci_ring_t *rings;            // xHCI 传输环数组 (普通模式大小为1，流模式大小为 N+1)
     void        *streams_ctx_array;// xHCI 流上下文数组的 DMA 内存基地址
 
+    // 🌟 新增：这个端点上“正在飞”的 URB 队列
+    list_head_t pending_urbs;
+
 } usb_ep_t;
 
 //usb替用接口
@@ -509,6 +512,11 @@ typedef struct usb_urb_t {
     int         status;         // URB 状态码
 
     // void (*complete)(struct usb_urb *urb); // 未来做全异步驱动时，这里放回调函数
+
+    list_head_t node;         // 挂载到端点 pending_urbs 的链表节点
+
+    // 🌟 单任务环境的终极同步神器
+    volatile boolean is_done;
 } usb_urb_t;
 
 #define MAX_STREAMS_EXP 6  //最多支持流数量（2^6=64）
@@ -599,7 +607,7 @@ void usb_free_urb(usb_urb_t *urb);
 void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfer_buf,uint32 transfer_len);
 void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfer_buf,uint32 transfer_len);
 
-int32 xhci_wait_urb_group(usb_dev_t *udev,usb_urb_t **urbs, uint8 num_urbs);
+//int32 xhci_wait_urb_group(usb_dev_t *udev,usb_urb_t **urbs, uint8 num_urbs);
 int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void *data_buf);
 int32 usb_ep_halt_control(usb_dev_t *udev, uint8 ep_dci, usb_request_e is_set);
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
