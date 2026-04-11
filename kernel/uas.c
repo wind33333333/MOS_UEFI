@@ -107,7 +107,6 @@ int32 uas_abort_task(scsi_host_t *host, uint64 scsi_lun, uint16 target_tag) {
     // 3. 构建 URB 监听组 (TMF 只需要 Status 和 Command 两个管子)
     usb_urb_t *urb_status = usb_alloc_urb();
     usb_urb_t *urb_cmd    = usb_alloc_urb();
-    usb_urb_t *urb_arr[2] = {urb_status, urb_cmd};
 
     if (!urb_status || !urb_cmd) {
         posix_err = -ENOMEM;
@@ -200,8 +199,6 @@ int32 uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     usb_urb_t *urb_status = usb_alloc_urb();
     usb_urb_t *urb_data   = NULL;
     usb_urb_t *urb_cmd    = usb_alloc_urb();
-    usb_urb_t *urb_arr[3] = {urb_status, urb_cmd,urb_data};
-    uint8 urb_arr_count = 2;
 
     if (urb_status == NULL || urb_cmd == NULL) {
         posix_err = -ENOMEM;
@@ -210,8 +207,6 @@ int32 uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
 
     if (cmnd->data_buf && cmnd->data_len) {
         urb_data = usb_alloc_urb();
-        urb_arr[2] = urb_data;
-        urb_arr_count++;
         if (urb_data == NULL) {
             posix_err = -ENOMEM;
             goto cleanup;

@@ -193,7 +193,6 @@ int32 bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
         asm_pause();
     }
 
-    // posix_err = xhci_wait_urb_group(udev, &urb, 1);
     // if (posix_err < 0) {
     //     color_printk(RED, BLACK, "BOT: CBW Failed (%d). Executing Full Recovery...\n", posix_err);
     //     // ⚔️ 错误处理：CBW 失败，主机与设备完全失步，直接呼叫“核弹”全局重置
@@ -216,22 +215,21 @@ int32 bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
             asm_pause();
         }
 
-        // posix_err = xhci_wait_urb_group(udev, &urb, 1);
-        // if (posix_err < 0) {
-        //     if (posix_err == -EPIPE) {
-        //         color_printk(YELLOW, BLACK, "BOT Stage 2: Data STALL. Clearing Halt...\n");
-        //         // ⚔️ 错误处理：短包早退是常态。使用“狙击枪”单点疏通 (软硬双解锁)
-        //         bot_ep_reset(udev, ep->ep_dci);
-        //
-        //         // 强制放行，必须去拿 CSW 探明死因
-        //         posix_err = 0;
-        //     } else {
-        //         color_printk(RED, BLACK, "BOT Stage 2: Fatal Error (%d).\n", posix_err);
-        //         // ⚔️ 错误处理：非 STALL 的严重错误 (如总线断开)，呼叫“核弹”
-        //         bot_execute_full_recovery(udev, if_num, in_ep->ep_dci, out_ep->ep_dci);
-        //         goto cleanup;
-        //     }
-        // }
+        if (posix_err < 0) {
+            if (posix_err == -EPIPE) {
+                color_printk(YELLOW, BLACK, "BOT Stage 2: Data STALL. Clearing Halt...\n");
+                // ⚔️ 错误处理：短包早退是常态。使用“狙击枪”单点疏通 (软硬双解锁)
+                bot_ep_reset(udev, ep->ep_dci);
+
+                // 强制放行，必须去拿 CSW 探明死因
+                posix_err = 0;
+            } else {
+                color_printk(RED, BLACK, "BOT Stage 2: Fatal Error (%d).\n", posix_err);
+                // ⚔️ 错误处理：非 STALL 的严重错误 (如总线断开)，呼叫“核弹”
+                bot_execute_full_recovery(udev, if_num, in_ep->ep_dci, out_ep->ep_dci);
+                goto cleanup;
+            }
+        }
     }
 
     // ============================================================
@@ -247,7 +245,6 @@ retry_csw:
         asm_pause();
     }
 
-    //posix_err = xhci_wait_urb_group(udev, &urb, 1);
 
     if (posix_err == -EPIPE && csw_retry_count == 0) {
         color_printk(YELLOW, BLACK, "BOT Stage 3: CSW STALL. Clearing and retrying...\n");
