@@ -331,6 +331,10 @@ int32 usb_submit_urb(usb_urb_t *urb) {
     // ==========================================================
     xhci_ring_doorbell(xhcd, slot_id, db_target);
 
+    while (urb->is_done == FALSE) {
+        asm_pause();
+    }
+
     return 0;
 }
 
@@ -432,15 +436,8 @@ int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void 
 
     // 3. 将面单抛给底层调度引擎
     int32 posix_err = usb_submit_urb(urb);
-    if (posix_err < 0) {
-        usb_free_urb(urb);
-        return posix_err; // ★ POSIX 修正：入队失败，直接向上抛出详细错误码
-    }
 
-    // 4. 等待硬件中断 (同步过渡期做法)
-    // xhci_wait_urb_group(udev,&urb,1);
-
-    // 5. 过河拆桥：任务完成，彻底销毁 URB 面单！
+    // 4. 过河拆桥：任务完成，彻底销毁 URB 面单！
     usb_free_urb(urb);
 
     // ★ POSIX 修正：拒绝粗暴的 return -1，完美透传底层状态！
@@ -1205,6 +1202,8 @@ static inline void ep_desc_params(usb_ep_t *cur_ep, usb_ep_desc_t *ep_desc) {
     cur_ep->streams_ctx_array = NULL;
     cur_ep->enable_streams_exp = 0;
 
+    list_head_init(&cur_ep->pending_urbs);
+
     // --- ★ 衍生参数与 DMA 启发值联合推导 (基于 USB 2.0 规格底稿) ---
     switch (usb_trans_type) {
         case USB_EP_TYPE_ISOCH:
@@ -1504,6 +1503,8 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     ep0->max_streams_exp = 0;
     ep0->enable_streams_exp = 0;
     alloc_ep_ring(ep0);
+
+    list_head_init(&ep0->pending_urbs);
 
     // ---下发命令 ---
     usb_tx_begin(udev);
