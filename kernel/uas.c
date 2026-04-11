@@ -132,19 +132,10 @@ int32 uas_abort_task(scsi_host_t *host, uint64 scsi_lun, uint16 target_tag) {
         goto cleanup;
     }
 
-    // ============================================================
-    // 4. 等待 U 盘执行处决
-    // ============================================================
-    //posix_err = xhci_wait_urb_group(udev, urb_arr, 2);
-
-    if (posix_err < 0) {
-        // TMF 自己在传输时都崩了，说明 U 盘内部状态机彻底烂掉，不接受任何指令。
-        // 猛踩刹车撤回 TMF，并准备向上层汇报最坏的消息
-        color_printk(RED, BLACK, "UAS: TMF transfer completely failed (%d)!\n", posix_err);
-        xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, uas_data->status_ep->ep_dci);
-        xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, uas_data->cmd_ep->ep_dci);
-        goto cleanup;
+    while (urb_status->is_done == FALSE) {
+        asm_pause();
     }
+
 
     // ============================================================
     // 5. 检查 U 盘主控的回执确认单
@@ -257,6 +248,10 @@ int32 uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     urb_cmd->transfer_flags |= URB_NO_INTERRUPT; // 静音！
     posix_err = usb_submit_urb(urb_cmd);
     if (posix_err < 0) goto cleanup;
+
+    while (urb_status->is_done == FALSE) {
+        asm_pause();
+    }
 
     // ============================================================
     // 6. 状态机解析 (总线完美通信，开始解析包裹里的 SCSI 状态)

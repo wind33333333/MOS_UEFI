@@ -189,6 +189,10 @@ int32 bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     posix_err = usb_submit_urb(urb);
     if (posix_err < 0) goto cleanup;
 
+    while (urb->is_done == FALSE) {
+        asm_pause();
+    }
+
     // posix_err = xhci_wait_urb_group(udev, &urb, 1);
     // if (posix_err < 0) {
     //     color_printk(RED, BLACK, "BOT: CBW Failed (%d). Executing Full Recovery...\n", posix_err);
@@ -207,6 +211,10 @@ int32 bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
         usb_fill_bulk_urb(urb, udev, ep, cmnd->data_buf, cmnd->data_len);
         posix_err = usb_submit_urb(urb);
         if (posix_err < 0) goto cleanup;
+
+        while (urb->is_done == FALSE) {
+            asm_pause();
+        }
 
         // posix_err = xhci_wait_urb_group(udev, &urb, 1);
         // if (posix_err < 0) {
@@ -234,6 +242,10 @@ retry_csw:
     usb_fill_bulk_urb(urb, udev, in_ep, csw, sizeof(bot_csw_t));
     posix_err = usb_submit_urb(urb);
     if (posix_err < 0) goto cleanup;
+
+    while (urb->is_done == FALSE) {
+        asm_pause();
+    }
 
     //posix_err = xhci_wait_urb_group(udev, &urb, 1);
 

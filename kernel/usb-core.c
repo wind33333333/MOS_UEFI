@@ -331,10 +331,6 @@ int32 usb_submit_urb(usb_urb_t *urb) {
     // ==========================================================
     xhci_ring_doorbell(xhcd, slot_id, db_target);
 
-    while (urb->is_done == FALSE) {
-        asm_pause();
-    }
-
     return 0;
 }
 
@@ -436,6 +432,10 @@ int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void 
 
     // 3. 将面单抛给底层调度引擎
     int32 posix_err = usb_submit_urb(urb);
+
+    while (urb->is_done == FALSE) {
+        asm_pause();
+    }
 
     // 4. 过河拆桥：任务完成，彻底销毁 URB 面单！
     usb_free_urb(urb);
