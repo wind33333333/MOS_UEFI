@@ -720,6 +720,13 @@ boolean xhci_get_next_event(xhci_ring_t *evt_ring, xhci_trb_t *out_trb) {
 }
 
 
+//命令完成事件trb处理程序
+void xhci_handle_cmd_completion(xhci_hcd_t *xhci_hcd,xhci_trb_t *trb) {
+
+
+}
+
+
 /**
  * @brief 解析并分发单一事件 (纯业务逻辑)
  */
@@ -734,7 +741,7 @@ void xhci_process_single_event(xhci_hcd_t *xhcd, xhci_trb_t *trb) {
             break;
         case XHCI_TRB_TYPE_CMD_COMPLETION:
             // 【类型 33：命令完成事件】(主板建桥图纸回执)
-            // xhci_handle_cmd_completion(xhcd, trb);
+            xhci_handle_cmd_completion(xhcd, trb);
             break;
         case XHCI_TRB_TYPE_PORT_STATUS_CHG:
             // 【类型 34：端口状态改变事件】(物理插拔感知)
