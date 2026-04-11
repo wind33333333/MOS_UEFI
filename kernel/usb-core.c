@@ -214,8 +214,10 @@ int32 usb_submit_urb(usb_urb_t *urb) {
     urb->status = -EINPROGRESS; // (115) Operation now in progress: 异步操作已入队，正在执行！
     urb->is_done = FALSE;    // 🌟 初始化为未完成
 
-    // 将 URB 挂到端点的待办列表中，供 ISR 查找
-    list_add_tail(&urb->ep->pending_urbs, &urb->node);
+    if (!(urb->transfer_flags & URB_NO_INTERRUPT)) {
+        // 需要中断：挂入链表，等 ISR 叫醒
+        list_add_tail(&urb->ep->pending_urbs, &urb->node);
+    }
 
     // ==========================================================
     // ★ 终极一击：精确敲响对应端点 / Stream 的物理门铃！
