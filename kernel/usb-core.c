@@ -216,7 +216,7 @@ int32 usb_submit_urb(usb_urb_t *urb) {
 
     if (!(urb->transfer_flags & URB_NO_INTERRUPT)) {
         // 需要中断：挂入链表，等 ISR 叫醒
-        list_add_tail(&urb->ep->pending_urbs, &urb->node);
+        list_add_tail(&urb->ep->urb_list, &urb->node);
     }
 
     // ==========================================================
@@ -1095,7 +1095,7 @@ static inline void ep_desc_params(usb_ep_t *cur_ep, usb_ep_desc_t *ep_desc) {
     cur_ep->streams_ctx_array = NULL;
     cur_ep->enable_streams_exp = 0;
 
-    list_head_init(&cur_ep->pending_urbs);
+    list_head_init(&cur_ep->urb_list);
 
     // --- ★ 衍生参数与 DMA 启发值联合推导 (基于 USB 2.0 规格底稿) ---
     switch (usb_trans_type) {
@@ -1397,7 +1397,7 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     ep0->enable_streams_exp = 0;
     alloc_ep_ring(ep0);
 
-    list_head_init(&ep0->pending_urbs);
+    list_head_init(&ep0->urb_list);
 
     // ---下发命令 ---
     usb_tx_begin(udev);

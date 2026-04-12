@@ -1025,14 +1025,25 @@ typedef struct {
     xhci_ring_t event_rings;
 }xhci_intr;
 
-typedef struct {
-    // 🌟 极其关键的 volatile：告诉编译器，这个变量可能会被未知的外部力量(中断/硬件)修改
-    // 绝对不能把它优化进 CPU 寄存器里！每次必须老老实实去内存里读！
-    volatile boolean is_done;
-    uint64 command_trb_pa;
-    xhci_trb_comp_code_e comp_code;
-    uint8  slot_id;
-} xhci_pending_cmd_t;
+
+typedef struct xhci_command_t {
+    // 1. 链表锚点
+    list_head_t     node;
+
+    // 2. 身份识别凭证
+    uint64       command_trb_pa;
+
+    int32        status;
+
+    // 4. 战利品 (硬件回执包裹)
+    uint8        slot_id;
+    uint32       comp_code;
+    uint32       comp_param;
+
+    // 5. 同步原语
+    volatile boolean is_done;    // 🌟 单任务环境的终极同步神器
+} xhci_command_t;
+
 
 //xhci控制器
 typedef struct xhci_hcd_t{
@@ -1079,7 +1090,7 @@ typedef struct xhci_hcd_t{
     xhci_intr*          intr;
     uint16              enable_intr_count;  // 启用中断器数量，取cpu核心数量和max_intrs最小值
 
-    xhci_pending_cmd_t  pending_cmd;
+    list_head_t         cmd_list;
 
     pcie_dev_t          *xdev;
     //spinlock_t          lock;               // 保护整个 xHCI 状态机的全局自旋锁

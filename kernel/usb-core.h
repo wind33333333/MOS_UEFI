@@ -395,7 +395,7 @@ typedef struct usb_ep_t {
     void        *streams_ctx_array;// xHCI 流上下文数组的 DMA 内存基地址
 
     // 🌟 新增：这个端点上“正在飞”的 URB 队列
-    list_head_t pending_urbs;
+    list_head_t urb_list;
 
 } usb_ep_t;
 

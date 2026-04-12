@@ -231,34 +231,25 @@ int32 xhci_translate_error(xhci_trb_comp_code_e comp_code) {
 
 
 /**
- * @brief xHCI 统一命令环发射器 (POSIX 返回值规范)
- * @return int 返回 0 表示成功，返回负数表示 POSIX 错误码
+ * @brief 终极通用命令入队引擎 (纯脏活，不问前程)
+ * @param xhcd     大管家
+ * @param comand   调用者在栈上准备好的面单
+ * @param cmd_trb  调用者拼装好的 16 字节 TRB 图纸
  */
-int32 xhci_execute_command_sync(xhci_hcd_t *xhcd, xhci_trb_t *cmd_trb) {
-    // 1. 命令入队
-    uint64 cmd_pa = xhci_ring_enqueue(&xhcd->cmd_ring, cmd_trb);
+int32 xhci_enqueue_cmd(xhci_hcd_t *xhcd, xhci_command_t *comand, xhci_trb_t *cmd_trb) {
 
-    // 2. 清洗信使状态
-    xhcd->pending_cmd.command_trb_pa = cmd_pa;
-    xhcd->pending_cmd.comp_code = 0;
-    xhcd->pending_cmd.slot_id = 0;
-    xhcd->pending_cmd.is_done = FALSE;    // ★ 将完成标志置为 false，一定要在敲门铃前设置！
+    // 1. 直接把调用者画好的图纸(TRB)拷贝进物理内存
+    uint64 trb_pa = xhci_ring_enqueue(&xhcd->cmd_ring, cmd_trb);
 
-    //3.并敲门铃
-    xhci_ring_doorbell(xhcd, 0, 0);
+    // 2. 面单打钢印
+    comand->command_trb_pa = trb_pa;
+    comand->status = -EINPROGRESS;
+    comand->is_done = FALSE;
 
-    // 4. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
-    while (xhcd->pending_cmd.is_done == FALSE) {
-        asm_pause();
-    }
+    // 3. 挂载链表
+    list_add_tail(&xhcd->cmd_list, &comand->node);
 
-    int32 posix_err = xhci_translate_error(xhcd->pending_cmd.comp_code);
-    if (posix_err < 0) {
-        char *err_str = xhci_get_comp_code_str(xhcd->pending_cmd.comp_code);
-        color_printk(RED,BLACK,"%s",err_str);
-    }
-
-    return posix_err;
+    return 0; // 瞬间返回！
 }
 
 
@@ -270,14 +261,31 @@ int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
     cmd_trb.enable_slot.type = XHCI_TRB_TYPE_ENABLE_SLOT;
     cmd_trb.enable_slot.slot_type = 0;
 
-    // 1. 发送命令并同步等待
-    int32 posix_err = xhci_execute_command_sync(xhcd, &cmd_trb);
+    // 1. 动态申请面单
+    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
+    if (!command) return -ENOMEM;
+
+    // 2. trb和cmd入队列
+    xhci_enqueue_cmd(xhcd,command,&cmd_trb);
+
+    // 3. 敲门铃
+    xhci_ring_doorbell(xhcd, 0, 0);
+
+    // 4. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
+    while (command->is_done == FALSE) {
+        asm_pause();
+    }
+
+    int32 status = command->status;
 
     // 2. 异常情况：尽早拦截并向外抛出 (Early Return)
-    if (posix_err == 0) {
-        *out_slot_id = xhcd->pending_cmd.slot_id;
+    if (status == 0) {
+        *out_slot_id = command->slot_id;
     }
-    return posix_err;
+
+    kfree(command);
+
+    return status;
 }
 
 /**
@@ -549,7 +557,7 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
     if (ep == NULL) return;
 
     // 遍历该端点上所有正在飞的面单
-    for (list_head_t *curr = ep->pending_urbs.next; curr != &ep->pending_urbs; curr = curr->next) {
+    for (list_head_t *curr = ep->urb_list.next; curr != &ep->urb_list; curr = curr->next) {
 
         usb_urb_t *urb = CONTAINER_OF(curr, usb_urb_t, node);
 
@@ -575,10 +583,10 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
 
 //命令完成事件trb处理程序
 void xhci_handle_cmd_completion(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
-    if (evt_trb->cmd_comp_event.cmd_trb_ptr == xhcd->pending_cmd.command_trb_pa) {
-        xhcd->pending_cmd.slot_id = evt_trb->cmd_comp_event.slot_id;
-        xhcd->pending_cmd.comp_code = evt_trb->cmd_comp_event.comp_code;
-        xhcd->pending_cmd.is_done = TRUE;
+    if (evt_trb->cmd_comp_event.cmd_trb_ptr == xhcd->cmd_list.command_trb_pa) {
+        xhcd->cmd_list.slot_id = evt_trb->cmd_comp_event.slot_id;
+        xhcd->cmd_list.comp_code = evt_trb->cmd_comp_event.comp_code;
+        xhcd->cmd_list.is_done = TRUE;
     }
 }
 
