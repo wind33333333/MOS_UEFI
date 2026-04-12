@@ -38,51 +38,51 @@ static inline int32 xhci_recover_stall(usb_dev_t *udev, uint8 ep_dci) {
  */
 static inline uint64 xhci_submit_control_transfer(usb_urb_t *urb, xhci_ring_t *ring, uint8 wants_ioc) {
     uint64 last_trb_pa = 0;
-    xhci_trb_t trb;
+    xhci_trb_t ctl_trb;
     uint16 length  = urb->setup_packet->length;
     uint8  req_dir = urb->setup_packet->dtd; // USB_DIR_IN 或 USB_DIR_OUT
 
     // [阶段 1: Setup TRB]
-    trb.raw[0] = 0;
-    trb.raw[1] = 0;
-    asm_mem_cpy(urb->setup_packet, &trb, 8); // 拷贝 8 字节控制包
-    trb.setup_stage.trb_tr_len = 8;//steup trb必须8字节
-    trb.setup_stage.idt        = TRB_IDT_ENABLE;//Immediate Data 必须为 1
-    trb.setup_stage.type       = XHCI_TRB_TYPE_SETUP_STAGE;
-    trb.setup_stage.chain      = TRB_CHAIN_DISABLE;
-    trb.setup_stage.ioc        = TRB_IOC_DISABLE;// Setup 阶段不触发中断
+    ctl_trb.raw[0] = 0;
+    ctl_trb.raw[1] = 0;
+    asm_mem_cpy(urb->setup_packet, &ctl_trb, 8); // 拷贝 8 字节控制包
+    ctl_trb.setup_stage.trb_tr_len = 8;//steup trb必须8字节
+    ctl_trb.setup_stage.idt        = TRB_IDT_ENABLE;//Immediate Data 必须为 1
+    ctl_trb.setup_stage.type       = XHCI_TRB_TYPE_SETUP_STAGE;
+    ctl_trb.setup_stage.chain      = TRB_CHAIN_DISABLE;
+    ctl_trb.setup_stage.ioc        = TRB_IOC_DISABLE;// Setup 阶段不触发中断
 
     if (length == 0) {
-        trb.setup_stage.trt = TRB_TRT_NO_DATA;
+        ctl_trb.setup_stage.trt = TRB_TRT_NO_DATA;
     } else if (req_dir == USB_DIR_IN) {
-        trb.setup_stage.trt = TRB_TRT_IN_DATA;
+        ctl_trb.setup_stage.trt = TRB_TRT_IN_DATA;
     } else {
-        trb.setup_stage.trt = TRB_TRT_OUT_DATA;
+        ctl_trb.setup_stage.trt = TRB_TRT_OUT_DATA;
     }
-    xhci_trb_enqueue(ring, &trb);
+    xhci_trb_enqueue(ring, &ctl_trb);
 
     // [阶段 2: Data TRB]
     if (length != 0 && urb->transfer_buf != NULL) {
-        trb.raw[0] = 0;
-        trb.raw[1] = 0;
-        trb.data_stage.data_buf_ptr = va_to_pa(urb->transfer_buf);
-        trb.data_stage.tr_len       = length;
-        trb.data_stage.type         = XHCI_TRB_TYPE_DATA_STAGE;
-        trb.data_stage.dir          = req_dir;
-        trb.data_stage.chain        = TRB_CHAIN_DISABLE;
-        trb.data_stage.ioc          = TRB_IOC_DISABLE;
-        xhci_trb_enqueue(ring, &trb);
+        ctl_trb.raw[0] = 0;
+        ctl_trb.raw[1] = 0;
+        ctl_trb.data_stage.data_buf_ptr = va_to_pa(urb->transfer_buf);
+        ctl_trb.data_stage.tr_len       = length;
+        ctl_trb.data_stage.type         = XHCI_TRB_TYPE_DATA_STAGE;
+        ctl_trb.data_stage.dir          = req_dir;
+        ctl_trb.data_stage.chain        = TRB_CHAIN_DISABLE;
+        ctl_trb.data_stage.ioc          = TRB_IOC_DISABLE;
+        xhci_trb_enqueue(ring, &ctl_trb);
     }
 
     // [阶段 3: Status TRB]
-    trb.raw[0] = 0;
-    trb.raw[1] = 0;
-    trb.status_stage.type  = XHCI_TRB_TYPE_STATUS_STAGE;
-    trb.status_stage.chain = TRB_CHAIN_DISABLE;
-    trb.status_stage.ioc   = wants_ioc;
-    trb.status_stage.dir   = (length == 0 || req_dir == USB_DIR_OUT) ? TRB_DIR_IN : TRB_DIR_OUT;
+    ctl_trb.raw[0] = 0;
+    ctl_trb.raw[1] = 0;
+    ctl_trb.status_stage.type  = XHCI_TRB_TYPE_STATUS_STAGE;
+    ctl_trb.status_stage.chain = TRB_CHAIN_DISABLE;
+    ctl_trb.status_stage.ioc   = wants_ioc;
+    ctl_trb.status_stage.dir   = (length == 0 || req_dir == USB_DIR_OUT) ? TRB_DIR_IN : TRB_DIR_OUT;
 
-    last_trb_pa = xhci_trb_enqueue(ring, &trb);
+    last_trb_pa = xhci_trb_enqueue(ring, &ctl_trb);
     return last_trb_pa;
 }
 
@@ -91,7 +91,7 @@ static inline uint64 xhci_submit_control_transfer(usb_urb_t *urb, xhci_ring_t *r
  */
 static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_ring_t *ring, uint8 wants_ioc) {
     uint64 last_trb_pa = 0;
-    xhci_trb_t trb;
+    xhci_trb_t normal_trb;
     uint32 left_len = urb->transfer_len;
 
     uint64 current_pa = va_to_pa(urb->transfer_buf);
@@ -103,36 +103,36 @@ static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_ring_t *ri
                       (urb->transfer_len > 0) &&
                       ((urb->transfer_len % max_packet) == 0);
 
-    trb.raw[0] = 0;
-    trb.raw[1] = 0;
-    trb.normal.trb_type = XHCI_TRB_TYPE_NORMAL;
-    trb.normal.int_target = 0;
+    normal_trb.raw[0] = 0;
+    normal_trb.raw[1] = 0;
+    normal_trb.normal.trb_type = XHCI_TRB_TYPE_NORMAL;
+    normal_trb.normal.int_target = 0;
 
     while (left_len > 0) {
         uint32 space_to_boundary = 0x10000 - (current_pa & 0xFFFF);
         uint8  has_more_data = (left_len > space_to_boundary);
         uint32 chunk_len = has_more_data ? space_to_boundary : left_len;
 
-        trb.normal.data_buf_ptr = current_pa;
-        trb.normal.trb_tr_len   = chunk_len;
+        normal_trb.normal.data_buf_ptr = current_pa;
+        normal_trb.normal.trb_tr_len   = chunk_len;
         // ★ 修复：如果数据没发完，或者虽然数据发完了但必须跟一个 ZLP，Chain 都必须为 1
-        trb.normal.chain = has_more_data || needs_zlp;
+        normal_trb.normal.chain = has_more_data || needs_zlp;
         // ★ 修复：全村唯一的 IOC 只能在绝对的最后一块 TRB 上点亮 (防双重中断风暴)
-        trb.normal.ioc   = (!has_more_data && !needs_zlp) ? wants_ioc : 0;
+        normal_trb.normal.ioc   = (!has_more_data && !needs_zlp) ? wants_ioc : 0;
 
-        last_trb_pa = xhci_trb_enqueue(ring, &trb);
+        last_trb_pa = xhci_trb_enqueue(ring, &normal_trb);
 
         current_pa += chunk_len;
         left_len   -= chunk_len;
     }
     // 🎁 4. 极客彩蛋追加：精准下发 ZLP 空车厢
     if (needs_zlp) {
-        trb.normal.data_buf_ptr = current_pa; // 指针停在哪无所谓，长度为 0
-        trb.normal.trb_tr_len   = 0;          // 核心：0 字节载荷！
-        trb.normal.chain        = 0;          // 绝对的最后一环，拉断链条
-        trb.normal.ioc          = wants_ioc;  // 👑 赋予这节空车厢唤醒 CPU 的权利
+        normal_trb.normal.data_buf_ptr = current_pa; // 指针停在哪无所谓，长度为 0
+        normal_trb.normal.trb_tr_len   = 0;          // 核心：0 字节载荷！
+        normal_trb.normal.chain        = 0;          // 绝对的最后一环，拉断链条
+        normal_trb.normal.ioc          = wants_ioc;  // 👑 赋予这节空车厢唤醒 CPU 的权利
 
-        last_trb_pa = xhci_trb_enqueue(ring, &trb);
+        last_trb_pa = xhci_trb_enqueue(ring, &normal_trb);
     }
 
     return last_trb_pa;

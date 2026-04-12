@@ -1033,8 +1033,6 @@ typedef struct xhci_command_t {
     // 2. 身份识别凭证
     uint64       cmd_trb_pa;
 
-    xhci_trb_t   cmd_trb;
-
     int32        status;
 
     // 4. 战利品 (硬件回执包裹)

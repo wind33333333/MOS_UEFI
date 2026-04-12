@@ -494,9 +494,9 @@ typedef struct usb_dev_t{
  */
 typedef struct usb_urb_t {
     // === 1. 路由寻址区 ===
-    usb_dev_t   *udev;          // 目标设备上下文
-    usb_ep_t    *ep;         // 目标端点
-    uint16      stream_id;      // UAS 协议专用的 Stream ID
+    usb_dev_t   *udev;        // 目标设备上下文
+    usb_ep_t    *ep;          // 目标端点
+    uint16      stream_id;    // UAS 协议专用的 Stream ID
 
     // === 2. 业务载荷区 ===
     usb_setup_packet_t *setup_packet;// EP0 控制包指针
