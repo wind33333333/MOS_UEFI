@@ -1031,7 +1031,9 @@ typedef struct xhci_command_t {
     list_head_t     node;
 
     // 2. 身份识别凭证
-    uint64       command_trb_pa;
+    uint64       cmd_trb_pa;
+
+    xhci_trb_t   cmd_trb;
 
     int32        status;
 
@@ -1137,7 +1139,7 @@ static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 
 
 
 
-uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push);
+uint64 xhci_trb_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push);
 
 int32 xhci_translate_error(xhci_trb_comp_code_e comp_code);
 

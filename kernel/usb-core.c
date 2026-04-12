@@ -59,7 +59,7 @@ static inline uint64 xhci_submit_control_transfer(usb_urb_t *urb, xhci_ring_t *r
     } else {
         trb.setup_stage.trt = TRB_TRT_OUT_DATA;
     }
-    xhci_ring_enqueue(ring, &trb);
+    xhci_trb_enqueue(ring, &trb);
 
     // [阶段 2: Data TRB]
     if (length != 0 && urb->transfer_buf != NULL) {
@@ -71,7 +71,7 @@ static inline uint64 xhci_submit_control_transfer(usb_urb_t *urb, xhci_ring_t *r
         trb.data_stage.dir          = req_dir;
         trb.data_stage.chain        = TRB_CHAIN_DISABLE;
         trb.data_stage.ioc          = TRB_IOC_DISABLE;
-        xhci_ring_enqueue(ring, &trb);
+        xhci_trb_enqueue(ring, &trb);
     }
 
     // [阶段 3: Status TRB]
@@ -82,7 +82,7 @@ static inline uint64 xhci_submit_control_transfer(usb_urb_t *urb, xhci_ring_t *r
     trb.status_stage.ioc   = wants_ioc;
     trb.status_stage.dir   = (length == 0 || req_dir == USB_DIR_OUT) ? TRB_DIR_IN : TRB_DIR_OUT;
 
-    last_trb_pa = xhci_ring_enqueue(ring, &trb);
+    last_trb_pa = xhci_trb_enqueue(ring, &trb);
     return last_trb_pa;
 }
 
@@ -120,7 +120,7 @@ static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_ring_t *ri
         // ★ 修复：全村唯一的 IOC 只能在绝对的最后一块 TRB 上点亮 (防双重中断风暴)
         trb.normal.ioc   = (!has_more_data && !needs_zlp) ? wants_ioc : 0;
 
-        last_trb_pa = xhci_ring_enqueue(ring, &trb);
+        last_trb_pa = xhci_trb_enqueue(ring, &trb);
 
         current_pa += chunk_len;
         left_len   -= chunk_len;
@@ -132,7 +132,7 @@ static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_ring_t *ri
         trb.normal.chain        = 0;          // 绝对的最后一环，拉断链条
         trb.normal.ioc          = wants_ioc;  // 👑 赋予这节空车厢唤醒 CPU 的权利
 
-        last_trb_pa = xhci_ring_enqueue(ring, &trb);
+        last_trb_pa = xhci_trb_enqueue(ring, &trb);
     }
 
     return last_trb_pa;

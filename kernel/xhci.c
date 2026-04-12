@@ -11,7 +11,7 @@
 
 
 //命令环/传输环入队列
-uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
+uint64 xhci_trb_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
     xhci_trb_t *trb_ptr;
     if (ring->index >= TRB_COUNT - 1) {
         uint8 chain = ring->ring_base[TRB_COUNT - 2].link.chain; //获取队列前一个trb的chain位
@@ -45,7 +45,7 @@ uint64 xhci_ring_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
  * @param out_evt 用于输出的 TRB 指针 (拷贝到外层，防止 DMA 竞争)
  * @return true 成功取到新事件，false 环已空
  */
-int32 xhci_event_ring_dequeue(xhci_ring_t *evt_ring, xhci_trb_t *out_evt) {
+int32 xhci_trb_dequeue(xhci_ring_t *evt_ring, xhci_trb_t *out_evt) {
     // 1. 定位到当前指针指向的 TRB
     xhci_trb_t *current_trb = &evt_ring->ring_base[evt_ring->index];
 
@@ -236,13 +236,10 @@ int32 xhci_translate_error(xhci_trb_comp_code_e comp_code) {
  * @param comand   调用者在栈上准备好的面单
  * @param cmd_trb  调用者拼装好的 16 字节 TRB 图纸
  */
-int32 xhci_enqueue_cmd(xhci_hcd_t *xhcd, xhci_command_t *comand, xhci_trb_t *cmd_trb) {
+int32 xhci_comand_enqueue(xhci_hcd_t *xhcd, xhci_command_t *comand) {
 
     // 1. 直接把调用者画好的图纸(TRB)拷贝进物理内存
-    uint64 trb_pa = xhci_ring_enqueue(&xhcd->cmd_ring, cmd_trb);
-
-    // 2. 面单打钢印
-    comand->command_trb_pa = trb_pa;
+    comand->cmd_trb_pa = xhci_trb_enqueue(&xhcd->cmd_ring, &comand->cmd_trb);
     comand->status = -EINPROGRESS;
     comand->is_done = FALSE;
 
@@ -257,16 +254,15 @@ int32 xhci_enqueue_cmd(xhci_hcd_t *xhcd, xhci_command_t *comand, xhci_trb_t *cmd
 
 //分配插槽
 int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
-    xhci_trb_t cmd_trb = {0};
-    cmd_trb.enable_slot.type = XHCI_TRB_TYPE_ENABLE_SLOT;
-    cmd_trb.enable_slot.slot_type = 0;
-
     // 1. 动态申请面单
     xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
     if (!command) return -ENOMEM;
 
+    command->cmd_trb.enable_slot.type = XHCI_TRB_TYPE_ENABLE_SLOT;
+    command->cmd_trb.enable_slot.slot_type = 0;
+
     // 2. trb和cmd入队列
-    xhci_enqueue_cmd(xhcd,command,&cmd_trb);
+    xhci_comand_enqueue(xhcd,command);
 
     // 3. 敲门铃
     xhci_ring_doorbell(xhcd, 0, 0);
@@ -295,25 +291,62 @@ int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
  * @return int8           0 表示成功，-1 表示失败
  */
 int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id) {
-    xhci_trb_t cmd_trb = {0};
-    cmd_trb.disable_slot.trb_type = XHCI_TRB_TYPE_DISABLE_SLOT;
-    cmd_trb.disable_slot.slot_id  = slot_id;
+    // 1. 动态申请面单
+    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
+    if (!command) return -ENOMEM;
 
-    // 2. 发射命令并同步等待
-    return xhci_execute_command_sync(xhcd, &cmd_trb);
+    command->cmd_trb.disable_slot.trb_type = XHCI_TRB_TYPE_DISABLE_SLOT;
+    command->cmd_trb.disable_slot.slot_id  = slot_id;
+
+    // 2. trb和cmd入队列
+    xhci_comand_enqueue(xhcd,command);
+
+    // 3. 敲门铃
+    xhci_ring_doorbell(xhcd, 0, 0);
+
+    // 4. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
+    while (command->is_done == FALSE) {
+        asm_pause();
+    }
+
+    int32 status = command->status;
+
+    kfree(command);
+
+    return status;
+
+
 }
 
 
 //设置设备地址
 int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctx_t *input_ctx) {
-    //配置和执行addr_dev命令
-    xhci_trb_t cmd_trb = {0};
-    cmd_trb.addr_dev.trb_type = XHCI_TRB_TYPE_ADDRESS_DEVICE;
-    cmd_trb.addr_dev.input_ctx_ptr = va_to_pa(input_ctx);
-    cmd_trb.addr_dev.slot_id = slot_id;
-    cmd_trb.addr_dev.bsr = 0;
+    // 1. 动态申请面单
+    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
+    if (!command) return -ENOMEM;
 
-    return  xhci_execute_command_sync(xhcd, &cmd_trb);
+    //配置和执行addr_dev命令
+    command->cmd_trb.addr_dev.trb_type = XHCI_TRB_TYPE_ADDRESS_DEVICE;
+    command->cmd_trb.addr_dev.input_ctx_ptr = va_to_pa(input_ctx);
+    command->cmd_trb.addr_dev.slot_id = slot_id;
+    command->cmd_trb.addr_dev.bsr = 0;
+
+    // 2. trb和cmd入队列
+    xhci_comand_enqueue(xhcd,command);
+
+    // 3. 敲门铃
+    xhci_ring_doorbell(xhcd, 0, 0);
+
+    // 4. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
+    while (command->is_done == FALSE) {
+        asm_pause();
+    }
+
+    int32 status = command->status;
+
+    kfree(command);
+
+    return status;
 
 }
 
@@ -325,14 +358,31 @@ int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctx_t *input_
  * @param dc              Deconfigure 标志 (0=配置端点, 1=一键清除所有业务端点)
  */
 int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_id, uint8 dc) {
-    xhci_trb_t cmd_trb = {0};
-    cmd_trb.cfg_ep.trb_type = XHCI_TRB_TYPE_CONFIGURE_EP;
-    cmd_trb.cfg_ep.input_ctx_ptr = va_to_pa(input_ctx);
-    cmd_trb.cfg_ep.slot_id = slot_id;
-    cmd_trb.cfg_ep.dc = dc;
+    // 1. 动态申请面单
+    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
+    if (!command) return -ENOMEM;
 
-    // 敲响命令环门铃，等待主板评估带宽并分配资源
-    return xhci_execute_command_sync(xhcd, &cmd_trb);
+    command->cmd_trb.cfg_ep.trb_type = XHCI_TRB_TYPE_CONFIGURE_EP;
+    command->cmd_trb.cfg_ep.input_ctx_ptr = va_to_pa(input_ctx);
+    command->cmd_trb.cfg_ep.slot_id = slot_id;
+    command->cmd_trb.cfg_ep.dc = dc;
+
+    // 2. trb和cmd入队列
+    xhci_comand_enqueue(xhcd,command);
+
+    // 3. 敲门铃
+    xhci_ring_doorbell(xhcd, 0, 0);
+
+    // 4. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
+    while (command->is_done == FALSE) {
+        asm_pause();
+    }
+
+    int32 status = command->status;
+
+    kfree(command);
+
+    return status;
 
 }
 
@@ -343,13 +393,31 @@ int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_
  * @param slot_id         目标 Slot ID
  */
 int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_id) {
-    xhci_trb_t cmd_trb = {0};
-    cmd_trb.eval_ctx.trb_type = XHCI_TRB_TYPE_EVALUATE_CTX;
-    cmd_trb.eval_ctx.input_ctx_ptr = va_to_pa(input_ctx);
-    cmd_trb.eval_ctx.slot_id = slot_id;
+    // 1. 动态申请面单
+    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
+    if (!command) return -ENOMEM;
 
-    // 敲响命令环门铃，主板将读取并更新上下文
-    return xhci_execute_command_sync(xhcd, &cmd_trb);
+    command->cmd_trb.eval_ctx.trb_type = XHCI_TRB_TYPE_EVALUATE_CTX;
+    command->cmd_trb.eval_ctx.input_ctx_ptr = va_to_pa(input_ctx);
+    command->cmd_trb.eval_ctx.slot_id = slot_id;
+
+    // 2. trb和cmd入队列
+    xhci_comand_enqueue(xhcd,command);
+
+    // 3. 敲门铃
+    xhci_ring_doorbell(xhcd, 0, 0);
+
+    // 4. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
+    while (command->is_done == FALSE) {
+        asm_pause();
+    }
+
+    int32 status = command->status;
+
+    kfree(command);
+
+    return status;
+
 
 }
 
@@ -650,7 +718,7 @@ irqreturn_e xhci_isr(cpu_registers_t *regs,void *dev_id) {
     // =================================================================
     // 👑 优雅的迭代循环：一边取，一边分发！
     // =================================================================
-    while (xhci_event_ring_dequeue(evt_ring, &current_trb) == 0) {
+    while (xhci_trb_dequeue(evt_ring, &current_trb) == 0) {
         xhci_process_single_event(xhcd, &current_trb);
         processed_any = TRUE;
 
