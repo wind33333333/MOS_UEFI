@@ -230,23 +230,41 @@ int32 xhci_translate_error(xhci_trb_comp_code_e comp_code) {
 }
 
 
-/**
- * @brief 终极通用命令入队引擎 (纯脏活，不问前程)
- * @param xhcd     大管家
- * @param comand   调用者在栈上准备好的面单
- * @param cmd_trb  调用者拼装好的 16 字节 TRB 图纸
- */
-int32 xhci_comand_enqueue(xhci_hcd_t *xhcd, xhci_command_t *comand,xhci_trb_t *cmd_trb) {
+// 极其纯粹的入队函数 (假设调用者已经在外面申请好了 command 面单)
+int32 xhci_comand_enqueue(xhci_hcd_t *xhcd, xhci_command_t *command, xhci_trb_t *cmd_trb) {
 
-    // 1. 直接把调用者画好的图纸(TRB)拷贝进物理内存
-    comand->cmd_trb_pa = xhci_trb_enqueue(&xhcd->cmd_ring, cmd_trb);
-    comand->status = -EINPROGRESS;
-    comand->is_done = FALSE;
+    // 🔥 【临界区开始】加锁！此时其他 CPU 都在门外罚站
+    uint64 cpu_flags;
+    spin_lock_irqsave(&xhcd->cmd_lock,&cpu_flags); // (关中断+自旋锁)
 
-    // 3. 挂载链表
-    list_add_tail(&xhcd->cmd_list, &comand->node);
+    // 2. 核心脏活：拷入 16 字节 TRB，并拿到物理地址 (10 纳秒)
+    command->cmd_trb_pa = xhci_trb_enqueue(&xhcd->cmd_ring, cmd_trb);
+    command->status = -EINPROGRESS;
+    command->is_done = FALSE;
 
-    return 0; // 瞬间返回！
+    // 3. 挂载到等待认领的链表上 (5 纳秒)
+    list_add_tail(&xhcd->cmd_list, &command->node);
+
+    // 🧊 【临界区结束】解锁！大门敞开，放其他 CPU 进来玩
+    spin_unlock_irqrestore(&xhcd->cmd_lock,cpu_flags);
+
+    return 0;
+}
+
+int32 xhci_execute_cmd_sync(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb) {
+    // 1. 在外面慢吞吞地申请内存 (完全不占锁)
+    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
+
+    // 2. 闪电般地穿过临界区
+    int32 err = xhci_comand_enqueue(xhcd, command, cmd_trb);
+
+    // 3. 在外面慢吞吞地敲响物理主板的门铃 (不占锁，创造批处理机会！)
+    if (err == 0) {
+        xhci_ring_doorbell(xhcd, 0, 0);
+    }
+
+    // 4. 彻底躺平死等...
+    // ...
 }
 
 

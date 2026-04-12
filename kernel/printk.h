@@ -48,7 +48,7 @@ struct position
 
 	uint32* FB_addr;
 	uint64 FB_length;
-    char lock;
+    uint32 lock;
 }Pos;
 
 void putchar(unsigned int * fb,int Xsize,int x,int y,unsigned int FRcolor,unsigned int BKcolor,unsigned char font);

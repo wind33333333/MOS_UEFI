@@ -1093,7 +1093,7 @@ typedef struct xhci_hcd_t{
     list_head_t         cmd_list;
 
     pcie_dev_t          *xdev;
-    //spinlock_t          lock;               // 保护整个 xHCI 状态机的全局自旋锁
+    uint32              cmd_lock;              // 保护整个 xHCI 状态机的全局自旋锁
 } xhci_hcd_t;
 
 

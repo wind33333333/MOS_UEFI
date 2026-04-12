@@ -161,21 +161,79 @@ static inline uint8 asm_lzcnt32(uint32 var) {
     return (uint8)result;
 }
 
-// 自旋锁
-static inline void spin_lock(volatile uint8 *lock_var) {
-    __asm__ __volatile__ (
-            "mov        $1,%%bl         \n\t"  // 将值1加载到BL寄存器中
-            "1:                         \n\t"
-            "xor        %%al,%%al       \n\t"  // 清空AL寄存器（设置为0）
-            "lock                       \n\t"  // 确保后续的操作是原子的
-            "cmpxchg    %%bl,%0         \n\t"  // 比较 lock_var 和 AL，若相等，则将 BL 写入 lock_var
-            "jnz        1b              \n\t"  // 如果未能成功锁定，则跳转到标签1重试
-            "pause                      \n\t"  // 优化的CPU等待，减少功耗和资源占用
-            :
-            :"m"(*lock_var)
-            :"%rax","%rbx","memory"
-            );
+// 读取当前 RFLAGS 寄存器，存入 flags，然后关中断 (cli)
+static inline void local_irq_save(uint64 *flags) {
+    asm volatile( \
+        "pushfq\n\t"        /* 将 RFLAGS 压入当前栈 */ \
+        "popq %0\n\t"       /* 将栈顶弹出到 flags 变量中 */ \
+        "cli\n\t"           /* Clear Interrupts (关中断) */ \
+        : "=rm" (*flags)     /* 输出：可以是寄存器或内存 */ \
+        : /* 无输入 */ \
+        : "memory", "cc"    /* 破坏描述：内存和状态标志位 */ \
+    );
 }
+
+
+// 恢复之前保存的 RFLAGS 状态 (如果原来是开的就开，原来是关的就继续关)
+static inline void local_irq_restore(uint64 flags) {
+        asm volatile( \
+            "pushq %0\n\t"      /* 将之前保存的 flags 压栈 */ \
+            "popfq\n\t"         /* 弹出到 RFLAGS 寄存器 */ \
+            : /* 无输出 */ \
+            : "rm" (flags)      /* 输入：之前保存的 flags */ \
+            : "memory", "cc" \
+        );
+}
+
+
+/**
+ * @brief 自旋锁 (纯内联汇编 TTAS 实现)
+ * @param lock 指向 32 位锁变量的指针 (0 表示空闲，1 表示被占用)
+ */
+static inline void spin_lock(uint32 *lock) {
+    unsigned int tmp;
+
+    __asm__ __volatile__ (
+        "1:                         \n\t" // [外层循环] 对应你的外层 while (__sync_...)
+        "movl       $1, %1          \n\t" // 准备数值 1 放入临时寄存器
+        "xchgl %1, %0               \n\t" // 【原子交换】将 1 写入锁，并把锁的老值读入 %1 (tmp)
+        "testl      %1, %1          \n\t" // 检查老值
+        "jz         3f              \n\t" // 如果老值是 0 (Zero Flag 被置位)，说明抢到了！跳到标签 3 结束
+
+        "2:                         \n\t" // [内层循环] 对应你的内层 while (*lock)
+        "pause                      \n\t" // 降低 CPU 功耗，防止流水线冲刷惩罚
+        "cmpl       $0, %0          \n\t" // 【只读嗅探】普通内存读，只在本地 L1 Cache 中查验
+        "jne        2b              \n\t" // 如果锁还是 1 (不等于0)，跳回标签 2 继续 pause
+        "jmp        1b              \n\t" // 锁变成 0 了！跳回标签 1，重新发起原子抢夺
+
+        "3:                         \n\t" // 成功获取锁，退出内联汇编，进入临界区
+        : "+m" (*lock), "=&r" (tmp)       // 输出部："+m" 表示内存既读又写，"=&r" 表示分配一个通用寄存器给 tmp
+        :                                 // 输入部：无
+        : "memory", "cc"                  // 破坏部："memory" 充当编译器屏障，"cc" 表示修改了状态标志位 (ZF等)
+    );
+}
+
+static inline void spin_unlock(uint32 *lock) {
+    __asm__ __volatile__ ("" ::: "memory");
+    // 直接写 0 即可解锁 (在 x86 架构下，对对齐的 32 位整数赋值是天然原子的)
+    *lock = 0;
+}
+
+
+// 关中断 + 加锁
+static inline void spin_lock_irqsave(uint32 *lock, uint64 *flags) {
+        local_irq_save(flags);
+        spin_lock(lock);
+}
+
+// 解锁 + 恢复中断状态
+static inline void spin_unlock_irqrestore(uint32 *lock, uint64 flags) {
+    spin_unlock(lock);
+    local_irq_restore(flags);
+}
+
+
+
 
 static inline void asm_invlpg(void *vir_addr) {
     __asm__ __volatile__("invlpg (%0) \n\t" : : "r"(vir_addr) : "memory");
