@@ -1394,7 +1394,7 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     ep0->average_trb_length = mps;
     ep0->max_streams_exp = 0;
     ep0->enable_streams_exp = 0;
-    alloc_ep_ring(ep0);
+    alloc_ep_ring(ep0,64); //ep0控制端点分配64个槽位
 
     list_head_init(&ep0->urb_list);
 
