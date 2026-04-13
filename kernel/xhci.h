@@ -206,6 +206,32 @@ typedef struct {
 } xhci_op_regs_t;
 
 
+// 中断管理数组 (IMAN) - 每个中断向量一个
+typedef struct {
+    // 中断管理寄存器 (IMAN), 偏移 0x00
+    uint32 iman; // 中断管理 [0]：IP中断挂起（1=有中断待处理），[1]：中断使能（1=使能，0=禁用）
+    // 定义宏，防止写错魔法数字
+#define XHCI_IMAN_IP (1 << 0) // Bit 0 传统的int中断模式根据该位是否置位判断是不是自己的中断，msi和msix不需要。
+#define XHCI_IMAN_IE (1 << 1);
+
+    //中断调节寄存器 (IMOD), 偏移 0x04,
+    uint32 imod; // 中断调制器 (位 0-15): 中断调节间隔（以250ns为单位，(位 16-31): 中断调节计数器（只读）
+
+    // 事件环段表大小寄存器 (ERSTSZ), 偏移 0x08, 32位
+    uint32 erstsz; // - ERST Size (位 0-15): 事件环段表条目数（最大4096）
+    uint32 reserved1;
+
+    // 事件环段表基地址寄存器 (ERSTBA), 偏移 0x10-0x17, 64位
+    uint64 erstba; //指向事件环段表的64位基地址（对齐到64字节)
+
+    // 事件环出队指针寄存器 (ERDP), 偏移 0x18-0x1F, 64位
+    uint64 erdp; /*指向事件环的当前出队指针
+                    - DESI (位 0-2): 出队事件环段索引
+                    - EHB (位 3): 事件处理忙碌（1=忙碌，写1清除）
+                    - Event Ring Dequeue Pointer (位 4-63): 出队指针地址*/
+#define XHCI_ERDP_EHB (1<<3)
+}xhci_intr_regs_t; // 最大支持1024个中断器（根据HCSPARAMS1中的MaxIntrs）
+
 // ===== 3. 运行时寄存器 (Runtime Registers) =====
 typedef struct {
     // 00h: 微帧索引寄存器 (MFINDEX)
@@ -214,31 +240,7 @@ typedef struct {
     // 04h: 保留
     uint32 reserved0[7];
 
-    // 中断管理数组 (IMAN) - 每个中断向量一个
-    struct {
-        // 中断管理寄存器 (IMAN), 偏移 0x00
-        uint32 iman; // 中断管理 [0]：IP中断挂起（1=有中断待处理），[1]：中断使能（1=使能，0=禁用）
-        // 定义宏，防止写错魔法数字
-#define XHCI_IMAN_IP (1 << 0) // Bit 0 传统的int中断模式根据该位是否置位判断是不是自己的中断，msi和msix不需要。
-#define XHCI_IMAN_IE (1 << 1);
-
-        //中断调节寄存器 (IMOD), 偏移 0x04,
-        uint32 imod; // 中断调制器 (位 0-15): 中断调节间隔（以250ns为单位，(位 16-31): 中断调节计数器（只读）
-
-        // 事件环段表大小寄存器 (ERSTSZ), 偏移 0x08, 32位
-        uint32 erstsz; // - ERST Size (位 0-15): 事件环段表条目数（最大4096）
-        uint32 reserved1;
-
-        // 事件环段表基地址寄存器 (ERSTBA), 偏移 0x10-0x17, 64位
-        uint64 erstba; //指向事件环段表的64位基地址（对齐到64字节)
-
-        // 事件环出队指针寄存器 (ERDP), 偏移 0x18-0x1F, 64位
-        uint64 erdp; /*指向事件环的当前出队指针
-                        - DESI (位 0-2): 出队事件环段索引
-                        - EHB (位 3): 事件处理忙碌（1=忙碌，写1清除）
-                        - Event Ring Dequeue Pointer (位 4-63): 出队指针地址*/
-#define XHCI_ERDP_EHB (1<<3)
-    } intr_regs[1024]; // 最大支持1024个中断器（根据HCSPARAMS1中的MaxIntrs）
+    xhci_intr_regs_t intr_regs[1024]; // 最大支持1024个中断器（根据HCSPARAMS1中的MaxIntrs）
 } xhci_rt_regs_t;
 
 // ===== 4. 门铃寄存器 (Doorbell Registers) =====
@@ -961,12 +963,6 @@ typedef struct {
 
 //============================ 软件抽象 ==========================================
 
-typedef struct {
-    xhci_trb_t   *ring_base; //环起始地址
-    uint32       index; //trb索引
-    uint8        cycle; //循环位
-} xhci_ring_t;
-
 typedef enum {
     XHCI_PORT_EMPTY = 0,
     XHCI_PORT_DEV,
@@ -995,35 +991,26 @@ typedef struct {
     uint32 *psi;                // 按 PSIV 索引的 PSI 原始 dword（用于解释 PortSC speed）
 } xhci_spc_t;
 
-
-// 中断管理数组 (IMAN) - 每个中断向量一个
-struct {
-    // 中断管理寄存器 (IMAN), 偏移 0x00
-    uint32 iman; // 中断管理 [0]：IP中断挂起（1=有中断待处理），[1]：中断使能（1=使能，0=禁用）
-
-    //中断调节寄存器 (IMOD), 偏移 0x04,
-    uint32 imod; // 中断调制器 (位 0-15): 中断调节间隔（以250ns为单位，(位 16-31): 中断调节计数器（只读）
-
-    // 事件环段表大小寄存器 (ERSTSZ), 偏移 0x08, 32位
-    uint32 erstsz; // - ERST Size (位 0-15): 事件环段表条目数（最大4096）
-    uint32 reserved1;
-
-    // 事件环段表基地址寄存器 (ERSTBA), 偏移 0x10-0x17, 64位
-    uint64 erstba; //指向事件环段表的64位基地址（对齐到64字节)
-
-    // 事件环出队指针寄存器 (ERDP), 偏移 0x18-0x1F, 64位
-    uint64 erdp; /*指向事件环的当前出队指针
-                    - DESI (位 0-2): 出队事件环段索引
-                    - EHB (位 3): 事件处理忙碌（1=忙碌，写1清除）
-                    - Event Ring Dequeue Pointer (位 4-63): 出队指针地址*/
-#define XHCI_ERDP_EHB (1<<3)
-} intr_regs[1024]; // 最大支持1024个中断器（根据HCSPARAMS1中的MaxIntrs）
-
-//抽象xhci中断器结构
+// 软件是生产者，硬件是消费者
 typedef struct {
-    xhci_erst_t *erstba;
-    xhci_ring_t event_rings;
-}xhci_intr;
+    xhci_trb_t   *ring_base;        // 虚拟起始地址
+    uint32       size;              // 🌟 抛弃全局宏！每个环必须有自己的容量
+    uint32       enq_idx;           // 软件写游标
+    uint32       deq_idx;           // 软件认知的硬件读游标
+    uint8        cycle;             // 软件写出的 Cycle 状态
+} xhci_submit_ring_t;
+
+// 硬件是生产者，软件是消费者
+typedef struct {
+    xhci_trb_t   *ring_base;        // 虚拟起始地址
+    uint32       ring_size;              // 事件环通常极大 (例如 1024)
+    uint32       deq_idx;           // 🌟 只有出队游标！干净利落！
+    uint8        cycle;             // 软件期望硬件写入的 Cycle 状态
+
+    // 🌟 事件环独有的物理结构
+    xhci_erst_t *erst_base;   // 指向 ERST 段表内存的虚拟地址
+    uint32       erst_size;
+} xhci_event_ring_t;
 
 
 typedef struct xhci_command_t {
@@ -1078,7 +1065,7 @@ typedef struct xhci_hcd_t{
     // 4. DMA 核心共享内存 (Host <-> Device)
     // ==========================================
     uint64              *dcbaap;            // 设备上下文基址数组 (物理地址数组)
-    xhci_ring_t         cmd_ring;           // 全局单例：命令环 (Command Ring)
+    xhci_submit_ring_t  cmd_ring;           // 全局单例：命令环 (Command Ring)
 
     // ==========================================
     // 5. 软硬件映射与并发控制 (Software State)
@@ -1087,8 +1074,8 @@ typedef struct xhci_hcd_t{
     struct usb_dev_t    **udevs;           // 插槽到设备的逻辑映射 (通过 Slot ID 查找 usb_dev_t)
 
     // 注意：事件环不是一个，它是和中断器绑定的！这里根据 max_intrs 动态分配！
-    xhci_intr*          intr;
-    uint16              enable_intr_count;  // 启用中断器数量，取cpu核心数量和max_intrs最小值
+    xhci_event_ring_t*  event_ring_arr;
+    uint16              enable_event_ring_count;  // 启用中断器数量，取cpu核心数量和max_intrs最小值
 
     list_head_t         cmd_list;
 
@@ -1113,31 +1100,19 @@ static inline uint8 xhci_get_port_speed (xhci_hcd_t *xhcd,uint8 port_id) {
     return  (portsc >> 10) & 0xF;
 }
 
-//初始化环
-static inline int32 xhci_alloc_ring(xhci_ring_t *ring) {
-    ring->ring_base = kzalloc_dma(TRB_COUNT * sizeof(xhci_trb_t));
-    ring->index = 0;
-    ring->cycle = 1;
-}
 
-//环释放
-static inline int32 xhci_free_ring(xhci_ring_t *ring) {
-    if (ring->ring_base != NULL) {
-        kfree(ring->ring_base);
-        ring->ring_base = NULL;
-    }
-    ring->index = 0;
-    ring->cycle = 0;
-}
 
 //响铃
 static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 value) {
     xhcd->db_reg[db_number] = value;
 }
 
+#define XHCI_RING_FULL -1
 
+int32 xhci_alloc_submit_ring(xhci_submit_ring_t *ring,uint32 size);
+int32 xhci_free_submit_ring(xhci_submit_ring_t *ring);
 
-uint64 xhci_trb_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push);
+uint64 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push) ;
 
 int32 xhci_translate_error(xhci_trb_comp_code_e comp_code);
 
@@ -1147,9 +1122,9 @@ int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);
 int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctx_t *input_ctx);
 int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_id, uint8 dc);
 int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
-uint32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
+int32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
 int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_id);
-int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci_ring_t *transfer_ring);
+int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci_submit_ring_t *transfer_ring);
 int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id);
 
 

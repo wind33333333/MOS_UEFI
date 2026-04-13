@@ -10,33 +10,44 @@
 #include "interrupt.h"
 
 
-//命令环/传输环入队列
-uint64 xhci_trb_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
-    xhci_trb_t *trb_ptr;
-    if (ring->index >= TRB_COUNT - 1) {
-        uint8 chain = ring->ring_base[TRB_COUNT - 2].link.chain; //获取队列前一个trb的chain位
+// 计算步进后的索引，自动跨越 Link TRB
+static inline uint32 xhci_submit_ring_next_idx(uint32 cur_idx,uint32 size) {
+    // 如果走到倒数第一个位置 (Link TRB)，直接绕回 0
+    return (++cur_idx == size - 1) ? 0 : cur_idx;
+}
 
-        trb_ptr = &ring->ring_base[TRB_COUNT - 1];
-        trb_ptr->raw[0] = 0;
-        trb_ptr->raw[1] = 0; //清空环中trb防止残留数据污染
 
-        trb_ptr->link.ring_segment_ptr = va_to_pa(ring->ring_base);
-        trb_ptr->link.toggle_cycle = 1;
-        trb_ptr->link.trb_type = XHCI_TRB_TYPE_LINK;
-        trb_ptr->link.cycle = ring->cycle;
-        trb_ptr->link.chain = chain;
+uint64 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push) {
+    // 1. 【双指针防溢出检查】
+    // 如果再走一步就撞上消费者游标了，说明环满了！
+    uint32 ring_size = ring->size;
+    uint32 next_enq = xhci_submit_ring_next_idx(ring->enq_idx,ring_size);
+    if (next_enq == ring->deq_idx) {
+        return XHCI_RING_FULL; // 拒绝写入
+    }
 
-        ring->index = 0;
+    // 2. 写入数据
+    xhci_trb_t *dest = &ring->ring_base[ring->enq_idx];
+    uint64 dest_pa = va_to_pa(dest); // 或使用预先算好的基址
+
+    //设置trb的cyc位
+    dest->link.cycle = ring->cycle;
+    dest->raw[0] = trb_push->raw[0];
+    dest->raw[1] = trb_push->raw[1];
+
+    // 3. 处理 Link TRB 跨越与 Cycle 翻转
+    if (ring->enq_idx == (ring_size - 2)) {
+        // 注意：现在 enq_idx 停在倒数第二个(悬崖边上)
+        xhci_trb_t *link_trb = &ring->ring_base[ring_size - 1];
+        link_trb->link.cycle = ring->cycle;
+        link_trb->link.chain = trb_push->link.chain;
         ring->cycle ^= 1;
     }
 
-    trb_push->link.cycle = ring->cycle; //设置需要如队列trb的cycle位
+    // 4. 更新生产者游标
+    ring->enq_idx = next_enq;
 
-    trb_ptr = &ring->ring_base[ring->index];
-    trb_ptr->raw[0] = trb_push->raw[0];
-    trb_ptr->raw[1] = trb_push->raw[1];
-    ring->index++;
-    return va_to_pa(trb_ptr);
+    return dest_pa;
 }
 
 /**
@@ -45,26 +56,23 @@ uint64 xhci_trb_enqueue(xhci_ring_t *ring, xhci_trb_t *trb_push) {
  * @param out_evt 用于输出的 TRB 指针 (拷贝到外层，防止 DMA 竞争)
  * @return true 成功取到新事件，false 环已空
  */
-int32 xhci_trb_dequeue(xhci_ring_t *evt_ring, xhci_trb_t *out_evt) {
+int32 xhci_event_ring_deq(xhci_event_ring_t *ring, xhci_trb_t *out_evt) {
     // 1. 定位到当前指针指向的 TRB
-    xhci_trb_t *current_trb = &evt_ring->ring_base[evt_ring->index];
+    xhci_trb_t *cur_trb = &ring->ring_base[ring->deq_idx];
 
     // 2. 检查 Cycle 位：如果硬件还没把事件写进来，直接返回 0
-    if (current_trb->cmd_comp_event.cycle != evt_ring->cycle) {
+    if (cur_trb->cmd_comp_event.cycle != ring->cycle) {
         return -EAGAIN;
     }
 
     // 3. 提取事件数据！
-    // 💡 架构师极力推荐：把这 16 字节拷贝出来！
-    // 为什么？因为直接返回 DMA 内存的指针，如果硬件在极端情况下发生回卷覆盖，会导致数据错乱。
-    // 拷贝到软件栈(Stack)上是最安全的做法！
-    *out_evt = *current_trb;
+    *out_evt = *cur_trb;
 
     // 4. 指针向前走一步 (完全接管环形队列的维护)
-    evt_ring->index++;
-    if (evt_ring->index >= TRB_COUNT) {
-        evt_ring->index = 0;
-        evt_ring->cycle ^= 1; // 环绕时翻转 Cycle 预期
+    ring->deq_idx++;
+    if (ring->deq_idx >= ring->ring_size) {
+        ring->deq_idx = 0;
+        ring->cycle ^= 1; // 环绕时翻转 Cycle 预期
     }
 
     return 0;
@@ -238,7 +246,7 @@ int32 xhci_comand_enqueue(xhci_hcd_t *xhcd, xhci_command_t *command, xhci_trb_t 
     spin_lock_irqsave(&xhcd->cmd_lock,&cpu_flags); // (关中断+自旋锁)
 
     // 2. 核心脏活：拷入 16 字节 TRB，并拿到物理地址 (10 纳秒)
-    command->cmd_trb_pa = xhci_trb_enqueue(&xhcd->cmd_ring, cmd_trb);
+    command->cmd_trb_pa = xhci_submit_ring_enq(&xhcd->cmd_ring, cmd_trb);
     command->status = -EINPROGRESS;
     command->is_done = FALSE;
 
@@ -453,7 +461,7 @@ int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slo
 
 
 //重置端点
-uint32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci) {
+int32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci) {
     // 1. 组装cmd_trb
     xhci_trb_t cmd_trb = {0};
     cmd_trb.rest_ep.type = XHCI_TRB_TYPE_RESET_EP;
@@ -537,12 +545,11 @@ int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci) {
  * @param transfer_ring 需要被修改指针的 Transfer Ring 结构体指针
  * @return int32        完成状态码 (XHCI_COMP_SUCCESS 表示成功)
  */
-int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,
-                                  xhci_ring_t *transfer_ring) {
+int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci_submit_ring_t *transfer_ring) {
 
 
     // 【核心算力】：找到 Transfer Ring 中软件当前准备写入的、下一个干净槽位的物理地址
-    uint64 next_clean_trb_pa = va_to_pa(&transfer_ring->ring_base[transfer_ring->index]);
+    uint64 next_clean_trb_pa = va_to_pa(&transfer_ring->ring_base[transfer_ring->enq_idx]);
 
     // 获取软件当前在这个槽位上预期的 Cycle Bit 状态
     uint8 next_cycle_state = transfer_ring->cycle;
@@ -722,6 +729,14 @@ void xhci_disable_intr(xhci_hcd_t *xhcd,uint16 intr_number) {
 }
 
 
+static inline void xhci_submit_ring_update_deq_idx(xhci_submit_ring_t *ring, uint64 comp_trb_pa) {
+    // 根据物理地址，反算出它在环里的数组索引
+    uint32 deq_idx = (comp_trb_pa - va_to_pa(ring->ring_base))>>4;
+
+    // 硬件执行完这个了，说明下一个是待处理的，更新消费者游标
+    ring->deq_idx = xhci_submit_ring_next_idx(deq_idx,ring->size);
+}
+
 //传输任务处理
 void xhci_handle_transfer_event(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
     uint64 trb_pa     = evt_trb->transfer_event.tr_trb_ptr;
@@ -747,25 +762,42 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
             urb->actual_length = urb->transfer_len - evt_trb->transfer_event.tr_len;
 
             // 2. 从待办队列中安全摘除
-            list_del(&urb->node);
+            list_del(curr);
 
             // 3. 🌟 敲碎主循环的枷锁！
             // 当这行代码执行完毕，ISR 返回 (iretq) 后，主循环的 while 条件立马变成 false
             urb->is_done = TRUE;
+
+            xhci_submit_ring_update_deq_idx(&ep->ring_arr[urb->stream_id], trb_pa);
 
             break;
         }
     }
 }
 
-
 //命令完成事件trb处理程序
 void xhci_handle_cmd_completion(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
-    if (evt_trb->cmd_comp_event.cmd_trb_ptr == xhcd->cmd_list.command_trb_pa) {
-        xhcd->cmd_list.slot_id = evt_trb->cmd_comp_event.slot_id;
-        xhcd->cmd_list.comp_code = evt_trb->cmd_comp_event.comp_code;
-        xhcd->cmd_list.is_done = TRUE;
-    }
+    uint64 trb_pa     = evt_trb->cmd_comp_event.cmd_trb_ptr;
+    uint8  slot_id    = evt_trb->cmd_comp_event.slot_id;
+    uint32 comp_code  = evt_trb->cmd_comp_event.comp_code;
+    uint32 comp_param = evt_trb->cmd_comp_event.cmd_comp_param;
+
+    // 遍历该端点上所有正在飞的面单
+   for (list_head_t *curr = xhcd->cmd_list.next; curr != &xhcd->cmd_list; curr = curr->next) {
+       xhci_command_t *command = CONTAINER_OF(curr, xhci_command_t, node);
+
+       if (command->cmd_trb_pa == trb_pa ) {
+           command->slot_id = slot_id;
+           command->comp_code = comp_code;
+           command->comp_param = comp_param;
+           command->is_done = TRUE;
+           list_del(curr);
+           xhci_submit_ring_update_deq_idx(&xhcd->cmd_ring, trb_pa);
+           break;
+       }
+
+   }
+
 }
 
 //端口状态处理
@@ -808,18 +840,17 @@ irqreturn_e xhci_isr(cpu_registers_t *regs,void *dev_id) {
     pcie_dev_t *xdev = dev_id;
     xhci_hcd_t *xhcd = xdev->priv_data;
 
-    uint8 intr_idx = 0;
-    xhci_intr *intr = &xhcd->intr[intr_idx];
-    xhci_ring_t *evt_ring = &intr->event_rings;
+    uint8 evtnt_idx = 0;
+    xhci_event_ring_t *evt_ring = &xhcd->event_ring_arr[evtnt_idx];
 
     // =================================================================
     // 🛡️ 硬件级防御：清除可能残留的 IMAN_IP (防老旧/非标主板中断风暴)
     // =================================================================
-    uint32 iman = xhcd->rt_reg->intr_regs[intr_idx].iman;
+    uint32 iman = xhcd->rt_reg->intr_regs[evtnt_idx].iman;
     if (iman & XHCI_IMAN_IP) {
         // RW1C: iman 变量里的 IP 位此时是 1，直接写回，触发硬件清零！
         // 这一步也顺便保持了 IE (Interrupt Enable) 位的原状态不变
-        xhcd->rt_reg->intr_regs[intr_idx].iman = iman;
+        xhcd->rt_reg->intr_regs[evtnt_idx].iman = iman;
     }
 
     boolean processed_any = FALSE;
@@ -828,7 +859,7 @@ irqreturn_e xhci_isr(cpu_registers_t *regs,void *dev_id) {
     // =================================================================
     // 👑 优雅的迭代循环：一边取，一边分发！
     // =================================================================
-    while (xhci_trb_dequeue(evt_ring, &current_trb) == 0) {
+    while (xhci_event_ring_deq(evt_ring, &current_trb) == 0) {
         xhci_process_single_event(xhcd, &current_trb);
         processed_any = TRUE;
 
@@ -840,9 +871,56 @@ irqreturn_e xhci_isr(cpu_registers_t *regs,void *dev_id) {
     if (processed_any) {
         // 由于 xhci_get_next_event 已经帮我们把 dequeue_ptr 移到了最新位置
         // 这里直接计算物理地址，写入 ERDP 即可// 置 EHB 位为 1，清除硬件挂起状态
-        uint64 erdp_pa = va_to_pa(&evt_ring->ring_base[evt_ring->index]) | XHCI_ERDP_EHB;
-        xhcd->rt_reg->intr_regs[intr_idx].erdp = erdp_pa;
+        uint64 erdp_pa = va_to_pa(&evt_ring->ring_base[evt_ring->deq_idx]) | XHCI_ERDP_EHB;
+        xhcd->rt_reg->intr_regs[evtnt_idx].erdp = erdp_pa;
     }
+}
+
+
+//传输环，命令环分配函数
+int32 xhci_alloc_submit_ring(xhci_submit_ring_t *ring,uint32 size) {
+    ring->ring_base = kzalloc_dma(size * sizeof(xhci_trb_t));
+    ring->enq_idx = 0;
+    ring->deq_idx = 0;
+    ring->size = size;
+    ring->cycle = 1;
+
+    // 🌟 提前埋好最后一节的 Link TRB，把死活不变的数据写死！
+    xhci_trb_t *trb = &ring->ring_base[size - 1];
+    trb->link.ring_segment_ptr = va_to_pa(ring->ring_base);
+    trb->link.toggle_cycle = 1;
+    trb->link.trb_type = XHCI_TRB_TYPE_LINK;
+}
+
+//传输环，命令环释放函数
+int32 xhci_free_submit_ring(xhci_submit_ring_t *ring) {
+    if (ring->ring_base != NULL) {
+        kfree(ring->ring_base);
+        ring->ring_base = NULL;
+    }
+    ring->enq_idx = 0;
+    ring->deq_idx = 0;
+    ring->size = 0;
+    ring->cycle = 0;
+}
+
+//事件环分配函数
+int32 xhci_alloc_event_ring(xhci_event_ring_t *ring,uint32 ring_size) {
+    ring->ring_base = kzalloc_dma(ring_size * sizeof(xhci_trb_t));
+    ring->deq_idx = 0;
+    ring->ring_size = ring_size;
+    ring->cycle = 1;
+
+    ring->erst_base = kzalloc_dma(sizeof(xhci_erst_t)); //分配事件环段表内存，单段只分配一个
+    ring->erst_base->ring_seg_base = va_to_pa(ring->ring_base);
+    ring->erst_base->ring_seg_size = ring_size;
+    ring->erst_base->reserved = 0;
+}
+
+
+//事件环释放函数
+int32 xhci_free_event_ring(xhci_event_ring_t *ring) {
+
 }
 
 
@@ -955,31 +1033,24 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhcd->op_reg->dcbaap = va_to_pa(xhcd->dcbaap); //把设备上下文基地址数组表的物理地址写入寄存器
     xhcd->op_reg->config = xhcd->max_slots; //把最大插槽数量写入寄存器
 
+    //xhci支持多少个slot就分配多少个udev结构
     xhcd->udevs = kzalloc((xhcd->max_slots+1)<<3);
 
     /*初始化命令环*/
-    xhci_alloc_ring(&xhcd->cmd_ring);
+    xhci_alloc_submit_ring(&xhcd->cmd_ring,64); //命令环分配64个槽位
     xhcd->op_reg->crcr = va_to_pa(xhcd->cmd_ring.ring_base) | 1; //命令环物理地址写入crcr寄存器，置位rcs
 
     /*初始化中断器*/
     //可以根据cpu核心和MaxIntrs取小值设置多事件环。暂时设置1个事件环
-    xhcd->enable_intr_count = 1;
-    xhci_intr *intr = kzalloc(sizeof(xhci_intr) * xhcd->enable_intr_count);
-    xhcd->intr = intr;
-    for (uint16 i = 0; i < xhcd->enable_intr_count; i++) {
-        xhci_alloc_ring(&intr[i].event_rings);
-        uint64 evt_pa = va_to_pa(intr[i].event_rings.ring_base);
+    xhcd->enable_event_ring_count = 1;
+    xhci_event_ring_t *event_ring_arr = kzalloc(sizeof(xhci_event_ring_t) * xhcd->enable_event_ring_count);
+    xhcd->event_ring_arr = event_ring_arr;
+    for (uint16 i = 0; i < xhcd->enable_event_ring_count; i++) {
+        xhci_alloc_event_ring(&xhcd->event_ring_arr[i],1024); //每个事件环设置1024个槽位
 
-        xhci_erst_t *erstba = kzalloc_dma(sizeof(xhci_erst_t)); //分配事件环段表内存，单段只分配一个
-        intr[i].erstba = erstba;
-        erstba->ring_seg_base = evt_pa; //段表中写入事件环物理地址
-        erstba->ring_seg_size = TRB_COUNT; //事件环最大trb个数
-        erstba->reserved = 0;
-
-        xhci_disable_intr(xhcd,i);  //关闭中断
         xhcd->rt_reg->intr_regs[i].erstsz = 1; //设置1,单事件环段
-        xhcd->rt_reg->intr_regs[i].erstba = va_to_pa(erstba); //事件环段表物理地址写入寄存器
-        xhcd->rt_reg->intr_regs[i].erdp = evt_pa; //事件环物理地址写入寄存器
+        xhcd->rt_reg->intr_regs[i].erstba = va_to_pa(xhcd->event_ring_arr[i].erst_base); //事件环段表物理地址写入寄存器
+        xhcd->rt_reg->intr_regs[i].erdp = va_to_pa(xhcd->event_ring_arr[i].ring_base); //事件环物理地址写入寄存器
     }
 
     /*初始化暂存器缓冲区*/

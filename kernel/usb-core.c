@@ -23,7 +23,7 @@ static inline int32 xhci_recover_stall(usb_dev_t *udev, uint8 ep_dci) {
     }
 
     // 抢救第 2 步：重置出队指针
-    posix_err = xhci_cmd_set_tr_deq_ptr(udev->xhcd, udev->slot_id, ep_dci, udev->eps[ep_dci]->rings);
+    posix_err = xhci_cmd_set_tr_deq_ptr(udev->xhcd, udev->slot_id, ep_dci, udev->eps[ep_dci]->ring_arr);
     if (posix_err < 0) {
         color_printk(RED, BLACK, "[xHCI CPR FATAL] Set TR Deq Ptr Command failed: %d\n", posix_err);
         return posix_err; // 指针重置失败，传输环彻底报废！
@@ -36,7 +36,7 @@ static inline int32 xhci_recover_stall(usb_dev_t *udev, uint8 ep_dci) {
 /**
  * @brief [内联执行器] 处理 EP0 控制传输 (三阶段)
  */
-static inline uint64 xhci_submit_control_transfer(usb_urb_t *urb, xhci_ring_t *ring, uint8 wants_ioc) {
+static inline uint64 xhci_submit_control_transfer(usb_urb_t *urb, xhci_submit_ring_t *ring, uint8 wants_ioc) {
     uint64 last_trb_pa = 0;
     xhci_trb_t ctl_trb;
     uint16 length  = urb->setup_packet->length;
@@ -59,7 +59,7 @@ static inline uint64 xhci_submit_control_transfer(usb_urb_t *urb, xhci_ring_t *r
     } else {
         ctl_trb.setup_stage.trt = TRB_TRT_OUT_DATA;
     }
-    xhci_trb_enqueue(ring, &ctl_trb);
+    xhci_submit_ring_enq(ring, &ctl_trb);
 
     // [阶段 2: Data TRB]
     if (length != 0 && urb->transfer_buf != NULL) {
@@ -71,7 +71,7 @@ static inline uint64 xhci_submit_control_transfer(usb_urb_t *urb, xhci_ring_t *r
         ctl_trb.data_stage.dir          = req_dir;
         ctl_trb.data_stage.chain        = TRB_CHAIN_DISABLE;
         ctl_trb.data_stage.ioc          = TRB_IOC_DISABLE;
-        xhci_trb_enqueue(ring, &ctl_trb);
+        xhci_submit_ring_enq(ring, &ctl_trb);
     }
 
     // [阶段 3: Status TRB]
@@ -82,14 +82,14 @@ static inline uint64 xhci_submit_control_transfer(usb_urb_t *urb, xhci_ring_t *r
     ctl_trb.status_stage.ioc   = wants_ioc;
     ctl_trb.status_stage.dir   = (length == 0 || req_dir == USB_DIR_OUT) ? TRB_DIR_IN : TRB_DIR_OUT;
 
-    last_trb_pa = xhci_trb_enqueue(ring, &ctl_trb);
+    last_trb_pa = xhci_submit_ring_enq(ring, &ctl_trb);
     return last_trb_pa;
 }
 
 /**
  * @brief [内联执行器] 处理 Bulk/Interrupt 普通传输 (大块切片与 ZLP)
  */
-static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_ring_t *ring, uint8 wants_ioc) {
+static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_submit_ring_t *ring, uint8 wants_ioc) {
     uint64 last_trb_pa = 0;
     xhci_trb_t normal_trb;
     uint32 left_len = urb->transfer_len;
@@ -120,7 +120,7 @@ static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_ring_t *ri
         // ★ 修复：全村唯一的 IOC 只能在绝对的最后一块 TRB 上点亮 (防双重中断风暴)
         normal_trb.normal.ioc   = (!has_more_data && !needs_zlp) ? wants_ioc : 0;
 
-        last_trb_pa = xhci_trb_enqueue(ring, &normal_trb);
+        last_trb_pa = xhci_submit_ring_enq(ring, &normal_trb);
 
         current_pa += chunk_len;
         left_len   -= chunk_len;
@@ -132,7 +132,7 @@ static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_ring_t *ri
         normal_trb.normal.chain        = 0;          // 绝对的最后一环，拉断链条
         normal_trb.normal.ioc          = wants_ioc;  // 👑 赋予这节空车厢唤醒 CPU 的权利
 
-        last_trb_pa = xhci_trb_enqueue(ring, &normal_trb);
+        last_trb_pa = xhci_submit_ring_enq(ring, &normal_trb);
     }
 
     return last_trb_pa;
@@ -165,7 +165,7 @@ int32 usb_submit_urb(usb_urb_t *urb) {
     xhci_hcd_t  *xhcd    = urb->udev->xhcd;
     uint8       slot_id  = urb->udev->slot_id;
     usb_ep_t    *ep = urb->ep;
-    xhci_ring_t *ring = &ep->rings[urb->stream_id];
+    xhci_submit_ring_t *ring = &ep->ring_arr[urb->stream_id];
 
     // 计算真实的敲门铃目标值 (DCI + Stream ID 偏移)
     uint32 db_target = ep->ep_dci | ((uint32)urb->stream_id << 16);
@@ -660,7 +660,7 @@ device_type_t usb_dev_type = {"usb-dev"};
 device_type_t usb_if_type = {"usb-if"};
 
 // 给端点分配环 (终极统一抽象版)
-static int32 alloc_ep_ring(usb_ep_t *ep) {
+static int32 alloc_ep_ring(usb_ep_t *ep,uint32 ring_size) {
     uint64 tr_dequeue_ptr;
 
     // 安全边界截断
@@ -675,13 +675,12 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
 
         // 1. 给硬件 DMA 读的上下文数组 (必须 16 字节对齐)
         xhci_stream_ctx_t *streams_ctx_array = kzalloc_dma(streams_array_count * sizeof(xhci_stream_ctx_t));
+        // 记录上下文，方便后续释放内存
+        ep->streams_ctx_array = streams_ctx_array;
 
         // 2. ★ 核心重构：给软件管理的统一环数组 (分配 N+1 个)
         // 索引 0 闲置防越界，索引 1~N 对应真实的 Stream ID
-        ep->rings = kzalloc(streams_count * sizeof(xhci_ring_t));
-
-        // 记录上下文，方便后续释放内存
-        ep->streams_ctx_array = streams_ctx_array;
+        ep->ring_arr = kzalloc(streams_count * sizeof(xhci_submit_ring_t));
 
         // 更新逻辑状态
         ep->lsa = 1; // 线性流数组标志
@@ -690,11 +689,11 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
         // 初始化每一个流环
         for (uint32 s = 1; s < streams_count; s++) {
             // 对数组中的每一个环进行物理分配
-            xhci_alloc_ring(&ep->rings[s]);
+            xhci_alloc_submit_ring(&ep->ring_arr[s],ring_size);
 
             // 将分配好的环的物理地址，写入硬件要求的 Context 数组中
             // SCT=1 (Primary TRB Ring: bit 1~3), DCS=1 (bit 0)
-            streams_ctx_array[s].tr_dequeue = va_to_pa(ep->rings[s].ring_base) | (1 << 1) | 1;
+            streams_ctx_array[s].tr_dequeue = va_to_pa(ep->ring_arr[s].ring_base) | (1 << 1) | 1;
             streams_ctx_array[s].reserved = 0;
         }
 
@@ -711,17 +710,17 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
         // ==========================================================
 
         // 1. ★ 核心重构：给软件管理的统一环数组 (仅分配 1 个)
-        ep->rings = kzalloc(sizeof(xhci_ring_t));
+        ep->ring_arr = kzalloc(sizeof(xhci_submit_ring_t));
 
         // 2. 分配并初始化这唯一的环 (它就是 rings[0])
-        xhci_alloc_ring(&ep->rings[0]);
+        xhci_alloc_submit_ring(&ep->ring_arr[0],ring_size);
 
         // 更新逻辑状态
         ep->lsa = 0;
         ep->hid = 0;
 
         // 硬件 Endpoint Context 直接要这个单一环的物理首地址，DCS=1
-        tr_dequeue_ptr = va_to_pa(ep->rings[0].ring_base) | 1;
+        tr_dequeue_ptr = va_to_pa(ep->ring_arr[0].ring_base) | 1;
     }
 
     // ==========================================================
@@ -738,7 +737,7 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
 // 释放端点环 (终极统一抽象版)
 static int32 free_ep_ring(usb_ep_t *ep) {
     // 0. 防御性拦截：如果根本没分配过，直接返回
-    if (ep == NULL || ep->rings == NULL) {
+    if (ep == NULL || ep->ring_arr == NULL) {
         return -EINVAL;
     }
 
@@ -750,7 +749,7 @@ static int32 free_ep_ring(usb_ep_t *ep) {
         // 1. 释放每一个具体的流环 (TRB 物理内存)
         uint32 enable_streams_count = (1<<ep->enable_streams_exp)+1;
         for (uint32 s = 1; s < enable_streams_count; s++) {
-            xhci_free_ring(&ep->rings[s]);
+            xhci_free_submit_ring(&ep->ring_arr[s]);
         }
 
         // 2. 释放专供硬件读取的 DMA 上下文数组
@@ -765,7 +764,7 @@ static int32 free_ep_ring(usb_ep_t *ep) {
         // ==========================================================
 
         // 释放那唯一的普通传输环
-        xhci_free_ring(&ep->rings[0]);
+        xhci_free_submit_ring(&ep->ring_arr[0]);
     }
 
     // ==========================================================
@@ -773,8 +772,8 @@ static int32 free_ep_ring(usb_ep_t *ep) {
     // ==========================================================
     // 无论是流模式分配的 N+1 个元素的数组，还是非流模式分配的 1 个元素的数组，
     // 它们都是用 kzalloc 申请的，最后在这里一刀切释放！
-    kfree(ep->rings);
-    ep->rings = NULL;
+    kfree(ep->ring_arr);
+    ep->ring_arr = NULL;
 
     // 清理端点逻辑状态，恢复出厂设置，防止悬空指针引发 Use-After-Free
     ep->enable_streams_exp = 0; // 如果你结构体里还没删干净，顺手清一下
@@ -1091,7 +1090,7 @@ static inline void ep_desc_params(usb_ep_t *cur_ep, usb_ep_desc_t *ep_desc) {
     cur_ep->lsa = 0;
     cur_ep->hid = 0;
 
-    cur_ep->rings = NULL;
+    cur_ep->ring_arr = NULL;
     cur_ep->streams_ctx_array = NULL;
     cur_ep->enable_streams_exp = 0;
 
