@@ -239,7 +239,7 @@ int32 xhci_translate_error(xhci_trb_comp_code_e comp_code) {
 
 
 //发送xhci命令
-int32 xhci_send_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_command_t *out_command) {
+int32 xhci_submit_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_command_t *out_command) {
     // 1. 在外面慢吞吞地申请内存 (完全不占锁)
     xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
     if (command == NULL) {
@@ -248,6 +248,7 @@ int32 xhci_send_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_command_t *out_com
 
     // 2. 尝试入队，并严格检查结果
     uint64 cpu_flags;
+    spin_lock_irqsave(&xhcd->cmd_lock,&cpu_flags);
     uint64 pa_or_err = xhci_submit_ring_enq(&xhcd->cmd_ring, cmd_trb);
     if (pa_or_err == XHCI_RING_FULL) { // 假设环满返回此宏或 -1
         spin_unlock_irqrestore(&xhcd->cmd_lock, cpu_flags);
@@ -298,7 +299,7 @@ int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
     cmd_trb.enable_slot.slot_type = 0;
 
     xhci_command_t command = {0};
-    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
 
     *out_slot_id = command.slot_id;
 
@@ -318,7 +319,7 @@ int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id) {
     cmd_trb.disable_slot.slot_id  = slot_id;
 
     xhci_command_t command = {0};
-    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 }
@@ -334,7 +335,7 @@ int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctx_t *input_
     cmd_trb.addr_dev.bsr = 0;
 
     xhci_command_t command = {0};
-    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 
@@ -356,7 +357,7 @@ int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_
     cmd_trb.cfg_ep.dc = dc;
 
     xhci_command_t command = {0};
-    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 
@@ -376,7 +377,7 @@ int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slo
     cmd_trb.eval_ctx.slot_id = slot_id;
 
     xhci_command_t command = {0};
-    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 
@@ -393,7 +394,7 @@ int32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci) {
     cmd_trb.rest_ep.slot_id = slot_id;
 
     xhci_command_t command = {0};
-    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 }
@@ -418,7 +419,7 @@ int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci) {
     cmd_trb.stop_ep.suspend  = 0; // 坚决不挂起，要求主板彻底停下传输环
 
     xhci_command_t command = {0};
-    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 }
@@ -450,7 +451,7 @@ int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci
     cmd_trb.set_tr_deq_ptr.slot_id = slot_id;
 
     xhci_command_t command = {0};
-    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 }
@@ -467,7 +468,7 @@ int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id) {
     cmd_trb.reset_dev.slot_id = slot_id;
 
     xhci_command_t command = {0};
-    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 
@@ -607,15 +608,10 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
 
         // 🎯 物理地址对上了！这就是硬件刚刚做完的任务
         if (urb->last_trb_pa == trb_pa) {
-
             // 1. 结算账单
             urb->status = xhci_translate_error(comp_code);
             urb->actual_length = urb->transfer_len - evt_trb->transfer_event.tr_len;
-
-            // 3. 🌟 敲碎主循环的枷锁！
-            // 当这行代码执行完毕，ISR 返回 (iretq) 后，主循环的 while 条件立马变成 false
             urb->is_done = TRUE;
-
             xhci_submit_ring_update_deq_idx(&ep->ring_arr[urb->stream_id], trb_pa);
 
             break;
@@ -731,6 +727,8 @@ int32 xhci_alloc_submit_ring(xhci_submit_ring_t *ring,uint32 size) {
     ring->deq_idx = 0;
     ring->size = size;
     ring->cycle = 1;
+    ring->ring_lock = 0;
+    list_head_init(&ring->pending_list);
 
     // 🌟 提前埋好最后一节的 Link TRB，把死活不变的数据写死！
     xhci_trb_t *trb = &ring->ring_base[size - 1];
@@ -908,9 +906,6 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
         //分配暂存器缓存区
         xhcd->dcbaap[0] = va_to_pa(spb_array); //暂存器缓存去数组指针写入设备上下写文数组0
     }
-
-    //初始化命令链表队列
-    list_head_init(&xhcd->cmd_list);
 
     // =========================================================================
     // 👑 必须先铺设“中断管线” (从 CPU 到 PCIe 总线)

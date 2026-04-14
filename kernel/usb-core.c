@@ -179,6 +179,10 @@ int32 usb_submit_urb(usb_urb_t *urb) {
     // 3. 多态路由分发 (根据端点描述符的硬件属性进行精准打击)
     // ==========================================================
 
+    //加锁
+    uint64 cpu_flags;
+    spin_lock_irqsave(&ep->ring_lock, &cpu_flags);
+
     // 从端点上下文中提取真实的端点类型 (枚举时解析到的)
     uint8 usb_trans_type = ep->ep_type & 3;
     switch (usb_trans_type) {
@@ -218,6 +222,9 @@ int32 usb_submit_urb(usb_urb_t *urb) {
         // 需要中断：挂入链表，等 ISR 叫醒
         list_add_tail(&urb->ep->urb_list, &urb->node);
     }
+
+    //解锁
+    spin_unlock_irqrestore(&ep->ring_lock, cpu_flags);
 
     // ==========================================================
     // ★ 终极一击：精确敲响对应端点 / Stream 的物理门铃！

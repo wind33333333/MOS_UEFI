@@ -991,14 +991,23 @@ typedef struct {
     uint32 *psi;                // 按 PSIV 索引的 PSI 原始 dword（用于解释 PortSC speed）
 } xhci_spc_t;
 
-// 软件是生产者，硬件是消费者
+
 typedef struct {
+    // === [物理/内存层] ==================
     xhci_trb_t   *ring_base;        // 虚拟起始地址
-    uint32       size;              // 🌟 抛弃全局宏！每个环必须有自己的容量
-    uint32       enq_idx;           // 软件写游标
-    uint32       deq_idx;           // 软件认知的硬件读游标
-    uint8        cycle;             // 软件写出的 Cycle 状态
+    uint32       size;              // 容量
+
+    // === [逻辑游标层] ==================
+    uint32       enq_idx;           // 写游标
+    uint32       deq_idx;           // 读游标
+    uint8        cycle;             // 生产 Cycle 状态
+
+    // === [并发与调度层 (🌟 你的神来之笔)] ===
+    uint32   ring_lock;             // 保护当前环的唯一自旋锁
+    list_head_t  pending_list;      // 在此环上排队等待硬件完成的面单 (URB 或 Command)
+
 } xhci_submit_ring_t;
+
 
 // 硬件是生产者，软件是消费者
 typedef struct {
@@ -1077,10 +1086,7 @@ typedef struct xhci_hcd_t{
     xhci_event_ring_t*  event_ring_arr;
     uint16              enable_event_ring_count;  // 启用中断器数量，取cpu核心数量和max_intrs最小值
 
-    list_head_t         cmd_list;
-
     pcie_dev_t          *xdev;
-    uint32              cmd_lock;              // 保护整个 xHCI 状态机的全局自旋锁
 } xhci_hcd_t;
 
 
