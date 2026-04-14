@@ -238,41 +238,53 @@ int32 xhci_translate_error(xhci_trb_comp_code_e comp_code) {
 }
 
 
-// 极其纯粹的入队函数 (假设调用者已经在外面申请好了 command 面单)
-int32 xhci_comand_enqueue(xhci_hcd_t *xhcd, xhci_command_t *command, xhci_trb_t *cmd_trb) {
-
-    // 🔥 【临界区开始】加锁！此时其他 CPU 都在门外罚站
-    uint64 cpu_flags;
-    spin_lock_irqsave(&xhcd->cmd_lock,&cpu_flags); // (关中断+自旋锁)
-
-    // 2. 核心脏活：拷入 16 字节 TRB，并拿到物理地址 (10 纳秒)
-    command->cmd_trb_pa = xhci_submit_ring_enq(&xhcd->cmd_ring, cmd_trb);
-    command->status = -EINPROGRESS;
-    command->is_done = FALSE;
-
-    // 3. 挂载到等待认领的链表上 (5 纳秒)
-    list_add_tail(&xhcd->cmd_list, &command->node);
-
-    // 🧊 【临界区结束】解锁！大门敞开，放其他 CPU 进来玩
-    spin_unlock_irqrestore(&xhcd->cmd_lock,cpu_flags);
-
-    return 0;
-}
-
-int32 xhci_execute_cmd_sync(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb) {
+//发送xhci命令
+int32 xhci_execute_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_command_t *out_command) {
     // 1. 在外面慢吞吞地申请内存 (完全不占锁)
     xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
-
-    // 2. 闪电般地穿过临界区
-    int32 err = xhci_comand_enqueue(xhcd, command, cmd_trb);
-
-    // 3. 在外面慢吞吞地敲响物理主板的门铃 (不占锁，创造批处理机会！)
-    if (err == 0) {
-        xhci_ring_doorbell(xhcd, 0, 0);
+    if (command == NULL) {
+        return -ENOMEM;
     }
 
-    // 4. 彻底躺平死等...
-    // ...
+    // 2. 尝试入队，并严格检查结果
+    uint64 cpu_flags;
+    uint64 pa_or_err = xhci_submit_ring_enq(&xhcd->cmd_ring, cmd_trb);
+    if (pa_or_err == XHCI_RING_FULL) { // 假设环满返回此宏或 -1
+        spin_unlock_irqrestore(&xhcd->cmd_lock, cpu_flags);
+        kfree(command);     // 入队失败，销毁面单
+        return -EBUSY;      // 返回系统繁忙
+    }
+
+    // 3. 组装面单并挂链
+    command->cmd_trb_pa = pa_or_err;
+    command->status = -EINPROGRESS;
+    command->is_done = FALSE;
+    list_add_tail(&xhcd->cmd_list, &command->node);
+    spin_unlock_irqrestore(&xhcd->cmd_lock, cpu_flags);
+
+    // 4. 敲击门铃，通知硬件
+    xhci_ring_doorbell(xhcd, 0, 0);
+
+    // 5. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
+    while (command->is_done == FALSE) {
+        asm_pause();
+        __asm__ __volatile__ ("" ::: "memory");
+    }
+
+    // 6. 返回结果
+    if (out_command != NULL) {
+        *out_command = *command;
+    }
+
+    // 7. 加锁卸载链表
+    spin_lock_irqsave(&xhcd->cmd_lock,&cpu_flags);
+    list_del(&command->node);
+    spin_unlock_irqrestore(&xhcd->cmd_lock,cpu_flags);
+
+    // 8. 释放面单
+    kfree(command);
+
+    return out_command->status;
 }
 
 
@@ -285,27 +297,10 @@ int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
     cmd_trb.enable_slot.type = XHCI_TRB_TYPE_ENABLE_SLOT;
     cmd_trb.enable_slot.slot_type = 0;
 
-    // 2. 动态申请面单
-    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
-    if (!command) return -ENOMEM;
+    xhci_command_t command = {0};
+    int32 status = xhci_execute_cmd(xhcd,&cmd_trb,&command);
 
-    // 3. trb和cmd入队列
-    xhci_comand_enqueue(xhcd,command,&cmd_trb);
-
-    // 4. 敲门铃
-    xhci_ring_doorbell(xhcd, 0, 0);
-
-    // 5. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
-    while (command->is_done == FALSE) {
-        asm_pause();
-    }
-
-    // 6. 返回结果
-    int32 status = command->status;
-    *out_slot_id = command->slot_id;
-
-    // 7. 释放面单
-    kfree(command);
+    *out_slot_id = command.slot_id;
 
     return status;
 }
@@ -761,9 +756,6 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
             urb->status = xhci_translate_error(comp_code);
             urb->actual_length = urb->transfer_len - evt_trb->transfer_event.tr_len;
 
-            // 2. 从待办队列中安全摘除
-            list_del(curr);
-
             // 3. 🌟 敲碎主循环的枷锁！
             // 当这行代码执行完毕，ISR 返回 (iretq) 后，主循环的 while 条件立马变成 false
             urb->is_done = TRUE;
@@ -791,7 +783,6 @@ void xhci_handle_cmd_completion(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
            command->comp_code = comp_code;
            command->comp_param = comp_param;
            command->is_done = TRUE;
-           list_del(curr);
            xhci_submit_ring_update_deq_idx(&xhcd->cmd_ring, trb_pa);
            break;
        }
