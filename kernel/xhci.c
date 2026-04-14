@@ -31,9 +31,9 @@ uint64 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push) {
     uint64 dest_pa = va_to_pa(dest); // 或使用预先算好的基址
 
     //设置trb的cyc位
-    dest->link.cycle = ring->cycle;
     dest->raw[0] = trb_push->raw[0];
     dest->raw[1] = trb_push->raw[1];
+    dest->link.cycle = ring->cycle;
 
     // 3. 处理 Link TRB 跨越与 Cycle 翻转
     if (ring->enq_idx == (ring_size - 2)) {
@@ -1046,11 +1046,11 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhci_event_ring_t *event_ring_arr = kzalloc(sizeof(xhci_event_ring_t) * xhcd->enable_event_ring_count);
     xhcd->event_ring_arr = event_ring_arr;
     for (uint16 i = 0; i < xhcd->enable_event_ring_count; i++) {
-        xhci_alloc_event_ring(&xhcd->event_ring_arr[i],1024); //每个事件环设置1024个槽位
+        xhci_alloc_event_ring(&event_ring_arr[i],1024); //每个事件环设置1024个槽位
 
         xhcd->rt_reg->intr_regs[i].erstsz = 1; //设置1,单事件环段
-        xhcd->rt_reg->intr_regs[i].erstba = va_to_pa(xhcd->event_ring_arr[i].erst_base); //事件环段表物理地址写入寄存器
-        xhcd->rt_reg->intr_regs[i].erdp = va_to_pa(xhcd->event_ring_arr[i].ring_base); //事件环物理地址写入寄存器
+        xhcd->rt_reg->intr_regs[i].erstba = va_to_pa(event_ring_arr[i].erst_base); //事件环段表物理地址写入寄存器
+        xhcd->rt_reg->intr_regs[i].erdp = va_to_pa(event_ring_arr[i].ring_base); //事件环物理地址写入寄存器
     }
 
     /*初始化暂存器缓冲区*/
@@ -1061,6 +1061,9 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
         //分配暂存器缓存区
         xhcd->dcbaap[0] = va_to_pa(spb_array); //暂存器缓存去数组指针写入设备上下写文数组0
     }
+
+    //初始化命令链表队列
+    list_head_init(&xhcd->cmd_list);
 
     // =========================================================================
     // 👑 必须先铺设“中断管线” (从 CPU 到 PCIe 总线)
