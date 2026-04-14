@@ -239,7 +239,7 @@ int32 xhci_translate_error(xhci_trb_comp_code_e comp_code) {
 
 
 //发送xhci命令
-int32 xhci_execute_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_command_t *out_command) {
+int32 xhci_send_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_command_t *out_command) {
     // 1. 在外面慢吞吞地申请内存 (完全不占锁)
     xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
     if (command == NULL) {
@@ -298,7 +298,7 @@ int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
     cmd_trb.enable_slot.slot_type = 0;
 
     xhci_command_t command = {0};
-    int32 status = xhci_execute_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
 
     *out_slot_id = command.slot_id;
 
@@ -317,26 +317,8 @@ int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id) {
     cmd_trb.disable_slot.trb_type = XHCI_TRB_TYPE_DISABLE_SLOT;
     cmd_trb.disable_slot.slot_id  = slot_id;
 
-    // 2. 动态申请面单
-    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
-    if (!command) return -ENOMEM;
-
-    // 3. trb和cmd入队列
-    xhci_comand_enqueue(xhcd,command,&cmd_trb);
-
-    // 4. 敲门铃
-    xhci_ring_doorbell(xhcd, 0, 0);
-
-    // 5. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
-    while (command->is_done == FALSE) {
-        asm_pause();
-    }
-
-    // 6. 返回结果
-    int32 status = command->status;
-
-    // 7. 释放面单
-    kfree(command);
+    xhci_command_t command = {0};
+    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 }
@@ -351,26 +333,8 @@ int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctx_t *input_
     cmd_trb.addr_dev.slot_id = slot_id;
     cmd_trb.addr_dev.bsr = 0;
 
-    // 2. 动态申请面单
-    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
-    if (!command) return -ENOMEM;
-
-    // 3. trb和cmd入队列
-    xhci_comand_enqueue(xhcd,command,&cmd_trb);
-
-    // 4. 敲门铃
-    xhci_ring_doorbell(xhcd, 0, 0);
-
-    // 5. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
-    while (command->is_done == FALSE) {
-        asm_pause();
-    }
-
-    // 6. 返回结果
-    int32 status = command->status;
-
-    // 7. 释放面单
-    kfree(command);
+    xhci_command_t command = {0};
+    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 
@@ -391,26 +355,8 @@ int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_
     cmd_trb.cfg_ep.slot_id = slot_id;
     cmd_trb.cfg_ep.dc = dc;
 
-    // 2. 动态申请面单
-    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
-    if (!command) return -ENOMEM;
-
-    // 3. trb和cmd入队列
-    xhci_comand_enqueue(xhcd,command,&cmd_trb);
-
-    // 4. 敲门铃
-    xhci_ring_doorbell(xhcd, 0, 0);
-
-    // 5. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
-    while (command->is_done == FALSE) {
-        asm_pause();
-    }
-
-    // 6. 返回结果
-    int32 status = command->status;
-
-    // 7. 释放面单
-    kfree(command);
+    xhci_command_t command = {0};
+    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 
@@ -429,26 +375,8 @@ int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slo
     cmd_trb.eval_ctx.input_ctx_ptr = va_to_pa(input_ctx);
     cmd_trb.eval_ctx.slot_id = slot_id;
 
-    // 2. 动态申请面单
-    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
-    if (!command) return -ENOMEM;
-
-    // 3. trb和cmd入队列
-    xhci_comand_enqueue(xhcd,command,&cmd_trb);
-
-    // 4. 敲门铃
-    xhci_ring_doorbell(xhcd, 0, 0);
-
-    // 5. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
-    while (command->is_done == FALSE) {
-        asm_pause();
-    }
-
-    // 6. 返回结果
-    int32 status = command->status;
-
-    // 7. 释放面单
-    kfree(command);
+    xhci_command_t command = {0};
+    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 
@@ -464,26 +392,8 @@ int32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci) {
     cmd_trb.rest_ep.ep_dci = ep_dci;
     cmd_trb.rest_ep.slot_id = slot_id;
 
-    // 2. 动态申请面单
-    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
-    if (!command) return -ENOMEM;
-
-    // 3. trb和cmd入队列
-    xhci_comand_enqueue(xhcd,command,&cmd_trb);
-
-    // 4. 敲门铃
-    xhci_ring_doorbell(xhcd, 0, 0);
-
-    // 5. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
-    while (command->is_done == FALSE) {
-        asm_pause();
-    }
-
-    // 6. 返回结果
-    int32 status = command->status;
-
-    // 7. 释放面单
-    kfree(command);
+    xhci_command_t command = {0};
+    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 }
@@ -507,26 +417,8 @@ int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci) {
     cmd_trb.stop_ep.ep_dci   = ep_dci;
     cmd_trb.stop_ep.suspend  = 0; // 坚决不挂起，要求主板彻底停下传输环
 
-    // 2. 动态申请面单
-    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
-    if (!command) return -ENOMEM;
-
-    // 3. trb和cmd入队列
-    xhci_comand_enqueue(xhcd,command,&cmd_trb);
-
-    // 4. 敲门铃
-    xhci_ring_doorbell(xhcd, 0, 0);
-
-    // 5. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
-    while (command->is_done == FALSE) {
-        asm_pause();
-    }
-
-    // 6. 返回结果
-    int32 status = command->status;
-
-    // 7. 释放面单
-    kfree(command);
+    xhci_command_t command = {0};
+    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 }
@@ -557,26 +449,8 @@ int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci
     cmd_trb.set_tr_deq_ptr.ep_dci = ep_dci;
     cmd_trb.set_tr_deq_ptr.slot_id = slot_id;
 
-    // 2. 动态申请面单
-    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
-    if (!command) return -ENOMEM;
-
-    // 3. trb和cmd入队列
-    xhci_comand_enqueue(xhcd,command,&cmd_trb);
-
-    // 4. 敲门铃
-    xhci_ring_doorbell(xhcd, 0, 0);
-
-    // 5. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
-    while (command->is_done == FALSE) {
-        asm_pause();
-    }
-
-    // 6. 返回结果
-    int32 status = command->status;
-
-    // 7. 释放面单
-    kfree(command);
+    xhci_command_t command = {0};
+    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 }
@@ -592,26 +466,8 @@ int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id) {
     cmd_trb.reset_dev.trb_type = XHCI_TRB_TYPE_RESET_DEVICE;
     cmd_trb.reset_dev.slot_id = slot_id;
 
-    // 2. 动态申请面单
-    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
-    if (!command) return -ENOMEM;
-
-    // 3. trb和cmd入队列
-    xhci_comand_enqueue(xhcd,command,&cmd_trb);
-
-    // 4. 敲门铃
-    xhci_ring_doorbell(xhcd, 0, 0);
-
-    // 5. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
-    while (command->is_done == FALSE) {
-        asm_pause();
-    }
-
-    // 6. 返回结果
-    int32 status = command->status;
-
-    // 7. 释放面单
-    kfree(command);
+    xhci_command_t command = {0};
+    int32 status = xhci_send_cmd(xhcd,&cmd_trb,&command);
 
     return status;
 
