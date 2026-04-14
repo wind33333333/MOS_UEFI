@@ -660,8 +660,25 @@ device_type_t usb_dev_type = {"usb-dev"};
 device_type_t usb_if_type = {"usb-if"};
 
 // 给端点分配环 (终极统一抽象版)
-static int32 alloc_ep_ring(usb_ep_t *ep,uint32 ring_size) {
+static int32 alloc_ep_ring(usb_ep_t *ep) {
     uint64 tr_dequeue_ptr;
+
+    //根据类型非配环长度
+    uint32 ring_size = 64;
+    uint8 usb_trans_type = ep->ep_type & 3;
+    switch (usb_trans_type) {
+        case USB_EP_TYPE_CONTROL:
+            ring_size = 64;
+            break;
+        case USB_EP_TYPE_ISOCH:
+            ring_size = 1024;
+            break;
+        case USB_EP_TYPE_BULK:
+            ring_size = 512;
+            break;
+        case USB_EP_TYPE_INTR:
+            ring_size = 64;
+    }
 
     // 安全边界截断
     uint32 streams_exp = ep->enable_streams_exp;
@@ -932,7 +949,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
  * == 0: 降级为传统普通模式 (主板或外设不支持，或入参期望为0)。
  * > 0 : 成功开启流模式，返回最终多方妥协后的流指数 (Stream Exponent)。
  */
-int32 usb_alloc_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp) {
+int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp) {
     if (!udev || !eps || eps_count == 0) return -EINVAL;
     if (expected_streams_exp == 0) return 0;
 
@@ -1394,7 +1411,7 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     ep0->average_trb_length = mps;
     ep0->max_streams_exp = 0;
     ep0->enable_streams_exp = 0;
-    alloc_ep_ring(ep0,64); //ep0控制端点分配64个槽位
+    alloc_ep_ring(ep0); //ep0控制端点分配64个槽位
 
     list_head_init(&ep0->urb_list);
 

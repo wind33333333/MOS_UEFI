@@ -60,7 +60,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
             uas_data->data_in_ep,
             uas_data->data_out_ep,
         };
-        uint8 streams_exp = usb_alloc_streams(uif->udev,streams_ep,3,MAX_STREAMS_EXP);
+        uint8 streams_exp = usb_enable_streams(uif->udev,streams_ep,3,MAX_STREAMS_EXP);
         uint16 streams_pool_size = 0;
         //初始化tag_bitmap
         uas_data->tag_bitmap = 0xFFFFFFFFFFFFFFFFUL; //bit0 对应tag1
