@@ -581,31 +581,51 @@ static inline void xhci_submit_ring_update_deq_idx(xhci_submit_ring_t *ring, uin
     ring->deq_idx = xhci_submit_ring_next_idx(deq_idx,ring->size);
 }
 
+// 提取大于等于 val 的下一个 2 的幂次 (内核神技)
+// 如果 val = 12KB，算出来就是 16KB
+static inline uint64 roundup_pow_of_two(uint64 val) {
+    val--;
+    val |= val >> 1;
+    val |= val >> 2;
+    val |= val >> 4;
+    val |= val >> 8;
+    val |= val >> 16;
+    val |= val >> 32;
+    return val + 1;
+}
+
 /**
- * @brief 通过硬件返回的物理地址，逆向找出它属于端点下的哪一个环 (Stream)
+ * @brief 通过硬件返回的物理地址，极速逆向找回 Stream Ring
+ * 依赖底层伙伴算法 (Buddy Allocator) 提供的自然对齐特性
  */
 static inline xhci_submit_ring_t* xhci_get_ring_by_pa(usb_ep_t *ep, uint64 trb_pa) {
-    // 1. 普通模式 (只有 1 个环)
     if (ep->enable_streams_exp == 0) {
         return &ep->ring_arr[0];
     }
 
-    // 2. 流模式 (遍历数组，进行物理边界碰撞检测)
+    // 1. 获取物理字节大小
+    uint64 ring_byte_size = ep->ring_arr[1].size << 4;
+
+    // 🌟 防御陷阱：强制向上取整到 2 的幂次，对齐伙伴系统的真实分配粒度！
+    uint64 buddy_aligned_size = roundup_pow_of_two(ring_byte_size);
+
+    // 2. 生成绝对安全的物理掩码
+    uint64 pa_mask = ~(buddy_aligned_size - 1);
+
+    // 3. ⚡️ 一步提取物理基址 (纳秒级计算),并转换成虚拟地址
+    void *target_base_va = pa_to_va(trb_pa & pa_mask);
+
+
+    // 4. 极速命中匹配
     uint32 streams_count = (1 << ep->enable_streams_exp) + 1;
     for (uint32 s = 1; s < streams_count; s++) {
-        xhci_submit_ring_t *ring = &ep->ring_arr[s];
-
-        // 计算这个环的物理内存上限边界 (每个 TRB 16 字节)
-        uint64 ring_phys_base = va_to_pa(ring->ring_base);
-        uint64 ring_end_pa = ring_phys_base + (ring->size * sizeof(xhci_trb_t));
-
-        // 🎯 命中测试
-        if (trb_pa >= ring_phys_base && trb_pa < ring_end_pa) {
-            return ring;
+        // 由于是严格相等的寄存器比较，这里绝不会有分支预测惩罚
+        if (ep->ring_arr[s].ring_base == target_base_va) {
+            return &ep->ring_arr[s];
         }
     }
 
-    return NULL; // 理论上不可能走到这里，除非硬件内存错乱
+    return NULL;
 }
 
 // 传输任务处理 (多核完美并发版)
