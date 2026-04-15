@@ -244,6 +244,7 @@ int32 uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     posix_err = usb_submit_urb(urb_cmd);
     if (posix_err < 0) goto cleanup;
 
+    // 等结果
     while (urb_status->is_done == FALSE) {
         asm_pause();
     }

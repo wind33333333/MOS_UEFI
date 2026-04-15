@@ -189,6 +189,7 @@ int32 bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     posix_err = usb_submit_urb(urb);
     if (posix_err < 0) goto cleanup;
 
+    // 等结果
     while (urb->is_done == FALSE) {
         asm_pause();
     }
@@ -211,6 +212,7 @@ int32 bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
         posix_err = usb_submit_urb(urb);
         if (posix_err < 0) goto cleanup;
 
+        // 等结果
         while (urb->is_done == FALSE) {
             asm_pause();
         }
@@ -241,6 +243,7 @@ retry_csw:
     posix_err = usb_submit_urb(urb);
     if (posix_err < 0) goto cleanup;
 
+    // 等结果
     while (urb->is_done == FALSE) {
         asm_pause();
     }
