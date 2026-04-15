@@ -151,7 +151,7 @@ int32 bot_execute_full_recovery(usb_dev_t *udev, uint8 if_num, uint8 in_ep_dci, 
  * @brief BOT 协议同步发送引擎 (The Bulk-Only Transport State Machine)
  * 严格遵循 USB Mass Storage Class BOT 规范进行 3 阶段传输与错误抢救。
  */
-int32 bot_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
+int32 bot_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     bot_data_t *bot_data = host->hostdata;
     usb_dev_t *udev = bot_data->uif->udev;
     uint8 if_num = bot_data->uif->if_num;
@@ -304,7 +304,7 @@ cleanup:
 scsi_host_template_t bot_host_template = {
     .name = "bot",
     .max_sectors = 256, //bot协议一次传输128kb 256*512字节
-    .queue_command = bot_bulk_transport_sync,
+    .queue_command = bot_bulk_transport,
     .reset_host = NULL,
     .abort_command = NULL,
 };

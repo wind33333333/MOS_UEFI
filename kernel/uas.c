@@ -168,7 +168,7 @@ cleanup:
  * UAS 协议同步发送函数 (流式并发引擎)
  * @return int32: 0 表示 USB 总线与端点通信成功，负数表示底层 POSIX 错误。
  */
-int32 uas_bulk_transport_sync(scsi_host_t *host, scsi_cmnd_t *cmnd) {
+int32 uas_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     uas_data_t *uas_data = host->hostdata;
     usb_dev_t *udev = uas_data->uif->udev;
 
@@ -280,7 +280,7 @@ cleanup:
 scsi_host_template_t uas_host_template = {
     .name = "uas",
     .max_sectors = 2048, //uas协议一次传输1MB，2048*512字节
-    .queue_command = uas_bulk_transport_sync,
+    .queue_command = uas_bulk_transport,
     .reset_host = NULL,
     .abort_command = NULL,
 };
