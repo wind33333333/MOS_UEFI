@@ -394,9 +394,6 @@ typedef struct usb_ep_t {
     xhci_submit_ring_t *ring_arr;            // xHCI 传输环数组 (普通模式大小为1，流模式大小为 N+1)
     void               *streams_ctx_array;// xHCI 流上下文数组的 DMA 内存基地址
 
-    // 🌟 新增：这个端点上“正在飞”的 URB 队列
-    list_head_t urb_list;
-
 } usb_ep_t;
 
 //usb替用接口

@@ -248,10 +248,10 @@ int32 xhci_submit_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_command_t *out_c
 
     // 2. 尝试入队，并严格检查结果
     uint64 cpu_flags;
-    spin_lock_irqsave(&xhcd->cmd_lock,&cpu_flags);
+    spin_lock_irqsave(&xhcd->cmd_ring.ring_lock,&cpu_flags);
     uint64 pa_or_err = xhci_submit_ring_enq(&xhcd->cmd_ring, cmd_trb);
     if (pa_or_err == XHCI_RING_FULL) { // 假设环满返回此宏或 -1
-        spin_unlock_irqrestore(&xhcd->cmd_lock, cpu_flags);
+        spin_unlock_irqrestore(&xhcd->cmd_ring.ring_lock, cpu_flags);
         kfree(command);     // 入队失败，销毁面单
         return -EBUSY;      // 返回系统繁忙
     }
@@ -260,8 +260,8 @@ int32 xhci_submit_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_command_t *out_c
     command->cmd_trb_pa = pa_or_err;
     command->status = -EINPROGRESS;
     command->is_done = FALSE;
-    list_add_tail(&xhcd->cmd_list, &command->node);
-    spin_unlock_irqrestore(&xhcd->cmd_lock, cpu_flags);
+    list_add_tail(&xhcd->cmd_ring.pending_list, &command->node);
+    spin_unlock_irqrestore(&xhcd->cmd_ring.ring_lock, cpu_flags);
 
     // 4. 敲击门铃，通知硬件
     xhci_ring_doorbell(xhcd, 0, 0);
@@ -278,9 +278,9 @@ int32 xhci_submit_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_command_t *out_c
     }
 
     // 7. 加锁卸载链表
-    spin_lock_irqsave(&xhcd->cmd_lock,&cpu_flags);
+    spin_lock_irqsave(&xhcd->cmd_ring.ring_lock,&cpu_flags);
     list_del(&command->node);
-    spin_unlock_irqrestore(&xhcd->cmd_lock,cpu_flags);
+    spin_unlock_irqrestore(&xhcd->cmd_ring.ring_lock,cpu_flags);
 
     // 8. 释放面单
     kfree(command);
@@ -318,8 +318,7 @@ int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id) {
     cmd_trb.disable_slot.trb_type = XHCI_TRB_TYPE_DISABLE_SLOT;
     cmd_trb.disable_slot.slot_id  = slot_id;
 
-    xhci_command_t command = {0};
-    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,NULL);
 
     return status;
 }
@@ -334,8 +333,7 @@ int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctx_t *input_
     cmd_trb.addr_dev.slot_id = slot_id;
     cmd_trb.addr_dev.bsr = 0;
 
-    xhci_command_t command = {0};
-    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,NULL);
 
     return status;
 
@@ -356,8 +354,7 @@ int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_
     cmd_trb.cfg_ep.slot_id = slot_id;
     cmd_trb.cfg_ep.dc = dc;
 
-    xhci_command_t command = {0};
-    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,NULL);
 
     return status;
 
@@ -376,8 +373,7 @@ int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slo
     cmd_trb.eval_ctx.input_ctx_ptr = va_to_pa(input_ctx);
     cmd_trb.eval_ctx.slot_id = slot_id;
 
-    xhci_command_t command = {0};
-    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,NULL);
 
     return status;
 
@@ -393,8 +389,7 @@ int32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci) {
     cmd_trb.rest_ep.ep_dci = ep_dci;
     cmd_trb.rest_ep.slot_id = slot_id;
 
-    xhci_command_t command = {0};
-    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,NULL);
 
     return status;
 }
@@ -418,8 +413,7 @@ int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci) {
     cmd_trb.stop_ep.ep_dci   = ep_dci;
     cmd_trb.stop_ep.suspend  = 0; // 坚决不挂起，要求主板彻底停下传输环
 
-    xhci_command_t command = {0};
-    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,NULL);
 
     return status;
 }
@@ -450,8 +444,7 @@ int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci
     cmd_trb.set_tr_deq_ptr.ep_dci = ep_dci;
     cmd_trb.set_tr_deq_ptr.slot_id = slot_id;
 
-    xhci_command_t command = {0};
-    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,NULL);
 
     return status;
 }
@@ -467,8 +460,7 @@ int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id) {
     cmd_trb.reset_dev.trb_type = XHCI_TRB_TYPE_RESET_DEVICE;
     cmd_trb.reset_dev.slot_id = slot_id;
 
-    xhci_command_t command = {0};
-    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
+    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,NULL);
 
     return status;
 
@@ -589,8 +581,35 @@ static inline void xhci_submit_ring_update_deq_idx(xhci_submit_ring_t *ring, uin
     ring->deq_idx = xhci_submit_ring_next_idx(deq_idx,ring->size);
 }
 
-//传输任务处理
-void xhci_handle_transfer_event(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
+/**
+ * @brief 通过硬件返回的物理地址，逆向找出它属于端点下的哪一个环 (Stream)
+ */
+static inline xhci_submit_ring_t* xhci_get_ring_by_pa(usb_ep_t *ep, uint64 trb_pa) {
+    // 1. 普通模式 (只有 1 个环)
+    if (ep->enable_streams_exp == 0) {
+        return &ep->ring_arr[0];
+    }
+
+    // 2. 流模式 (遍历数组，进行物理边界碰撞检测)
+    uint32 streams_count = (1 << ep->enable_streams_exp) + 1;
+    for (uint32 s = 1; s < streams_count; s++) {
+        xhci_submit_ring_t *ring = &ep->ring_arr[s];
+
+        // 计算这个环的物理内存上限边界 (每个 TRB 16 字节)
+        uint64 ring_phys_base = va_to_pa(ring->ring_base);
+        uint64 ring_end_pa = ring_phys_base + (ring->size * sizeof(xhci_trb_t));
+
+        // 🎯 命中测试
+        if (trb_pa >= ring_phys_base && trb_pa < ring_end_pa) {
+            return ring;
+        }
+    }
+
+    return NULL; // 理论上不可能走到这里，除非硬件内存错乱
+}
+
+// 传输任务处理 (多核完美并发版)
+void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
     uint64 trb_pa     = evt_trb->transfer_event.tr_trb_ptr;
     uint8  evt_ep_dci = evt_trb->transfer_event.ep_dci;
     uint8  slot_id    = evt_trb->transfer_event.slot_id;
@@ -601,33 +620,66 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
     usb_ep_t *ep = udev->eps[evt_ep_dci];
     if (ep == NULL) return;
 
-    // 遍历该端点上所有正在飞的面单
-    for (list_head_t *curr = ep->urb_list.next; curr != &ep->urb_list; curr = curr->next) {
+    // =======================================================
+    // 🌟 1. 逆向定位：找出真正发生事件的那个环！
+    // =======================================================
+    xhci_submit_ring_t *target_ring = xhci_get_ring_by_pa(ep, trb_pa);
+    if (target_ring == NULL) {
+        color_printk(RED, BLACK, "xHCI: Ghost TRB PA %llx from hardware!\n", trb_pa);
+        return;
+    }
+
+    // =======================================================
+    // 🔒 2. 获取该环的专属锁 (绝不影响其他 Stream 的提交)
+    // =======================================================
+    uint64 cpu_flags;
+    spin_lock_irqsave(&target_ring->ring_lock, &cpu_flags);
+
+    // =======================================================
+    // 3. 在目标环的安全链表里进行小范围遍历
+    // ⚠️ 注意：这里最好用 list_for_each_safe，以防你需要摘除节点
+    // =======================================================
+    for (list_head_t *curr = target_ring->pending_list.next; curr != &target_ring->pending_list; curr = curr->next) {
 
         usb_urb_t *urb = CONTAINER_OF(curr, usb_urb_t, node);
 
         // 🎯 物理地址对上了！这就是硬件刚刚做完的任务
         if (urb->last_trb_pa == trb_pa) {
-            // 1. 结算账单
+
+            // 结算账单
             urb->status = xhci_translate_error(comp_code);
             urb->actual_length = urb->transfer_len - evt_trb->transfer_event.tr_len;
-            urb->is_done = TRUE;
-            xhci_submit_ring_update_deq_idx(&ep->ring_arr[urb->stream_id], trb_pa);
 
-            break;
+            // 💡 架构师提醒：在硬件完成了任务后，更新环的消费者游标 deq_idx
+            // (你代码里的函数名可能略有不同)
+            xhci_submit_ring_update_deq_idx(target_ring, trb_pa);
+
+            // 🌟 关键动作：既然完成了，就可以从环的 pending_list 里摘除了！
+            // 这样能保证环里的链表极度干净，提高下次遍历的速度。
+            list_del(&urb->node);
+
+            urb->is_done = TRUE;
+
+            break; // 找到了就跳出循环
         }
     }
+
+    // 🔓 4. 解锁释放
+    spin_unlock_irqrestore(&target_ring->ring_lock, cpu_flags);
 }
 
+
+
+
 //命令完成事件trb处理程序
-void xhci_handle_cmd_completion(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
+void xhci_handle_cmd_completion(xhci_submit_ring_t *cmd_ring,xhci_trb_t *evt_trb) {
     uint64 trb_pa     = evt_trb->cmd_comp_event.cmd_trb_ptr;
     uint8  slot_id    = evt_trb->cmd_comp_event.slot_id;
     uint32 comp_code  = evt_trb->cmd_comp_event.comp_code;
     uint32 comp_param = evt_trb->cmd_comp_event.cmd_comp_param;
 
     // 遍历该端点上所有正在飞的面单
-   for (list_head_t *curr = xhcd->cmd_list.next; curr != &xhcd->cmd_list; curr = curr->next) {
+   for (list_head_t *curr = cmd_ring->pending_list.next; curr != &cmd_ring->pending_list; curr = curr->next) {
        xhci_command_t *command = CONTAINER_OF(curr, xhci_command_t, node);
 
        if (command->cmd_trb_pa == trb_pa ) {
@@ -635,7 +687,7 @@ void xhci_handle_cmd_completion(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
            command->comp_code = comp_code;
            command->comp_param = comp_param;
            command->is_done = TRUE;
-           xhci_submit_ring_update_deq_idx(&xhcd->cmd_ring, trb_pa);
+           xhci_submit_ring_update_deq_idx(cmd_ring, trb_pa);
            break;
        }
 
@@ -663,7 +715,7 @@ void xhci_process_single_event(xhci_hcd_t *xhcd, xhci_trb_t *trb) {
             break;
         case XHCI_TRB_TYPE_CMD_COMPLETION:
             // 【类型 33：命令完成事件】(主板建桥图纸回执)
-            xhci_handle_cmd_completion(xhcd, trb);
+            xhci_handle_cmd_completion(&xhcd->cmd_ring, trb);
             break;
         case XHCI_TRB_TYPE_PORT_STATUS_CHG:
             // 【类型 34：端口状态改变事件】(物理插拔感知)
