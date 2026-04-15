@@ -277,12 +277,7 @@ int32 xhci_submit_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_command_t *out_c
         *out_command = *command;
     }
 
-    // 7. 加锁卸载链表
-    spin_lock_irqsave(&xhcd->cmd_ring.ring_lock,&cpu_flags);
-    list_del(&command->node);
-    spin_unlock_irqrestore(&xhcd->cmd_ring.ring_lock,cpu_flags);
-
-    // 8. 释放面单
+    // 7. 释放面单
     kfree(command);
 
     return out_command->status;
@@ -657,29 +652,19 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
 
     // =======================================================
     // 3. 在目标环的安全链表里进行小范围遍历
-    // ⚠️ 注意：这里最好用 list_for_each_safe，以防你需要摘除节点
     // =======================================================
-    for (list_head_t *curr = target_ring->pending_list.next; curr != &target_ring->pending_list; curr = curr->next) {
-
+    list_head_t *curr, *next;
+    list_for_each_safe(curr,next,&target_ring->pending_list){
         usb_urb_t *urb = CONTAINER_OF(curr, usb_urb_t, node);
 
         // 🎯 物理地址对上了！这就是硬件刚刚做完的任务
         if (urb->last_trb_pa == trb_pa) {
-
             // 结算账单
+            xhci_submit_ring_update_deq_idx(target_ring, trb_pa);
+            list_del_init(curr);
             urb->status = xhci_translate_error(comp_code);
             urb->actual_length = urb->transfer_len - evt_trb->transfer_event.tr_len;
-
-            // 💡 架构师提醒：在硬件完成了任务后，更新环的消费者游标 deq_idx
-            // (你代码里的函数名可能略有不同)
-            xhci_submit_ring_update_deq_idx(target_ring, trb_pa);
-
-            // 🌟 关键动作：既然完成了，就可以从环的 pending_list 里摘除了！
-            // 这样能保证环里的链表极度干净，提高下次遍历的速度。
-            list_del(&urb->node);
-
             urb->is_done = TRUE;
-
             break; // 找到了就跳出循环
         }
     }
@@ -689,8 +674,6 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
 }
 
 
-
-
 //命令完成事件trb处理程序
 void xhci_handle_cmd_completion(xhci_submit_ring_t *cmd_ring,xhci_trb_t *evt_trb) {
     uint64 trb_pa     = evt_trb->cmd_comp_event.cmd_trb_ptr;
@@ -698,21 +681,25 @@ void xhci_handle_cmd_completion(xhci_submit_ring_t *cmd_ring,xhci_trb_t *evt_trb
     uint32 comp_code  = evt_trb->cmd_comp_event.comp_code;
     uint32 comp_param = evt_trb->cmd_comp_event.cmd_comp_param;
 
+    uint64 cpu_flags;
+    spin_lock_irqsave(&cmd_ring->ring_lock, &cpu_flags);
     // 遍历该端点上所有正在飞的面单
-   for (list_head_t *curr = cmd_ring->pending_list.next; curr != &cmd_ring->pending_list; curr = curr->next) {
+    list_head_t *curr, *next;
+    list_for_each_safe(curr,next,&cmd_ring->pending_list){
        xhci_command_t *command = CONTAINER_OF(curr, xhci_command_t, node);
 
        if (command->cmd_trb_pa == trb_pa ) {
+           xhci_submit_ring_update_deq_idx(cmd_ring, trb_pa);
+           list_del_init(curr);
            command->slot_id = slot_id;
            command->comp_code = comp_code;
            command->comp_param = comp_param;
            command->is_done = TRUE;
-           xhci_submit_ring_update_deq_idx(cmd_ring, trb_pa);
            break;
        }
-
    }
-
+    // 🔓 4. 解锁释放
+    spin_unlock_irqrestore(&cmd_ring->ring_lock, cpu_flags);
 }
 
 //端口状态处理
