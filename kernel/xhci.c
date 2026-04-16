@@ -675,7 +675,8 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
 
 
 //命令完成事件trb处理程序
-void xhci_handle_cmd_completion(xhci_submit_ring_t *cmd_ring,xhci_trb_t *evt_trb) {
+void xhci_handle_cmd_completion(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
+    xhci_submit_ring_t *cmd_ring = &xhcd->cmd_ring;
     uint64 trb_pa     = evt_trb->cmd_comp_event.cmd_trb_ptr;
     uint8  slot_id    = evt_trb->cmd_comp_event.slot_id;
     uint32 comp_code  = evt_trb->cmd_comp_event.comp_code;
@@ -704,6 +705,9 @@ void xhci_handle_cmd_completion(xhci_submit_ring_t *cmd_ring,xhci_trb_t *evt_trb
 
 //端口状态处理
 void xhci_handle_port_status_change(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
+    uint8 port_id = evt_trb->prot_status_change_event.port_id;
+    uint32 portsc = xhci_read_portsc(xhcd,port_id);
+
 
 }
 
@@ -722,7 +726,7 @@ void xhci_process_single_event(xhci_hcd_t *xhcd, xhci_trb_t *trb) {
             break;
         case XHCI_TRB_TYPE_CMD_COMPLETION:
             // 【类型 33：命令完成事件】(主板建桥图纸回执)
-            xhci_handle_cmd_completion(&xhcd->cmd_ring, trb);
+            xhci_handle_cmd_completion(xhcd, trb);
             break;
         case XHCI_TRB_TYPE_PORT_STATUS_CHG:
             // 【类型 34：端口状态改变事件】(物理插拔感知)
@@ -742,8 +746,17 @@ irqreturn_e xhci_isr(cpu_registers_t *regs,void *dev_id) {
     pcie_dev_t *xdev = dev_id;
     xhci_hcd_t *xhcd = xdev->priv_data;
 
+    //清除硬件中断挂起标志
+    uint32 usbsts = xhcd->op_reg->usbsts;
+    usbsts &= XHCI_STS_HSE | XHCI_STS_EINT | XHCI_STS_PCD;
+    xhcd->op_reg->usbsts = usbsts;
+
+
     uint8 evtnt_idx = 0;
     xhci_event_ring_t *evt_ring = &xhcd->event_ring_arr[evtnt_idx];
+
+    uint64 flags;
+    spin_lock_irqsave(&evt_ring->ring_lock, &flags);
 
     // =================================================================
     // 🛡️ 硬件级防御：清除可能残留的 IMAN_IP (防老旧/非标主板中断风暴)
@@ -776,7 +789,10 @@ irqreturn_e xhci_isr(cpu_registers_t *regs,void *dev_id) {
         uint64 erdp_pa = va_to_pa(&evt_ring->ring_base[evt_ring->deq_idx]) | XHCI_ERDP_EHB;
         xhcd->rt_reg->intr_regs[evtnt_idx].erdp = erdp_pa;
     }
+
+    spin_unlock_irqrestore(&evt_ring->ring_lock, flags);
 }
+
 
 
 //传输环，命令环分配函数

@@ -1654,6 +1654,30 @@ static int32 usb_port_init(xhci_hcd_t *xhcd, uint8 port_id) {
     return usb_port_reset(xhcd, port_id);
 }
 
+
+//端口插入设备处理
+int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_id) {
+        color_printk(GREEN,BLACK,"portsc:%#x       \n",xhci_read_portsc(xhcd, port_id));
+        if (usb_port_init(xhcd, port_id) == 0) {
+            color_printk(GREEN,BLACK,"portsc:%#x       \n",xhci_read_portsc(xhcd, port_id));
+            usb_dev_t *usb_dev = usb_dev_create(xhcd, port_id);
+            usb_dev_register(usb_dev);
+            usb_if_create(usb_dev);
+            usb_if_register(usb_dev);
+        } else {
+            // 如果复位失败，比如劣质 U 盘无法响应，直接跳过，保护操作系统不挂死
+            color_printk(YELLOW, BLACK, "[xHCI] Ignored faulty device on port %d.\n", port_id);
+        }
+}
+
+//端口拔出设备处理
+int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_id) {
+
+    color_printk(YELLOW,BLACK,"[xHCI] disconnection port %d.\n]",port_id);
+
+}
+
+
 //usb设备初始化
 void usb_dev_scan(xhci_hcd_t *xhcd){
 
@@ -1665,22 +1689,10 @@ void usb_dev_scan(xhci_hcd_t *xhcd){
 
     for (uint8 i = 0; i < xhcd->max_ports; i++) {
         uint8 port_id = i+1;
-        uint32 portsc = xhci_read_portsc(xhcd,port_id);
 
-        // 检测是否有设备连接 (CCS) 并且发生了状态变化 (CSC)
-        //if ((portsc & XHCI_PORTSC_CCS) && (portsc & XHCI_PORTSC_CSC))
+        uint32 portsc = xhci_read_portsc(xhcd,port_id);
         if (portsc & XHCI_PORTSC_CCS ) {//目前采用轮训等待方式暂时只要ccs置为就进行初始化
-            color_printk(GREEN,BLACK,"portsc:%#x       \n",xhci_read_portsc(xhcd, port_id));
-            if (usb_port_init(xhcd, port_id) == 0) {
-                color_printk(GREEN,BLACK,"portsc:%#x       \n",xhci_read_portsc(xhcd, port_id));
-                usb_dev_t *usb_dev = usb_dev_create(xhcd, port_id);
-                usb_dev_register(usb_dev);
-                usb_if_create(usb_dev);
-                usb_if_register(usb_dev);
-            } else {
-                // 如果复位失败，比如劣质 U 盘无法响应，直接跳过，保护操作系统不挂死
-                color_printk(YELLOW, BLACK, "[xHCI] Ignored faulty device on port %d.\n", i);
-            }
+            xhci_handle_port_connection(xhcd, port_id);
         }
     }
 }

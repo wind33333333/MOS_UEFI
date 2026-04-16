@@ -1002,7 +1002,7 @@ typedef struct {
     uint32       deq_idx;           // 读游标
     uint8        cycle;             // 生产 Cycle 状态
 
-    // === [并发与调度层 (🌟 你的神来之笔)] ===
+    // === [并发与调度层] ===
     uint32   ring_lock;             // 保护当前环的唯一自旋锁
     list_head_t  pending_list;      // 在此环上排队等待硬件完成的面单 (URB 或 Command)
 
@@ -1019,6 +1019,8 @@ typedef struct {
     // 🌟 事件环独有的物理结构
     xhci_erst_t *erst_base;   // 指向 ERST 段表内存的虚拟地址
     uint32       erst_size;
+
+    uint32      ring_lock;
 } xhci_event_ring_t;
 
 
@@ -1079,7 +1081,7 @@ typedef struct xhci_hcd_t{
     // ==========================================
     // 5. 软硬件映射与并发控制 (Software State)
     // ==========================================
-    // xhci_port_t         *ports;             // 端口逻辑对象数组
+    // xhci_port_t       *ports;             // 端口逻辑对象数组
     struct usb_dev_t    **udevs;           // 插槽到设备的逻辑映射 (通过 Slot ID 查找 usb_dev_t)
 
     // 注意：事件环不是一个，它是和中断器绑定的！这里根据 max_intrs 动态分配！
