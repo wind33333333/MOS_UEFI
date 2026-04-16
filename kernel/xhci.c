@@ -703,13 +703,27 @@ void xhci_handle_cmd_completion(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
     spin_unlock_irqrestore(&cmd_ring->ring_lock, cpu_flags);
 }
 
+
+
 //端口状态处理
 void xhci_handle_port_status_change(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
     uint8 port_id = evt_trb->prot_status_change_event.port_id;
     uint32 portsc = xhci_read_portsc(xhcd,port_id);
 
+    // 1. 验明正身：真的是这个端口发生了插拔吗？
+    if (portsc & XHCI_PORTSC_CSC) {
+        // 2. 🌟 核心分发：看当前的绝对物理状态！
+        if (portsc & XHCI_PORTSC_CCS) {
+            // ➡️ 跳转去执行设备枚举 (就是你上一轮封装的函数)
+            xhci_handle_port_connection(xhcd, port_id);
 
+        } else {
+            // ⬅️ 跳转去执行设备清理
+            xhci_handle_port_disconnection(xhcd, port_id);
+        }
+    }
 }
+
 
 
 /**
@@ -1004,6 +1018,7 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     /* 一旦执行完这句代码，随时可能有真实的硬件中断砸进 xhci_isr！*/
     xhci_start(xhcd);
 
+
     color_printk(
         GREEN,BLACK,
         "XHCI Version:%x.%x MaxSlots:%d MaxIntrs:%d MaxPorts:%d Dev_Ctx_Size:%d USBcmd:%#x USBsts:%#x    \n",
@@ -1018,6 +1033,9 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
                      spc->major_bcd, spc->minor_bcd, spc->port_first, spc->port_count, spc->psi_count);
     }
 
+    while (1) {
+        asm_pause();
+    }
 
     extern void usb_dev_scan(xhci_hcd_t *xhcd);
     usb_dev_scan(xhcd);

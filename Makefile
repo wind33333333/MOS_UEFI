@@ -77,21 +77,17 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	-pkill udk-gdb-server
 	-pkill qemu-system-x86
 	qemu-system-x86_64 \
-		-monitor telnet:localhost:4444,server,nowait \
-		-S -s \
-		-net none \
-		-M q35 \
-		-device intel-iommu,intremap=on,caching-mode=on \
-		-m 8G \
-		-cpu max \
-		-smp sockets=2,cores=2,threads=2 \
-		-bios OVMF.fd \
-	  -drive if=none,id=bootdisk,format=raw,file=fat:rw:./esp \
+	  `# --- 1. 基础系统与调试参数 ---` \
+	  -M q35 -m 8G -cpu max -smp sockets=2,cores=2,threads=2 -bios OVMF.fd \
+	  -net none -S -s -monitor telnet:localhost:4444,server,nowait \
+	  `# --- 2. 核心总线与中断控制器 ---` \
+	  -device intel-iommu,intremap=on,caching-mode=on \
 	  -device qemu-xhci,id=xhci,msi=on,msix=on \
+	  `# --- 3. 启动盘 (固定插在端口 1) ---` \
+	  -drive if=none,id=bootdisk,format=raw,file=fat:rw:./esp \
 	  -device usb-storage,drive=bootdisk,bus=xhci.0,bootindex=1 \
-	  -drive if=none,id=uasdisk,file=/home/wind3/disk-uas.img,format=raw \
-	  -device usb-uas,id=uas,bus=xhci.0 \
-	  -device scsi-hd,drive=uasdisk,bus=uas.0,lun=0 &
+	  `# --- 4. UAS 测试盘后端 (留待 Telnet 手动热插拔) ---` \
+	  -drive if=none,id=uas_backend,format=raw,file=/home/wind3/disk-uas.img &
 
 qemu-monitor:
 	telnet localhost 4444

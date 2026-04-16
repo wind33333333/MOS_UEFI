@@ -609,3 +609,6 @@ int32 usb_ep_halt_control(usb_dev_t *udev, uint8 ep_dci, usb_request_e is_set);
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
 int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp);
 
+int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_id);
+int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_id);
+
