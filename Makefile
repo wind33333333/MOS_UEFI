@@ -72,6 +72,8 @@ debug-uefi: clean_uefi
 #-device amd-iommu \amd cpu启用iommu
 #-device intel-iommu,intremap=on,caching-mode=on \ intel cpu启用iommu
 #-device usb-uas,id=uas,bus=xhci.0 \  禁用这一行u盘为bot协议，启用这一行u盘为uas协议
+#device_add usb-storage,drive=hotplug_bot_disk,bus=xhci.0,id=my_bot_usb 动态挂在u盘
+#device_del my_bot_usb 写在u盘
 debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	cp $(BUILD)/kernel.bin esp/kernel.bin
 	-pkill udk-gdb-server
@@ -83,11 +85,15 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	  `# --- 2. 核心总线与中断控制器 ---` \
 	  -device intel-iommu,intremap=on,caching-mode=on \
 	  -device qemu-xhci,id=xhci,msi=on,msix=on \
-	  `# --- 3. 启动盘 (固定插在端口 1) ---` \
+	  `# --- 3. 启动盘 (BOT 协议, 固定插在端口 1) ---` \
 	  -drive if=none,id=bootdisk,format=raw,file=fat:rw:./esp \
 	  -device usb-storage,drive=bootdisk,bus=xhci.0,bootindex=1 \
-	  `# --- 4. UAS 测试盘后端 (留待 Telnet 手动热插拔) ---` \
-	  -drive if=none,id=uas_backend,format=raw,file=/home/wind3/disk-uas.img &
+	  `# --- 4. UAS 测试盘 (UAS 协议, 固定插在端口 2) ---` \
+	  -drive if=none,id=uas_backend,format=raw,file=/home/wind3/disk-uas.img \
+	  -device usb-uas,id=uas_dev,bus=xhci.0,port=2 \
+	  -device scsi-hd,bus=uas_dev.0,scsi-id=0,lun=0,drive=uas_backend \
+	  `# --- 5. 热插拔 BOT 测试盘 (放在桌上，随时准备插入) ---` \
+	  -drive if=none,id=hotplug_bot_disk,format=raw,file=/home/wind3/disk-bot.img &
 
 qemu-monitor:
 	telnet localhost 4444

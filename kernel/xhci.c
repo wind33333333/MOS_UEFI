@@ -715,13 +715,30 @@ void xhci_handle_port_status_change(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
         // 2. 🌟 核心分发：看当前的绝对物理状态！
         if (portsc & XHCI_PORTSC_CCS) {
             // ➡️ 跳转去执行设备枚举 (就是你上一轮封装的函数)
-            xhci_handle_port_connection(xhcd, port_id);
+
+            color_printk(GREEN,BLACK,"usb device plug port:%d  \n",port_id);
+            //xhci_handle_port_connection(xhcd, port_id);
 
         } else {
             // ⬅️ 跳转去执行设备清理
-            xhci_handle_port_disconnection(xhcd, port_id);
+            color_printk(RED,BLACK,"usb device unplug port:%d  \n",port_id);
+            //xhci_handle_port_disconnection(xhcd, port_id);
         }
     }
+
+    // 1. 保护现场：将读到的数值中所有的 W1C 位强行置 0，防止误杀其他未处理的中断
+    portsc &= ~XHCI_PORTSC_W1C_MASK;
+
+    // 2. 暴力美学，全量清零：
+    // 不分 2.0 和 3.0，把所有可能在复位/插入时产生的状态变化位一次性砸成 1！
+    // 对于 2.0 端口，WRC 和 PLC 写 1 纯属空操作，极其安全。
+    portsc |= XHCI_PORTSC_PRC |
+              XHCI_PORTSC_CSC |
+              XHCI_PORTSC_PEC |
+              XHCI_PORTSC_WRC |
+              XHCI_PORTSC_PLC;
+
+    xhci_write_portsc(xhcd, port_id, portsc);
 }
 
 
@@ -1033,9 +1050,6 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
                      spc->major_bcd, spc->minor_bcd, spc->port_first, spc->port_count, spc->psi_count);
     }
 
-    while (1) {
-        asm_pause();
-    }
 
     extern void usb_dev_scan(xhci_hcd_t *xhcd);
     usb_dev_scan(xhcd);
