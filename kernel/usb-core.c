@@ -1056,8 +1056,8 @@ int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8
 //===================================================== 解析描述符非配资源 ============================================
 
 //给备用接口的所有端点分配环
-static inline int32 enable_alt_if (usb_if_alt_t *if_alt) {
-    usb_dev_t *udev = if_alt->uif->udev;
+static inline int32 enable_alt_if (usb_if_alt_t *uif_alt) {
+    usb_dev_t *udev = uif_alt->uif->udev;
 
     int32 posix_err = 0;
 
@@ -1065,8 +1065,8 @@ static inline int32 enable_alt_if (usb_if_alt_t *if_alt) {
     usb_tx_begin(udev);
 
     // 配置该接口下的所有端点
-    for (uint8 i = 0; i < if_alt->uep_count; i++) {
-        usb_ep_t *ep = &if_alt->ueps[i];
+    for (uint8 i = 0; i < uif_alt->uep_count; i++) {
+        usb_ep_t *ep = &uif_alt->ueps[i];
         uint8 ep_dci = ep->ep_dci;
 
         // 指针放到udev.eps中，建立全局 DCI 快速索引
@@ -1328,15 +1328,15 @@ static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
     // 阶段 B：图纸绘制完毕，开始向主板申请硬件 DMA 高速公路
     // =================================================================
     for (uint32 i = 0; i < udev->uif_count; i++) {
-        usb_if_t *usb_if = &udev->uifs[i];
+        usb_if_t *uif = &udev->uifs[i];
 
-        if (usb_if != NULL) {
+        if (uif != NULL) {
             // 默认锁定 alt 0 备用接口 (包含极其严密的兜底容错逻辑)
-            usb_if_alt_t *alt0 = usb_find_alt_by_num(usb_if, 0);
-            usb_if->cur_uif_alt = alt0 ? alt0 : &usb_if->uif_alts[0];
+            usb_if_alt_t *alt0 = usb_find_alt_by_num(uif, 0);
+            uif->cur_uif_alt = alt0 ? alt0 : &uif->uif_alts[0];
 
             // 呼叫主板：分配 Transfer Ring 并下发 Configure Endpoint
-            enable_alt_if(usb_if->cur_uif_alt);
+            enable_alt_if(uif->cur_uif_alt);
         }
     }
 
@@ -1608,10 +1608,10 @@ static int32 usb_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     // ---------------------------------------------------------
     // 【未来重构点】：这部分将被替换为 "Thread Sleep / Yield" (挂起线程)
     // ---------------------------------------------------------
-    uint32 times = 30000000;
-    while (times--) {
-
-    }
+    // uint32 times = 30000000;
+    // while (times--) {
+    //
+    // }
     // if ( xhci_wait_for_event(xhcd, 0,XHCI_TRB_TYPE_PORT_STATUS_CHG ,port_id,0,0, 30000000, NULL) == XHCI_COMP_TIMEOUT) {
     //     return -1; // 超时失败
     // }
@@ -1687,12 +1687,10 @@ void usb_dev_scan(xhci_hcd_t *xhcd){
     //     asm_pause();
     // }
 
-    for (uint8 i = 0; i < xhcd->max_ports; i++) {
-        uint8 port_id = i+1;
-
-        uint32 portsc = xhci_read_portsc(xhcd,port_id);
+    for (uint8 i = 1; i <= xhcd->max_ports; i++) {
+        uint32 portsc = xhci_read_portsc(xhcd,i);
         if (portsc & XHCI_PORTSC_CCS ) {//目前采用轮训等待方式暂时只要ccs置为就进行初始化
-            xhci_handle_port_connection(xhcd, port_id);
+            xhci_handle_port_connection(xhcd, i);
         }
     }
 }

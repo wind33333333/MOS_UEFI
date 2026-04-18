@@ -85,15 +85,20 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	  `# --- 2. 核心总线与中断控制器 ---` \
 	  -device intel-iommu,intremap=on,caching-mode=on \
 	  -device qemu-xhci,id=xhci,msi=on,msix=on \
-	  `# --- 3. 启动盘 (BOT 协议, 固定插在端口 1) ---` \
+	  `# --- 3. 启动盘 (BOT, 根端口 1) ---` \
 	  -drive if=none,id=bootdisk,format=raw,file=fat:rw:./esp \
 	  -device usb-storage,drive=bootdisk,bus=xhci.0,bootindex=1 \
-	  `# --- 4. UAS 测试盘 (UAS 协议, 固定插在端口 2) ---` \
+	  `# --- 4. UAS 高速测试盘 (必须直连根端口 2) ---` \
 	  -drive if=none,id=uas_backend,format=raw,file=/home/wind3/disk-uas.img \
 	  -device usb-uas,id=uas_dev,bus=xhci.0,port=2 \
 	  -device scsi-hd,bus=uas_dev.0,scsi-id=0,lun=0,drive=uas_backend \
-	  `# --- 5. 热插拔 BOT 测试盘 (放在桌上，随时准备插入) ---` \
-	  -drive if=none,id=hotplug_bot_disk,format=raw,file=/home/wind3/disk-bot.img &
+	  `# --- 5. 外部 Hub (插入根端口 3，它是低速的) ---` \
+	  -device usb-hub,id=ext_hub,bus=xhci.0,port=3 \
+	  `# --- 6. Hub 级联测试盘 (BOT 协议完美兼容低速，挂在 Hub 端口 1) ---` \
+	  -drive if=none,id=hub_bot_disk,format=raw,file=/home/wind3/disk-bot.img \
+	  -device usb-storage,drive=hub_bot_disk,bus=xhci.0,port=3.1 \
+	  `# --- 7. 留空的热插拔盘 (等你在 Telnet 里玩) ---` \
+	  -drive if=none,id=hotplug_disk,format=raw,file=/home/wind3/disk-bot.img &
 
 qemu-monitor:
 	telnet localhost 4444
