@@ -65,7 +65,7 @@ uint8 bot_get_max_lun(usb_dev_t *udev, uint8 if_num) {
     setup_pkg.length    = 1;
 
     // ★ 架构防御：必须捕获错误码！因为 90% 的低端 U 盘会在这里返回 STALL (-EPIPE)
-    int32 posix_err = usb_control_msg_sync(udev, &setup_pkg, max_lun);
+    int32 posix_err = usb_control_msg(udev, &setup_pkg, max_lun);
     uint8 lun_count;
     if (posix_err < 0) {
         // U 盘傲娇抗议 (STALL) 或通信失败，根据 USB 规范，原谅它并默认为 0（加上面的+1后为1个LUN）
@@ -112,7 +112,7 @@ static int32 bot_mass_storage_reset(usb_dev_t *udev,uint8 if_num) {
     usb_setup_pkg.index = if_num;
     usb_setup_pkg.length = 0;
 
-    int32 posix_err =usb_control_msg_sync(udev,&usb_setup_pkg,NULL);
+    int32 posix_err =usb_control_msg(udev,&usb_setup_pkg,NULL);
     if (posix_err < 0) {
         color_printk(RED,BLACK,"Bot Recovery Reset Fail! \n");
         return posix_err;

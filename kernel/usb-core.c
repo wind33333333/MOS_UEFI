@@ -319,7 +319,7 @@ void usb_fill_bulk_urb(usb_urb_t *urb,
  * @brief 同步发送控制传输 (USB Core 的核心枢纽)
  * @return int32 0 表示成功，负数表示 POSIX 标准错误码
  */
-int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void *data_buf) {
+int32 usb_control_msg(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void *data_buf) {
     // 1. 动态申请 URB 面单
     usb_urb_t *urb = usb_alloc_urb();
     if (!urb) {
@@ -367,7 +367,7 @@ int32 usb_ep_halt_control(usb_dev_t *udev, uint8 ep_dci, usb_request_e halt_acti
     setup_pkg.length    = 0;
 
     // 直接通过 EP0 发送控制传输并透传错误码
-    return usb_control_msg_sync(udev, &setup_pkg, NULL);
+    return usb_control_msg(udev, &setup_pkg, NULL);
 }
 
 
@@ -388,7 +388,7 @@ int32 usb_get_desc(usb_dev_t *udev, void *desc_buf, uint16 length, usb_desc_type
     setup_pkg.length    = length;
 
     // ★ POSIX 修正：坚决不能丢弃获取描述符的状态！
-    return usb_control_msg_sync(udev, &setup_pkg, desc_buf);
+    return usb_control_msg(udev, &setup_pkg, desc_buf);
 }
 
 
@@ -406,7 +406,7 @@ int32 usb_set_cfg(usb_dev_t *udev, uint8 cfg_value) {
     setup_pkg.length    = 0;
 
     // ★ POSIX 修正：透传错误
-    return usb_control_msg_sync(udev, &setup_pkg, NULL);
+    return usb_control_msg(udev, &setup_pkg, NULL);
 }
 
 
@@ -424,7 +424,7 @@ int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
     setup_pkg.length    = 0;
 
     // ★ POSIX 修正：透传错误
-    return usb_control_msg_sync(udev, &setup_pkg, NULL);
+    return usb_control_msg(udev, &setup_pkg, NULL);
 }
 
 

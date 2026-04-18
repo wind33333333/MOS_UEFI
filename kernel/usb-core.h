@@ -243,6 +243,11 @@ typedef struct {
 } usb_hub3_desc_t;
 
 typedef enum : uint8 {
+    USB_HUB2_DESC = 0x29,
+    USB_HUB3_DESC = 0x2A,
+}usb_hub_desc_e;
+
+typedef enum : uint8 {
     USB_RECIP_DEVICE    = 0,  //设备
     USB_RECIP_INTERFACE = 1,  //接口
     USB_RECIP_ENDPOINT  = 2,  //端点
@@ -422,6 +427,15 @@ typedef struct usb_if_t {
 } usb_if_t;
 
 
+//端口速率
+typedef enum : uint8 {
+    USB_FULL_SPEED = 1,
+    USB_LOW_SPEED = 2,
+    USB_HIGH_SPEED = 3,
+    USB_SUPER_SPEED = 4,
+    USB_SUPER_SPEED_PLUS = 5,
+}usb_port_speed_e;
+
 
 //USB设备
 typedef struct usb_dev_t{
@@ -430,7 +444,7 @@ typedef struct usb_dev_t{
     struct usb_dev_t                *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
     uint8                           parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
     uint8                           port_id;           //
-    uint8                           port_speed;        // 速率
+    usb_port_speed_e                port_speed;        // 速率
     uint8                           is_hub;            // 是否为 Hub
     uint8                           hub_num_ports;     // Hub 的端口数
     uint8                           hub_mtt;         // 是否支持多事务翻译器
@@ -606,7 +620,7 @@ void usb_free_urb(usb_urb_t *urb);
 void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfer_buf,uint32 transfer_len);
 void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfer_buf,uint32 transfer_len);
 
-int32 usb_control_msg_sync(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void *data_buf);
+int32 usb_control_msg(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void *data_buf);
 int32 usb_ep_halt_control(usb_dev_t *udev, uint8 ep_dci, usb_request_e is_set);
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
 int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp);
