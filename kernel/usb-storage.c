@@ -15,9 +15,9 @@ extern scsi_host_template_t bot_host_template;
 int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
 
     //u盘是否支持uas协议，优先设置为uas协议
-    if (uif->alt_count > 1) {
-        usb_if_alt_t *next_alts = uif->alts;
-        for (uint8 i = 0; i < uif->alt_count; i++) {
+    if (uif->if_alt_count > 1) {
+        usb_if_alt_t *next_alts = uif->uif_alts;
+        for (uint8 i = 0; i < uif->if_alt_count; i++) {
             if (next_alts[i].if_protocol == 0x62) {
                 usb_switch_alt_if(&next_alts[i]);
                 break;
@@ -27,7 +27,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
 
     scsi_host_t *shost;
 
-    if (uif->cur_alt->if_protocol == 0x62) {        //uas协议初始化流程
+    if (uif->cur_uif_alt->if_protocol == 0x62) {        //uas协议初始化流程
 
         color_printk(GREEN,BLACK,"uas mode  \n");
 
@@ -40,7 +40,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
         // 1. 解析 Pipe 端点与流能力侦测 (修复无差别误杀 Bug)
         // ==========================================================
         for (uint8 i = 0; i < 4; i++) {
-            usb_ep_t *ep = &uif->cur_alt->eps[i];
+            usb_ep_t *ep = &uif->cur_uif_alt->ueps[i];
 
             usb_uas_pipe_usage_desc_t *pipe_usage_desc = ep->extras_desc;
             if (!pipe_usage_desc) continue;
@@ -93,7 +93,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
         bot_data->tag = 0;
 
         for (uint8 i = 0; i < 2; i++) {
-            usb_ep_t *ep = &uif->cur_alt->eps[i];
+            usb_ep_t *ep = &uif->cur_uif_alt->ueps[i];
             if (ep->ep_dci & 1) {
                 bot_data->in_ep = ep;
             } else {

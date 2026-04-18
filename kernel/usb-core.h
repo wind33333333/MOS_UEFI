@@ -400,24 +400,25 @@ typedef struct usb_ep_t {
 typedef struct usb_if_alt_t {
     struct usb_if_t *uif;
     usb_if_desc_t *if_desc;  // 指向 cfg_raw 内
-    uint8 altsetting;
+    uint8 altsetting;       //备用设置号
 
     uint8 if_class;
     uint8 if_subclass;
     uint8 if_protocol;
 
-    uint8 ep_count;     // 端点数量
-    usb_ep_t *eps;      // 可选：解析后的端点数组
+    uint8 uep_count;     // 端点数量
+    usb_ep_t *ueps;      // 可选：解析后的端点数组
 } usb_if_alt_t;
 
 //usb接口
 typedef struct usb_if_t {
     struct usb_dev_t *udev;
     uint8 if_num;
-    uint8 alt_count;
-    usb_if_alt_t *alts;
-    usb_if_alt_t *cur_alt;   // 或 cur_alt_idx
+    uint8 if_alt_count;
+    usb_if_alt_t *uif_alts;
+    usb_if_alt_t *cur_uif_alt;   // 或 cur_alt_idx
     device_t dev;
+    void    *drv_data;
 } usb_if_t;
 
 
@@ -449,10 +450,10 @@ typedef struct usb_dev_t{
     uint8                           *serial_number;    // 序列号ascii字符
 
     // 3. 逻辑端点与接口路由 (暴露给业务层驱动的资源)
-    uint8                           interfaces_count;  // 接口数量
-    usb_if_t                        *interfaces;       // 接口指针根据接口数量动态分配
-    usb_ep_t                        ep0;               // 端点0，控制端点
-    usb_ep_t                        *eps[32];          // 端点0-30 驱动把接口端点挂到usb_dev,方便usb_core层管理 eps[0]不可用仅占位，eps[1] = 端点0,以此内推。
+    uint8                           uif_count;  // 接口数量
+    usb_if_t                        *uifs;       // 接口指针根据接口数量动态分配
+    usb_ep_t                        uep0;               // 端点0，控制端点
+    usb_ep_t                        *ueps[32];          // 端点0-30 驱动把接口端点挂到usb_dev,方便usb_core层管理 eps[0]不可用仅占位，eps[1] = 端点0,以此内推。
 
     // 4. 仅为xhci定制强绑定
     uint8                           slot_id;
@@ -461,6 +462,7 @@ typedef struct usb_dev_t{
     xhci_input_ctx_t                *input_ctx;          // 输入上下文
     uint32                          active_ep_map;       //当前活跃的端点图
     xhci_hcd_t                      *xhcd;              // xhci控制器
+    void                            *drv_data;
 } usb_dev_t;
 
 /* ========================================================================
@@ -566,9 +568,9 @@ static inline void *usb_cfg_end(usb_cfg_desc_t *usb_config_desc)
 /* 在 uif->alts[] 中按 altsetting 值查找（不能用 altsetting 当数组下标） */
 static inline usb_if_alt_t *usb_find_alt_by_num(usb_if_t *usb_if, uint8 altsetting)
 {
-    for (uint8 i = 0; i < usb_if->alt_count; i++) {
-        if (usb_if->alts[i].altsetting == altsetting)
-            return &usb_if->alts[i];
+    for (uint8 i = 0; i < usb_if->if_alt_count; i++) {
+        if (usb_if->uif_alts[i].altsetting == altsetting)
+            return &usb_if->uif_alts[i];
     }
     return NULL;
 }
@@ -579,8 +581,8 @@ extern struct bus_type_t usb_bus_type;
 
 //注册usb接口
 static inline void usb_if_register(usb_dev_t *udev) {
-    for (uint32 i = 0; i < udev->interfaces_count; i++) {
-        usb_if_t *usb_if = &udev->interfaces[i];
+    for (uint32 i = 0; i < udev->uif_count; i++) {
+        usb_if_t *usb_if = &udev->uifs[i];
         if (usb_if != NULL) {
             // 触发系统级的 match/probe (比如唤醒 bot.c 或 uas.c 驱动)
             device_register(&usb_if->dev);

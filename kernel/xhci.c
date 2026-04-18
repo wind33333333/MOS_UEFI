@@ -632,7 +632,7 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
 
     usb_dev_t *udev = xhcd->udevs[slot_id];
     if (udev == NULL) return;
-    usb_ep_t *ep = udev->eps[evt_ep_dci];
+    usb_ep_t *ep = udev->ueps[evt_ep_dci];
     if (ep == NULL) return;
 
     // =======================================================
