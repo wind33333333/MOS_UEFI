@@ -5,6 +5,7 @@
 #include "scsi.h"
 #include "uas.h"
 #include "bot.h"
+#include "slub.h"
 
 
 extern scsi_host_template_t uas_host_template;
@@ -12,7 +13,7 @@ extern scsi_host_template_t bot_host_template;
 
 
 //u盘驱动程序
-int32 usb_storage_probe(usb_if_t *uif,usb_id_t *id) {
+int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
 
     //u盘是否支持uas协议，优先设置为uas协议
     if (uif->if_alt_count > 1) {
