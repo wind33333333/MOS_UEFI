@@ -11,7 +11,9 @@ bus_type_t usb_bus_type;
 //scsi总线
 bus_type_t scsi_bus_type;
 
-extern usb_drv_t *create_us_driver();
+extern usb_drv_t *create_usb_storage_driver();
+
+extern usb_drv_t *create_usb_hub_driver();
 
 //创建一个pcie总线和usb总线
 INIT_TEXT void bus_init(void){
@@ -38,7 +40,10 @@ INIT_TEXT void bus_init(void){
     list_head_init(&pcie_bus_type.drv_list);   //创建pcie总线
     pcie_bus_init();                           //pcie总线初始化
 
-    usb_drv_t *usb_drv = create_us_driver();
-    usb_drv_register(usb_drv);
+    usb_drv_t *usb_storage_drv = create_usb_storage_driver();
+    usb_drv_register(usb_storage_drv);
+
+    usb_drv_t *usb_hub_driver = create_usb_hub_driver();
+    usb_drv_register(usb_hub_driver);
 
 }

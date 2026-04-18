@@ -116,7 +116,7 @@ void usb_storage_remove(usb_if_t *usb_if) {
 
 }
 
-usb_drv_t *create_us_driver() {
+usb_drv_t *create_usb_storage_driver() {
     usb_drv_t *usb_drv = kzalloc(sizeof(usb_drv_t));
     usb_id_t *id_table = kzalloc(sizeof(usb_id_t)*3);
     id_table[0].if_class = 0x8;

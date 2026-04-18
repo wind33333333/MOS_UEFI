@@ -406,21 +406,21 @@ static void scsi_probe_lun(scsi_host_t *shost) {
 
     color_printk(GREEN,BLACK,"vendor:%s model:%s rev:%s   \n",sdev->vendor,sdev->model,sdev->rev);
 
-    // 5. 如果是磁盘设备 (Type 0)，尝试获取容量
-    if (sdev->type == 0x00) {
-        scsi_read_capacity10_t *cap = kzalloc_dma(sizeof(scsi_read_capacity10_t));
-        // 注意：这里哪怕没获取到容量(如读卡器没插卡)，也要把 sdev 留着，只是标记 is_ready = 0
-        if (scsi_read_capacity10(sdev, cap) == 0) {
-            sdev->block_size = asm_bswap32(cap->block_size);
-            sdev->max_lba    = asm_bswap32(cap->max_lba);
-            sdev->is_ready   = 1;
-        }
-        kfree(cap);
-    }
-
-    uint8 *data_buf = kmalloc(655372);
-    asm_mem_set(data_buf,0x8,655372);
-    scsi_write10(sdev, data_buf, 0,1280);
+    // // 5. 如果是磁盘设备 (Type 0)，尝试获取容量
+    // if (sdev->type == 0x00) {
+    //     scsi_read_capacity10_t *cap = kzalloc_dma(sizeof(scsi_read_capacity10_t));
+    //     // 注意：这里哪怕没获取到容量(如读卡器没插卡)，也要把 sdev 留着，只是标记 is_ready = 0
+    //     if (scsi_read_capacity10(sdev, cap) == 0) {
+    //         sdev->block_size = asm_bswap32(cap->block_size);
+    //         sdev->max_lba    = asm_bswap32(cap->max_lba);
+    //         sdev->is_ready   = 1;
+    //     }
+    //     kfree(cap);
+    // }
+    //
+    // uint8 *data_buf = kmalloc(655372);
+    // asm_mem_set(data_buf,0x8,655372);
+    // scsi_write10(sdev, data_buf, 0,1280);
 
     // 6. 组装设备树，将其挂载到 SCSI 总线上！
     // sdev->dev.parent = &shost->dev;         // 认 Host 为父
