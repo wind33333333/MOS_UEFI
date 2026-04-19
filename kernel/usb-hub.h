@@ -4,31 +4,65 @@
 
 /**
  * @brief USB 端口特征选择器 (Port Feature Selectors)
- * 用于 usb_set_port_feature 和 usb_clear_port_feature 等标准请求
+ * 用于 usb_set_port_feature 和 usb_clear_port_feature 等标准控制请求。
+ * ⚠️ 架构师提示：不是所有的 Feature 都能被 Set 或 Clear，注意看注释里的权限说明！
  */
 typedef enum {
     // ==========================================
-    // 🎯 端口基础控制 (常规 Feature)
+    // 🎯 端口基础控制与状态 (常规 Feature)
     // ==========================================
-    USB_PORT_FEAT_CONNECTION     = 0,
-    USB_PORT_FEAT_ENABLE         = 1,
-    USB_PORT_FEAT_SUSPEND        = 2,
-    USB_PORT_FEAT_OVER_CURRENT   = 3,
-    USB_PORT_FEAT_RESET          = 4,   // 复位端口 (插入新设备时必备)
 
-    USB_PORT_FEAT_POWER          = 8,   // 给端口上电 (极其重要)
+    // [只读] 物理连接状态。插拔由用户决定，主机无法 Set 或 Clear 此特征。
+    USB_PORT_FEAT_CONNECTION     = 0,
+
+    // [可 Clear] 端口启用状态。
+    // - SetFeature: 无效！必须通过发送 RESET 指令来让硬件自动启用。
+    // - ClearFeature: 强行禁用该端口（相当于逻辑上拔掉设备）。
+    USB_PORT_FEAT_ENABLE         = 1,
+
+    // [可 Set / 可 Clear] 端口挂起（省电休眠）。
+    // - SetFeature: 强制端口进入低功耗 Suspend 模式。
+    // - ClearFeature: 向端口发送唤醒信号 (Resume)。
+    USB_PORT_FEAT_SUSPEND        = 2,
+
+    // [只读] 实时过流状态。由物理电路决定，主机无法主动 Set 或 Clear。
+    USB_PORT_FEAT_OVER_CURRENT   = 3,
+
+    // [核心控制 - 可 Set] 端口复位。
+    // - SetFeature: 🌟 对端口发射复位电平！这是发现新设备插入后，枚举流程的绝对第一步！
+    // - 硬件复位完成后，会自动清除此状态，并触发 C_RESET 中断。
+    USB_PORT_FEAT_RESET          = 4,
+
+    // [核心控制 - 可 Set / 可 Clear] 端口电源。
+    // - SetFeature: 🌟 闭合物理继电器，给该端口供电（VBUS 上电）。初始化 Hub 必备！
+    // - ClearFeature: 断开供电。
+    USB_PORT_FEAT_POWER          = 8,
+
+    // [只读] 设备速度指示位。硬件自动探测，主机无法更改。
     USB_PORT_FEAT_LOWSPEED       = 9,
     USB_PORT_FEAT_HIGHSPEED      = 10,
 
     // ==========================================
     // ⚠️ 端口状态变化擦除 (Clear Feature 专属)
-    // 用于向硬件确认已收到中断，擦除对应的 Change 标志位
+    // 你的驱动收到 0x81 中断后，必须向硬件发送以下指令以“确认签收”，
+    // 否则 Hub 会被卡死，持续疯狂向主机发送中断风暴！
     // ==========================================
-    USB_PORT_FEAT_C_CONNECTION   = 16,  // 清除“连接状态改变”标志位
+
+    // [擦除确认] 确认已收到“发生物理插拔”的中断
+    USB_PORT_FEAT_C_CONNECTION   = 16,
+
+    // [擦除确认] 确认已收到“端口因严重错误被强制禁用”的中断
     USB_PORT_FEAT_C_ENABLE       = 17,
+
+    // [擦除确认] 确认已收到“设备唤醒完成”的中断
     USB_PORT_FEAT_C_SUSPEND      = 18,
+
+    // [擦除确认] 确认已收到“发生短路或短路解除”的中断
     USB_PORT_FEAT_C_OVER_CURRENT = 19,
-    USB_PORT_FEAT_C_RESET        = 20   // 清除“复位完成”标志位
+
+    // [擦除确认] 确认已收到“复位彻底完成”的中断！
+    // 清除这个标志后，你就可以放心地去给设备分配地址 (SetAddress) 了。
+    USB_PORT_FEAT_C_RESET        = 20
 
 } usb_port_feature_e;
 

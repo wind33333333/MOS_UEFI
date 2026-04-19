@@ -154,7 +154,9 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         for (uint8 i = 0; i < hub->num_ports; i++) {
             usb_get_port_status(udev, hub->ports[i].port_no, &hub->ports[i].current_status);
 
-            if (hub->ports[i].current_status & )
+            if (hub->ports[i].current_status & USB_PORT_STAT_CONNECTION) {
+                usb_set_port_feature(udev, hub->ports[i].port_no, USB_PORT_FEAT_RESET);
+            }
         }
 
 
