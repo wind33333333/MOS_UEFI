@@ -221,7 +221,7 @@ typedef struct {
     uint8 device_removable[];       // 位图：指示每个端口上的设备是不是焊死的（比如笔记本内置摄像头）
 
     // uint8 port_pwr_ctrl_mask[];  // 💡 USB 2.0 规范已废弃全填 0xFF，此处物理超度！
-} usb_hub2_desc_t;
+} usb2_hub_desc_t;
 
 /**
  * @brief USB 3.0 超高速集线器描述符 (Type: 0x2A)
@@ -253,7 +253,7 @@ typedef struct {
     // ==========================================
     uint16 device_removable;        // 16位位图。Bit 1~15 代表对应的端口是否可移除。(Bit 0 保留)
 
-} usb_hub3_desc_t;
+} usb3_hub_desc_t;
 
 typedef enum : uint8 {
     USB_HUB2_DESC = 0x29,
