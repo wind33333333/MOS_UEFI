@@ -33,27 +33,39 @@ typedef enum {
 } usb_port_feature_e;
 
 // ==========================================
-// 📡 端口状态掩码 (Port Status Bitmasks)
-// 用于解析 usb_get_port_status 返回的 4 字节数据
+// 📡 USB 端口状态与变化掩码 (32 位直读版)
+// 配合 usb_get_port_status 返回的 4 字节数据直接使用。
+// 用法：if (status & USB_PORT_STAT_C_CONNECTION) { ... }
 // ==========================================
-// 低 16 位：当前状态 (wPortStatus)
-#define USB_PORT_STAT_CONNECTION    0x0001 // 1 = 有设备插着
-#define USB_PORT_STAT_ENABLE        0x0002 // 1 = 端口已启用
-#define USB_PORT_STAT_SUSPEND       0x0004
-#define USB_PORT_STAT_OVERCURRENT   0x0008
-#define USB_PORT_STAT_RESET         0x0010 // 1 = 端口正在复位中
-#define USB_PORT_STAT_POWER         0x0100 // 1 = 端口已上电
-#define USB_PORT_STAT_LOW_SPEED     0x0200
-#define USB_PORT_STAT_HIGH_SPEED    0x0400
-#define USB_PORT_STAT_SUPER_SPEED   0x0C00 // USB 3.0 专属速度标志
 
-// 高 16 位：变化标志 (wPortChange)
-// 如果这些位是 1，代表发生了中断，你处理完后必须用 ClearFeature 把它清 0！
-#define USB_PORT_STAT_C_CONNECTION  0x00010000 // 发生过插拔事件！
-#define USB_PORT_STAT_C_ENABLE      0x00020000
-#define USB_PORT_STAT_C_SUSPEND     0x00040000
-#define USB_PORT_STAT_C_OVERCURRENT 0x00080000
-#define USB_PORT_STAT_C_RESET       0x00100000 // 复位已完成！
+// ---------------------------------------------------------
+// 🟢 低 16 位：wPortStatus (当前物理状态的实时快照)
+// ---------------------------------------------------------
+#define USB_PORT_STAT_CONNECTION    0x00000001 // [连接状态] 1 = 物理接口上有设备插入
+#define USB_PORT_STAT_ENABLE        0x00000002 // [启用状态] 1 = 端口已就绪，可传输数据
+#define USB_PORT_STAT_SUSPEND       0x00000004 // [挂起状态] 1 = 端口处于选择性挂起模式
+#define USB_PORT_STAT_OVERCURRENT   0x00000008 // [过流状态] 1 = 端口发生短路或电流超载！
+#define USB_PORT_STAT_RESET         0x00000010 // [复位状态] 1 = 端口正在被持续拉低进行硬复位
+
+#define USB_PORT_STAT_POWER         0x00000100 // [供电状态] 1 = 端口已通电
+
+// 🌟 设备速度标识 (占据 Bit 9, 10, 11)
+// 0x00000000 = Full-Speed (全速, 12Mbps)
+#define USB_PORT_STAT_LOW_SPEED     0x00000200 // Low-Speed  (低速, 1.5Mbps)
+#define USB_PORT_STAT_HIGH_SPEED    0x00000400 // High-Speed (高速, 480Mbps)
+#define USB_PORT_STAT_SUPER_SPEED   0x00000C00 // SuperSpeed (USB 3.0, 5Gbps)
+
+
+// ---------------------------------------------------------
+// 🔴 高 16 位：wPortChange (中断唤醒的罪魁祸首)
+// 💡 注意：如果你检测到了这里的 1，必须发送对应的 ClearFeature 指令！
+// 例如：USB_PORT_STAT_C_CONNECTION 对应发 ClearPortFeature(16)
+// ---------------------------------------------------------
+#define USB_PORT_STAT_C_CONNECTION  0x00010000 // [插拔事件] 发生了物理插入或拔出
+#define USB_PORT_STAT_C_ENABLE      0x00020000 // [断连事件] 端口因错误被硬件强制 Disable
+#define USB_PORT_STAT_C_SUSPEND     0x00040000 // [唤醒事件] 设备睡眠苏醒完成
+#define USB_PORT_STAT_C_OVERCURRENT 0x00080000 // [过流突变] 发生短路，或短路已排除
+#define USB_PORT_STAT_C_RESET       0x00100000 // [复位完成] PORT_RESET 指令执行完毕
 
 
 /**
@@ -65,12 +77,11 @@ typedef struct {
     boolean is_removable; // 🌟 新增：这个设备是热插拔的，还是主板焊死的？
 
     // 缓存最后一次通过 usb_get_port_status 读到的状态
-    uint16 current_status;      // 当前状态掩码 (wPortStatus)
-    uint16 current_change;      // 变化标志掩码 (wPortChange)
+    uint32 current_status;
 
     // 拓扑树指针：如果这个端口上插了东西，指向那个设备的实例
     // 如果端口是空的，这里必须是 NULL
-    struct usb_dev *child_dev;
+    usb_dev_t *child_dev;
 
 } hub_port_t;
 
@@ -101,7 +112,7 @@ typedef struct {
     // ==========================================
     // 3. 中断雷达 (热插拔监听引擎)
     // ==========================================
-    struct usb_urb *irq_urb;    // 常驻内存的中断请求面单 (轮询端点 0x81)
+    usb_urb_t      *irq_urb;    // 常驻内存的中断请求面单 (轮询端点 0x81)
     uint8          *irq_buffer; // DMA 内存指针，用于接收发生状态变化的端口位图 (Bitmap)
     uint16         irq_buf_len; // 缓冲区的长度：通常为 (num_ports / 8) + 1 字节
 

@@ -3,7 +3,7 @@
 #include "slub.h"
 
 //获取hub描述符
-int32 get_hub_desc(usb_dev_t *udev,usb_hub_desc_e usb_hub_desc,void *data_buf,uint16 length) {
+static int32 get_hub_desc(usb_dev_t *udev,usb_hub_desc_e usb_hub_desc,void *data_buf,uint16 length) {
     // 组装hub类 Setup 包
     usb_setup_packet_t setup_pkg = {0};
     setup_pkg.recipient = USB_RECIP_DEVICE;
@@ -19,28 +19,42 @@ int32 get_hub_desc(usb_dev_t *udev,usb_hub_desc_e usb_hub_desc,void *data_buf,ui
 }
 
 
+// ==========================================
+// 🛠️ 内部核心函数 (不对外暴露，专干脏活累活)
+// ==========================================
 /**
- * @brief 设置 Hub 端口的特性 (例如上电、复位)
- * @param udev    Hub 设备对象
- * @param port_no 端口号 (注意：USB 规范中端口号从 1 开始！)
- * @param feature 你要设置的特性宏 (如 USB_PORT_FEAT_POWER)
- * @return int32  状态码 (0 成功，<0 失败)
+ * @brief Hub 端口特征底层控制核心函数
+ * @param req_cmd 决定是 SET_FEATURE (0x03) 还是 CLEAR_FEATURE (0x01)
  */
-int32 usb_set_port_feature(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feature) {
+static int32 usb_port_feature_ctrl(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feature, usb_request_e req_cmd) {
     usb_setup_packet_t setup_pkg = {0};
 
-    // 组装 Setup 包
-    setup_pkg.recipient = USB_RECIP_OTHER;   // 🌟 极其关键：接收者是 Other (代表 Port)
+    // 组装通用的 Setup 包
+    setup_pkg.recipient = USB_RECIP_OTHER;   // 接收者：Port
     setup_pkg.req_type  = USB_REQ_TYPE_CLASS;// 类请求
     setup_pkg.dtd       = USB_DIR_OUT;       // 方向：主机到设备
 
-    setup_pkg.request   = USB_REQ_SET_FEATURE; // 0x03
-    setup_pkg.value     = feature;             // 特征选择器 (填入你要的操作)
-    setup_pkg.index     = port_no;             // 指向具体哪一个端口
-    setup_pkg.length    = 0;                   // 不需要额外的数据阶段
+    setup_pkg.request   = req_cmd;           // 🌟 动态决定是 Set 还是 Clear
+    setup_pkg.value     = feature;           // 填入特征选择器
+    setup_pkg.index     = port_no;           // 端口号
+    setup_pkg.length    = 0;                 // 无数据阶段
 
-    // 抛给底层控制端点发送
     return usb_control_msg(udev, &setup_pkg, NULL);
+}
+
+
+/**
+ * @brief 设置 Hub 端口的特性 (例如上电、复位)
+ */
+static inline int32 usb_set_port_feature(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feature) {
+    return usb_port_feature_ctrl(udev, port_no, feature, USB_REQ_SET_FEATURE);
+}
+
+/**
+ * @brief 清除 Hub 端口的某个状态变化标志 (确认中断)
+ */
+static inline int32 usb_clear_port_feature(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feature) {
+    return usb_port_feature_ctrl(udev, port_no, feature, USB_REQ_CLEAR_FEATURE);
 }
 
 
@@ -65,7 +79,11 @@ int32 usb_get_port_status(usb_dev_t *udev, uint8 port_no, uint32 *port_status) {
     setup_pkg.length    = 4;                  // 🌟 必然返回 4 个字节！
 
     // 抛给底层，数据会写进 port_status 变量里
-    return usb_control_msg(udev, &setup_pkg, port_status);
+    uint32 *port_sts = kzalloc_dma(sizeof(uint32));
+    usb_control_msg(udev, &setup_pkg, port_sts);
+    *port_status = *port_sts;
+    kfree(port_sts);
+    return 0;
 }
 
 
@@ -108,9 +126,37 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         hub->is_usb3 = FALSE;
         hub->num_ports = hub2_desc->num_ports;
         hub->power_delay_ms = hub2_desc->power_on_to_power_good<<1;
-        hub->is_individual_pwr = hub2_desc->hub_characteristics & 3;
-        hub->is_individual_ocp = (hub2_desc->hub_characteristics>>3 & 3) < 2 ? TRUE : FALSE;
+        hub->is_individual_pwr = (hub2_desc->hub_characteristics & 0x03) == 0x01;
+        hub->is_individual_ocp = ((hub2_desc->hub_characteristics >> 3) & 0x03) == 0x01;
         hub->tt_think_time = ((hub2_desc->hub_characteristics>>5 & 3)+1)*8;
+
+        hub->ports = kzalloc(hub->num_ports*sizeof(hub_port_t));
+
+        for (uint8 i = 0; i < hub->num_ports; i++) {
+            hub->ports[i].port_no = i + 1;
+
+            // 解析位图 (以 USB 2.0 为例，注意位图是从 Bit 1 开始算的)
+            // Bit 1 对应 端口 1，以此类推
+            uint8 byte_idx = (i + 1) / 8;
+            uint8 bit_idx  = (i + 1) % 8;
+
+            // 如果该位是 0，代表 Removable；是 1 代表 Non-Removable (硬接线)
+            hub->ports[i].is_removable = (hub2_desc->device_removable[byte_idx] >> bit_idx) & 1;
+
+        }
+
+        //hub端口上电
+        for (uint8 i = 0; i < hub->num_ports; i++) {
+            usb_set_port_feature(udev, hub->ports[i].port_no, USB_PORT_FEAT_POWER );
+        }
+
+        //读取所有端口状态
+        for (uint8 i = 0; i < hub->num_ports; i++) {
+            usb_get_port_status(udev, hub->ports[i].port_no, &hub->ports[i].current_status);
+
+            if (hub->ports[i].current_status & )
+        }
+
 
     }
 
