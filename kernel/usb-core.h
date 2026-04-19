@@ -4,6 +4,8 @@
 #include "driver.h"
 #include "xhci.h"
 
+#pragma pack(push, 1)
+
 //========================== USB描述符 =========================
 
 /**
@@ -197,25 +199,28 @@ typedef struct {
  */
 typedef struct {
     usb_desc_head head;
-    uint8  num_ports;           // ★ 下游端口总数 (极其关键，决定了你要轮询几次)
+    uint8  num_ports;               // ★ 下游端口总数 (极其关键，决定了你要轮询几次)
 
-    // wHubCharacteristics 包含了极其重要的位域：
-    // Bit 1:0 - 电源切换模式 (00=所有端口联动上电, 01=各端口独立上电, 11=无电源切换)
-    // Bit 4:3 - 过流保护模式 (00=全局过流保护, 01=单端口独立过流保护, 11=无保护)
+    // wHubCharacteristics 核心特性位图：
+    // Bit 1:0 - 电源切换模式 (00=全局联动上电, 01=各端口独立上电, 1X=无电源切换/始终通电)
+    //           -> 💡 架构师注：无论报告哪种模式，向每个端口无脑发送上电指令都是最安全、最兼容的做法！
+    // Bit 2   - 复合设备标识 (0=独立Hub, 1=复合设备，Hub内部硬连了其他设备)
+    // Bit 4:3 - 过流保护模式 (00=全局过流保护, 01=单端口独立过流保护, 1X=无保护)
+    // Bit 6:5 - TT 思考时间  (00=8, 01=16, 10=24, 11=32 FS bit times) -> 仅用于 USB 2.0 降速翻译
+    // Bit 7   - 端口指示灯控制 (0=不支持, 1=支持)
     uint16 hub_characteristics;
 
-    uint8  power_on_to_power_good;      // 端口上电后，需要等多久电源才能稳定？(单位是 2ms，比如填 50 就是要等 100ms)
-    uint8  hub_control_current;    // Hub 芯片自身工作需要的最大电流 (mA)
+    uint8  power_on_to_power_good;  // 端口上电后，需要等多久电源才能稳定？(单位是 2ms，比如填 50 就是要等 100ms)
+    uint8  hub_control_current;     // Hub 芯片自身工作需要的最大电流 (单位: 1mA)
 
     // ==========================================
-    // ⚠️ 变长警告：下面这两个字段在内存中紧挨着，但长度是不固定的！
-    // 它们的字节数 = (bNbrPorts / 8) + 1
+    // ⚠️ 变长警告：该字段在内存中长度不固定！
+    // 字节数 = (num_ports / 8) + 1
     // 比如 4 口 Hub，这里就是 1 个字节；10 口 Hub，这里就是 2 个字节。
     // ==========================================
+    uint8 device_removable[];       // 位图：指示每个端口上的设备是不是焊死的（比如笔记本内置摄像头）
 
-    // uint8 DeviceRemovable[]; // 位图：指示每个端口上的设备是不是焊死的（比如笔记本内置摄像头）
-    // uint8 PortPwrCtrlMask[]; // 历史遗留字段，USB 1.1 的产物，USB 2.0 规定全填 0xFF
-
+    // uint8 port_pwr_ctrl_mask[];  // 💡 USB 2.0 规范已废弃全填 0xFF，此处物理超度！
 } usb_hub2_desc_t;
 
 /**
@@ -225,20 +230,28 @@ typedef struct {
 typedef struct {
     usb_desc_head head;
     uint8  num_ports;           // 下游端口总数 (由于规范限制，绝不会超过 15)
-    uint16 hub_characteristics; // 特性掩码 (与 USB 2.0 类似，但去掉了废弃位)
-    uint8  power_on_to_power_good;      // 单位依然是 2ms
-    uint8  hub_control_current;    // ★ 注意：USB 3.0 规范里，这里的单位变成了 2mA！
+
+    // wHubCharacteristics 核心特性位图 (去除了 USB 2.0 的 TT 字段)：
+    // Bit 1:0 - 电源切换模式 (00=全局联动上电, 01=独立上电, 1X=无电源切换)
+    // Bit 2   - 复合设备标识 (0=独立Hub, 1=复合设备)
+    // Bit 4:3 - 过流保护模式 (00=全局保护, 01=独立保护, 1X=无保护)
+    // Bit 7   - 端口指示灯控制 (0=不支持, 1=支持)
+    // ⚠️ 注：Bit 6:5 被废弃，严格填 0
+    uint16 hub_characteristics;
+
+    uint8  power_on_to_power_good;  // 单位依然是 2ms
+    uint8  hub_control_current;     // 🌟 修正3：在 Hub 描述符里，3.0 的单位依然是 1mA！
 
     // ==========================================
     // SuperSpeed 专属的新字段 (用于内核调度器评估总线延迟)
     // ==========================================
-    uint8  hub_hdr_hecLat;       // Hub 数据包头解码延迟 (Hub Header Decode Latency)
-    uint16 hub_delay;           // Hub 转发数据块的纳秒级平均延迟 (单位: ns)
+    uint8  hub_hdr_hecLat;          // Hub 数据包头解码延迟 (Hub Header Decode Latency)
+    uint16 hub_delay;               // Hub 转发数据块的纳秒级平均延迟 (单位: ns)
 
     // ==========================================
     // 曾经的变长数组，现在变成了固定的 16-bit 整数
     // ==========================================
-    uint16 device_removable;     // 16位位图。Bit 1~15 代表对应的端口是否可移除。(Bit 0 保留)
+    uint16 device_removable;        // 16位位图。Bit 1~15 代表对应的端口是否可移除。(Bit 0 保留)
 
 } usb_hub3_desc_t;
 
@@ -342,6 +355,8 @@ typedef struct usb_setup_packet_t {
     //wLength
     uint16          length; //数据阶段的传输长度（字节）主机到设备：发送的数据长度 设备到主机：请求的数据长度
 }usb_setup_packet_t;
+
+#pragma pack(pop)
 
 //=============================================================
 

@@ -41,7 +41,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         usb_hub2_desc_t *hub2_desc = kzalloc_dma(71) ;
 
         // 第一步：先读 8 字节探路
-        int32 ret = get_hub_desc(udev, USB_HUB3_DESC, hub2_desc, 8);
+        int32 ret = get_hub_desc(udev, USB_HUB2_DESC, hub2_desc, 8);
         if (ret < 0) return ret;
 
         // 第二步：算出真实物理长度，再次读取
