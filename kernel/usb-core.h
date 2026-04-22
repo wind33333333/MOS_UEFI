@@ -619,6 +619,8 @@ static inline void usb_dev_register(usb_dev_t *usb_dev) {
     device_register(&usb_dev->dev);
 }
 
+
+
 void usb_drv_register(usb_drv_t *usb_drv);//注册usb驱动
 int usb_bus_match(device_t* dev,driver_t* drv);
 int usb_bus_probe(device_t* dev);
@@ -630,15 +632,67 @@ void usb_free_urb(usb_urb_t *urb);
 void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfer_buf,uint32 transfer_len);
 void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfer_buf,uint32 transfer_len);
 
-int32 usb_control_msg(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void *data_buf);
-int32 usb_ep_halt_control(usb_dev_t *udev, uint8 ep_dci, usb_request_e is_set);
+
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
 int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp);
 
-int32 usb_get_desc(usb_dev_t *udev, usb_req_type_e req_type, usb_recipient_e recipient,
-                                uint8 desc_type, uint8 desc_idx, uint16 target_idx,
-                                void *buffer, uint16 length);
 
 int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_id);
 int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_id);
 
+int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
+                      usb_data_dir_e dtd, usb_req_type_e req_type, usb_recipient_e recipient,
+                      usb_request_e request, uint16 value, uint16 index,uint16 length);
+
+static inline int32 usb_ctrl_out(usb_dev_t *udev,usb_req_type_e req_type, usb_recipient_e recipient,
+                      usb_request_e request, uint16 value, uint16 index) {
+    // OUT 请求必然没有接收 buffer，长度必然为 0
+    return usb_control_msg(udev, NULL,USB_DIR_OUT, req_type, recipient,
+                           request, value, index,  0);
+}
+
+static inline int32 usb_ctrl_in(usb_dev_t *udev,void *buf, usb_req_type_e req_type, usb_recipient_e recipient,
+                      usb_request_e request, uint16 value, uint16 index, uint16 length) {
+    // IN 请求必然有 buffer 和长度
+    return usb_control_msg(udev, buf,USB_DIR_IN, req_type, recipient,
+                           request, value, index,  length);
+}
+
+// ==========================================
+// 🎯 第三层：具体指令的降维打击
+// ==========================================
+
+// 1. 激活配置 (Set Configuration)
+static inline int32 usb_set_cfg(usb_dev_t *udev, uint8 cfg_value) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_DEVICE,
+                        USB_REQ_SET_CONFIGURATION, cfg_value, 0);
+}
+
+// 2. 激活接口 (Set Interface)
+static inline int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_INTERFACE,
+                        USB_REQ_SET_INTERFACE, alt_num, if_num);
+}
+
+// 3. 端点上锁/解锁 (Clear/Set Feature Endpoint Halt)
+static inline int32 usb_ep_halt_control(usb_dev_t *udev, uint8 ep_dci, usb_request_e halt_action) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_ENDPOINT,
+                        halt_action, USB_FEATURE_ENDPOINT_HALT, epdci_to_epaddr(ep_dci));
+}
+
+/**
+ * @brief 终极版：向 USB 目标发送 GetDescriptor 请求
+ * @param udev       目标 USB 设备
+ * @param req_type   请求类型 (USB_REQ_TYPE_STANDARD / CLASS / VENDOR)
+ * @param recipient  接收者 (USB_RECIP_DEVICE / INTERFACE / ENDPOINT)
+ * @param desc_type  描述符类型 (如 0x01, 0x0F, 0x22, 0x29)
+ * @param desc_idx 描述符索引
+ * @param target_idx 目标索引 (如果发给设备填 0；发给接口填 Interface Number)
+ * @param buffer     接收 DMA 内存
+ * @param length     期望长度
+ */
+// 4. 大一统获取描述符 (Get Descriptor)
+static inline int32 usb_get_desc(usb_dev_t *udev,void *buf, usb_req_type_e req_type, usb_recipient_e recipient,
+                                usb_desc_type_e desc_type, uint8 desc_idx, uint16 target_idx,uint16 length) {
+    return usb_ctrl_in(udev,buf, req_type, recipient, USB_REQ_GET_DESCRIPTOR, (desc_type << 8) | desc_idx, target_idx, length);
+}

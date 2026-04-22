@@ -55,17 +55,8 @@ uint8 bot_get_max_lun(usb_dev_t *udev, uint8 if_num) {
         return -ENOMEM; // ★ 物理防御：内存分配失败时，保底认为有 1 个 LUN
     }
 
-    usb_setup_packet_t setup_pkg = {0};
-    setup_pkg.recipient = USB_RECIP_INTERFACE;
-    setup_pkg.req_type  = USB_REQ_TYPE_CLASS;
-    setup_pkg.dtd       = USB_DIR_IN;
-    setup_pkg.request   = BOT_REQ_GET_MAX_LUN;
-    setup_pkg.value     = 0;
-    setup_pkg.index     = if_num;
-    setup_pkg.length    = 1;
-
     // ★ 架构防御：必须捕获错误码！因为 90% 的低端 U 盘会在这里返回 STALL (-EPIPE)
-    int32 posix_err = usb_control_msg(udev, &setup_pkg, max_lun);
+    int32 posix_err = usb_ctrl_in(udev, max_lun ,USB_REQ_TYPE_CLASS, USB_RECIP_INTERFACE,BOT_REQ_GET_MAX_LUN,0,if_num,1);
     uint8 lun_count;
     if (posix_err < 0) {
         // U 盘傲娇抗议 (STALL) 或通信失败，根据 USB 规范，原谅它并默认为 0（加上面的+1后为1个LUN）
@@ -103,16 +94,7 @@ static int32 bot_ep_reset(usb_dev_t *udev,uint8 ep_dci) {
 static int32 bot_mass_storage_reset(usb_dev_t *udev,uint8 if_num) {
 
     // 动作 1：发送特定的 0xFF 控制命令，将 U 盘内部状态机重置
-    usb_setup_packet_t usb_setup_pkg = {0};
-    usb_setup_pkg.recipient = USB_RECIP_INTERFACE;
-    usb_setup_pkg.req_type = USB_REQ_TYPE_CLASS;
-    usb_setup_pkg.dtd = USB_DIR_OUT;
-    usb_setup_pkg.request = BOT_REQ_MASS_STORAGE_RESET;
-    usb_setup_pkg.value = 0;
-    usb_setup_pkg.index = if_num;
-    usb_setup_pkg.length = 0;
-
-    int32 posix_err =usb_control_msg(udev,&usb_setup_pkg,NULL);
+    int32 posix_err =usb_ctrl_out(udev,USB_REQ_TYPE_CLASS,USB_RECIP_INTERFACE,BOT_REQ_MASS_STORAGE_RESET,0,if_num);
     if (posix_err < 0) {
         color_printk(RED,BLACK,"Bot Recovery Reset Fail! \n");
         return posix_err;

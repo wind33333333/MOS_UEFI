@@ -314,64 +314,38 @@ void usb_fill_bulk_urb(usb_urb_t *urb,
     urb->actual_length  = 0;
 }
 
-
 /**
- * @brief 同步发送控制传输 (USB Core 的核心枢纽)
- * @return int32 0 表示成功，负数表示 POSIX 标准错误码
+ * @brief 核心控制传输枢纽 (大一统接口)
+ * @param ... 散装参数映射到 Setup 包的 8 个字节
  */
-int32 usb_control_msg(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void *data_buf) {
-    // 1. 动态申请 URB 面单
+int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
+                      usb_data_dir_e dtd, usb_req_type_e req_type, usb_recipient_e recipient,
+                      usb_request_e request, uint16 value, uint16 index,uint16 length) {
+    // 1. 在这里统一组装 Setup 包！
+    usb_setup_packet_t setup_pkg = {
+        .dtd       = dtd,
+        .req_type  = req_type,
+        .recipient = recipient,
+        .request   = request,
+        .value     = value,
+        .index     = index,
+        .length    = length
+    };
+
+    // 2. 动态申请 URB 面单
     usb_urb_t *urb = usb_alloc_urb();
-    if (!urb) {
-        return -ENOMEM; // ★ POSIX 修正：内存耗尽
-    }
+    if (!urb) return -ENOMEM;
 
-    // 2. 使用填单助手，一键压制参数
-    // 注意：这里的 udev->eps[1] 对应的是控制端点 EP0 (DCI=1)
-    usb_fill_control_urb(urb, udev, udev->ueps[1], setup_pkg, data_buf, setup_pkg->length);
+    // 3. 使用填单助手压制参数 (ep0 = udev->ueps[1])
+    usb_fill_control_urb(urb, udev, udev->ueps[1], &setup_pkg, data_buf, length);
 
-    // 3. 将面单抛给底层调度引擎
+    // 4. 将面单抛给底层调度引擎
     int32 posix_err = usb_submit_urb(urb);
+    while (urb->is_done == FALSE) { asm_pause(); }
 
-    while (urb->is_done == FALSE) {
-        asm_pause();
-    }
-
-    // 4. 过河拆桥：任务完成，彻底销毁 URB 面单！
     usb_free_urb(urb);
-
-    // ★ POSIX 修正：拒绝粗暴的 return -1，完美透传底层状态！
     return posix_err;
 }
-
-
-/**
- * @brief 终极版：向 USB 目标发送 GetDescriptor 请求
- * @param udev       目标 USB 设备
- * @param req_type   请求类型 (USB_REQ_TYPE_STANDARD / CLASS / VENDOR)
- * @param recipient  接收者 (USB_RECIP_DEVICE / INTERFACE / ENDPOINT)
- * @param desc_type  描述符类型 (如 0x01, 0x0F, 0x22, 0x29)
- * @param desc_idx 描述符索引
- * @param target_idx 目标索引 (如果发给设备填 0；发给接口填 Interface Number)
- * @param buffer     接收 DMA 内存
- * @param length     期望长度
- */
-int32 usb_get_desc(usb_dev_t *udev, usb_req_type_e req_type, usb_recipient_e recipient,
-                                uint8 desc_type, uint8 desc_idx, uint16 target_idx,
-                                void *buffer, uint16 length) {
-    usb_setup_packet_t setup_pkg = {0};
-
-    setup_pkg.recipient = recipient;     // 🌟 动态可变！
-    setup_pkg.req_type  = req_type;      // 🌟 动态可变！
-    setup_pkg.dtd       = USB_DIR_IN;
-    setup_pkg.request   = USB_REQ_GET_DESCRIPTOR;
-    setup_pkg.value     = (desc_type << 8) | desc_idx;
-    setup_pkg.index     = target_idx;    // 🌟 动态可变！(指定具体的接口号或语言ID)
-    setup_pkg.length    = length;
-
-    return usb_control_msg(udev, &setup_pkg, buffer);
-}
-
 
 /**
  * @brief 统一的标准设备级描述符获取函数
@@ -383,89 +357,17 @@ int32 usb_get_desc(usb_dev_t *udev, usb_req_type_e req_type, usb_recipient_e rec
  * @param buf        接收缓冲区 (必须是 DMA 内存)
  * @param len        期望读取长度
  */
-static inline int32 usb_get_dev_desc(usb_dev_t *udev, uint8 desc_type, uint8 desc_index, uint16 index, void *buf, uint16 len) {
+static inline int32 usb_get_dev_desc(usb_dev_t *udev,void *buf, usb_desc_type_e desc_type, uint8 desc_index, uint16 index, uint16 len) {
 
     // 底层路由：固定为 STANDARD (标准请求) 和 DEVICE (发给整个设备)
-    return usb_get_desc(udev,
+    return usb_get_desc(udev,buf,
                         USB_REQ_TYPE_STANDARD,
                         USB_RECIP_DEVICE,
                         desc_type,
                         desc_index,
                         index,
-                        buf,
                         len);
 }
-
-// ==========================================
-// 供 HID 驱动调用的接口级请求 (获取 Report 描述符)
-// ==========================================
-static inline int32 hid_get_report_desc(usb_dev_t *udev, uint8 interface_no, void *buf, uint16 len) {
-    return usb_get_desc(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_INTERFACE, USB_DESC_TYPE_CS_CONFIG, 0, interface_no, buf, len);
-}
-
-
-
-
-/* @param udev   USB 设备上下文
- * @param ep_dci xHCI 的端点上下文索引 (DCI)
- * @param is_set USB_REQ_CLEAR_FEATURE(解锁)， USB_REQ_SET_FEATURE(上锁)
- * @return int32 0 表示成功，负数表示底层 POSIX 错误
- */
-int32 usb_ep_halt_control(usb_dev_t *udev, uint8 ep_dci, usb_request_e halt_action) {
-    usb_setup_packet_t setup_pkg = {0};
-
-    // 组装标准 Setup 包
-    setup_pkg.recipient = USB_RECIP_ENDPOINT;
-    setup_pkg.req_type  = USB_REQ_TYPE_STANDARD;
-    setup_pkg.dtd       = USB_DIR_OUT;           // 方向：主机发往设备
-
-    // ★ 核心差异点：根据 halt_action 动态切换指令
-    setup_pkg.request   = halt_action;
-
-    setup_pkg.value     = USB_FEATURE_ENDPOINT_HALT;
-    setup_pkg.index     = epdci_to_epaddr(ep_dci);
-    setup_pkg.length    = 0;
-
-    // 直接通过 EP0 发送控制传输并透传错误码
-    return usb_control_msg(udev, &setup_pkg, NULL);
-}
-
-
-/**
- * @brief 激活配置
- */
-int32 usb_set_cfg(usb_dev_t *udev, uint8 cfg_value) {
-    usb_setup_packet_t setup_pkg = {0};
-    setup_pkg.recipient = USB_RECIP_DEVICE;
-    setup_pkg.req_type  = USB_REQ_TYPE_STANDARD;
-    setup_pkg.dtd       = USB_DIR_OUT;
-    setup_pkg.request   = USB_REQ_SET_CONFIGURATION;
-    setup_pkg.value     = cfg_value;
-    setup_pkg.index     = 0;
-    setup_pkg.length    = 0;
-
-    // ★ POSIX 修正：透传错误
-    return usb_control_msg(udev, &setup_pkg, NULL);
-}
-
-
-/**
- * @brief 激活接口
- */
-int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
-    usb_setup_packet_t setup_pkg = {0};
-    setup_pkg.recipient = USB_RECIP_INTERFACE;
-    setup_pkg.req_type  = USB_REQ_TYPE_STANDARD;
-    setup_pkg.dtd       = USB_DIR_OUT;
-    setup_pkg.request   = USB_REQ_SET_INTERFACE;
-    setup_pkg.value     = alt_num;
-    setup_pkg.index     = if_num;
-    setup_pkg.length    = 0;
-
-    // ★ POSIX 修正：透传错误
-    return usb_control_msg(udev, &setup_pkg, NULL);
-}
-
 
 
 //=============================================================================================================
@@ -1483,7 +1385,7 @@ static inline int32 get_dev_desc(usb_dev_t *udev) {
     if (udev->port_speed == XHCI_PORTSC_SPEED_FULL) {
 
         // 探针：只拿前 8 字节
-        usb_get_dev_desc(udev,USB_DESC_TYPE_DEVICE,0,0,dev_desc,8);
+        usb_get_dev_desc(udev,dev_desc,USB_DESC_TYPE_DEVICE,0,0,8);
 
         if (dev_desc->max_packet_size0 != 8) {
             usb_ep_t *ep0 = udev->ueps[1];
@@ -1497,7 +1399,7 @@ static inline int32 get_dev_desc(usb_dev_t *udev) {
     // ============================
     // 获取完整的 18 字节设备描述符
     // ============================
-    usb_get_dev_desc(udev,USB_DESC_TYPE_DEVICE,0,0,dev_desc,sizeof(usb_dev_desc_t));
+    usb_get_dev_desc(udev,dev_desc,USB_DESC_TYPE_DEVICE,0,0,sizeof(usb_dev_desc_t));
 
     // 挂载到内核对象树上
     udev->dev_desc = dev_desc;
@@ -1510,7 +1412,7 @@ static inline int get_cfg_desc(usb_dev_t *udev) {
     usb_cfg_desc_t *config_desc = kzalloc_dma(sizeof(usb_cfg_desc_t));
 
     //第一次先获取配置描述符前9字节
-    usb_get_dev_desc(udev,USB_DESC_TYPE_CONFIG,0,0,config_desc,9);
+    usb_get_dev_desc(udev,config_desc,USB_DESC_TYPE_CONFIG,0,0,9);
 
     //第二次从配置描述符中得到总长度获取整个配置描述符
     uint16 config_desc_length = config_desc->total_length;
@@ -1518,7 +1420,7 @@ static inline int get_cfg_desc(usb_dev_t *udev) {
 
     config_desc = kzalloc_dma(config_desc_length);
 
-    usb_get_dev_desc(udev,USB_DESC_TYPE_CONFIG,0,0,config_desc,config_desc_length);
+    usb_get_dev_desc(udev,config_desc,USB_DESC_TYPE_CONFIG,0,0,config_desc_length);
 
     udev->config_desc = config_desc;
     return 0;
@@ -1531,11 +1433,11 @@ static inline int get_string_desc(usb_dev_t *udev) {
 
     //获取语言ID描述符
     uint16 language_id;
-    usb_get_dev_desc(udev,USB_DESC_TYPE_STRING,0,0,desc_head,2);
+    usb_get_dev_desc(udev,desc_head,USB_DESC_TYPE_STRING,0,0,2);
     usb_string_desc_t *language_desc = kzalloc_dma(desc_head->length);    // 分配真实长度的 DMA 内存
 
     // 正式拉取
-    usb_get_dev_desc(udev,USB_DESC_TYPE_STRING,0,0,language_desc,desc_head->length);
+    usb_get_dev_desc(udev,language_desc,USB_DESC_TYPE_STRING,0,0,desc_head->length);
     if (language_desc->head.desc_type == USB_DESC_TYPE_STRING) {
         language_id = language_desc->string[0];
         udev->language_desc = language_desc;
@@ -1557,13 +1459,13 @@ static inline int get_string_desc(usb_dev_t *udev) {
     for (uint8 i = 0; i < 3; i++) {
         if (string_index[i]) {
             //第一次先获取长度
-            usb_get_dev_desc(udev,USB_DESC_TYPE_STRING,string_index[i],language_id,desc_head,2);
+            usb_get_dev_desc(udev,desc_head,USB_DESC_TYPE_STRING,string_index[i],language_id,2);
 
             //分配内存
             string_desc[i] = kzalloc_dma(desc_head->length);
 
             //第二次先正式获取字符串描述符N
-            usb_get_dev_desc(udev,USB_DESC_TYPE_STRING,string_index[i],language_id,string_desc[i],desc_head->length);
+            usb_get_dev_desc(udev,string_desc[i],USB_DESC_TYPE_STRING,string_index[i],language_id,desc_head->length);
 
             //解析字符串描述符
             uint8 string_ascii_length = (desc_head->length-2)/2;

@@ -6,8 +6,8 @@
 // 供 Hub 驱动调用的类级请求 (获取 Hub 描述符)
 // ⚠️ 注意：Hub 描述符是 Class 请求，且发给 Device
 // ==========================================
-static inline int32 hub_get_class_desc(usb_dev_t *udev, uint8 desc_type, void *buf, uint16 len) {
-    return usb_get_desc(udev, USB_REQ_TYPE_CLASS, USB_RECIP_DEVICE, desc_type, 0, 0, buf, len);
+static inline int32 usb_get_hub_class_desc(usb_dev_t *udev, usb_desc_type_e desc_type, void *buf, uint16 len) {
+    return usb_get_desc(udev, buf,USB_REQ_TYPE_CLASS, USB_RECIP_DEVICE, desc_type, 0, 0, len);
 }
 
 
@@ -18,20 +18,8 @@ static inline int32 hub_get_class_desc(usb_dev_t *udev, uint8 desc_type, void *b
  * @brief Hub 端口特征底层控制核心函数
  * @param req_cmd 决定是 SET_FEATURE (0x03) 还是 CLEAR_FEATURE (0x01)
  */
-static int32 usb_port_feature_ctrl(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feature, usb_request_e req_cmd) {
-    usb_setup_packet_t setup_pkg = {0};
-
-    // 组装通用的 Setup 包
-    setup_pkg.recipient = USB_RECIP_OTHER;   // 接收者：Port
-    setup_pkg.req_type  = USB_REQ_TYPE_CLASS;// 类请求
-    setup_pkg.dtd       = USB_DIR_OUT;       // 方向：主机到设备
-
-    setup_pkg.request   = req_cmd;           // 🌟 动态决定是 Set 还是 Clear
-    setup_pkg.value     = feature;           // 填入特征选择器
-    setup_pkg.index     = port_no;           // 端口号
-    setup_pkg.length    = 0;                 // 无数据阶段
-
-    return usb_control_msg(udev, &setup_pkg, NULL);
+static inline int32 usb_port_feature_ctrl(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feat, usb_request_e cmd) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER, cmd, feat, port_no);
 }
 
 
@@ -58,21 +46,9 @@ static inline int32 usb_clear_port_feature(usb_dev_t *udev, uint8 port_no, usb_p
  * @return int32      状态码 (0 成功，<0 失败)
  */
 int32 usb_get_port_status(usb_dev_t *udev, uint8 port_no, uint32 *port_status) {
-    usb_setup_packet_t setup_pkg = {0};
-
-    // 组装 Setup 包
-    setup_pkg.recipient = USB_RECIP_OTHER;   // 🌟 接收者依然是 Other (Port)
-    setup_pkg.req_type  = USB_REQ_TYPE_CLASS;// 类请求
-    setup_pkg.dtd       = USB_DIR_IN;        // 方向：设备到主机 (我们要读数据)
-
-    setup_pkg.request   = USB_REQ_GET_STATUS; // 0x00
-    setup_pkg.value     = 0;                  // 规范要求全填 0
-    setup_pkg.index     = port_no;            // 指向具体端口
-    setup_pkg.length    = 4;                  // 🌟 必然返回 4 个字节！
-
     // 抛给底层，数据会写进 port_status 变量里
     uint32 *port_sts = kzalloc_dma(sizeof(uint32));
-    usb_control_msg(udev, &setup_pkg, port_sts);
+    usb_ctrl_in(udev,port_sts, USB_REQ_TYPE_CLASS,USB_RECIP_OTHER,USB_REQ_GET_STATUS,0,port_no,4 );
     *port_status = *port_sts;
     kfree(port_sts);
     return 0;
@@ -94,7 +70,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         usb_ss_hub_desc_t *ss_hub_desc = kzalloc_dma(sizeof(usb_ss_hub_desc_t));
 
         // 一步到位，直接吞下 12 字节！
-        int32 ret = hub_get_class_desc(udev, USB_DESC_TYPE_SS_HUB, ss_hub_desc,12);
+        int32 ret = usb_get_hub_class_desc(udev, USB_DESC_TYPE_SS_HUB, ss_hub_desc,12);
         if (ret < 0) return ret;
 
     }else {
@@ -105,14 +81,14 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         usb_hub_desc_t *hub_desc = kzalloc_dma(71) ;
 
         // 第一步：先读 8 字节探路
-        int32 ret = hub_get_class_desc(udev, USB_DESC_TYPE_HUB , hub_desc, 8);
+        int32 ret = usb_get_hub_class_desc(udev, USB_DESC_TYPE_HUB , hub_desc, 8);
         if (ret < 0) return ret;
 
         // 第二步：算出真实物理长度，再次读取
         uint8 num_ports = hub_desc->num_ports;
         uint16 real_len = 7 + ((num_ports / 8) + 1) * 2;
 
-        ret = hub_get_class_desc(udev, USB_DESC_TYPE_HUB , hub_desc, real_len);
+        ret = usb_get_hub_class_desc(udev, USB_DESC_TYPE_HUB , hub_desc, real_len);
         if (ret < 0) return ret;
 
         hub->is_usb3 = FALSE;
