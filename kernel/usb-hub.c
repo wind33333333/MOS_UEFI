@@ -6,7 +6,7 @@
 // 供 Hub 驱动调用的类级请求 (获取 Hub 描述符)
 // ⚠️ 注意：Hub 描述符是 Class 请求，且发给 Device
 // ==========================================
-static inline int32 usb_get_hub_class_desc(usb_dev_t *udev, usb_desc_type_e desc_type, void *buf, uint16 len) {
+static inline int32 usb_hub_get_desc(usb_dev_t *udev, usb_desc_type_e desc_type, void *buf, uint16 len) {
     return usb_get_desc(udev, buf,USB_REQ_TYPE_CLASS, USB_RECIP_DEVICE, desc_type, 0, 0, len);
 }
 
@@ -18,7 +18,7 @@ static inline int32 usb_get_hub_class_desc(usb_dev_t *udev, usb_desc_type_e desc
  * @brief Hub 端口特征底层控制核心函数
  * @param req_cmd 决定是 SET_FEATURE (0x03) 还是 CLEAR_FEATURE (0x01)
  */
-static inline int32 usb_port_feature_ctrl(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feat, usb_request_e cmd) {
+static inline int32 usb_hub_port_feature_ctrl(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feat, usb_request_e cmd) {
     return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER, cmd, feat, port_no);
 }
 
@@ -26,15 +26,15 @@ static inline int32 usb_port_feature_ctrl(usb_dev_t *udev, uint8 port_no, usb_po
 /**
  * @brief 设置 Hub 端口的特性 (例如上电、复位)
  */
-static inline int32 usb_set_port_feature(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feature) {
-    return usb_port_feature_ctrl(udev, port_no, feature, USB_REQ_SET_FEATURE);
+static inline int32 usb_hub_set_port_feature(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feature) {
+    return usb_hub_port_feature_ctrl(udev, port_no, feature, USB_REQ_SET_FEATURE);
 }
 
 /**
  * @brief 清除 Hub 端口的某个状态变化标志 (确认中断)
  */
-static inline int32 usb_clear_port_feature(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feature) {
-    return usb_port_feature_ctrl(udev, port_no, feature, USB_REQ_CLEAR_FEATURE);
+static inline int32 usb_hub_clear_port_feature(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feature) {
+    return usb_hub_port_feature_ctrl(udev, port_no, feature, USB_REQ_CLEAR_FEATURE);
 }
 
 
@@ -45,7 +45,7 @@ static inline int32 usb_clear_port_feature(usb_dev_t *udev, uint8 port_no, usb_p
  * @param port_status 传出参数：用于接收 4 字节的端口状态
  * @return int32      状态码 (0 成功，<0 失败)
  */
-int32 usb_get_port_status(usb_dev_t *udev, uint8 port_no, uint32 *port_status) {
+int32 usb_hub_get_port_status(usb_dev_t *udev, uint8 port_no, uint32 *port_status) {
     // 抛给底层，数据会写进 port_status 变量里
     uint32 *port_sts = kzalloc_dma(sizeof(uint32));
     usb_ctrl_in(udev,port_sts, USB_REQ_TYPE_CLASS,USB_RECIP_OTHER,USB_REQ_GET_STATUS,0,port_no,4 );
@@ -70,7 +70,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         usb_ss_hub_desc_t *ss_hub_desc = kzalloc_dma(sizeof(usb_ss_hub_desc_t));
 
         // 一步到位，直接吞下 12 字节！
-        int32 ret = usb_get_hub_class_desc(udev, USB_DESC_TYPE_SS_HUB, ss_hub_desc,12);
+        int32 ret = usb_hub_get_desc(udev, USB_DESC_TYPE_SS_HUB, ss_hub_desc,12);
         if (ret < 0) return ret;
 
     }else {
@@ -81,14 +81,14 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         usb_hub_desc_t *hub_desc = kzalloc_dma(71) ;
 
         // 第一步：先读 8 字节探路
-        int32 ret = usb_get_hub_class_desc(udev, USB_DESC_TYPE_HUB , hub_desc, 8);
+        int32 ret = usb_hub_get_desc(udev, USB_DESC_TYPE_HUB , hub_desc, 8);
         if (ret < 0) return ret;
 
         // 第二步：算出真实物理长度，再次读取
         uint8 num_ports = hub_desc->num_ports;
         uint16 real_len = 7 + ((num_ports / 8) + 1) * 2;
 
-        ret = usb_get_hub_class_desc(udev, USB_DESC_TYPE_HUB , hub_desc, real_len);
+        ret = usb_hub_get_desc(udev, USB_DESC_TYPE_HUB , hub_desc, real_len);
         if (ret < 0) return ret;
 
         hub->is_usb3 = FALSE;
@@ -117,7 +117,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         // 1. 暴力上电
         // ==========================================
         for (uint8 i = 0; i < hub->num_ports; i++) {
-            usb_set_port_feature(udev, hub->ports[i].port_no, USB_PORT_FEAT_POWER);
+            usb_hub_set_port_feature(udev, hub->ports[i].port_no, USB_PORT_FEAT_POWER);
         }
 
         // 🌟 物理规律：必须等待电容充电完毕！(你的 hub->power_delay_ms 派上用场了)
@@ -130,11 +130,11 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
             uint8 port_no = hub->ports[i].port_no;
             uint32 status = 0;
 
-            usb_get_port_status(udev, port_no, &status);
+            usb_hub_get_port_status(udev, port_no, &status);
 
             // 🔪 擦除开机时产生的插拔变化标志
             if (status & USB_PORT_STAT_C_CONNECTION) {
-                usb_clear_port_feature(udev, port_no, USB_PORT_FEAT_C_CONNECTION);
+                usb_hub_clear_port_feature(udev, port_no, USB_PORT_FEAT_C_CONNECTION);
             }
 
             // 如果口子上真的插了设备，开始复位流！
@@ -142,13 +142,13 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
                 //color_printk(GREEN, BLACK, "[Hub] 端口 %d 发现遗留设备，发射复位信号...\n", port_no);
 
                 // 触发硬复位
-                usb_set_port_feature(udev, port_no, USB_PORT_FEAT_RESET);
+                usb_hub_set_port_feature(udev, port_no, USB_PORT_FEAT_RESET);
 
                 // 🌟 物理规律：必须死等复位完成！
                 uint32 timeout = 100; // 最多等 100ms
                 while (timeout > 0) {
                     //mdelay(10);
-                    usb_get_port_status(udev, port_no, &status);
+                    usb_hub_get_port_status(udev, port_no, &status);
 
                     // 检查 C_RESET 标志位是否被硬件置 1
                     if (status & USB_PORT_STAT_C_RESET) {
@@ -163,11 +163,11 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
                 }
 
                 // 🔪 擦除复位完成标志
-                usb_clear_port_feature(udev, port_no, USB_PORT_FEAT_C_RESET);
+                usb_hub_clear_port_feature(udev, port_no, USB_PORT_FEAT_C_RESET);
 
                 // 🔪 顺手擦除随之产生的 Enable 变化标志
                 if (status & USB_PORT_STAT_C_ENABLE) {
-                    usb_clear_port_feature(udev, port_no, USB_PORT_FEAT_C_ENABLE);
+                    usb_hub_clear_port_feature(udev, port_no, USB_PORT_FEAT_C_ENABLE);
                 }
 
                 // 最终确认：是否成功 Enable？
@@ -178,8 +178,8 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
                     //  为这个新设备分配地址 (SetAddress)，获取它的设备描述符！
                 }
 
-                usb_get_port_status(udev, port_no, &status);
-                usb_get_port_status(udev, port_no, &status);
+                usb_hub_get_port_status(udev, port_no, &status);
+                usb_hub_get_port_status(udev, port_no, &status);
             }
         }
 
