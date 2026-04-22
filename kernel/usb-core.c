@@ -369,6 +369,18 @@ static inline int32 usb_get_dev_desc(usb_dev_t *udev,void *buf, usb_desc_type_e 
                         len);
 }
 
+// 1. 激活配置 (Set Configuration)
+static inline int32 usb_set_cfg(usb_dev_t *udev, uint8 cfg_value) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_DEVICE,
+                        USB_REQ_SET_CONFIGURATION, cfg_value, 0);
+}
+
+// 2. 激活接口 (Set Interface)
+static inline int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_INTERFACE,
+                        USB_REQ_SET_INTERFACE, alt_num, if_num);
+}
+
 
 //=============================================================================================================
 

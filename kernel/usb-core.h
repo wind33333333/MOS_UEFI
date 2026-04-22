@@ -658,23 +658,9 @@ static inline int32 usb_ctrl_in(usb_dev_t *udev,void *buf, usb_req_type_e req_ty
                            request, value, index,  length);
 }
 
-// ==========================================
-// 🎯 第三层：具体指令的降维打击
-// ==========================================
 
-// 1. 激活配置 (Set Configuration)
-static inline int32 usb_set_cfg(usb_dev_t *udev, uint8 cfg_value) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_DEVICE,
-                        USB_REQ_SET_CONFIGURATION, cfg_value, 0);
-}
 
-// 2. 激活接口 (Set Interface)
-static inline int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_INTERFACE,
-                        USB_REQ_SET_INTERFACE, alt_num, if_num);
-}
-
-// 3. 端点上锁/解锁 (Clear/Set Feature Endpoint Halt)
+//  端点上锁/解锁 (Clear/Set Feature Endpoint Halt)
 static inline int32 usb_ep_halt_control(usb_dev_t *udev, uint8 ep_dci, usb_request_e halt_action) {
     return usb_ctrl_out(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_ENDPOINT,
                         halt_action, USB_FEATURE_ENDPOINT_HALT, epdci_to_epaddr(ep_dci));
@@ -691,7 +677,7 @@ static inline int32 usb_ep_halt_control(usb_dev_t *udev, uint8 ep_dci, usb_reque
  * @param buffer     接收 DMA 内存
  * @param length     期望长度
  */
-// 4. 大一统获取描述符 (Get Descriptor)
+// 大一统获取描述符 (Get Descriptor)
 static inline int32 usb_get_desc(usb_dev_t *udev,void *buf, usb_req_type_e req_type, usb_recipient_e recipient,
                                 usb_desc_type_e desc_type, uint8 desc_idx, uint16 target_idx,uint16 length) {
     return usb_ctrl_in(udev,buf, req_type, recipient, USB_REQ_GET_DESCRIPTOR, (desc_type << 8) | desc_idx, target_idx, length);
