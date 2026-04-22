@@ -221,7 +221,7 @@ typedef struct {
     uint8 device_removable[];       // 位图：指示每个端口上的设备是不是焊死的（比如笔记本内置摄像头）
 
     // uint8 port_pwr_ctrl_mask[];  // 💡 USB 2.0 规范已废弃全填 0xFF，此处物理超度！
-} usb2_hub_desc_t;
+} usb_hub_desc_t;
 
 /**
  * @brief USB 3.0 超高速集线器描述符 (Type: 0x2A)
@@ -253,12 +253,7 @@ typedef struct {
     // ==========================================
     uint16 device_removable;        // 16位位图。Bit 1~15 代表对应的端口是否可移除。(Bit 0 保留)
 
-} usb3_hub_desc_t;
-
-typedef enum : uint8 {
-    USB_HUB2_DESC = 0x29,
-    USB_HUB3_DESC = 0x2A,
-}usb_hub_desc_e;
+} usb_ss_hub_desc_t;
 
 typedef enum : uint8 {
     USB_RECIP_DEVICE    = 0,  //设备
@@ -639,6 +634,10 @@ int32 usb_control_msg(usb_dev_t *udev, usb_setup_packet_t *setup_pkg, void *data
 int32 usb_ep_halt_control(usb_dev_t *udev, uint8 ep_dci, usb_request_e is_set);
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
 int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp);
+
+int32 usb_get_desc(usb_dev_t *udev, usb_req_type_e req_type, usb_recipient_e recipient,
+                                uint8 desc_type, uint8 desc_idx, uint16 target_idx,
+                                void *buffer, uint16 length);
 
 int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_id);
 int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_id);
