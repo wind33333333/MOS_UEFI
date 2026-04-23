@@ -659,12 +659,26 @@ static inline int32 usb_ctrl_in(usb_dev_t *udev,void *buf, usb_req_type_e req_ty
 }
 
 
-
-//  端点上锁/解锁 (Clear/Set Feature Endpoint Halt)
-static inline int32 usb_ep_halt_control(usb_dev_t *udev, uint8 ep_dci, usb_request_e halt_action) {
+/**
+ * @brief 端点解锁 (清除端点 Halt / 清除 Stall 状态)
+ * @param udev   目标设备
+ * @param ep_dci xHCI 端点上下文索引 (DCI)
+ */
+static inline int32 usb_clear_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
     return usb_ctrl_out(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_ENDPOINT,
-                        halt_action, USB_FEATURE_ENDPOINT_HALT, epdci_to_epaddr(ep_dci));
+                        USB_REQ_CLEAR_FEATURE, USB_FEATURE_ENDPOINT_HALT, epdci_to_epaddr(ep_dci));
 }
+
+/**
+ * @brief 端点上锁 (强制端点进入 Halt/Stall 状态，通常用于模拟错误或调试)
+ * @param udev   目标设备
+ * @param ep_dci xHCI 端点上下文索引 (DCI)
+ */
+static inline int32 usb_set_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_ENDPOINT,
+                        USB_REQ_SET_FEATURE, USB_FEATURE_ENDPOINT_HALT, epdci_to_epaddr(ep_dci));
+}
+
 
 /**
  * @brief 终极版：向 USB 目标发送 GetDescriptor 请求

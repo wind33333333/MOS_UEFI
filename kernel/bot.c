@@ -81,7 +81,7 @@ static int32 bot_ep_reset(usb_dev_t *udev,uint8 ep_dci) {
        color_printk(RED,BLACK,"XHCI CMD RESET EP posix_err:%d slot_id:%d ep_dci:%d  \n",posix_err,slot_id,ep_dci);
     }
 
-    posix_err = usb_ep_halt_control(udev, ep_dci,USB_REQ_CLEAR_FEATURE);
+    posix_err = usb_clear_ep_halt(udev, ep_dci);
     if (posix_err > 0) {
         color_printk(RED,BLACK,"USB EP HALT CONTROL  \n!  \n");
     }

@@ -12,32 +12,77 @@ static inline int32 usb_hub_get_desc(usb_dev_t *udev, usb_desc_type_e desc_type,
 
 
 // ==========================================
-// 🛠️ 内部核心函数 (不对外暴露，专干脏活累活)
+// 🔌 Hub 端口控制核心动作 (Action)
 // ==========================================
-/**
- * @brief Hub 端口特征底层控制核心函数
- * @param req_cmd 决定是 SET_FEATURE (0x03) 还是 CLEAR_FEATURE (0x01)
- */
-static inline int32 usb_hub_port_feature_ctrl(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feat, usb_request_e cmd) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER, cmd, feat, port_no);
-}
-
 
 /**
- * @brief 设置 Hub 端口的特性 (例如上电、复位)
+ * @brief 给 Hub 端口上电
  */
-static inline int32 usb_hub_set_port_feature(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feature) {
-    return usb_hub_port_feature_ctrl(udev, port_no, feature, USB_REQ_SET_FEATURE);
+static inline int32 usb_hub_set_port_power(usb_dev_t *udev, uint8 port_no) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                        USB_REQ_SET_FEATURE, USB_PORT_FEAT_POWER, port_no);
 }
 
 /**
- * @brief 清除 Hub 端口的某个状态变化标志 (确认中断)
+ * @brief 给 Hub 端口断电
  */
-static inline int32 usb_hub_clear_port_feature(usb_dev_t *udev, uint8 port_no, usb_port_feature_e feature) {
-    return usb_hub_port_feature_ctrl(udev, port_no, feature, USB_REQ_CLEAR_FEATURE);
+static inline int32 usb_hub_clear_port_power(usb_dev_t *udev, uint8 port_no) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                        USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_POWER, port_no);
 }
 
+/**
+ * @brief 触发 Hub 端口硬复位 (将导致设备进入 Default 状态)
+ */
+static inline int32 usb_hub_set_port_reset(usb_dev_t *udev, uint8 port_no) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                        USB_REQ_SET_FEATURE, USB_PORT_FEAT_RESET, port_no);
+}
 
+// ==========================================
+// 🧹 Hub 端口状态变化标志擦除 (Ack Interrupt)
+// ⚠️ 极其关键：必须全部使用 USB_REQ_CLEAR_FEATURE！
+// ==========================================
+
+/**
+ * @brief 擦除 [复位完成] 变化标志
+ */
+static inline int32 usb_hub_clear_port_reset_change(usb_dev_t *udev, uint8 port_no) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                        USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_RESET, port_no);
+}
+
+/**
+ * @brief 擦除 [物理插拔] 变化标志 (防止热插拔中断风暴)
+ */
+static inline int32 usb_hub_clear_port_connection_change(usb_dev_t *udev, uint8 port_no) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                        USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_CONNECTION, port_no);
+}
+
+/**
+ * @brief 擦除 [端口启用状态改变] 变化标志
+ */
+static inline int32 usb_hub_clear_port_enable_change(usb_dev_t *udev, uint8 port_no) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                        USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_ENABLE, port_no);
+}
+
+/**
+ * @brief 擦除 [端口休眠/唤醒] 变化标志
+ */
+static inline int32 usb_hub_clear_port_suspend_change(usb_dev_t *udev, uint8 port_no) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                        USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_SUSPEND, port_no);
+}
+
+/**
+ * @brief 擦除 [过流报警] 变化标志
+ */
+static inline int32 usb_hub_clear_port_over_current_change(usb_dev_t *udev, uint8 port_no) {
+    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                        USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_OVER_CURRENT, port_no);
+}
 /**
  * @brief 获取 Hub 端口的 4 字节状态数据
  * @param udev        Hub 设备对象
@@ -117,7 +162,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         // 1. 暴力上电
         // ==========================================
         for (uint8 i = 0; i < hub->num_ports; i++) {
-            usb_hub_set_port_feature(udev, hub->ports[i].port_no, USB_PORT_FEAT_POWER);
+            usb_hub_set_port_power(udev, hub->ports[i].port_no);
         }
 
         // 🌟 物理规律：必须等待电容充电完毕！(你的 hub->power_delay_ms 派上用场了)
@@ -134,7 +179,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
 
             // 🔪 擦除开机时产生的插拔变化标志
             if (status & USB_PORT_STAT_C_CONNECTION) {
-                usb_hub_clear_port_feature(udev, port_no, USB_PORT_FEAT_C_CONNECTION);
+                usb_hub_clear_port_connection_change(udev, port_no);
             }
 
             // 如果口子上真的插了设备，开始复位流！
@@ -142,7 +187,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
                 //color_printk(GREEN, BLACK, "[Hub] 端口 %d 发现遗留设备，发射复位信号...\n", port_no);
 
                 // 触发硬复位
-                usb_hub_set_port_feature(udev, port_no, USB_PORT_FEAT_RESET);
+                usb_hub_set_port_reset(udev, port_no);
 
                 // 🌟 物理规律：必须死等复位完成！
                 uint32 timeout = 100; // 最多等 100ms
@@ -163,11 +208,11 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
                 }
 
                 // 🔪 擦除复位完成标志
-                usb_hub_clear_port_feature(udev, port_no, USB_PORT_FEAT_C_RESET);
+                usb_hub_clear_port_reset_change(udev, port_no);
 
                 // 🔪 顺手擦除随之产生的 Enable 变化标志
                 if (status & USB_PORT_STAT_C_ENABLE) {
-                    usb_hub_clear_port_feature(udev, port_no, USB_PORT_FEAT_C_ENABLE);
+                    usb_hub_clear_port_enable_change(udev, port_no);
                 }
 
                 // 最终确认：是否成功 Enable？
