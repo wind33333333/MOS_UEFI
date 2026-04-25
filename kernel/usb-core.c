@@ -347,38 +347,75 @@ int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
     return posix_err;
 }
 
+
+// ==========================================
+// 📄 设备级描述符获取 API (直通控制传输枢纽)
+// ==========================================
+
 /**
- * @brief 统一的标准设备级描述符获取函数
- * 涵盖了 Device, Configuration, BOS 以及 String 等所有发给设备的标准请求
- * * @param udev       目标设备
- * @param desc_type  描述符类型 (如 USB_DESC_DEVICE, USB_DESC_STRING)
- * @param desc_index 描述符索引 (普通描述符填 0，字符串填 string_index)
- * @param wIndex     目标索引 (普通描述符填 0，字符串填 lang_id)
- * @param buf        接收缓冲区 (必须是 DMA 内存)
- * @param len        期望读取长度
+ * @brief 获取设备描述符 (Device Descriptor)
+ * @note 全局唯一，不需要索引，不需要语言 ID
  */
-static inline int32 usb_get_dev_desc(usb_dev_t *udev,void *buf, usb_desc_type_e desc_type, uint8 desc_index, uint16 index, uint16 len) {
-
-    // 底层路由：固定为 STANDARD (标准请求) 和 DEVICE (发给整个设备)
-    return usb_get_desc(udev,buf,
-                        USB_REQ_TYPE_STANDARD,
-                        USB_RECIP_DEVICE,
-                        desc_type,
-                        desc_index,
-                        index,
-                        len);
+static inline int32 usb_get_dev_desc(usb_dev_t *udev, void *buf, uint16 len) {
+    return usb_control_msg(udev, buf,
+                           USB_DIR_IN, USB_REQ_TYPE_STANDARD, USB_RECIP_DEVICE,
+                           USB_REQ_GET_DESCRIPTOR, (USB_DESC_TYPE_DEVICE << 8) | 0, 0, len);
 }
 
-// 1. 激活配置 (Set Configuration)
+/**
+ * @brief 获取配置描述符 (Configuration Descriptor)
+ * @param config_index 配置的索引 (通常为 0，代表第 1 个配置)
+ */
+static inline int32 usb_get_cfg_desc(usb_dev_t *udev, uint8 config_index, void *buf, uint16 len) {
+    return usb_control_msg(udev, buf,
+                           USB_DIR_IN, USB_REQ_TYPE_STANDARD, USB_RECIP_DEVICE,
+                           USB_REQ_GET_DESCRIPTOR, (USB_DESC_TYPE_CONFIG << 8) | config_index, 0, len);
+}
+
+/**
+ * @brief 获取字符串描述符 (String Descriptor)
+ * @param string_index 设备描述符中指定的字符串索引 (如 iManufacturer)
+ * @param lang_id      语言 ID (通常传入 0x0409 代表美式英语)
+ */
+static inline int32 usb_get_string_desc(usb_dev_t *udev, uint8 string_index, uint16 lang_id, void *buf, uint16 len) {
+    return usb_control_msg(udev, buf,
+                           USB_DIR_IN, USB_REQ_TYPE_STANDARD, USB_RECIP_DEVICE,
+                           USB_REQ_GET_DESCRIPTOR, (USB_DESC_TYPE_STRING << 8) | string_index, lang_id, len);
+}
+
+/**
+ * @brief 获取 BOS 描述符 (Binary Object Store - USB 3.0+ 专属)
+ * @note 全局唯一，不需要索引
+ */
+static inline int32 usb_get_bos_desc(usb_dev_t *udev, void *buf, uint16 len) {
+    return usb_control_msg(udev, buf,
+                           USB_DIR_IN, USB_REQ_TYPE_STANDARD, USB_RECIP_DEVICE,
+                           USB_REQ_GET_DESCRIPTOR, (USB_DESC_TYPE_BOS << 8) | 0, 0, len);
+}
+
+
+// ==========================================
+// ⚙️ 设备状态控制 API (直通控制传输枢纽)
+// ==========================================
+
+/**
+ * @brief 激活配置 (Set Configuration)
+ * @note 这是一个纯命令传输，没有后续的数据包，因此 buffer 为 NULL，length 为 0。
+ */
 static inline int32 usb_set_cfg(usb_dev_t *udev, uint8 cfg_value) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_DEVICE,
-                        USB_REQ_SET_CONFIGURATION, cfg_value, 0);
+    return usb_control_msg(udev, NULL,
+                           USB_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_RECIP_DEVICE,
+                           USB_REQ_SET_CONFIGURATION, cfg_value, 0, 0);
 }
 
-// 2. 激活接口 (Set Interface)
+/**
+ * @brief 激活接口 (Set Interface)
+ * @note 用于在复合设备 (如带有多个备用设置的摄像头或声卡) 中切换接口的 Alternate Setting。
+ */
 static inline int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_INTERFACE,
-                        USB_REQ_SET_INTERFACE, alt_num, if_num);
+    return usb_control_msg(udev, NULL,
+                           USB_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_RECIP_INTERFACE,
+                           USB_REQ_SET_INTERFACE, alt_num, if_num, 0);
 }
 
 
@@ -1397,7 +1434,7 @@ static inline int32 get_dev_desc(usb_dev_t *udev) {
     if (udev->port_speed == XHCI_PORTSC_SPEED_FULL) {
 
         // 探针：只拿前 8 字节
-        usb_get_dev_desc(udev,dev_desc,USB_DESC_TYPE_DEVICE,0,0,8);
+        usb_get_dev_desc(udev,dev_desc,8);
 
         if (dev_desc->max_packet_size0 != 8) {
             usb_ep_t *ep0 = udev->ueps[1];
@@ -1411,7 +1448,7 @@ static inline int32 get_dev_desc(usb_dev_t *udev) {
     // ============================
     // 获取完整的 18 字节设备描述符
     // ============================
-    usb_get_dev_desc(udev,dev_desc,USB_DESC_TYPE_DEVICE,0,0,sizeof(usb_dev_desc_t));
+    usb_get_dev_desc(udev,dev_desc,sizeof(usb_dev_desc_t));
 
     // 挂载到内核对象树上
     udev->dev_desc = dev_desc;
@@ -1424,7 +1461,7 @@ static inline int get_cfg_desc(usb_dev_t *udev) {
     usb_cfg_desc_t *config_desc = kzalloc_dma(sizeof(usb_cfg_desc_t));
 
     //第一次先获取配置描述符前9字节
-    usb_get_dev_desc(udev,config_desc,USB_DESC_TYPE_CONFIG,0,0,9);
+    usb_get_cfg_desc(udev,0,config_desc,9);
 
     //第二次从配置描述符中得到总长度获取整个配置描述符
     uint16 config_desc_length = config_desc->total_length;
@@ -1432,7 +1469,7 @@ static inline int get_cfg_desc(usb_dev_t *udev) {
 
     config_desc = kzalloc_dma(config_desc_length);
 
-    usb_get_dev_desc(udev,config_desc,USB_DESC_TYPE_CONFIG,0,0,config_desc_length);
+    usb_get_cfg_desc(udev,0,config_desc,config_desc_length);
 
     udev->config_desc = config_desc;
     return 0;
@@ -1445,11 +1482,11 @@ static inline int get_string_desc(usb_dev_t *udev) {
 
     //获取语言ID描述符
     uint16 language_id;
-    usb_get_dev_desc(udev,desc_head,USB_DESC_TYPE_STRING,0,0,2);
+    usb_get_string_desc(udev,0,0,desc_head,2);
     usb_string_desc_t *language_desc = kzalloc_dma(desc_head->length);    // 分配真实长度的 DMA 内存
 
     // 正式拉取
-    usb_get_dev_desc(udev,language_desc,USB_DESC_TYPE_STRING,0,0,desc_head->length);
+    usb_get_string_desc(udev,0,0,language_desc,desc_head->length);
     if (language_desc->head.desc_type == USB_DESC_TYPE_STRING) {
         language_id = language_desc->string[0];
         udev->language_desc = language_desc;
@@ -1471,13 +1508,13 @@ static inline int get_string_desc(usb_dev_t *udev) {
     for (uint8 i = 0; i < 3; i++) {
         if (string_index[i]) {
             //第一次先获取长度
-            usb_get_dev_desc(udev,desc_head,USB_DESC_TYPE_STRING,string_index[i],language_id,2);
+            usb_get_string_desc(udev,string_index[i],language_id,desc_head,2);
 
             //分配内存
             string_desc[i] = kzalloc_dma(desc_head->length);
 
             //第二次先正式获取字符串描述符N
-            usb_get_dev_desc(udev,string_desc[i],USB_DESC_TYPE_STRING,string_index[i],language_id,desc_head->length);
+            usb_get_string_desc(udev,string_index[i],language_id,string_desc[i],desc_head->length);
 
             //解析字符串描述符
             uint8 string_ascii_length = (desc_head->length-2)/2;

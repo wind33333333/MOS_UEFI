@@ -1,88 +1,111 @@
 #include "usb-hub.h"
-
+#include "errno.h"
 #include "slub.h"
 
 // ==========================================
-// 供 Hub 驱动调用的类级请求 (获取 Hub 描述符)
-// ⚠️ 注意：Hub 描述符是 Class 请求，且发给 Device
+// 📦 Hub 专属类描述符获取 (Class Descriptor)
 // ==========================================
-static inline int32 usb_hub_get_desc(usb_dev_t *udev, usb_desc_type_e desc_type, void *buf, uint16 len) {
-    return usb_get_desc(udev, buf,USB_REQ_TYPE_CLASS, USB_RECIP_DEVICE, desc_type, 0, 0, len);
+
+/**
+ * 获取普通 hub描述符
+ */
+static inline int32 usb_hub_get_desc(usb_dev_t *udev, void *buf, uint16 len) {
+    return usb_control_msg(udev, buf,
+                           USB_DIR_IN, USB_REQ_TYPE_CLASS, USB_RECIP_DEVICE,
+                           USB_REQ_GET_DESCRIPTOR, (USB_DESC_TYPE_HUB  << 8) | 0, 0, len);
 }
 
+// 获取 ss hub描述符
+static inline int32 usb_hub_get_ss_desc(usb_dev_t *udev, void *buf, uint16 len) {
+    return usb_control_msg(udev, buf,
+                           USB_DIR_IN, USB_REQ_TYPE_CLASS, USB_RECIP_DEVICE,
+                           USB_REQ_GET_DESCRIPTOR, (USB_DESC_TYPE_SS_HUB << 8) | 0, 0, len);
+}
 
 // ==========================================
-// 🔌 Hub 端口控制核心动作 (Action)
+// 🔌 Hub 端口控制核心动作 (Action - 无数据阶段)
 // ==========================================
 
 /**
  * @brief 给 Hub 端口上电
  */
 static inline int32 usb_hub_set_port_power(usb_dev_t *udev, uint8 port_no) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                        USB_REQ_SET_FEATURE, USB_PORT_FEAT_POWER, port_no);
+    return usb_control_msg(udev, NULL,
+                           USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                           USB_REQ_SET_FEATURE, USB_PORT_FEAT_POWER, port_no, 0);
 }
 
 /**
  * @brief 给 Hub 端口断电
  */
 static inline int32 usb_hub_clear_port_power(usb_dev_t *udev, uint8 port_no) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                        USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_POWER, port_no);
+    return usb_control_msg(udev, NULL,
+                           USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_POWER, port_no, 0);
 }
 
 /**
- * @brief 触发 Hub 端口硬复位 (将导致设备进入 Default 状态)
+ * @brief 触发 Hub 端口硬复位 (将导致挂载的设备进入 Default 状态)
  */
 static inline int32 usb_hub_set_port_reset(usb_dev_t *udev, uint8 port_no) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                        USB_REQ_SET_FEATURE, USB_PORT_FEAT_RESET, port_no);
+    return usb_control_msg(udev, NULL,
+                           USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                           USB_REQ_SET_FEATURE, USB_PORT_FEAT_RESET, port_no, 0);
 }
 
 // ==========================================
-// 🧹 Hub 端口状态变化标志擦除 (Ack Interrupt)
-// ⚠️ 极其关键：必须全部使用 USB_REQ_CLEAR_FEATURE！
+// 🧹 Hub 端口状态变化标志擦除 (Ack Interrupt - 无数据阶段)
 // ==========================================
 
 /**
  * @brief 擦除 [复位完成] 变化标志
  */
 static inline int32 usb_hub_clear_port_reset_change(usb_dev_t *udev, uint8 port_no) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                        USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_RESET, port_no);
+    return usb_control_msg(udev, NULL,
+                           USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_RESET, port_no, 0);
 }
 
 /**
  * @brief 擦除 [物理插拔] 变化标志 (防止热插拔中断风暴)
  */
 static inline int32 usb_hub_clear_port_connection_change(usb_dev_t *udev, uint8 port_no) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                        USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_CONNECTION, port_no);
+    return usb_control_msg(udev, NULL,
+                           USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_CONNECTION, port_no, 0);
 }
 
 /**
  * @brief 擦除 [端口启用状态改变] 变化标志
  */
 static inline int32 usb_hub_clear_port_enable_change(usb_dev_t *udev, uint8 port_no) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                        USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_ENABLE, port_no);
+    return usb_control_msg(udev, NULL,
+                           USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_ENABLE, port_no, 0);
 }
 
 /**
  * @brief 擦除 [端口休眠/唤醒] 变化标志
  */
 static inline int32 usb_hub_clear_port_suspend_change(usb_dev_t *udev, uint8 port_no) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                        USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_SUSPEND, port_no);
+    return usb_control_msg(udev, NULL,
+                           USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_SUSPEND, port_no, 0);
 }
 
 /**
  * @brief 擦除 [过流报警] 变化标志
  */
 static inline int32 usb_hub_clear_port_over_current_change(usb_dev_t *udev, uint8 port_no) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                        USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_OVER_CURRENT, port_no);
+    return usb_control_msg(udev, NULL,
+                           USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_OVER_CURRENT, port_no, 0);
 }
+
+// ==========================================
+// 🔍 Hub 端口状态读取 (有数据阶段)
+// ==========================================
+
 /**
  * @brief 获取 Hub 端口的 4 字节状态数据
  * @param udev        Hub 设备对象
@@ -91,14 +114,28 @@ static inline int32 usb_hub_clear_port_over_current_change(usb_dev_t *udev, uint
  * @return int32      状态码 (0 成功，<0 失败)
  */
 int32 usb_hub_get_port_status(usb_dev_t *udev, uint8 port_no, uint32 *port_status) {
-    // 抛给底层，数据会写进 port_status 变量里
+    // 1. 申请用于底层 DMA 传输的 4 字节内存
     uint32 *port_sts = kzalloc_dma(sizeof(uint32));
-    usb_ctrl_in(udev,port_sts, USB_REQ_TYPE_CLASS,USB_RECIP_OTHER,USB_REQ_GET_STATUS,0,port_no,4 );
-    *port_status = *port_sts;
-    kfree(port_sts);
-    return 0;
-}
+    if (!port_sts) {
+        return -ENOMEM;
+    }
 
+    // 2. 直击灵魂的底层调用：读取 4 字节状态 (IN 方向)
+    int32 ret = usb_control_msg(udev, port_sts,
+                                USB_DIR_IN, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
+                                USB_REQ_GET_STATUS, 0, port_no, 4);
+
+    // 3. 只有成功时，才将结果透传给调用者
+    if (ret >= 0) {
+        *port_status = *port_sts;
+    }
+
+    // 4. 清理现场
+    kfree(port_sts);
+
+    // 🌟 核心修复：必须返回 ret，透传底层的超时/STALL错误！
+    return ret;
+}
 
 
 //hub驱动
@@ -115,7 +152,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         usb_ss_hub_desc_t *ss_hub_desc = kzalloc_dma(sizeof(usb_ss_hub_desc_t));
 
         // 一步到位，直接吞下 12 字节！
-        int32 ret = usb_hub_get_desc(udev, USB_DESC_TYPE_SS_HUB, ss_hub_desc,12);
+        int32 ret = usb_hub_get_ss_desc(udev, ss_hub_desc,12);
         if (ret < 0) return ret;
 
     }else {
@@ -126,14 +163,14 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         usb_hub_desc_t *hub_desc = kzalloc_dma(71) ;
 
         // 第一步：先读 8 字节探路
-        int32 ret = usb_hub_get_desc(udev, USB_DESC_TYPE_HUB , hub_desc, 8);
+        int32 ret = usb_hub_get_desc(udev,hub_desc, 8);
         if (ret < 0) return ret;
 
         // 第二步：算出真实物理长度，再次读取
         uint8 num_ports = hub_desc->num_ports;
         uint16 real_len = 7 + ((num_ports / 8) + 1) * 2;
 
-        ret = usb_hub_get_desc(udev, USB_DESC_TYPE_HUB , hub_desc, real_len);
+        ret = usb_hub_get_desc(udev,hub_desc, real_len);
         if (ret < 0) return ret;
 
         hub->is_usb3 = FALSE;

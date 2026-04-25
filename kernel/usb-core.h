@@ -644,55 +644,31 @@ int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
                       usb_data_dir_e dtd, usb_req_type_e req_type, usb_recipient_e recipient,
                       usb_request_e request, uint16 value, uint16 index,uint16 length);
 
-static inline int32 usb_ctrl_out(usb_dev_t *udev,usb_req_type_e req_type, usb_recipient_e recipient,
-                      usb_request_e request, uint16 value, uint16 index) {
-    // OUT 请求必然没有接收 buffer，长度必然为 0
-    return usb_control_msg(udev, NULL,USB_DIR_OUT, req_type, recipient,
-                           request, value, index,  0);
-}
 
-static inline int32 usb_ctrl_in(usb_dev_t *udev,void *buf, usb_req_type_e req_type, usb_recipient_e recipient,
-                      usb_request_e request, uint16 value, uint16 index, uint16 length) {
-    // IN 请求必然有 buffer 和长度
-    return usb_control_msg(udev, buf,USB_DIR_IN, req_type, recipient,
-                           request, value, index,  length);
-}
-
+// ==========================================
+// 🚦 端点状态控制 API (直通控制传输枢纽)
+// ==========================================
 
 /**
  * @brief 端点解锁 (清除端点 Halt / 清除 Stall 状态)
  * @param udev   目标设备
  * @param ep_dci xHCI 端点上下文索引 (DCI)
+ * @note 用于抢救出现 STALL 错误的端点。无数据阶段，length = 0。
  */
 static inline int32 usb_clear_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_ENDPOINT,
-                        USB_REQ_CLEAR_FEATURE, USB_FEATURE_ENDPOINT_HALT, epdci_to_epaddr(ep_dci));
+    return usb_control_msg(udev, NULL,
+                           USB_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_RECIP_ENDPOINT,
+                           USB_REQ_CLEAR_FEATURE, USB_FEATURE_ENDPOINT_HALT, epdci_to_epaddr(ep_dci), 0);
 }
 
 /**
- * @brief 端点上锁 (强制端点进入 Halt/Stall 状态，通常用于模拟错误或调试)
+ * @brief 端点上锁 (强制端点进入 Halt/Stall 状态)
  * @param udev   目标设备
  * @param ep_dci xHCI 端点上下文索引 (DCI)
+ * @note 通常用于模拟错误或调试。无数据阶段，length = 0。
  */
 static inline int32 usb_set_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
-    return usb_ctrl_out(udev, USB_REQ_TYPE_STANDARD, USB_RECIP_ENDPOINT,
-                        USB_REQ_SET_FEATURE, USB_FEATURE_ENDPOINT_HALT, epdci_to_epaddr(ep_dci));
-}
-
-
-/**
- * @brief 终极版：向 USB 目标发送 GetDescriptor 请求
- * @param udev       目标 USB 设备
- * @param req_type   请求类型 (USB_REQ_TYPE_STANDARD / CLASS / VENDOR)
- * @param recipient  接收者 (USB_RECIP_DEVICE / INTERFACE / ENDPOINT)
- * @param desc_type  描述符类型 (如 0x01, 0x0F, 0x22, 0x29)
- * @param desc_idx 描述符索引
- * @param target_idx 目标索引 (如果发给设备填 0；发给接口填 Interface Number)
- * @param buffer     接收 DMA 内存
- * @param length     期望长度
- */
-// 大一统获取描述符 (Get Descriptor)
-static inline int32 usb_get_desc(usb_dev_t *udev,void *buf, usb_req_type_e req_type, usb_recipient_e recipient,
-                                usb_desc_type_e desc_type, uint8 desc_idx, uint16 target_idx,uint16 length) {
-    return usb_ctrl_in(udev,buf, req_type, recipient, USB_REQ_GET_DESCRIPTOR, (desc_type << 8) | desc_idx, target_idx, length);
+    return usb_control_msg(udev, NULL,
+                           USB_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_RECIP_ENDPOINT,
+                           USB_REQ_SET_FEATURE, USB_FEATURE_ENDPOINT_HALT, epdci_to_epaddr(ep_dci), 0);
 }
