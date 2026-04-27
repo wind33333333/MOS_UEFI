@@ -142,7 +142,6 @@ int32 usb_hub_get_port_status(usb_dev_t *udev, uint8 port_no, uint32 *port_statu
 // 🌳 xHCI 虚拟 Root Hub 抽象层
 // =========================================================================
 
-/*
 // 提前声明 Root Hub 专属的寄存器读写操作集 (下文会详细说明)
 extern usb_hub_ops_t xhci_roothub_ops;
 
@@ -150,7 +149,7 @@ extern usb_hub_ops_t xhci_roothub_ops;
  * @brief 根据 xHCI 的协议支持表 (SPC)，凭空捏造虚拟的 Root Hub
  * @param xhcd xHCI 控制器上下文
  * @return int32 0 表示成功
- #1#
+ */
 int32 usb_create_root_hub(xhci_hcd_t *xhcd) {
     if (!xhcd || xhcd->spc_count == 0) return -EINVAL;
 
@@ -226,7 +225,7 @@ int32 usb_create_root_hub(xhci_hcd_t *xhcd) {
 
     return 0;
 }
-*/
+
 
 
 //hub驱动

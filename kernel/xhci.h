@@ -988,6 +988,7 @@ typedef struct {
     uint8  slot_type;           // Protocol Slot Type（DW3[4:0]）
     uint8  psi_count;           // PSI 条目数 PSIC（DW2[31:28]，0=默认映射，>0=显式 PSI 表）
     uint32 *psi;                // 按 PSIV 索引的 PSI 原始 dword（用于解释 PortSC speed）
+    struct usb_hub_t *root_hub;
 } xhci_spc_t;
 
 
