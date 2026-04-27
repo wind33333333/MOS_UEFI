@@ -915,10 +915,10 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhcd->spc = kzalloc(sizeof(xhci_spc_t) * xhcd->spc_count);
 
     /* 为“端口号 -> 协议索引”的映射表分配内存 (极其关键的 O(1) 查表数组) */
-    xhcd->port_to_spc = kmalloc(xhcd->max_ports);
+    xhcd->port_to_spc = kmalloc(xhcd->max_ports+1);
 
     /* 将映射表全部初始化为 0xFF，代表“尚未映射/无效端口” */
-    asm_mem_set(xhcd->port_to_spc, 0xFF, xhcd->max_ports);
+    asm_mem_set(xhcd->port_to_spc, 0xFF, xhcd->max_ports+1);
 
     // =========================================================================
     // 阶段 2：深度解析硬件协议表 (将硬件寄存器状态翻译为内核软件结构)
@@ -966,10 +966,9 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
         // 阶段 4：建立 O(1) 端口映射表 (极其关键的防雷区)
         // =========================================================================
         /* * 硬件大坑：spc->port_first 是从 1 开始计数的 (物理世界的习惯)
-         * 软件数组：xhcd->port_to_spc 是从 0 开始计数的 (C 语言的习惯)
-         * 所以必须使用 spc->port_first - 1 进行完美降维降级对齐！
          */
-        for (uint8 j = spc->port_first - 1; j < spc->port_first - 1 + spc->port_count; j++) {
+        uint8 end_port = spc->port_first + spc->port_count;
+        for (uint8 j = spc->port_first; j < end_port; j++) {
             /* 将逻辑端口号 j 映射到当前协议的索引 i 上 */
             /* 以后只要知道端口号 j，读取 port_to_spc[j]，瞬间就能知道它是 USB 2.0 还是 3.0 */
             xhcd->port_to_spc[j] = i;

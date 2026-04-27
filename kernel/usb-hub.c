@@ -138,6 +138,97 @@ int32 usb_hub_get_port_status(usb_dev_t *udev, uint8 port_no, uint32 *port_statu
 }
 
 
+// =========================================================================
+// 🌳 xHCI 虚拟 Root Hub 抽象层
+// =========================================================================
+
+/*
+// 提前声明 Root Hub 专属的寄存器读写操作集 (下文会详细说明)
+extern usb_hub_ops_t xhci_roothub_ops;
+
+/**
+ * @brief 根据 xHCI 的协议支持表 (SPC)，凭空捏造虚拟的 Root Hub
+ * @param xhcd xHCI 控制器上下文
+ * @return int32 0 表示成功
+ #1#
+int32 usb_create_root_hub(xhci_hcd_t *xhcd) {
+    if (!xhcd || xhcd->spc_count == 0) return -EINVAL;
+
+    // 遍历我们在 xhci_probe 阶段解析出来的 SPC (Supported Protocol) 数组
+    // 通常循环两次：一次造 USB 2.0 Root Hub，一次造 USB 3.0 Root Hub
+    for (uint8 i = 0; i < xhcd->spc_count; i++) {
+        xhci_spc_t *spc = &xhcd->spc[i];
+
+        // ---------------------------------------------------------
+        // 1. 凭空捏造设备对象 (udev)
+        // ---------------------------------------------------------
+        usb_dev_t *root_udev = kzalloc(sizeof(usb_dev_t));
+        if (!root_udev) return -ENOMEM;
+
+        root_udev->is_root_hub = TRUE;
+        root_udev->bus_id      = xhcd->xdev->bus; // 绑定到宿主 PCIe 总线
+
+        // 强行赋予灵魂速度
+        if (spc->major_bcd == 0x03) {
+            root_udev->speed = USB_SPEED_SUPER; // USB 3.0 (5Gbps)
+        } else {
+            root_udev->speed = USB_SPEED_HIGH;  // USB 2.0 (480Mbps)
+        }
+
+        // 伪造 Device Descriptor，以防某些极端的上层软件非要查水表
+        root_udev->dev_desc.bLength = 18;
+        root_udev->dev_desc.bDescriptorType = USB_DESC_TYPE_DEVICE;
+        root_udev->dev_desc.bcdUSB = spc->major_bcd << 8 | spc->minor_bcd;
+        root_udev->dev_desc.bDeviceClass = 0x09; // Hub Class
+
+        // ---------------------------------------------------------
+        // 2. 凭空捏造 Hub 控制块
+        // ---------------------------------------------------------
+        usb_hub_t *root_hub = kzalloc(sizeof(usb_hub_t));
+        if (!root_hub) {
+            kfree(root_udev);
+            return -ENOMEM;
+        }
+
+        // 互相绑定
+        root_hub->udev = root_udev;
+        root_udev->priv_data = root_hub;
+
+        // 🌟 核心拓扑注入：告诉这个 Hub，它管理哪几个物理端口
+        root_hub->num_ports = spc->port_count;
+        root_hub->port_start_idx = spc->port_first; // 物理索引 (通常从 1 开始)
+
+        // ---------------------------------------------------------
+        // 3. 灵魂注入：挂载 Root Hub 专属拦截器！
+        // ---------------------------------------------------------
+        // 外挂 Hub 走控制传输，而 Root Hub 必须走这套直接读写寄存器的 API
+        root_hub->hub_ops = &xhci_roothub_ops;
+
+        // 把 xhcd 的指针藏在 root_hub 里，方便操作集函数拿到底层寄存器
+        root_hub->hcd_priv = xhcd;
+
+        // ---------------------------------------------------------
+        // 4. 交给 USB 核心层挂载，并在内核中注册
+        // ---------------------------------------------------------
+        // 这个函数内部应该负责给这棵刚出生的树分配一个编号 (比如 usb0, usb1)
+        // 并且启动 hub_worker 守护线程
+        int32 ret = usb_core_register_roothub(root_hub);
+        if (ret < 0) {
+            kfree(root_hub);
+            kfree(root_udev);
+            continue; // 容错：如果 3.0 挂载失败，尝试继续挂载 2.0
+        }
+
+        color_printk(GREEN, BLACK, "[Root Hub] 成功孵化虚拟 %s Hub，接管主板物理端口 [%d - %d]\n",
+                     spc->major_bcd == 0x03 ? "USB 3.0" : "USB 2.0",
+                     spc->port_first, spc->port_first + spc->port_count - 1);
+    }
+
+    return 0;
+}
+*/
+
+
 //hub驱动
 int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
     usb_dev_t *udev = uif->udev;

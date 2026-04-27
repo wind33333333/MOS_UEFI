@@ -1581,7 +1581,7 @@ static int32 usb_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     usb_clear_port_change(xhcd, port_id, portsc);
     portsc = xhci_read_portsc(xhcd, port_id); // 重新读取干净的状态
 
-    uint8 spc_idx = xhcd->port_to_spc[port_id - 1];
+    uint8 spc_idx = xhcd->port_to_spc[port_id];
     boolean is_usb3 = (xhcd->spc[spc_idx].major_bcd >= 0x03);
 
     // ---------------------------------------------------------
