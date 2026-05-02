@@ -1390,8 +1390,8 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     udev->input_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * ctx_size);
 
     //挂载到 O(1) 路由表
-    usb_ep_t *ep0 = &udev->uep0;
-    udev->ueps[1] = ep0;  //警告端点0为eps1，方便后续通过ep-dci查找端点。
+    usb_ep_t *ep1 = kzalloc(sizeof(usb_ep_t));
+    udev->ueps[1] = ep1;  //警告端点0为eps1，方便后续通过ep-dci查找端点。
 
     // --- 计算初始 Max Packet Size ---
     udev->port_speed = xhci_get_port_speed(xhcd, udev->port_id);
@@ -1399,19 +1399,19 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
                  (udev->port_speed == XHCI_PORTSC_SPEED_HIGH)  ? 64  : 8;
 
     //填充端点0
-    ep0->ep_dci = 1;
-    ep0->cerr = 3;
-    ep0->ep_type = 4; // Control Endpoint
-    ep0->max_packet_size = mps;
-    ep0->average_trb_length = mps;
-    ep0->max_streams_exp = 0;
-    ep0->enable_streams_exp = 0;
-    alloc_ep_ring(ep0);
+    ep1->ep_dci = 1;
+    ep1->cerr = 3;
+    ep1->ep_type = 4; // Control Endpoint
+    ep1->max_packet_size = mps;
+    ep1->average_trb_length = mps;
+    ep1->max_streams_exp = 0;
+    ep1->enable_streams_exp = 0;
+    alloc_ep_ring(ep1);
 
     // ---下发命令 ---
     usb_tx_begin(udev);
     usb_tx_init_slot(udev);
-    usb_tx_add_ep(udev,ep0);
+    usb_tx_add_ep(udev,ep1);
     usb_tx_commit(udev,USB_TX_CMD_ADDR_DEV);
 
     return 0;
@@ -1437,10 +1437,10 @@ static inline int32 get_dev_desc(usb_dev_t *udev) {
         usb_get_dev_desc(udev,dev_desc,8);
 
         if (dev_desc->max_packet_size0 != 8) {
-            usb_ep_t *ep0 = udev->ueps[1];
-            ep0->max_packet_size = dev_desc->max_packet_size0;
+            usb_ep_t *ep1 = udev->ueps[1];
+            ep1->max_packet_size = dev_desc->max_packet_size0;
             usb_tx_begin(udev);
-            usb_tx_eval_ep(udev,ep0);
+            usb_tx_eval_ep(udev,ep1);
             usb_tx_commit(udev,USB_TX_CMD_EVAL_CTX);
         }
     }

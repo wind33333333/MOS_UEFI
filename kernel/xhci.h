@@ -314,7 +314,6 @@ typedef struct {
 
 //============================= TRB集合 ===============================================
 
-#define TRB_COUNT 256        //trb个数
 
 // ============================================================================
 // xHCI 规范 6.4.5: TRB 完成码 (按【事件归属类型】严格物理隔离版)
@@ -962,35 +961,6 @@ typedef struct {
 
 //============================ 软件抽象 ==========================================
 
-typedef enum {
-    XHCI_PORT_EMPTY = 0,
-    XHCI_PORT_DEV,
-    XHCI_PORT_HUB,
-} xhci_port_type_t;
-
-//xhci端口
-typedef struct {
-    union {
-        struct usb_hub_t *usb_hub;      // hub设备
-        struct usb_dev_t *usb_dev;      // usb设备
-    };
-   xhci_port_type_t type;                     //1 = usb_dev , 2 = usb_hub;
-}xhci_port;
-
-
-typedef struct {
-    uint8  major_bcd;           // 协议主版本（DW0[31:24]，常见 0x02=USB2，0x03=USB3.x）
-    uint8  minor_bcd;           // 协议次版本（DW0[23:16]，如 0x10=USB3.1 等）
-    char8  name[4];             // 协议名字符串（DW1，常见 "USB " = 0x20425355）
-    uint16 proto_defined;       // 协议自定义字段（DW2[27:16]，USB2/USB3 各自有含义）
-    uint8  port_first;          // 覆盖端口起始号（DW2[7:0]，1-based）
-    uint8  port_count;          // 连续覆盖端口数量（DW2[15:8]）
-    uint8  slot_type;           // Protocol Slot Type（DW3[4:0]）
-    uint8  psi_count;           // PSI 条目数 PSIC（DW2[31:28]，0=默认映射，>0=显式 PSI 表）
-    uint32 *psi;                // 按 PSIV 索引的 PSI 原始 dword（用于解释 PortSC speed）
-    struct usb_hub_t *root_hub;
-} xhci_spc_t;
-
 
 typedef struct {
     // === [物理/内存层] ==================
@@ -1042,6 +1012,61 @@ typedef struct xhci_command_t {
     volatile boolean is_done;    // 🌟 单任务环境的终极同步神器
 } xhci_command_t;
 
+
+typedef enum {
+    XHCI_PORT_EMPTY = 0,
+    XHCI_PORT_DEV,
+    XHCI_PORT_HUB,
+} xhci_port_type_t;
+
+//xhci端口
+typedef struct {
+    union {
+        struct usb_hub_t *usb_hub;      // hub设备
+        struct usb_dev_t *usb_dev;      // usb设备
+    };
+    xhci_port_type_t type;                     //1 = usb_dev , 2 = usb_hub;
+}xhci_port_t;
+
+
+//端口速率
+typedef enum : uint8 {
+    USB_SPEED_UNKNOWN    = 0, // 未知/未连接/出错
+    USB_SPEED_LOW        = 1, // 1.5 Mbps (USB 1.1)
+    USB_SPEED_FULL       = 2, // 12 Mbps (USB 1.1)
+    USB_SPEED_HIGH       = 3, // 480 Mbps (USB 2.0)
+    USB_SPEED_SUPER      = 4, // 5 Gbps (USB 3.0)
+    USB_SPEED_SUPER_PLUS = 5, // 10/20 Gbps (USB 3.1/3.2)
+}usb_port_speed_e;
+
+// ==========================================
+// xHCI 速率翻译字典条目 (纯软件解析版)
+// ==========================================
+typedef struct {
+    uint8               psiv;           // 速度 ID (Port Speed ID Value, 1~15)
+
+    // 🌟 核心：直接在初始化时算出绝对速率，运行时 O(1) 直接拿！
+    uint32              speed_kbps;     // 绝对物理速率 (如 12, 480, 5000, 10000 Mbps)
+
+    // 预解析好的硬件属性
+    uint8               is_full_duplex; // 是否全双工 (PFD)
+    uint8               is_symmetric;   // 是否对称链路 (PLT)
+
+    // 🌟 终极映射：直接绑定到 USB Core 的标准速率枚举！
+    usb_port_speed_e    mapped_speed;
+} xhci_psi_t;
+
+typedef struct {
+    uint8  major_bcd;           // 协议主版本（DW0[31:24]，常见 0x02=USB2，0x03=USB3.x）
+    uint8  minor_bcd;           // 协议次版本（DW0[23:16]，如 0x10=USB3.1 等）
+    char8  name[4];             // 协议名字符串（DW1，常见 "USB " = 0x20425355）
+    uint16 proto_defined;       // 协议自定义字段（DW2[27:16]，USB2/USB3 各自有含义）
+    uint8  port_first;          // 覆盖端口起始号（DW2[7:0]，1-based）
+    uint8  port_count;          // 连续覆盖端口数量（DW2[15:8]）
+    uint8  slot_type;           // Protocol Slot Type（DW3[4:0]）
+    xhci_psi_t psi_dict[16];    // psi字典
+    struct usb_hub_t *root_hub;
+} xhci_spc_t;
 
 //xhci控制器
 typedef struct xhci_hcd_t{

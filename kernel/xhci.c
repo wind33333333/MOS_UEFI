@@ -874,38 +874,14 @@ int32 xhci_free_event_ring(xhci_event_ring_t *ring) {
 
 }
 
-
-//xhci设备探测初始化驱动
-int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
-    xdev->dev.drv_data = kzalloc(sizeof(xhci_hcd_t)); //存放xhci相关信息
-    xhci_hcd_t *xhcd = xdev->dev.drv_data;
-    xhcd->xdev = xdev;
-    xdev->priv_data = xhcd;
-    xdev->bar[0].vaddr = iomap(xdev->bar[0].paddr, xdev->bar[0].size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
-
-    /*初始化xhci寄存器*/
-    xhcd->cap_reg = xdev->bar[0].vaddr; //xhci能力寄存器基地址
-    xhcd->op_reg = xdev->bar[0].vaddr + xhcd->cap_reg->cap_length; //xhci操作寄存器基地址
-    xhcd->rt_reg = xdev->bar[0].vaddr + xhcd->cap_reg->rtsoff; //xhci运行时寄存器基地址
-    xhcd->db_reg = xdev->bar[0].vaddr + xhcd->cap_reg->dboff; //xhci门铃寄存器基地址
-
-    /*停止复位xhci*/
-    if (xhci_reset(xhcd) == -ETIMEDOUT) {
-        while (1);
-    }
-
-    xhcd->ctx_size = 32 << ((xhcd->cap_reg->hccparams1 & HCCP1_CSZ) >> 2);     /*设备上下文字节数*/
-    xhcd->major_bcd = xhcd->cap_reg->hciversion >> 8; //xhci主版本
-    xhcd->minor_bcd = xhcd->cap_reg->hciversion & 0xFF; //xhci次版本
-    xhcd->max_ports = xhcd->cap_reg->hcsparams1 >> 24; //xhci最大端口数
-    xhcd->max_intrs = xhcd->cap_reg->hcsparams1 >> 8 & 0x7FF; //xhci最大中断数
-    xhcd->max_streams_exp = ((xhcd->cap_reg->hccparams1 >> 12) & 0xF)+1; //计算xhci支持的最大流 2^(N+1)
-
-    // =========================================================================
-    // 阶段 1：搜寻与分配 (寻找主板上所有的协议支持清单)
-    // =========================================================================
-
-    /* 定义一个指针数组，最多容纳 16 个协议能力块 (一般主板也就 2~3 个，如 USB 2.0 和 USB 3.0) */
+/**
+ * @brief 解析 xHCI 支持的协议扩展能力 (Supported Protocol Capabilities)
+ *        并建立软件抽象层字典和 O(1) 端口映射表。
+ * @param xhcd xHCI 控制器核心上下文
+ * @return int32 0 表示成功，<0 表示内存分配等严重失败
+ */
+static inline int32 xhci_parse_supported_protocols(xhci_hcd_t *xhcd) {
+       /* 定义一个指针数组，最多容纳 16 个协议能力块 (一般主板也就 2~3 个，如 USB 2.0 和 USB 3.0) */
     xhci_ecap_supported_protocol *ecap_spc_arr[16];
 
     /* 调用扩展能力雷达，寻找所有 ID 为 2 (Supported Protocol Capability) 的能力块 */
@@ -947,18 +923,81 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
         spc->slot_type = spc_ecap->protocol_slot_type & 0x1F;
 
         /* 解析自定义速率表 (PSI) 的数量 (4 Bits) */
-        spc->psi_count = spc_ecap->port_info >> 28 & 0xF;
+        uint8 psi_count = spc_ecap->port_info >> 28 & 0xF;
 
         // =========================================================================
         // 阶段 3：装载“动态速率翻译字典” (应对 USB 3.1+ 的非标准速率)
         // =========================================================================
-        if (spc->psi_count) {
-            /* 如果硬件提供了 PSI 表，为它们分配内存 */
-            uint32 *psi = kzalloc(sizeof(uint32) * spc->psi_count);
-            spc->psi = psi;
+        if (psi_count) {
             /* 将硬件提供的速率映射表一一拷贝到内核中，供以后查询 */
-            for (uint8 j = 0; j < spc->psi_count; j++) {
-                psi[j] = spc_ecap->protocol_speed[j];
+            for (uint8 j = 0; j < psi_count; j++) {
+                uint32 protocol_speed = spc_ecap->protocol_speed[j];
+                uint8 psiv = protocol_speed & 0xF;
+                xhci_psi_t *parsed_psi = &spc->psi_dict[psiv];
+                parsed_psi->psiv = psiv;
+                parsed_psi->is_full_duplex = (protocol_speed >> 8) & 0x1;
+                parsed_psi->is_symmetric   = ((protocol_speed >> 6) & 0x3) == 0;
+
+                // 统一换算为 Kbps
+                uint32 mantissa = (protocol_speed >> 16) & 0xFFFF;
+                uint8 exponent = (protocol_speed >> 4) & 0x3;
+                if (exponent == 0)      parsed_psi->speed_kbps = mantissa / 1000;   // bps (极罕见，可能截断，但USB不存在低于1Kbps的设备)
+                else if (exponent == 1) parsed_psi->speed_kbps = mantissa;          // Kbps (如低速: 1500)
+                else if (exponent == 2) parsed_psi->speed_kbps = mantissa * 1000;   // Mbps (如全速: 12 * 1000 = 12000)
+                else if (exponent == 3) parsed_psi->speed_kbps = mantissa * 1000000;// Gbps (如极速: 5 * 1000000 = 5000000)
+
+                if (spc->major_bcd == 0x02) {
+                    // ----------------------------------------------------
+                    // USB 2.0 协议族：老老实实靠绝对速度阈值来划分
+                    // ----------------------------------------------------
+                    if (parsed_psi->speed_kbps <= 1500) {
+                        parsed_psi->mapped_speed = USB_SPEED_LOW;
+                    } else if (parsed_psi->speed_kbps <= 12000) {
+                        parsed_psi->mapped_speed = USB_SPEED_FULL;
+                    } else {
+                        parsed_psi->mapped_speed = USB_SPEED_HIGH;
+                    }
+
+                } else if (spc->major_bcd == 0x03) {
+                    // ----------------------------------------------------
+                    // USB 3.x 协议族：绝对不能靠速度猜，必须看 LP 字段！
+                    // ----------------------------------------------------
+                    uint8 lp = (protocol_speed>> 14) & 0x3; // 提取 Link Protocol
+
+                    if (lp == 1) {
+                        // LP = 01 代表 SuperSpeedPlus (Gen 2 / Gen 2x2 等)
+                        parsed_psi->mapped_speed = USB_SPEED_SUPER_PLUS;
+                    } else {
+                        // LP = 00 代表 SuperSpeed (Gen 1)
+                        // 🌟 此时，即使 SSIC 跑到了 5830 Mbps，它依然会乖乖待在 SUPER_SPEED 阵营！
+                        parsed_psi->mapped_speed = USB_SPEED_SUPER;
+                    }
+                }
+
+            }
+        }else {
+            // 🌟 QEMU 命中这里！直接伪造完美的“软件视图”塞进固定抽屉！
+            if (spc->major_bcd == 0x02) {
+                // PSIV = 1 (Full-speed, 12Mbps)
+                spc->psi_dict[1].psiv = 1;
+                spc->psi_dict[1].speed_kbps = 12000;
+                spc->psi_dict[1].mapped_speed = USB_SPEED_FULL;
+
+                // PSIV = 2 (Low-speed, 1.5Mbps)
+                spc->psi_dict[2].psiv = 2;
+                spc->psi_dict[2].speed_kbps = 1500;
+                spc->psi_dict[2].mapped_speed = USB_SPEED_LOW;
+
+                // PSIV = 3 (High-speed, 480Mbps)
+                spc->psi_dict[3].psiv = 3;
+                spc->psi_dict[3].speed_kbps = 480000;
+                spc->psi_dict[3].mapped_speed = USB_SPEED_HIGH;
+
+            } else if (spc->major_bcd == 0x03) {
+                // PSIV = 4 (SuperSpeed, 5Gbps)
+                spc->psi_dict[4].psiv = 4;
+                spc->psi_dict[4].speed_kbps = 5000000;
+                spc->psi_dict[4].mapped_speed = USB_SPEED_SUPER;
             }
         }
 
@@ -974,6 +1013,40 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
             xhcd->port_to_spc[j] = i;
         }
     }
+}
+
+
+//xhci设备探测初始化驱动
+int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
+    xdev->dev.drv_data = kzalloc(sizeof(xhci_hcd_t)); //存放xhci相关信息
+    xhci_hcd_t *xhcd = xdev->dev.drv_data;
+    xhcd->xdev = xdev;
+    xdev->priv_data = xhcd;
+    xdev->bar[0].vaddr = iomap(xdev->bar[0].paddr, xdev->bar[0].size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+
+    /*初始化xhci寄存器*/
+    xhcd->cap_reg = xdev->bar[0].vaddr; //xhci能力寄存器基地址
+    xhcd->op_reg = xdev->bar[0].vaddr + xhcd->cap_reg->cap_length; //xhci操作寄存器基地址
+    xhcd->rt_reg = xdev->bar[0].vaddr + xhcd->cap_reg->rtsoff; //xhci运行时寄存器基地址
+    xhcd->db_reg = xdev->bar[0].vaddr + xhcd->cap_reg->dboff; //xhci门铃寄存器基地址
+
+    /*停止复位xhci*/
+    if (xhci_reset(xhcd) == -ETIMEDOUT) {
+        while (1);
+    }
+
+    xhcd->ctx_size = 32 << ((xhcd->cap_reg->hccparams1 & HCCP1_CSZ) >> 2);     /*设备上下文字节数*/
+    xhcd->major_bcd = xhcd->cap_reg->hciversion >> 8; //xhci主版本
+    xhcd->minor_bcd = xhcd->cap_reg->hciversion & 0xFF; //xhci次版本
+    xhcd->max_ports = xhcd->cap_reg->hcsparams1 >> 24; //xhci最大端口数
+    xhcd->max_intrs = xhcd->cap_reg->hcsparams1 >> 8 & 0x7FF; //xhci最大中断数
+    xhcd->max_streams_exp = ((xhcd->cap_reg->hccparams1 >> 12) & 0xF)+1; //计算xhci支持的最大流 2^(N+1)
+
+    // =========================================================================
+    // 阶段 1：搜寻与分配 (寻找主板上所有的协议支持清单)
+    // =========================================================================
+    xhci_parse_supported_protocols(xhcd);
+
 
 
     /*初始化设备上下文*/
@@ -1045,8 +1118,8 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
 
     for (uint8 i = 0; i < xhcd->spc_count; i++) {
         xhci_spc_t *spc = &xhcd->spc[i];
-        color_printk(GREEN,BLACK, "spc%d %s%x.%x port_first:%d port_count:%d psi_count:%d    \n", i, spc->name,
-                     spc->major_bcd, spc->minor_bcd, spc->port_first, spc->port_count, spc->psi_count);
+        color_printk(GREEN,BLACK, "spc%d %s%x.%x port_first:%d port_count:%d   \n", i, spc->name,
+                     spc->major_bcd, spc->minor_bcd, spc->port_first, spc->port_count);
     }
 
 

@@ -437,28 +437,33 @@ typedef struct usb_if_t {
 } usb_if_t;
 
 
-//端口速率
-typedef enum : uint8 {
-    USB_FULL_SPEED = 1,
-    USB_LOW_SPEED = 2,
-    USB_HIGH_SPEED = 3,
-    USB_SUPER_SPEED = 4,
-    USB_SUPER_SPEED_PLUS = 5,
-}usb_port_speed_e;
+// ==========================================
+// USB 设备类型枚举
+// ==========================================
+typedef enum {
+    USB_DEV_TYPE_NORMAL  = 0,  // 普通终端设备 (U盘, 鼠标, 声卡等)
+    USB_DEV_TYPE_HUB     = 1,  // 外置集线器 (物理 Hub)
+    USB_DEV_TYPE_ROOTHUB = 2   // 虚拟根集线器 (xHCI 内部抽象)
+} usb_dev_type_e;
 
 
 //USB设备
 typedef struct usb_dev_t{
-    // 1. 通用总线拓扑与设备模型 (完全独立于硬件)
-    device_t                        dev;
-    struct usb_dev_t                *parent_hub;       // 上游 hub 的 usb_dev（roothub 则为 NULL）
-    uint8                           parent_port;       // 插在 parent_hub 的哪个端口（1..N；roothub=0）
-    uint8                           port_id;           //
-    usb_port_speed_e                port_speed;        // 速率
-    uint8                           is_hub;            // 是否为 Hub
-    uint8                           hub_num_ports;     // Hub 的端口数
-    uint8                           hub_mtt;         // 是否支持多事务翻译器
+    // 1. 通用总线拓扑与设备模型
+    device_t                        dev;               // 继承系统基础设备对象
+    struct usb_dev_t                *parent_hub;       // 上游 hub (roothub 则为 NULL)
+    uint8                           parent_port;       // 插在上游 hub 的哪个物理端口 (从 1 开始)
+    usb_dev_type_e                  dev_type;
+    usb_port_speed_e               port_speed;        // 链路速率 (USB_SPEED_SUPER 等)
+    uint32                          route_string;
+
+    // Hub 专属特性 (非 Hub 时忽略)
+    uint8                           is_hub;
+    uint8                           hub_num_ports;
+    uint8                           hub_mtt;
     uint8                           hub_ttt;
+
+    uint8                           port_id;           //  parent_port  这两个保留一个
     uint16                          max_exit_latency;
 
     // 2. 纯 USB 协议概念 (描述符与配置)
@@ -474,10 +479,9 @@ typedef struct usb_dev_t{
     uint8                           *serial_number;    // 序列号ascii字符
 
     // 3. 逻辑端点与接口路由 (暴露给业务层驱动的资源)
-    uint8                           uif_count;  // 接口数量
-    usb_if_t                        *uifs;       // 接口指针根据接口数量动态分配
-    usb_ep_t                        uep0;               // 端点0，控制端点
-    usb_ep_t                        *ueps[32];          // 端点0-30 驱动把接口端点挂到usb_dev,方便usb_core层管理 eps[0]不可用仅占位，eps[1] = 端点0,以此内推。
+    uint8                           uif_count;          // 接口数量
+    usb_if_t                        *uifs;              // 接口指针根据接口数量动态分配
+    usb_ep_t                        *ueps[32];          // eps[0]仅占位，eps[1]-eps[31]=端点1-31
 
     // 4. 仅为xhci定制强绑定
     uint8                           slot_id;
