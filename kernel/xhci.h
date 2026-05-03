@@ -1085,8 +1085,8 @@ typedef struct xhci_hcd_t{
     // 2. 协议支持扩展 (Supported Protocol Capability)
     // ==========================================
     uint8               spc_count;          // SPC 块数量
-    xhci_spc_t          *spc;               // 动态分配的 SPC 结构体数组
-    uint8               *port_to_spc;       // [核心映射]: 物理 Port ID 对应的 SPC 索引
+    xhci_spc_t          spc[8];             // SPC 结构体数组
+    uint8               port_to_spc[256];   // [核心映射]: 物理 Port ID 对应的 SPC 索引
 
     // ==========================================
     // 3. MMIO 硬件寄存器指针 (Registers Mapping)

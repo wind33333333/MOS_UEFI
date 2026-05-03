@@ -887,15 +887,6 @@ static inline int32 xhci_parse_supported_protocols(xhci_hcd_t *xhcd) {
     /* 调用扩展能力雷达，寻找所有 ID 为 2 (Supported Protocol Capability) 的能力块 */
     xhcd->spc_count = xhci_ecap_find(xhcd, ecap_spc_arr, 2);
 
-    /* 为软件端的协议抽象层 (xhci_spc_t) 分配连续的内存数组 */
-    xhcd->spc = kzalloc(sizeof(xhci_spc_t) * xhcd->spc_count);
-
-    /* 为“端口号 -> 协议索引”的映射表分配内存 (极其关键的 O(1) 查表数组) */
-    xhcd->port_to_spc = kmalloc(xhcd->max_ports+1);
-
-    /* 将映射表全部初始化为 0xFF，代表“尚未映射/无效端口” */
-    asm_mem_set(xhcd->port_to_spc, 0xFF, xhcd->max_ports+1);
-
     // =========================================================================
     // 阶段 2：深度解析硬件协议表 (将硬件寄存器状态翻译为内核软件结构)
     // =========================================================================
