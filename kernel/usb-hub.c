@@ -253,7 +253,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
     usb_hub_t *hub = kzalloc(sizeof(usb_hub_t)) ;
     hub->uif = uif;
 
-    if (udev->port_speed > USB_HIGH_SPEED) {
+    if (udev->port_speed > USB_SPEED_HIGH) {
         // ==========================================
         // 🚀 USB 3.0 (SuperSpeed) Hub 处理逻辑
         // 描述符类型：0x2A，长度永远固定为 12 字节！

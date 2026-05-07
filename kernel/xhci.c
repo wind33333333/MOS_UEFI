@@ -286,15 +286,41 @@ int32 xhci_submit_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_command_t *out_c
 
 //======================================= 命令环命令 ===========================================================
 
-//分配插槽
-int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 *out_slot_id) {
-    // 1. 组装cmd_trb
-    xhci_trb_t cmd_trb = {0};
-    cmd_trb.enable_slot.type = XHCI_TRB_TYPE_ENABLE_SLOT;
-    cmd_trb.enable_slot.slot_type = 0;
+/**
+ * @brief 发送 Enable Slot 命令，向 xHCI 硬件申请设备插槽资源
+ * * @param xhcd        xHCI 全局上下文
+ * @param port_num    触发插入事件的物理端口号 (1-based)
+ * @param out_slot_id 用于接收硬件返回的 Slot ID
+ * @return int32      0 表示成功，负数表示失败
+ */
+int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 port_num, uint8 *out_slot_id) {
+    // 🌟 1. 内核级防御：参数校验
+    if (!xhcd || !out_slot_id || port_num == 0 || port_num > xhcd->max_ports) {
+        return -EINVAL;
+    }
 
-    xhci_command_t command = {0};
-    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,&command);
+    // 🌟 2. O(1) 极速查表：找到该端口所属的协议控制块
+    uint8 spc_idx = xhcd->port_to_spc[port_num];
+    if (spc_idx == 0xFF) {
+        // 严重异常：硬件报告了一个未在任何 SPC 中声明的幽灵端口
+        return -ENODEV;
+    }
+
+    // 🌟 3. 提取暗号：拿到这个协议族专属的 Slot Type (5-bit)
+    uint8 slot_type = xhcd->spc[spc_idx].slot_type;
+
+    // 4. 组装 cmd_trb (严格清零防止脏栈数据污染指令)
+    xhci_trb_t cmd_trb = {0};
+
+    cmd_trb.enable_slot.type = XHCI_TRB_TYPE_ENABLE_SLOT;
+
+    // 🌟 5. 注入灵魂：将真实的 Slot Type 填入 TRB (通过位掩码确保安全)
+    cmd_trb.enable_slot.slot_type = slot_type & 0x1F;
+
+    // 6. 提交命令并等待完成 (阻塞或异步等待)
+    xhci_command_t command={0};
+
+    int32 status = xhci_submit_cmd(xhcd, &cmd_trb, &command);
 
     *out_slot_id = command.slot_id;
 
@@ -881,8 +907,10 @@ int32 xhci_free_event_ring(xhci_event_ring_t *ring) {
  * @return int32 0 表示成功，<0 表示内存分配等严重失败
  */
 static inline int32 xhci_parse_supported_protocols(xhci_hcd_t *xhcd) {
-       /* 定义一个指针数组，最多容纳 16 个协议能力块 (一般主板也就 2~3 个，如 USB 2.0 和 USB 3.0) */
+    /* 定义一个指针数组，最多容纳 16 个协议能力块 (一般主板也就 2~3 个，如 USB 2.0 和 USB 3.0) */
     xhci_ecap_supported_protocol *ecap_spc_arr[16];
+
+    asm_mem_set(xhcd->port_to_spc,0xFF,256);
 
     /* 调用扩展能力雷达，寻找所有 ID 为 2 (Supported Protocol Capability) 的能力块 */
     xhcd->spc_count = xhci_ecap_find(xhcd, ecap_spc_arr, 2);
@@ -1033,13 +1061,6 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhcd->max_intrs = xhcd->cap_reg->hcsparams1 >> 8 & 0x7FF; //xhci最大中断数
     xhcd->max_streams_exp = ((xhcd->cap_reg->hccparams1 >> 12) & 0xF)+1; //计算xhci支持的最大流 2^(N+1)
 
-    // =========================================================================
-    // 阶段 1：搜寻与分配 (寻找主板上所有的协议支持清单)
-    // =========================================================================
-    xhci_parse_supported_protocols(xhcd);
-
-
-
     /*初始化设备上下文*/
     xhcd->max_slots = xhcd->cap_reg->hcsparams1 & 0xff;
     xhcd->dcbaap = kzalloc_dma((xhcd->max_slots+1)<<3);
@@ -1075,6 +1096,11 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
         //分配暂存器缓存区
         xhcd->dcbaap[0] = va_to_pa(spb_array); //暂存器缓存去数组指针写入设备上下写文数组0
     }
+
+    // =========================================================================
+    // 搜寻与分配 (寻找主板上所有的协议支持清单)
+    // =========================================================================
+    xhci_parse_supported_protocols(xhcd);
 
     // =========================================================================
     // 👑 必须先铺设“中断管线” (从 CPU 到 PCIe 总线)

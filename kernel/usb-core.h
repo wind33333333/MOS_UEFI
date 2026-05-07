@@ -454,7 +454,7 @@ typedef struct usb_dev_t{
     struct usb_dev_t                *parent_hub;       // 上游 hub (roothub 则为 NULL)
     uint8                           parent_port;       // 插在上游 hub 的哪个物理端口 (从 1 开始)
     usb_dev_type_e                  dev_type;
-    usb_port_speed_e               port_speed;        // 链路速率 (USB_SPEED_SUPER 等)
+    usb_port_speed_e                port_speed;        // 链路速率 (USB_SPEED_SUPER 等)
     uint32                          route_string;
 
     // Hub 专属特性 (非 Hub 时忽略)

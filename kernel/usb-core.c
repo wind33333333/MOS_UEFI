@@ -1378,7 +1378,7 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     xhci_hcd_t *xhcd = udev->xhcd;
 
     //启用插槽
-    xhci_cmd_enable_slot(xhcd,&udev->slot_id); //启用插槽
+    xhci_cmd_enable_slot(xhcd,udev->port_id,&udev->slot_id); //启用插槽
 
     //分配设备上下文
     uint8 ctx_size = xhcd->ctx_size;
