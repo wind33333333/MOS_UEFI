@@ -459,7 +459,6 @@ typedef struct usb_dev_t{
     uint32                          route_string;
 
     // Hub 专属特性 (非 Hub 时忽略)
-    uint8                           is_hub;
     uint8                           hub_num_ports;
     uint8                           hub_mtt;
     uint8                           hub_ttt;

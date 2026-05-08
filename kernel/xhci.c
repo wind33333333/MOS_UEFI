@@ -1060,31 +1060,126 @@ static inline int32 xhci_parse_supported_protocols(xhci_hcd_t *xhcd) {
         }
     }
 
-    // --- 在 Probe 阶段的建表逻辑 ---
-    uint8 logic_port_2 = 1; // 逻辑端口永远从 1 开始
-    uint8 logic_port_3 = 1;
+}
+
+
+/**
+ * @brief 初始化并注册 xHCI 虚拟 Root Hub
+ * @param xhcd xHCI 控制器核心上下文
+ * @return int32 0 表示成功，负数表示失败
+ */
+int32 xhci_init_root_hubs(xhci_hcd_t *xhcd) {
+    if (!xhcd) return -EINVAL;
+
+    // =========================================================================
+    // 阶段 1：解析 SPC 并建立双向 O(1) 路由映射表
+    // =========================================================================
+    uint8 logic_port_20 = 1;
+    uint8 logic_port_30 = 1;
+
+    // 用于记录 3.0 Hub 的全局最高速率
+    xhci_psi_t *absolute_max_psi_30 = NULL;
 
     for (int i = 0; i < xhcd->spc_count; i++) {
-        uint8 start = xhcd->spc[i].port_first;
-        uint8 end = start+xhcd->spc[i].port_count;
+        xhci_spc_t *spc = &xhcd->spc[i];
+        uint8 start = spc->port_first;
+        uint8 end = start+spc->port_count;
 
         if (xhcd->spc[i].major_bcd == 0x02) {
             for (; start < end; start++) {
-                xhcd->physical_to_logical[start] = logic_port_2;
-                xhcd->rhub_20.logical_to_physical[logic_port_2++] = start;
+                xhcd->physical_to_logical[start] = logic_port_20;
+                xhcd->rhub_20.logical_to_physical[logic_port_20++] = start;
             }
         } else if (xhcd->spc[i].major_bcd == 0x03) {
+            // 顺手计算 3.0 家族的最高绝对速率 (比如可能混杂了 5G, 10G, 20G 的 SPC)
+            xhci_psi_t *spc_max = xhci_spc_get_max_speed_entry(spc);
+            if (spc_max) {
+                if (!absolute_max_psi_30 || spc_max->speed_kbps > absolute_max_psi_30->speed_kbps) {
+                    absolute_max_psi_30 = spc_max;
+                }
+            }
+
             for (; start < end; start++) {
                 // 🌟 核心：把分散的物理端口，映射到连续的 3.0 逻辑端口上
-                xhcd->physical_to_logical[start] = logic_port_3;
-                xhcd->rhub_30.logical_to_physical[logic_port_3++] = start;
+                xhcd->physical_to_logical[start] = logic_port_30;
+                xhcd->rhub_30.logical_to_physical[logic_port_30++] = start;
             }
         }
     }
 
-    xhcd->rhub_20.logic_port_count = logic_port_2 - 1;
-    xhcd->rhub_30.logic_port_count = logic_port_3 - 1;
+    // 保存最终的逻辑端口总数
+    xhcd->rhub_20.logic_port_count = logic_port_20 - 1;
+    xhcd->rhub_30.logic_port_count = logic_port_30 - 1;
 
+    // =========================================================================
+    // 阶段 2：向 USB Core 分配并注册 USB 2.0 Root Hub
+    // =========================================================================
+    if (xhcd->rhub_20.logic_port_count > 0) {
+        // 分配 USB 核心层通用设备结构体 (NULL 表示没有父节点，它就是 Root)
+        usb_dev_t *udev_20 = kzalloc(sizeof(usb_dev_t));
+        if (!udev_20) return -ENOMEM;
+
+        udev_20->dev_type = USB_DEV_TYPE_ROOTHUB;
+        udev_20->hub_num_ports = xhcd->rhub_20.logic_port_count; // 注入端口数
+        udev_20->port_speed = USB_SPEED_HIGH;                    // 2.0 基础速率
+        udev_20->speed_kbps = 480000;                            // 扁平化绝对带宽
+
+        // 🌟 挂载伪造的静态描述符
+        udev_20->dev_desc = (usb_dev_desc_t *)&root_hub_20_dev_desc;
+        udev_20->config_desc = (usb_cfg_desc_t *)&root_hub_20_cfg_desc;
+
+        udev_20->manufacturer = (uint8 *)"TheresaOS Kernel";
+        udev_20->product      = (uint8 *)"xHCI High-Speed Root Hub";
+        udev_20->serial_number= (uint8 *)"xhci-2.0";
+
+        // 强绑定：将底层的 rhub_20 对象与上层的 usb_dev 对象互相绑定
+        xhcd->rhub_20.udev = udev_20;
+        udev_20->drv_data= &xhcd->rhub_20; // hcpriv 是我们在 USB Core 留的底层私有指针
+
+        // 敲锣打鼓，向操作系统的设备树注册这个 Hub！
+        usb_core_register_dev(udev_20);
+    }
+
+    // =========================================================================
+    // 阶段 3：向 USB Core 分配并注册 USB 3.0 Root Hub
+    // =========================================================================
+    if (xhcd->rhub_30.logic_port_count > 0) {
+        usb_dev_t *udev_30 = kzalloc(sizeof(usb_dev_t));
+        if (!udev_30) {
+            // 如果 3.0 申请失败，记得回滚 2.0 (微内核的严谨性)
+            return -ENOMEM;
+        }
+
+        udev_30->dev_type = USB_DEV_TYPE_ROOTHUB;
+        udev_30->hub_num_ports = xhcd->rhub_30.logic_port_count;
+
+        // 🌟 动态提权：根据 SPC 遍历结果，赋予这个 Hub 最高级别的宣称速率
+        if (absolute_max_psi_30) {
+            udev_30->port_speed = absolute_max_psi_30->mapped_speed;
+            udev_30->speed_kbps = absolute_max_psi_30->speed_kbps;
+        } else {
+            // 兜底方案
+            udev_30->port_speed = USB_SPEED_SUPER;
+            udev_30->speed_kbps = 5000000;
+        }
+
+        // 🌟 挂载伪造的静态描述符
+        udev_30->dev_desc = (usb_dev_desc_t *)&root_hub_30_dev_desc;
+        udev_30->config_desc = (usb_cfg_desc_t *)&root_hub_30_cfg_desc;
+
+        udev_30->manufacturer = (uint8 *)"TheresaOS Kernel";
+        udev_30->product      = (uint8 *)"xHCI SuperSpeed Root Hub";
+        udev_30->serial_number= (uint8 *)"xhci-3.0";
+
+        // 互相绑定
+        xhcd->rhub_30.udev = udev_30;
+        udev_30->drv_data = &xhcd->rhub_30;
+
+        // 注册到设备树！
+        usb_core_register_dev(udev_30);
+    }
+
+    return 0; // 虚拟 Hub 大厦落成！
 }
 
 
@@ -1154,6 +1249,7 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     // 搜寻与分配 (寻找主板上所有的协议支持清单)
     // =========================================================================
     xhci_parse_supported_protocols(xhcd);
+    xhci_init_root_hubs(xhcd);
 
     // =========================================================================
     // 👑 必须先铺设“中断管线” (从 CPU 到 PCIe 总线)
