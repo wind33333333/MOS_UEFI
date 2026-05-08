@@ -1068,6 +1068,15 @@ typedef struct {
     struct usb_hub_t *root_hub;
 } xhci_spc_t;
 
+// ==========================================
+// 🌟 新增定义：虚拟 Root Hub 子系统对象
+// ==========================================
+typedef struct {
+    struct usb_dev_t    *udev;                      // 指向上层 USB Core 的逻辑设备对象
+    uint8               logic_port_count;           // 该 Hub 包含的逻辑端口总数
+    uint8               logical_to_physical[256];   // O(1): 逻辑端口(1-based) -> 物理端口
+} xhci_rhub_t;
+
 //xhci控制器
 typedef struct xhci_hcd_t{
     // ==========================================
@@ -1082,11 +1091,18 @@ typedef struct xhci_hcd_t{
     uint8               max_streams_exp;    //  最大支持流指数2^(n+1)
 
     // ==========================================
-    // 2. 协议支持扩展 (Supported Protocol Capability)
+    // 2. 协议支持扩展与拓扑路由 (Topology Routing)
     // ==========================================
-    uint8               spc_count;          // SPC 块数量
-    xhci_spc_t          spc[8];             // SPC 结构体数组
-    uint8               port_to_spc[256];   // [核心映射]: 物理 Port ID 对应的 SPC 索引
+    uint8               spc_count;
+    xhci_spc_t          spc[8];
+
+    // ⬇️ 全局物理层视图 (Physical View)：供中断底半部极速查表
+    uint8               port_to_spc[256];         // O(1): 物理端口 -> SPC 索引
+    uint8               physical_to_logical[256]; // O(1): 物理端口 -> 逻辑端口号
+
+    // ⬇️ 逻辑抽象层视图 (Logical View)：将散装变量升级为高度内聚的对象！
+    xhci_rhub_t         rhub_20;                  // USB 2.0 虚拟 Hub (包含其逻辑映射与总数)
+    xhci_rhub_t         rhub_30;                  // USB 3.0 虚拟 Hub (包含其逻辑映射与总数)
 
     // ==========================================
     // 3. MMIO 硬件寄存器指针 (Registers Mapping)
@@ -1149,6 +1165,7 @@ uint64 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push) ;
 
 int32 xhci_translate_error(xhci_trb_comp_code_e comp_code);
 
+xhci_psi_t* xhci_spc_get_max_speed_entry(xhci_spc_t *spc);
 char* xhci_get_comp_code_str(xhci_trb_comp_code_e comp_code);
 int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 port_num, uint8 *out_slot_id);
 int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);

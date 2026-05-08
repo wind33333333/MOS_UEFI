@@ -138,13 +138,124 @@ int32 usb_hub_get_port_status(usb_dev_t *udev, uint8 port_no, uint32 *port_statu
 }
 
 
+/* =========================================================
+ * 虚拟 USB 3.0 Root Hub 设备描述符 (SuperSpeed)
+ * =========================================================
+ * 硬件规范参考：USB 3.1 Specification, Table 9-8
+ */
+static const usb_dev_desc_t root_hub3_dev_desc = {
+    .head = {
+        .length    = sizeof(usb_dev_desc_t), // 固定为 18 (0x12)
+        .desc_type = USB_DESC_TYPE_DEVICE    // 0x01 = USB_DT_DEVICE
+    },
+    .usb_version         = 0x0300,           // BCD 编码 3.00 (USB 3.0)
+    .device_class        = 0x09,             // 0x09 = USB_CLASS_HUB
+    .device_subclass     = 0x00,             // Hub 子类必须为 0
+    .device_protocol     = 0x03,             // 0x03 = USB 3.x SuperSpeed Hub 协议
+
+    // 🌟 核心差异：USB 3.x 的端点 0 最大包长规定必须填 9 (代表 2^9 = 512 字节)
+    .max_packet_size0    = 9,
+
+    .vendor_id           = 0x1D6B,           // 厂商 ID (借用 Linux Foundation, 或申请属于你的 ID)
+    .product_id          = 0x0003,           // 产品 ID (代表 3.0 Root Hub)
+    .device_version      = 0x0100,           // 固件版本 1.00
+
+    // 字符串描述符索引 (告诉 USB Core 分别去第几个抽屉拿字符串)
+    .manufacturer_index  = 1,
+    .product_index       = 2,
+    .serial_number_index = 3,
+
+    .num_configurations  = 1                 // Hub 通常只有 1 种配置
+};
+
+/* =========================================================
+ * 虚拟 USB 2.0 Root Hub 设备描述符 (High-Speed)
+ * =========================================================
+ * 硬件规范参考：USB 2.0 Specification, Table 9-8
+ */
+static const usb_dev_desc_t root_hub2_dev_desc = {
+    .head = {
+        .length    = sizeof(usb_dev_desc_t), // 固定为 18 (0x12)
+        .desc_type = USB_DESC_TYPE_DEVICE    // 0x01 = USB_DT_DEVICE
+    },
+    .usb_version         = 0x0200,           // BCD 编码 2.00 (USB 2.0)
+    .device_class        = 0x09,             // 0x09 = USB_CLASS_HUB
+    .device_subclass     = 0x00,             // Hub 子类必须为 0
+
+    // 🌟 核心差异：对于 2.0 的 Hub，如果支持多个 Transaction Translator (MTT)，
+    // 可以填 2，如果只支持单 TT，填 1。通常虚拟 Root Hub 支持 MTT，填 2 或 1 均可。
+    // 在最基础的实现中，我们先宣称它是一个 Full/High-Speed Hub (填 1)
+    .device_protocol     = 0x01,             // 0x01 = Single TT High-Speed Hub
+
+    // 🌟 核心差异：USB 2.0 时代的端点 0 最大包长填的是真实的字节数 (如 64)
+    .max_packet_size0    = 64,
+
+    .vendor_id           = 0x1D6B,
+    .product_id          = 0x0002,           // 产品 ID (代表 2.0 Root Hub)
+    .device_version      = 0x0100,
+
+    .manufacturer_index  = 1,
+    .product_index       = 2,
+    .serial_number_index = 3,
+
+    .num_configurations  = 1
+};
+
+/* =========================================================
+ * 虚拟 USB 3.0 Root Hub 配置描述符
+ * =========================================================
+ */
+static const usb_cfg_desc_t root_hub_30_cfg_desc = {
+    .head = {
+        .length    = sizeof(usb_cfg_desc_t), // 固定为 9 (0x09)
+        .desc_type = USB_DESC_TYPE_CONFIG    // 0x02 = USB_DT_CONFIG
+    },
+    .total_length        = 31,               // 包含后续 Interface + EP + Companion 的总长度
+    .num_interfaces      = 1,                // Hub 只有一个接口
+    .configuration_value = 1,                // 默认选择配置 1
+    .configuration_index = 0,                // 无字符串描述符
+
+    /* 属性：0xE0
+     * 位7: 1 (保留)
+     * 位6: 1 (自供电 Self-powered，Root Hub 由主机直接供电)
+     * 位5: 1 (支持远程唤醒 Remote Wakeup)
+     */
+    .attributes          = 0xE0,
+
+    /* 功耗：0
+     * Root Hub 是自供电的，不从总线获取电力，因此填 0。
+     * 对于 USB 3.x，单位是 8mA。
+     */
+    .max_power           = 0
+};
+
+/* =========================================================
+ * 虚拟 USB 2.0 Root Hub 配置描述符
+ * =========================================================
+ */
+static const usb_cfg_desc_t root_hub_20_cfg_desc = {
+    .head = {
+        .length    = sizeof(usb_cfg_desc_t),
+        .desc_type = USB_DESC_TYPE_CONFIG
+    },
+    .total_length        = 25,               // 包含后续 Interface + EP 的总长度
+    .num_interfaces      = 1,
+    .configuration_value = 1,
+    .configuration_index = 0,
+    .attributes          = 0xE0,             // 自供电 + 远程唤醒
+
+    /* 功耗：0
+     * 对于 USB 2.0，单位是 2mA。
+     */
+    .max_power           = 0
+};
+
 // =========================================================================
 // 🌳 xHCI 虚拟 Root Hub 抽象层构建逻辑
 // =========================================================================
 
 // 提前声明 Root Hub 专属的寄存器读写拦截器
-/*
-extern usb_hub_ops_t xhci_roothub_ops;
+/*extern usb_hub_ops_t xhci_roothub_ops;
 
 /**
  * @brief 根据 xHCI 的协议支持表 (SPC)，凭空捏造并挂载虚拟的 Root Hub
@@ -178,11 +289,9 @@ int32 usb_create_root_hubs(xhci_hcd_t *xhcd) {
         root_udev->route_string = 0;
 
         // 赋予灵魂速度
-        if (spc->major_bcd == 0x03) {
-            root_udev->port_speed = USB_SPEED_SUPER;
-        } else {
-            root_udev->port_speed = USB_SPEED_HIGH;
-        }
+        xhci_psi_t *max_speed_psi = xhci_spc_get_max_speed_entry(spc);
+        root_udev->port_speed = max_speed_psi->mapped_speed;
+        root_udev->speed_kbps = max_speed_psi->speed_kbps;
 
         // 内联伪造极其基础的设备描述符 (应对上层 Core 的合规性检查)
         root_udev->dev_desc.bLength = 18;
@@ -236,14 +345,10 @@ int32 usb_create_root_hubs(xhci_hcd_t *xhcd) {
         // 以后 xhci_isr 收到中断，就能通过 spc->root_hub 瞬间找到该唤醒谁！
         spc->root_hub = root_hub;
 
-        color_printk(GREEN, BLACK, "[Root Hub] 成功孵化虚拟 %s Hub，接管逻辑端口 1~%d (物理映射始于 %d)\n",
-                     spc->major_bcd == 0x03 ? "USB 3.0" : "USB 2.0",
-                     spc->port_count, spc->port_first);
     }
 
     return 0;
-}
-*/
+}*/
 
 
 

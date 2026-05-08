@@ -901,6 +901,33 @@ int32 xhci_free_event_ring(xhci_event_ring_t *ring) {
 }
 
 /**
+ * @brief 遍历协议块字典，获取其支持的最高物理速率条目
+ * @param spc 目标支持协议能力块 (Supported Protocol Capability)
+ * @return xhci_psi_t* 指向最高速率条目的指针。如果该协议块为空，返回 NULL。
+ */
+xhci_psi_t* xhci_spc_get_max_speed_entry(xhci_spc_t *spc) {
+    // 🌟 1. 内核级防御：防止空指针 Panic
+    if (!spc) {
+        return NULL;
+    }
+
+    xhci_psi_t *max_psi = NULL;
+    uint32 max_speed_kbps = 0;
+
+    // 🌟 2. 遍历我们精心设计的 16 格 O(1) 抽屉
+    for (uint8 i = 0; i < 16; i++) {
+        // 4. 比较绝对物理速率 (Kbps)
+        if (spc->psi_dict[i].speed_kbps > max_speed_kbps) {
+            max_speed_kbps = spc->psi_dict[i].speed_kbps;
+            max_psi = &spc->psi_dict[i]; // 更新最高速率的候选者
+        }
+    }
+
+    // 返回最终的赢家（包含了 psiv, speed_kbps, mapped_speed 等所有精粹信息）
+    return max_psi;
+}
+
+/**
  * @brief 解析 xHCI 支持的协议扩展能力 (Supported Protocol Capabilities)
  *        并建立软件抽象层字典和 O(1) 端口映射表。
  * @param xhcd xHCI 控制器核心上下文
@@ -910,7 +937,7 @@ static inline int32 xhci_parse_supported_protocols(xhci_hcd_t *xhcd) {
     /* 定义一个指针数组，最多容纳 16 个协议能力块 (一般主板也就 2~3 个，如 USB 2.0 和 USB 3.0) */
     xhci_ecap_supported_protocol *ecap_spc_arr[16];
 
-    asm_mem_set(xhcd->port_to_spc,0xFF,256);
+    asm_mem_set(xhcd->port_to_spc,0xFF,sizeof(xhcd->port_to_spc));
 
     /* 调用扩展能力雷达，寻找所有 ID 为 2 (Supported Protocol Capability) 的能力块 */
     xhcd->spc_count = xhci_ecap_find(xhcd, ecap_spc_arr, 2);
@@ -1032,6 +1059,32 @@ static inline int32 xhci_parse_supported_protocols(xhci_hcd_t *xhcd) {
             xhcd->port_to_spc[j] = i;
         }
     }
+
+    // --- 在 Probe 阶段的建表逻辑 ---
+    uint8 logic_port_2 = 1; // 逻辑端口永远从 1 开始
+    uint8 logic_port_3 = 1;
+
+    for (int i = 0; i < xhcd->spc_count; i++) {
+        uint8 start = xhcd->spc[i].port_first;
+        uint8 end = start+xhcd->spc[i].port_count;
+
+        if (xhcd->spc[i].major_bcd == 0x02) {
+            for (; start < end; start++) {
+                xhcd->physical_to_logical[start] = logic_port_2;
+                xhcd->rhub_20.logical_to_physical[logic_port_2++] = start;
+            }
+        } else if (xhcd->spc[i].major_bcd == 0x03) {
+            for (; start < end; start++) {
+                // 🌟 核心：把分散的物理端口，映射到连续的 3.0 逻辑端口上
+                xhcd->physical_to_logical[start] = logic_port_3;
+                xhcd->rhub_30.logical_to_physical[logic_port_3++] = start;
+            }
+        }
+    }
+
+    xhcd->rhub_20.logic_port_count = logic_port_2 - 1;
+    xhcd->rhub_30.logic_port_count = logic_port_3 - 1;
+
 }
 
 
