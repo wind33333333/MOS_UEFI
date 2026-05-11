@@ -569,7 +569,7 @@ void usb_tx_eval_slot(usb_dev_t *udev) {
     // 3. 涂改图纸：将 udev 软件对象里新挖掘出的全局属性，同步给硬件
 
     // 场景 A：设备身份觉醒 (发现它是个 Hub)
-    if (udev->is_hub) {
+    if (udev->dev_type != USB_DEV_TYPE_NORMAL) {
         input_slot_ctx->is_hub = 1;                     // 宣告 Hub 身份
         input_slot_ctx->num_ports = udev->hub_num_ports;// 填入它有多少个下行端口
         input_slot_ctx->mtt = udev->hub_mtt;            // 多事务翻译器支持
@@ -1345,7 +1345,7 @@ static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
 /**
  * @brief 解析配置描述符，创建 USB 接口树并注册到系统总线
  */
-static inline int32 usb_if_create(usb_dev_t *udev) {
+int32 usb_if_create(usb_dev_t *udev) {
     // 局部极速缓存区（放在栈上，函数退出自动销毁，零内存碎片）
     // ★ 修复：使用 uint32 彻底杜绝自增整数溢出
     uint8 alt_count[256];
@@ -1366,6 +1366,17 @@ static inline int32 usb_if_create(usb_dev_t *udev) {
 
 
     return 0; // 接口树构建完毕，成功交接给业务层驱动！
+}
+
+//注册usb接口
+void usb_if_register(usb_dev_t *udev) {
+    for (uint32 i = 0; i < udev->uif_count; i++) {
+        usb_if_t *usb_if = &udev->uifs[i];
+        if (usb_if != NULL) {
+            // 触发系统级的 match/probe (比如唤醒 bot.c 或 uas.c 驱动)
+            device_register(&usb_if->dev);
+        }
+    }
 }
 
 
@@ -1550,6 +1561,8 @@ static inline usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
     udev->dev.bus = &usb_bus_type;
     return udev;
 }
+
+
 
 /**
  * @brief 内部辅助函数：无分支极速清理端口状态 (W1C 陷阱防御)

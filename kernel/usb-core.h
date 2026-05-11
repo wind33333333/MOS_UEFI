@@ -60,8 +60,8 @@ typedef enum : uint8 {
     // 第三阵营：集线器专用 (Hub Specific) - 事实上的独立类
     // 前提: bDeviceClass == 0x09 (Hub)
     // ==========================================
-    USB_DESC_TYPE_HUB                   = 0x29, // USB 2.0 集线器描述符
-    USB_DESC_TYPE_SS_HUB                = 0x2A  // USB 3.0 超高速集线器描述符
+    USB_DESC_TYPE_HUB20                = 0x29, // USB 2.0 集线器描述符
+    USB_DESC_TYPE_HUB30                = 0x2A  // USB 3.0 超高速集线器描述符
 
 } usb_desc_type_e;
 
@@ -607,22 +607,14 @@ extern struct bus_type_t usb_bus_type;
 
 
 
-//注册usb接口
-static inline void usb_if_register(usb_dev_t *udev) {
-    for (uint32 i = 0; i < udev->uif_count; i++) {
-        usb_if_t *usb_if = &udev->uifs[i];
-        if (usb_if != NULL) {
-            // 触发系统级的 match/probe (比如唤醒 bot.c 或 uas.c 驱动)
-            device_register(&usb_if->dev);
-        }
-    }
-}
-
 //注册usb设备
 static inline void usb_dev_register(usb_dev_t *usb_dev) {
     device_register(&usb_dev->dev);
 }
 
+int32 usb_if_create(usb_dev_t *udev);
+
+void usb_if_register(usb_dev_t *udev);
 
 
 void usb_drv_register(usb_drv_t *usb_drv);//注册usb驱动

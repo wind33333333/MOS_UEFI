@@ -1075,6 +1075,7 @@ typedef struct {
     struct usb_dev_t    *udev;                      // 指向上层 USB Core 的逻辑设备对象
     uint8               logic_port_count;           // 该 Hub 包含的逻辑端口总数
     uint8               logical_to_physical[256];   // O(1): 逻辑端口(1-based) -> 物理端口
+    xhci_psi_t          *max_psi;
 } xhci_rhub_t;
 
 //xhci控制器
