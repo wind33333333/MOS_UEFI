@@ -29,28 +29,28 @@ static inline int32 usb_hub30_get_desc(usb_dev_t *udev, void *buf, uint16 len) {
 /**
  * @brief 给 Hub 端口上电
  */
-static inline int32 usb_hub_set_port_power(usb_dev_t *udev, uint8 port_no) {
+static inline int32 usb_hub_set_port_power(usb_dev_t *udev, uint8 port_id) {
     return usb_control_msg(udev, NULL,
                            USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                           USB_REQ_SET_FEATURE, USB_PORT_FEAT_POWER, port_no, 0);
+                           USB_REQ_SET_FEATURE, USB_PORT_FEAT_POWER, port_id, 0);
 }
 
 /**
  * @brief 给 Hub 端口断电
  */
-static inline int32 usb_hub_clear_port_power(usb_dev_t *udev, uint8 port_no) {
+static inline int32 usb_hub_clear_port_power(usb_dev_t *udev, uint8 port_id) {
     return usb_control_msg(udev, NULL,
                            USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_POWER, port_no, 0);
+                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_POWER, port_id, 0);
 }
 
 /**
  * @brief 触发 Hub 端口硬复位 (将导致挂载的设备进入 Default 状态)
  */
-static inline int32 usb_hub_set_port_reset(usb_dev_t *udev, uint8 port_no) {
+static inline int32 usb_hub_set_port_reset(usb_dev_t *udev, uint8 port_id) {
     return usb_control_msg(udev, NULL,
                            USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                           USB_REQ_SET_FEATURE, USB_PORT_FEAT_RESET, port_no, 0);
+                           USB_REQ_SET_FEATURE, USB_PORT_FEAT_RESET, port_id, 0);
 }
 
 // ==========================================
@@ -60,46 +60,46 @@ static inline int32 usb_hub_set_port_reset(usb_dev_t *udev, uint8 port_no) {
 /**
  * @brief 擦除 [复位完成] 变化标志
  */
-static inline int32 usb_hub_clear_port_reset_change(usb_dev_t *udev, uint8 port_no) {
+static inline int32 usb_hub_clear_port_reset_change(usb_dev_t *udev, uint8 port_id) {
     return usb_control_msg(udev, NULL,
                            USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_RESET, port_no, 0);
+                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_RESET, port_id, 0);
 }
 
 /**
  * @brief 擦除 [物理插拔] 变化标志 (防止热插拔中断风暴)
  */
-static inline int32 usb_hub_clear_port_connection_change(usb_dev_t *udev, uint8 port_no) {
+static inline int32 usb_hub_clear_port_connection_change(usb_dev_t *udev, uint8 port_id) {
     return usb_control_msg(udev, NULL,
                            USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_CONNECTION, port_no, 0);
+                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_CONNECTION, port_id, 0);
 }
 
 /**
  * @brief 擦除 [端口启用状态改变] 变化标志
  */
-static inline int32 usb_hub_clear_port_enable_change(usb_dev_t *udev, uint8 port_no) {
+static inline int32 usb_hub_clear_port_enable_change(usb_dev_t *udev, uint8 port_id) {
     return usb_control_msg(udev, NULL,
                            USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_ENABLE, port_no, 0);
+                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_ENABLE, port_id, 0);
 }
 
 /**
  * @brief 擦除 [端口休眠/唤醒] 变化标志
  */
-static inline int32 usb_hub_clear_port_suspend_change(usb_dev_t *udev, uint8 port_no) {
+static inline int32 usb_hub_clear_port_suspend_change(usb_dev_t *udev, uint8 port_id) {
     return usb_control_msg(udev, NULL,
                            USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_SUSPEND, port_no, 0);
+                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_SUSPEND, port_id, 0);
 }
 
 /**
  * @brief 擦除 [过流报警] 变化标志
  */
-static inline int32 usb_hub_clear_port_over_current_change(usb_dev_t *udev, uint8 port_no) {
+static inline int32 usb_hub_clear_port_over_current_change(usb_dev_t *udev, uint8 port_id) {
     return usb_control_msg(udev, NULL,
                            USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_OVER_CURRENT, port_no, 0);
+                           USB_REQ_CLEAR_FEATURE, USB_PORT_FEAT_C_OVER_CURRENT, port_id, 0);
 }
 
 // ==========================================
@@ -113,7 +113,7 @@ static inline int32 usb_hub_clear_port_over_current_change(usb_dev_t *udev, uint
  * @param port_status 传出参数：用于接收 4 字节的端口状态
  * @return int32      状态码 (0 成功，<0 失败)
  */
-int32 usb_hub_get_port_status(usb_dev_t *udev, uint8 port_id, uint32 *port_status) {
+static int32 usb_hub_get_port_status(usb_dev_t *udev, uint8 port_id, uint32 *port_status) {
     // 1. 申请用于底层 DMA 传输的 4 字节内存
     uint32 *port_sts = kzalloc_dma(sizeof(uint32));
     if (!port_sts) {
@@ -143,6 +143,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
     usb_dev_t *udev = uif->udev;
     usb_hub_t *hub = kzalloc(sizeof(usb_hub_t)) ;
     hub->uif = uif;
+    udev->is_hub = 1;
 
     if (udev->port_speed > USB_SPEED_HIGH) {
         // ==========================================
@@ -173,8 +174,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         ret = usb_hub20_get_desc(udev,hub20_desc, real_len);
         if (ret < 0) return ret;
 
-        hub->is_usb3 = FALSE;
-        hub->num_ports = hub20_desc->num_ports;
+        udev->hub_num_ports = hub20_desc->num_ports;
         hub->power_delay_ms = hub20_desc->power_on_to_power_good<<1;
         hub->is_individual_pwr = (hub20_desc->hub_characteristics & 0x03) == 0x01;
         hub->is_individual_ocp = ((hub20_desc->hub_characteristics >> 3) & 0x03) == 0x01;

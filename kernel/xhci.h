@@ -1111,7 +1111,7 @@ typedef struct xhci_hcd_t{
 
     // 注意：事件环不是一个，它是和中断器绑定的！这里根据 max_intrs 动态分配！
     xhci_event_ring_t*  event_ring_arr;
-    uint16              enable_event_ring_count;  // 启用中断器数量，取cpu核心数量和max_intrs最小值
+    uint16              enable_num_event_ring;  // 启用中断器数量，取cpu核心数量和max_intrs最小值
 
     pcie_dev_t          *xdev;
 } xhci_hcd_t;

@@ -16,9 +16,9 @@ extern scsi_host_template_t bot_host_template;
 int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
 
     //u盘是否支持uas协议，优先设置为uas协议
-    if (uif->if_alt_count > 1) {
+    if (uif->num_if_alts > 1) {
         usb_if_alt_t *next_alts = uif->if_alts;
-        for (uint8 i = 0; i < uif->if_alt_count; i++) {
+        for (uint8 i = 0; i < uif->num_if_alts; i++) {
             if (next_alts[i].if_protocol == 0x62) {
                 usb_switch_alt_if(&next_alts[i]);
                 break;

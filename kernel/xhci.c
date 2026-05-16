@@ -1240,10 +1240,10 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
 
     /*初始化中断器*/
     //可以根据cpu核心和MaxIntrs取小值设置多事件环。暂时设置1个事件环
-    xhcd->enable_event_ring_count = 1;
-    xhci_event_ring_t *event_ring_arr = kzalloc(sizeof(xhci_event_ring_t) * xhcd->enable_event_ring_count);
+    xhcd->enable_num_event_ring = 1;
+    xhci_event_ring_t *event_ring_arr = kzalloc(sizeof(xhci_event_ring_t) * xhcd->enable_num_event_ring);
     xhcd->event_ring_arr = event_ring_arr;
-    for (uint16 i = 0; i < xhcd->enable_event_ring_count; i++) {
+    for (uint16 i = 0; i < xhcd->enable_num_event_ring; i++) {
         xhci_alloc_event_ring(&event_ring_arr[i],1024); //每个事件环设置1024个槽位
 
         xhcd->rt_reg->intr_regs[i].erstsz = 1; //设置1,单事件环段

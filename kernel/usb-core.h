@@ -421,7 +421,7 @@ typedef struct usb_if_alt_t {
     uint8 if_subclass;
     uint8 if_protocol;
 
-    uint8 ep_count;     // 端点数量
+    uint8 num_eps;     // 端点数量
     usb_ep_t *eps;      // 可选：解析后的端点数组
 } usb_if_alt_t;
 
@@ -429,22 +429,12 @@ typedef struct usb_if_alt_t {
 typedef struct usb_if_t {
     struct usb_dev_t *udev;
     uint8 if_num;
-    uint8 if_alt_count;
+    uint8 num_if_alts;
     usb_if_alt_t *if_alts;
     usb_if_alt_t *cur_if_alt;   // 或 cur_alt_idx
     device_t dev;
     void    *drv_data;
 } usb_if_t;
-
-
-// ==========================================
-// USB 设备类型枚举
-// ==========================================
-typedef enum {
-    USB_DEV_TYPE_NORMAL  = 0,  // 普通终端设备 (U盘, 鼠标, 声卡等)
-    USB_DEV_TYPE_HUB     = 1,  // 外置集线器 (物理 Hub)
-    USB_DEV_TYPE_ROOTHUB = 2   // 虚拟根集线器 (xHCI 内部抽象)
-} usb_dev_type_e;
 
 
 //USB设备
@@ -453,13 +443,13 @@ typedef struct usb_dev_t{
     device_t                        dev;               // 继承系统基础设备对象
     struct usb_dev_t                *parent_hub;       // 上游 hub (roothub 则为 NULL)
     uint8                           parent_port;       // 插在上游 hub 的哪个物理端口 (从 1 开始)
-    usb_dev_type_e                  dev_type;
     uint8                           psiv;             // xHCI 专属的底层 DMA 挡位 (用于填 Slot Context)
     usb_port_speed_e                port_speed;       // 🌟 1. 保留全局标准枚举 (供状态机流转和描述符解析使用)
     uint32                          speed_kbps;       // 🌟 2. 新增：扁平化的绝对物理带宽 (供高级驱动精确计算资源)
     uint32                          route_string;
 
     // Hub 专属特性 (非 Hub 时忽略)
+    uint8                           is_hub;
     uint8                           hub_num_ports;
     uint8                           hub_mtt;
     uint8                           hub_ttt;
@@ -480,7 +470,7 @@ typedef struct usb_dev_t{
     uint8                           *serial_number;    // 序列号ascii字符
 
     // 3. 逻辑端点与接口路由 (暴露给业务层驱动的资源)
-    uint8                           if_count;          // 接口数量
+    uint8                           num_ifs;          // 接口数量
     usb_if_t                        *ifs;              // 接口指针根据接口数量动态分配
     usb_ep_t                        *eps[32];          // eps[0]仅占位，eps[1]-eps[31]=端点1-31
 
@@ -597,7 +587,7 @@ static inline void *usb_cfg_end(usb_cfg_desc_t *usb_config_desc)
 /* 在 uif->alts[] 中按 altsetting 值查找（不能用 altsetting 当数组下标） */
 static inline usb_if_alt_t *usb_find_alt_by_num(usb_if_t *usb_if, uint8 altsetting)
 {
-    for (uint8 i = 0; i < usb_if->if_alt_count; i++) {
+    for (uint8 i = 0; i < usb_if->num_if_alts; i++) {
         if (usb_if->if_alts[i].altsetting == altsetting)
             return &usb_if->if_alts[i];
     }
@@ -631,7 +621,7 @@ void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfe
 
 
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
-int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp);
+int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 num_eps, uint8 expected_streams_exp);
 
 
 int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_id);

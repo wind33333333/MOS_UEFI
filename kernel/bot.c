@@ -59,17 +59,17 @@ uint8 bot_get_max_lun(usb_dev_t *udev, uint8 if_num) {
     int32 posix_err = usb_control_msg(udev, max_lun,
                                 USB_DIR_IN, USB_REQ_TYPE_CLASS, USB_RECIP_INTERFACE,
                                 BOT_REQ_GET_MAX_LUN, 0, if_num, 1);
-    uint8 lun_count;
+    uint8 num_luns;
     if (posix_err < 0) {
         // U 盘傲娇抗议 (STALL) 或通信失败，根据 USB 规范，原谅它并默认为 0（加上面的+1后为1个LUN）
         color_printk(YELLOW, BLACK, "BOT: Get Max LUN failed/STALL (%d). Defaulting to 1 LUN.\n", posix_err);
-        lun_count = 1;
+        num_luns = 1;
     } else {
-        lun_count = (*max_lun) + 1;
+        num_luns = (*max_lun) + 1;
     }
 
     kfree(max_lun);
-    return lun_count;
+    return num_luns;
 }
 
 

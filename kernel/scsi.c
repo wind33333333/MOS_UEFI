@@ -193,13 +193,13 @@ int32 scsi_read_capacity16(scsi_device_t *sdev,scsi_read_capacity16_t *read_capa
 }
 
 //scsi读扇区10
-int32 scsi_read10(scsi_device_t *sdev,void *data_buf,uint32 lba,uint16 block_count) {
+int32 scsi_read10(scsi_device_t *sdev,void *data_buf,uint32 lba,uint16 num_blocks) {
     scsi_sense_t sense;
 
     scsi_cdb_rw10_t cdb = {
         .opcode = SCSI_READ10,
         .lba = asm_bswap32(lba),
-        .transfer_length = asm_bswap16(block_count)
+        .transfer_length = asm_bswap16(num_blocks)
 
     };
 
@@ -208,7 +208,7 @@ int32 scsi_read10(scsi_device_t *sdev,void *data_buf,uint32 lba,uint16 block_cou
         .scsi_cdb = &cdb,
         .scsi_cdb_len = sizeof(scsi_cdb_rw10_t),
         .data_buf = data_buf,
-        .data_len = block_count*sdev->block_size,
+        .data_len = num_blocks*sdev->block_size,
         .dir = SCSI_DIR_IN,
         .sense = &sense,
         .status = -1
@@ -221,13 +221,13 @@ int32 scsi_read10(scsi_device_t *sdev,void *data_buf,uint32 lba,uint16 block_cou
 
 
 //scsi写扇区10
-int32 scsi_write10(scsi_device_t *sdev,void *data_buf,uint32 lba,uint16 block_count) {
+int32 scsi_write10(scsi_device_t *sdev,void *data_buf,uint32 lba,uint16 num_blocks) {
     scsi_sense_t sense;
 
     scsi_cdb_rw10_t cdb = {
         .opcode = SCSI_WRITE10,
         .lba = asm_bswap32(lba),
-        .transfer_length = asm_bswap16(block_count)
+        .transfer_length = asm_bswap16(num_blocks)
 
     };
 
@@ -236,7 +236,7 @@ int32 scsi_write10(scsi_device_t *sdev,void *data_buf,uint32 lba,uint16 block_co
         .scsi_cdb = &cdb,
         .scsi_cdb_len = sizeof(scsi_cdb_rw10_t),
         .data_buf = data_buf,
-        .data_len = block_count*sdev->block_size,
+        .data_len = num_blocks*sdev->block_size,
         .dir = SCSI_DIR_OUT,
         .sense = &sense,
         .status = -1
@@ -248,13 +248,13 @@ int32 scsi_write10(scsi_device_t *sdev,void *data_buf,uint32 lba,uint16 block_co
 }
 
 //scsi读扇区16
-int32 scsi_read16(scsi_device_t *sdev,void *data_buf,uint64 lba,uint32 block_count) {
+int32 scsi_read16(scsi_device_t *sdev,void *data_buf,uint64 lba,uint32 num_blocks) {
     scsi_sense_t sense;
 
     scsi_cdb_rw16_t cdb = {
         .opcode = SCSI_READ16,
         .lba = asm_bswap64(lba),
-        .transfer_length = asm_bswap32(block_count)
+        .transfer_length = asm_bswap32(num_blocks)
 
     };
 
@@ -263,7 +263,7 @@ int32 scsi_read16(scsi_device_t *sdev,void *data_buf,uint64 lba,uint32 block_cou
         .scsi_cdb = &cdb,
         .scsi_cdb_len = sizeof(scsi_cdb_rw16_t),
         .data_buf = data_buf,
-        .data_len = block_count * sdev->block_size,
+        .data_len = num_blocks * sdev->block_size,
         .dir = SCSI_DIR_IN,
         .sense = &sense,
         .status = -1
@@ -275,13 +275,13 @@ int32 scsi_read16(scsi_device_t *sdev,void *data_buf,uint64 lba,uint32 block_cou
 }
 
 //scsi写扇区16
-int32 scsi_write16(scsi_device_t *sdev,void *data_buf,uint64 lba,uint32 block_count) {
+int32 scsi_write16(scsi_device_t *sdev,void *data_buf,uint64 lba,uint32 num_blocks) {
     scsi_sense_t sense;
 
     scsi_cdb_rw16_t cdb = {
         .opcode = SCSI_WRITE16,
         .lba = asm_bswap64(lba),
-        .transfer_length = asm_bswap32(block_count)
+        .transfer_length = asm_bswap32(num_blocks)
 
     };
 
@@ -290,7 +290,7 @@ int32 scsi_write16(scsi_device_t *sdev,void *data_buf,uint64 lba,uint32 block_co
         .scsi_cdb = &cdb,
         .scsi_cdb_len = sizeof(scsi_cdb_rw16_t),
         .data_buf = data_buf,
-        .data_len = block_count*sdev->block_size,
+        .data_len = num_blocks*sdev->block_size,
         .dir = SCSI_DIR_OUT,
         .sense = &sense,
         .status = -1

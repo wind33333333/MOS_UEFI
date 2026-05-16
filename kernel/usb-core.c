@@ -569,8 +569,7 @@ void usb_tx_eval_slot(usb_dev_t *udev) {
     // 3. 涂改图纸：将 udev 软件对象里新挖掘出的全局属性，同步给硬件
 
     // 场景 A：设备身份觉醒 (发现它是个 Hub)
-    if (udev->dev_type != USB_DEV_TYPE_NORMAL) {
-        input_slot_ctx->is_hub = 1;                     // 宣告 Hub 身份
+    if (input_slot_ctx->is_hub == 1) {
         input_slot_ctx->num_ports = udev->hub_num_ports;// 填入它有多少个下行端口
         input_slot_ctx->mtt = udev->hub_mtt;            // 多事务翻译器支持
         input_slot_ctx->tt_think_time = udev->hub_ttt;  // 翻译器思考时间
@@ -684,24 +683,24 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
         // ==========================================================
         // 👑 情况 B：流模式 (Stream Mode - 适用于 USB 3.0 UAS 等)
         // ==========================================================
-        uint32 streams_count = (1 << streams_exp)+1;           // 流环的第0个不能用，所以需要：2^4 +1 = 17
-        uint32 streams_array_count = 1 << (streams_exp + 1);     // 硬件要求流数组需要按倍数对齐，例如streams_exp=4,则2^5 = 32
+        uint32 num_streams = (1 << streams_exp)+1;           // 流环的第0个不能用，所以需要：2^4 +1 = 17
+        uint32 num_streams_array = 1 << (streams_exp + 1);     // 硬件要求流数组需要按倍数对齐，例如streams_exp=4,则2^5 = 32
 
         // 1. 给硬件 DMA 读的上下文数组 (必须 16 字节对齐)
-        xhci_stream_ctx_t *streams_ctx_array = kzalloc_dma(streams_array_count * sizeof(xhci_stream_ctx_t));
+        xhci_stream_ctx_t *streams_ctx_array = kzalloc_dma(num_streams_array * sizeof(xhci_stream_ctx_t));
         // 记录上下文，方便后续释放内存
         ep->streams_ctx_array = streams_ctx_array;
 
         // 2. ★ 核心重构：给软件管理的统一环数组 (分配 N+1 个)
         // 索引 0 闲置防越界，索引 1~N 对应真实的 Stream ID
-        ep->ring_arr = kzalloc(streams_count * sizeof(xhci_submit_ring_t));
+        ep->ring_arr = kzalloc(num_streams * sizeof(xhci_submit_ring_t));
 
         // 更新逻辑状态
         ep->lsa = 1; // 线性流数组标志
         ep->hid = 1; // 主机初始化禁用标志
 
         // 初始化每一个流环
-        for (uint32 s = 1; s < streams_count; s++) {
+        for (uint32 s = 1; s < num_streams; s++) {
             // 对数组中的每一个环进行物理分配
             xhci_alloc_submit_ring(&ep->ring_arr[s],ring_size);
 
@@ -761,8 +760,8 @@ static int32 free_ep_ring(usb_ep_t *ep) {
         // ==========================================================
 
         // 1. 释放每一个具体的流环 (TRB 物理内存)
-        uint32 enable_streams_count = (1<<ep->enable_streams_exp)+1;
-        for (uint32 s = 1; s < enable_streams_count; s++) {
+        uint32 enable_num_streams = (1<<ep->enable_streams_exp)+1;
+        for (uint32 s = 1; s < enable_num_streams; s++) {
             xhci_free_submit_ring(&ep->ring_arr[s]);
         }
 
@@ -826,7 +825,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // 阶段 1：[纸上谈兵] 圈出要 Drop 的旧端点
     // ==========================================================
     if (old_alt != NULL) {
-        for (uint8 i = 0; i < old_alt->ep_count; i++) {
+        for (uint8 i = 0; i < old_alt->num_eps; i++) {
             usb_tx_drop_ep(udev, &old_alt->eps[i]);
         }
     }
@@ -834,7 +833,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // ==========================================================
     // 阶段 2：[预分配] 为新端点画图纸并分配内存 (★ 核心架构重构)
     // ==========================================================
-    for (uint8 i = 0; i < new_alt->ep_count; i++) {
+    for (uint8 i = 0; i < new_alt->num_eps; i++) {
         usb_ep_t *ep = &new_alt->eps[i];
 
         // 👑 Linux 架构铁律：两级火箭分离！
@@ -863,7 +862,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     if (posix < 0) {
         color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, hardware rejected!\n");
         // 主板拒绝了这份图纸，销毁刚刚新分配的所有内存，安全退出
-        for (uint8 i = 0; i < new_alt->ep_count; i++) free_ep_ring(&new_alt->eps[i]);
+        for (uint8 i = 0; i < new_alt->num_eps; i++) free_ep_ring(&new_alt->eps[i]);
         return posix;
     }
 
@@ -871,7 +870,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // ★ 阶段 4：[防竞态] 提前挂载新路由！(兵马未动，粮草先行)
     // 此时新通道在主板端已通，但外设还未切换。先把接收器架好，防漏包！
     // ==========================================================
-    for (uint8 i = 0; i < new_alt->ep_count; i++) {
+    for (uint8 i = 0; i < new_alt->num_eps; i++) {
         usb_ep_t *ep = &new_alt->eps[i];
         udev->eps[ep->ep_dci] = ep;
     }
@@ -886,25 +885,25 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
         // ！！！极品回滚逻辑 (完美修复版) ！！！
 
         // 1. 软件路由撤销 (把刚才挂上去的新路由摘下来)
-        for (uint8 i = 0; i < new_alt->ep_count; i++) {
+        for (uint8 i = 0; i < new_alt->num_eps; i++) {
             udev->eps[new_alt->eps[i].ep_dci] = NULL;
         }
 
         // ★ 修复：重新挂载老端点的路由，否则系统再也找不到旧端点通信了！
         if (old_alt != NULL) {
-            for (uint8 i = 0; i < old_alt->ep_count; i++) {
+            for (uint8 i = 0; i < old_alt->num_eps; i++) {
                 udev->eps[old_alt->eps[i].ep_dci] = &old_alt->eps[i];
             }
         }
 
         // 2. 释放新分配的废弃环内存
-        for (uint8 i = 0; i < new_alt->ep_count; i++) free_ep_ring(&new_alt->eps[i]);
+        for (uint8 i = 0; i < new_alt->num_eps; i++) free_ep_ring(&new_alt->eps[i]);
 
         // 3. 将主板硬件强制回滚到旧状态 (反向 Drop 新的，Add 旧的)
         usb_tx_begin(udev);
-        for (uint8 i = 0; i < new_alt->ep_count; i++) usb_tx_drop_ep(udev, &new_alt->eps[i]);
+        for (uint8 i = 0; i < new_alt->num_eps; i++) usb_tx_drop_ep(udev, &new_alt->eps[i]);
         if (old_alt != NULL) {
-            for (uint8 i = 0; i < old_alt->ep_count; i++) usb_tx_add_ep(udev, &old_alt->eps[i]);
+            for (uint8 i = 0; i < old_alt->num_eps; i++) usb_tx_add_ep(udev, &old_alt->eps[i]);
         }
         int32 tx_err = usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
         if (tx_err < 0) {
@@ -918,7 +917,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // 阶段 6：[过河拆桥] 切换彻底成功，可以安全收缴旧端点的尸体了
     // ==========================================================
     if (old_alt != NULL) {
-        for (uint8 i = 0; i < old_alt->ep_count; i++) {
+        for (uint8 i = 0; i < old_alt->num_eps; i++) {
             usb_ep_t *ep = &old_alt->eps[i];
             // 只在路由没有被新端点(同 DCI)覆盖的情况下，才去清空它
             if (udev->eps[ep->ep_dci] == ep) {
@@ -939,15 +938,15 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
  * @brief 为 USB 端点组协商并分配流(Streams)模式物理内存
  * @param udev 外设上下文
  * @param eps 需要开启流模式的端点数组 (比如 UAS 的 Data IN 和 Data OUT)
- * @param eps_count 端点数量
+ * @param num_eps 端点数量
  * @param expected_streams_exp 期望的流指数 (并发量 = 2^exp)
  * * @return int32
  * < 0 : 底层 POSIX 错误码 (如 -EINVAL, -ENOMEM)，表示配置彻底失败。
  * == 0: 降级为传统普通模式 (主板或外设不支持，或入参期望为0)。
  * > 0 : 成功开启流模式，返回最终多方妥协后的流指数 (Stream Exponent)。
  */
-int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8 expected_streams_exp) {
-    if (!udev || !eps || eps_count == 0) return -EINVAL;
+int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 num_eps, uint8 expected_streams_exp) {
+    if (!udev || !eps || num_eps == 0) return -EINVAL;
     if (expected_streams_exp == 0) return 0;
 
     int32 posix_err = 0;
@@ -963,7 +962,7 @@ int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8
     }
 
     // 2. [探底外设]：遍历所有传入的端点，寻找流能力最低的那一个
-    for (uint8 i = 0; i < eps_count; i++) {
+    for (uint8 i = 0; i < num_eps; i++) {
         usb_ep_t *ep = eps[i];
 
         // 读取端点描述符里解析出的硬件原始流指数极限
@@ -991,7 +990,7 @@ int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8
     // ----------------------------------------------------------
     usb_tx_begin(udev);
 
-    for (uint8 i = 0; i < eps_count; i++) {
+    for (uint8 i = 0; i < num_eps; i++) {
         usb_ep_t *ep = eps[i];
         usb_tx_drop_ep(udev, ep); // 仅仅打上 Drop 标记
     }
@@ -1008,7 +1007,7 @@ int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8
     // ----------------------------------------------------------
     usb_tx_begin(udev);
 
-    for (uint8 i = 0; i < eps_count; i++) {
+    for (uint8 i = 0; i < num_eps; i++) {
         usb_ep_t *ep = eps[i];
 
         // 1. 此时硬件已经彻底放手，旧内存绝对安全了！放心 Free！
@@ -1055,7 +1054,7 @@ static inline int32 enable_alt_if (usb_if_alt_t *uif_alt) {
     usb_tx_begin(udev);
 
     // 配置该接口下的所有端点
-    for (uint8 i = 0; i < uif_alt->ep_count; i++) {
+    for (uint8 i = 0; i < uif_alt->num_eps; i++) {
         usb_ep_t *ep = &uif_alt->eps[i];
         uint8 ep_dci = ep->ep_dci;
 
@@ -1194,7 +1193,7 @@ static inline int32 alt_if_desc_parse(usb_if_alt_t *if_alt) {
 
         if (desc_head->desc_type == USB_DESC_TYPE_ENDPOINT) {
             // 防缓冲区溢出！恶意的描述符数量不能超过声明的数量
-            if (ep_idx >= if_alt->ep_count) {
+            if (ep_idx >= if_alt->num_eps) {
                 break;
             }
 
@@ -1233,7 +1232,7 @@ static inline int32 alt_if_desc_parse(usb_if_alt_t *if_alt) {
  */
 static inline int32 alloc_if(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_if_map) {
     // 1. 根据配置描述符声明的接口数，分配顶层接口数组
-    udev->if_count = 0;
+    udev->num_ifs = 0;
     udev->ifs = kzalloc(sizeof(usb_if_t) * udev->config_desc->num_interfaces);
     if (!udev->ifs) return -1;
 
@@ -1251,10 +1250,10 @@ static inline int32 alloc_if(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_i
     // 3. 分配底层的 alt 数组，并初始化总线设备模型结构
     for (uint16 i = 0; i < 256; i++) {
         if (alt_count[i] > 0) {
-            usb_if_t *usb_if = &udev->ifs[udev->if_count++];
+            usb_if_t *usb_if = &udev->ifs[udev->num_ifs++];
             usb_if->if_num = i;
-            usb_if->if_alt_count = alt_count[i];
-            usb_if->if_alts = kzalloc(sizeof(usb_if_alt_t) * usb_if->if_alt_count);
+            usb_if->num_if_alts = alt_count[i];
+            usb_if->if_alts = kzalloc(sizeof(usb_if_alt_t) * usb_if->num_if_alts);
 
             // 绑定设备模型拓扑
             usb_if->udev = udev;
@@ -1303,11 +1302,11 @@ static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
             if_alt->if_class = if_desc->interface_class;
             if_alt->if_subclass = if_desc->interface_subclass;
             if_alt->if_protocol = if_desc->interface_protocol;
-            if_alt->ep_count = if_desc->num_endpoints;
+            if_alt->num_eps = if_desc->num_endpoints;
 
             // 为该 alt 分配端点内存，并触发底层解析引擎
-            if (if_alt->ep_count > 0) {
-                if_alt->eps = kzalloc(if_alt->ep_count * sizeof(usb_ep_t));
+            if (if_alt->num_eps > 0) {
+                if_alt->eps = kzalloc(if_alt->num_eps * sizeof(usb_ep_t));
                 alt_if_desc_parse(if_alt);
             }
         }
@@ -1317,7 +1316,7 @@ static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
     // =================================================================
     // 阶段 B：图纸绘制完毕，开始向主板申请硬件 DMA 高速公路
     // =================================================================
-    for (uint32 i = 0; i < udev->if_count; i++) {
+    for (uint32 i = 0; i < udev->num_ifs; i++) {
         usb_if_t *uif = &udev->ifs[i];
 
         if (uif != NULL) {
@@ -1370,7 +1369,7 @@ int32 usb_if_create(usb_dev_t *udev) {
 
 //注册usb接口
 void usb_if_register(usb_dev_t *udev) {
-    for (uint32 i = 0; i < udev->if_count; i++) {
+    for (uint32 i = 0; i < udev->num_ifs; i++) {
         usb_if_t *usb_if = &udev->ifs[i];
         if (usb_if != NULL) {
             // 触发系统级的 match/probe (比如唤醒 bot.c 或 uas.c 驱动)

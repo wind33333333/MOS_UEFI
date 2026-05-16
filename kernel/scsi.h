@@ -459,10 +459,10 @@ int32 scsi_send_inquiry(scsi_device_t *sdev, scsi_inquiry_t *inquiry);
 int32 scsi_report_luns(scsi_device_t *sdev,scsi_report_luns_t *report_luns);
 int32 scsi_read_capacity10(scsi_device_t *scsi_dev,scsi_read_capacity10_t *read_capacity10);
 int32 scsi_read_capacity16(scsi_device_t *scsi_dev,scsi_read_capacity16_t *read_capacity16);
-int32 scsi_read10(scsi_device_t *scsi_dev,void *data_buf,uint32 lba,uint16 block_count);
-int32 scsi_write10(scsi_device_t *scsi_dev,void *data_buf,uint32 lba,uint16 block_count);
-int32 scsi_read16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 block_count);
-int32 scsi_write16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 block_count);
+int32 scsi_read10(scsi_device_t *scsi_dev,void *data_buf,uint32 lba,uint16 num_blocks);
+int32 scsi_write10(scsi_device_t *scsi_dev,void *data_buf,uint32 lba,uint16 num_blocks);
+int32 scsi_read16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 num_blocks);
+int32 scsi_write16(scsi_device_t *scsi_dev,void *data_buf,uint64 lba,uint32 num_blocks);
 
 scsi_host_t *scsi_create_host(scsi_host_template_t *host_template,void* host_data,device_t *parent,uint8 max_lun,char *name);
 int32 scsi_add_host(scsi_host_t *shost);
