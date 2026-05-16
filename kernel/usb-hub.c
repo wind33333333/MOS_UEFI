@@ -161,9 +161,23 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         // 🐢 USB 2.0/1.1 (High/Full/Low Speed) Hub 处理逻辑
         // 描述符类型：0x29，变长地雷，必须踩两步！
         // ==========================================
-        usb_hub20_desc_t *hub20_desc = kzalloc_dma(71) ;
 
+        // =======================================================
+        // 1. 🌟 激活 MTT (多事务翻译器)
+        // =======================================================
+        udev->hub_mtt = 0;//默认是单事务翻译器
+        if (uif->num_if_alts > 1) {
+            usb_if_alt_t *next_alts = uif->if_alts;
+            for (uint8 i = 0; i < uif->num_if_alts; i++) {
+                if (next_alts[i].if_protocol == 2) {
+                    usb_switch_alt_if(&next_alts[i]);
+                    udev->hub_mtt = 1;
+                    break;
+                }
+            }
+        }
         // 第一步：先读 8 字节探路
+        usb_hub20_desc_t *hub20_desc = kzalloc_dma(71) ;
         int32 ret = usb_hub20_get_desc(udev,hub20_desc, 8);
         if (ret < 0) return ret;
 
@@ -175,7 +189,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         if (ret < 0) return ret;
 
         udev->hub_num_ports = hub20_desc->num_ports;
-        udev->hub_ttt = ((hub20_desc->hub_characteristics>>5 & 3)+1)<<3;
+        udev->hub_ttt = (hub20_desc->hub_characteristics >> 5) & 0x03;
         hub->power_delay_ms = hub20_desc->power_on_to_power_good<<1;
         hub->is_individual_pwr = (hub20_desc->hub_characteristics & 0x03) == 0x01;
         hub->is_individual_ocp = ((hub20_desc->hub_characteristics >> 3) & 0x03) == 0x01;
@@ -209,15 +223,15 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         // ==========================================
         // 2. 开机扫街 (处理遗留设备)
         // ==========================================
-        for (uint8 i = 0; i < hub->num_ports; i++) {
-            uint8 port_no = hub->ports[i].port_no;
+        for (uint8 i = 0; i < udev->hub_num_ports; i++) {
+            uint8 port_id = hub->ports[i].port_id;
             uint32 status = 0;
 
-            usb_hub_get_port_status(udev, port_no, &status);
+            usb_hub_get_port_status(udev, port_id, &status);
 
             // 🔪 擦除开机时产生的插拔变化标志
             if (status & USB_PORT_STAT_C_CONNECTION) {
-                usb_hub_clear_port_connection_change(udev, port_no);
+                usb_hub_clear_port_connection_change(udev, port_id);
             }
 
             // 如果口子上真的插了设备，开始复位流！
@@ -225,13 +239,13 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
                 //color_printk(GREEN, BLACK, "[Hub] 端口 %d 发现遗留设备，发射复位信号...\n", port_no);
 
                 // 触发硬复位
-                usb_hub_set_port_reset(udev, port_no);
+                usb_hub_set_port_reset(udev, port_id);
 
                 // 🌟 物理规律：必须死等复位完成！
                 uint32 timeout = 100; // 最多等 100ms
                 while (timeout > 0) {
                     //mdelay(10);
-                    usb_hub_get_port_status(udev, port_no, &status);
+                    usb_hub_get_port_status(udev, port_id, &status);
 
                     // 检查 C_RESET 标志位是否被硬件置 1
                     if (status & USB_PORT_STAT_C_RESET) {
@@ -246,11 +260,11 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
                 }
 
                 // 🔪 擦除复位完成标志
-                usb_hub_clear_port_reset_change(udev, port_no);
+                usb_hub_clear_port_reset_change(udev, port_id);
 
                 // 🔪 顺手擦除随之产生的 Enable 变化标志
                 if (status & USB_PORT_STAT_C_ENABLE) {
-                    usb_hub_clear_port_enable_change(udev, port_no);
+                    usb_hub_clear_port_enable_change(udev, port_id);
                 }
 
                 // 最终确认：是否成功 Enable？
@@ -261,8 +275,8 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
                     //  为这个新设备分配地址 (SetAddress)，获取它的设备描述符！
                 }
 
-                usb_hub_get_port_status(udev, port_no, &status);
-                usb_hub_get_port_status(udev, port_no, &status);
+                usb_hub_get_port_status(udev, port_id, &status);
+                usb_hub_get_port_status(udev, port_id, &status);
             }
         }
 

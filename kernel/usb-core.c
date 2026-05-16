@@ -798,7 +798,7 @@ static int32 free_ep_ring(usb_ep_t *ep) {
 }
 
 /**
- * @brief 切换 USB 备用接口 (Linux 严谨基线版)
+ * @brief 切换 USB 备用接口
  * @param new_alt 上层驱动通过 find_alt 系列函数搜索到的目标图纸句柄
  * @return int32  0 表示成功，非 0 表示失败
  */
