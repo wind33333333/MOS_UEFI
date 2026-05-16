@@ -174,4 +174,3 @@ typedef struct usb_hub_t{
 } usb_hub_t;
 
 
-int32 xhci_init_root_hubs(xhci_hcd_t *xhcd);

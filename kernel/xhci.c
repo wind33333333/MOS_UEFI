@@ -10,7 +10,6 @@
 #include "interrupt.h"
 #include "usb-hub.h"
 
-
 // 计算步进后的索引，自动跨越 Link TRB
 static inline uint32 xhci_submit_ring_next_idx(uint32 cur_idx,uint32 size) {
     // 如果走到倒数第一个位置 (Link TRB)，直接绕回 0
@@ -659,7 +658,7 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
 
     usb_dev_t *udev = xhcd->udevs[slot_id];
     if (udev == NULL) return;
-    usb_ep_t *ep = udev->ueps[evt_ep_dci];
+    usb_ep_t *ep = udev->eps[evt_ep_dci];
     if (ep == NULL) return;
 
     // =======================================================
@@ -730,12 +729,145 @@ void xhci_handle_cmd_completion(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
     spin_unlock_irqrestore(&cmd_ring->ring_lock, cpu_flags);
 }
 
+/**
+ * @brief 内部辅助函数：无分支极速清理端口状态 (W1C 陷阱防御)
+ */
+static void xhci_port_clear(xhci_hcd_t *xhcd, uint8 port_id, uint32 portsc) {
+    // 1. 保护现场：将读到的数值中所有的 W1C 位强行置 0，防止误杀其他未处理的中断
+    portsc &= ~XHCI_PORTSC_W1C_MASK;
+
+    // 2. 暴力美学，全量清零：
+    // 不分 2.0 和 3.0，把所有可能在复位/插入时产生的状态变化位一次性砸成 1！
+    // 对于 2.0 端口，WRC 和 PLC 写 1 纯属空操作，极其安全。
+    portsc |= XHCI_PORTSC_PRC |
+              XHCI_PORTSC_CSC |
+              XHCI_PORTSC_PEC |
+              XHCI_PORTSC_WRC |
+              XHCI_PORTSC_PLC;
+
+    xhci_write_port(xhcd, port_id, portsc);
+}
+
+/**
+ * @brief xHCI 硬核物理复位引擎 (支持运行时错误抢救 & 2.0 初始化)
+ */
+static int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
+    uint32 portsc = xhci_read_port(xhcd, port_id);
+    if (!(portsc & XHCI_PORTSC_CCS)) return -1;
+
+    //清除状态
+    xhci_port_clear(xhcd, port_id, portsc);
+    portsc = xhci_read_port(xhcd, port_id); // 重新读取干净的状态
+
+    uint8 spc_idx = xhcd->port_to_spc[port_id];
+    boolean is_usb3 = (xhcd->spc[spc_idx].major_bcd >= 0x03);
+
+    // ---------------------------------------------------------
+    // 【未来重构点】：这部分将成为 "Issue Reset" (动作下发)
+    // ---------------------------------------------------------
+    portsc &= ~XHCI_PORTSC_W1C_MASK;
+    if (is_usb3 && (portsc & XHCI_PORTSC_PLS_MASK) == XHCI_PLS_INACTIVE) {
+        portsc |= XHCI_PORTSC_WPR; // 暖复位抢救
+    } else {
+        portsc |= XHCI_PORTSC_PR;  // 热复位常规流程
+    }
+    xhci_write_port(xhcd, port_id, portsc);
+
+    // ---------------------------------------------------------
+    // 【未来重构点】：这部分将被替换为 "Thread Sleep / Yield" (挂起线程)
+    // ---------------------------------------------------------
+    // uint32 times = 30000000;
+    // while (times--) {
+    //
+    // }
+    // if ( xhci_wait_for_event(xhcd, 0,XHCI_TRB_TYPE_PORT_STATUS_CHG ,port_id,0,0, 30000000, NULL) == XHCI_COMP_TIMEOUT) {
+    //     return -1; // 超时失败
+    // }
+
+    // ---------------------------------------------------------
+    // 【未来重构点】：这部分将成为 "Bottom Half" (中断唤醒后的收尾)
+    // ---------------------------------------------------------
+    uint32 timeout = 3000000;
+    while (timeout--) {
+        portsc = xhci_read_port(xhcd, port_id);
+        if ((portsc & XHCI_PORTSC_PR)==0 && (portsc & XHCI_PORTSC_WPR)==0 && (portsc & XHCI_PORTSC_PED)) break;
+        asm_pause();
+    }
+    if (timeout == 0) return -1;
+
+    // ★ 极其优雅的复用：直接调用刚才抽出来的清道夫函数！
+    xhci_port_clear(xhcd, port_id, portsc);
+
+    return 0; // 彻底复位且使能成功！
+}
+
+/**
+ * @brief xHCI 端口枚举初始化 (专供 Hub 线程在设备插入时调用)
+ */
+static int32 xhci_port_init(xhci_hcd_t *xhcd, uint8 port_id) {
+    uint32 portsc = xhci_read_port(xhcd, port_id);
+    if (!(portsc & XHCI_PORTSC_CCS)) return -1;
+
+    // ==========================================
+    // USB 3.0 极速通道：硬件已搞定，清理现场后直接放行！
+    // ==========================================
+    if (portsc & XHCI_PORTSC_PED) {
+        xhci_port_clear(xhcd, port_id, portsc);
+        return 0; // 成功！准备去分配 Address
+    }
+
+    // ==========================================
+    // USB 2.0 或假死兜底：委托给硬核复位引擎
+    // ==========================================
+    return xhci_port_reset(xhcd, port_id);
+}
+
+
+//xhci端口插入设备处理
+int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_id) {
+        color_printk(GREEN,BLACK,"portsc:%#x       \n",xhci_read_port(xhcd, port_id));
+        if (xhci_port_init(xhcd, port_id) == 0) {
+            color_printk(GREEN,BLACK,"portsc:%#x       \n",xhci_read_port(xhcd, port_id));
+            usb_dev_t *udev = usb_dev_create(xhcd, port_id);
+            usb_if_create(udev);
+            usb_dev_register(udev);
+            usb_if_register(udev);
+        } else {
+            // 如果复位失败，比如劣质 U 盘无法响应，直接跳过，保护操作系统不挂死
+            color_printk(YELLOW, BLACK, "[xHCI] Ignored faulty device on port %d.\n", port_id);
+        }
+}
+
+//xhci端口拔出设备处理
+int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_id) {
+
+    color_printk(YELLOW,BLACK,"[xHCI] disconnection port %d.\n]",port_id);
+
+}
+
+
+//xhci port扫描
+void xhci_port_scan(xhci_hcd_t *xhcd){
+
+    //等待硬件完成端口初始化
+    // uint32 times = 20000000;
+    // while (times--) {
+    //     asm_pause();
+    // }
+
+    for (uint8 i = 1; i <= xhcd->max_ports; i++) {
+        uint32 portsc = xhci_read_port(xhcd,i);
+        if (portsc & XHCI_PORTSC_CCS ) {//目前采用轮训等待方式暂时只要ccs置为就进行初始化
+            xhci_handle_port_connection(xhcd, i);
+        }
+    }
+}
 
 
 //端口状态处理
 void xhci_handle_port_status_change(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
     uint8 port_id = evt_trb->prot_status_change_event.port_id;
-    uint32 portsc = xhci_read_portsc(xhcd,port_id);
+    uint32 portsc = xhci_read_port(xhcd,port_id);
 
     // 1. 验明正身：真的是这个端口发生了插拔吗？
     if (portsc & XHCI_PORTSC_CSC) {
@@ -765,8 +897,9 @@ void xhci_handle_port_status_change(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
               XHCI_PORTSC_WRC |
               XHCI_PORTSC_PLC;
 
-    xhci_write_portsc(xhcd, port_id, portsc);
+    xhci_write_port(xhcd, port_id, portsc);
 }
+
 
 
 
@@ -1131,7 +1264,6 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     // 搜寻与分配 (寻找主板上所有的协议支持清单)
     // =========================================================================
     xhci_parse_supported_protocols(xhcd);
-    xhci_init_root_hubs(xhcd);
 
     // =========================================================================
     // 👑 必须先铺设“中断管线” (从 CPU 到 PCIe 总线)
@@ -1170,9 +1302,7 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
                      spc->major_bcd, spc->minor_bcd, spc->port_first, spc->port_count);
     }
 
-
-    extern void usb_dev_scan(xhci_hcd_t *xhcd);
-    usb_dev_scan(xhcd);
+    xhci_port_scan(xhcd);
 
     color_printk(GREEN,BLACK, "\nUSBcmd:%#x  USBsts:%#x  \n", xhcd->op_reg->usbcmd,
                  xhcd->op_reg->usbsts);

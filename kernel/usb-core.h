@@ -221,7 +221,7 @@ typedef struct {
     uint8 device_removable[];       // 位图：指示每个端口上的设备是不是焊死的（比如笔记本内置摄像头）
 
     // uint8 port_pwr_ctrl_mask[];  // 💡 USB 2.0 规范已废弃全填 0xFF，此处物理超度！
-} usb_hub_desc_t;
+} usb_hub20_desc_t;
 
 /**
  * @brief USB 3.0 超高速集线器描述符 (Type: 0x2A)
@@ -253,7 +253,7 @@ typedef struct {
     // ==========================================
     uint16 device_removable;        // 16位位图。Bit 1~15 代表对应的端口是否可移除。(Bit 0 保留)
 
-} usb_ss_hub_desc_t;
+} usb_hub30_desc_t;
 
 typedef enum : uint8 {
     USB_RECIP_DEVICE    = 0,  //设备
@@ -407,13 +407,13 @@ typedef struct usb_ep_t {
     // 情况 B (流模式)  : 分配大小为 num_streams + 1 的数组。rings[1...N] 是流环。
     uint8              enable_streams_exp;// xHCI 实际向主板申请并启用的流指数
     xhci_submit_ring_t *ring_arr;            // xHCI 传输环数组 (普通模式大小为1，流模式大小为 N+1)
-    void               *streams_ctx_array;// xHCI 流上下文数组的 DMA 内存基地址
+    void               *streams_ctx_array;   // xHCI 流上下文数组的 DMA 内存基地址
 
 } usb_ep_t;
 
 //usb替用接口
 typedef struct usb_if_alt_t {
-    struct usb_if_t *uif;
+    struct usb_if_t *ifs;
     usb_if_desc_t *if_desc;  // 指向 cfg_raw 内
     uint8 altsetting;       //备用设置号
 
@@ -421,8 +421,8 @@ typedef struct usb_if_alt_t {
     uint8 if_subclass;
     uint8 if_protocol;
 
-    uint8 uep_count;     // 端点数量
-    usb_ep_t *ueps;      // 可选：解析后的端点数组
+    uint8 ep_count;     // 端点数量
+    usb_ep_t *eps;      // 可选：解析后的端点数组
 } usb_if_alt_t;
 
 //usb接口
@@ -430,8 +430,8 @@ typedef struct usb_if_t {
     struct usb_dev_t *udev;
     uint8 if_num;
     uint8 if_alt_count;
-    usb_if_alt_t *uif_alts;
-    usb_if_alt_t *cur_uif_alt;   // 或 cur_alt_idx
+    usb_if_alt_t *if_alts;
+    usb_if_alt_t *cur_if_alt;   // 或 cur_alt_idx
     device_t dev;
     void    *drv_data;
 } usb_if_t;
@@ -479,9 +479,9 @@ typedef struct usb_dev_t{
     uint8                           *serial_number;    // 序列号ascii字符
 
     // 3. 逻辑端点与接口路由 (暴露给业务层驱动的资源)
-    uint8                           uif_count;          // 接口数量
-    usb_if_t                        *uifs;              // 接口指针根据接口数量动态分配
-    usb_ep_t                        *ueps[32];          // eps[0]仅占位，eps[1]-eps[31]=端点1-31
+    uint8                           if_count;          // 接口数量
+    usb_if_t                        *ifs;              // 接口指针根据接口数量动态分配
+    usb_ep_t                        *eps[32];          // eps[0]仅占位，eps[1]-eps[31]=端点1-31
 
     // 4. 仅为xhci定制强绑定
     uint8                           slot_id;
@@ -597,15 +597,15 @@ static inline void *usb_cfg_end(usb_cfg_desc_t *usb_config_desc)
 static inline usb_if_alt_t *usb_find_alt_by_num(usb_if_t *usb_if, uint8 altsetting)
 {
     for (uint8 i = 0; i < usb_if->if_alt_count; i++) {
-        if (usb_if->uif_alts[i].altsetting == altsetting)
-            return &usb_if->uif_alts[i];
+        if (usb_if->if_alts[i].altsetting == altsetting)
+            return &usb_if->if_alts[i];
     }
     return NULL;
 }
 
 extern struct bus_type_t usb_bus_type;
 
-
+usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id);
 
 //注册usb设备
 static inline void usb_dev_register(usb_dev_t *usb_dev) {

@@ -1065,18 +1065,8 @@ typedef struct {
     uint8  port_count;          // 连续覆盖端口数量（DW2[15:8]）
     uint8  slot_type;           // Protocol Slot Type（DW3[4:0]）
     xhci_psi_t psi_dict[16];    // psi字典
-    struct usb_hub_t *root_hub;
 } xhci_spc_t;
 
-// ==========================================
-// 🌟 新增定义：虚拟 Root Hub 子系统对象
-// ==========================================
-typedef struct {
-    struct usb_dev_t    *udev;                      // 指向上层 USB Core 的逻辑设备对象
-    uint8               logic_port_count;           // 该 Hub 包含的逻辑端口总数
-    uint8               logical_to_physical[256];   // O(1): 逻辑端口(1-based) -> 物理端口
-    xhci_psi_t          *max_psi;
-} xhci_rhub_t;
 
 //xhci控制器
 typedef struct xhci_hcd_t{
@@ -1096,14 +1086,7 @@ typedef struct xhci_hcd_t{
     // ==========================================
     uint8               spc_count;
     xhci_spc_t          spc[8];
-
-    // ⬇️ 全局物理层视图 (Physical View)：供中断底半部极速查表
-    uint8               port_to_spc[256];         // O(1): 物理端口 -> SPC 索引
-    uint8               physical_to_logical[256]; // O(1): 物理端口 -> 逻辑端口号
-
-    // ⬇️ 逻辑抽象层视图 (Logical View)：将散装变量升级为高度内聚的对象！
-    xhci_rhub_t         rhub_20;                  // USB 2.0 虚拟 Hub (包含其逻辑映射与总数)
-    xhci_rhub_t         rhub_30;                  // USB 3.0 虚拟 Hub (包含其逻辑映射与总数)
+    uint8               port_to_spc[256];         // O(1): 物理口 -> SPC 索引
 
     // ==========================================
     // 3. MMIO 硬件寄存器指针 (Registers Mapping)
@@ -1135,18 +1118,18 @@ typedef struct xhci_hcd_t{
 
 
 //读端口
-static inline uint32 xhci_read_portsc(xhci_hcd_t *xhcd,uint8 port_id) {
+static inline uint32 xhci_read_port(xhci_hcd_t *xhcd,uint8 port_id) {
     return xhcd->op_reg->portregs[port_id-1].portsc;
 }
 
 //写端口
-static inline void  xhci_write_portsc (xhci_hcd_t *xhcd,uint8 port_id,uint32 protsc) {
+static inline void  xhci_write_port(xhci_hcd_t *xhcd,uint8 port_id,uint32 protsc) {
     xhcd->op_reg->portregs[port_id-1].portsc = protsc;
 }
 
-//获取端口速率
-static inline uint8 xhci_get_port_speed (xhci_hcd_t *xhcd,uint8 port_id) {
-    uint32 portsc = xhci_read_portsc(xhcd,port_id);
+//获取端口速率id
+static inline uint8 xhci_get_psi (xhci_hcd_t *xhcd,uint8 port_id) {
+    uint32 portsc = xhci_read_port(xhcd,port_id);
     return  (portsc >> 10) & 0xF;
 }
 

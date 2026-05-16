@@ -23,7 +23,7 @@ static inline int32 xhci_recover_stall(usb_dev_t *udev, uint8 ep_dci) {
     }
 
     // 抢救第 2 步：重置出队指针
-    posix_err = xhci_cmd_set_tr_deq_ptr(udev->xhcd, udev->slot_id, ep_dci, udev->ueps[ep_dci]->ring_arr);
+    posix_err = xhci_cmd_set_tr_deq_ptr(udev->xhcd, udev->slot_id, ep_dci, udev->eps[ep_dci]->ring_arr);
     if (posix_err < 0) {
         color_printk(RED, BLACK, "[xHCI CPR FATAL] Set TR Deq Ptr Command failed: %d\n", posix_err);
         return posix_err; // 指针重置失败，传输环彻底报废！
@@ -337,7 +337,7 @@ int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
     if (!urb) return -ENOMEM;
 
     // 3. 使用填单助手压制参数 (ep0 = udev->ueps[1])
-    usb_fill_control_urb(urb, udev, udev->ueps[1], &setup_pkg, data_buf, length);
+    usb_fill_control_urb(urb, udev, udev->eps[1], &setup_pkg, data_buf, length);
 
     // 4. 将面单抛给底层调度引擎
     int32 posix_err = usb_submit_urb(urb);
@@ -805,16 +805,16 @@ static int32 free_ep_ring(usb_ep_t *ep) {
  */
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // 1. 终极防御：如果搜索函数返回了 NULL，或者这是一个脏指针，直接拦截！
-    if (new_alt == NULL || new_alt->uif == NULL) return -EINVAL;
+    if (new_alt == NULL || new_alt->ifs == NULL) return -EINVAL;
 
     int32 posix = 0;
 
     // 2. 顺藤摸瓜：通过你的反向指针，直接拉出上层接口和设备对象！
-    usb_if_t *uif = new_alt->uif;
+    usb_if_t *uif = new_alt->ifs;
     usb_dev_t *udev = uif->udev;
 
     // 注意：设备刚刚插入进行 Config 初始化时，cur_alt 是 NULL，必须防范
-    usb_if_alt_t *old_alt = uif->cur_uif_alt;
+    usb_if_alt_t *old_alt = uif->cur_if_alt;
 
     // 3. 性能优化：如果想切换的就是当前正在用的，直接光速返回
     if (old_alt == new_alt) return -EINVAL;
@@ -826,16 +826,16 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // 阶段 1：[纸上谈兵] 圈出要 Drop 的旧端点
     // ==========================================================
     if (old_alt != NULL) {
-        for (uint8 i = 0; i < old_alt->uep_count; i++) {
-            usb_tx_drop_ep(udev, &old_alt->ueps[i]);
+        for (uint8 i = 0; i < old_alt->ep_count; i++) {
+            usb_tx_drop_ep(udev, &old_alt->eps[i]);
         }
     }
 
     // ==========================================================
     // 阶段 2：[预分配] 为新端点画图纸并分配内存 (★ 核心架构重构)
     // ==========================================================
-    for (uint8 i = 0; i < new_alt->uep_count; i++) {
-        usb_ep_t *ep = &new_alt->ueps[i];
+    for (uint8 i = 0; i < new_alt->ep_count; i++) {
+        usb_ep_t *ep = &new_alt->eps[i];
 
         // 👑 Linux 架构铁律：两级火箭分离！
         // 接口切换是底层总线的职责，底层绝不越俎代庖去开启动态流。
@@ -848,7 +848,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
         if (posix < 0) {
             color_printk(RED, BLACK, "USB: OOM allocating rings during Alt setting!\n");
             // 局部回滚：释放刚才循环里已经分配成功的前几个端点
-            for (uint8 j = 0; j < i; j++) free_ep_ring(&new_alt->ueps[j]);
+            for (uint8 j = 0; j < i; j++) free_ep_ring(&new_alt->eps[j]);
             return posix;
         }
 
@@ -863,7 +863,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     if (posix < 0) {
         color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, hardware rejected!\n");
         // 主板拒绝了这份图纸，销毁刚刚新分配的所有内存，安全退出
-        for (uint8 i = 0; i < new_alt->uep_count; i++) free_ep_ring(&new_alt->ueps[i]);
+        for (uint8 i = 0; i < new_alt->ep_count; i++) free_ep_ring(&new_alt->eps[i]);
         return posix;
     }
 
@@ -871,9 +871,9 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // ★ 阶段 4：[防竞态] 提前挂载新路由！(兵马未动，粮草先行)
     // 此时新通道在主板端已通，但外设还未切换。先把接收器架好，防漏包！
     // ==========================================================
-    for (uint8 i = 0; i < new_alt->uep_count; i++) {
-        usb_ep_t *ep = &new_alt->ueps[i];
-        udev->ueps[ep->ep_dci] = ep;
+    for (uint8 i = 0; i < new_alt->ep_count; i++) {
+        usb_ep_t *ep = &new_alt->eps[i];
+        udev->eps[ep->ep_dci] = ep;
     }
 
     // ==========================================================
@@ -886,25 +886,25 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
         // ！！！极品回滚逻辑 (完美修复版) ！！！
 
         // 1. 软件路由撤销 (把刚才挂上去的新路由摘下来)
-        for (uint8 i = 0; i < new_alt->uep_count; i++) {
-            udev->ueps[new_alt->ueps[i].ep_dci] = NULL;
+        for (uint8 i = 0; i < new_alt->ep_count; i++) {
+            udev->eps[new_alt->eps[i].ep_dci] = NULL;
         }
 
         // ★ 修复：重新挂载老端点的路由，否则系统再也找不到旧端点通信了！
         if (old_alt != NULL) {
-            for (uint8 i = 0; i < old_alt->uep_count; i++) {
-                udev->ueps[old_alt->ueps[i].ep_dci] = &old_alt->ueps[i];
+            for (uint8 i = 0; i < old_alt->ep_count; i++) {
+                udev->eps[old_alt->eps[i].ep_dci] = &old_alt->eps[i];
             }
         }
 
         // 2. 释放新分配的废弃环内存
-        for (uint8 i = 0; i < new_alt->uep_count; i++) free_ep_ring(&new_alt->ueps[i]);
+        for (uint8 i = 0; i < new_alt->ep_count; i++) free_ep_ring(&new_alt->eps[i]);
 
         // 3. 将主板硬件强制回滚到旧状态 (反向 Drop 新的，Add 旧的)
         usb_tx_begin(udev);
-        for (uint8 i = 0; i < new_alt->uep_count; i++) usb_tx_drop_ep(udev, &new_alt->ueps[i]);
+        for (uint8 i = 0; i < new_alt->ep_count; i++) usb_tx_drop_ep(udev, &new_alt->eps[i]);
         if (old_alt != NULL) {
-            for (uint8 i = 0; i < old_alt->uep_count; i++) usb_tx_add_ep(udev, &old_alt->ueps[i]);
+            for (uint8 i = 0; i < old_alt->ep_count; i++) usb_tx_add_ep(udev, &old_alt->eps[i]);
         }
         int32 tx_err = usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
         if (tx_err < 0) {
@@ -918,18 +918,18 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // 阶段 6：[过河拆桥] 切换彻底成功，可以安全收缴旧端点的尸体了
     // ==========================================================
     if (old_alt != NULL) {
-        for (uint8 i = 0; i < old_alt->uep_count; i++) {
-            usb_ep_t *ep = &old_alt->ueps[i];
+        for (uint8 i = 0; i < old_alt->ep_count; i++) {
+            usb_ep_t *ep = &old_alt->eps[i];
             // 只在路由没有被新端点(同 DCI)覆盖的情况下，才去清空它
-            if (udev->ueps[ep->ep_dci] == ep) {
-                udev->ueps[ep->ep_dci] = NULL;
+            if (udev->eps[ep->ep_dci] == ep) {
+                udev->eps[ep->ep_dci] = NULL;
             }
             free_ep_ring(ep); // 彻底释放旧物理内存
         }
     }
 
     // 状态机正式翻页
-    uif->cur_uif_alt = new_alt;
+    uif->cur_if_alt = new_alt;
 
     return 0;
 }
@@ -1047,7 +1047,7 @@ int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 eps_count, uint8
 
 //给备用接口的所有端点分配环
 static inline int32 enable_alt_if (usb_if_alt_t *uif_alt) {
-    usb_dev_t *udev = uif_alt->uif->udev;
+    usb_dev_t *udev = uif_alt->ifs->udev;
 
     int32 posix_err = 0;
 
@@ -1055,12 +1055,12 @@ static inline int32 enable_alt_if (usb_if_alt_t *uif_alt) {
     usb_tx_begin(udev);
 
     // 配置该接口下的所有端点
-    for (uint8 i = 0; i < uif_alt->uep_count; i++) {
-        usb_ep_t *ep = &uif_alt->ueps[i];
+    for (uint8 i = 0; i < uif_alt->ep_count; i++) {
+        usb_ep_t *ep = &uif_alt->eps[i];
         uint8 ep_dci = ep->ep_dci;
 
         // 指针放到udev.eps中，建立全局 DCI 快速索引
-        udev->ueps[ep_dci] = ep;
+        udev->eps[ep_dci] = ep;
 
         //给端点分配环
         posix_err = alloc_ep_ring(ep);
@@ -1187,19 +1187,19 @@ static inline int32 alt_if_desc_parse(usb_if_alt_t *if_alt) {
     usb_desc_head *desc_head = usb_get_next_desc(&if_alt->if_desc->head);
     uint8 ep_idx = 0;
 
-    void *cfg_end = usb_cfg_end(if_alt->uif->udev->config_desc);
+    void *cfg_end = usb_cfg_end(if_alt->ifs->udev->config_desc);
 
     // 严密防御：限定搜索范围绝对不能超出整个配置描述符
     while ((desc_head < cfg_end) && (desc_head->desc_type != USB_DESC_TYPE_INTERFACE)) {
 
         if (desc_head->desc_type == USB_DESC_TYPE_ENDPOINT) {
             // 防缓冲区溢出！恶意的描述符数量不能超过声明的数量
-            if (ep_idx >= if_alt->uep_count) {
+            if (ep_idx >= if_alt->ep_count) {
                 break;
             }
 
             // 阶段 1：分发给标准解析器
-            cur_ep = &if_alt->ueps[ep_idx++];
+            cur_ep = &if_alt->eps[ep_idx++];
             ep_desc_params(cur_ep, (usb_ep_desc_t *) desc_head);
 
         } else if (desc_head->desc_type == USB_DESC_TYPE_SS_ENDPOINT_COMPANION) {
@@ -1233,9 +1233,9 @@ static inline int32 alt_if_desc_parse(usb_if_alt_t *if_alt) {
  */
 static inline int32 alloc_if(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_if_map) {
     // 1. 根据配置描述符声明的接口数，分配顶层接口数组
-    udev->uif_count = 0;
-    udev->uifs = kzalloc(sizeof(usb_if_t) * udev->config_desc->num_interfaces);
-    if (!udev->uifs) return -1;
+    udev->if_count = 0;
+    udev->ifs = kzalloc(sizeof(usb_if_t) * udev->config_desc->num_interfaces);
+    if (!udev->ifs) return -1;
 
     // 2. 第一次遍历：统计每个 interface_number 拥有多少个 alternate_setting
     usb_if_desc_t *if_desc = (usb_if_desc_t *)udev->config_desc;
@@ -1251,10 +1251,10 @@ static inline int32 alloc_if(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_i
     // 3. 分配底层的 alt 数组，并初始化总线设备模型结构
     for (uint16 i = 0; i < 256; i++) {
         if (alt_count[i] > 0) {
-            usb_if_t *usb_if = &udev->uifs[udev->uif_count++];
+            usb_if_t *usb_if = &udev->ifs[udev->if_count++];
             usb_if->if_num = i;
             usb_if->if_alt_count = alt_count[i];
-            usb_if->uif_alts = kzalloc(sizeof(usb_if_alt_t) * usb_if->if_alt_count);
+            usb_if->if_alts = kzalloc(sizeof(usb_if_alt_t) * usb_if->if_alt_count);
 
             // 绑定设备模型拓扑
             usb_if->udev = udev;
@@ -1294,20 +1294,20 @@ static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
 
             // 找到当前 alt 对应的槽位
             uint8 idx = fill_idx[if_num]++;
-            usb_if_alt_t *if_alt = &usb_if->uif_alts[idx];
+            usb_if_alt_t *if_alt = &usb_if->if_alts[idx];
 
             // 填充业务属性
-            if_alt->uif = usb_if;
+            if_alt->ifs = usb_if;
             if_alt->if_desc = if_desc;
             if_alt->altsetting = if_desc->alternate_setting;
             if_alt->if_class = if_desc->interface_class;
             if_alt->if_subclass = if_desc->interface_subclass;
             if_alt->if_protocol = if_desc->interface_protocol;
-            if_alt->uep_count = if_desc->num_endpoints;
+            if_alt->ep_count = if_desc->num_endpoints;
 
             // 为该 alt 分配端点内存，并触发底层解析引擎
-            if (if_alt->uep_count > 0) {
-                if_alt->ueps = kzalloc(if_alt->uep_count * sizeof(usb_ep_t));
+            if (if_alt->ep_count > 0) {
+                if_alt->eps = kzalloc(if_alt->ep_count * sizeof(usb_ep_t));
                 alt_if_desc_parse(if_alt);
             }
         }
@@ -1317,16 +1317,16 @@ static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
     // =================================================================
     // 阶段 B：图纸绘制完毕，开始向主板申请硬件 DMA 高速公路
     // =================================================================
-    for (uint32 i = 0; i < udev->uif_count; i++) {
-        usb_if_t *uif = &udev->uifs[i];
+    for (uint32 i = 0; i < udev->if_count; i++) {
+        usb_if_t *uif = &udev->ifs[i];
 
         if (uif != NULL) {
             // 默认锁定 alt 0 备用接口 (包含极其严密的兜底容错逻辑)
             usb_if_alt_t *alt0 = usb_find_alt_by_num(uif, 0);
-            uif->cur_uif_alt = alt0 ? alt0 : &uif->uif_alts[0];
+            uif->cur_if_alt = alt0 ? alt0 : &uif->if_alts[0];
 
             // 呼叫主板：分配 Transfer Ring 并下发 Configure Endpoint
-            enable_alt_if(uif->cur_uif_alt);
+            enable_alt_if(uif->cur_if_alt);
         }
     }
 
@@ -1370,8 +1370,8 @@ int32 usb_if_create(usb_dev_t *udev) {
 
 //注册usb接口
 void usb_if_register(usb_dev_t *udev) {
-    for (uint32 i = 0; i < udev->uif_count; i++) {
-        usb_if_t *usb_if = &udev->uifs[i];
+    for (uint32 i = 0; i < udev->if_count; i++) {
+        usb_if_t *usb_if = &udev->ifs[i];
         if (usb_if != NULL) {
             // 触发系统级的 match/probe (比如唤醒 bot.c 或 uas.c 驱动)
             device_register(&usb_if->dev);
@@ -1401,28 +1401,28 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     udev->input_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * ctx_size);
 
     //挂载到 O(1) 路由表
-    usb_ep_t *ep1 = kzalloc(sizeof(usb_ep_t));
-    udev->ueps[1] = ep1;  //警告端点0为eps1，方便后续通过ep-dci查找端点。
+    usb_ep_t *uep1 = kzalloc(sizeof(usb_ep_t));
+    udev->eps[1] = uep1;  //警告端点0为eps1，方便后续通过ep-dci查找端点。
 
     // --- 计算初始 Max Packet Size ---
-    udev->port_speed = xhci_get_port_speed(xhcd, udev->port_id);
+    udev->port_speed = xhci_get_psi(xhcd, udev->port_id);
     uint32 mps = (udev->port_speed >= XHCI_PORTSC_SPEED_SUPER) ? 512 :
                  (udev->port_speed == XHCI_PORTSC_SPEED_HIGH)  ? 64  : 8;
 
     //填充端点0
-    ep1->ep_dci = 1;
-    ep1->cerr = 3;
-    ep1->ep_type = 4; // Control Endpoint
-    ep1->max_packet_size = mps;
-    ep1->average_trb_length = mps;
-    ep1->max_streams_exp = 0;
-    ep1->enable_streams_exp = 0;
-    alloc_ep_ring(ep1);
+    uep1->ep_dci = 1;
+    uep1->cerr = 3;
+    uep1->ep_type = 4; // Control Endpoint
+    uep1->max_packet_size = mps;
+    uep1->average_trb_length = mps;
+    uep1->max_streams_exp = 0;
+    uep1->enable_streams_exp = 0;
+    alloc_ep_ring(uep1);
 
     // ---下发命令 ---
     usb_tx_begin(udev);
     usb_tx_init_slot(udev);
-    usb_tx_add_ep(udev,ep1);
+    usb_tx_add_ep(udev,uep1);
     usb_tx_commit(udev,USB_TX_CMD_ADDR_DEV);
 
     return 0;
@@ -1448,7 +1448,7 @@ static inline int32 get_dev_desc(usb_dev_t *udev) {
         usb_get_dev_desc(udev,dev_desc,8);
 
         if (dev_desc->max_packet_size0 != 8) {
-            usb_ep_t *ep1 = udev->ueps[1];
+            usb_ep_t *ep1 = udev->eps[1];
             ep1->max_packet_size = dev_desc->max_packet_size0;
             usb_tx_begin(udev);
             usb_tx_eval_ep(udev,ep1);
@@ -1547,7 +1547,7 @@ static inline int get_string_desc(usb_dev_t *udev) {
 }
 
 //创建usb设备
-static inline usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
+usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
     usb_dev_t *udev = kzalloc(sizeof(usb_dev_t));
     udev->xhcd = xhcd;
     udev->port_id = port_id;
@@ -1562,150 +1562,14 @@ static inline usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
     return udev;
 }
 
-
-
-/**
- * @brief 内部辅助函数：无分支极速清理端口状态 (W1C 陷阱防御)
- */
-static void usb_clear_port_change(xhci_hcd_t *xhcd, uint8 port_id, uint32 portsc) {
-    // 1. 保护现场：将读到的数值中所有的 W1C 位强行置 0，防止误杀其他未处理的中断
-    portsc &= ~XHCI_PORTSC_W1C_MASK;
-
-    // 2. 暴力美学，全量清零：
-    // 不分 2.0 和 3.0，把所有可能在复位/插入时产生的状态变化位一次性砸成 1！
-    // 对于 2.0 端口，WRC 和 PLC 写 1 纯属空操作，极其安全。
-    portsc |= XHCI_PORTSC_PRC |
-              XHCI_PORTSC_CSC |
-              XHCI_PORTSC_PEC |
-              XHCI_PORTSC_WRC |
-              XHCI_PORTSC_PLC;
-
-    xhci_write_portsc(xhcd, port_id, portsc);
-}
-
-/**
- * @brief xHCI 硬核物理复位引擎 (支持运行时错误抢救 & 2.0 初始化)
- */
-static int32 usb_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
-    uint32 portsc = xhci_read_portsc(xhcd, port_id);
-    if (!(portsc & XHCI_PORTSC_CCS)) return -1;
-
-    //清除状态
-    usb_clear_port_change(xhcd, port_id, portsc);
-    portsc = xhci_read_portsc(xhcd, port_id); // 重新读取干净的状态
-
-    uint8 spc_idx = xhcd->port_to_spc[port_id];
-    boolean is_usb3 = (xhcd->spc[spc_idx].major_bcd >= 0x03);
-
-    // ---------------------------------------------------------
-    // 【未来重构点】：这部分将成为 "Issue Reset" (动作下发)
-    // ---------------------------------------------------------
-    portsc &= ~XHCI_PORTSC_W1C_MASK;
-    if (is_usb3 && (portsc & XHCI_PORTSC_PLS_MASK) == XHCI_PLS_INACTIVE) {
-        portsc |= XHCI_PORTSC_WPR; // 暖复位抢救
-    } else {
-        portsc |= XHCI_PORTSC_PR;  // 热复位常规流程
-    }
-    xhci_write_portsc(xhcd, port_id, portsc);
-
-    // ---------------------------------------------------------
-    // 【未来重构点】：这部分将被替换为 "Thread Sleep / Yield" (挂起线程)
-    // ---------------------------------------------------------
-    // uint32 times = 30000000;
-    // while (times--) {
-    //
-    // }
-    // if ( xhci_wait_for_event(xhcd, 0,XHCI_TRB_TYPE_PORT_STATUS_CHG ,port_id,0,0, 30000000, NULL) == XHCI_COMP_TIMEOUT) {
-    //     return -1; // 超时失败
-    // }
-
-    // ---------------------------------------------------------
-    // 【未来重构点】：这部分将成为 "Bottom Half" (中断唤醒后的收尾)
-    // ---------------------------------------------------------
-    uint32 timeout = 3000000;
-    while (timeout--) {
-        portsc = xhci_read_portsc(xhcd, port_id);
-        if ((portsc & XHCI_PORTSC_PR)==0 && (portsc & XHCI_PORTSC_WPR)==0 && (portsc & XHCI_PORTSC_PED)) break;
-        asm_pause();
-    }
-    if (timeout == 0) return -1;
-
-    // ★ 极其优雅的复用：直接调用刚才抽出来的清道夫函数！
-    usb_clear_port_change(xhcd, port_id, portsc);
-
-    return 0; // 彻底复位且使能成功！
-}
-
-/**
- * @brief xHCI 端口枚举初始化 (专供 Hub 线程在设备插入时调用)
- */
-static int32 usb_port_init(xhci_hcd_t *xhcd, uint8 port_id) {
-    uint32 portsc = xhci_read_portsc(xhcd, port_id);
-    if (!(portsc & XHCI_PORTSC_CCS)) return -1;
-
-    // ==========================================
-    // USB 3.0 极速通道：硬件已搞定，清理现场后直接放行！
-    // ==========================================
-    if (portsc & XHCI_PORTSC_PED) {
-        usb_clear_port_change(xhcd, port_id, portsc);
-        return 0; // 成功！准备去分配 Address
-    }
-
-    // ==========================================
-    // USB 2.0 或假死兜底：委托给硬核复位引擎
-    // ==========================================
-    return usb_port_reset(xhcd, port_id);
-}
-
-
-//端口插入设备处理
-int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_id) {
-        color_printk(GREEN,BLACK,"portsc:%#x       \n",xhci_read_portsc(xhcd, port_id));
-        if (usb_port_init(xhcd, port_id) == 0) {
-            color_printk(GREEN,BLACK,"portsc:%#x       \n",xhci_read_portsc(xhcd, port_id));
-            usb_dev_t *usb_dev = usb_dev_create(xhcd, port_id);
-            usb_dev_register(usb_dev);
-            usb_if_create(usb_dev);
-            usb_if_register(usb_dev);
-        } else {
-            // 如果复位失败，比如劣质 U 盘无法响应，直接跳过，保护操作系统不挂死
-            color_printk(YELLOW, BLACK, "[xHCI] Ignored faulty device on port %d.\n", port_id);
-        }
-}
-
-//端口拔出设备处理
-int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_id) {
-
-    color_printk(YELLOW,BLACK,"[xHCI] disconnection port %d.\n]",port_id);
-
-}
-
-
-//usb设备初始化
-void usb_dev_scan(xhci_hcd_t *xhcd){
-
-    //等待硬件完成端口初始化
-    // uint32 times = 20000000;
-    // while (times--) {
-    //     asm_pause();
-    // }
-
-    for (uint8 i = 1; i <= xhcd->max_ports; i++) {
-        uint32 portsc = xhci_read_portsc(xhcd,i);
-        if (portsc & XHCI_PORTSC_CCS ) {//目前采用轮训等待方式暂时只要ccs置为就进行初始化
-            xhci_handle_port_connection(xhcd, i);
-        }
-    }
-}
-
 //======================================= 驱动======================================
 
 //匹配驱动id
 static inline usb_id_t *usb_match_id(usb_if_t *usb_if, driver_t *drv) {
     usb_id_t *id_table = drv->id_table;
-    uint8 if_class = usb_if->cur_uif_alt->if_class;
-    uint8 if_protocol = usb_if->cur_uif_alt->if_protocol;
-    uint8 if_subclass = usb_if->cur_uif_alt->if_subclass;
+    uint8 if_class = usb_if->cur_if_alt->if_class;
+    uint8 if_protocol = usb_if->cur_if_alt->if_protocol;
+    uint8 if_subclass = usb_if->cur_if_alt->if_subclass;
     for (; id_table->if_class || id_table->if_protocol || id_table->if_subclass; id_table++) {
         if (id_table->if_class == if_class && id_table->if_protocol == if_protocol && id_table->if_subclass ==
             if_subclass)
