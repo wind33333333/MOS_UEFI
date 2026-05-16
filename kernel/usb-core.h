@@ -454,8 +454,9 @@ typedef struct usb_dev_t{
     struct usb_dev_t                *parent_hub;       // 上游 hub (roothub 则为 NULL)
     uint8                           parent_port;       // 插在上游 hub 的哪个物理端口 (从 1 开始)
     usb_dev_type_e                  dev_type;
+    uint8                           psiv;             // xHCI 专属的底层 DMA 挡位 (用于填 Slot Context)
     usb_port_speed_e                port_speed;       // 🌟 1. 保留全局标准枚举 (供状态机流转和描述符解析使用)
-    uint32                          speed_kbps;    // 🌟 2. 新增：扁平化的绝对物理带宽 (供高级驱动精确计算资源)
+    uint32                          speed_kbps;       // 🌟 2. 新增：扁平化的绝对物理带宽 (供高级驱动精确计算资源)
     uint32                          route_string;
 
     // Hub 专属特性 (非 Hub 时忽略)

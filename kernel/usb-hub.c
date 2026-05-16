@@ -109,11 +109,11 @@ static inline int32 usb_hub_clear_port_over_current_change(usb_dev_t *udev, uint
 /**
  * @brief 获取 Hub 端口的 4 字节状态数据
  * @param udev        Hub 设备对象
- * @param port_no     端口号 (从 1 开始)
+ * @param port_id     端口号 (从 1 开始)
  * @param port_status 传出参数：用于接收 4 字节的端口状态
  * @return int32      状态码 (0 成功，<0 失败)
  */
-int32 usb_hub_get_port_status(usb_dev_t *udev, uint8 port_no, uint32 *port_status) {
+int32 usb_hub_get_port_status(usb_dev_t *udev, uint8 port_id, uint32 *port_status) {
     // 1. 申请用于底层 DMA 传输的 4 字节内存
     uint32 *port_sts = kzalloc_dma(sizeof(uint32));
     if (!port_sts) {
@@ -123,7 +123,7 @@ int32 usb_hub_get_port_status(usb_dev_t *udev, uint8 port_no, uint32 *port_statu
     // 2. 直击灵魂的底层调用：读取 4 字节状态 (IN 方向)
     int32 ret = usb_control_msg(udev, port_sts,
                                 USB_DIR_IN, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                                USB_REQ_GET_STATUS, 0, port_no, 4);
+                                USB_REQ_GET_STATUS, 0, port_id, 4);
 
     // 3. 只有成功时，才将结果透传给调用者
     if (ret >= 0) {

@@ -880,7 +880,7 @@ typedef union xhci_trb_t {
 typedef struct slot_ctx_t{
     // Dword 0
     uint32 route_string:20;     // [19:0] 路由字符串
-    uint32 port_speed:4;        // [23:20] 端口速度
+    uint32 speed:4;             // [23:20] 端口速度
     uint32 rsvd_dw0_24:1;       // [24] 保留位 (规范中隐蔽的一位)
     uint32 mtt:1;               // [25] 多重事务转换器
     uint32 is_hub:1;            // [26] 1=集线器, 0=USB设备

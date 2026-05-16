@@ -545,7 +545,7 @@ static void usb_tx_init_slot(usb_dev_t *udev) {
     xhci_slot_ctx_t *input_slot_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, 0);
 
     // 2. 填入初始物理属性
-    input_slot_ctx->port_speed = udev->port_speed;
+    input_slot_ctx->speed = udev->psiv;
     input_slot_ctx->root_hub_port_num = udev->port_id; // 精确锁定根集线器端口
 
     // 3. 打上涂改标记 (Bit 0 特权)
@@ -1405,7 +1405,6 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     udev->eps[1] = uep1;  //警告端点0为eps1，方便后续通过ep-dci查找端点。
 
     // --- 计算初始 Max Packet Size ---
-    udev->port_speed = xhci_get_psi(xhcd, udev->port_id);
     uint32 mps = (udev->port_speed >= XHCI_PORTSC_SPEED_SUPER) ? 512 :
                  (udev->port_speed == XHCI_PORTSC_SPEED_HIGH)  ? 64  : 8;
 
@@ -1551,6 +1550,11 @@ usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
     usb_dev_t *udev = kzalloc(sizeof(usb_dev_t));
     udev->xhcd = xhcd;
     udev->port_id = port_id;
+    uint8 psi = xhci_get_psi(xhcd, port_id);
+    uint8 spc_idx = xhcd->port_to_spc[port_id];
+    udev->port_speed = xhcd->spc[spc_idx].psi_dict[psi].mapped_speed;
+    udev->speed_kbps = xhcd->spc[spc_idx].psi_dict[psi].speed_kbps;
+    udev->psiv = xhcd->spc[spc_idx].psi_dict[psi].psiv;
     enable_slot_ep0(udev); //启用slot 和 ep0
     get_dev_desc(udev);    //获取设备描述符
     get_cfg_desc(udev);    //获取配置描述符
