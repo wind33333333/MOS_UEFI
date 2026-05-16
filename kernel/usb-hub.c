@@ -143,7 +143,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
     usb_dev_t *udev = uif->udev;
     usb_hub_t *hub = kzalloc(sizeof(usb_hub_t)) ;
     hub->uif = uif;
-    udev->is_hub = 1;
+    udev->is_hub = TRUE;
 
     if (udev->port_speed > USB_SPEED_HIGH) {
         // ==========================================
@@ -184,20 +184,19 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         // 第二步：算出真实物理长度，再次读取
         uint8 num_ports = hub20_desc->num_ports;
         uint16 real_len = 7 + ((num_ports / 8) + 1) * 2;
-
         ret = usb_hub20_get_desc(udev,hub20_desc, real_len);
         if (ret < 0) return ret;
 
+        //解析hub描述符
         udev->hub_num_ports = hub20_desc->num_ports;
         udev->hub_ttt = (hub20_desc->hub_characteristics >> 5) & 0x03;
-        hub->power_delay_ms = hub20_desc->power_on_to_power_good<<1;
         hub->is_individual_pwr = (hub20_desc->hub_characteristics & 0x03) == 0x01;
         hub->is_individual_ocp = ((hub20_desc->hub_characteristics >> 3) & 0x03) == 0x01;
+        hub->power_delay_ms = hub20_desc->power_on_to_power_good<<1;
 
 
         hub->ports = kzalloc((udev->hub_num_ports+1)*sizeof(hub_port_t));
-
-        for (uint8 i = 1; i < udev->hub_num_ports; i++) {
+        for (uint8 i = 1; i <= udev->hub_num_ports; i++) {
             hub->ports[i].port_id = i;
 
             // 解析位图 (以 USB 2.0 为例，注意位图是从 Bit 1 开始算的)
@@ -206,14 +205,14 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
             uint8 bit_idx  = i % 8;
 
             // 如果该位是 0，代表 Removable；是 1 代表 Non-Removable (硬接线)
-            hub->ports[i].is_removable = !(hub20_desc->device_removable[byte_idx] >> bit_idx) & 1;
+            hub->ports[i].is_removable = !((hub20_desc->device_removable[byte_idx] >> bit_idx) & 1);
 
         }
 
         // ==========================================
         // 1. 暴力上电
         // ==========================================
-        for (uint8 i = 0; i < udev->hub_num_ports; i++) {
+        for (uint8 i = 1; i <= udev->hub_num_ports; i++) {
             usb_hub_set_port_power(udev, hub->ports[i].port_id);
         }
 
@@ -223,7 +222,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         // ==========================================
         // 2. 开机扫街 (处理遗留设备)
         // ==========================================
-        for (uint8 i = 0; i < udev->hub_num_ports; i++) {
+        for (uint8 i = 1; i <= udev->hub_num_ports; i++) {
             uint8 port_id = hub->ports[i].port_id;
             uint32 status = 0;
 

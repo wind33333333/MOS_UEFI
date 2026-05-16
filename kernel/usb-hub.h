@@ -126,9 +126,9 @@ typedef struct usb_hub_t {
     usb_if_t           *uif;
 
     // 2. 硬件性格字典 (仅保留 Hub 专有的高级控制标志)
-    uint32             power_delay_ms;
-    boolean            is_individual_pwr;
-    boolean            is_individual_ocp;
+    uint32             power_delay_ms;  //上电等待时间
+    boolean            is_individual_pwr;  //是否独立供电控制
+    boolean            is_individual_ocp;  //是否独立过流保护
 
     // 3. 中断雷达 (运行时内存)
     usb_urb_t          *irq_urb;
