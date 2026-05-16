@@ -175,20 +175,21 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         if (ret < 0) return ret;
 
         udev->hub_num_ports = hub20_desc->num_ports;
+        udev->hub_ttt = ((hub20_desc->hub_characteristics>>5 & 3)+1)<<3;
         hub->power_delay_ms = hub20_desc->power_on_to_power_good<<1;
         hub->is_individual_pwr = (hub20_desc->hub_characteristics & 0x03) == 0x01;
         hub->is_individual_ocp = ((hub20_desc->hub_characteristics >> 3) & 0x03) == 0x01;
-        hub->tt_think_time = ((hub20_desc->hub_characteristics>>5 & 3)+1)*8;
 
-        hub->ports = kzalloc(hub->num_ports*sizeof(hub_port_t));
 
-        for (uint8 i = 0; i < hub->num_ports; i++) {
-            hub->ports[i].port_no = i + 1;
+        hub->ports = kzalloc((udev->hub_num_ports+1)*sizeof(hub_port_t));
+
+        for (uint8 i = 1; i < udev->hub_num_ports; i++) {
+            hub->ports[i].port_id = i;
 
             // 解析位图 (以 USB 2.0 为例，注意位图是从 Bit 1 开始算的)
             // Bit 1 对应 端口 1，以此类推
-            uint8 byte_idx = (i + 1) / 8;
-            uint8 bit_idx  = (i + 1) % 8;
+            uint8 byte_idx = i / 8;
+            uint8 bit_idx  = i % 8;
 
             // 如果该位是 0，代表 Removable；是 1 代表 Non-Removable (硬接线)
             hub->ports[i].is_removable = !(hub20_desc->device_removable[byte_idx] >> bit_idx) & 1;
@@ -198,8 +199,8 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         // ==========================================
         // 1. 暴力上电
         // ==========================================
-        for (uint8 i = 0; i < hub->num_ports; i++) {
-            usb_hub_set_port_power(udev, hub->ports[i].port_no);
+        for (uint8 i = 0; i < udev->hub_num_ports; i++) {
+            usb_hub_set_port_power(udev, hub->ports[i].port_id);
         }
 
         // 🌟 物理规律：必须等待电容充电完毕！(你的 hub->power_delay_ms 派上用场了)
