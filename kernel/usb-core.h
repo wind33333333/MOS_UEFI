@@ -441,20 +441,20 @@ typedef struct usb_if_t {
 typedef struct usb_dev_t{
     // 1. 通用总线拓扑与设备模型
     device_t                        dev;               // 继承系统基础设备对象
-    struct usb_dev_t                *parent_hub;       // 上游 hub (roothub 则为 NULL)
-    uint8                           parent_port;       // 插在上游 hub 的哪个物理端口 (从 1 开始)
+    struct usb_dev_t                *parent_hub;       // 亲爹指针 (直连主板则为 NULL)
+    uint8                           root_port_num;     // 🌟 新增：认祖归宗，主板上的物理根端口号
+    uint8                           parent_port_num;   // 替代原来的 port_id：插在亲爹的第几个口上？
     uint8                           psiv;             // xHCI 专属的底层 DMA 挡位 (用于填 Slot Context)
     usb_port_speed_e                port_speed;       // 🌟 1. 保留全局标准枚举 (供状态机流转和描述符解析使用)
     uint32                          speed_kbps;       // 🌟 2. 新增：扁平化的绝对物理带宽 (供高级驱动精确计算资源)
     uint32                          route_string;
+    uint8                           hub_depth;      // 🌟 新增：记录当前设备处于第几层 (0=直连主板, 1=第一层Hub...)
 
     // Hub 专属特性 (非 Hub 时忽略)
     boolean                         is_hub;        //1=hub 0=普通设备
     uint8                           hub_num_ports; //hub端口数量
     uint8                           hub_mtt; //Multiple Transaction Translators - 多事务翻译器
     uint8                           hub_ttt;
-
-    uint8                           port_id;           //  parent_port  这两个保留一个
     uint16                          max_exit_latency;
 
     // 2. 纯 USB 协议概念 (描述符与配置)
@@ -596,7 +596,7 @@ static inline usb_if_alt_t *usb_find_alt_by_num(usb_if_t *usb_if, uint8 altsetti
 
 extern struct bus_type_t usb_bus_type;
 
-usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id);
+usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd,usb_dev_t *parent_hub, uint32 port_num);
 
 //注册usb设备
 static inline void usb_dev_register(usb_dev_t *usb_dev) {

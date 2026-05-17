@@ -545,8 +545,11 @@ static void usb_tx_init_slot(usb_dev_t *udev) {
     xhci_slot_ctx_t *input_slot_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, 0);
 
     // 2. 填入初始物理属性
+    input_slot_ctx->route_string = udev->route_string;
     input_slot_ctx->speed = udev->psiv;
-    input_slot_ctx->root_hub_port_num = udev->port_id; // 精确锁定根集线器端口
+    input_slot_ctx->root_hub_port_num = udev->root_port_num; // 精确锁定根集线器端口
+    input_slot_ctx->parent_hub_slot_id = udev->parent_hub ? udev->parent_hub->slot_id : 0;
+    input_slot_ctx->parent_port_num = udev->parent_port_num;
 
     // 3. 打上涂改标记 (Bit 0 特权)
     udev->input_ctx->add_context_flags |= (1 << 0);
@@ -569,17 +572,13 @@ void usb_tx_eval_slot(usb_dev_t *udev) {
     // 3. 涂改图纸：将 udev 软件对象里新挖掘出的全局属性，同步给硬件
 
     // 场景 A：设备身份觉醒 (发现它是个 Hub)
-    if (input_slot_ctx->is_hub == 1) {
-        input_slot_ctx->num_ports = udev->hub_num_ports;// 填入它有多少个下行端口
-        input_slot_ctx->mtt = udev->hub_mtt;            // 多事务翻译器支持
-        input_slot_ctx->tt_think_time = udev->hub_ttt;  // 翻译器思考时间
-    }
+    input_slot_ctx->num_ports = udev->hub_num_ports;// 填入它有多少个下行端口
+    input_slot_ctx->mtt = udev->hub_mtt;            // 多事务翻译器支持
+    input_slot_ctx->tt_think_time = udev->hub_ttt;  // 翻译器思考时间
 
     // 场景 B：多核中断负载均衡 (IRQ Routing)
     // 比如系统的 IRQ Balancer 决定把这个 U 盘的中断交给 CPU 3 处理
-    if (udev->interrupter_target != input_slot_ctx->interrupter_target) {
-        input_slot_ctx->interrupter_target = udev->interrupter_target;
-    }
+    input_slot_ctx->interrupter_target = udev->interrupter_target;
 
     // 场景 C：深度休眠电源管理 (LPM)
     // 更新最大退出延迟容忍度 (Max Exit Latency)
@@ -1388,7 +1387,7 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     xhci_hcd_t *xhcd = udev->xhcd;
 
     //启用插槽
-    xhci_cmd_enable_slot(xhcd,udev->port_id,&udev->slot_id); //启用插槽
+    xhci_cmd_enable_slot(xhcd,udev->parent_port_num,&udev->slot_id); //启用插槽
 
     //分配设备上下文
     uint8 ctx_size = xhcd->ctx_size;
@@ -1545,23 +1544,41 @@ static inline int get_string_desc(usb_dev_t *udev) {
 }
 
 //创建usb设备
-usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, uint32 port_id) {
+usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, usb_dev_t *parent_hub,uint32 port_num) {
     usb_dev_t *udev = kzalloc(sizeof(usb_dev_t));
+    uint8 psi = xhci_get_psi(xhcd, port_num);
+    uint8 spc_idx = xhcd->port_to_spc[port_num];
     udev->xhcd = xhcd;
-    udev->port_id = port_id;
-    uint8 psi = xhci_get_psi(xhcd, port_id);
-    uint8 spc_idx = xhcd->port_to_spc[port_id];
     udev->port_speed = xhcd->spc[spc_idx].psi_dict[psi].mapped_speed;
     udev->speed_kbps = xhcd->spc[spc_idx].psi_dict[psi].speed_kbps;
     udev->psiv = xhcd->spc[spc_idx].psi_dict[psi].psiv;
+
+    // 【级联外设】
+    udev->parent_hub = parent_hub;
+    if (parent_hub != NULL) {
+        udev->root_port_num = parent_hub->root_port_num; // 继承亲爹的根端口
+        udev->parent_port_num = port_num;;
+        udev->hub_depth = parent_hub->hub_depth + 1;
+        uint8 shift = parent_hub->hub_depth << 2;
+        udev->route_string = parent_hub->route_string | (port_num << shift);
+    }else {
+        // 【主板直连外设】
+        udev->root_port_num = port_num; // 🌟 物理坐标在这里！(1 ~ MaxPorts)
+        udev->parent_port_num = 0;      // 🌟 既然没爹，当然是0！完美契合 xHCI 规范！
+        udev->route_string = 0;         // 直连无路由
+        udev->hub_depth = 0;
+    }
+
+    udev->dev.type = &usb_dev_type;
+    udev->dev.parent = &xhcd->xdev->dev;
+    udev->dev.bus = &usb_bus_type;
+
     enable_slot_ep0(udev); //启用slot 和 ep0
     get_dev_desc(udev);    //获取设备描述符
     get_cfg_desc(udev);    //获取配置描述符
     get_string_desc(udev); //获取字符串描述符
 
-    udev->dev.type = &usb_dev_type;
-    udev->dev.parent = &xhcd->xdev->dev;
-    udev->dev.bus = &usb_bus_type;
+
     return udev;
 }
 

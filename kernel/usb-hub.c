@@ -207,13 +207,9 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
             // 如果该位是 0，代表 Removable；是 1 代表 Non-Removable (硬接线)
             hub->ports[i].is_removable = !((hub20_desc->device_removable[byte_idx] >> bit_idx) & 1);
 
-        }
+            // 暴力上电
+            usb_hub_set_port_power(udev, i);
 
-        // ==========================================
-        // 1. 暴力上电
-        // ==========================================
-        for (uint8 i = 1; i <= udev->hub_num_ports; i++) {
-            usb_hub_set_port_power(udev, hub->ports[i].port_id);
         }
 
         // 🌟 物理规律：必须等待电容充电完毕！(你的 hub->power_delay_ms 派上用场了)
@@ -279,9 +275,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
             }
         }
 
-
     }
-
 
 
     while (1);

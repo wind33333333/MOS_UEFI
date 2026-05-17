@@ -828,7 +828,7 @@ int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_id) {
         color_printk(GREEN,BLACK,"portsc:%#x       \n",xhci_read_port(xhcd, port_id));
         if (xhci_port_init(xhcd, port_id) == 0) {
             color_printk(GREEN,BLACK,"portsc:%#x       \n",xhci_read_port(xhcd, port_id));
-            usb_dev_t *udev = usb_dev_create(xhcd, port_id);
+            usb_dev_t *udev = usb_dev_create(xhcd, NULL,port_id);
             usb_if_create(udev);
             usb_dev_register(udev);
             usb_if_register(udev);
