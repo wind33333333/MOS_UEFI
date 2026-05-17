@@ -411,22 +411,16 @@ typedef struct usb_ep_t {
 
 } usb_ep_t;
 
-//usb替用接口
+//usb备用接口
 typedef struct usb_if_alt_t {
     struct usb_if_t *ifs;
     usb_if_desc_t *if_desc;  // 指向 cfg_raw 内
-    // uint8 altsetting;       //备用设置号
-    // uint8 if_class;
-    // uint8 if_subclass;
-    // uint8 if_protocol;
-    // uint8 num_eps;     // 端点数量
     usb_ep_t *eps;      // 可选：解析后的端点数组
 } usb_if_alt_t;
 
 //usb接口
 typedef struct usb_if_t {
     struct usb_dev_t *udev;
-    //uint8 if_num;               // 接口号
     uint8 num_if_alts;          // 备用接口数量
     usb_if_alt_t *if_alts;      // 备用接口数组
     usb_if_alt_t *activity_if_alt;   // 当前激活的备用接口
@@ -585,8 +579,9 @@ static inline void *usb_cfg_end(usb_cfg_desc_t *usb_config_desc)
 /* 在 uif->alts[] 中按 altsetting 值查找（不能用 altsetting 当数组下标） */
 static inline usb_if_alt_t *usb_find_alt_by_num(usb_if_t *usb_if, uint8 altsetting)
 {
+    usb_if_alt_t *alt_if = usb_if->if_alts;
     for (uint8 i = 0; i < usb_if->num_if_alts; i++) {
-        if (usb_if->if_alts[i].altsetting == altsetting)
+        if (alt_if[i].if_desc->alternate_setting == altsetting)
             return &usb_if->if_alts[i];
     }
     return NULL;

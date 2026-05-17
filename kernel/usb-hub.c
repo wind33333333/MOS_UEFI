@@ -169,7 +169,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         if (uif->num_if_alts > 1) {
             usb_if_alt_t *next_alts = uif->if_alts;
             for (uint8 i = 0; i < uif->num_if_alts; i++) {
-                if (next_alts[i].if_protocol == 2) {
+                if (next_alts[i].if_desc->interface_protocol == 2) {
                     usb_switch_alt_if(&next_alts[i]);
                     udev->hub_mtt = 1;
                     break;

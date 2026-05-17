@@ -848,9 +848,9 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // ==========================================================
     // 阶段 1：[纸上谈兵] 圈出要 Drop 的旧端点
     // ==========================================================
-    uint8 num_eps = old_alt->if_desc->num_endpoints;
+    uint8 old_num_eps = old_alt->if_desc->num_endpoints;
     if (old_alt != NULL) {
-        for (uint8 i = 0; i < num_eps; i++) {
+        for (uint8 i = 0; i < old_num_eps; i++) {
             usb_tx_drop_ep(udev, &old_alt->eps[i]);
         }
     }
@@ -858,7 +858,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // ==========================================================
     // 阶段 2：[预分配] 为新端点画图纸并分配内存 (★ 核心架构重构)
     // ==========================================================
-    for (uint8 i = 0; i < num_eps; i++) {
+    for (uint8 i = 0; i < old_num_eps; i++) {
         usb_ep_t *ep = &new_alt->eps[i];
 
         // 👑 Linux 架构铁律：两级火箭分离！
@@ -884,10 +884,11 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // 阶段 3：一锤定音！向 xHCI 提交图纸，等待硬件裁决
     // ==========================================================
     posix = usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
+    uint8 new_num_eps = new_alt->if_desc->num_endpoints;
     if (posix < 0) {
         color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, hardware rejected!\n");
         // 主板拒绝了这份图纸，销毁刚刚新分配的所有内存，安全退出
-        for (uint8 i = 0; i < new_alt->num_eps; i++) free_ep_ring(&new_alt->eps[i]);
+        for (uint8 i = 0; i < new_num_eps; i++) free_ep_ring(&new_alt->eps[i]);
         return posix;
     }
 
@@ -895,7 +896,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // ★ 阶段 4：[防竞态] 提前挂载新路由！(兵马未动，粮草先行)
     // 此时新通道在主板端已通，但外设还未切换。先把接收器架好，防漏包！
     // ==========================================================
-    for (uint8 i = 0; i < new_alt->num_eps; i++) {
+    for (uint8 i = 0; i < new_num_eps; i++) {
         usb_ep_t *ep = &new_alt->eps[i];
         udev->eps[ep->ep_dci] = ep;
     }
@@ -903,32 +904,32 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // ==========================================================
     // ★ 阶段 5：主板软件均就绪，正式通过 EP0 通知物理 U 盘切换频道！
     // ==========================================================
-    posix = usb_set_if(udev, uif->if_num, new_alt->altsetting);
+    posix = usb_set_if(udev, new_alt->if_desc->interface_number, new_alt->if_desc->alternate_setting);
     if (posix < 0) {
         color_printk(RED, BLACK, "USB: Device rejected Set Interface command!\n");
 
         // ！！！极品回滚逻辑 (完美修复版) ！！！
 
         // 1. 软件路由撤销 (把刚才挂上去的新路由摘下来)
-        for (uint8 i = 0; i < new_alt->num_eps; i++) {
+        for (uint8 i = 0; i < new_num_eps; i++) {
             udev->eps[new_alt->eps[i].ep_dci] = NULL;
         }
 
         // ★ 修复：重新挂载老端点的路由，否则系统再也找不到旧端点通信了！
         if (old_alt != NULL) {
-            for (uint8 i = 0; i < old_alt->num_eps; i++) {
+            for (uint8 i = 0; i < old_num_eps; i++) {
                 udev->eps[old_alt->eps[i].ep_dci] = &old_alt->eps[i];
             }
         }
 
         // 2. 释放新分配的废弃环内存
-        for (uint8 i = 0; i < new_alt->num_eps; i++) free_ep_ring(&new_alt->eps[i]);
+        for (uint8 i = 0; i < new_num_eps; i++) free_ep_ring(&new_alt->eps[i]);
 
         // 3. 将主板硬件强制回滚到旧状态 (反向 Drop 新的，Add 旧的)
         usb_tx_begin(udev);
-        for (uint8 i = 0; i < new_alt->num_eps; i++) usb_tx_drop_ep(udev, &new_alt->eps[i]);
+        for (uint8 i = 0; i < new_num_eps; i++) usb_tx_drop_ep(udev, &new_alt->eps[i]);
         if (old_alt != NULL) {
-            for (uint8 i = 0; i < old_alt->num_eps; i++) usb_tx_add_ep(udev, &old_alt->eps[i]);
+            for (uint8 i = 0; i < old_num_eps; i++) usb_tx_add_ep(udev, &old_alt->eps[i]);
         }
         int32 tx_err = usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
         if (tx_err < 0) {
@@ -942,7 +943,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // 阶段 6：[过河拆桥] 切换彻底成功，可以安全收缴旧端点的尸体了
     // ==========================================================
     if (old_alt != NULL) {
-        for (uint8 i = 0; i < old_alt->num_eps; i++) {
+        for (uint8 i = 0; i < old_num_eps; i++) {
             usb_ep_t *ep = &old_alt->eps[i];
             // 只在路由没有被新端点(同 DCI)覆盖的情况下，才去清空它
             if (udev->eps[ep->ep_dci] == ep) {
@@ -1079,7 +1080,8 @@ static inline int32 enable_alt_if (usb_if_alt_t *uif_alt) {
     usb_tx_begin(udev);
 
     // 配置该接口下的所有端点
-    for (uint8 i = 0; i < uif_alt->num_eps; i++) {
+    uint8 num_eps = uif_alt->if_desc->num_endpoints;
+    for (uint8 i = 0; i < num_eps; i++) {
         usb_ep_t *ep = &uif_alt->eps[i];
         uint8 ep_dci = ep->ep_dci;
 
@@ -1218,7 +1220,8 @@ static inline int32 alt_if_desc_parse(usb_if_alt_t *if_alt) {
 
         if (desc_head->desc_type == USB_DESC_TYPE_ENDPOINT) {
             // 防缓冲区溢出！恶意的描述符数量不能超过声明的数量
-            if (ep_idx >= if_alt->num_eps) {
+            uint8 num_eps = if_alt->if_desc->num_endpoints;
+            if (ep_idx >= num_eps) {
                 break;
             }
 
@@ -1257,13 +1260,14 @@ static inline int32 alt_if_desc_parse(usb_if_alt_t *if_alt) {
  */
 static inline int32 alloc_if(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_if_map) {
     // 1. 根据配置描述符声明的接口数，分配顶层接口数组
-    udev->num_ifs = 0;
-    udev->ifs = kzalloc(sizeof(usb_if_t) * udev->config_desc->num_interfaces);
+    usb_cfg_desc_t *cfg_desc = udev->config_desc;
+    udev->num_ifs = cfg_desc->num_interfaces;
+    udev->ifs = kzalloc(sizeof(usb_if_t) * udev->num_ifs);
     if (!udev->ifs) return -1;
 
     // 2. 第一次遍历：统计每个 interface_number 拥有多少个 alternate_setting
-    usb_if_desc_t *if_desc = (usb_if_desc_t *)udev->config_desc;
-    void *cfg_end = usb_cfg_end(udev->config_desc);
+    usb_if_desc_t *if_desc = (usb_if_desc_t *)cfg_desc;
+    void *cfg_end = usb_cfg_end(cfg_desc);
 
     while ((void *)if_desc < cfg_end) {
         if (if_desc->head.desc_type == USB_DESC_TYPE_INTERFACE) {
@@ -1273,12 +1277,12 @@ static inline int32 alloc_if(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_i
     }
 
     // 3. 分配底层的 alt 数组，并初始化总线设备模型结构
-    for (uint16 i = 0; i < 256; i++) {
+    uint8 if_idx = 0;
+    for (uint16 i = 0; i < 256 && if_idx < udev->num_ifs; i++) { //if_idx防越界和提前结束扫描
         if (alt_count[i] > 0) {
-            usb_if_t *usb_if = &udev->ifs[udev->num_ifs++];
-            usb_if->if_num = i;
-            usb_if->num_if_alts = alt_count[i];
-            usb_if->if_alts = kzalloc(sizeof(usb_if_alt_t) * usb_if->num_if_alts);
+            usb_if_t *usb_if = &udev->ifs[if_idx++];
+            usb_if->num_if_alts = alt_count[i];             //备用接口数量
+            usb_if->if_alts = kzalloc(sizeof(usb_if_alt_t) * usb_if->num_if_alts);  //分配备用接口数组
 
             // 绑定设备模型拓扑
             usb_if->udev = udev;
@@ -1323,15 +1327,11 @@ static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
             // 填充业务属性
             if_alt->ifs = usb_if;
             if_alt->if_desc = if_desc;
-            if_alt->altsetting = if_desc->alternate_setting;
-            if_alt->if_class = if_desc->interface_class;
-            if_alt->if_subclass = if_desc->interface_subclass;
-            if_alt->if_protocol = if_desc->interface_protocol;
-            if_alt->num_eps = if_desc->num_endpoints;
 
             // 为该 alt 分配端点内存，并触发底层解析引擎
-            if (if_alt->num_eps > 0) {
-                if_alt->eps = kzalloc(if_alt->num_eps * sizeof(usb_ep_t));
+            uint8 num_eps = if_desc->num_endpoints;
+            if (num_eps > 0) {
+                if_alt->eps = kzalloc(num_eps * sizeof(usb_ep_t));
                 alt_if_desc_parse(if_alt);
             }
         }
@@ -1613,12 +1613,10 @@ usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, usb_dev_t *parent_hub,uint32 port_nu
 //匹配驱动id
 static inline usb_id_t *usb_match_id(usb_if_t *usb_if, driver_t *drv) {
     usb_id_t *id_table = drv->id_table;
-    uint8 if_class = usb_if->activity_if_alt->if_class;
-    uint8 if_protocol = usb_if->activity_if_alt->if_protocol;
-    uint8 if_subclass = usb_if->activity_if_alt->if_subclass;
+    usb_if_desc_t *if_desc = usb_if->activity_if_alt->if_desc;
     for (; id_table->if_class || id_table->if_protocol || id_table->if_subclass; id_table++) {
-        if (id_table->if_class == if_class && id_table->if_protocol == if_protocol && id_table->if_subclass ==
-            if_subclass)
+        if (id_table->if_class == if_desc->interface_class && id_table->if_protocol == if_desc->interface_protocol && id_table->if_subclass ==
+            if_desc->interface_subclass)
             return id_table;
     }
     return NULL;

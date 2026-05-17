@@ -140,7 +140,7 @@ int32 bot_execute_full_recovery(usb_dev_t *udev, uint8 if_num, uint8 in_ep_dci, 
 int32 bot_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     bot_data_t *bot_data = host->hostdata;
     usb_dev_t *udev = bot_data->uif->udev;
-    uint8 if_num = bot_data->uif->if_num;
+    uint8 if_num = bot_data->uif->activity_if_alt->if_desc->interface_number;
 
     usb_ep_t *in_ep = bot_data->in_ep;
     usb_ep_t *out_ep = bot_data->out_ep;
