@@ -545,7 +545,7 @@ static void usb_tx_init_slot(usb_dev_t *udev) {
     xhci_slot_ctx_t *input_slot_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, 0);
 
     // 2. 填入初始物理属性
-    input_slot_ctx->route_string = udev->route_string;
+    input_slot_ctx->route_string = (udev->port_speed > USB_SPEED_HIGH) ? udev->route_string : 0; //usb3.0才填入路由字符
     input_slot_ctx->speed = udev->psiv;
     input_slot_ctx->root_hub_port_num = udev->root_port_num; // 精确锁定根集线器端口
     input_slot_ctx->parent_hub_slot_id = udev->parent_hub ? udev->parent_hub->slot_id : 0;
@@ -572,6 +572,7 @@ void usb_tx_eval_slot(usb_dev_t *udev) {
     // 3. 涂改图纸：将 udev 软件对象里新挖掘出的全局属性，同步给硬件
 
     // 场景 A：设备身份觉醒 (发现它是个 Hub)
+    input_slot_ctx->is_hub = udev->is_hub;
     input_slot_ctx->num_ports = udev->hub_num_ports;// 填入它有多少个下行端口
     input_slot_ctx->mtt = udev->hub_mtt;            // 多事务翻译器支持
     input_slot_ctx->tt_think_time = udev->hub_ttt;  // 翻译器思考时间
@@ -797,6 +798,30 @@ static int32 free_ep_ring(usb_ep_t *ep) {
 }
 
 /**
+ * @brief 在设备中寻找匹配指定 Class/SubClass/Protocol 的接口
+ * @param udev     目标 USB 设备
+ * @param class    匹配大类 (传 -1 或 0xFFFF 表示忽略该条件)
+ * @param subclass 匹配子类 (传 -1 表示忽略)
+ * @param protocol 匹配协议 (传 -1 表示忽略)
+ * @return 找到的 interface 指针
+ */
+usb_if_t *usb_find_interface(usb_dev_t *udev, int class, int subclass, int protocol) {
+    for (uint8 i = 0; i < udev->num_ifs; i++) {
+        usb_if_t *uif = &udev->ifs[i];
+
+        // 通常匹配 Default Alt Setting (alt_setting_0) 的描述符
+        usb_if_desc_t *if_desc = uif->if_alts->if_desc;
+
+        if (class != -1 && if_desc->interface_class != class) continue;
+        if (subclass != -1 && if_desc->interface_subclass != subclass) continue;
+        if (protocol != -1 && if_desc->interface_protocol != protocol) continue;
+
+        return uif; // 完美匹配！
+    }
+    return NULL;
+}
+
+/**
  * @brief 切换 USB 备用接口
  * @param new_alt 上层驱动通过 find_alt 系列函数搜索到的目标图纸句柄
  * @return int32  0 表示成功，非 0 表示失败
@@ -812,7 +837,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     usb_dev_t *udev = uif->udev;
 
     // 注意：设备刚刚插入进行 Config 初始化时，cur_alt 是 NULL，必须防范
-    usb_if_alt_t *old_alt = uif->cur_if_alt;
+    usb_if_alt_t *old_alt = uif->activity_if_alt;
 
     // 3. 性能优化：如果想切换的就是当前正在用的，直接光速返回
     if (old_alt == new_alt) return -EINVAL;
@@ -823,8 +848,9 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // ==========================================================
     // 阶段 1：[纸上谈兵] 圈出要 Drop 的旧端点
     // ==========================================================
+    uint8 num_eps = old_alt->if_desc->num_endpoints;
     if (old_alt != NULL) {
-        for (uint8 i = 0; i < old_alt->num_eps; i++) {
+        for (uint8 i = 0; i < num_eps; i++) {
             usb_tx_drop_ep(udev, &old_alt->eps[i]);
         }
     }
@@ -832,7 +858,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // ==========================================================
     // 阶段 2：[预分配] 为新端点画图纸并分配内存 (★ 核心架构重构)
     // ==========================================================
-    for (uint8 i = 0; i < new_alt->num_eps; i++) {
+    for (uint8 i = 0; i < num_eps; i++) {
         usb_ep_t *ep = &new_alt->eps[i];
 
         // 👑 Linux 架构铁律：两级火箭分离！
@@ -927,7 +953,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     }
 
     // 状态机正式翻页
-    uif->cur_if_alt = new_alt;
+    uif->activity_if_alt = new_alt;
 
     return 0;
 }
@@ -1321,10 +1347,10 @@ static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
         if (uif != NULL) {
             // 默认锁定 alt 0 备用接口 (包含极其严密的兜底容错逻辑)
             usb_if_alt_t *alt0 = usb_find_alt_by_num(uif, 0);
-            uif->cur_if_alt = alt0 ? alt0 : &uif->if_alts[0];
+            uif->activity_if_alt = alt0 ? alt0 : &uif->if_alts[0];
 
             // 呼叫主板：分配 Transfer Ring 并下发 Configure Endpoint
-            enable_alt_if(uif->cur_if_alt);
+            enable_alt_if(uif->activity_if_alt);
         }
     }
 
@@ -1387,7 +1413,7 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     xhci_hcd_t *xhcd = udev->xhcd;
 
     //启用插槽
-    xhci_cmd_enable_slot(xhcd,udev->parent_port_num,&udev->slot_id); //启用插槽
+    xhci_cmd_enable_slot(xhcd,udev->root_port_num,&udev->slot_id); //启用插槽
 
     //分配设备上下文
     uint8 ctx_size = xhcd->ctx_size;
@@ -1587,9 +1613,9 @@ usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, usb_dev_t *parent_hub,uint32 port_nu
 //匹配驱动id
 static inline usb_id_t *usb_match_id(usb_if_t *usb_if, driver_t *drv) {
     usb_id_t *id_table = drv->id_table;
-    uint8 if_class = usb_if->cur_if_alt->if_class;
-    uint8 if_protocol = usb_if->cur_if_alt->if_protocol;
-    uint8 if_subclass = usb_if->cur_if_alt->if_subclass;
+    uint8 if_class = usb_if->activity_if_alt->if_class;
+    uint8 if_protocol = usb_if->activity_if_alt->if_protocol;
+    uint8 if_subclass = usb_if->activity_if_alt->if_subclass;
     for (; id_table->if_class || id_table->if_protocol || id_table->if_subclass; id_table++) {
         if (id_table->if_class == if_class && id_table->if_protocol == if_protocol && id_table->if_subclass ==
             if_subclass)

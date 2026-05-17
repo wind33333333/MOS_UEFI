@@ -194,6 +194,14 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         hub->is_individual_ocp = ((hub20_desc->hub_characteristics >> 3) & 0x03) == 0x01;
         hub->power_delay_ms = hub20_desc->power_on_to_power_good<<1;
 
+        //更新slot
+        usb_tx_begin(udev);
+        usb_tx_eval_slot(udev);
+        usb_tx_commit(udev,USB_TX_CMD_EVAL_CTX);
+
+        usb_tx_begin(udev);
+        usb_tx_eval_slot(udev);
+
 
         hub->ports = kzalloc((udev->hub_num_ports+1)*sizeof(hub_port_t));
         for (uint8 i = 1; i <= udev->hub_num_ports; i++) {

@@ -415,23 +415,21 @@ typedef struct usb_ep_t {
 typedef struct usb_if_alt_t {
     struct usb_if_t *ifs;
     usb_if_desc_t *if_desc;  // 指向 cfg_raw 内
-    uint8 altsetting;       //备用设置号
-
-    uint8 if_class;
-    uint8 if_subclass;
-    uint8 if_protocol;
-
-    uint8 num_eps;     // 端点数量
+    // uint8 altsetting;       //备用设置号
+    // uint8 if_class;
+    // uint8 if_subclass;
+    // uint8 if_protocol;
+    // uint8 num_eps;     // 端点数量
     usb_ep_t *eps;      // 可选：解析后的端点数组
 } usb_if_alt_t;
 
 //usb接口
 typedef struct usb_if_t {
     struct usb_dev_t *udev;
-    uint8 if_num;
-    uint8 num_if_alts;
-    usb_if_alt_t *if_alts;
-    usb_if_alt_t *cur_if_alt;   // 或 cur_alt_idx
+    //uint8 if_num;               // 接口号
+    uint8 num_if_alts;          // 备用接口数量
+    usb_if_alt_t *if_alts;      // 备用接口数组
+    usb_if_alt_t *activity_if_alt;   // 当前激活的备用接口
     device_t dev;
     void    *drv_data;
 } usb_if_t;
@@ -659,3 +657,7 @@ static inline int32 usb_set_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
                            USB_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_RECIP_ENDPOINT,
                            USB_REQ_SET_FEATURE, USB_FEATURE_ENDPOINT_HALT, epdci_to_epaddr(ep_dci), 0);
 }
+
+void usb_tx_begin(usb_dev_t *udev);
+void usb_tx_eval_slot(usb_dev_t *udev);
+int32 usb_tx_commit(usb_dev_t *udev, usb_tx_cmd_e cmd_type);
