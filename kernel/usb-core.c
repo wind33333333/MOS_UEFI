@@ -806,7 +806,8 @@ static int32 free_ep_ring(usb_ep_t *ep) {
  * @return 找到的 interface 指针
  */
 usb_if_t *usb_find_interface(usb_dev_t *udev, int class, int subclass, int protocol) {
-    for (uint8 i = 0; i < udev->num_ifs; i++) {
+    uint8 num_ifs = udev->config_desc->num_interfaces;
+    for (uint8 i = 0; i < num_ifs; i++) {
         usb_if_t *uif = &udev->ifs[i];
 
         // 通常匹配 Default Alt Setting (alt_setting_0) 的描述符
@@ -1305,7 +1306,8 @@ static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
     // =================================================================
     // 阶段 B：图纸绘制完毕，开始向主板申请硬件 DMA 高速公路
     // =================================================================
-    for (uint32 i = 0; i < udev->num_ifs; i++) {
+    uint8 num_ifs = udev->config_desc->num_interfaces;
+    for (uint32 i = 0; i < num_ifs; i++) {
         usb_if_t *uif = &udev->ifs[i];
 
         if (uif != NULL) {
@@ -1341,9 +1343,14 @@ static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
 static inline int32 alloc_if(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_if_map) {
     // 1. 根据配置描述符声明的接口数，分配顶层接口数组
     usb_cfg_desc_t *cfg_desc = udev->config_desc;
-    udev->num_ifs = cfg_desc->num_interfaces;
-    udev->ifs = kzalloc(sizeof(usb_if_t) * udev->num_ifs);
-    if (!udev->ifs) return -1;
+    // 防御：设备返回的配置描述符太小，不合法
+    if (!cfg_desc || cfg_desc->head.length < sizeof(usb_cfg_desc_t)) return -EINVAL;
+
+    uint8 num_ifs = cfg_desc->num_interfaces;
+    if (num_ifs == 0) return 0;
+
+    udev->ifs = kzalloc(sizeof(usb_if_t) * num_ifs);
+    if (!udev->ifs) return -ENOMEM;
 
     // 2. 第一次遍历：统计每个 interface_number 拥有多少个 alternate_setting
     usb_if_desc_t *if_desc = (usb_if_desc_t *)cfg_desc;
@@ -1358,7 +1365,7 @@ static inline int32 alloc_if(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_i
 
     // 3. 分配底层的 alt 数组，并初始化总线设备模型结构
     uint8 if_idx = 0;
-    for (uint16 i = 0; i < 256 && if_idx < udev->num_ifs; i++) { //if_idx防越界和提前结束扫描
+    for (uint16 i = 0; i < 256 && if_idx < num_ifs; i++) { //if_idx防越界和提前结束扫描
         if (alt_count[i] > 0) {
             usb_if_t *usb_if = &udev->ifs[if_idx++];
             usb_if->num_if_alts = alt_count[i];             //备用接口数量
@@ -1405,7 +1412,8 @@ int32 usb_if_create(usb_dev_t *udev) {
 
 //注册usb接口
 void usb_if_register(usb_dev_t *udev) {
-    for (uint32 i = 0; i < udev->num_ifs; i++) {
+    uint8 num_ifs = udev->config_desc->num_interfaces;
+    for (uint32 i = 0; i < num_ifs; i++) {
         usb_if_t *usb_if = &udev->ifs[i];
         if (usb_if != NULL) {
             // 触发系统级的 match/probe (比如唤醒 bot.c 或 uas.c 驱动)

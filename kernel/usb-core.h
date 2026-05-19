@@ -462,7 +462,6 @@ typedef struct usb_dev_t{
     uint8                           *serial_number;    // 序列号ascii字符
 
     // 3. 逻辑端点与接口路由 (暴露给业务层驱动的资源)
-    uint8                           num_ifs;          // 接口数量
     usb_if_t                        *ifs;              // 接口指针根据接口数量动态分配
     usb_ep_t                        *eps[32];          // eps[0]仅占位，eps[1]-eps[31]=端点1-31
 
