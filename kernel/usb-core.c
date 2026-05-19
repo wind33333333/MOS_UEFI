@@ -1278,19 +1278,19 @@ static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
     void *cfg_end = usb_cfg_end(udev->config_desc);
 
     // =================================================================
-    // 阶段 A：纯软件遍历，精细化装填所有接口和端点的“图纸”参数
+    // 阶段 A：第二次遍历，精细化装填所有接口和端点的“图纸”参数
     // =================================================================
     while ((void *)if_desc < cfg_end) {
         if (if_desc->head.desc_type == USB_DESC_TYPE_INTERFACE) {
             uint8 if_num = if_desc->interface_number;
-            usb_if_t *usb_if = usb_if_map[if_num];
+            usb_if_t *uif = usb_if_map[if_num];
 
             // 找到当前 alt 对应的槽位
-            uint8 idx = fill_idx[if_num]++;
-            usb_if_alt_t *if_alt = &usb_if->if_alts[idx];
+            uint8 alt_idx = fill_idx[if_num]++;
+            usb_if_alt_t *if_alt = &uif->if_alts[alt_idx];
 
             // 填充业务属性
-            if_alt->ifs = usb_if;
+            if_alt->ifs = uif;
             if_alt->if_desc = if_desc;
 
             // 为该 alt 分配端点内存，并触发底层解析引擎
@@ -1340,7 +1340,7 @@ static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
  * @param usb_if_map 用于缓存接口指针的映射表 (外部传入的栈数组)
  * @return 0 成功，-1 内存分配失败或遭遇恶意描述符
  */
-static inline int32 alloc_if(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_if_map) {
+static inline int32 alloc_if_resources(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_if_map) {
     // 1. 根据配置描述符声明的接口数，分配顶层接口数组
     usb_cfg_desc_t *cfg_desc = udev->config_desc;
     // 防御：设备返回的配置描述符太小，不合法
@@ -1367,17 +1367,17 @@ static inline int32 alloc_if(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_i
     uint8 if_idx = 0;
     for (uint16 i = 0; i < 256 && if_idx < num_ifs; i++) { //if_idx防越界和提前结束扫描
         if (alt_count[i] > 0) {
-            usb_if_t *usb_if = &udev->ifs[if_idx++];
-            usb_if->num_if_alts = alt_count[i];             //备用接口数量
-            usb_if->if_alts = kzalloc(sizeof(usb_if_alt_t) * usb_if->num_if_alts);  //分配备用接口数组
+            usb_if_t *uif = &udev->ifs[if_idx++];
+            uif->num_if_alts = alt_count[i];             //备用接口数量
+            uif->if_alts = kzalloc(sizeof(usb_if_alt_t) * uif->num_if_alts);  //分配备用接口数组
 
             // 绑定设备模型拓扑
-            usb_if->udev = udev;
-            usb_if->dev.type = &usb_if_type;
-            usb_if->dev.parent = &udev->dev;
-            usb_if->dev.bus = &usb_bus_type;
+            uif->udev = udev;
+            uif->dev.type = &usb_if_type;
+            uif->dev.parent = &udev->dev;
+            uif->dev.bus = &usb_bus_type;
 
-            usb_if_map[i] = usb_if; // 缓存映射关系，留给下一阶段直接使用
+            usb_if_map[i] = uif; // 缓存映射关系，留给下一阶段直接使用
         }
     }
     return 0;
@@ -1399,7 +1399,7 @@ int32 usb_if_create(usb_dev_t *udev) {
     // =======================================================
     // 阶段 1：搭骨架 (盘点拓扑与分配内存)
     // =======================================================
-    alloc_if(udev, alt_if_count, usb_if_map);
+    alloc_if_resources(udev, alt_if_count, usb_if_map);
 
     // =======================================================
     // 阶段 2：填血肉 (解析接口与端点图纸)
