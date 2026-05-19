@@ -1205,6 +1205,14 @@ static inline void ss_desc_params(usb_ep_t *cur_ep, usb_ss_comp_desc_t *ss_desc)
     }
 }
 
+
+//配置描述符结束地址
+static inline void *usb_cfg_end(usb_cfg_desc_t *usb_config_desc)
+{
+    return (uint8*)usb_config_desc + usb_config_desc->total_length;
+}
+
+
 /**
  * @brief [工业级 O(N) 单次扫描] 解析 USB 接口下的所有端点及其伴随描述符
  */
@@ -1251,50 +1259,6 @@ static inline int32 alt_if_desc_parse(usb_if_alt_t *if_alt) {
     return 0; // O(N) 一气呵成！
 }
 
-/**
- * @brief [阶段 1] 扫描描述符，统计并分配接口与替用接口的内存
- * @param udev    USB 设备对象
- * @param alt_count  用于统计每个接口号对应的替用接口数量 (外部传入的栈数组)
- * @param usb_if_map 用于缓存接口指针的映射表 (外部传入的栈数组)
- * @return 0 成功，-1 内存分配失败或遭遇恶意描述符
- */
-static inline int32 alloc_if(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_if_map) {
-    // 1. 根据配置描述符声明的接口数，分配顶层接口数组
-    usb_cfg_desc_t *cfg_desc = udev->config_desc;
-    udev->num_ifs = cfg_desc->num_interfaces;
-    udev->ifs = kzalloc(sizeof(usb_if_t) * udev->num_ifs);
-    if (!udev->ifs) return -1;
-
-    // 2. 第一次遍历：统计每个 interface_number 拥有多少个 alternate_setting
-    usb_if_desc_t *if_desc = (usb_if_desc_t *)cfg_desc;
-    void *cfg_end = usb_cfg_end(cfg_desc);
-
-    while ((void *)if_desc < cfg_end) {
-        if (if_desc->head.desc_type == USB_DESC_TYPE_INTERFACE) {
-            alt_count[if_desc->interface_number]++;
-        }
-        if_desc = (usb_if_desc_t *)usb_get_next_desc(&if_desc->head);
-    }
-
-    // 3. 分配底层的 alt 数组，并初始化总线设备模型结构
-    uint8 if_idx = 0;
-    for (uint16 i = 0; i < 256 && if_idx < udev->num_ifs; i++) { //if_idx防越界和提前结束扫描
-        if (alt_count[i] > 0) {
-            usb_if_t *usb_if = &udev->ifs[if_idx++];
-            usb_if->num_if_alts = alt_count[i];             //备用接口数量
-            usb_if->if_alts = kzalloc(sizeof(usb_if_alt_t) * usb_if->num_if_alts);  //分配备用接口数组
-
-            // 绑定设备模型拓扑
-            usb_if->udev = udev;
-            usb_if->dev.type = &usb_if_type;
-            usb_if->dev.parent = &udev->dev;
-            usb_if->dev.bus = &usb_bus_type;
-
-            usb_if_map[i] = usb_if; // 缓存映射关系，留给下一阶段直接使用
-        }
-    }
-    return 0;
-}
 
 /**
  * @brief [阶段 2] 填充替用接口参数，分配端点内存并触发解析
@@ -1366,22 +1330,69 @@ static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
     return 0; // 软硬全线贯通！
 }
 
+
+/**
+ * @brief [阶段 1] 扫描描述符，统计并分配接口与替用接口的内存
+ * @param udev    USB 设备对象
+ * @param alt_count  用于统计每个接口号对应的替用接口数量 (外部传入的栈数组)
+ * @param usb_if_map 用于缓存接口指针的映射表 (外部传入的栈数组)
+ * @return 0 成功，-1 内存分配失败或遭遇恶意描述符
+ */
+static inline int32 alloc_if(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_if_map) {
+    // 1. 根据配置描述符声明的接口数，分配顶层接口数组
+    usb_cfg_desc_t *cfg_desc = udev->config_desc;
+    udev->num_ifs = cfg_desc->num_interfaces;
+    udev->ifs = kzalloc(sizeof(usb_if_t) * udev->num_ifs);
+    if (!udev->ifs) return -1;
+
+    // 2. 第一次遍历：统计每个 interface_number 拥有多少个 alternate_setting
+    usb_if_desc_t *if_desc = (usb_if_desc_t *)cfg_desc;
+    void *cfg_end = usb_cfg_end(cfg_desc);
+
+    while ((void *)if_desc < cfg_end) {
+        if (if_desc->head.desc_type == USB_DESC_TYPE_INTERFACE) {
+            alt_count[if_desc->interface_number]++;
+        }
+        if_desc = (usb_if_desc_t *)usb_get_next_desc(&if_desc->head);
+    }
+
+    // 3. 分配底层的 alt 数组，并初始化总线设备模型结构
+    uint8 if_idx = 0;
+    for (uint16 i = 0; i < 256 && if_idx < udev->num_ifs; i++) { //if_idx防越界和提前结束扫描
+        if (alt_count[i] > 0) {
+            usb_if_t *usb_if = &udev->ifs[if_idx++];
+            usb_if->num_if_alts = alt_count[i];             //备用接口数量
+            usb_if->if_alts = kzalloc(sizeof(usb_if_alt_t) * usb_if->num_if_alts);  //分配备用接口数组
+
+            // 绑定设备模型拓扑
+            usb_if->udev = udev;
+            usb_if->dev.type = &usb_if_type;
+            usb_if->dev.parent = &udev->dev;
+            usb_if->dev.bus = &usb_bus_type;
+
+            usb_if_map[i] = usb_if; // 缓存映射关系，留给下一阶段直接使用
+        }
+    }
+    return 0;
+}
+
+
+
 /**
  * @brief 解析配置描述符，创建 USB 接口树并注册到系统总线
  */
 int32 usb_if_create(usb_dev_t *udev) {
     // 局部极速缓存区（放在栈上，函数退出自动销毁，零内存碎片）
-    // ★ 修复：使用 uint32 彻底杜绝自增整数溢出
-    uint8 alt_count[256];
+    uint8 alt_if_count[256];
     usb_if_t *usb_if_map[256];
 
-    asm_mem_set(alt_count, 0, sizeof(alt_count));
+    asm_mem_set(alt_if_count, 0, sizeof(alt_if_count));
     asm_mem_set(usb_if_map, 0, sizeof(usb_if_map));
 
     // =======================================================
     // 阶段 1：搭骨架 (盘点拓扑与分配内存)
     // =======================================================
-    alloc_if(udev, alt_count, usb_if_map);
+    alloc_if(udev, alt_if_count, usb_if_map);
 
     // =======================================================
     // 阶段 2：填血肉 (解析接口与端点图纸)

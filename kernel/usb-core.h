@@ -570,11 +570,7 @@ static inline void *usb_get_next_desc(usb_desc_head *head) {
     return (uint8*)head + head->length;
 }
 
-//配置描述符结束地址
-static inline void *usb_cfg_end(usb_cfg_desc_t *usb_config_desc)
-{
-    return (uint8*)usb_config_desc + usb_config_desc->total_length;
-}
+
 
 /* 在 uif->alts[] 中按 altsetting 值查找（不能用 altsetting 当数组下标） */
 static inline usb_if_alt_t *usb_find_alt_by_num(usb_if_t *usb_if, uint8 altsetting)
