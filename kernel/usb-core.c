@@ -1226,19 +1226,28 @@ int32 usb_if_create_oneshot(usb_dev_t *udev) {
     // =========================================================================
     // 阶段 1：[纯净统计] 算出三个核心数据：接口总数、替用接口总数、端点总数
     // =========================================================================
-    uint32 num_ifs = cfg_desc->num_interfaces;
+    uint32 num_ifs = 0;
     uint32 total_alts = 0;
     uint32 total_eps = 0;
+
+    // 用于记录实际发现的接口号的最大值，防止山寨设备跨号乱跳
+    uint8 max_if_num = 0;
 
     usb_desc_head_t *head = (usb_desc_head_t *)cfg_desc;
     void *cfg_end = usb_cfg_end(cfg_desc);
 
     // 第一次 O(N) 遍历：只数人头，绝对不分配任何内存！
     while ((void *)head < cfg_end) {
+        usb_if_desc_t *if_desc = (usb_if_desc_t *)head;
         if (head->length < 2) return -EINVAL; // 必不可少的防死锁
 
         if (head->desc_type == USB_DESC_TYPE_INTERFACE) {
             total_alts++; // 每遇到一个 Interface 描述符，替用接口总数 +1
+
+            if (if_desc->interface_number > max_if_num) {
+                max_if_num = if_desc->interface_number;
+            }
+
         }
         else if (head->desc_type == USB_DESC_TYPE_ENDPOINT) {
             total_eps++;  // 端点总数 +1
@@ -1246,6 +1255,8 @@ int32 usb_if_create_oneshot(usb_dev_t *udev) {
         head = usb_get_next_desc(head);
     }
 
+    // 真实的接口数量 = 最大接口号 + 1 (包含 0 号)
+    num_ifs = max_if_num + 1;
 
     // =========================================================================
     // 阶段 2：[极致压榨] One-Shot 连续内存分配！
@@ -1357,7 +1368,6 @@ int32 usb_if_create_oneshot(usb_dev_t *udev) {
 
     return 0; // 一次分配，全线贯通！
 }
-
 
 
 
