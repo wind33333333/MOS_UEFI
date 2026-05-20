@@ -1215,49 +1215,200 @@ static inline void *usb_cfg_end(usb_cfg_desc_t *usb_config_desc)
 
 
 /**
- * @brief [工业级 O(N) 单次扫描] 解析 USB 接口下的所有端点及其伴随描述符
+ * @brief [终极版] 零碎片、一次性分配的 USB 描述符解析引擎
+ * @param udev USB 设备对象
+ * @return 0 表示成功，负数表示失败
  */
-static inline int32 alt_if_desc_parse(usb_if_alt_t *if_alt) {
-    usb_ep_t *cur_ep = NULL;
-    usb_desc_head *desc_head = usb_get_next_desc(&if_alt->if_desc->head);
-    uint8 ep_idx = 0;
+int32 usb_if_create_oneshot(usb_dev_t *udev) {
+    usb_cfg_desc_t *cfg_desc = udev->config_desc;
+    if (!cfg_desc || cfg_desc->head.length < sizeof(usb_cfg_desc_t)) return -EINVAL;
 
-    void *cfg_end = usb_cfg_end(if_alt->ifs->udev->config_desc);
+    // =========================================================================
+    // 阶段 1：[纯净统计] 算出三个核心数据：接口总数、替用接口总数、端点总数
+    // =========================================================================
+    uint32 num_ifs = cfg_desc->num_interfaces;
+    uint32 total_alts = 0;
+    uint32 total_eps = 0;
 
-    // 严密防御：限定搜索范围绝对不能超出整个配置描述符
-    while ((desc_head < cfg_end) && (desc_head->desc_type != USB_DESC_TYPE_INTERFACE)) {
+    usb_desc_head_t *head = (usb_desc_head_t *)cfg_desc;
+    void *cfg_end = usb_cfg_end(cfg_desc);
 
-        if (desc_head->desc_type == USB_DESC_TYPE_ENDPOINT) {
-            // 防缓冲区溢出！恶意的描述符数量不能超过声明的数量
-            uint8 num_eps = if_alt->if_desc->num_endpoints;
-            if (ep_idx >= num_eps) {
-                break;
+    // 第一次 O(N) 遍历：只数人头，绝对不分配任何内存！
+    while ((void *)head < cfg_end) {
+        if (head->length < 2) return -EINVAL; // 必不可少的防死锁
+
+        if (head->desc_type == USB_DESC_TYPE_INTERFACE) {
+            total_alts++; // 每遇到一个 Interface 描述符，替用接口总数 +1
+        }
+        else if (head->desc_type == USB_DESC_TYPE_ENDPOINT) {
+            total_eps++;  // 端点总数 +1
+        }
+        head = usb_get_next_desc(head);
+    }
+
+
+    // =========================================================================
+    // 阶段 2：[极致压榨] One-Shot 连续内存分配！
+    // =========================================================================
+    uint32 mem_size = (num_ifs * sizeof(usb_if_t)) +
+                      (total_alts * sizeof(usb_if_alt_t)) +
+                      (total_eps * sizeof(usb_ep_t));
+
+    // ★ 整个设备树的解析，全生命周期只有这唯一的一次 kzalloc！
+    void *mem_block = kzalloc(mem_size);
+    if (!mem_block) {
+        color_printk(RED, BLACK, "USB: OOM allocating %d bytes for device tree\n", mem_size);
+        return -ENOMEM;
+    }
+
+    // =========================================================================
+    // 阶段 3：[切割地盘] 建立内存池游标 (Pool Cursors)
+    // =========================================================================
+    // 1. 接口数组在最前面
+    udev->ifs = (usb_if_t *)mem_block;
+
+    // 2. 替用接口数组紧跟在接口数组后面
+    usb_if_alt_t *alts_pool = (usb_if_alt_t *)(udev->ifs + num_ifs);
+
+    // 3. 端点数组紧跟在替用接口数组后面
+    usb_ep_t *eps_pool = (usb_ep_t *)(alts_pool + total_alts);
+
+
+    // [初始化顶层设备拓扑]
+    for (uint32 i = 0; i < num_ifs; i++) {
+        udev->ifs[i].udev = udev;
+        udev->ifs[i].dev.type = &usb_if_type;
+        udev->ifs[i].dev.parent = &udev->dev;
+        udev->ifs[i].dev.bus = &usb_bus_type;
+        udev->ifs[i].if_alts = NULL; // 稍后动态赋值
+        udev->ifs[i].num_if_alts = 0;
+    }
+
+    // =========================================================================
+    // 阶段 4：[血肉装填] 第二次 O(N) 遍历，消费池中内存
+    // =========================================================================
+    head = (usb_desc_head_t *)cfg_desc;
+    usb_if_alt_t *cur_alt = NULL;
+
+    while ((void *)head < cfg_end) {
+        if (head->length < 2) break;
+
+        if (head->desc_type == USB_DESC_TYPE_INTERFACE) {
+            usb_if_desc_t *if_desc = (usb_if_desc_t *)head;
+            uint8 if_num = if_desc->interface_number;
+
+            if (if_num < num_ifs) {
+                usb_if_t *cur_if = &udev->ifs[if_num];
+
+                // ★ 内存魔法 1：从池子里“切”走一个替用接口
+                cur_alt = alts_pool++;
+
+                // 如果这是该接口的第一个 Alt，将其挂载为数组起点
+                if (cur_if->num_if_alts == 0) {
+                    cur_if->if_alts = cur_alt;
+                }
+                cur_if->num_if_alts++;
+
+                // 填充当前 Alt 属性
+                cur_alt->ifs = cur_if;
+                cur_alt->if_desc = if_desc;
+                cur_alt->extras_desc = NULL;
+                cur_alt->extras_len = 0;
+
+                // ★ 内存魔法 2：将当前端点池的指针作为该 Alt 的端点数组起点！
+                // (随着端点被切走，eps_pool 会向后移动，自然形成连续数组)
+                cur_alt->eps = eps_pool;
             }
+        }
+        else if (head->desc_type == USB_DESC_TYPE_ENDPOINT) {
+            if (cur_alt) {
+                // ★ 内存魔法 3：从池子里“切”走一个端点，供当前 Alt 使用
+                usb_ep_t *cur_ep = eps_pool++;
 
-            // 阶段 1：分发给标准解析器
-            cur_ep = &if_alt->eps[ep_idx++];
-            ep_desc_params(cur_ep, (usb_ep_desc_t *) desc_head);
-
-        } else if (desc_head->desc_type == USB_DESC_TYPE_SS_ENDPOINT_COMPANION) {
-
-            // 阶段 2：分发给 USB 3.0 覆写器
-            if (cur_ep) {
-                ss_desc_params(cur_ep, (usb_ss_comp_desc_t *) desc_head);
+                // 进行常规的端点解析 (复用我们之前写的函数)
+                ep_desc_params(cur_ep, (usb_ep_desc_t *)head);
             }
-
-        } else {
-
-            // 阶段 3：收集类专属描述符
-            if (cur_ep && cur_ep->extras_desc == NULL) {
-                cur_ep->extras_desc = desc_head;
+        }
+        else if (head->desc_type == USB_DESC_TYPE_SS_ENDPOINT_COMPANION) {
+            // 注意：因为 eps_pool 已经自增过了，当前端点是 eps_pool - 1
+            if (cur_alt && eps_pool > (usb_ep_t *)mem_block) {
+                usb_ep_t *cur_ep = eps_pool - 1;
+                ss_desc_params(cur_ep, (usb_ss_comp_desc_t *)head);
+            }
+        }
+        else {
+            // 类私有描述符挂载逻辑（同上一轮）
+            if (cur_alt) {
+                // 判断是挂在端点上还是接口上
+                // (根据 eps_pool 是否移动过，且移动后的前一个端点是否属于当前 cur_alt)
+                if (eps_pool > cur_alt->eps) {
+                    usb_ep_t *cur_ep = eps_pool - 1;
+                    if (!cur_ep->extras_desc) cur_ep->extras_desc = head;
+                    cur_ep->extras_len += head->length;
+                } else {
+                    if (!cur_alt->extras_desc) cur_alt->extras_desc = head;
+                    cur_alt->extras_len += head->length;
+                }
             }
         }
 
-        // 游标推进，扫描下一个描述符
-        desc_head = usb_get_next_desc(desc_head);
+        head = usb_get_next_desc(head);
     }
 
-    return 0; // O(N) 一气呵成！
+    return 0; // 一次分配，全线贯通！
+}
+
+
+
+
+/**
+ * @brief [工业级 O(N) 单次扫描] 解析 USB 接口下的所有端点及其伴随描述符
+ */
+static inline void *alt_if_desc_parse(usb_if_alt_t *if_alt, usb_desc_head_t *start_desc, void *cfg_end) {
+    usb_ep_t *cur_ep = NULL;
+    uint8 ep_idx = 0;
+
+    // 严密防御：限定搜索范围绝对不能超出整个配置描述符
+    while ((start_desc < cfg_end)) {
+
+        // 跳过传入的低一个接口描述符和游标推进
+        start_desc = usb_get_next_desc(start_desc);
+
+        //如果是下一个接口描述符则退出扫描
+        if(start_desc->desc_type == USB_DESC_TYPE_INTERFACE) break;
+
+        if (start_desc->desc_type == USB_DESC_TYPE_ENDPOINT) {
+            // 防缓冲区溢出！恶意的描述符数量不能超过声明的数量
+            uint8 num_eps = if_alt->if_desc->num_endpoints;
+            if (ep_idx >= num_eps) break;
+
+            // 阶段 1：分发给标准解析器
+            cur_ep = &if_alt->eps[ep_idx++];
+            ep_desc_params(cur_ep, (usb_ep_desc_t *) start_desc);
+
+        } else if (start_desc->desc_type == USB_DESC_TYPE_SS_ENDPOINT_COMPANION) {
+
+            // 阶段 2：分发给 USB 3.0 覆写器
+            if (cur_ep) {
+                ss_desc_params(cur_ep, (usb_ss_comp_desc_t *) start_desc);
+            }
+
+        } // 场景 C：遇到“类私有”或“未知”描述符 (如 HID Report, UVC 格式流等)
+        else {
+            // 🌟 精准挂载逻辑
+            if (cur_ep) {
+                // 如果目前已经解析出了端点，那这个私有数据属于当前端点！
+                if (!cur_ep->extras_desc) cur_ep->extras_desc = start_desc;
+                cur_ep->extras_len += start_desc->length; // 累加长度！
+            } else {
+                // 如果目前连第一个端点都还没遇到，那这个私有数据属于当前接口！
+                if (!if_alt->extras_desc) if_alt->extras_desc = start_desc;
+                if_alt->extras_len += start_desc->length; // 累加长度！
+            }
+        }
+    }
+
+    return start_desc; // 将指针交还给外层接力
 }
 
 
@@ -1292,15 +1443,22 @@ static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
             // 填充业务属性
             if_alt->ifs = uif;
             if_alt->if_desc = if_desc;
+            if_alt->extras_desc = NULL; // 初始化清空
 
             // 为该 alt 分配端点内存，并触发底层解析引擎
             uint8 num_eps = if_desc->num_endpoints;
             if (num_eps > 0) {
                 if_alt->eps = kzalloc(num_eps * sizeof(usb_ep_t));
-                alt_if_desc_parse(if_alt);
             }
+
+            // 🌟 完美游标接力：将当前 Interface描述符指针丢给内层引擎继续解析！返回下一个接口指针
+            if_desc = alt_if_desc_parse(if_alt, (usb_desc_head_t*)if_desc, cfg_end);
+        }else {
+
+            //不是接口描述符推进游标
+            if_desc = usb_get_next_desc(&if_desc->head);
+
         }
-        if_desc = (usb_if_desc_t *)usb_get_next_desc(&if_desc->head);
     }
 
     // =================================================================
@@ -1390,7 +1548,7 @@ static inline int32 alloc_if_resources(usb_dev_t *udev, uint8 *alt_count, usb_if
  */
 int32 usb_if_create(usb_dev_t *udev) {
     // 局部极速缓存区（放在栈上，函数退出自动销毁，零内存碎片）
-    uint8 alt_if_count[256];
+    /*uint8 alt_if_count[256];
     usb_if_t *usb_if_map[256];
 
     asm_mem_set(alt_if_count, 0, sizeof(alt_if_count));
@@ -1404,8 +1562,8 @@ int32 usb_if_create(usb_dev_t *udev) {
     // =======================================================
     // 阶段 2：填血肉 (解析接口与端点图纸)
     // =======================================================
-    if_desc_parse(udev, usb_if_map);
-
+    if_desc_parse(udev, usb_if_map);*/
+    usb_if_create_oneshot(udev);
 
     return 0; // 接口树构建完毕，成功交接给业务层驱动！
 }
@@ -1531,7 +1689,7 @@ static inline int get_cfg_desc(usb_dev_t *udev) {
 //获取字符串描述符
 static inline int get_string_desc(usb_dev_t *udev) {
 
-    usb_desc_head *desc_head = kzalloc_dma(2);
+    usb_desc_head_t *desc_head = kzalloc_dma(2);
 
     //获取语言ID描述符
     uint16 language_id;

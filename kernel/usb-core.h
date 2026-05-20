@@ -68,13 +68,13 @@ typedef enum : uint8 {
 typedef struct {
     uint8 length; // 描述符长度
     usb_desc_type_e desc_type; // 描述符类型
-}usb_desc_head;
+}usb_desc_head_t;
 
 /*usb设备描述符
 描述符长度，固定为 18 字节（0x12）
 描述符类型，固定为 0x01（设备描述符）*/
 typedef struct {
-    usb_desc_head head;
+    usb_desc_head_t head;
     uint16 usb_version;         // USB 协议版本，BCD 编码（如 0x0200 表示 USB 2.0，0x0300 表示 USB 3.0）
     uint8 device_class;         // 设备类代码，定义设备类别（如 0x00 表示类在接口描述符定义，0x03 表示 HID）
     uint8 device_subclass;      // 设备子类代码，进一步细化设备类（如 HID 的子类）
@@ -93,7 +93,7 @@ typedef struct {
 描述符长度，固定为 9 字节（0x09）
 描述符类型，固定为 0x02（配置描述符）*/
 typedef struct {
-    usb_desc_head head;
+    usb_desc_head_t head;
     uint16 total_length; // 配置描述符总长度（包括所有子描述符，如接口、端点等），单位为字节
     uint8 num_interfaces; // 该配置支持的接口数量
     uint8 configuration_value; // 配置值，用于 SET_CONFIGURATION 请求（通常从 1 开始）
@@ -110,7 +110,7 @@ typedef struct {
 描述符长度（含头部和字符串）
 描述符类型 = 0x03*/
 typedef struct {
-    usb_desc_head head;
+    usb_desc_head_t head;
     uint16 string[]; // UTF-16LE 编码的字符串内容（变长数组）
 } usb_string_desc_t;
 
@@ -118,7 +118,7 @@ typedef struct {
 描述符长度，固定为 9 字节（0x09）
 描述符类型，固定为 0x04（接口描述符）*/
 typedef struct {
-    usb_desc_head head;
+    usb_desc_head_t head;
     uint8 interface_number; // 接口编号，从 0 开始，标识该接口
     uint8 alternate_setting; // 备用设置编号，同一接口的不同配置（通常为 0）
     uint8 num_endpoints; // 该接口使用的端点数量（不包括端点 0）
@@ -138,7 +138,7 @@ typedef struct {
 描述符长度（固定7字节）
 描述符类型：0x05 = 端点描述符*/
 typedef struct {
-    usb_desc_head head;
+    usb_desc_head_t head;
     uint8 endpoint_address; // 端点地址：位7方向(0=OUT,主机→设备 1=IN，设备→主机)，位3-0端点号
     uint8 attributes; // 传输类型：0x00=控制，0x01=Isochronous，0x02=Bulk，0x03=Interrupt
     uint16 max_packet_size; // 该端点的最大包长（不同速度有不同限制）
@@ -149,7 +149,7 @@ typedef struct {
  *  uint8  bLength;            // 固定 6
     uint8  bDescriptorType;    // 0x30 表示 SuperSpeed Endpoint Companion Descriptor*/
 typedef struct {
-    usb_desc_head head;
+    usb_desc_head_t head;
     uint8 max_burst; // 每次突发包数（0-15），实际表示突发数+1
     uint8 attributes; // 位 4:0 Streams 支持数 (Bulk)，或多事务机会 (Isoch)
     uint16 bytes_per_interval; // 对于 Isoch/Interrupt，最大字节数
@@ -177,7 +177,7 @@ typedef enum : uint8 {
  * uint8  bDescriptorType;    // 0x24
  */
 typedef struct {
-    usb_desc_head head;
+    usb_desc_head_t head;
     usb_uas_pipe_id_e  pipe_id;              // 端点用途标识 1=command_out 2=status_in 3=bulk_in 4=bulk_out
     uint8  reserved;
 } usb_uas_pipe_usage_desc_t;
@@ -186,7 +186,7 @@ typedef struct {
 描述符长度
 描述符类型：0x21 = HID 描述符*/
 typedef struct {
-    usb_desc_head head;
+    usb_desc_head_t head;
     uint16 hid; // HID 版本号
     uint8 country_code; // 国家代码（0=无）
     uint8 num_descriptors; // 后面跟随的子描述符数量
@@ -198,7 +198,7 @@ typedef struct {
  * 警告：这是一个变长结构体！最后两个数组的长度取决于 bNbrPorts。
  */
 typedef struct {
-    usb_desc_head head;
+    usb_desc_head_t head;
     uint8  num_ports;               // ★ 下游端口总数 (极其关键，决定了你要轮询几次)
 
     // wHubCharacteristics 核心特性位图：
@@ -228,7 +228,7 @@ typedef struct {
  * 优势：长度固定为 12 字节，无变长数组陷阱。
  */
 typedef struct {
-    usb_desc_head head;
+    usb_desc_head_t head;
     uint8  num_ports;           // 下游端口总数 (由于规范限制，绝不会超过 15)
 
     // wHubCharacteristics 核心特性位图 (去除了 USB 2.0 的 TT 字段)：
@@ -392,6 +392,7 @@ typedef struct usb_ep_t {
 
     // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
     void        *extras_desc;
+    uint16      extras_len;
 
     // 2. 仅为 xHCI 定制的强绑定硬件特性 (Endpoint Context 推导值与 DMA 资源)
     uint8       ep_dci;            // xHCI 专属的设备上下文索引 (Device Context Index, 1~31)
@@ -415,7 +416,9 @@ typedef struct usb_ep_t {
 typedef struct usb_if_alt_t {
     struct usb_if_t *ifs;
     usb_if_desc_t *if_desc;  // 指向 cfg_raw 内
-    usb_ep_t *eps;      // 可选：解析后的端点数组
+    void          *extras_desc; //接口似有描述符
+    uint16        extras_len;
+    usb_ep_t      *eps;      // 可选：解析后的端点数组
 } usb_if_alt_t;
 
 //usb接口
@@ -565,7 +568,7 @@ static inline void *xhci_get_dev_ctx_entry(usb_dev_t *udev, uint32 dci) {
 
 
 //获取下一个描述符
-static inline void *usb_get_next_desc(usb_desc_head *head) {
+static inline void *usb_get_next_desc(usb_desc_head_t *head) {
     return (uint8*)head + head->length;
 }
 
