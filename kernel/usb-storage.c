@@ -15,6 +15,9 @@ extern scsi_host_template_t bot_host_template;
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
 
+    uint8 alt_if_num = usb_find_alt_if(uif,0x8,0x6,0x62);
+    if (alt_if_num != -1)
+
     //u盘是否支持uas协议，优先设置为uas协议
     if (uif->num_if_alts > 1) {
         usb_if_alt_t *next_alts = uif->if_alts;

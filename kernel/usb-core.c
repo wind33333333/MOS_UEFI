@@ -799,27 +799,23 @@ static int32 free_ep_ring(usb_ep_t *ep) {
 
 /**
  * @brief 在设备中寻找匹配指定 Class/SubClass/Protocol 的接口
- * @param udev     目标 USB 设备
- * @param class    匹配大类 (传 -1 或 0xFFFF 表示忽略该条件)
+ * @param udev     目标 USB_if
+ * @param class    匹配大类 (传 -1 或 0xFF 表示忽略该条件)
  * @param subclass 匹配子类 (传 -1 表示忽略)
  * @param protocol 匹配协议 (传 -1 表示忽略)
- * @return 找到的 interface 指针
+ * @return 找到的 interface idx
  */
-usb_if_t *usb_find_interface(usb_dev_t *udev, int class, int subclass, int protocol) {
-    uint8 num_ifs = udev->config_desc->num_interfaces;
-    for (uint8 i = 0; i < num_ifs; i++) {
-        usb_if_t *uif = &udev->ifs[i];
-
-        // 通常匹配 Default Alt Setting (alt_setting_0) 的描述符
-        usb_if_desc_t *if_desc = uif->if_alts->if_desc;
-
+uint8 usb_find_alt_if(usb_if_t *uif, uint8 class, uint8 subclass, uint8 protocol) {
+    usb_if_alt_t *if_alts = uif->if_alts;
+    uint8 num_if_alts = uif->num_if_alts;
+    for (uint8 i = 0; i < num_if_alts; i++) {
+        usb_if_desc_t *if_desc = if_alts[i].if_desc;
         if (class != -1 && if_desc->interface_class != class) continue;
         if (subclass != -1 && if_desc->interface_subclass != subclass) continue;
         if (protocol != -1 && if_desc->interface_protocol != protocol) continue;
-
-        return uif; // 完美匹配！
+        return i; // 完美匹配！
     }
-    return NULL;
+    return -1;
 }
 
 /**
