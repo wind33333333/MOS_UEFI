@@ -15,8 +15,8 @@ extern scsi_host_template_t bot_host_template;
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
 
-    uint8 alt_if_num = usb_find_alt_if(uif,0x8,0x6,0x62);
-    if (alt_if_num != -1)
+    usb_if_alt_t *if_alt = usb_find_alt_if(uif,0x8,0x6,0x62);
+    usb_switch_alt_if(if_alt);
 
     //u盘是否支持uas协议，优先设置为uas协议
     if (uif->num_if_alts > 1) {
@@ -121,13 +121,10 @@ void usb_storage_remove(usb_if_t *usb_if) {
 
 usb_drv_t *create_usb_storage_driver() {
     usb_drv_t *usb_drv = kzalloc(sizeof(usb_drv_t));
-    usb_id_t *id_table = kzalloc(sizeof(usb_id_t)*3);
+    usb_id_t *id_table = kzalloc(sizeof(usb_id_t)*2);
+    id_table[0].match_flags = USB_MATCH_INT_CLASS | USB_MATCH_INT_SUBCLASS;
     id_table[0].if_class = 0x8;
     id_table[0].if_subclass = 0x6;
-    id_table[0].if_protocol = 0x50;
-    id_table[1].if_class = 0x8;
-    id_table[1].if_subclass = 0x6;
-    id_table[1].if_protocol = 0x62;
     usb_drv->drv.name = "usb_storage";
     usb_drv->drv.id_table = id_table;
     usb_drv->probe = usb_storage_probe;

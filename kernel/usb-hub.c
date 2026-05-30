@@ -296,9 +296,8 @@ void usb_hub_remove(usb_if_t *usb_if) {
 usb_drv_t *create_usb_hub_driver() {
     usb_drv_t *usb_drv = kzalloc(sizeof(usb_drv_t));
     usb_id_t *id_table = kzalloc(sizeof(usb_id_t)*1);
+    id_table[0].match_flags = USB_MATCH_INT_CLASS;
     id_table[0].if_class = 0x9;
-    id_table[0].if_subclass = 0x0;
-    id_table[0].if_protocol = 0x0;
     usb_drv->drv.name = "usb_hub";
     usb_drv->drv.id_table = id_table;
     usb_drv->probe = usb_hub_probe;

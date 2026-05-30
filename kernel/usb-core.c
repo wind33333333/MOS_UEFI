@@ -797,26 +797,38 @@ static int32 free_ep_ring(usb_ep_t *ep) {
     return 0; // 成功释放
 }
 
+// 在 usb.h 中定义清晰的通配符宏
+#define USB_MATCH_ANY (-1)
+
+// 在 usb.h 中定义清晰的通配符宏
+#define USB_MATCH_ANY (-1)
+
 /**
- * @brief 在设备中寻找匹配指定 Class/SubClass/Protocol 的接口
- * @param udev     目标 USB_if
- * @param class    匹配大类 (传 -1 或 0xFF 表示忽略该条件)
- * @param subclass 匹配子类 (传 -1 表示忽略)
- * @param protocol 匹配协议 (传 -1 表示忽略)
- * @return 找到的 interface idx
+ * @brief 在接口中寻找匹配指定 Class/SubClass/Protocol 的备用接口
+ * @param uif      目标 USB 接口对象
+ * @param class    匹配大类 (传 USB_MATCH_ANY 表示忽略该条件)
+ * @param subclass 匹配子类 (传 USB_MATCH_ANY 表示忽略)
+ * @param protocol 匹配协议 (传 USB_MATCH_ANY 表示忽略)
+ * @return usb_if_alt_t* 找到的备用接口指针。未找到则返回 NULL。
  */
-uint8 usb_find_alt_if(usb_if_t *uif, uint8 class, uint8 subclass, uint8 protocol) {
-    usb_if_alt_t *if_alts = uif->if_alts;
-    uint8 num_if_alts = uif->num_if_alts;
-    for (uint8 i = 0; i < num_if_alts; i++) {
-        usb_if_desc_t *if_desc = if_alts[i].if_desc;
-        if (class != -1 && if_desc->interface_class != class) continue;
-        if (subclass != -1 && if_desc->interface_subclass != subclass) continue;
-        if (protocol != -1 && if_desc->interface_protocol != protocol) continue;
-        return i; // 完美匹配！
+usb_if_alt_t* usb_find_alt_if(usb_if_t *uif, int16 class, int16 subclass, int16 protocol) {
+    // 防野指针
+    if (!uif || !uif->if_alts) return NULL;
+
+    for (uint8 i = 0; i < uif->num_if_alts; i++) {
+        usb_if_desc_t *if_desc = uif->if_alts[i].if_desc;
+
+        // 注意：现在比较是 int16 级别，-1 和 0xFF(255) 是彻底不同的两个值！
+        if (class != USB_MATCH_ANY && if_desc->interface_class != class) continue;
+        if (subclass != USB_MATCH_ANY && if_desc->interface_subclass != subclass) continue;
+        if (protocol != USB_MATCH_ANY && if_desc->interface_protocol != protocol) continue;
+
+        return &uif->if_alts[i]; // 完美匹配！返回指针
     }
-    return -1;
+    return NULL; // 查找失败
 }
+
+
 
 /**
  * @brief 切换 USB 备用接口
@@ -842,20 +854,23 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // 开启 xHCI 底层硬件事务
     usb_tx_begin(udev);
 
+    // 1. 安全获取旧端点数量
+    uint8 old_num_eps = (old_alt != NULL) ? old_alt->if_desc->num_endpoints : 0;
+    // 2. 提前获取新端点数量
+    uint8 new_num_eps = new_alt->if_desc->num_endpoints;
+
     // ==========================================================
     // 阶段 1：[纸上谈兵] 圈出要 Drop 的旧端点
     // ==========================================================
-    uint8 old_num_eps = old_alt->if_desc->num_endpoints;
-    if (old_alt != NULL) {
-        for (uint8 i = 0; i < old_num_eps; i++) {
-            usb_tx_drop_ep(udev, &old_alt->eps[i]);
-        }
+    for (uint8 i = 0; i < old_num_eps; i++) {
+        usb_tx_drop_ep(udev, &old_alt->eps[i]);
     }
 
     // ==========================================================
     // 阶段 2：[预分配] 为新端点画图纸并分配内存 (★ 核心架构重构)
     // ==========================================================
-    for (uint8 i = 0; i < old_num_eps; i++) {
+    // 2. 提前获取新端点数量
+    for (uint8 i = 0; i < new_num_eps; i++) {
         usb_ep_t *ep = &new_alt->eps[i];
 
         // 👑 Linux 架构铁律：两级火箭分离！
@@ -881,7 +896,6 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // 阶段 3：一锤定音！向 xHCI 提交图纸，等待硬件裁决
     // ==========================================================
     posix = usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
-    uint8 new_num_eps = new_alt->if_desc->num_endpoints;
     if (posix < 0) {
         color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, hardware rejected!\n");
         // 主板拒绝了这份图纸，销毁刚刚新分配的所有内存，安全退出
@@ -913,10 +927,8 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
         }
 
         // ★ 修复：重新挂载老端点的路由，否则系统再也找不到旧端点通信了！
-        if (old_alt != NULL) {
-            for (uint8 i = 0; i < old_num_eps; i++) {
-                udev->eps[old_alt->eps[i].ep_dci] = &old_alt->eps[i];
-            }
+        for (uint8 i = 0; i < old_num_eps; i++) {
+            udev->eps[old_alt->eps[i].ep_dci] = &old_alt->eps[i];
         }
 
         // 2. 释放新分配的废弃环内存
@@ -939,15 +951,13 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // ==========================================================
     // 阶段 6：[过河拆桥] 切换彻底成功，可以安全收缴旧端点的尸体了
     // ==========================================================
-    if (old_alt != NULL) {
-        for (uint8 i = 0; i < old_num_eps; i++) {
-            usb_ep_t *ep = &old_alt->eps[i];
-            // 只在路由没有被新端点(同 DCI)覆盖的情况下，才去清空它
-            if (udev->eps[ep->ep_dci] == ep) {
-                udev->eps[ep->ep_dci] = NULL;
-            }
-            free_ep_ring(ep); // 彻底释放旧物理内存
+    for (uint8 i = 0; i < old_num_eps; i++) {
+        usb_ep_t *ep = &old_alt->eps[i];
+        // 只在路由没有被新端点(同 DCI)覆盖的情况下，才去清空它
+        if (udev->eps[ep->ep_dci] == ep) {
+            udev->eps[ep->ep_dci] = NULL;
         }
+        free_ep_ring(ep); // 彻底释放旧物理内存
     }
 
     // 状态机正式翻页
@@ -1752,15 +1762,63 @@ usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, usb_dev_t *parent_hub,uint32 port_nu
 
 //======================================= 驱动======================================
 
-//匹配驱动id
+/**
+ * @brief [工业级] 总线匹配引擎：扫描接口下的【所有备用接口】，检查是否与驱动匹配
+ * @param  usb_if 目标 USB 接口对象
+ * @param  drv    尝试挂载的驱动对象
+ * @return usb_id_t* 命中匹配的 ID 规则指针，未命中返回 NULL
+ */
 static inline usb_id_t *usb_match_id(usb_if_t *usb_if, driver_t *drv) {
-    usb_id_t *id_table = drv->id_table;
-    usb_if_desc_t *if_desc = usb_if->activity_if_alt->if_desc;
-    for (; id_table->if_class || id_table->if_protocol || id_table->if_subclass; id_table++) {
-        if (id_table->if_class == if_desc->interface_class && id_table->if_protocol == if_desc->interface_protocol && id_table->if_subclass ==
-            if_desc->interface_subclass)
-            return id_table;
+    // 🌟 终极防线：拦截所有非法野指针
+    if (!usb_if || !usb_if->if_alts || !usb_if->udev) return NULL;
+    if (!drv || !drv->id_table) return NULL;
+
+    usb_dev_desc_t *dev_desc = usb_if->udev->dev_desc;
+
+    // 🌟 第一层循环：遍历该接口下所有的【备用接口 (Alternate Settings)】
+    for (uint8 alt_idx = 0; alt_idx < usb_if->num_if_alts; alt_idx++) {
+        usb_if_desc_t *if_desc = usb_if->if_alts[alt_idx].if_desc;
+
+        // 🌟 第二层循环：遍历驱动程序的 ID 表
+        for (usb_id_t *id = drv->id_table; id->match_flags != 0; id++) {
+
+            // 1. 匹配厂商 ID (VID)
+            if ((id->match_flags & USB_MATCH_VENDOR) &&
+                id->vendor_id != dev_desc->vendor_id) {
+                continue;
+                }
+
+            // 2. 匹配产品 ID (PID)
+            if ((id->match_flags & USB_MATCH_PRODUCT) &&
+                id->product_id != dev_desc->product_id) {
+                continue;
+                }
+
+            // 3. 匹配接口大类 (Class)
+            if ((id->match_flags & USB_MATCH_INT_CLASS) &&
+                id->if_class != if_desc->interface_class) {
+                continue;
+                }
+
+            // 4. 匹配接口子类 (Subclass)
+            if ((id->match_flags & USB_MATCH_INT_SUBCLASS) &&
+                id->if_subclass != if_desc->interface_subclass) {
+                continue;
+                }
+
+            // 5. 匹配接口协议 (Protocol)
+            if ((id->match_flags & USB_MATCH_INT_PROTOCOL) &&
+                id->if_protocol != if_desc->interface_protocol) {
+                continue;
+                }
+
+            // 🌟 核心突破：只要在任意一个备用接口中找到了匹配规则，立刻宣告匹配成功！
+            // 驱动层可以通过 (id - drv->id_table) 知道是谁命中的，也可以通过 alt_idx 知道是哪个图纸通过了
+            return id;
+        }
     }
+
+    // 遍历完所有备用接口下的所有规则，均未命中
     return NULL;
 }
 

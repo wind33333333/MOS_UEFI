@@ -362,13 +362,27 @@ typedef enum : uint8 {
     USB_TX_CMD_DECFG_ALL    // 事务：格式化端点 (一键抹除所有业务端点，保留 EP0，DC=1)
 } usb_tx_cmd_e;
 
-//usb驱动id表
+
+// 定义匹配标志位 (位掩码)
+#define USB_MATCH_VENDOR       0x0001  // 要求匹配 VID
+#define USB_MATCH_PRODUCT      0x0002  // 要求匹配 PID
+#define USB_MATCH_INT_CLASS    0x0080  // 要求匹配接口大类
+#define USB_MATCH_INT_SUBCLASS 0x0100  // 要求匹配接口子类
+#define USB_MATCH_INT_PROTOCOL 0x0200  // 要求匹配接口协议
+
 typedef struct usb_id_t {
-    // interface class 匹配（最常用）
+    uint16 match_flags; // 🌟 灵魂字段：告诉 match 函数怎么做比较
+
+    // 设备级匹配
+    uint16 vendor_id;
+    uint16 product_id;
+
+    // 接口级匹配
     uint8  if_class;
     uint8  if_subclass;
     uint8  if_protocol;
 } usb_id_t;
+
 
 //usb驱动
 typedef struct usb_drv_t{
@@ -427,7 +441,6 @@ typedef struct usb_if_t {
     uint8 num_if_alts;          // 备用接口数量
     usb_if_alt_t *if_alts;      // 备用接口数组
     usb_if_alt_t *activity_if_alt;   // 当前激活的备用接口
-    uint8  activity_alt_idx;        //当前激活的备用接口下标
     device_t dev;
     void    *drv_data;
 } usb_if_t;
@@ -612,7 +625,7 @@ void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfe
 void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfer_buf,uint32 transfer_len);
 
 
-uint8 usb_find_alt_if(usb_if_t *uif, uint8 class, uint8 subclass, uint8 protocol);
+usb_if_alt_t* usb_find_alt_if(usb_if_t *uif, int16 class, int16 subclass, int16 protocol);
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
 int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 num_eps, uint8 expected_streams_exp);
 
