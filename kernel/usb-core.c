@@ -394,29 +394,6 @@ static inline int32 usb_get_bos_desc(usb_dev_t *udev, void *buf, uint16 len) {
 }
 
 
-// ==========================================
-// ⚙️ 设备状态控制 API (直通控制传输枢纽)
-// ==========================================
-
-/**
- * @brief 激活配置 (Set Configuration)
- * @note 这是一个纯命令传输，没有后续的数据包，因此 buffer 为 NULL，length 为 0。
- */
-static inline int32 usb_set_cfg(usb_dev_t *udev, uint8 cfg_value) {
-    return usb_control_msg(udev, NULL,
-                           USB_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_RECIP_DEVICE,
-                           USB_REQ_SET_CONFIGURATION, cfg_value, 0, 0);
-}
-
-/**
- * @brief 激活接口 (Set Interface)
- * @note 用于在复合设备 (如带有多个备用设置的摄像头或声卡) 中切换接口的 Alternate Setting。
- */
-static inline int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
-    return usb_control_msg(udev, NULL,
-                           USB_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_RECIP_INTERFACE,
-                           USB_REQ_SET_INTERFACE, alt_num, if_num, 0);
-}
 
 
 //=============================================================================================================
@@ -659,23 +636,6 @@ device_type_t usb_if_type = {"usb-if"};
 static int32 alloc_ep_ring(usb_ep_t *ep) {
     uint64 tr_dequeue_ptr;
 
-    //根据类型非配环长度
-    uint32 ring_size = 64;
-    uint8 usb_trans_type = ep->ep_type & 3;
-    switch (usb_trans_type) {
-        case USB_EP_TYPE_CONTROL:
-            ring_size = 64;
-            break;
-        case USB_EP_TYPE_ISOCH:
-            ring_size = 1024;
-            break;
-        case USB_EP_TYPE_BULK:
-            ring_size = 512;
-            break;
-        case USB_EP_TYPE_INTR:
-            ring_size = 64;
-    }
-
     // 安全边界截断
     uint32 streams_exp = ep->enable_streams_exp;
 
@@ -702,7 +662,7 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
         // 初始化每一个流环
         for (uint32 s = 1; s < num_streams; s++) {
             // 对数组中的每一个环进行物理分配
-            xhci_alloc_submit_ring(&ep->ring_arr[s],ring_size);
+            xhci_alloc_submit_ring(&ep->ring_arr[s],ep->ring_max_trbs);
 
             // 将分配好的环的物理地址，写入硬件要求的 Context 数组中
             // SCT=1 (Primary TRB Ring: bit 1~3), DCS=1 (bit 0)
@@ -726,7 +686,7 @@ static int32 alloc_ep_ring(usb_ep_t *ep) {
         ep->ring_arr = kzalloc(sizeof(xhci_submit_ring_t));
 
         // 2. 分配并初始化这唯一的环 (它就是 rings[0])
-        xhci_alloc_submit_ring(&ep->ring_arr[0],ring_size);
+        xhci_alloc_submit_ring(&ep->ring_arr[0],ep->ring_max_trbs);
 
         // 更新逻辑状态
         ep->lsa = 0;
@@ -797,11 +757,6 @@ static int32 free_ep_ring(usb_ep_t *ep) {
     return 0; // 成功释放
 }
 
-// 在 usb.h 中定义清晰的通配符宏
-#define USB_MATCH_ANY (-1)
-
-// 在 usb.h 中定义清晰的通配符宏
-#define USB_MATCH_ANY (-1)
 
 /**
  * @brief 在接口中寻找匹配指定 Class/SubClass/Protocol 的备用接口
@@ -831,7 +786,7 @@ usb_if_alt_t* usb_find_alt_if(usb_if_t *uif, int16 class, int16 subclass, int16 
 
 
 /**
- * @brief 切换 USB 备用接口
+ * @brief 切换备用接口
  * @param new_alt 上层驱动通过 find_alt 系列函数搜索到的目标图纸句柄
  * @return int32  0 表示成功，非 0 表示失败
  */
@@ -872,12 +827,6 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // 2. 提前获取新端点数量
     for (uint8 i = 0; i < new_num_eps; i++) {
         usb_ep_t *ep = &new_alt->eps[i];
-
-        // 👑 Linux 架构铁律：两级火箭分离！
-        // 接口切换是底层总线的职责，底层绝不越俎代庖去开启动态流。
-        // 一律将 num_streams 强行阉割为 0，按最基础的 Bulk 模式建立物理通道。
-        // 满血多流的升级任务，必须留给上层 UAS 驱动事后去调用 usb_alloc_streams！
-        ep->enable_streams_exp = 0;
 
         // ★ OOM 防御：分配环可能因为物理 DMA 内存耗尽而失败
         posix = alloc_ep_ring(ep);
@@ -968,152 +917,56 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
 
 
 /**
- * @brief 为 USB 端点组协商并分配流(Streams)模式物理内存
- * @param udev 外设上下文
- * @param eps 需要开启流模式的端点数组 (比如 UAS 的 Data IN 和 Data OUT)
- * @param num_eps 端点数量
- * @param expected_streams_exp 期望的流指数 (并发量 = 2^exp)
- * * @return int32
- * < 0 : 底层 POSIX 错误码 (如 -EINVAL, -ENOMEM)，表示配置彻底失败。
- * == 0: 降级为传统普通模式 (主板或外设不支持，或入参期望为0)。
- * > 0 : 成功开启流模式，返回最终多方妥协后的流指数 (Stream Exponent)。
+ * @brief [驱动层 API] 配置备用接口图纸的硬件资源诉求 (完美支持流与非流端点混编)
+ * @note 必须在 usb_switch_alt_if 提交硬件前调用！
+ * @return int32  最终成功协商出的流指数。如果为 0，表示全线降级为普通环。
  */
-int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 num_eps, uint8 expected_streams_exp) {
-    if (!udev || !eps || num_eps == 0) return -EINVAL;
-    if (expected_streams_exp == 0) return 0;
+int32 usb_config_alt_ep_resources(usb_if_alt_t *alt,
+                                  uint8 want_streams_exp, uint32 want_trb_size) {
+    if (!alt || !alt->ifs->udev || !alt->if_desc) return -EINVAL;
 
-    int32 posix_err = 0;
+    uint8 final_exp = 0;
+    uint8 num_eps = alt->if_desc->num_endpoints;
 
-    // ==========================================================
-    // 阶段 1：疯狂的“最短板”算计 (The Short-Board Evaluation)
-    // ==========================================================
+    // =========================================================================
+    // 阶段 1：【精准算计】只和“有能力开流”的端点进行博弈
+    // =========================================================================
+    if (want_streams_exp > 0) {
+        uint8 host_max = alt->ifs->udev->xhcd->max_streams_exp;
+        final_exp = (host_max < want_streams_exp) ? host_max : want_streams_exp;
 
-    // 1. xHCI最大流和期望最大流取极小值
-    uint8 mini_streams_exp = udev->xhcd->max_streams_exp;
-    if (mini_streams_exp > expected_streams_exp) {
-        mini_streams_exp = expected_streams_exp;
+        for (uint8 i = 0; i < num_eps; i++) {
+            uint8 ep_max = alt->eps[i].max_streams_exp;
+            // 🌟 核心修复：放过它！不支持流的端点，不参与最短板算计
+            if (ep_max == 0) continue;
+            if (ep_max < final_exp) final_exp = ep_max;
+        }
+
     }
 
-    // 2. [探底外设]：遍历所有传入的端点，寻找流能力最低的那一个
+    // =========================================================================
+    // 阶段 2：【图纸重绘】流端点用多环，普通端点保单环，各取所需！
+    // =========================================================================
     for (uint8 i = 0; i < num_eps; i++) {
-        usb_ep_t *ep = eps[i];
+        usb_ep_t *ep = &alt->eps[i];
 
-        // 读取端点描述符里解析出的硬件原始流指数极限
-        uint8 ep_max_streams_exp = ep->max_streams_exp;
-
-        if (ep_max_streams_exp == 0) {
-            // 致命短板：只要这几个核心端点里有一个完全不支持流，全体降级！
-            color_printk(YELLOW, BLACK, "USB: EP %d does not support streams. Fallback to 2.0\n", ep->ep_dci);
-            return 0;
+        // 🌟 精准施策：只有硬件描述符里声明了能力的端点，才配得上 final_exp！
+        // 那些 max_streams_exp == 0 的端点，将被乖乖清零，底层分配器会给它们建普通环。
+        if (ep->max_streams_exp > 0) {
+            ep->enable_streams_exp = final_exp;
+        } else {
+            ep->enable_streams_exp = 0;
         }
 
-        if (mini_streams_exp > ep_max_streams_exp) {
-            mini_streams_exp = ep_max_streams_exp; // 动态更新最短板
-        }
+        // TRB 运力诉求可以一视同仁地覆盖 (普通环和流环都需要 TRB)
+        ep->ring_max_trbs = want_trb_size;
     }
 
-    // 此时，mini_streams_exp 已经代表了“主板、外设、期望”三方妥协后的最终并发极限！
-
-    // ==========================================================
-    // 阶段 2：底层硬件“多流升级” (xHCI 规范强制要求的两段式提交)
-    // ==========================================================
-
-    // ----------------------------------------------------------
-    // 🚀 事务一：彻底拆除旧端点 (迫使其进入 Disabled 状态)
-    // ----------------------------------------------------------
-    usb_tx_begin(udev);
-
-    for (uint8 i = 0; i < num_eps; i++) {
-        usb_ep_t *ep = eps[i];
-        usb_tx_drop_ep(udev, ep); // 仅仅打上 Drop 标记
-    }
-
-    // 提交事务一：主板收到后，会正式解除对这些端点旧物理内存的占用！
-    posix_err = usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
-    if (posix_err < 0) {
-        color_printk(RED, BLACK, "xHCI: Failed to drop endpoints for stream setup!\n");
-        return posix_err;
-    }
-
-    // ----------------------------------------------------------
-    // 🚀 事务二：以多流姿态原地复活 (从 Disabled 切换回 Running)
-    // ----------------------------------------------------------
-    usb_tx_begin(udev);
-
-    for (uint8 i = 0; i < num_eps; i++) {
-        usb_ep_t *ep = eps[i];
-
-        // 1. 此时硬件已经彻底放手，旧内存绝对安全了！放心 Free！
-        posix_err = free_ep_ring(ep);
-        if (posix_err < 0) {
-            return  posix_err;
-        }
-
-        // 2. 状态机翻页：正式赋予端点流能力参数
-        ep->enable_streams_exp = mini_streams_exp;
-
-        // 3. 重新分配物理内存：alloc_ep_ring 会根据 enable_streams_exp 分配 2^(N+1) 个流环
-        posix_err = alloc_ep_ring(ep);
-        if (posix_err < 0) {
-            color_printk(RED, BLACK, "USB: OOM allocating stream rings!\n");
-            // 注意：此时端点处于 Disabled，若 OOM，整个设备只能重新复位或降级
-            return posix_err;
-        }
-
-        // 4. 将带有流参数的新端点加入图纸 (仅仅打上 Add 标记)
-        usb_tx_add_ep(udev, ep);
-    }
-
-    // 提交事务二：主板看到端点从 Disabled 醒来，且带有多流参数，完美接受！
-    posix_err = usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
-    if (posix_err < 0) {
-        color_printk(RED, BLACK, "xHCI: Failed to add endpoints with streams!\n");
-        return posix_err;
-    }
-
-    return mini_streams_exp; // 返回协商后的最终指数，供上层分配 Tag
+    return final_exp;
 }
 
 
 //===================================================== 解析描述符非配资源 ============================================
-
-//给备用接口的所有端点分配环
-static inline int32 enable_alt_if (usb_if_alt_t *uif_alt) {
-    usb_dev_t *udev = uif_alt->ifs->udev;
-
-    int32 posix_err = 0;
-
-    // ★ 开启事务，拿出一张空白的 Configure Endpoint 申请表
-    usb_tx_begin(udev);
-
-    // 配置该接口下的所有端点
-    uint8 num_eps = uif_alt->if_desc->num_endpoints;
-    for (uint8 i = 0; i < num_eps; i++) {
-        usb_ep_t *ep = &uif_alt->eps[i];
-        uint8 ep_dci = ep->ep_dci;
-
-        // 指针放到udev.eps中，建立全局 DCI 快速索引
-        udev->eps[ep_dci] = ep;
-
-        //给端点分配环
-        posix_err = alloc_ep_ring(ep);
-        if (posix_err < 0) {
-            return posix_err;
-        }
-
-        // ★ 将端点挂载到 Input Context 申请表中
-        usb_tx_add_ep(udev, ep);
-    }
-
-    // ★ 扣动扳机！将申请表通过 Command Ring 提交给主板，并敲响门铃
-    posix_err = usb_tx_commit(udev, USB_TX_CMD_CFG_EP);
-    if (posix_err < 0) {
-        return posix_err;
-    }
-
-    return 0;
-}
-
 
 /**
  * @brief [内部辅助] 解析并装填 USB 标准端点参数 (USB 2.0 规格底稿)
@@ -1226,7 +1079,7 @@ static inline void *usb_cfg_end(usb_cfg_desc_t *usb_config_desc)
  * @param udev USB 设备对象
  * @return 0 表示成功，负数表示失败
  */
-int32 usb_if_create_oneshot(usb_dev_t *udev) {
+int32 usb_if_create(usb_dev_t *udev) {
     usb_cfg_desc_t *cfg_desc = udev->config_desc;
     if (!cfg_desc || cfg_desc->head.length < sizeof(usb_cfg_desc_t)) return -EINVAL;
 
@@ -1336,213 +1189,6 @@ int32 usb_if_create_oneshot(usb_dev_t *udev) {
 }
 
 
-/**
- * @brief [工业级 O(N) 单次扫描] 解析 USB 接口下的所有端点及其伴随描述符
- */
-static inline void *alt_if_desc_parse(usb_if_alt_t *if_alt, usb_desc_head_t *start_desc, void *cfg_end) {
-    usb_ep_t *cur_ep = NULL;
-    uint8 ep_idx = 0;
-
-    // 严密防御：限定搜索范围绝对不能超出整个配置描述符
-    while ((start_desc < cfg_end)) {
-
-        // 跳过传入的低一个接口描述符和游标推进
-        start_desc = usb_get_next_desc(start_desc);
-
-        //如果是下一个接口描述符则退出扫描
-        if(start_desc->desc_type == USB_DESC_TYPE_INTERFACE) break;
-
-        if (start_desc->desc_type == USB_DESC_TYPE_ENDPOINT) {
-            // 防缓冲区溢出！恶意的描述符数量不能超过声明的数量
-            uint8 num_eps = if_alt->if_desc->num_endpoints;
-            if (ep_idx >= num_eps) break;
-
-            // 阶段 1：分发给标准解析器
-            cur_ep = &if_alt->eps[ep_idx++];
-            ep_desc_params(cur_ep, (usb_ep_desc_t *) start_desc);
-
-        } else if (start_desc->desc_type == USB_DESC_TYPE_SS_ENDPOINT_COMPANION) {
-
-            // 阶段 2：分发给 USB 3.0 覆写器
-            if (cur_ep) {
-                ss_desc_params(cur_ep, (usb_ss_comp_desc_t *) start_desc);
-            }
-
-        } // 场景 C：遇到“类私有”或“未知”描述符 (如 HID Report, UVC 格式流等)
-        else {
-            // 🌟 精准挂载逻辑
-            if (cur_ep) {
-                // 如果目前已经解析出了端点，那这个私有数据属于当前端点！
-                if (!cur_ep->extras_desc) cur_ep->extras_desc = start_desc;
-                cur_ep->extras_len += start_desc->length; // 累加长度！
-            } else {
-                // 如果目前连第一个端点都还没遇到，那这个私有数据属于当前接口！
-                if (!if_alt->extras_desc) if_alt->extras_desc = start_desc;
-                if_alt->extras_len += start_desc->length; // 累加长度！
-            }
-        }
-    }
-
-    return start_desc; // 将指针交还给外层接力
-}
-
-
-/**
- * @brief [阶段 2] 填充替用接口参数，分配端点内存并触发解析
- */
-/**
- * @brief [核心阶段] 解析所有接口与端点图纸，配置 xHCI 硬件环，并下发激活设备的指令
- * @param udev       USB 设备对象
- * @param usb_if_map 接口映射缓存表
- * @return 0 表示全线贯通成功，-1 表示设备拒绝激活
- */
-static inline int32 if_desc_parse(usb_dev_t *udev, usb_if_t **usb_if_map) {
-    uint8 fill_idx[256];
-    asm_mem_set(fill_idx, 0, sizeof(fill_idx)); // 用于记录每个接口当前填充到了第几个 alt
-
-    usb_if_desc_t *if_desc = (usb_if_desc_t *)udev->config_desc;
-    void *cfg_end = usb_cfg_end(udev->config_desc);
-
-    // =================================================================
-    // 阶段 A：第二次遍历，精细化装填所有接口和端点的“图纸”参数
-    // =================================================================
-    while ((void *)if_desc < cfg_end) {
-        if (if_desc->head.desc_type == USB_DESC_TYPE_INTERFACE) {
-            uint8 if_num = if_desc->interface_number;
-            usb_if_t *uif = usb_if_map[if_num];
-
-            // 找到当前 alt 对应的槽位
-            uint8 alt_idx = fill_idx[if_num]++;
-            usb_if_alt_t *if_alt = &uif->if_alts[alt_idx];
-
-            // 填充业务属性
-            if_alt->ifs = uif;
-            if_alt->if_desc = if_desc;
-            if_alt->extras_desc = NULL; // 初始化清空
-
-            // 为该 alt 分配端点内存，并触发底层解析引擎
-            uint8 num_eps = if_desc->num_endpoints;
-            if (num_eps > 0) {
-                if_alt->eps = kzalloc(num_eps * sizeof(usb_ep_t));
-            }
-
-            // 🌟 完美游标接力：将当前 Interface描述符指针丢给内层引擎继续解析！返回下一个接口指针
-            if_desc = alt_if_desc_parse(if_alt, (usb_desc_head_t*)if_desc, cfg_end);
-        }else {
-
-            //不是接口描述符推进游标
-            if_desc = usb_get_next_desc(&if_desc->head);
-
-        }
-    }
-
-    // =================================================================
-    // 阶段 B：图纸绘制完毕，开始向主板申请硬件 DMA 高速公路
-    // =================================================================
-    uint8 num_ifs = udev->config_desc->num_interfaces;
-    for (uint32 i = 0; i < num_ifs; i++) {
-        usb_if_t *uif = &udev->ifs[i];
-
-        if (uif != NULL) {
-            // 默认锁定 alt 0 备用接口 (包含极其严密的兜底容错逻辑)
-            usb_if_alt_t *alt0 = usb_find_alt_by_num(uif, 0);
-            uif->activity_if_alt = alt0 ? alt0 : &uif->if_alts[0];
-
-            // 呼叫主板：分配 Transfer Ring 并下发 Configure Endpoint
-            enable_alt_if(uif->activity_if_alt);
-        }
-    }
-
-    // =================================================================
-    // 阶段 C：全线高速公路竣工，向物理 U 盘下发唯一的一次“总闸通电”指令
-    // =================================================================
-    int ret = usb_set_cfg(udev, udev->config_desc->configuration_value);
-    if (ret != 0) {
-        color_printk(RED, BLACK, "USB: Failed to Set Configuration! Device rejected.\n");
-        return -1; // 通电失败，拒绝挂载！
-    }
-
-    return 0; // 软硬全线贯通！
-}
-
-
-/**
- * @brief [阶段 1] 扫描描述符，统计并分配接口与替用接口的内存
- * @param udev    USB 设备对象
- * @param alt_count  用于统计每个接口号对应的替用接口数量 (外部传入的栈数组)
- * @param usb_if_map 用于缓存接口指针的映射表 (外部传入的栈数组)
- * @return 0 成功，-1 内存分配失败或遭遇恶意描述符
- */
-static inline int32 alloc_if_resources(usb_dev_t *udev, uint8 *alt_count, usb_if_t **usb_if_map) {
-    // 1. 根据配置描述符声明的接口数，分配顶层接口数组
-    usb_cfg_desc_t *cfg_desc = udev->config_desc;
-    // 防御：设备返回的配置描述符太小，不合法
-    if (!cfg_desc || cfg_desc->head.length < sizeof(usb_cfg_desc_t)) return -EINVAL;
-
-    uint8 num_ifs = cfg_desc->num_interfaces;
-    if (num_ifs == 0) return 0;
-
-    udev->ifs = kzalloc(sizeof(usb_if_t) * num_ifs);
-    if (!udev->ifs) return -ENOMEM;
-
-    // 2. 第一次遍历：统计每个 interface_number 拥有多少个 alternate_setting
-    usb_if_desc_t *if_desc = (usb_if_desc_t *)cfg_desc;
-    void *cfg_end = usb_cfg_end(cfg_desc);
-
-    while ((void *)if_desc < cfg_end) {
-        if (if_desc->head.desc_type == USB_DESC_TYPE_INTERFACE) {
-            alt_count[if_desc->interface_number]++;
-        }
-        if_desc = (usb_if_desc_t *)usb_get_next_desc(&if_desc->head);
-    }
-
-    // 3. 分配底层的 alt 数组，并初始化总线设备模型结构
-    uint8 if_idx = 0;
-    for (uint16 i = 0; i < 256 && if_idx < num_ifs; i++) { //if_idx防越界和提前结束扫描
-        if (alt_count[i] > 0) {
-            usb_if_t *uif = &udev->ifs[if_idx++];
-            uif->num_if_alts = alt_count[i];             //备用接口数量
-            uif->if_alts = kzalloc(sizeof(usb_if_alt_t) * uif->num_if_alts);  //分配备用接口数组
-
-            // 绑定设备模型拓扑
-            uif->udev = udev;
-            uif->dev.type = &usb_if_type;
-            uif->dev.parent = &udev->dev;
-            uif->dev.bus = &usb_bus_type;
-
-            usb_if_map[i] = uif; // 缓存映射关系，留给下一阶段直接使用
-        }
-    }
-    return 0;
-}
-
-
-
-/**
- * @brief 解析配置描述符，创建 USB 接口树并注册到系统总线
- */
-int32 usb_if_create(usb_dev_t *udev) {
-    // 局部极速缓存区（放在栈上，函数退出自动销毁，零内存碎片）
-    /*uint8 alt_if_count[256];
-    usb_if_t *usb_if_map[256];
-
-    asm_mem_set(alt_if_count, 0, sizeof(alt_if_count));
-    asm_mem_set(usb_if_map, 0, sizeof(usb_if_map));
-
-    // =======================================================
-    // 阶段 1：搭骨架 (盘点拓扑与分配内存)
-    // =======================================================
-    alloc_if_resources(udev, alt_if_count, usb_if_map);
-
-    // =======================================================
-    // 阶段 2：填血肉 (解析接口与端点图纸)
-    // =======================================================
-    if_desc_parse(udev, usb_if_map);*/
-    usb_if_create_oneshot(udev);
-
-    return 0; // 接口树构建完毕，成功交接给业务层驱动！
-}
-
 //注册usb接口
 void usb_if_register(usb_dev_t *udev) {
     uint8 num_ifs = udev->config_desc->num_interfaces;
@@ -1592,6 +1238,7 @@ static inline int32 enable_slot_ep0(usb_dev_t *udev) {
     uep1->average_trb_length = mps;
     uep1->max_streams_exp = 0;
     uep1->enable_streams_exp = 0;
+    uep1->ring_max_trbs = 32;  //32个trb槽位就够了
     alloc_ep_ring(uep1);
 
     // ---下发命令 ---

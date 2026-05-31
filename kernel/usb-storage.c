@@ -15,23 +15,14 @@ extern scsi_host_template_t bot_host_template;
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
 
-    usb_if_alt_t *if_alt = usb_find_alt_if(uif,0x8,0x6,0x62);
-    usb_switch_alt_if(if_alt);
+    usb_set_cfg(uif->udev);
 
-    //u盘是否支持uas协议，优先设置为uas协议
-    if (uif->num_if_alts > 1) {
-        usb_if_alt_t *next_alts = uif->if_alts;
-        for (uint8 i = 0; i < uif->num_if_alts; i++) {
-            if (next_alts[i].if_desc->interface_protocol == 0x62) {
-                usb_switch_alt_if(&next_alts[i]);
-                break;
-            }
-        }
-    }
+    usb_if_alt_t *uas_if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY,0x62);
+    usb_if_alt_t *bot_if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY,0x50);
 
     scsi_host_t *shost;
 
-    if (uif->activity_if_alt->if_desc->interface_protocol == 0x62) {        //uas协议初始化流程
+    if (uas_if_alt) {        //uas协议初始化流程
 
         color_printk(GREEN,BLACK,"uas mode  \n");
 
@@ -40,11 +31,14 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
         if (!uas_data) return -1;
         uas_data->uif = uif;
 
+        uint8 streams_exp = usb_config_alt_ep_resources(uas_if_alt,6,256);
+        usb_switch_alt_if(uas_if_alt);
+
         // ==========================================================
-        // 1. 解析 Pipe 端点与流能力侦测 (修复无差别误杀 Bug)
+        // 1. 解析 Pipe 端点与流能力侦测
         // ==========================================================
         for (uint8 i = 0; i < 4; i++) {
-            usb_ep_t *ep = &uif->activity_if_alt->eps[i];
+            usb_ep_t *ep = &uas_if_alt->eps[i];
 
             usb_uas_pipe_usage_desc_t *pipe_usage_desc = ep->extras_desc;
             if (!pipe_usage_desc) continue;
@@ -58,13 +52,6 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
             }
         }
 
-        //重新分配流
-        usb_ep_t *streams_ep[3] = {
-            uas_data->status_ep,
-            uas_data->data_in_ep,
-            uas_data->data_out_ep,
-        };
-        uint8 streams_exp = usb_enable_streams(uif->udev,streams_ep,3,MAX_STREAMS_EXP);
         uint16 streams_pool_size = 0;
         //初始化tag_bitmap
         uas_data->tag_bitmap = 0xFFFFFFFFFFFFFFFFUL; //bit0 对应tag1
@@ -96,6 +83,9 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
         bot_data->sense = kzalloc_dma(SCSI_SENSE_ALLOC_SIZE);
         bot_data->tag = 0;
 
+        usb_config_alt_ep_resources(bot_if_alt,0,256);
+        usb_switch_alt_if(bot_if_alt);
+
         for (uint8 i = 0; i < 2; i++) {
             usb_ep_t *ep = &uif->activity_if_alt->eps[i];
             if (ep->ep_dci & 1) {
@@ -104,6 +94,8 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
                 bot_data->out_ep = ep;
             }
         }
+
+
 
         //uint8 max_lun = bot_get_max_lun(uif->udev,uif->if_num);
 

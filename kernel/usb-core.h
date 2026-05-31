@@ -364,6 +364,7 @@ typedef enum : uint8 {
 
 
 // 定义匹配标志位 (位掩码)
+#define USB_MATCH_ANY (-1)
 #define USB_MATCH_VENDOR       0x0001  // 要求匹配 VID
 #define USB_MATCH_PRODUCT      0x0002  // 要求匹配 PID
 #define USB_MATCH_INT_CLASS    0x0080  // 要求匹配接口大类
@@ -421,6 +422,7 @@ typedef struct usb_ep_t {
     // 情况 A (非流模式): 分配大小为 1 的数组。rings[0] 就是普通的 transfer_ring。
     // 情况 B (流模式)  : 分配大小为 num_streams + 1 的数组。rings[1...N] 是流环。
     uint8              enable_streams_exp;// xHCI 实际向主板申请并启用的流指数
+    uint32             ring_max_trbs; // 上层驱动期望的环大小 (0 表示使用 Core 默认值)
     xhci_submit_ring_t *ring_arr;            // xHCI 传输环数组 (普通模式大小为1，流模式大小为 N+1)
     void               *streams_ctx_array;   // xHCI 流上下文数组的 DMA 内存基地址
 
@@ -545,7 +547,6 @@ typedef struct usb_urb_t {
     volatile boolean is_done;
 } usb_urb_t;
 
-#define MAX_STREAMS_EXP 6  //最多支持流数量（2^6=64）
 
 //端点转Dci
 static inline uint8 epaddr_to_epdci(uint8 ep) {
@@ -627,7 +628,7 @@ void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfe
 
 usb_if_alt_t* usb_find_alt_if(usb_if_t *uif, int16 class, int16 subclass, int16 protocol);
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
-int32 usb_enable_streams(usb_dev_t *udev, usb_ep_t **eps, uint8 num_eps, uint8 expected_streams_exp);
+int32 usb_config_alt_ep_resources(usb_if_alt_t *alt,uint8 want_streams_exp, uint32 want_trb_size);
 
 
 int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_id);
@@ -664,6 +665,26 @@ static inline int32 usb_set_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
     return usb_control_msg(udev, NULL,
                            USB_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_RECIP_ENDPOINT,
                            USB_REQ_SET_FEATURE, USB_FEATURE_ENDPOINT_HALT, epdci_to_epaddr(ep_dci), 0);
+}
+
+/**
+ * @brief 激活配置 (Set Configuration)
+ * @note 这是一个纯命令传输，没有后续的数据包，因此 buffer 为 NULL，length 为 0。
+ */
+static inline int32 usb_set_cfg(usb_dev_t *udev) {
+    return usb_control_msg(udev, NULL,
+                           USB_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_RECIP_DEVICE,
+                           USB_REQ_SET_CONFIGURATION, udev->config_desc->configuration_value, 0, 0);
+}
+
+/**
+ * @brief 激活接口 (Set Interface)
+ * @note 用于在复合设备 (如带有多个备用设置的摄像头或声卡) 中切换接口的 Alternate Setting。
+ */
+static inline int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
+    return usb_control_msg(udev, NULL,
+                           USB_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_RECIP_INTERFACE,
+                           USB_REQ_SET_INTERFACE, alt_num, if_num, 0);
 }
 
 void usb_tx_begin(usb_dev_t *udev);

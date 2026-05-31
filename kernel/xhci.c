@@ -1235,7 +1235,7 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhcd->udevs = kzalloc((xhcd->max_slots+1)<<3);
 
     /*初始化命令环*/
-    xhci_alloc_submit_ring(&xhcd->cmd_ring,64); //命令环分配64个槽位
+    xhci_alloc_submit_ring(&xhcd->cmd_ring,32); //命令环分配32个槽位
     xhcd->op_reg->crcr = va_to_pa(xhcd->cmd_ring.ring_base) | 1; //命令环物理地址写入crcr寄存器，置位rcs
 
     /*初始化中断器*/
