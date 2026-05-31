@@ -31,7 +31,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
         if (!uas_data) return -1;
         uas_data->uif = uif;
 
-        uint8 streams_exp = usb_config_alt_ep_resources(uas_if_alt,6,256);
+        uint8 streams_exp = usb_cfg_alt_if_resources(uas_if_alt,6,256);
         usb_switch_alt_if(uas_if_alt);
 
         // ==========================================================
@@ -83,7 +83,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
         bot_data->sense = kzalloc_dma(SCSI_SENSE_ALLOC_SIZE);
         bot_data->tag = 0;
 
-        usb_config_alt_ep_resources(bot_if_alt,0,256);
+        usb_cfg_alt_if_resources(bot_if_alt,0,256);
         usb_switch_alt_if(bot_if_alt);
 
         for (uint8 i = 0; i < 2; i++) {

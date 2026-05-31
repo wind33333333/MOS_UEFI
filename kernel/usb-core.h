@@ -588,18 +588,6 @@ static inline void *usb_get_next_desc(usb_desc_head_t *head) {
 }
 
 
-
-/* 在 uif->alts[] 中按 altsetting 值查找（不能用 altsetting 当数组下标） */
-static inline usb_if_alt_t *usb_find_alt_by_num(usb_if_t *usb_if, uint8 altsetting)
-{
-    usb_if_alt_t *alt_if = usb_if->if_alts;
-    for (uint8 i = 0; i < usb_if->num_if_alts; i++) {
-        if (alt_if[i].if_desc->alternate_setting == altsetting)
-            return &usb_if->if_alts[i];
-    }
-    return NULL;
-}
-
 extern struct bus_type_t usb_bus_type;
 
 usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd,usb_dev_t *parent_hub, uint32 port_num);
@@ -628,7 +616,7 @@ void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfe
 
 usb_if_alt_t* usb_find_alt_if(usb_if_t *uif, int16 class, int16 subclass, int16 protocol);
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
-int32 usb_config_alt_ep_resources(usb_if_alt_t *alt,uint8 want_streams_exp, uint32 want_trb_size);
+int32 usb_cfg_alt_if_resources(usb_if_alt_t *alt,uint8 want_streams_exp, uint32 want_trb_size);
 
 
 int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_id);
