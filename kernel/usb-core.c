@@ -546,6 +546,8 @@ void usb_tx_eval_slot(usb_dev_t *udev) {
     // 2. 拿到 Slot Context 的图纸指针
     xhci_slot_ctx_t *input_slot_ctx = xhci_get_input_ctx_entry(udev->xhcd, input_ctx, 0);
 
+    color_printk(GREEN,BLACK,"is_hub:%d num_ports:%d  \n",input_slot_ctx->is_hub,input_slot_ctx->num_ports);
+
     // 3. 涂改图纸：将 udev 软件对象里新挖掘出的全局属性，同步给硬件
 
     // 场景 A：设备身份觉醒 (发现它是个 Hub)
@@ -561,6 +563,9 @@ void usb_tx_eval_slot(usb_dev_t *udev) {
     // 场景 C：深度休眠电源管理 (LPM)
     // 更新最大退出延迟容忍度 (Max Exit Latency)
     input_slot_ctx->max_exit_latency = udev->max_exit_latency;
+
+    color_printk(GREEN,BLACK,"is_hub:%d num_ports:%d  \n",input_slot_ctx->is_hub,input_slot_ctx->num_ports);
+
 }
 
 

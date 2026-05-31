@@ -1,5 +1,6 @@
 #include "usb-hub.h"
 #include "errno.h"
+#include "printk.h"
 #include "slub.h"
 
 // ==========================================
@@ -145,6 +146,8 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
     hub->uif = uif;
     udev->is_hub = TRUE;
 
+    color_printk(GREEN,BLACK,"hub probe!!! \n");
+
     if (udev->port_speed > USB_SPEED_HIGH) {
         // ==========================================
         // 🚀 USB 3.0 (SuperSpeed) Hub 处理逻辑
@@ -162,20 +165,10 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         // 描述符类型：0x29，变长地雷，必须踩两步！
         // ==========================================
 
-        // =======================================================
-        // 1. 🌟 激活 MTT (多事务翻译器)
-        // =======================================================
-        udev->hub_mtt = 0;//默认是单事务翻译器
-        if (uif->num_if_alts > 1) {
-            usb_if_alt_t *next_alts = uif->if_alts;
-            for (uint8 i = 0; i < uif->num_if_alts; i++) {
-                if (next_alts[i].if_desc->interface_protocol == 2) {
-                    usb_switch_alt_if(&next_alts[i]);
-                    udev->hub_mtt = 1;
-                    break;
-                }
-            }
-        }
+        //单事务翻译器或多事务
+        usb_if_alt_t *mult_if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY,2);
+        udev->hub_mtt = mult_if_alt ? 1 : 0;
+
         // 第一步：先读 8 字节探路
         usb_hub20_desc_t *hub20_desc = kzalloc_dma(71) ;
         int32 ret = usb_hub20_get_desc(udev,hub20_desc, 8);
@@ -197,10 +190,12 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         //更新slot
         usb_tx_begin(udev);
         usb_tx_eval_slot(udev);
-        usb_tx_commit(udev,USB_TX_CMD_EVAL_CTX);
+        usb_tx_commit(udev,USB_TX_CMD_CFG_EP);
 
         usb_tx_begin(udev);
         usb_tx_eval_slot(udev);
+
+        while (1);
 
 
         hub->ports = kzalloc((udev->hub_num_ports+1)*sizeof(hub_port_t));
@@ -295,7 +290,7 @@ void usb_hub_remove(usb_if_t *usb_if) {
 
 usb_drv_t *create_usb_hub_driver() {
     usb_drv_t *usb_drv = kzalloc(sizeof(usb_drv_t));
-    usb_id_t *id_table = kzalloc(sizeof(usb_id_t)*1);
+    usb_id_t *id_table = kzalloc(sizeof(usb_id_t)*2);
     id_table[0].match_flags = USB_MATCH_INT_CLASS;
     id_table[0].if_class = 0x9;
     usb_drv->drv.name = "usb_hub";
