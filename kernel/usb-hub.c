@@ -146,20 +146,28 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
     hub->uif = uif;
     udev->is_hub = TRUE;
 
-    color_printk(GREEN,BLACK,"hub probe!!! \n");
+    usb_set_cfg(uif->udev);
 
-    if (udev->port_speed > USB_SPEED_HIGH) {
+    uint32 times = 0xA000000;
+    while (times) {
+        times--;
+        asm_pause();
+    }
+
+    if (udev->dev_desc->product_id >= 3) {
+        color_printk(GREEN,BLACK,"hub3.0!!! speed:%d psiv:%d port:%d  \n",udev->port_speed,udev->psiv,udev->root_port_num );
         // ==========================================
         // 🚀 USB 3.0 (SuperSpeed) Hub 处理逻辑
         // 描述符类型：0x2A，长度永远固定为 12 字节！
         // ==========================================
-        usb_hub30_desc_t *hub30_desc = kzalloc_dma(sizeof(usb_hub30_desc_t));
+        // usb_hub30_desc_t *hub30_desc = kzalloc_dma(sizeof(usb_hub30_desc_t));
 
         // 一步到位，直接吞下 12 字节！
-        int32 ret = usb_hub30_get_desc(udev, hub30_desc,12);
-        if (ret < 0) return ret;
+        // int32 ret = usb_hub30_get_desc(udev, hub30_desc,12);
+        // if (ret < 0) return ret;
 
     }else {
+        color_printk(GREEN,BLACK,"hub2.0!!! speed:%d psiv:%d port:%d  \n",udev->port_speed,udev->psiv,udev->root_port_num );
         // ==========================================
         // 🐢 USB 2.0/1.1 (High/Full/Low Speed) Hub 处理逻辑
         // 描述符类型：0x29，变长地雷，必须踩两步！
@@ -169,10 +177,28 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         usb_if_alt_t *mult_if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY,2);
         udev->hub_mtt = mult_if_alt ? 1 : 0;
 
+        usb_tx_begin(udev);
+        xhci_ep_ctx_t *input_ep1_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, 1);
+        color_printk(RED,BLACK,"ep1 status:%d max_pack:%d speed:%d psiv:%d port:%d  \n",input_ep1_ctx->ep_state,input_ep1_ctx->max_packet_size,udev->port_speed,udev->psiv,udev->root_port_num);
+
+
+        color_printk(RED,BLACK,"cur  \n");
         // 第一步：先读 8 字节探路
         usb_hub20_desc_t *hub20_desc = kzalloc_dma(71) ;
-        int32 ret = usb_hub20_get_desc(udev,hub20_desc, 8);
-        if (ret < 0) return ret;
+
+        int32 ret;
+
+        for (uint8 i=0;i<3;i++) {
+            ret = usb_hub20_get_desc(udev,hub20_desc, 8);
+
+            usb_tx_begin(udev);
+            xhci_ep_ctx_t *input_ep1_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, 1);
+            color_printk(RED,BLACK,"ep1 status:%d \n",input_ep1_ctx->ep_state);
+
+            if (ret == 0) break;
+        }
+
+        color_printk(RED,BLACK,"cur  \n");
 
         // 第二步：算出真实物理长度，再次读取
         uint8 num_ports = hub20_desc->num_ports;

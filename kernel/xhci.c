@@ -827,6 +827,7 @@ static int32 xhci_port_init(xhci_hcd_t *xhcd, uint8 port_id) {
 //xhci端口插入设备处理
 int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_id) {
         if (xhci_port_init(xhcd, port_id) == 0) {
+            color_printk(GREEN,BLACK,"[xHCI] Port %d  \n",port_id);
             usb_dev_t *udev = usb_dev_create(xhcd, NULL,port_id);
             usb_if_create(udev);
             usb_dev_register(udev);
@@ -848,15 +849,15 @@ int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_id) {
 
 //xhci port扫描
 void xhci_port_scan(xhci_hcd_t *xhcd){
-
     //等待硬件完成端口初始化
-    uint32 times = 30000000;
-    while (times) {
-        times--;
-        asm_pause();
-    }
+     uint32 times = 0x5000000;
+     while (times) {
+         times--;
+         asm_pause();
+     }
 
     for (uint8 i = 1; i <= xhcd->max_ports; i++) {
+        if (i == 3 || i == 10) continue;
         uint32 portsc = xhci_read_port(xhcd,i);
         if (portsc & XHCI_PORTSC_CCS ) {//目前采用轮训等待方式暂时只要ccs置为就进行初始化
             xhci_handle_port_connection(xhcd, i);

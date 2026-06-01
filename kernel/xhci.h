@@ -155,11 +155,6 @@ typedef struct {
 #define XHCI_PORTSC_OCA (1 << 3)
 #define XHCI_PORTSC_PR (1 << 4)
 #define XHCI_PORTSC_PP (1 << 9)
-#define XHCI_PORTSC_SPEED_FULL 1
-#define XHCI_PORTSC_SPEED_LOW 2
-#define XHCI_PORTSC_SPEED_HIGH 3
-#define XHCI_PORTSC_SPEED_SUPER 4
-#define XHCI_PORTSC_SPEED_SUPER_PLUS 5
 #define XHCI_PORTSC_PIC (3<<14)
 #define XHCI_PORTSC_LWS (1 << 16)
 #define XHCI_PORTSC_CSC (1 << 17)
@@ -1136,8 +1131,8 @@ static inline void  xhci_write_port(xhci_hcd_t *xhcd,uint8 port_id,uint32 protsc
 }
 
 //获取端口速率id
-static inline uint8 xhci_get_psi (xhci_hcd_t *xhcd,uint8 port_id) {
-    uint32 portsc = xhci_read_port(xhcd,port_id);
+static inline uint8 xhci_get_psi (xhci_hcd_t *xhcd,uint8 port_num) {
+    uint32 portsc = xhci_read_port(xhcd,port_num);
     return  (portsc >> 10) & 0xF;
 }
 

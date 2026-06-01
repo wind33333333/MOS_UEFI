@@ -341,7 +341,16 @@ int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
 
     // 4. 将面单抛给底层调度引擎
     int32 posix_err = usb_submit_urb(urb);
-    while (urb->is_done == FALSE) { asm_pause(); }
+
+    uint32 times = 0x7000000;
+    while (urb->is_done == FALSE && times) {
+        asm_pause();
+        times--;
+    }
+
+    if (times == 0) {
+        posix_err = ETIMEDOUT;
+    }
 
     usb_free_urb(urb);
     return posix_err;
@@ -1227,28 +1236,28 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     udev->input_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * ctx_size);
 
     //挂载到 O(1) 路由表
-    usb_ep_t *uep1 = kzalloc(sizeof(usb_ep_t));
-    udev->eps[1] = uep1;  //警告端点0为eps1，方便后续通过ep-dci查找端点。
+    usb_ep_t *uep0 = kzalloc(sizeof(usb_ep_t));
+    udev->eps[1] = uep0;  //警告端点0为eps1，方便后续通过ep-dci查找端点。
 
     // --- 计算初始 Max Packet Size ---
-    uint32 mps = (udev->port_speed >= XHCI_PORTSC_SPEED_SUPER) ? 512 :
-                 (udev->port_speed == XHCI_PORTSC_SPEED_HIGH)  ? 64  : 8;
+    uint32 mps = (udev->port_speed >= USB_SPEED_SUPER) ? 512 :
+                 (udev->port_speed == USB_SPEED_HIGH)  ? 64  : 8;
 
     //填充端点0
-    uep1->ep_dci = 1;
-    uep1->cerr = 3;
-    uep1->ep_type = 4; // Control Endpoint
-    uep1->max_packet_size = mps;
-    uep1->average_trb_length = mps;
-    uep1->max_streams_exp = 0;
-    uep1->enable_streams_exp = 0;
-    uep1->ring_max_trbs = 32;  //32个trb槽位就够了
-    usb_alloc_ep_ring(uep1);
+    uep0->ep_dci = 1;
+    uep0->cerr = 3;
+    uep0->ep_type = 4; // Control Endpoint
+    uep0->max_packet_size = mps;
+    uep0->average_trb_length = mps;
+    uep0->max_streams_exp = 0;
+    uep0->enable_streams_exp = 0;
+    uep0->ring_max_trbs = 32;  //32个trb槽位就够了
+    usb_alloc_ep_ring(uep0);
 
     // ---下发命令 ---
     usb_tx_begin(udev);
     usb_tx_init_slot(udev);
-    usb_tx_add_ep(udev,uep1);
+    usb_tx_add_ep(udev,uep0);
     usb_tx_commit(udev,USB_TX_CMD_ADDR_DEV);
 
     return 0;
@@ -1268,7 +1277,7 @@ static inline int32 usb_get_dev_desc(usb_dev_t *udev) {
     // ============================
     // 全速设备 (FS) 的 8 字节刺探与修正逻辑
     // ============================
-    if (udev->port_speed == XHCI_PORTSC_SPEED_FULL) {
+    if (udev->port_speed == USB_SPEED_FULL) {
 
         // 探针：只拿前 8 字节
         _usb_get_dev_desc(udev,dev_desc,8);
@@ -1406,6 +1415,10 @@ usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, usb_dev_t *parent_hub,uint32 port_nu
     usb_get_dev_desc(udev);    //获取设备描述符
     usb_get_cfg_desc(udev);    //获取配置描述符
     usb_get_string_desc(udev); //获取字符串描述符
+
+    if (port_num == 4 ) {
+        color_printk(RED,BLACK,"psi:%d speed:%d psiv:%d port:%d  \n",psi,udev->port_speed,udev->psiv,udev->root_port_num);
+    }
 
 
     return udev;
