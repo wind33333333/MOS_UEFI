@@ -148,13 +148,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
 
     usb_set_cfg(uif->udev);
 
-    uint32 times = 0xA000000;
-    while (times) {
-        times--;
-        asm_pause();
-    }
-
-    if (udev->dev_desc->product_id >= 3) {
+    if (udev->port_speed > USB_SPEED_HIGH) {
         color_printk(GREEN,BLACK,"hub3.0!!! speed:%d psiv:%d port:%d  \n",udev->port_speed,udev->psiv,udev->root_port_num );
         // ==========================================
         // 🚀 USB 3.0 (SuperSpeed) Hub 处理逻辑
@@ -306,8 +300,6 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
 
     }
 
-
-    while (1);
 }
 
 void usb_hub_remove(usb_if_t *usb_if) {

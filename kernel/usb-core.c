@@ -1416,11 +1416,6 @@ usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, usb_dev_t *parent_hub,uint32 port_nu
     usb_get_cfg_desc(udev);    //获取配置描述符
     usb_get_string_desc(udev); //获取字符串描述符
 
-    if (port_num == 4 ) {
-        color_printk(RED,BLACK,"psi:%d speed:%d psiv:%d port:%d  \n",psi,udev->port_speed,udev->psiv,udev->root_port_num);
-    }
-
-
     return udev;
 }
 
