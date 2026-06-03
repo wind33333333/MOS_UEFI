@@ -171,12 +171,10 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         usb_if_alt_t *mult_if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY,2);
         udev->hub_mtt = mult_if_alt ? 1 : 0;
 
-        usb_tx_begin(udev);
+        usb_ctx_sync(udev);
         xhci_ep_ctx_t *input_ep1_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, 1);
         color_printk(RED,BLACK,"ep1 status:%d max_pack:%d speed:%d psiv:%d port:%d  \n",input_ep1_ctx->ep_state,input_ep1_ctx->max_packet_size,udev->port_speed,udev->psiv,udev->root_port_num);
 
-
-        color_printk(RED,BLACK,"cur  \n");
         // 第一步：先读 8 字节探路
         usb_hub20_desc_t *hub20_desc = kzalloc_dma(71) ;
 
@@ -185,14 +183,12 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         for (uint8 i=0;i<3;i++) {
             ret = usb_hub20_get_desc(udev,hub20_desc, 8);
 
-            usb_tx_begin(udev);
+            usb_ctx_sync(udev);
             xhci_ep_ctx_t *input_ep1_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, 1);
             color_printk(RED,BLACK,"ep1 status:%d \n",input_ep1_ctx->ep_state);
 
             if (ret == 0) break;
         }
-
-        color_printk(RED,BLACK,"cur  \n");
 
         // 第二步：算出真实物理长度，再次读取
         uint8 num_ports = hub20_desc->num_ports;
@@ -208,12 +204,12 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         hub->power_delay_ms = hub20_desc->power_on_to_power_good<<1;
 
         //更新slot
-        usb_tx_begin(udev);
-        usb_tx_eval_slot(udev);
-        usb_tx_commit(udev,USB_TX_CMD_CFG_EP);
+        usb_ctx_sync(udev);
+        usb_ctx_eval_slot(udev);
+        usb_ctx_commit(udev,USB_TX_CMD_CFG_EP);
 
-        usb_tx_begin(udev);
-        usb_tx_eval_slot(udev);
+        usb_ctx_sync(udev);
+        usb_ctx_eval_slot(udev);
 
         while (1);
 

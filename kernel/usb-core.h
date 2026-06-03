@@ -675,6 +675,6 @@ static inline int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
                            USB_REQ_SET_INTERFACE, alt_num, if_num, 0);
 }
 
-void usb_tx_begin(usb_dev_t *udev);
-void usb_tx_eval_slot(usb_dev_t *udev);
-int32 usb_tx_commit(usb_dev_t *udev, usb_tx_cmd_e cmd_type);
+void usb_ctx_sync(usb_dev_t *udev);
+void usb_ctx_eval_slot(usb_dev_t *udev);
+int32 usb_ctx_commit(usb_dev_t *udev, usb_tx_cmd_e cmd_type);
