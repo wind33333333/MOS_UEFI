@@ -410,9 +410,9 @@ static inline int32 usb_get_bos_desc(usb_dev_t *udev, void *buf, uint16 len) {
 //============================================== 上下文操作函数 ===========================================================
 
 /**
- * @brief [内部工具] 统一根据推演状态，更新 Slot 的 context_entries
+ * @brief [内部工具] 统一根据推演状态，更新context_entries
  */
-static void usb_ctx_slot_update_entries(usb_dev_t *udev) {
+static void usb_ctx_update_entries(usb_dev_t *udev) {
     xhci_input_ctx_t *input_ctx = udev->input_ctx;
 
     // ★ 核心算法：计算出“事务成功后”的投影位图 (忽略 Slot 本身 Bit 0)
@@ -421,10 +421,8 @@ static void usb_ctx_slot_update_entries(usb_dev_t *udev) {
 
     uint8 new_max_dci = 31 - asm_lzcnt32(projected_map);
 
-    xhci_slot_ctx_t *input_slot_ctx = xhci_get_input_ctx_entry(udev->xhcd, input_ctx, 0);
-    if (input_slot_ctx->context_entries != new_max_dci) {
-        input_slot_ctx->context_entries = new_max_dci;
-        input_ctx->add_context_flags |= (1 << 0); // 声明 Slot 图纸被涂改
+    if (udev->context_entries != new_max_dci) {
+        udev->context_entries = new_max_dci;
     }
 }
 
@@ -435,13 +433,15 @@ static void usb_ctx_slot_update_entries(usb_dev_t *udev) {
  * 硬件会根据下发的命令类型，自动提取它关心的字段，忽略不关心的字段。
  * @param udev 目标 USB 设备 (真理之源)
  */
-void usb_ctx_slot_sync(usb_dev_t *udev) {
+static void usb_ctx_slot_sync(usb_dev_t *udev) {
     // 1. 强制打上 Slot 图纸被涂改的标记 (Bit 0 特权)
     // 既然是全量同步，Slot 必定被修改，直接置位
     udev->input_ctx->add_context_flags |= (1 << 0);
 
     // 2. 拿到 Slot Context 的图纸指针
     xhci_slot_ctx_t *slot = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, 0);
+
+    usb_ctx_update_entries(udev);
 
     // ===================================================================
     // 维度 A：基础物理与路由属性 (Address Device 创世阶段核心)
@@ -451,6 +451,7 @@ void usb_ctx_slot_sync(usb_dev_t *udev) {
     slot->root_hub_port_num = udev->root_port_num;
     slot->parent_hub_slot_id = udev->parent_hub ? udev->parent_hub->slot_id : 0;
     slot->parent_port_num = udev->parent_port_num;
+    slot->context_entries = udev->context_entries;
 
     // ===================================================================
     // 维度 B：集线器全局拓扑属性 (Configure Endpoint 基建阶段核心)
@@ -487,6 +488,7 @@ static void usb_ctx_ep_sync(usb_dev_t *udev, usb_ep_t *ep) {
 }
 
 
+
 /**
  * @brief 开启一个事务：将硬件真实状态同步到input
  */
@@ -505,61 +507,36 @@ void usb_ctx_sync(usb_dev_t *udev) {
     asm_mem_cpy(udev->dev_ctx, sw_ctx, udev->xhcd->ctx_size * 32);
 }
 
-/**
- * @brief [纯内存] 准备增加一个端点
- */
-void usb_ctx_add_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
-    // 1. 打上新增标记
-    udev->input_ctx->add_context_flags |= (1 << new_ep->ep_dci);
-
-    // 2. 动态推高 context_entries
-    usb_ctx_slot_update_entries(udev);
-
-    // 3.同步端点
-    usb_ctx_ep_sync(udev,new_ep);
-
-}
 
 /**
- * @brief [纯内存] 准备删除一个端点
+ * @brief 端点操作意图枚举
  */
-void usb_ctx_drop_ep(usb_dev_t *udev, usb_ep_t *ep) {
-    // 1. 打上死刑标记
-    udev->input_ctx->drop_context_flags |= (1 << ep->ep_dci);
-
-    // 2. ★ 使用你的 O(1) 汇编魔法，算出删除后的新 context_entries
-    usb_ctx_slot_update_entries(udev);
-
-}
+typedef enum {
+    USB_CTX_EP_ADD,       // 增：新建端点
+    USB_CTX_EP_DROP,      // 删：强拆端点
+    USB_CTX_EP_EVAL,      // 调：微调属性 (专用于 EP0)
+    USB_CTX_EP_RECONFIG   // 改：同位热重构 (先破后立)
+} usb_ctx_ep_op_e;
 
 /**
- * @brief [纯内存] 准备微调端点参数 (仅限 Evaluate Context 使用)
- * @note 绝不能置位 Drop Flag！常用于修正 EP0 的包长。
+ * @brief 3. 大一统端点推演引擎 (取代了原本散落的 4 个函数)
  */
-void usb_ctx_eval_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
-    // 1. 仅打上添加(微调)标记
-    udev->input_ctx->add_context_flags |= (1 << new_ep->ep_dci);
+void usb_ctx_ep_op(usb_dev_t *udev, usb_ep_t *ep, usb_ctx_ep_op_e op) {
+    xhci_input_ctx_t *input_ctx = udev->input_ctx;
+    uint8 dci = ep->ep_dci;
 
-    // 2. 拷贝新参数覆写图纸
-    usb_ctx_ep_sync(udev, new_ep);
+    // 解析 Add 意图：只要是新建、微调、热重构，都必须置位并同步最新软件属性
+    if (op == USB_CTX_EP_ADD || op == USB_CTX_EP_EVAL || op == USB_CTX_EP_RECONFIG) {
+        input_ctx->add_context_flags |= (1 << dci);
+        usb_ctx_ep_sync(udev, ep);
+    }
+
+    // 解析 Drop 意图：只要是强拆、热重构，都必须置位，通知硬件回收旧资源
+    if (op == USB_CTX_EP_DROP || op == USB_CTX_EP_RECONFIG) {
+        input_ctx->drop_context_flags |= (1 << dci);
+    }
 
 }
-
-/**
- * @brief [纯内存] 重建/热更新端点参数 (用于开启多流等核心属性变更)
- * @note 必须由 Configure Endpoint Command 提交。硬件会先拆除旧端点，再同屏无缝建立新端点。
- */
-void usb_ctx_reconfig_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
-    // 1. 打上死刑标记 (告诉硬件：旧的图纸作废了)
-    udev->input_ctx->drop_context_flags |= (1 << new_ep->ep_dci);
-
-    // 2. 打上新生标记 (告诉硬件：在同一个位置，按新图纸原地重建)
-    udev->input_ctx->add_context_flags |= (1 << new_ep->ep_dci);
-
-    // 4. 拷贝包含新属性 (如 max_streams 等) 的图纸
-    usb_ctx_ep_sync(udev, new_ep);
-}
-
 
 
 /**
@@ -571,6 +548,8 @@ void usb_ctx_reconfig_ep(usb_dev_t *udev, usb_ep_t *new_ep) {
 int32 usb_ctx_commit(usb_dev_t *udev, usb_tx_cmd_e cmd_type) {
     xhci_input_ctx_t *input_ctx = udev->input_ctx;
     int32 ret = 0;
+
+    usb_ctx_slot_sync(udev);
 
     // ==========================================
     // 阶段 1：根据指令类型，扣动对应的物理硬件扳机
