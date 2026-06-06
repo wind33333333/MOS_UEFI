@@ -694,10 +694,4 @@ typedef struct {
     usb_ctx_ep_op_e op;
 } usb_ctx_action_t;
 
-typedef struct {
-    usb_ctx_cmd_e cmd;
-    usb_ctx_action_t *actions;       // 端点操作数组
-    uint8 action_count;
-} usb_ctx_txn_t;
-
-int32 usb_ctx_execute(usb_dev_t *udev, usb_ctx_txn_t *txn);
+int32 usb_ctx_execute(usb_dev_t *udev, usb_ctx_cmd_e cmd,usb_ctx_action_t *actions,uint8 action_count);
