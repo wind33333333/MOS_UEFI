@@ -415,7 +415,7 @@ static inline int32 usb_get_bos_desc(usb_dev_t *udev, void *buf, uint16 len) {
 static inline void usb_ctx_sync(usb_dev_t *udev) {
     // 1. 物理清零管控中心 (Input Control Context，占 1 个 ctx_size)
     // 彻底消灭上一次下发命令残留的 Add/Drop 幽灵标志位
-    input_ctrl_ctx_t *input_ctrl_ctx = udev->input_ctrl_ctx;
+    input_ctrl_ctx_t *input_ctrl_ctx = udev->in_ctx;
     input_ctrl_ctx->add_context_flags = 0;
     input_ctrl_ctx->drop_context_flags = 0;
 
@@ -425,7 +425,7 @@ static inline void usb_ctx_sync(usb_dev_t *udev) {
     void *input_ctx = xhci_get_input_ctx_entry(input_ctrl_ctx,0,ctx_size);
 
     // 3. 拷贝 32 个 Context (1 个 Slot + 31 个 EP)
-    asm_mem_cpy(udev->dev_ctx, input_ctx, ctx_size * 32);
+    asm_mem_cpy(udev->out_ctx, input_ctx, ctx_size * 32);
 }
 
 
@@ -436,7 +436,7 @@ static inline void usb_ctx_sync(usb_dev_t *udev) {
  * @param udev 目标 USB 设备 (真理之源)
  */
 static inline void usb_ctx_slot_sync(usb_dev_t *udev) {
-    input_ctrl_ctx_t *input_ctrl_ctx = udev->input_ctrl_ctx;
+    input_ctrl_ctx_t *input_ctrl_ctx = udev->in_ctx;
 
     // 1. 核心算法：算出投影位图并更新 context_entries
     uint32 projected_map = (udev->active_ep_map | input_ctrl_ctx->add_context_flags) & ~input_ctrl_ctx->drop_context_flags;
@@ -477,14 +477,14 @@ static inline void usb_ctx_slot_sync(usb_dev_t *udev) {
 
 //同步端点上下文属性
 static inline void usb_ctx_ep_sync(usb_dev_t *udev, usb_ep_t *ep,usb_ctx_ep_op_e op) {
-    input_ctrl_ctx_t *input_ctrl_ctx = udev->input_ctrl_ctx;
+    input_ctrl_ctx_t *input_ctrl_ctx = udev->in_ctx;
     uint8 dci = ep->ep_dci;
 
     // 解析 Add 意图：只要是新建、微调、热重构，都必须置位并同步最新软件属性
     if (op == USB_CTX_EP_ADD || op == USB_CTX_EP_EVAL || op == USB_CTX_EP_RECONFIG) {
         input_ctrl_ctx->add_context_flags |= (1 << dci);
 
-        xhci_ep_ctx_t *ep_ctx = xhci_get_input_ctx_entry(udev->input_ctrl_ctx, dci,udev->xhcd->ctx_size);
+        xhci_ep_ctx_t *ep_ctx = xhci_get_input_ctx_entry(udev->in_ctx, dci,udev->xhcd->ctx_size);
         ep_ctx->mult = ep->mult;
         ep_ctx->max_pstreams = ep->enable_streams_exp;
         ep_ctx->lsa = ep->lsa;
@@ -515,7 +515,7 @@ static inline void usb_ctx_ep_sync(usb_dev_t *udev, usb_ep_t *ep,usb_ctx_ep_op_e
  * @return 0 表示成功，非 0 表示硬件拒绝并已回滚
  */
 static inline int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type) {
-    input_ctrl_ctx_t *input_ctrl_ctx = udev->input_ctrl_ctx;
+    input_ctrl_ctx_t *input_ctrl_ctx = udev->in_ctx;
     int32 ret = 0;
 
     // ==========================================
@@ -605,6 +605,199 @@ int32 usb_ctx_execute(usb_dev_t *udev, usb_ctx_cmd_e cmd,usb_ctx_action_t *actio
     return usb_ctx_commit(udev,cmd);
 
 }
+
+//////////////////////////////////////////////////////////////////////
+/**
+ * @brief 开启一个事务：将硬件真实状态同步到input
+ */
+static inline void usb_ctx_sync(usb_dev_t *udev) {
+    // 1. 物理清零管控中心 (Input Control Context，占 1 个 ctx_size)
+    // 彻底消灭上一次下发命令残留的 Add/Drop 幽灵标志位
+    input_ctrl_ctx_t *input_ctrl_ctx = udev->in_ctx;
+    input_ctrl_ctx->add_context_flags = 0;
+    input_ctrl_ctx->drop_context_flags = 0;
+
+    // 2. 完美的移花接木：将主板维护的 Device Context 拷贝到 Input Context 的数据区
+    // 注意偏移量：Input Context 从第 1 个条目开始，才是 Slot 和 EP
+    uint8 ctx_size = udev->xhcd->ctx_size;
+    void *input_ctx = xhci_get_input_ctx_entry(input_ctrl_ctx,0,ctx_size);
+
+    // 3. 拷贝 32 个 Context (1 个 Slot + 31 个 EP)
+    asm_mem_cpy(udev->out_ctx, input_ctx, ctx_size * 32);
+}
+
+/**
+ * @brief [纯内存] 全量同步 Slot 上下文
+ * @note 无论是创世(Address)、基建(CFG_EP)还是微调(EVAL_CTX)，统一调用此函数。
+ * 硬件会根据下发的命令类型，自动提取它关心的字段，忽略不关心的字段。
+ * @param udev 目标 USB 设备 (真理之源)
+ */
+static inline void usb_ctx_slot_sync(usb_dev_t *udev) {
+    input_ctrl_ctx_t *input_ctrl_ctx = udev->in_ctx;
+
+    // 1. 核心算法：算出投影位图并更新 context_entries
+    uint32 projected_map = (udev->active_ep_map | input_ctrl_ctx->add_context_flags) & ~input_ctrl_ctx->drop_context_flags;
+    udev->context_entries = 31 - asm_lzcnt32(projected_map);
+
+    // 2. 强制打上 Slot 图纸被涂改的标记 (Bit 0 特权)
+    // 既然是全量同步，Slot 必定被修改，直接置位
+    input_ctrl_ctx->add_context_flags |= (1 << 0);
+
+    // 3. 拿到 Slot Context 的图纸指针
+    xhci_slot_ctx_t *slot = xhci_get_input_ctx_entry(input_ctrl_ctx, 0,udev->xhcd->ctx_size);
+
+    // ===================================================================
+    // 维度 A：基础物理与路由属性 (Address Device 创世阶段核心)
+    // ===================================================================
+    slot->route_string = udev->route_string;
+    slot->speed = udev->psiv;
+    slot->root_hub_port_num = udev->root_port_num;
+    slot->parent_hub_slot_id = udev->parent_hub ? udev->parent_hub->slot_id : 0;
+    slot->parent_port_num = udev->parent_port_num;
+    slot->context_entries = udev->context_entries;
+
+    // ===================================================================
+    // 维度 B：集线器全局拓扑属性 (Configure Endpoint 基建阶段核心)
+    // ===================================================================
+    slot->is_hub = udev->is_hub;
+    slot->num_ports = udev->hub_num_ports;
+    slot->mtt = udev->hub_mtt;
+    slot->tt_think_time = udev->hub_ttt;
+
+    // ===================================================================
+    // 维度 C：行政路由与电源管理 (Evaluate Context 微调阶段核心)
+    // ===================================================================
+    slot->interrupter_target = udev->interrupter_target;
+    slot->max_exit_latency = udev->max_exit_latency;
+}
+
+//增加一个端点上下文
+static inline void usb_ctx_ep_add_flags(usb_dev_t *udev, usb_ep_t *ep) {
+    input_ctrl_ctx_t *input_ctrl_ctx = udev->in_ctx;
+    uint8 dci = ep->ep_dci;
+    input_ctrl_ctx->add_context_flags |= (1 << dci);
+
+    xhci_ep_ctx_t *ep_ctx = xhci_get_input_ctx_entry(udev->in_ctx, dci,udev->xhcd->ctx_size);
+    ep_ctx->mult = ep->mult;
+    ep_ctx->max_pstreams = ep->enable_streams_exp;
+    ep_ctx->lsa = ep->lsa;
+    ep_ctx->interval = ep->interval;
+    ep_ctx->max_esit_payload_hi = (ep->max_esit_payload>>16)&0xFF;
+    ep_ctx->cerr = ep->cerr;
+    ep_ctx->ep_type = ep->ep_type;
+    ep_ctx->hid = ep->hid;
+    ep_ctx->max_burst_size = ep->max_burst;
+    ep_ctx->max_packet_size = ep->max_packet_size;
+    ep_ctx->tr_dequeue_ptr = ep->trq_phys_addr;
+    ep_ctx->average_trb_length = ep->average_trb_length;
+    ep_ctx->max_esit_payload_lo = ep->max_esit_payload&0xFFFF;
+
+}
+
+
+typedef enum : uint8 {
+    USB_CTX_CMD_ADDR,    // 事务：分配地址 (无中生有创世)
+    USB_CTX_CMD_EVAL,    // 事务：评估上下文 (微调参数，如 EP0 包长)
+    USB_CTX_CMD_CFG,      // 事务：配置端点 (常规增删业务端点，DC=0)
+    USB_CTX_CMD_CLEAR    // 事务：格式化端点 (一键抹除所有业务端点，保留 EP0，DC=1)
+} usb_ctx_cmd_e;
+
+/**
+ * @brief [物理通信] 统一事务提交引擎：下发命令，等待判决，同步状态
+ * @param udev     目标 USB 设备
+ * @param cmd_type 事务指令类型
+ * @return 0 表示成功，非 0 表示硬件拒绝并已回滚
+ */
+static int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type) {
+    input_ctrl_ctx_t *in_ctx = udev->in_ctx;
+    int32 ret = 0;
+
+    // 1. 发射物理指令
+    switch (cmd_type) {
+        case USB_CTX_CMD_ADDR:      ret = xhci_cmd_addr_dev(udev->xhcd, udev->slot_id, in_ctx); break;
+        case USB_CTX_CMD_EVAL:      ret = xhci_cmd_eval_ctx(udev->xhcd, udev->slot_id, in_ctx); break;
+        case USB_CTX_CMD_CFG:       ret = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, in_ctx, 0); break;
+        case USB_CTX_CMD_CLEAR:     ret = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, NULL, 1); break;
+        default: return -EINVAL;
+    }
+
+    if (ret != 0) return ret; // 硬件拒绝，完美回滚
+
+    // 2. 🌟 事务成功，真理对齐！(修复了你的状态丢失 Bug)
+    if (cmd_type == USB_CTX_CMD_CLEAR) {
+        udev->active_ep_map = (1 << 0) | (1 << 1); // 仅留 Slot 和 EP0
+        udev->context_entries = 1;                 // 瞬间格式化最大端点
+    } else {
+        udev->active_ep_map &= ~udev->in_ctx->drop_context_flags;
+        udev->active_ep_map |= udev->in_ctx->add_context_flags;
+    }
+
+    return 0;
+}
+
+
+//删除一个端点上下文
+static inline void usb_ctx_ep_drop_flags(usb_dev_t *udev, usb_ep_t *ep) {
+    udev->in_ctx->drop_context_flags |= (1 << ep->ep_dci);
+}
+
+//创建slot ep0 context
+int32 usb_ctx_addr_dev(usb_dev_t *udev) {
+    usb_ctx_ep_add_flags(udev,udev->eps[1]);
+    usb_ctx_slot_sync(udev);
+    return usb_ctx_commit(udev,USB_CTX_CMD_ADDR);
+}
+
+//配置slot context
+int32 usb_ctx_slot_cfg(usb_dev_t *udev) {
+    usb_ctx_sync(udev);
+    usb_ctx_slot_sync(udev);
+    return usb_ctx_commit(udev,USB_CTX_CMD_CFG);
+}
+
+//微调slot context
+int32 usb_ctx_slot_eval(usb_dev_t *udev) {
+    usb_ctx_sync(udev);
+    usb_ctx_slot_sync(udev);
+    return usb_ctx_commit(udev,USB_CTX_CMD_EVAL);
+}
+
+//微调ep0
+int32 usb_ctx_ep0_eval(usb_dev_t *udev) {
+    usb_ctx_sync(udev);
+    usb_ctx_ep_add_flags(udev,udev->eps[1]);
+    usb_ctx_slot_sync(udev);
+    return usb_ctx_commit(udev,USB_CTX_CMD_EVAL);
+}
+
+//批量增加业务端点
+int32 usb_ctx_ep_add(usb_if_alt_t *uif_alt) {
+    usb_dev_t *udev = uif_alt->uif->udev;
+    usb_ctx_sync(udev);
+    for (uint8 i = 0; i < uif_alt->if_desc->num_endpoints; i++) {
+        usb_ctx_ep_add_flags(udev,&uif_alt->eps[i]);
+    }
+    usb_ctx_slot_sync(udev);
+    return usb_ctx_commit(udev,USB_CTX_CMD_CFG);
+}
+
+//批量修改业务端点
+int32 usb_ctx_ep_change(usb_if_alt_t *uif_alt) {
+    usb_dev_t *udev = uif_alt->uif->udev;
+    usb_ctx_sync(udev);
+    for (uint8 i = 0; i < uif_alt->if_desc->num_endpoints; i++) {
+        usb_ctx_ep_drop_flags(udev,&uif_alt->eps[i]);
+        usb_ctx_ep_add_flags(udev,&uif_alt->eps[i]);
+    }
+    usb_ctx_slot_sync(udev);
+    return usb_ctx_commit(udev,USB_CTX_CMD_CFG);
+}
+
+//批量清空业务端点
+int32 usb_ctx_ep_clear(usb_dev_t *udev ) {
+    return usb_ctx_commit(udev,USB_CTX_CMD_CLEAR);
+}
+
 
 
 //===================================================================================================================
@@ -738,6 +931,8 @@ static int32 usb_free_ep_ring(usb_ep_t *ep) {
 }
 
 
+
+
 /**
  * @brief 在接口中寻找匹配指定 Class/SubClass/Protocol 的备用接口
  * @param uif      目标 USB 接口对象
@@ -772,12 +967,12 @@ usb_if_alt_t* usb_find_alt_if(usb_if_t *uif, int16 class, int16 subclass, int16 
  */
 int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // 1. 终极防御：如果搜索函数返回了 NULL，或者这是一个脏指针，直接拦截！
-    if (new_alt == NULL || new_alt->ifs == NULL) return -EINVAL;
+    if (new_alt == NULL || new_alt->uif == NULL) return -EINVAL;
 
     int32 posix = 0;
 
     // 2. 顺藤摸瓜：通过你的反向指针，直接拉出上层接口和设备对象！
-    usb_if_t *uif = new_alt->ifs;
+    usb_if_t *uif = new_alt->uif;
     usb_dev_t *udev = uif->udev;
 
     // 注意：设备刚刚插入进行 Config 初始化时，cur_alt 是 NULL，必须防范
@@ -902,7 +1097,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
  * @return int32  最终成功协商出的流指数。如果为 0，表示全线降级为普通环。
  */
 int32 usb_cfg_alt_if_resources(usb_if_alt_t *alt,uint8 want_streams_exp, uint32 want_trb_size) {
-    if (!alt || !alt->ifs->udev || !alt->if_desc) return -EINVAL;
+    if (!alt || !alt->uif->udev || !alt->if_desc) return -EINVAL;
 
     uint8 final_exp = 0;
     uint8 num_eps = alt->if_desc->num_endpoints;
@@ -911,7 +1106,7 @@ int32 usb_cfg_alt_if_resources(usb_if_alt_t *alt,uint8 want_streams_exp, uint32 
     // 阶段 1：【精准算计】只和“有能力开流”的端点进行博弈
     // =========================================================================
     if (want_streams_exp > 0) {
-        uint8 host_max = alt->ifs->udev->xhcd->max_streams_exp;
+        uint8 host_max = alt->uif->udev->xhcd->max_streams_exp;
         final_exp = (host_max < want_streams_exp) ? host_max : want_streams_exp;
 
         for (uint8 i = 0; i < num_eps; i++) {
@@ -1129,7 +1324,7 @@ int32 usb_if_create(usb_dev_t *udev) {
                     if (cur_if->num_if_alts == 0) cur_if->if_alts = cur_alt;
                     cur_if->num_if_alts++;
 
-                    cur_alt->ifs = cur_if;
+                    cur_alt->uif = cur_if;
                     cur_alt->if_desc = (usb_if_desc_t *)desc_head;
                     cur_alt->eps = eps_pool;
 
@@ -1194,12 +1389,12 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
 
     //分配设备上下文
     uint8 ctx_size = xhcd->ctx_size;
-    udev->dev_ctx = kzalloc_dma(XHCI_DEVICE_CONTEXT_COUNT * ctx_size);
-    xhcd->dcbaap[udev->slot_id] = va_to_pa(udev->dev_ctx);
+    udev->out_ctx = kzalloc_dma(XHCI_DEVICE_CONTEXT_COUNT * ctx_size);
+    xhcd->dcbaap[udev->slot_id] = va_to_pa(udev->out_ctx);
     xhcd->udevs[udev->slot_id] = udev;
 
     //分配input上下文
-    udev->input_ctrl_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * ctx_size);
+    udev->in_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * ctx_size);
 
     //挂载到 O(1) 路由表
     usb_ep_t *uep0 = kzalloc(sizeof(usb_ep_t));

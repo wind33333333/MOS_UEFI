@@ -347,11 +347,11 @@ int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id) {
 
 
 //设置设备地址
-int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,input_ctrl_ctx_t *input_ctx) {
+int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,input_ctrl_ctx_t *in_ctx) {
     // 1. 组装cmd_trb
     xhci_trb_t cmd_trb = {0};
     cmd_trb.addr_dev.trb_type = XHCI_TRB_TYPE_ADDRESS_DEVICE;
-    cmd_trb.addr_dev.input_ctx_ptr = va_to_pa(input_ctx);
+    cmd_trb.addr_dev.input_ctx_ptr = va_to_pa(in_ctx);
     cmd_trb.addr_dev.slot_id = slot_id;
     cmd_trb.addr_dev.bsr = 0;
 
@@ -368,11 +368,11 @@ int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,input_ctrl_ctx_t *input_
  * @param slot_id         目标 Slot ID
  * @param dc              Deconfigure 标志 (0=配置端点, 1=一键清除所有业务端点)
  */
-int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, input_ctrl_ctx_t *input_ctx, uint8 slot_id, uint8 dc) {
+int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, uint8 slot_id, input_ctrl_ctx_t *in_ctx, uint8 dc) {
     // 1. 组装cmd_trb
     xhci_trb_t cmd_trb = {0};
     cmd_trb.cfg_ep.trb_type = XHCI_TRB_TYPE_CONFIGURE_EP;
-    cmd_trb.cfg_ep.input_ctx_ptr = va_to_pa(input_ctx);
+    cmd_trb.cfg_ep.input_ctx_ptr = va_to_pa(in_ctx);
     cmd_trb.cfg_ep.slot_id = slot_id;
     cmd_trb.cfg_ep.dc = dc;
 
@@ -388,11 +388,11 @@ int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, input_ctrl_ctx_t *input_ctx, uint8 slot_
  * @param input_ctx_pa    Input Context 的物理地址
  * @param slot_id         目标 Slot ID
  */
-int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, input_ctrl_ctx_t *input_ctx, uint8 slot_id) {
+int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, uint8 slot_id, input_ctrl_ctx_t *in_ctx) {
     // 1. 组装cmd_trb
     xhci_trb_t cmd_trb = {0};
     cmd_trb.eval_ctx.trb_type = XHCI_TRB_TYPE_EVALUATE_CTX;
-    cmd_trb.eval_ctx.input_ctx_ptr = va_to_pa(input_ctx);
+    cmd_trb.eval_ctx.input_ctx_ptr = va_to_pa(in_ctx);
     cmd_trb.eval_ctx.slot_id = slot_id;
 
     int32 status = xhci_submit_cmd(xhcd,&cmd_trb,NULL);

@@ -425,7 +425,7 @@ typedef struct usb_ep_t {
 
 //usb备用接口
 typedef struct usb_if_alt_t {
-    struct usb_if_t *ifs;
+    struct usb_if_t *uif;
     usb_if_desc_t *if_desc;  // 指向 cfg_raw 内
     void          *extras_desc; //接口似有描述符
     uint16        extras_len;
@@ -483,8 +483,8 @@ typedef struct usb_dev_t{
     // 4. 仅为xhci定制强绑定
     uint8                           slot_id;
     uint16                          interrupter_target;
-    void                            *dev_ctx;            // 设备上下文
-    input_ctrl_ctx_t                *input_ctrl_ctx;     // 输入上下文
+    void                            *out_ctx;    // 硬件状态
+    input_ctrl_ctx_t                *in_ctx;     // 软件状态
     uint32                          active_ep_map;       //当前活跃的端点图
     xhci_hcd_t                      *xhcd;              // xhci控制器
     void                            *drv_data;
@@ -671,12 +671,6 @@ static inline int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
 }
 
 
-typedef enum : uint8 {
-    USB_CTX_CMD_ADDR,    // 事务：分配地址 (无中生有创世)
-    USB_CTX_CMD_EVAL,    // 事务：评估上下文 (微调参数，如 EP0 包长)
-    USB_CTX_CMD_CFG,      // 事务：配置端点 (常规增删业务端点，DC=0)
-    USB_CTX_CMD_DECFG_ALL    // 事务：格式化端点 (一键抹除所有业务端点，保留 EP0，DC=1)
-} usb_ctx_cmd_e;
 
 /**
  * @brief 端点操作意图枚举
