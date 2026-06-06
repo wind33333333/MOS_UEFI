@@ -51,6 +51,7 @@ typedef struct {
                                - CTC (位 3): 符合性测试能力
                                - LEC (位 4): 大型ESIT有效负载能力
                                - CIC (位 5): 配置信息能力*/
+#define XHCI_HCCPARAMS2_CIC (1u << 5)
 } xhci_cap_regs_t;
 
 // ===== 2. 操作寄存器 (Operational Registers) =====
@@ -120,6 +121,18 @@ typedef struct {
 
     // 38h: 配置寄存器 (CONFIG)
     uint32 config; // [7:0] 启用的设备槽数 (值≤MaxSlots)
+    /*
+ * bits[7:0]  MaxSlotsEn：启用的设备槽数量，必须 <= HCSPARAMS1.MaxSlots
+ * bit 8      U3 Entry Enable：是否允许设备进入 U3，具体依规范版本/实现
+ * bit 9      CIE：Configuration Information Enable
+ *             1 = 启用 Input Control Context offset 0x1C 的
+ *                 Configuration Value / Interface Number / Alternate Setting 字段
+ *             0 = 不启用，这些字段必须清 0
+ * bits[31:10] Reserved
+ */
+#define XHCI_CONFIG_MAX_SLOTS_MASK  0xFF
+#define XHCI_CONFIG_U3E             (1u << 8)
+#define XHCI_CONFIG_CIE             (1u << 9)
 
     // 保留字段 (Reserved), 偏移 0x3C-0x3FF, 填充到端口寄存器之前
     uint32 reserved2[241];

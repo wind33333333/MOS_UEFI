@@ -514,7 +514,7 @@ static inline void usb_ctx_ep_sync(usb_dev_t *udev, usb_ep_t *ep,usb_ctx_ep_op_e
  * @param cmd_type 事务指令类型
  * @return 0 表示成功，非 0 表示硬件拒绝并已回滚
  */
-static inline int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type,usb_icc_env_t *icc_env) {
+static inline int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type) {
     input_ctrl_ctx_t *input_ctrl_ctx = udev->input_ctrl_ctx;
     int32 ret = 0;
 
@@ -531,10 +531,6 @@ static inline int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type,usb_i
             break;
 
         case USB_CTX_CMD_CFG:
-            input_ctrl_ctx->configuration_value = icc_env->config_val;
-            input_ctrl_ctx->interface_number = icc_env->intf_num;
-            input_ctrl_ctx->alternate_setting = icc_env->alt_setting;
-            input_ctrl_ctx->reserved1= 0;
             ret = xhci_cmd_cfg_ep(udev->xhcd, input_ctrl_ctx, udev->slot_id, 0); // DC = 0
             break;
 
@@ -607,7 +603,7 @@ int32 usb_ctx_execute(usb_dev_t *udev, usb_ctx_txn_t *txn){
     // ==========================================
     // 阶段 4：智能防御与环境刻录 (隔离 CFG 的特殊逻辑)
     // ==========================================
-    return usb_ctx_commit(udev,txn->cmd,&txn->icc_env);
+    return usb_ctx_commit(udev,txn->cmd);
 
 }
 

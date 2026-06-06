@@ -671,7 +671,12 @@ static inline int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
 }
 
 
-
+typedef enum : uint8 {
+    USB_CTX_CMD_ADDR,    // 事务：分配地址 (无中生有创世)
+    USB_CTX_CMD_EVAL,    // 事务：评估上下文 (微调参数，如 EP0 包长)
+    USB_CTX_CMD_CFG,      // 事务：配置端点 (常规增删业务端点，DC=0)
+    USB_CTX_CMD_DECFG_ALL    // 事务：格式化端点 (一键抹除所有业务端点，保留 EP0，DC=1)
+} usb_ctx_cmd_e;
 
 /**
  * @brief 端点操作意图枚举
@@ -683,29 +688,14 @@ typedef enum : uint8 {
     USB_CTX_EP_RECONFIG   // 改：同位热重构 (先破后立)
 } usb_ctx_ep_op_e;
 
-typedef enum : uint8 {
-    USB_CTX_CMD_ADDR,    // 事务：分配地址 (无中生有创世)
-    USB_CTX_CMD_EVAL,    // 事务：评估上下文 (微调参数，如 EP0 包长)
-    USB_CTX_CMD_CFG,      // 事务：配置端点 (常规增删业务端点，DC=0)
-    USB_CTX_CMD_DECFG_ALL    // 事务：格式化端点 (一键抹除所有业务端点，保留 EP0，DC=1)
-} usb_ctx_cmd_e;
-
 // 意图 1：端点操作清单
 typedef struct {
     usb_ep_t *ep;
     usb_ctx_ep_op_e op;
 } usb_ctx_action_t;
 
-// 意图 2：CFG_EP 专属的 ICC 拓扑环境声明 (只有配置设备时才需要传)
-typedef struct {
-    uint8 config_val;
-    uint8 intf_num;
-    uint8 alt_setting;
-} usb_icc_env_t;
-
 typedef struct {
     usb_ctx_cmd_e cmd;
-    usb_icc_env_t icc_env;          // 仅 CFG_EP 使用
     usb_ctx_action_t *actions;       // 端点操作数组
     uint8 action_count;
 } usb_ctx_txn_t;
