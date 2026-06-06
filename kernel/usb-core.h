@@ -1,4 +1,6 @@
 #pragma once
+#include <sys/types.h>
+
 #include "moslib.h"
 #include "device.h"
 #include "driver.h"
@@ -355,13 +357,6 @@ typedef struct usb_setup_packet_t {
 
 //=============================================================
 
-typedef enum : uint8 {
-    USB_TX_CMD_ADDR_DEV,    // 事务：分配地址 (无中生有创世)
-    USB_TX_CMD_EVAL_CTX,    // 事务：评估上下文 (微调参数，如 EP0 包长)
-    USB_TX_CMD_CFG_EP,      // 事务：配置端点 (常规增删业务端点，DC=0)
-    USB_TX_CMD_DECFG_ALL    // 事务：格式化端点 (一键抹除所有业务端点，保留 EP0，DC=1)
-} usb_tx_cmd_e;
-
 
 // 定义匹配标志位 (位掩码)
 #define USB_MATCH_ANY (-1)
@@ -489,7 +484,7 @@ typedef struct usb_dev_t{
     uint8                           slot_id;
     uint16                          interrupter_target;
     void                            *dev_ctx;            // 设备上下文
-    xhci_input_ctx_t                *input_ctx;          // 输入上下文
+    input_ctrl_ctx_t                *input_ctrl_ctx;     // 输入上下文
     uint32                          active_ep_map;       //当前活跃的端点图
     xhci_hcd_t                      *xhcd;              // xhci控制器
     void                            *drv_data;
@@ -571,15 +566,14 @@ static inline uint8 epdci_to_epaddr(uint8 dci) {
 }
 
 //获取 Input Context 数组中的指定条目
-static inline void *xhci_get_input_ctx_entry(xhci_hcd_t *xhcd,xhci_input_ctx_t *input_ctx, uint32 dci) {
-    uint8 ctx_size = xhcd->ctx_size;
+static inline void *xhci_get_input_ctx_entry(input_ctrl_ctx_t *input_ctx, uint32 dci,uint8 ctx_size) {
     return (uint8 *)input_ctx + ctx_size * (dci + 1);
 }
 
 
 //获取 Device Context 数组中的指定条目
-static inline void *xhci_get_dev_ctx_entry(usb_dev_t *udev, uint32 dci) {
-    return (uint8*)udev->dev_ctx + udev->xhcd->ctx_size * dci;
+static inline void *xhci_get_dev_ctx_entry(void* dev_ctx,uint32 dci,uint8 ctx_size) {
+    return (uint8*)dev_ctx + ctx_size * dci;
 }
 
 
@@ -676,5 +670,39 @@ static inline int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
                            USB_REQ_SET_INTERFACE, alt_num, if_num, 0);
 }
 
-void usb_ctx_sync(usb_dev_t *udev);
-int32 usb_ctx_commit(usb_dev_t *udev, usb_tx_cmd_e cmd_type);
+
+
+
+/**
+ * @brief 端点操作意图枚举
+ */
+typedef enum : uint8 {
+    USB_CTX_EP_ADD,       // 增：新建端点
+    USB_CTX_EP_DROP,      // 删：强拆端点
+    USB_CTX_EP_EVAL,      // 调：微调属性 (专用于 EP0)
+    USB_CTX_EP_RECONFIG   // 改：同位热重构 (先破后立)
+} usb_ctx_ep_op_e;
+
+typedef enum : uint8 {
+    USB_CTX_CMD_ADDR,    // 事务：分配地址 (无中生有创世)
+    USB_CTX_CMD_EVAL,    // 事务：评估上下文 (微调参数，如 EP0 包长)
+    USB_CTX_CMD_CFG,      // 事务：配置端点 (常规增删业务端点，DC=0)
+    USB_CTX_CMD_DECFG_ALL    // 事务：格式化端点 (一键抹除所有业务端点，保留 EP0，DC=1)
+} usb_ctx_cmd_e;
+
+// 意图 1：端点操作清单
+typedef struct {
+    usb_ep_t *ep;
+    usb_ctx_ep_op_e op;
+} usb_ctx_action_t;
+
+// 意图 2：CFG_EP 专属的 ICC 拓扑环境声明 (只有配置设备时才需要传)
+typedef struct {
+    uint8 config_val;
+    uint8 intf_num;
+    uint8 alt_setting;
+} usb_icc_env_t;
+
+int32 usb_ctx_execute(usb_dev_t *udev, usb_ctx_cmd_e cmd_type,
+                      usb_ctx_action_t *actions, uint8 count,
+                      usb_icc_env_t *icc_env);

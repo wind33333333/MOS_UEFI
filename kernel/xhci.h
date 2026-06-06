@@ -938,7 +938,7 @@ typedef struct ep_ctx_t{
 typedef struct input_ctrl_ctx_t{
     uint32 drop_context_flags;  // Dword 0: 位 0 = Slot, 位 1 = EP0, 位 2 = EP1...
     uint32 add_context_flags;   // Dword 1: 同上
-    uint32 reserved[5];         // 填充至 20 字节
+    uint32 reserved0[5];         // 填充至 20 字节
     // ---------------------------------------------------------
     // DWORD 7: 全局配置指令 (Configuration / Interface)
     // ---------------------------------------------------------
@@ -946,8 +946,8 @@ typedef struct input_ctrl_ctx_t{
     uint32 configuration_value:8; // [7:0]   🌟 核心大闸！(配置描述符的值，通常为1)
     uint32 interface_number:8;    // [15:8]  正在配置的接口号
     uint32 alternate_setting:8;   // [23:16] 正在配置的备用设置 (Alt Setting)
-    uint32 reserved2:8;           // [31:24] 保留位 (必须为0)
-} xhci_input_ctx_t;
+    uint32 reserved1:8;           // [31:24] 保留位 (必须为0)
+} input_ctrl_ctx_t;
 
 #define XHCI_DEVICE_CONTEXT_COUNT 32
 #define XHCI_INPUT_CONTEXT_COUNT 33
@@ -1156,11 +1156,11 @@ xhci_psi_t* xhci_spc_get_max_speed_entry(xhci_spc_t *spc);
 char* xhci_get_comp_code_str(xhci_trb_comp_code_e comp_code);
 int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 port_num, uint8 *out_slot_id);
 int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);
-int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,xhci_input_ctx_t *input_ctx);
-int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_id, uint8 dc);
+int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,input_ctrl_ctx_t *input_ctx);
+int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, input_ctrl_ctx_t *input_ctx, uint8 slot_id, uint8 dc);
 int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
 int32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
-int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, xhci_input_ctx_t *input_ctx, uint8 slot_id);
+int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, input_ctrl_ctx_t *input_ctx, uint8 slot_id);
 int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci_submit_ring_t *transfer_ring);
 int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id);
 

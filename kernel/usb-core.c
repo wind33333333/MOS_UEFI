@@ -410,20 +410,22 @@ static inline int32 usb_get_bos_desc(usb_dev_t *udev, void *buf, uint16 len) {
 //============================================== 上下文操作函数 ===========================================================
 
 /**
- * @brief [内部工具] 统一根据推演状态，更新context_entries
+ * @brief 开启一个事务：将硬件真实状态同步到input
  */
-static void usb_ctx_update_entries(usb_dev_t *udev) {
-    xhci_input_ctx_t *input_ctx = udev->input_ctx;
+static inline void usb_ctx_sync(usb_dev_t *udev) {
+    // 1. 物理清零管控中心 (Input Control Context，占 1 个 ctx_size)
+    // 彻底消灭上一次下发命令残留的 Add/Drop 幽灵标志位
+    input_ctrl_ctx_t *input_ctrl_ctx = udev->input_ctrl_ctx;
+    input_ctrl_ctx->add_context_flags = 0;
+    input_ctrl_ctx->drop_context_flags = 0;
 
-    // ★ 核心算法：计算出“事务成功后”的投影位图 (忽略 Slot 本身 Bit 0)
-    uint32 projected_map = (udev->active_ep_map | input_ctx->add_context_flags)
-                           & ~input_ctx->drop_context_flags;
+    // 2. 完美的移花接木：将主板维护的 Device Context 拷贝到 Input Context 的数据区
+    // 注意偏移量：Input Context 从第 1 个条目开始，才是 Slot 和 EP
+    uint8 ctx_size = udev->xhcd->ctx_size;
+    void *input_ctx = xhci_get_input_ctx_entry(input_ctrl_ctx,0,ctx_size);
 
-    uint8 new_max_dci = 31 - asm_lzcnt32(projected_map);
-
-    if (udev->context_entries != new_max_dci) {
-        udev->context_entries = new_max_dci;
-    }
+    // 3. 拷贝 32 个 Context (1 个 Slot + 31 个 EP)
+    asm_mem_cpy(udev->dev_ctx, input_ctx, ctx_size * 32);
 }
 
 
@@ -433,15 +435,19 @@ static void usb_ctx_update_entries(usb_dev_t *udev) {
  * 硬件会根据下发的命令类型，自动提取它关心的字段，忽略不关心的字段。
  * @param udev 目标 USB 设备 (真理之源)
  */
-static void usb_ctx_slot_sync(usb_dev_t *udev) {
-    // 1. 强制打上 Slot 图纸被涂改的标记 (Bit 0 特权)
+static inline void usb_ctx_slot_sync(usb_dev_t *udev) {
+    input_ctrl_ctx_t *input_ctrl_ctx = udev->input_ctrl_ctx;
+
+    // 1. 核心算法：算出投影位图并更新 context_entries
+    uint32 projected_map = (udev->active_ep_map | input_ctrl_ctx->add_context_flags) & ~input_ctrl_ctx->drop_context_flags;
+    udev->context_entries = 31 - asm_lzcnt32(projected_map);
+
+    // 2. 强制打上 Slot 图纸被涂改的标记 (Bit 0 特权)
     // 既然是全量同步，Slot 必定被修改，直接置位
-    udev->input_ctx->add_context_flags |= (1 << 0);
+    input_ctrl_ctx->add_context_flags |= (1 << 0);
 
-    // 2. 拿到 Slot Context 的图纸指针
-    xhci_slot_ctx_t *slot = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, 0);
-
-    usb_ctx_update_entries(udev);
+    // 3. 拿到 Slot Context 的图纸指针
+    xhci_slot_ctx_t *slot = xhci_get_input_ctx_entry(input_ctrl_ctx, 0,udev->xhcd->ctx_size);
 
     // ===================================================================
     // 维度 A：基础物理与路由属性 (Address Device 创世阶段核心)
@@ -470,70 +476,33 @@ static void usb_ctx_slot_sync(usb_dev_t *udev) {
 
 
 //同步端点上下文属性
-static void usb_ctx_ep_sync(usb_dev_t *udev, usb_ep_t *ep) {
-    xhci_ep_ctx_t *input_ep_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->input_ctx, ep->ep_dci);
-    input_ep_ctx->mult = ep->mult;
-    input_ep_ctx->max_pstreams = ep->enable_streams_exp;
-    input_ep_ctx->lsa = ep->lsa;
-    input_ep_ctx->interval = ep->interval;
-    input_ep_ctx->max_esit_payload_hi = (ep->max_esit_payload>>16)&0xFF;
-    input_ep_ctx->cerr = ep->cerr;
-    input_ep_ctx->ep_type = ep->ep_type;
-    input_ep_ctx->hid = ep->hid;
-    input_ep_ctx->max_burst_size = ep->max_burst;
-    input_ep_ctx->max_packet_size = ep->max_packet_size;
-    input_ep_ctx->tr_dequeue_ptr = ep->trq_phys_addr;
-    input_ep_ctx->average_trb_length = ep->average_trb_length;
-    input_ep_ctx->max_esit_payload_lo = ep->max_esit_payload&0xFFFF;
-}
-
-
-
-/**
- * @brief 开启一个事务：将硬件真实状态同步到input
- */
-void usb_ctx_sync(usb_dev_t *udev) {
-    // 1. 物理清零管控中心 (Input Control Context，占 1 个 ctx_size)
-    // 彻底消灭上一次下发命令残留的 Add/Drop 幽灵标志位
-    xhci_input_ctx_t *input_ctx = udev->input_ctx;
-    input_ctx->add_context_flags = 0;
-    input_ctx->drop_context_flags = 0;
-
-    // 2. 完美的移花接木：将主板维护的 Device Context 拷贝到 Input Context 的数据区
-    // 注意偏移量：Input Context 从第 1 个条目开始，才是 Slot 和 EP
-    void *sw_ctx = xhci_get_input_ctx_entry(udev->xhcd,input_ctx,0);
-
-    // 拷贝 32 个 Context (1 个 Slot + 31 个 EP)
-    asm_mem_cpy(udev->dev_ctx, sw_ctx, udev->xhcd->ctx_size * 32);
-}
-
-
-/**
- * @brief 端点操作意图枚举
- */
-typedef enum {
-    USB_CTX_EP_ADD,       // 增：新建端点
-    USB_CTX_EP_DROP,      // 删：强拆端点
-    USB_CTX_EP_EVAL,      // 调：微调属性 (专用于 EP0)
-    USB_CTX_EP_RECONFIG   // 改：同位热重构 (先破后立)
-} usb_ctx_ep_op_e;
-
-/**
- * @brief 3. 大一统端点推演引擎 (取代了原本散落的 4 个函数)
- */
-void usb_ctx_ep_op(usb_dev_t *udev, usb_ep_t *ep, usb_ctx_ep_op_e op) {
-    xhci_input_ctx_t *input_ctx = udev->input_ctx;
+static inline void usb_ctx_ep_sync(usb_dev_t *udev, usb_ep_t *ep,usb_ctx_ep_op_e op) {
+    input_ctrl_ctx_t *input_ctrl_ctx = udev->input_ctrl_ctx;
     uint8 dci = ep->ep_dci;
 
     // 解析 Add 意图：只要是新建、微调、热重构，都必须置位并同步最新软件属性
     if (op == USB_CTX_EP_ADD || op == USB_CTX_EP_EVAL || op == USB_CTX_EP_RECONFIG) {
-        input_ctx->add_context_flags |= (1 << dci);
-        usb_ctx_ep_sync(udev, ep);
+        input_ctrl_ctx->add_context_flags |= (1 << dci);
+
+        xhci_ep_ctx_t *ep_ctx = xhci_get_input_ctx_entry(udev->input_ctrl_ctx, dci,udev->xhcd->ctx_size);
+        ep_ctx->mult = ep->mult;
+        ep_ctx->max_pstreams = ep->enable_streams_exp;
+        ep_ctx->lsa = ep->lsa;
+        ep_ctx->interval = ep->interval;
+        ep_ctx->max_esit_payload_hi = (ep->max_esit_payload>>16)&0xFF;
+        ep_ctx->cerr = ep->cerr;
+        ep_ctx->ep_type = ep->ep_type;
+        ep_ctx->hid = ep->hid;
+        ep_ctx->max_burst_size = ep->max_burst;
+        ep_ctx->max_packet_size = ep->max_packet_size;
+        ep_ctx->tr_dequeue_ptr = ep->trq_phys_addr;
+        ep_ctx->average_trb_length = ep->average_trb_length;
+        ep_ctx->max_esit_payload_lo = ep->max_esit_payload&0xFFFF;
     }
 
     // 解析 Drop 意图：只要是强拆、热重构，都必须置位，通知硬件回收旧资源
     if (op == USB_CTX_EP_DROP || op == USB_CTX_EP_RECONFIG) {
-        input_ctx->drop_context_flags |= (1 << dci);
+        input_ctrl_ctx->drop_context_flags |= (1 << dci);
     }
 
 }
@@ -545,8 +514,8 @@ void usb_ctx_ep_op(usb_dev_t *udev, usb_ep_t *ep, usb_ctx_ep_op_e op) {
  * @param cmd_type 事务指令类型
  * @return 0 表示成功，非 0 表示硬件拒绝并已回滚
  */
-int32 usb_ctx_commit(usb_dev_t *udev, usb_tx_cmd_e cmd_type) {
-    xhci_input_ctx_t *input_ctx = udev->input_ctx;
+static inline int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type,usb_icc_env_t *icc_env) {
+    input_ctrl_ctx_t *input_ctrl_ctx = udev->input_ctrl_ctx;
     int32 ret = 0;
 
     usb_ctx_slot_sync(udev);
@@ -555,21 +524,25 @@ int32 usb_ctx_commit(usb_dev_t *udev, usb_tx_cmd_e cmd_type) {
     // 阶段 1：根据指令类型，扣动对应的物理硬件扳机
     // ==========================================
     switch (cmd_type) {
-        case USB_TX_CMD_ADDR_DEV:
-            ret = xhci_cmd_addr_dev(udev->xhcd, udev->slot_id, input_ctx);
+        case USB_CTX_CMD_ADDR:
+            ret = xhci_cmd_addr_dev(udev->xhcd, udev->slot_id, input_ctrl_ctx);
             break;
 
-        case USB_TX_CMD_EVAL_CTX:
-            ret = xhci_cmd_eval_ctx(udev->xhcd, input_ctx, udev->slot_id);
+        case USB_CTX_CMD_EVAL:
+            ret = xhci_cmd_eval_ctx(udev->xhcd, input_ctrl_ctx, udev->slot_id);
             break;
 
-        case USB_TX_CMD_CFG_EP:
-            ret = xhci_cmd_cfg_ep(udev->xhcd, input_ctx, udev->slot_id, 0); // DC = 0
+        case USB_CTX_CMD_CFG:
+            input_ctrl_ctx->configuration_value = icc_env->config_val;
+            input_ctrl_ctx->interface_number = icc_env->intf_num;
+            input_ctrl_ctx->alternate_setting = icc_env->alt_setting;
+            input_ctrl_ctx->reserved1= 0;
+            ret = xhci_cmd_cfg_ep(udev->xhcd, input_ctrl_ctx, udev->slot_id, 0); // DC = 0
             break;
 
-        case USB_TX_CMD_DECFG_ALL:
+        case USB_CTX_CMD_DECFG_ALL:
             // 注意：Deconfigure 模式下，主板会直接无视 input_ctx 的内容
-            ret = xhci_cmd_cfg_ep(udev->xhcd, input_ctx, udev->slot_id, 1); // DC = 1 (核武器开启)
+            ret = xhci_cmd_cfg_ep(udev->xhcd, input_ctrl_ctx, udev->slot_id, 1); // DC = 1 (核武器开启)
             break;
 
         default:
@@ -591,18 +564,57 @@ int32 usb_ctx_commit(usb_dev_t *udev, usb_tx_cmd_e cmd_type) {
     // ==========================================
     // 阶段 3：事务成功，软件真理同步 (Shadow State Sync)
     // ==========================================
-    if (cmd_type == USB_TX_CMD_DECFG_ALL) {
+    if (cmd_type == USB_CTX_CMD_DECFG_ALL) {
         // ★ 格式化特例：硬件已经把 EP1~31 全杀光了，软件必须强制同步
         // 仅保留 Slot (Bit 0) 和 EP0 (Bit 1) 存活
         udev->active_ep_map = (1 << 0) | (1 << 1);
     } else {
         // ★ 常规增量同步：根据图纸里的 Drop 和 Add 标志位，精确更新存活位图
-        udev->active_ep_map &= ~input_ctx->drop_context_flags;
-        udev->active_ep_map |= input_ctx->add_context_flags;
+        udev->active_ep_map &= ~input_ctrl_ctx->drop_context_flags;
+        udev->active_ep_map |= input_ctrl_ctx->add_context_flags;
     }
 
     return 0; // 事务完美落地！
 }
+
+
+/**
+ * @brief [核心 API] 执行原子化的上下文事务
+ * @param udev     目标 USB 设备
+ * @param cmd_type 事务指令类型 (ADDR, EVAL, CFG, DECFG_ALL)
+ * @param actions  端点操作意图数组 (可传 NULL)
+ * @param count    操作意图的数量 (可传 0)
+ * @param icc_env  ICC 审批环境 (仅限 CFG 命令使用，其它传 NULL)
+ * @return 0 成功，非 0 失败
+ */
+int32 usb_ctx_execute(usb_dev_t *udev, usb_ctx_cmd_e cmd_type,
+                      usb_ctx_action_t *actions, uint8 count,
+                      usb_icc_env_t *icc_env)
+{
+    // ==========================================
+    // 阶段 1：自动开启事务 (绝对不会忘记物理清零)
+    // ==========================================
+    usb_ctx_sync(udev); // 内部执行: flags=0, memcpy(dev_ctx -> input_ctx)
+
+    // ==========================================
+    // 阶段 2：自动遍历推演端点 (代替手动的 ep_op)
+    // ==========================================
+    for (uint8 i = 0; i < count; i++) {
+        usb_ctx_ep_sync(udev,actions[i].ep,actions[i].op);
+    }
+
+    // ==========================================
+    // 阶段 3：惰性同步全局基座 (Slot & 算出最终 context_entries)
+    // ==========================================
+    usb_ctx_slot_sync(udev);
+
+    // ==========================================
+    // 阶段 4：智能防御与环境刻录 (隔离 CFG 的特殊逻辑)
+    // ==========================================
+    return usb_ctx_commit(udev,cmd_type,icc_env);
+
+}
+
 
 //===================================================================================================================
 
@@ -821,7 +833,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // ==========================================================
     // 阶段 3：一锤定音！向 xHCI 提交图纸，等待硬件裁决
     // ==========================================================
-    posix = usb_ctx_commit(udev, USB_TX_CMD_CFG_EP);
+    posix = usb_ctx_commit(udev, USB_CTX_CMD_CFG);
     if (posix < 0) {
         color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, hardware rejected!\n");
         // 主板拒绝了这份图纸，销毁刚刚新分配的所有内存，安全退出
@@ -866,7 +878,7 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
         if (old_alt != NULL) {
             for (uint8 i = 0; i < old_num_eps; i++) usb_ctx_add_ep(udev, &old_alt->eps[i]);
         }
-        int32 tx_err = usb_ctx_commit(udev, USB_TX_CMD_CFG_EP);
+        int32 tx_err = usb_ctx_commit(udev, USB_CTX_CMD_CFG);
         if (tx_err < 0) {
             color_printk(RED,BLACK, "xHCI: Device rejected Committed Config Command!\n");
             return tx_err;
@@ -1196,7 +1208,7 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     xhcd->udevs[udev->slot_id] = udev;
 
     //分配input上下文
-    udev->input_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * ctx_size);
+    udev->input_ctrl_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * ctx_size);
 
     //挂载到 O(1) 路由表
     usb_ep_t *uep0 = kzalloc(sizeof(usb_ep_t));
@@ -1221,7 +1233,7 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     usb_ctx_sync(udev);
     usb_ctx_copy_slot(udev);
     usb_ctx_add_ep(udev,uep0);
-    usb_ctx_commit(udev,USB_TX_CMD_ADDR_DEV);
+    usb_ctx_commit(udev,USB_CTX_CMD_ADDR);
 
     return 0;
 }
@@ -1250,7 +1262,7 @@ static inline int32 usb_get_dev_desc(usb_dev_t *udev) {
             ep0->max_packet_size = dev_desc->max_packet_size0;
             usb_ctx_sync(udev);
             usb_ctx_eval_ep(udev,ep0);
-            usb_ctx_commit(udev,USB_TX_CMD_EVAL_CTX);
+            usb_ctx_commit(udev,USB_CTX_CMD_EVAL);
         }
     }
 
