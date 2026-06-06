@@ -518,8 +518,6 @@ static inline int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type,usb_i
     input_ctrl_ctx_t *input_ctrl_ctx = udev->input_ctrl_ctx;
     int32 ret = 0;
 
-    usb_ctx_slot_sync(udev);
-
     // ==========================================
     // 阶段 1：根据指令类型，扣动对应的物理硬件扳机
     // ==========================================
@@ -587,10 +585,7 @@ static inline int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type,usb_i
  * @param icc_env  ICC 审批环境 (仅限 CFG 命令使用，其它传 NULL)
  * @return 0 成功，非 0 失败
  */
-int32 usb_ctx_execute(usb_dev_t *udev, usb_ctx_cmd_e cmd_type,
-                      usb_ctx_action_t *actions, uint8 count,
-                      usb_icc_env_t *icc_env)
-{
+int32 usb_ctx_execute(usb_dev_t *udev, usb_ctx_txn_t *txn){
     // ==========================================
     // 阶段 1：自动开启事务 (绝对不会忘记物理清零)
     // ==========================================
@@ -599,7 +594,8 @@ int32 usb_ctx_execute(usb_dev_t *udev, usb_ctx_cmd_e cmd_type,
     // ==========================================
     // 阶段 2：自动遍历推演端点 (代替手动的 ep_op)
     // ==========================================
-    for (uint8 i = 0; i < count; i++) {
+    usb_ctx_action_t *actions = txn->actions;
+    for (uint8 i = 0; i < txn->action_count; i++) {
         usb_ctx_ep_sync(udev,actions[i].ep,actions[i].op);
     }
 
@@ -611,7 +607,7 @@ int32 usb_ctx_execute(usb_dev_t *udev, usb_ctx_cmd_e cmd_type,
     // ==========================================
     // 阶段 4：智能防御与环境刻录 (隔离 CFG 的特殊逻辑)
     // ==========================================
-    return usb_ctx_commit(udev,cmd_type,icc_env);
+    return usb_ctx_commit(udev,txn->cmd,&txn->icc_env);
 
 }
 

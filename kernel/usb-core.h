@@ -703,6 +703,11 @@ typedef struct {
     uint8 alt_setting;
 } usb_icc_env_t;
 
-int32 usb_ctx_execute(usb_dev_t *udev, usb_ctx_cmd_e cmd_type,
-                      usb_ctx_action_t *actions, uint8 count,
-                      usb_icc_env_t *icc_env);
+typedef struct {
+    usb_ctx_cmd_e cmd;
+    usb_icc_env_t icc_env;          // 仅 CFG_EP 使用
+    usb_ctx_action_t *actions;       // 端点操作数组
+    uint8 action_count;
+} usb_ctx_txn_t;
+
+int32 usb_ctx_execute(usb_dev_t *udev, usb_ctx_txn_t *txn);
