@@ -718,7 +718,7 @@ typedef enum : uint8 {
     USB_CTX_CMD_ADDR,    // 事务：分配地址 (无中生有创世)
     USB_CTX_CMD_EVAL,    // 事务：评估上下文 (微调参数，如 EP0 包长)
     USB_CTX_CMD_CFG,      // 事务：配置端点 (常规增删业务端点，DC=0)
-    USB_CTX_CMD_CLEAR    // 事务：格式化端点 (一键抹除所有业务端点，保留 EP0，DC=1)
+    USB_CTX_CMD_DECFG_ALL    // 事务：格式化端点 (一键抹除所有业务端点，保留 EP0，DC=1)
 } usb_ctx_cmd_e;
 
 /**
@@ -736,14 +736,14 @@ static int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type) {
         case USB_CTX_CMD_ADDR:      ret = xhci_cmd_addr_dev(udev->xhcd, udev->slot_id, in_ctx); break;
         case USB_CTX_CMD_EVAL:      ret = xhci_cmd_eval_ctx(udev->xhcd, udev->slot_id, in_ctx); break;
         case USB_CTX_CMD_CFG:       ret = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, in_ctx, 0); break;
-        case USB_CTX_CMD_CLEAR:     ret = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, NULL, 1); break;
+        case USB_CTX_CMD_DECFG_ALL:     ret = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, NULL, 1); break;
         default: return -EINVAL;
     }
 
     if (ret != 0) return ret; // 硬件拒绝，完美回滚
 
     // 2. 🌟 事务成功，真理对齐！(修复了你的状态丢失 Bug)
-    if (cmd_type == USB_CTX_CMD_CLEAR) {
+    if (cmd_type == USB_CTX_CMD_DECFG_ALL) {
         udev->active_ep_map = (1 << 0) | (1 << 1); // 仅留 Slot 和 EP0
         udev->context_entries = 1;                 // 瞬间格式化最大端点
     } else {
@@ -786,6 +786,7 @@ int32 usb_ctx_eps_cfg(usb_if_alt_t *drop_uif_alt,usb_if_alt_t *add_uif_alt) {
     uint8 drop_num_ep = 0;
     uint8 add_num_ep = 0;
 
+    // 1. 提取设备指针并进行防御性检查
     if (drop_uif_alt) {
         udev = drop_uif_alt->uif->udev;
         drop_num_ep = drop_uif_alt->if_desc->num_endpoints;
@@ -809,24 +810,29 @@ int32 usb_ctx_eps_cfg(usb_if_alt_t *drop_uif_alt,usb_if_alt_t *add_uif_alt) {
         return 0;
     }
 
-
+    // 4. 准备 Input Context
     usb_ctx_in_sync(udev);
 
+    // 5. Drop 旧端点
     for (uint8 i = 0; i < drop_num_ep; i++) {
         usb_ctx_ep_drop(udev,&drop_uif_alt->eps[i]);
     }
 
+    // 6. Add 新端点
     for (uint8 i = 0; i < add_num_ep; i++) {
         usb_ctx_ep_add(udev,&add_uif_alt->eps[i]);
     }
 
+    // 7. 更新 Slot Context（重新计算 context_entries）
     usb_ctx_slot_update(udev);
+
+    // 8. 提交 Configure Endpoint 命令
     return usb_ctx_commit(udev,USB_CTX_CMD_CFG);
 }
 
 //批量清空业务端点
 int32 usb_ctx_deconfigure_all(usb_dev_t *udev ) {
-    return usb_ctx_commit(udev,USB_CTX_CMD_CLEAR);
+    return usb_ctx_commit(udev,USB_CTX_CMD_DECFG_ALL);
 }
 
 
