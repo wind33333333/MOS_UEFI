@@ -793,11 +793,6 @@ int32 usb_ctx_eps_cfg(usb_if_alt_t *drop_uif_alt,usb_if_alt_t *add_uif_alt) {
     }
 
     if (add_uif_alt) {
-        // 🌟 防御性护城河：防止传入的两个接口不属于同一个设备
-        if (udev != NULL && udev != add_uif_alt->uif->udev) {
-            return -EINVAL;
-        }
-
         udev = add_uif_alt->uif->udev;
         add_num_ep = add_uif_alt->if_desc->num_endpoints;
     }
@@ -846,6 +841,8 @@ device_type_t usb_if_type = {"usb-if"};
 static int32 usb_alloc_ep_ring(usb_ep_t *ep) {
     uint64 tr_dequeue_ptr;
 
+    int32 err;
+
     // 安全边界截断
     uint32 streams_exp = ep->enable_streams_exp;
 
@@ -858,12 +855,15 @@ static int32 usb_alloc_ep_ring(usb_ep_t *ep) {
 
         // 1. 给硬件 DMA 读的上下文数组 (必须 16 字节对齐)
         xhci_stream_ctx_t *streams_ctx_array = kzalloc_dma(num_streams_array * sizeof(xhci_stream_ctx_t));
+        if (streams_ctx_array == NULL) return -ENOMEM;
+
         // 记录上下文，方便后续释放内存
         ep->streams_ctx_array = streams_ctx_array;
 
         // 2. ★ 核心重构：给软件管理的统一环数组 (分配 N+1 个)
         // 索引 0 闲置防越界，索引 1~N 对应真实的 Stream ID
         ep->ring_arr = kzalloc(num_streams * sizeof(xhci_submit_ring_t));
+        if (ep->ring_arr == NULL) return -ENOMEM;
 
         // 更新逻辑状态
         ep->lsa = 1; // 线性流数组标志
@@ -872,7 +872,8 @@ static int32 usb_alloc_ep_ring(usb_ep_t *ep) {
         // 初始化每一个流环
         for (uint32 s = 1; s < num_streams; s++) {
             // 对数组中的每一个环进行物理分配
-            xhci_alloc_submit_ring(&ep->ring_arr[s],ep->ring_max_trbs);
+            err = xhci_alloc_submit_ring(&ep->ring_arr[s],ep->ring_max_trbs);
+            if (err < 0) return err;
 
             // 将分配好的环的物理地址，写入硬件要求的 Context 数组中
             // SCT=1 (Primary TRB Ring: bit 1~3), DCS=1 (bit 0)
@@ -894,9 +895,11 @@ static int32 usb_alloc_ep_ring(usb_ep_t *ep) {
 
         // 1. ★ 核心重构：给软件管理的统一环数组 (仅分配 1 个)
         ep->ring_arr = kzalloc(sizeof(xhci_submit_ring_t));
+        if (ep->ring_arr == NULL) return -ENOMEM;
 
         // 2. 分配并初始化这唯一的环 (它就是 rings[0])
-        xhci_alloc_submit_ring(&ep->ring_arr[0],ep->ring_max_trbs);
+        err = xhci_alloc_submit_ring(&ep->ring_arr[0],ep->ring_max_trbs);
+        if (err < 0) return err;
 
         // 更新逻辑状态
         ep->lsa = 0;
@@ -998,38 +1001,31 @@ usb_if_alt_t* usb_find_alt_if(usb_if_t *uif, int16 class, int16 subclass, int16 
 
 
 /**
- * @brief 切换备用接口
- * @param new_alt 上层驱动通过 find_alt 系列函数搜索到的目标图纸句柄
- * @return int32  0 表示成功，非 0 表示失败
+ * @brief 启用/切换备用接口 (Set Alternate Setting)
+ * @param new_alt 上层驱动通过 find_alt 系列函数搜索到的目标备用接口句柄
+ * @return 0 表示成功，非 0 表示失败
+ * @note 这是 USB 接口切换的核心函数，包含完整的资源分配、xHCI 上下文更新、
+ *       设备端 Set Interface 命令以及双向回滚机制
  */
-int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
-    // 1. 终极防御：如果搜索函数返回了 NULL，或者这是一个脏指针，直接拦截！
+int32 usb_enable_alt_if(usb_if_alt_t *new_alt) {
+    // 1. 终极防御：空指针拦截
     if (new_alt == NULL || new_alt->uif == NULL) return -EINVAL;
 
     int32 posix = 0;
-
-    // 2. 顺藤摸瓜：通过你的反向指针，直接拉出上层接口和设备对象！
     usb_if_t *uif = new_alt->uif;
     usb_dev_t *udev = uif->udev;
-
-    // 注意：设备刚刚插入进行 Config 初始化时，cur_alt 是 NULL，必须防范
     usb_if_alt_t *old_alt = uif->activity_if_alt;
 
-    // 3. 性能优化：如果想切换的就是当前正在用的，直接光速返回
-    if (old_alt == new_alt) return -EINVAL;
+    // 2. 性能优化：同位切换直接视为成功 (No-op)
+    if (old_alt == new_alt) return 0;
 
-    // 2. 提前获取新端点数量
+    // ==========================================================
+    // 阶段 1：[预分配] 为新端点画图纸并分配内存 (软件层准备)
+    // ==========================================================
     uint8 new_num_eps = new_alt->if_desc->num_endpoints;
-
-    // ==========================================================
-    // 阶段 2：[预分配] 为新端点画图纸并分配内存 (★ 核心架构重构)
-    // ==========================================================
-    // 2. 提前获取新端点数量
     for (uint8 i = 0; i < new_num_eps; i++) {
-        usb_ep_t *ep = &new_alt->eps[i];
-
         // ★ OOM 防御：分配环可能因为物理 DMA 内存耗尽而失败
-        posix = usb_alloc_ep_ring(ep);
+        posix = usb_alloc_ep_ring(&new_alt->eps[i]);
         if (posix < 0) {
             color_printk(RED, BLACK, "USB: OOM allocating rings during Alt setting!\n");
             // 局部回滚：释放刚才循环里已经分配成功的前几个端点
@@ -1039,79 +1035,54 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     }
 
     // ==========================================================
-    // 阶段 3：一锤定音！向 xHCI 提交图纸，等待硬件裁决
+    // 阶段 2：[硬件预演] 向 xHCI 提交图纸，等待主板总线裁决
     // ==========================================================
-    posix = usb_ctx_eps_cfg(old_alt,new_alt);
+    posix = usb_ctx_eps_cfg(old_alt, new_alt);
     if (posix < 0) {
-        color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, hardware rejected!\n");
-        // 主板拒绝了这份图纸，销毁刚刚新分配的所有内存，安全退出
+        color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, bandwidth rejected!\n");
+        // 主板拒绝了这份图纸（通常是总线带宽不足），安全释放刚分配的 RAM
         for (uint8 i = 0; i < new_num_eps; i++) usb_free_ep_ring(&new_alt->eps[i]);
         return posix;
     }
 
     // ==========================================================
-    // ★ 阶段 4：[防竞态] 提前挂载新路由！(兵马未动，粮草先行)
-    // 此时新通道在主板端已通，但外设还未切换。先把接收器架好，防漏包！
-    // ==========================================================
-    for (uint8 i = 0; i < new_num_eps; i++) {
-        usb_ep_t *ep = &new_alt->eps[i];
-        udev->eps[ep->ep_dci] = ep;
-    }
-
-    // ==========================================================
-    // ★ 阶段 5：主板软件均就绪，正式通过 EP0 通知物理 U 盘切换频道！
+    // 阶段 3：[物理生效] 通过 EP0 通知 USB 物理外设切换频道！
     // ==========================================================
     posix = usb_set_if(udev, new_alt->if_desc->interface_number, new_alt->if_desc->alternate_setting);
     if (posix < 0) {
-        color_printk(RED, BLACK, "USB: Device rejected Set Interface command!\n");
+        color_printk(RED, BLACK, "USB: Device rejected Set Interface command! Rolling back...\n");
 
-        // ！！！极品回滚逻辑 (完美修复版) ！！！
+        // ★ 核心修复：外设抗旨不尊，必须强制让 xHCI 主板回滚到旧状态！
+        usb_ctx_eps_cfg(new_alt, old_alt);
 
-        // 1. 软件路由撤销 (把刚才挂上去的新路由摘下来)
-        for (uint8 i = 0; i < new_num_eps; i++) {
-            udev->eps[new_alt->eps[i].ep_dci] = NULL;
-        }
-
-        // ★ 修复：重新挂载老端点的路由，否则系统再也找不到旧端点通信了！
-        for (uint8 i = 0; i < old_num_eps; i++) {
-            udev->eps[old_alt->eps[i].ep_dci] = &old_alt->eps[i];
-        }
-
-        // 2. 释放新分配的废弃环内存
+        // 释放为新端点分配的废弃环内存
         for (uint8 i = 0; i < new_num_eps; i++) usb_free_ep_ring(&new_alt->eps[i]);
-
-        // 3. 将主板硬件强制回滚到旧状态 (反向 Drop 新的，Add 旧的)
-        usb_ctx_sync(udev);
-        for (uint8 i = 0; i < new_num_eps; i++) usb_ctx_drop_ep(udev, &new_alt->eps[i]);
-        if (old_alt != NULL) {
-            for (uint8 i = 0; i < old_num_eps; i++) usb_ctx_add_ep(udev, &old_alt->eps[i]);
-        }
-        int32 tx_err = usb_ctx_commit(udev, USB_CTX_CMD_CFG);
-        if (tx_err < 0) {
-            color_printk(RED,BLACK, "xHCI: Device rejected Committed Config Command!\n");
-            return tx_err;
-        }
-        return posix; // 经过这一套抢救，操作系统和设备毫发无伤地回到了切换前的健康状态！
+        return posix; // 操作系统、主板、物理外设毫发无伤地回到了切换前的健康状态！
     }
 
     // ==========================================================
-    // 阶段 6：[过河拆桥] 切换彻底成功，可以安全收缴旧端点的尸体了
+    // 阶段 4：[过河拆桥] 切换彻底成功，安全收缴旧端点的尸体
     // ==========================================================
-    for (uint8 i = 0; i < old_num_eps; i++) {
-        usb_ep_t *ep = &old_alt->eps[i];
-        // 只在路由没有被新端点(同 DCI)覆盖的情况下，才去清空它
-        if (udev->eps[ep->ep_dci] == ep) {
-            udev->eps[ep->ep_dci] = NULL;
+    if (old_alt != NULL) {
+        uint8 old_num_eps = old_alt->if_desc->num_endpoints;
+        for (uint8 i = 0; i < old_num_eps; i++) {
+            usb_ep_t *ep = &old_alt->eps[i];
+            udev->eps[ep->ep_dci] = NULL; // 从全局路由表摘除
+            usb_free_ep_ring(ep);         // 彻底释放旧物理内存
         }
-        usb_free_ep_ring(ep); // 彻底释放旧物理内存
     }
 
-    // 状态机正式翻页
+    // ==========================================================
+    // 阶段 5：[更新账本] 挂载新端点，状态机正式翻页
+    // ==========================================================
+    for (uint8 i = 0; i < new_num_eps; i++) {
+        usb_ep_t *ep = &new_alt->eps[i];
+        udev->eps[ep->ep_dci] = ep;       // 挂载到 O(1) 全局路由表
+    }
     uif->activity_if_alt = new_alt;
 
     return 0;
 }
-
 
 /**
  * @brief [驱动层 API] 配置备用接口图纸的硬件资源诉求 (完美支持流与非流端点混编)

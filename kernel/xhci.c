@@ -991,6 +991,8 @@ irqreturn_e xhci_isr(cpu_registers_t *regs,void *dev_id) {
 //传输环，命令环分配函数
 int32 xhci_alloc_submit_ring(xhci_submit_ring_t *ring,uint32 size) {
     ring->ring_base = kzalloc_dma(size * sizeof(xhci_trb_t));
+    if (ring->ring_base == NULL) return -ENOMEM;
+
     ring->enq_idx = 0;
     ring->deq_idx = 0;
     ring->size = size;

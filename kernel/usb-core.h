@@ -599,7 +599,7 @@ void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfe
 
 
 usb_if_alt_t* usb_find_alt_if(usb_if_t *uif, int16 class, int16 subclass, int16 protocol);
-int32 usb_switch_alt_if(usb_if_alt_t *new_alt);
+int32 usb_enable_alt_if(usb_if_alt_t *new_alt);
 int32 usb_cfg_alt_if_resources(usb_if_alt_t *alt,uint8 want_streams_exp, uint32 want_trb_size);
 
 
@@ -660,21 +660,7 @@ static inline int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
 }
 
 
-
-/**
- * @brief 端点操作意图枚举
- */
-typedef enum : uint8 {
-    USB_CTX_EP_ADD,       // 增：新建端点
-    USB_CTX_EP_DROP,      // 删：强拆端点
-    USB_CTX_EP_EVAL,      // 调：微调属性 (专用于 EP0)
-    USB_CTX_EP_RECONFIG   // 改：同位热重构 (先破后立)
-} usb_ctx_ep_op_e;
-
-// 意图 1：端点操作清单
-typedef struct {
-    usb_ep_t *ep;
-    usb_ctx_ep_op_e op;
-} usb_ctx_action_t;
-
-int32 usb_ctx_execute(usb_dev_t *udev, usb_ctx_cmd_e cmd,usb_ctx_action_t *actions,uint8 action_count);
+int32 usb_ctx_slot_cfg(usb_dev_t *udev);
+int32 usb_ctx_slot_ep0_eval(usb_dev_t *udev);
+int32 usb_ctx_eps_cfg(usb_if_alt_t *drop_uif_alt,usb_if_alt_t *add_uif_alt);
+int32 usb_ctx_deconfigure_all(usb_dev_t *udev );
