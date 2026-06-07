@@ -756,7 +756,7 @@ static int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type) {
 
 
 //地址分配 + EP0 初始化（创世）
-int32 usb_ctx_address_device(usb_dev_t *udev) {
+static int32 usb_ctx_address_device(usb_dev_t *udev) {
     usb_ctx_in_sync(udev);
     usb_ctx_ep_add(udev,udev->eps[1]);
     usb_ctx_slot_updata(udev);
@@ -1396,7 +1396,8 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     xhci_hcd_t *xhcd = udev->xhcd;
 
     //启用插槽
-    xhci_cmd_enable_slot(xhcd,udev->root_port_num,&udev->slot_id); //启用插槽
+    int32 err = xhci_cmd_enable_slot(xhcd,udev->root_port_num,&udev->slot_id); //启用插槽
+    if (err < 0) return err;
 
     //分配设备上下文
     uint8 ctx_size = xhcd->ctx_size;
@@ -1427,12 +1428,8 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     usb_alloc_ep_ring(uep0);
 
     // ---下发命令 ---
-    usb_ctx_sync(udev);
-    usb_ctx_copy_slot(udev);
-    usb_ctx_add_ep(udev,uep0);
-    usb_ctx_commit(udev,USB_CTX_CMD_ADDR);
-
-    return 0;
+    err = usb_ctx_address_device(udev);
+    return err;
 }
 
 /**
@@ -1457,9 +1454,7 @@ static inline int32 usb_get_dev_desc(usb_dev_t *udev) {
         if (dev_desc->max_packet_size0 != 8) {
             usb_ep_t *ep0 = udev->eps[1];
             ep0->max_packet_size = dev_desc->max_packet_size0;
-            usb_ctx_sync(udev);
-            usb_ctx_eval_ep(udev,ep0);
-            usb_ctx_commit(udev,USB_CTX_CMD_EVAL);
+            usb_ctx_slot_ep0_eval(udev);
         }
     }
 
