@@ -172,7 +172,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         udev->hub_mtt = mult_if_alt ? 1 : 0;
 
         usb_ctx_sync(udev);
-        xhci_ep_ctx_t *input_ep1_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->in_ctx, 1);
+        xhci_ep_ctx_t *input_ep1_ctx = xhci_get_in_ctx_entry(udev->xhcd, udev->in_ctx, 1);
         color_printk(RED,BLACK,"ep1 status:%d max_pack:%d speed:%d psiv:%d port:%d  \n",input_ep1_ctx->ep_state,input_ep1_ctx->max_packet_size,udev->port_speed,udev->psiv,udev->root_port_num);
 
         // 第一步：先读 8 字节探路
@@ -184,7 +184,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
             ret = usb_hub20_get_desc(udev,hub20_desc, 8);
 
             usb_ctx_sync(udev);
-            xhci_ep_ctx_t *input_ep1_ctx = xhci_get_input_ctx_entry(udev->xhcd, udev->in_ctx, 1);
+            xhci_ep_ctx_t *input_ep1_ctx = xhci_get_in_ctx_entry(udev->xhcd, udev->in_ctx, 1);
             color_printk(RED,BLACK,"ep1 status:%d \n",input_ep1_ctx->ep_state);
 
             if (ret == 0) break;

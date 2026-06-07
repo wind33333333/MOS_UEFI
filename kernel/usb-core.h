@@ -565,17 +565,6 @@ static inline uint8 epdci_to_epaddr(uint8 dci) {
 
 }
 
-//获取 Input Context 数组中的指定条目
-static inline void *xhci_get_input_ctx_entry(input_ctrl_ctx_t *input_ctx, uint32 dci,uint8 ctx_size) {
-    return (uint8 *)input_ctx + ctx_size * (dci + 1);
-}
-
-
-//获取 Device Context 数组中的指定条目
-static inline void *xhci_get_dev_ctx_entry(void* dev_ctx,uint32 dci,uint8 ctx_size) {
-    return (uint8*)dev_ctx + ctx_size * dci;
-}
-
 
 //获取下一个描述符
 static inline void *usb_get_next_desc(usb_desc_head_t *head) {
