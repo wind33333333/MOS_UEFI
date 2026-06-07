@@ -644,7 +644,7 @@ static void usb_ctx_in_sync(usb_dev_t *udev) {
  * 硬件会根据下发的命令类型，自动提取它关心的字段，忽略不关心的字段。
  * @param udev 目标 USB 设备 (真理之源)
  */
-static void usb_ctx_slot_updata(usb_dev_t *udev) {
+static void usb_ctx_slot_update(usb_dev_t *udev) {
     input_ctrl_ctx_t *input_ctrl_ctx = udev->in_ctx;
 
     // 1. 强制打上 Slot 图纸被涂改的标记 (Bit 0 特权)
@@ -756,17 +756,17 @@ static int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type) {
 
 
 //地址分配 + EP0 初始化（创世）
-static int32 usb_ctx_address_device(usb_dev_t *udev) {
+static int32 usb_ctx_addr_dev(usb_dev_t *udev) {
     usb_ctx_in_sync(udev);
     usb_ctx_ep_add(udev,udev->eps[1]);
-    usb_ctx_slot_updata(udev);
+    usb_ctx_slot_update(udev);
     return usb_ctx_commit(udev,USB_CTX_CMD_ADDR);
 }
 
 //配置slot context
 int32 usb_ctx_slot_cfg(usb_dev_t *udev) {
     usb_ctx_in_sync(udev);
-    usb_ctx_slot_updata(udev);
+    usb_ctx_slot_update(udev);
     return usb_ctx_commit(udev,USB_CTX_CMD_CFG);
 }
 
@@ -774,33 +774,53 @@ int32 usb_ctx_slot_cfg(usb_dev_t *udev) {
 int32 usb_ctx_slot_ep0_eval(usb_dev_t *udev) {
     usb_ctx_in_sync(udev);
     usb_ctx_ep_add(udev,udev->eps[1]);
-    usb_ctx_slot_updata(udev);
+    usb_ctx_slot_update(udev);
     return usb_ctx_commit(udev,USB_CTX_CMD_EVAL);
 }
 
 
-//批量增加业务端点
-int32 usb_ctx_eps_add(usb_if_alt_t *uif_alt) {
-    usb_dev_t *udev = uif_alt->uif->udev;
-    usb_ctx_in_sync(udev);
-    for (uint8 i = 0; i < uif_alt->if_desc->num_endpoints; i++) {
-        usb_ctx_ep_add(udev,&uif_alt->eps[i]);
-    }
-    usb_ctx_slot_updata(udev);
-    return usb_ctx_commit(udev,USB_CTX_CMD_CFG);
-}
+//批量增删改业务端点
+int32 usb_ctx_eps_cfg(usb_if_alt_t *drop_uif_alt,usb_if_alt_t *add_uif_alt) {
 
-//批量修改业务端点
-int32 usb_ctx_eps_reconfig(usb_if_alt_t *old_uif_alt,usb_if_alt_t *new_uif_alt) {
-    usb_dev_t *udev = old_uif_alt->uif->udev;
+    usb_dev_t *udev = NULL;
+    uint8 drop_num_ep = 0;
+    uint8 add_num_ep = 0;
+
+    if (drop_uif_alt) {
+        udev = drop_uif_alt->uif->udev;
+        drop_num_ep = drop_uif_alt->if_desc->num_endpoints;
+    }
+
+    if (add_uif_alt) {
+        // 🌟 防御性护城河：防止传入的两个接口不属于同一个设备
+        if (udev != NULL && udev != add_uif_alt->uif->udev) {
+            return -EINVAL;
+        }
+
+        udev = add_uif_alt->uif->udev;
+        add_num_ep = add_uif_alt->if_desc->num_endpoints;
+    }
+
+    // 2. 基础校验
+    if (udev == NULL) return -EINVAL;
+
+    // 🌟 逻辑修正：如果新旧配置都没有业务端点，直接返回成功 (No-op)
+    if (drop_num_ep == 0 && add_num_ep == 0) {
+        return 0;
+    }
+
+
     usb_ctx_in_sync(udev);
-    for (uint8 i = 0; i < old_uif_alt->if_desc->num_endpoints; i++) {
-        usb_ctx_ep_drop(udev,&old_uif_alt->eps[i]);
+
+    for (uint8 i = 0; i < drop_num_ep; i++) {
+        usb_ctx_ep_drop(udev,&drop_uif_alt->eps[i]);
     }
-    for (uint8 i = 0; i < new_uif_alt->if_desc->num_endpoints; i++) {
-        usb_ctx_ep_add(udev,&new_uif_alt->eps[i]);
+
+    for (uint8 i = 0; i < add_num_ep; i++) {
+        usb_ctx_ep_add(udev,&add_uif_alt->eps[i]);
     }
-    usb_ctx_slot_updata(udev);
+
+    usb_ctx_slot_update(udev);
     return usb_ctx_commit(udev,USB_CTX_CMD_CFG);
 }
 
@@ -992,20 +1012,8 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
     // 3. 性能优化：如果想切换的就是当前正在用的，直接光速返回
     if (old_alt == new_alt) return -EINVAL;
 
-    // 开启 xHCI 底层硬件事务
-    usb_ctx_sync(udev);
-
-    // 1. 安全获取旧端点数量
-    uint8 old_num_eps = (old_alt != NULL) ? old_alt->if_desc->num_endpoints : 0;
     // 2. 提前获取新端点数量
     uint8 new_num_eps = new_alt->if_desc->num_endpoints;
-
-    // ==========================================================
-    // 阶段 1：[纸上谈兵] 圈出要 Drop 的旧端点
-    // ==========================================================
-    for (uint8 i = 0; i < old_num_eps; i++) {
-        usb_ctx_drop_ep(udev, &old_alt->eps[i]);
-    }
 
     // ==========================================================
     // 阶段 2：[预分配] 为新端点画图纸并分配内存 (★ 核心架构重构)
@@ -1022,15 +1030,12 @@ int32 usb_switch_alt_if(usb_if_alt_t *new_alt) {
             for (uint8 j = 0; j < i; j++) usb_free_ep_ring(&new_alt->eps[j]);
             return posix;
         }
-
-        // 准备好图纸
-        usb_ctx_add_ep(udev, ep);
     }
 
     // ==========================================================
     // 阶段 3：一锤定音！向 xHCI 提交图纸，等待硬件裁决
     // ==========================================================
-    posix = usb_ctx_commit(udev, USB_CTX_CMD_CFG);
+    posix = usb_ctx_eps_cfg(old_alt,new_alt);
     if (posix < 0) {
         color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, hardware rejected!\n");
         // 主板拒绝了这份图纸，销毁刚刚新分配的所有内存，安全退出
@@ -1428,7 +1433,7 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     usb_alloc_ep_ring(uep0);
 
     // ---下发命令 ---
-    err = usb_ctx_address_device(udev);
+    err = usb_ctx_addr_dev(udev);
     return err;
 }
 
