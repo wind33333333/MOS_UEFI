@@ -1467,6 +1467,9 @@ static inline int usb_get_cfg_desc(usb_dev_t *udev) {
     _usb_get_cfg_desc(udev,0,config_desc,config_desc_length);
 
     udev->config_desc = config_desc;
+
+    usb_set_cfg(udev);          //启用配置
+
     return 0;
 }
 

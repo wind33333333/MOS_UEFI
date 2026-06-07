@@ -208,8 +208,6 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         usb_ctx_eval_slot(udev);
         usb_ctx_commit(udev,USB_CTX_CMD_CFG);
 
-        usb_ctx_sync(udev);
-        usb_ctx_eval_slot(udev);
 
         while (1);
 

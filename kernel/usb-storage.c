@@ -15,8 +15,6 @@ extern scsi_host_template_t bot_host_template;
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
 
-    usb_set_cfg(uif->udev);
-
     usb_if_alt_t *uas_if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY,0x62);
     usb_if_alt_t *bot_if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY,0x50);
 
@@ -32,7 +30,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
         uas_data->uif = uif;
 
         uint8 streams_exp = usb_cfg_alt_if_resources(uas_if_alt,6,256);
-        usb_switch_alt_if(uas_if_alt);
+        usb_enable_alt_if(uas_if_alt);
 
         // ==========================================================
         // 1. 解析 Pipe 端点与流能力侦测
@@ -84,7 +82,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
         bot_data->tag = 0;
 
         usb_cfg_alt_if_resources(bot_if_alt,0,256);
-        usb_switch_alt_if(bot_if_alt);
+        usb_enable_alt_if(bot_if_alt);
 
         for (uint8 i = 0; i < 2; i++) {
             usb_ep_t *ep = &uif->activity_if_alt->eps[i];
