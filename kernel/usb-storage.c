@@ -29,14 +29,12 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
         if (!uas_data) return -1;
         uas_data->uif = uif;
 
-        uint8 streams_exp = usb_cfg_alt_if_resources(uas_if_alt,6,256);
-        usb_enable_alt_if(uas_if_alt);
-
         // ==========================================================
         // 1. 解析 Pipe 端点与流能力侦测
         // ==========================================================
         for (uint8 i = 0; i < 4; i++) {
             usb_ep_t *ep = &uas_if_alt->eps[i];
+            ep->ring_max_trbs = 256;
 
             usb_uas_pipe_usage_desc_t *pipe_usage_desc = ep->extras_desc;
             if (!pipe_usage_desc) continue;
@@ -49,6 +47,9 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
                 case USB_UAS_PIPE_BULK_OUT:    uas_data->data_out_ep = ep; break;
             }
         }
+
+        uint8 streams_exp = usb_cfg_alt_streams(uas_if_alt,6);
+        usb_enable_alt_if(uas_if_alt);
 
         uint16 streams_pool_size = 0;
         //初始化tag_bitmap
@@ -81,11 +82,9 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
         bot_data->sense = kzalloc_dma(SCSI_SENSE_ALLOC_SIZE);
         bot_data->tag = 0;
 
-        usb_cfg_alt_if_resources(bot_if_alt,0,256);
-        usb_enable_alt_if(bot_if_alt);
-
         for (uint8 i = 0; i < 2; i++) {
-            usb_ep_t *ep = &uif->activity_if_alt->eps[i];
+            usb_ep_t *ep = &bot_if_alt->eps[i];
+            ep->ring_max_trbs = 256;
             if (ep->ep_dci & 1) {
                 bot_data->in_ep = ep;
             } else {
@@ -93,6 +92,8 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
             }
         }
 
+        usb_cfg_alt_streams(bot_if_alt,0);
+        usb_enable_alt_if(bot_if_alt);
 
 
         //uint8 max_lun = bot_get_max_lun(uif->udev,uif->if_num);

@@ -599,7 +599,7 @@ void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfe
 
 usb_if_alt_t* usb_find_alt_if(usb_if_t *uif, int16 class, int16 subclass, int16 protocol);
 int32 usb_enable_alt_if(usb_if_alt_t *new_alt);
-int32 usb_cfg_alt_if_resources(usb_if_alt_t *alt,uint8 want_streams_exp, uint32 want_trb_size);
+int32 usb_cfg_alt_streams(usb_if_alt_t *alt, uint8 want_streams_exp);
 
 
 int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_id);

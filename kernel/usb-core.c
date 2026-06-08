@@ -1082,53 +1082,63 @@ int32 usb_enable_alt_if(usb_if_alt_t *new_alt) {
 }
 
 /**
- * @brief [驱动层 API] 配置备用接口图纸的硬件资源诉求 (完美支持流与非流端点混编)
- * @note 必须在 usb_switch_alt_if 提交硬件前调用！
- * @return int32  最终成功协商出的流指数。如果为 0，表示全线降级为普通环。
+ * @brief [驱动层 API] 协商并配置备用接口的“流 (Streams)”能力
+ * @return int32  最终成功协商出的流指数。如果为 0，表示全线降级为普通 Bulk。
  */
-int32 usb_cfg_alt_if_resources(usb_if_alt_t *alt,uint8 want_streams_exp, uint32 want_trb_size) {
-    if (!alt || !alt->uif->udev || !alt->if_desc) return -EINVAL;
+int32 usb_cfg_alt_streams(usb_if_alt_t *alt, uint8 want_streams_exp) {
+    // 🌟 优化 1：增加 uif 判空，防止后续多级指针解引用崩溃
+    if (!alt || !alt->uif || !alt->uif->udev || !alt->if_desc) return -EINVAL;
 
-    uint8 final_exp = 0;
-    uint8 num_eps = alt->if_desc->num_endpoints;
+    uint8 num_ep = alt->if_desc->num_endpoints;
 
     // =========================================================================
-    // 阶段 1：【精准算计】只和“有能力开流”的端点进行博弈
+    // 阶段 0：【光速退场】驱动本身不想要流，直接清零返回
     // =========================================================================
-    if (want_streams_exp > 0) {
-        uint8 host_max = alt->uif->udev->xhcd->max_streams_exp;
-        final_exp = (host_max < want_streams_exp) ? host_max : want_streams_exp;
-
-        for (uint8 i = 0; i < num_eps; i++) {
-            uint8 ep_max = alt->eps[i].max_streams_exp;
-            // 🌟 核心修复：放过它！不支持流的端点，不参与最短板算计
-            if (ep_max == 0) continue;
-            if (ep_max < final_exp) final_exp = ep_max;
+    if (want_streams_exp == 0) {
+        for (uint8 i = 0; i < num_ep; i++) {
+            alt->eps[i].enable_streams_exp = 0;
         }
-
+        return 0;
     }
 
     // =========================================================================
-    // 阶段 2：【图纸重绘】流端点用多环，普通端点保单环，各取所需！
+    // 阶段 1：【探底博弈】寻找端点硬件的最短板 (使用哨兵机制)
     // =========================================================================
-    for (uint8 i = 0; i < num_eps; i++) {
-        usb_ep_t *ep = &alt->eps[i];
+    uint8 ep_min_exp = 0xFF; // 🌟 优化 2：用 0xFF 作为哨兵，干掉 boolean 标志位
 
-        // 🌟 精准施策：只有硬件描述符里声明了能力的端点，才配得上 final_exp！
-        // 那些 max_streams_exp == 0 的端点，将被乖乖清零，底层分配器会给它们建普通环。
-        if (ep->max_streams_exp > 0) {
-            ep->enable_streams_exp = final_exp;
-        } else {
-            ep->enable_streams_exp = 0;
+    for (uint8 i = 0; i < num_ep; i++) {
+        uint8 ep_max = alt->eps[i].max_streams_exp;
+        if (ep_max > 0 && ep_max < ep_min_exp) {
+            ep_min_exp = ep_max;
         }
+    }
 
-        // TRB 运力诉求可以一视同仁地覆盖 (普通环和流环都需要 TRB)
-        ep->ring_max_trbs = want_trb_size;
+    // =========================================================================
+    // 阶段 2：【三方会谈】综合 设备端点、主板控制器、上层驱动 的诉求
+    // =========================================================================
+    uint8 final_exp = 0;
+
+    if (ep_min_exp != 0xFF) { // 至少存在一个支持流的端点
+        final_exp = ep_min_exp;
+
+        // 🌟 优化 3：延迟解引用 xhcd，避免 99% 的普通设备触发缓存未命中
+        uint8 host_max = alt->uif->udev->xhcd->max_streams_exp;
+
+        if (host_max < final_exp) final_exp = host_max;
+        if (want_streams_exp < final_exp) final_exp = want_streams_exp;
+    }
+
+    // =========================================================================
+    // 阶段 3：【图纸重绘】精准覆盖
+    // =========================================================================
+    for (uint8 i = 0; i < num_ep; i++) {
+        usb_ep_t *ep = &alt->eps[i];
+        // 🌟 优化 4：利用三目运算符折叠分支，消除 if-else 带来的指令预测开销
+        ep->enable_streams_exp = (ep->max_streams_exp > 0) ? final_exp : 0;
     }
 
     return final_exp;
 }
-
 
 //===================================================== 解析描述符非配资源 ============================================
 
