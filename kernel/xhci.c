@@ -723,6 +723,7 @@ void xhci_handle_cmd_completion(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
            command->comp_code = comp_code;
            command->comp_param = comp_param;
            command->is_done = TRUE;
+           command->status = xhci_translate_error(comp_code);
            break;
        }
    }
@@ -850,11 +851,11 @@ int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_id) {
 //xhci port扫描
 void xhci_port_scan(xhci_hcd_t *xhcd){
     //等待硬件完成端口初始化
-     uint32 times = 0x5000000;
-     while (times) {
-         times--;
-         asm_pause();
-     }
+     // uint32 times = 0x5000000;
+     // while (times) {
+     //     times--;
+     //     asm_pause();
+     // }
 
     for (uint8 i = 1; i <= xhcd->max_ports; i++) {
         if (i == 3 || i == 10) continue;

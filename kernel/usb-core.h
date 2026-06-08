@@ -461,7 +461,6 @@ typedef struct usb_dev_t{
     uint8                           hub_num_ports; //hub端口数量
     uint8                           hub_mtt; //Multiple Transaction Translators - 多事务翻译器
     uint8                           hub_ttt;
-    uint8                           context_entries;
     uint16                          max_exit_latency;
 
     // 2. 纯 USB 协议概念 (描述符与配置)

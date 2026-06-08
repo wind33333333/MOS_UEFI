@@ -651,12 +651,7 @@ static void usb_ctx_slot_update(usb_dev_t *udev) {
     // 既然是全量同步，Slot 必定被修改，直接置位
     input_ctrl_ctx->add_context_flags |= (1 << 0);
 
-    // 2. 核心算法：算出投影位图并更新 context_entries,先删后建
-    uint32 projected_map = (udev->active_ep_map & ~input_ctrl_ctx->drop_context_flags) | input_ctrl_ctx->add_context_flags;
-    udev->context_entries = 31 - asm_lzcnt32(projected_map);
-
-
-    // 3. 拿到 Slot Context 的图纸指针
+    // 2. 拿到 Slot Context 的图纸指针
     xhci_slot_ctx_t *slot = usb_get_in_ctx_entry(input_ctrl_ctx, 0,udev->xhcd->ctx_size);
 
     // ===================================================================
@@ -667,7 +662,10 @@ static void usb_ctx_slot_update(usb_dev_t *udev) {
     slot->root_hub_port_num = udev->root_port_num;
     slot->parent_hub_slot_id = udev->parent_hub ? udev->parent_hub->slot_id : 0;
     slot->parent_port_num = udev->parent_port_num;
-    slot->context_entries = udev->context_entries;
+
+    // 核心算法：算出投影位图并更新 context_entries,先删后建
+    uint32 projected_map = (udev->active_ep_map & ~input_ctrl_ctx->drop_context_flags) | input_ctrl_ctx->add_context_flags;
+    slot->context_entries = 31 - asm_lzcnt32(projected_map);
 
     // ===================================================================
     // 维度 B：集线器全局拓扑属性 (Configure Endpoint 基建阶段核心)
@@ -745,7 +743,6 @@ static int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type) {
     // 2. 🌟 事务成功，真理对齐！(修复了你的状态丢失 Bug)
     if (cmd_type == USB_CTX_CMD_DECFG_ALL) {
         udev->active_ep_map = (1 << 0) | (1 << 1); // 仅留 Slot 和 EP0
-        udev->context_entries = 1;                 // 瞬间格式化最大端点
     } else {
         udev->active_ep_map &= ~udev->in_ctx->drop_context_flags;
         udev->active_ep_map |= udev->in_ctx->add_context_flags;
