@@ -138,6 +138,11 @@ static int32 usb_hub_get_port_status(usb_dev_t *udev, uint8 port_id, uint32 *por
     return ret;
 }
 
+//获取 Device Context 数组中的指定条目
+static inline void *usb_get_out_ctx_entry(void* out_ctx,uint32 dci,uint8 ctx_size) {
+    return (uint8*)out_ctx + ctx_size * dci;
+}
+
 
 //hub驱动
 int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
@@ -172,15 +177,8 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         // 第一步：先读 8 字节探路
         usb_hub20_desc_t *hub20_desc = kzalloc_dma(71) ;
 
-        int32 ret;
-
-        ret = usb_hub20_get_desc(udev,hub20_desc, 8);
-
-        // 第二步：算出真实物理长度，再次读取
-        uint8 num_ports = hub20_desc->num_ports;
-        uint16 real_len = 7 + ((num_ports / 8) + 1) * 2;
-        ret = usb_hub20_get_desc(udev,hub20_desc, real_len);
-        if (ret < 0) return ret;
+        int32 error = usb_hub20_get_desc(udev,hub20_desc, 71);
+        if (error < 0) return error;
 
         //解析hub描述符
         udev->hub_num_ports = hub20_desc->num_ports;
@@ -191,6 +189,9 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
 
         //设置udev为hub模式
         usb_ctx_slot_cfg(udev);
+
+        xhci_slot_ctx_t *slot_ctx = usb_get_out_ctx_entry(udev->out_ctx,0,udev->xhcd->ctx_size);
+        color_printk(RED,BLACK,"is_hub:%d num_port:%d  \n",slot_ctx->is_hub,slot_ctx->num_ports);
 
 
         while (1);
