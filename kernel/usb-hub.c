@@ -169,7 +169,9 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         // 🐢 USB 2.0/1.1 (High/Full/Low Speed) Hub 处理逻辑
         // ==========================================
 
-
+        // ==========================================
+        // 1. 协议降级搜索
+        // ==========================================
         usb_if_alt_t *if_alt = NULL;
         // 1. 🥈 尝试寻找 USB 2.0 高级多事务 Hub (MTT, Protocol = 2)
         if (if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY,2)) {
@@ -186,6 +188,7 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
             return -ENODEV;
         }
 
+        //获取2.0hub描述符
         usb_hub20_desc_t *hub20_desc = kzalloc_dma(71) ;
         int32 error = usb_hub20_get_desc(udev,hub20_desc, 71);
         if (error < 0) return error;
@@ -203,22 +206,12 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         xhci_slot_ctx_t *slot_ctx = usb_get_out_ctx_entry(udev->out_ctx,0,udev->xhcd->ctx_size);
         color_printk(RED,BLACK,"is_hub:%d num_port:%d  \n",slot_ctx->is_hub,slot_ctx->num_ports);
 
+        //启用接口
         usb_ep_t *ep1 = &if_alt->eps[0];
         ep1->ring_max_trbs = 32;
-
         usb_enable_alt_if(if_alt);
 
-        usb_urb_t *urb = usb_alloc_urb();
-        uint8 *bitmap = kzalloc(ep1->max_packet_size);
-        usb_fill_bulk_urb(urb,udev,ep1,bitmap,ep1->max_packet_size);
-        usb_submit_urb(urb);
-
-        // 等结果
-        while (urb->is_done == FALSE) {
-            asm_pause();
-        }
-
-
+        //分配hub端口内存并给端口上电
         hub->ports = kzalloc((udev->hub_num_ports+1)*sizeof(hub_port_t));
         for (uint8 i = 1; i <= udev->hub_num_ports; i++) {
             hub->ports[i].port_id = i;
@@ -237,67 +230,84 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         }
 
         // 🌟 物理规律：必须等待电容充电完毕！(你的 hub->power_delay_ms 派上用场了)
-        //mdelay(hub->power_delay_ms);
+        uint32 times = 0x5000000;
+        while (times) {
+            times--;
+            asm_pause();
+        }
 
         // ==========================================
-        // 2. 开机扫街 (处理遗留设备)
+        // 2. 开机扫街 (处理端口上遗留设备)
         // ==========================================
         for (uint8 i = 1; i <= udev->hub_num_ports; i++) {
-            uint8 port_id = hub->ports[i].port_id;
+            uint8 port_num = hub->ports[i].port_id;
             uint32 status = 0;
 
-            usb_hub_get_port_status(udev, port_id, &status);
+            usb_hub_get_port_status(udev, port_num, &status);
+            color_printk(GREEN, BLACK, "[Hub] port: %d Status: %#x  \n", port_num, status);
 
             // 🔪 擦除开机时产生的插拔变化标志
             if (status & USB_PORT_STAT_C_CONNECTION) {
-                usb_hub_clear_port_connection_change(udev, port_id);
+                usb_hub_clear_port_connection_change(udev, port_num);
             }
 
             // 如果口子上真的插了设备，开始复位流！
             if (status & USB_PORT_STAT_CONNECTION) {
-                //color_printk(GREEN, BLACK, "[Hub] 端口 %d 发现遗留设备，发射复位信号...\n", port_no);
-
                 // 触发硬复位
-                usb_hub_set_port_reset(udev, port_id);
+                usb_hub_set_port_reset(udev, port_num);
 
                 // 🌟 物理规律：必须死等复位完成！
-                uint32 timeout = 100; // 最多等 100ms
+                uint32 timeout = 10000000; // 最多等 100ms
                 while (timeout > 0) {
-                    //mdelay(10);
-                    usb_hub_get_port_status(udev, port_id, &status);
+                    usb_hub_get_port_status(udev, port_num, &status);
 
                     // 检查 C_RESET 标志位是否被硬件置 1
                     if (status & USB_PORT_STAT_C_RESET) {
                         break;
                     }
-                    timeout -= 10;
+                    timeout -= 1;
                 }
 
                 if (timeout == 0) {
-                    //color_printk(RED, BLACK, "[Hub] 端口 %d 复位超时！\n", port_no);
+                    color_printk(RED, BLACK, "[Hub] port: %d reset timeout！\n", port_num);
                     continue;
                 }
 
                 // 🔪 擦除复位完成标志
-                usb_hub_clear_port_reset_change(udev, port_id);
+                usb_hub_clear_port_reset_change(udev, port_num);
 
                 // 🔪 顺手擦除随之产生的 Enable 变化标志
                 if (status & USB_PORT_STAT_C_ENABLE) {
-                    usb_hub_clear_port_enable_change(udev, port_id);
+                    usb_hub_clear_port_enable_change(udev, port_num);
                 }
 
                 // 最终确认：是否成功 Enable？
                 if (status & USB_PORT_STAT_ENABLE) {
-                    //color_printk(GREEN, BLACK, "[Hub] 端口 %d 复位成功！(Status: 0x%08x)\n", port_no, status);
+                    usb_hub_get_port_status(udev, port_num, &status);
+                    color_printk(GREEN, BLACK, "[Hub] port: %d reset successful！(Status: %#x)\n", port_num, status);
 
                     //  提取速度 (Full/Low/High Speed)
                     //  为这个新设备分配地址 (SetAddress)，获取它的设备描述符！
                 }
 
-                usb_hub_get_port_status(udev, port_id, &status);
-                usb_hub_get_port_status(udev, port_id, &status);
             }
         }
+
+
+        usb_urb_t *urb = usb_alloc_urb();
+        uint8 *bitmap = kzalloc(ep1->max_packet_size);
+        usb_fill_bulk_urb(urb,udev,ep1,bitmap,ep1->max_packet_size);
+        usb_submit_urb(urb);
+
+        // 等结果
+        while (urb->is_done == FALSE) {
+            asm_pause();
+        }
+
+        color_printk(RED,BLACK,"usb_hub2.0 bitmap:%#x  \n",bitmap[0]);
+
+        while (1);
+
 
     }
 
