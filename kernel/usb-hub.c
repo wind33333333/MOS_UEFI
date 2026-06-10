@@ -167,16 +167,26 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         color_printk(GREEN,BLACK,"hub2.0!!! speed:%d psiv:%d port:%d  \n",udev->port_speed,udev->psiv,udev->root_port_num );
         // ==========================================
         // 🐢 USB 2.0/1.1 (High/Full/Low Speed) Hub 处理逻辑
-        // 描述符类型：0x29，变长地雷，必须踩两步！
         // ==========================================
 
-        //单事务翻译器或多事务
-        usb_if_alt_t *mult_if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY,2);
-        udev->hub_mtt = mult_if_alt ? 1 : 0;
 
-        // 第一步：先读 8 字节探路
+        usb_if_alt_t *if_alt = NULL;
+        // 1. 🥈 尝试寻找 USB 2.0 高级多事务 Hub (MTT, Protocol = 2)
+        if (if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY,2)) {
+            udev->hub_mtt = 1;
+        }else if (if_alt =usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY,1)) {
+            // 2. 🥉 降级寻找 USB 2.0 单事务 Hub (STT, Protocol = 1)
+            udev->hub_mtt = 0;
+        }else if (if_alt =usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY,0)){
+            // 3. 🪨 终极保底：USB 1.1 全速 Hub 或基础兼容模式 (Protocol = 0)
+            udev->hub_mtt = 0;
+        }else {
+            // 终极防御：如果连 Protocol 0 都找不到，说明这是一个损坏的设备或非 Hub 设备
+            color_printk(RED, BLACK, "USB: Failed to find any valid Hub protocol!\n");
+            return -ENODEV;
+        }
+
         usb_hub20_desc_t *hub20_desc = kzalloc_dma(71) ;
-
         int32 error = usb_hub20_get_desc(udev,hub20_desc, 71);
         if (error < 0) return error;
 
@@ -193,8 +203,20 @@ int32 usb_hub_probe(usb_if_t *uif,usb_id_t *uid) {
         xhci_slot_ctx_t *slot_ctx = usb_get_out_ctx_entry(udev->out_ctx,0,udev->xhcd->ctx_size);
         color_printk(RED,BLACK,"is_hub:%d num_port:%d  \n",slot_ctx->is_hub,slot_ctx->num_ports);
 
+        usb_ep_t *ep1 = &if_alt->eps[0];
+        ep1->ring_max_trbs = 32;
 
-        while (1);
+        usb_enable_alt_if(if_alt);
+
+        usb_urb_t *urb = usb_alloc_urb();
+        uint8 *bitmap = kzalloc(ep1->max_packet_size);
+        usb_fill_bulk_urb(urb,udev,ep1,bitmap,ep1->max_packet_size);
+        usb_submit_urb(urb);
+
+        // 等结果
+        while (urb->is_done == FALSE) {
+            asm_pause();
+        }
 
 
         hub->ports = kzalloc((udev->hub_num_ports+1)*sizeof(hub_port_t));

@@ -849,11 +849,11 @@ int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_id) {
 //xhci port扫描
 void xhci_port_scan(xhci_hcd_t *xhcd){
     //等待硬件完成端口初始化
-     uint32 times = 0x5000000;
-     while (times) {
-         times--;
-         asm_pause();
-     }
+     // uint32 times = 0x5000000;
+     // while (times) {
+     //     times--;
+     //     asm_pause();
+     // }
 
     for (uint8 i = 1; i <= xhcd->max_ports; i++) {
         uint32 portsc = xhci_read_port(xhcd,i);

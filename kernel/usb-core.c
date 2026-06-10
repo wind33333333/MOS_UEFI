@@ -240,7 +240,7 @@ int32 usb_submit_urb(usb_urb_t *urb) {
  */
 usb_urb_t *usb_alloc_urb(void) {
     // 1. 从内核堆内存中申请一块空间
-    usb_urb_t *urb = (usb_urb_t *)kzalloc(sizeof(usb_urb_t));
+    usb_urb_t *urb = kzalloc(sizeof(usb_urb_t));
     if (urb == NULL) {
         color_printk(RED, BLACK, "USB Core: Failed to allocate URB!\n");
         return NULL;
