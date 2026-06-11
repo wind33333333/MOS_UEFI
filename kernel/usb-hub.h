@@ -122,6 +122,8 @@ typedef struct {
 
 
 typedef struct usb_hub_t {
+    uint8              status_bitmap[32];
+
     // 1. 向上挂载
     usb_if_t           *uif;
 
@@ -141,8 +143,16 @@ typedef struct usb_hub_t {
     // 5. 双总线伴侣
     struct usb_hub_t   *companion_hub;
 
+    union {
+        usb_hub30_desc_t *hub30_desc;
+        usb_hub20_desc_t *hub20_desc;
+    };
+
     // 6. 并发控制
     uint32             lock;
+
+    usb_urb_t          *int_urb;
+
 } usb_hub_t;
 
 

@@ -220,9 +220,9 @@ typedef struct {
     // 字节数 = (num_ports / 8) + 1
     // 比如 4 口 Hub，这里就是 1 个字节；10 口 Hub，这里就是 2 个字节。
     // ==========================================
-    uint8 device_removable[];       // 位图：指示每个端口上的设备是不是焊死的（比如笔记本内置摄像头）
+    uint8 device_removable[32];       // 位图：指示每个端口上的设备是不是焊死的（比如笔记本内置摄像头）
 
-    // uint8 port_pwr_ctrl_mask[];  // 💡 USB 2.0 规范已废弃全填 0xFF，此处物理超度！
+    uint8 port_pwr_ctrl_mask[32];  // 💡 USB 2.0 规范已废弃全填 0xFF，此处物理超度！
 } usb_hub20_desc_t;
 
 /**
@@ -237,8 +237,8 @@ typedef struct {
     // Bit 1:0 - 电源切换模式 (00=全局联动上电, 01=独立上电, 1X=无电源切换)
     // Bit 2   - 复合设备标识 (0=独立Hub, 1=复合设备)
     // Bit 4:3 - 过流保护模式 (00=全局保护, 01=独立保护, 1X=无保护)
+    // Bit 6:5 - 被废弃，严格填 0
     // Bit 7   - 端口指示灯控制 (0=不支持, 1=支持)
-    // ⚠️ 注：Bit 6:5 被废弃，严格填 0
     uint16 hub_characteristics;
 
     uint8  power_on_to_power_good;  // 单位依然是 2ms
@@ -253,7 +253,7 @@ typedef struct {
     // ==========================================
     // 曾经的变长数组，现在变成了固定的 16-bit 整数
     // ==========================================
-    uint16 device_removable;        // 16位位图。Bit 1~15 代表对应的端口是否可移除。(Bit 0 保留)
+     uint8 device_removable[2];        // 16位位图。Bit 1~15 代表对应的端口是否可移除。(Bit 0 保留)
 
 } usb_hub30_desc_t;
 
