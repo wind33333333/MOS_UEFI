@@ -26,11 +26,10 @@ INIT_TEXT void init_kernel(void) {
     efi_runtime_service_map();                 //映射efi运行时服务到虚拟地址空间
     init_ioapic();                             //初始化ioapic
     init_bsp();                                //初始化bsp核心
-    init_hpet();                               //初始化hpet
     bus_init();                                //总线初始化
 
     while (1);
-
+    init_hpet();                               //初始化hpet
     init_ap();                                 //初始化ap核
     while (1);
 
