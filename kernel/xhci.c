@@ -663,8 +663,9 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
     if (ep == NULL) return;
 
     // =======================================================
-    // 🌟 1. 逆向定位：找出真正发生事件的那个环！
+    // 普通端点的数据传输完成路径
     // =======================================================
+    // 🌟 1. 逆向定位：找出真正发生事件的那个环！
     xhci_submit_ring_t *target_ring = xhci_get_ring_by_pa(ep, trb_pa);
     if (target_ring == NULL) {
         color_printk(RED, BLACK, "xHCI: Ghost TRB PA %llx from hardware!\n", trb_pa);
@@ -698,6 +699,24 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
 
     // 🔓 4. 解锁释放
     spin_unlock_irqrestore(&target_ring->ring_lock, cpu_flags);
+
+    // =======================================================
+    // 🌟 特殊通道：Hub 的 Interrupt IN Endpoint
+    // =======================================================
+    if (udev->is_hub) {
+        usb_hub_t *hub = udev->drv_data;
+            // 通知Hub驱动处理发生状态变化的端口
+            for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
+                uint8 byte_idx = port_num / 8;
+                uint8 bit_idx = port_num % 8;
+                if(hub->port_bitmap_status[byte_idx] & (1<<bit_idx)) {
+                    usb_hub_process_port_event(udev, port_num);
+                };
+
+            // 重新提交，持续监听后续中断
+            usb_submit_urb(hub->int_urb);
+        }
+    }
 }
 
 
@@ -849,11 +868,11 @@ int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_num) {
 //xhci port扫描
 void xhci_port_scan(xhci_hcd_t *xhcd){
     //等待硬件完成端口初始化
-     uint32 times = 0x5000000;
-     while (times) {
-         times--;
-         asm_pause();
-     }
+     // uint32 times = 0x5000000;
+     // while (times) {
+     //     times--;
+     //     asm_pause();
+     // }
 
     for (uint8 i = 1; i <= xhcd->max_ports; i++) {
         uint32 portsc = xhci_read_port(xhcd,i);

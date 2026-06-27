@@ -287,6 +287,13 @@ static inline int32 usb_hub_port_clear_bh_reset_change(usb_dev_t *udev, uint8 po
 }
 
 
+void usb_hub_port_eunm(usb_dev_t *parent_hub, uint8 port_num) {
+    usb_dev_t *udev = usb_dev_create(parent_hub->xhcd, parent_hub,port_num);
+    usb_if_create(udev);
+    usb_dev_register(udev);
+    usb_if_register(udev);
+}
+
 
 // =========================================================================
 // 🚀 核心处理引擎：全异步端口事件分发器
@@ -369,12 +376,8 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
                 } else {
                     // 插入即 U0，直接就绪
                     port->state = PORT_STATE_ENABLED;
-
                     // TODO: 直接发起 SetAddress 异步控制传输！
-
-                    usb_hub_port_get_status(udev, port_num, &init_port_status);
-                    color_printk(GREEN, BLACK, "[Hub Port %d] Async IRQ! Status: %#x, Current State: %d\n",
-                port_num, init_port_status, port->state);
+                    usb_hub_port_eunm(udev, port_num);
 
                 }
             } else {
@@ -421,10 +424,7 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
                 // 💥 真正的异步枚举动作在这里发生：
                 // TODO: 组装一个 Setup_Packet 为 SET_ADDRESS 的 URB，
                 // 挂载下一步回调函数后，下发给 xHCI 命令环！
-
-                usb_hub_port_get_status(udev, port_num, &init_port_status);
-                color_printk(GREEN, BLACK, "[Hub Port %d] Async IRQ! Status: %#x, Current State: %d\n",
-            port_num, init_port_status, port->state);
+                usb_hub_port_eunm(udev, port_num);
 
             } else {
                 color_printk(RED, BLACK, "[Hub Port %d] Async: Reset finished but port dead!\n", port_num);
@@ -562,11 +562,11 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
 
         // 分配 hub 端口内存并解析哪些是不可拆卸端口
         hub->ports = kzalloc((udev->hub_num_ports + 1) * sizeof(hub_port_t));
-        for (uint8 i = 1; i <= udev->hub_num_ports; i++) {
-            hub->ports[i].port_num = i;
-            uint8 byte_idx = i / 8;
-            uint8 bit_idx = i % 8;
-            hub->ports[i].is_removable = !((hub20_desc->device_removable[byte_idx] >> bit_idx) & 1);
+        for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
+            hub->ports[port_num].port_num = port_num;
+            uint8 byte_idx = port_num / 8;
+            uint8 bit_idx = port_num % 8;
+            hub->ports[port_num].is_removable = !((hub20_desc->device_removable[byte_idx] >> bit_idx) & 1);
         }
     }
 
@@ -582,21 +582,18 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
         usb_hub_port_up_power(udev, port_num);
     }
-    color_printk(RED,BLACK, "hub up power!! \n");
 
     //5.等待100毫秒等待hub物理状态稳定
-    uint32 times = 0x5000000;
-    while (times) {
-        times--;
-        asm_pause();
-    }
+    // uint32 times = 0x5000000;
+    // while (times) {
+    //     times--;
+    //     asm_pause();
+    // }
 
     //6.第一次初始化hub后手动扫描每个端口是否有设备防止遗漏
     for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
         usb_hub_process_port_event(udev,port_num);
     }
-
-    color_printk(RED,BLACK, "hub port scan!! \n");
 
     //7.配置好中断 URB,提交队列后续有设备插入拔出等异步实现
     hub->int_urb = usb_alloc_urb();

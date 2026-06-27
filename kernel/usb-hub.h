@@ -229,4 +229,6 @@ typedef struct usb_hub_t {
 
 } usb_hub_t;
 
+void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num);
+
 
