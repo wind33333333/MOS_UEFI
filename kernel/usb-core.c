@@ -474,6 +474,24 @@ static inline int32 usb_get_bos_desc(usb_dev_t *udev, void *buf, uint16 len) {
 
 //=============================================================================================================
 
+/**
+ * @brief 将 USB 描述符中的 bInterval 换算为 xHCI 硬件要求的指数值
+ *
+ * @param interval 设备端点描述符中读取的原始值
+ * @param speed     设备当前的运行速度
+ * @return uint32   符合 xHCI Endpoint Context Interval 字段规范的值
+ */
+static inline uint32 xhci_calc_interval(uint8 interval, usb_port_speed_e speed) {
+    if (interval == 0) return 0;
+    if (speed >= USB_SPEED_HIGH) {
+        // 高速/超高速：本身就是指数格式
+        return interval - 1;
+    } else {
+        // 低速/全速：线性毫秒格式，转为以 125us 为底的微帧指数
+        return 34 - asm_lzcnt32(interval);
+    }
+}
+
 //============================================== 上下文操作函数 ===========================================================
 
 //获取 Input Context 数组中的指定条目
@@ -554,7 +572,7 @@ static void usb_ctx_ep_add(usb_dev_t *udev, usb_ep_t *ep) {
     ep_ctx->mult = ep->mult;
     ep_ctx->max_pstreams = ep->enable_streams_exp;
     ep_ctx->lsa = ep->lsa;
-    ep_ctx->interval = ep->interval;
+    ep_ctx->interval = xhci_calc_interval(ep->interval,udev->port_speed);
     ep_ctx->max_esit_payload_hi = (ep->max_esit_payload>>16)&0xFF;
     ep_ctx->cerr = ep->cerr;
     ep_ctx->ep_type = ep->ep_type;
