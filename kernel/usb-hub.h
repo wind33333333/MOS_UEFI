@@ -157,6 +157,27 @@ typedef enum : uint16 {
 #define USB3_PORT_STAT_C_LINK_STATE   0x00400000 // [链路突变] 链路状态机发生跳转 (例如从 Rx.Detect 变为 U0) (Clear Selector: 25)
 #define USB3_PORT_STAT_C_CONFIG_ERR   0x00800000 // [物理报错] 严重的超高速物理层级阻抗配置/串扰错误 (Clear Selector: 26)
 
+
+
+// =========================================================================
+// 📝 前置定义：端口软件状态备忘录 (时间胶囊)
+// 需要存在于你的 hub_port_t 或类似的端口结构体中
+// =========================================================================
+typedef enum : uint8 {
+    // --- 基础稳态 ---
+    PORT_STATE_DISCONNECTED = 0,   // 空闲/已物理拔出
+    PORT_STATE_ENABLED,            // 正常工作中 (U0 / 处于活动状态)
+    PORT_STATE_SUSPENDED,          // 深度休眠中 (U3 / Suspend)
+
+    // --- 异步过渡态 (代替死等，用于接住硬件中断回执) ---
+    PORT_STATE_WAITING_HOT_RESET,  // 等待标准复位完成 (等 C_RESET)
+    PORT_STATE_WAITING_WARM_RESET, // 等待大锤强刷完成 (等 C_BH_RESET)
+    PORT_STATE_WAITING_RESUME,     // 等待物理唤醒完成 (等 C_SUSPEND)
+    PORT_STATE_WAITING_LINK_CHANGE // 等待链路跃迁完成 (等 C_LINK_STATE)
+} port_state_e;
+
+
+
 /**
  * @brief Hub 的单个下游端口状态追踪器
  * 这个结构体完全由软件维护，是对物理端口状态的抽象。
@@ -165,8 +186,7 @@ typedef struct {
     uint8  port_id;       // 端口号 (1-based，从 1 开始)
     boolean is_removable; // 🌟 新增：这个设备是热插拔的，还是主板焊死的？
 
-    // 缓存最后一次通过 usb_get_port_status 读到的状态
-    uint32 current_status;
+    port_state_e state;
 
     // 拓扑树指针：如果这个端口上插了东西，指向那个设备的实例
     // 如果端口是空的，这里必须是 NULL
