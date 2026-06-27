@@ -272,47 +272,114 @@ void usb_free_urb(usb_urb_t *urb) {
     kfree(urb);
 }
 
+
 /**
- * @brief 快速初始化 控制传输 (Control Transfer) URB
+ * @brief 初始化控制传输 URB (Control Transfer)
+ * * @note  专为 Endpoint 0 和枚举协议设计。
+ * 必须强制传入 8 字节的 setup_packet。
+ *
+ * @param urb            需要被初始化的 URB 指针
+ * @param udev           目标 USB 设备上下文
+ * @param ep             目标控制端点 (通常是 udev->ep0)
+ * @param setup_packet   指向 8 字节标准请求协议头的指针 (核心必填)
+ * @param transfer_buf   控制传输数据阶段 (Data Stage) 的缓冲区。如无数据阶段传 NULL。
+ * @param transfer_len   数据缓冲区的长度。如无数据阶段传 0。
  */
 void usb_fill_control_urb(usb_urb_t *urb,
-                                        usb_dev_t *udev,
-                                        usb_ep_t *ep,
-                                        usb_setup_packet_t *setup_packet,
-                                        void *transfer_buf,
-                                        uint32 transfer_len) {
-    urb->udev         = udev;
-    urb->ep           = ep;       // 控制端点通常传 1
-    urb->stream_id    = 0;            // 控制传输没有 Stream
-    urb->setup_packet = setup_packet; // 必填：8字节协议头
-    urb->transfer_buf = transfer_buf;
-    urb->transfer_len = transfer_len;
+                          usb_dev_t *udev,
+                          usb_ep_t *ep,
+                          usb_setup_packet_t *setup_packet,
+                          void *transfer_buf,
+                          uint32 transfer_len) {
+    urb->udev           = udev;
+    urb->ep             = ep;
+    urb->stream_id      = 0;            // 仅 UAS 协议使用，控制传输恒为 0
 
-    // 默认标志位设为 0 (表示开启中断、不开启ZLP等标准行为)
+    // 👑 控制传输灵魂：必须挂载 Setup 包
+    urb->setup_packet   = setup_packet;
+
+    urb->transfer_buf   = transfer_buf;
+    urb->transfer_len   = transfer_len;
+
+    // 状态与标志位复位，准备发车
     urb->transfer_flags = 0;
     urb->status         = 0;
     urb->actual_length  = 0;
+    urb->is_done        = FALSE;
 }
 
 /**
- * @brief 快速初始化 批量传输 (Bulk Transfer) URB
+ * @brief 初始化批量传输 URB (Bulk Transfer)
+ *
+ * @note  专用于 U盘 (Mass Storage) 或网卡等对吞吐量要求高、对时间不敏感的设备。
+ * 绝对不允许传入 setup_packet，也没有时间间隔的概念。
+ *
+ * @param urb            需要被初始化的 URB 指针
+ * @param udev           目标 USB 设备上下文
+ * @param ep             目标批量端点 (Bulk IN 或 Bulk OUT)
+ * @param transfer_buf   存放或接收数据的缓冲区指针
+ * @param transfer_len   期望发送或接收的总字节数
  */
 void usb_fill_bulk_urb(usb_urb_t *urb,
-                                     usb_dev_t *udev,
-                                     usb_ep_t *ep,
-                                     void *transfer_buf,
-                                     uint32 transfer_len) {
-    urb->udev         = udev;
-    urb->ep           = ep;
-    urb->stream_id    = 0;
-    urb->setup_packet = NULL;         // 👑 核心标志：批量传输绝对没有 Setup 包
-    urb->transfer_buf = transfer_buf;
-    urb->transfer_len = transfer_len;
+                       usb_dev_t *udev,
+                       usb_ep_t *ep,
+                       void *transfer_buf,
+                       uint32 transfer_len) {
+    urb->udev           = udev;
+    urb->ep             = ep;
+    urb->stream_id      = 0;
+
+    // 🚫 严格防呆：批量传输在物理层绝对没有 Setup 阶段，强制封死
+    urb->setup_packet   = NULL;
+
+    urb->transfer_buf   = transfer_buf;
+    urb->transfer_len   = transfer_len;
 
     urb->transfer_flags = 0;
     urb->status         = 0;
     urb->actual_length  = 0;
+    urb->is_done        = FALSE;
 }
+
+/**
+ * @brief 初始化中断传输 URB (Interrupt Transfer)
+ *
+ * @note  专用于 Hub 状态上报、鼠标、键盘等数据量极小，但对延迟极其敏感的设备。
+ * 必须强制指定 interval (轮询间隔)，指示 xHCI 硬件隔多久去查一次。
+ *
+ * @param urb            需要被初始化的 URB 指针
+ * @param udev           目标 USB 设备上下文
+ * @param ep             目标中断端点 (Interrupt IN 或 Interrupt OUT)
+ * @param transfer_buf   存放或接收数据的缓冲区指针
+ * @param transfer_len   期望发送或接收的总字节数 (通常 <= ep->max_packet_size)
+ * @param interval       轮询间隔时间 (硬件将依此频率向设备发出 IN Token)
+ */
+void usb_fill_int_urb(usb_urb_t *urb,
+                      usb_dev_t *udev,
+                      usb_ep_t *ep,
+                      void *transfer_buf,
+                      uint32 transfer_len,
+                      uint32 interval) {
+    urb->udev           = udev;
+    urb->ep             = ep;
+    urb->stream_id      = 0;
+
+    // 🚫 严格防呆：中断传输同样没有 Setup 包
+    urb->setup_packet   = NULL;
+
+    urb->transfer_buf   = transfer_buf;
+    urb->transfer_len   = transfer_len;
+
+    // ⏱️ 核心独占字段：配置硬件轮询频率
+    // 注意：请确保你的 usb_urb_t 结构体中已经添加了 uint32 interval; 字段！
+    urb->interval       = interval;
+
+    urb->transfer_flags = 0;
+    urb->status         = 0;
+    urb->actual_length  = 0;
+    urb->is_done        = FALSE;
+}
+
 
 /**
  * @brief 核心控制传输枢纽 (大一统接口)

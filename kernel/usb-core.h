@@ -525,6 +525,7 @@ typedef struct usb_urb_t {
     usb_setup_packet_t *setup_packet;// EP0 控制包指针
     void        *transfer_buf;  // 数据缓冲区虚拟地址
     uint32      transfer_len;   // 期望传输总长度
+    uint32      interval;
 
     // 👑 核心换血：用标志位取代具体的硬件配置
     uint32      transfer_flags; // 传输控制组合掩码 (如 URB_SHORT_NOT_OK | URB_NO_INTERRUPT)
@@ -593,9 +594,9 @@ void usb_bus_remove(device_t* dev);
 int32 usb_submit_urb(usb_urb_t *urb);
 usb_urb_t *usb_alloc_urb(void);
 void usb_free_urb(usb_urb_t *urb);
+void usb_fill_control_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,usb_setup_packet_t *setup_packet,void *transfer_buf,uint32 transfer_len);
 void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfer_buf,uint32 transfer_len);
-void usb_fill_bulk_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfer_buf,uint32 transfer_len);
-
+void usb_fill_int_urb(usb_urb_t *urb,usb_dev_t *udev,usb_ep_t *ep,void *transfer_buf,uint32 transfer_len,uint32 interval);
 
 usb_if_alt_t* usb_find_alt_if(usb_if_t *uif, int16 class, int16 subclass, int16 protocol);
 int32 usb_enable_alt_if(usb_if_alt_t *new_alt);

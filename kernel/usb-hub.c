@@ -473,7 +473,6 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     usb_dev_t *udev = uif->udev;
     usb_hub_t *hub = kzalloc(sizeof(usb_hub_t));
     hub->uif = uif;
-    hub->int_urb = usb_alloc_urb();
     hub->port_status = kzalloc_dma(sizeof(uint32));
     hub->port_bitmap_status = kzalloc_dma(32);
     udev->is_hub = TRUE;
@@ -565,23 +564,22 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     ep1->ring_max_trbs = 32;
     usb_enable_alt_if(if_alt);
 
-    //4.配置好中断 URB
-    usb_fill_bulk_urb(hub->int_urb, udev, ep1, hub->port_bitmap_status, ep1->max_packet_size);
-
-    //5.所有端口上电
+    //4.所有端口上电
     for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
         usb_hub_port_up_power(udev, port_num);
     }
 
-    //6.等待100毫秒等待hub物理状态稳定
+    //5.等待100毫秒等待hub物理状态稳定
     //mdelay(100);
 
-    //7.第一次初始化hub后手动扫描每个端口是否有设备防止遗漏
+    //6.第一次初始化hub后手动扫描每个端口是否有设备防止遗漏
     for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
         usb_hub_process_port_event(udev,port_num);
     }
 
-    //8.提交到 xHCI 队列，后续有设备插入拔出等异步实现
+    //7.配置好中断 URB,提交队列后续有设备插入拔出等异步实现
+    hub->int_urb = usb_alloc_urb();
+    usb_fill_int_urb(hub->int_urb, udev, ep1, hub->port_bitmap_status, ep1->max_packet_size,0);
     usb_submit_urb(hub->int_urb);
 
     while (hub->int_urb->is_done == FALSE) {
