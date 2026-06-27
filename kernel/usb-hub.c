@@ -343,7 +343,7 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
         // TODO: 回收该端口上可能存在的 usb_dev_t
         return;
     }
-    
+
     // 🔌 动作 B：物理层插拔突变 或 扫街抓到的“哑巴”设备
     // 触发条件 1：硬件报告了插拔突变 (C_CONNECTION)
     // 触发条件 2：硬件物理上插着设备 (CONNECTION)，但我们的软件备忘录却认为它还没连接 (DISCONNECTED) -> 这就是扫街兜底抓到的！
@@ -369,7 +369,13 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
                 } else {
                     // 插入即 U0，直接就绪
                     port->state = PORT_STATE_ENABLED;
+
                     // TODO: 直接发起 SetAddress 异步控制传输！
+
+                    usb_hub_port_get_status(udev, port_num, &init_port_status);
+                    color_printk(GREEN, BLACK, "[Hub Port %d] Async IRQ! Status: %#x, Current State: %d\n",
+                port_num, init_port_status, port->state);
+
                 }
             } else {
                 // 2.0 传统复位
@@ -415,6 +421,10 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
                 // 💥 真正的异步枚举动作在这里发生：
                 // TODO: 组装一个 Setup_Packet 为 SET_ADDRESS 的 URB，
                 // 挂载下一步回调函数后，下发给 xHCI 命令环！
+
+                usb_hub_port_get_status(udev, port_num, &init_port_status);
+                color_printk(GREEN, BLACK, "[Hub Port %d] Async IRQ! Status: %#x, Current State: %d\n",
+            port_num, init_port_status, port->state);
 
             } else {
                 color_printk(RED, BLACK, "[Hub Port %d] Async: Reset finished but port dead!\n", port_num);
@@ -572,14 +582,21 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
         usb_hub_port_up_power(udev, port_num);
     }
+    color_printk(RED,BLACK, "hub up power!! \n");
 
     //5.等待100毫秒等待hub物理状态稳定
-    //mdelay(100);
+    uint32 times = 0x5000000;
+    while (times) {
+        times--;
+        asm_pause();
+    }
 
     //6.第一次初始化hub后手动扫描每个端口是否有设备防止遗漏
     for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
         usb_hub_process_port_event(udev,port_num);
     }
+
+    color_printk(RED,BLACK, "hub port scan!! \n");
 
     //7.配置好中断 URB,提交队列后续有设备插入拔出等异步实现
     hub->int_urb = usb_alloc_urb();
