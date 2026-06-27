@@ -343,9 +343,13 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
         // TODO: 回收该端口上可能存在的 usb_dev_t
         return;
     }
+    
+    // 🔌 动作 B：物理层插拔突变 或 扫街抓到的“哑巴”设备
+    // 触发条件 1：硬件报告了插拔突变 (C_CONNECTION)
+    // 触发条件 2：硬件物理上插着设备 (CONNECTION)，但我们的软件备忘录却认为它还没连接 (DISCONNECTED) -> 这就是扫街兜底抓到的！
+    if ((init_port_status & USB_PORT_STAT_C_CONNECTION) ||
+        ((init_port_status & USB_PORT_STAT_CONNECTION) && port->state == PORT_STATE_DISCONNECTED)) {
 
-    // 🔌 动作 B：物理层插拔突变 (生命周期的起点与终点)
-    if (init_port_status & USB_PORT_STAT_C_CONNECTION) {
         if (init_port_status & USB_PORT_STAT_CONNECTION) {
             // -------------------------------------------------------------
             // 🟢 新设备插入：开局第一棒，发射复位命令，更新备忘录后立刻撤退！
@@ -394,13 +398,13 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
             port->state == PORT_STATE_WAITING_WARM_RESET) {
 
             // 最终检阅：复位完成了，硬件真的 Enable 且处于可用状态了吗？
-            boolean is_3_0 = (udev->port_speed > USB_SPEED_HIGH);
+            boolean is_30 = (udev->port_speed > USB_SPEED_HIGH);
             boolean is_enabled = (init_port_status & USB_PORT_STAT_ENABLE) != 0;
             boolean is_u0 = ((init_port_status & USB3_PORT_STAT_LINK_MASK) == USB3_PORT_LINK_U0);
 
-            if (is_enabled && (!is_3_0 || is_u0)) {
+            if (is_enabled && (!is_30 || is_u0)) {
                 // 提取设备真实速度 (此时取出的速度是绝对准确的)
-                uint32 raw_speed = is_3_0 ? ((init_port_status & USB3_PORT_STAT_SPEED_MASK) >> 10)
+                uint32 raw_speed = is_30 ? ((init_port_status & USB3_PORT_STAT_SPEED_MASK) >> 10)
                                           : (init_port_status & USB2_PORT_STAT_SPEED_MASK);
 
                 color_printk(GREEN, BLACK, "[Hub Port %d] Async: Reset Success! Speed: %#x. Ready for Enum!\n", port_num, raw_speed);
@@ -579,7 +583,7 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
 
     //7.配置好中断 URB,提交队列后续有设备插入拔出等异步实现
     hub->int_urb = usb_alloc_urb();
-    usb_fill_int_urb(hub->int_urb, udev, ep1, hub->port_bitmap_status, ep1->max_packet_size,0);
+    usb_fill_int_urb(hub->int_urb, udev, ep1, hub->port_bitmap_status, ep1->max_packet_size,ep1->interval);
     usb_submit_urb(hub->int_urb);
 
     while (hub->int_urb->is_done == FALSE) {
