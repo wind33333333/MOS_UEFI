@@ -734,7 +734,7 @@ void xhci_handle_cmd_completion(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
 /**
  * @brief 内部辅助函数：无分支极速清理端口状态 (W1C 陷阱防御)
  */
-static void xhci_port_clear(xhci_hcd_t *xhcd, uint8 port_id, uint32 portsc) {
+static void xhci_port_clear(xhci_hcd_t *xhcd, uint8 port_num, uint32 portsc) {
     // 1. 保护现场：将读到的数值中所有的 W1C 位强行置 0，防止误杀其他未处理的中断
     portsc &= ~XHCI_PORTSC_W1C_MASK;
 
@@ -747,21 +747,21 @@ static void xhci_port_clear(xhci_hcd_t *xhcd, uint8 port_id, uint32 portsc) {
               XHCI_PORTSC_WRC |
               XHCI_PORTSC_PLC;
 
-    xhci_write_port(xhcd, port_id, portsc);
+    xhci_write_port(xhcd, port_num, portsc);
 }
 
 /**
  * @brief xHCI 硬核物理复位引擎 (支持运行时错误抢救 & 2.0 初始化)
  */
-static int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
-    uint32 portsc = xhci_read_port(xhcd, port_id);
+static int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_num) {
+    uint32 portsc = xhci_read_port(xhcd, port_num);
     if (!(portsc & XHCI_PORTSC_CCS)) return -1;
 
     //清除状态
-    xhci_port_clear(xhcd, port_id, portsc);
-    portsc = xhci_read_port(xhcd, port_id); // 重新读取干净的状态
+    xhci_port_clear(xhcd, port_num, portsc);
+    portsc = xhci_read_port(xhcd, port_num); // 重新读取干净的状态
 
-    uint8 spc_idx = xhcd->port_to_spc[port_id];
+    uint8 spc_idx = xhcd->port_to_spc[port_num];
     boolean is_usb3 = (xhcd->spc[spc_idx].major_bcd >= 0x03);
 
     // ---------------------------------------------------------
@@ -773,7 +773,7 @@ static int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     } else {
         portsc |= XHCI_PORTSC_PR;  // 热复位常规流程
     }
-    xhci_write_port(xhcd, port_id, portsc);
+    xhci_write_port(xhcd, port_num, portsc);
 
     // ---------------------------------------------------------
     // 【未来重构点】：这部分将被替换为 "Thread Sleep / Yield" (挂起线程)
@@ -782,7 +782,7 @@ static int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     // while (times--) {
     //
     // }
-    // if ( xhci_wait_for_event(xhcd, 0,XHCI_TRB_TYPE_PORT_STATUS_CHG ,port_id,0,0, 30000000, NULL) == XHCI_COMP_TIMEOUT) {
+    // if ( xhci_wait_for_event(xhcd, 0,XHCI_TRB_TYPE_PORT_STATUS_CHG ,port_num,0,0, 30000000, NULL) == XHCI_COMP_TIMEOUT) {
     //     return -1; // 超时失败
     // }
 
@@ -791,14 +791,14 @@ static int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
     // ---------------------------------------------------------
     uint32 timeout = 3000000;
     while (timeout--) {
-        portsc = xhci_read_port(xhcd, port_id);
+        portsc = xhci_read_port(xhcd, port_num);
         if ((portsc & XHCI_PORTSC_PR)==0 && (portsc & XHCI_PORTSC_WPR)==0 && (portsc & XHCI_PORTSC_PED)) break;
         asm_pause();
     }
     if (timeout == 0) return -1;
 
     // ★ 极其优雅的复用：直接调用刚才抽出来的清道夫函数！
-    xhci_port_clear(xhcd, port_id, portsc);
+    xhci_port_clear(xhcd, port_num, portsc);
 
     return 0; // 彻底复位且使能成功！
 }
@@ -806,42 +806,42 @@ static int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_id) {
 /**
  * @brief xHCI 端口枚举初始化 (专供 Hub 线程在设备插入时调用)
  */
-static int32 xhci_port_init(xhci_hcd_t *xhcd, uint8 port_id) {
-    uint32 portsc = xhci_read_port(xhcd, port_id);
+static int32 xhci_port_init(xhci_hcd_t *xhcd, uint8 port_num) {
+    uint32 portsc = xhci_read_port(xhcd, port_num);
     if (!(portsc & XHCI_PORTSC_CCS)) return -1;
 
     // ==========================================
     // USB 3.0 极速通道：硬件已搞定，清理现场后直接放行！
     // ==========================================
     if (portsc & XHCI_PORTSC_PED) {
-        xhci_port_clear(xhcd, port_id, portsc);
+        xhci_port_clear(xhcd, port_num, portsc);
         return 0; // 成功！准备去分配 Address
     }
 
     // ==========================================
     // USB 2.0 或假死兜底：委托给硬核复位引擎
     // ==========================================
-    return xhci_port_reset(xhcd, port_id);
+    return xhci_port_reset(xhcd, port_num);
 }
 
 
 //xhci端口插入设备处理
-int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_id) {
-        if (xhci_port_init(xhcd, port_id) == 0) {
-            usb_dev_t *udev = usb_dev_create(xhcd, NULL,port_id);
+int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_num) {
+        if (xhci_port_init(xhcd, port_num) == 0) {
+            usb_dev_t *udev = usb_dev_create(xhcd, NULL,port_num);
             usb_if_create(udev);
             usb_dev_register(udev);
             usb_if_register(udev);
         } else {
             // 如果复位失败，比如劣质 U 盘无法响应，直接跳过，保护操作系统不挂死
-            color_printk(YELLOW, BLACK, "[xHCI] Ignored faulty device on port %d.\n", port_id);
+            color_printk(YELLOW, BLACK, "[xHCI] Ignored faulty device on port %d.\n", port_num);
         }
 }
 
 //xhci端口拔出设备处理
-int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_id) {
+int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_num) {
 
-    color_printk(YELLOW,BLACK,"[xHCI] disconnection port %d.\n]",port_id);
+    color_printk(YELLOW,BLACK,"[xHCI] disconnection port %d.\n]",port_num);
 
 }
 
@@ -866,8 +866,8 @@ void xhci_port_scan(xhci_hcd_t *xhcd){
 
 //端口状态处理
 void xhci_handle_port_status_change(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
-    uint8 port_id = evt_trb->prot_status_change_event.port_id;
-    uint32 portsc = xhci_read_port(xhcd,port_id);
+    uint8 port_num = evt_trb->prot_status_change_event.port_num;
+    uint32 portsc = xhci_read_port(xhcd,port_num);
 
     // 1. 验明正身：真的是这个端口发生了插拔吗？
     if (portsc & XHCI_PORTSC_CSC) {
@@ -875,13 +875,13 @@ void xhci_handle_port_status_change(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
         if (portsc & XHCI_PORTSC_CCS) {
             // ➡️ 跳转去执行设备枚举 (就是你上一轮封装的函数)
 
-            color_printk(GREEN,BLACK,"usb device plug port:%d  \n",port_id);
-            //xhci_handle_port_connection(xhcd, port_id);
+            color_printk(GREEN,BLACK,"usb device plug port:%d  \n",port_num);
+            //xhci_handle_port_connection(xhcd, port_num);
 
         } else {
             // ⬅️ 跳转去执行设备清理
-            color_printk(RED,BLACK,"usb device unplug port:%d  \n",port_id);
-            //xhci_handle_port_disconnection(xhcd, port_id);
+            color_printk(RED,BLACK,"usb device unplug port:%d  \n",port_num);
+            //xhci_handle_port_disconnection(xhcd, port_num);
         }
     }
 
@@ -897,7 +897,7 @@ void xhci_handle_port_status_change(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
               XHCI_PORTSC_WRC |
               XHCI_PORTSC_PLC;
 
-    xhci_write_port(xhcd, port_id, portsc);
+    xhci_write_port(xhcd, port_num, portsc);
 }
 
 

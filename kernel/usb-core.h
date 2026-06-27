@@ -449,7 +449,7 @@ typedef struct usb_dev_t{
     device_t                        dev;               // 继承系统基础设备对象
     struct usb_dev_t                *parent_hub;       // 亲爹指针 (直连主板则为 NULL)
     uint8                           root_port_num;     // 🌟 新增：认祖归宗，主板上的物理根端口号
-    uint8                           parent_port_num;   // 替代原来的 port_id：插在亲爹的第几个口上？
+    uint8                           parent_port_num;   // 替代原来的 port_num：插在亲爹的第几个口上？
     uint8                           psiv;             // xHCI 专属的底层 DMA 挡位 (用于填 Slot Context)
     usb_port_speed_e                port_speed;       // 🌟 1. 保留全局标准枚举 (供状态机流转和描述符解析使用)
     uint32                          speed_kbps;       // 🌟 2. 新增：扁平化的绝对物理带宽 (供高级驱动精确计算资源)
@@ -602,8 +602,8 @@ int32 usb_enable_alt_if(usb_if_alt_t *new_alt);
 int32 usb_cfg_alt_streams(usb_if_alt_t *alt, uint8 want_streams_exp);
 
 
-int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_id);
-int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_id);
+int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_num);
+int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_num);
 
 int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
                       usb_data_dir_e dtd, usb_req_type_e req_type, usb_recipient_e recipient,

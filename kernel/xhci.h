@@ -813,7 +813,7 @@ typedef struct trb_transfer_event_t{
 // ============================================================================
 typedef struct trb_port_status_change_event_t{
     uint32      rsvd0:24;          // Dword 0 [23:0]: 保留，全 0
-    uint32      port_id:8;         // Dword 0 [31:24]: ★ 核心机密！发生状态改变的物理端口号 (比如 1 号口)
+    uint32      port_num:8;         // Dword 0 [31:24]: ★ 核心机密！发生状态改变的物理端口号 (比如 1 号口)
 
     uint32      rsvd1;             // Dword 1: 保留，全 0
     uint32      rsvd2;             // Dword 2: 保留，全 0
@@ -1134,13 +1134,13 @@ typedef struct xhci_hcd_t{
 
 
 //读端口
-static inline uint32 xhci_read_port(xhci_hcd_t *xhcd,uint8 port_id) {
-    return xhcd->op_reg->portregs[port_id-1].portsc;
+static inline uint32 xhci_read_port(xhci_hcd_t *xhcd,uint8 port_num) {
+    return xhcd->op_reg->portregs[port_num-1].portsc;
 }
 
 //写端口
-static inline void  xhci_write_port(xhci_hcd_t *xhcd,uint8 port_id,uint32 protsc) {
-    xhcd->op_reg->portregs[port_id-1].portsc = protsc;
+static inline void  xhci_write_port(xhci_hcd_t *xhcd,uint8 port_num,uint32 protsc) {
+    xhcd->op_reg->portregs[port_num-1].portsc = protsc;
 }
 
 //获取端口速率id
