@@ -183,7 +183,7 @@ typedef enum : uint8 {
  * 这个结构体完全由软件维护，是对物理端口状态的抽象。
  */
 typedef struct {
-    uint8  port_id;       // 端口号 (1-based，从 1 开始)
+    uint8  port_num;       // 端口号 (1-based，从 1 开始)
     boolean is_removable; // 🌟 新增：这个设备是热插拔的，还是主板焊死的？
 
     port_state_e state;

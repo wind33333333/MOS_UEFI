@@ -32,7 +32,7 @@ static inline int32 usb_hub30_get_desc(usb_dev_t *udev, void *buf) {
 /**
  * @brief 获取 Hub 端口的 4 字节状态数据 (TheresaOS 零拷贝高性能版)
  */
-static int32 usb_hub_port_get_status(usb_dev_t *udev, uint8 port_id, uint32 *port_status) {
+static int32 usb_hub_port_get_status(usb_dev_t *udev, uint8 port_num, uint32 *port_status) {
     // 1. 直接拉出宿主 Hub 身上那块预先埋好的常驻 DMA 盾牌
     usb_hub_t *hub = (usb_hub_t *) udev->drv_data;
     uint32 *port_sts = hub->port_status;
@@ -40,7 +40,7 @@ static int32 usb_hub_port_get_status(usb_dev_t *udev, uint8 port_id, uint32 *por
     // 2. 干净的纯血控制传输，直接让 xHCI 硬件写入这个常驻缓冲区
     int32 ret = usb_control_msg(udev, port_sts,
                                 USB_DIR_IN, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
-                                USB_REQ_GET_STATUS, 0, port_id, 4);
+                                USB_REQ_GET_STATUS, 0, port_num, 4);
     *port_status = *port_sts;
 
     // 🌟 零内存释放，零碎片产生，安全退出！
@@ -56,8 +56,8 @@ static int32 usb_hub_port_get_status(usb_dev_t *udev, uint8 port_id, uint32 *por
  * @param ext_arg 扩展参数。如果是 3.0 链路控制或 2.0 测试模式，该参数会自动打包进 wIndex 的高 8 位。
  */
 static inline int32
-usb_hub_set_port_feature(usb_dev_t *udev, uint8 port_id, usb_port_feature_e feature, uint8 ext_arg) {
-    uint16 index = ((uint16) ext_arg << 8) | port_id;
+usb_hub_set_port_feature(usb_dev_t *udev, uint8 port_num, usb_port_feature_e feature, uint8 ext_arg) {
+    uint16 index = ((uint16) ext_arg << 8) | port_num;
     return usb_control_msg(udev, NULL,
                            USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
                            USB_REQ_SET_FEATURE, feature, index, 0);
@@ -66,9 +66,9 @@ usb_hub_set_port_feature(usb_dev_t *udev, uint8 port_id, usb_port_feature_e feat
 /**
  * @brief 底层通用的特征擦除原语
  */
-static inline int32 usb_hub_clear_port_feature(usb_dev_t *udev, uint8 port_id, usb_port_feature_e feature,
+static inline int32 usb_hub_clear_port_feature(usb_dev_t *udev, uint8 port_num, usb_port_feature_e feature,
                                                uint8 ext_arg) {
-    uint16 index = ((uint16) ext_arg << 8) | port_id;
+    uint16 index = ((uint16) ext_arg << 8) | port_num;
     return usb_control_msg(udev, NULL,
                            USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_OTHER,
                            USB_REQ_CLEAR_FEATURE, feature, index, 0);
@@ -82,30 +82,30 @@ static inline int32 usb_hub_clear_port_feature(usb_dev_t *udev, uint8 port_id, u
 /**
  * @brief 给指定物理端口闭合继电器通电 (VBUS 5V 上电)
  */
-static inline int32 usb_hub_port_up_power(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_set_port_feature(udev, port_id, USB_PORT_FEAT_POWER, 0);
+static inline int32 usb_hub_port_up_power(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_set_port_feature(udev, port_num, USB_PORT_FEAT_POWER, 0);
 }
 
 /**
  * @brief 给指定物理端口断电
  */
-static inline int32 usb_hub_port_down_power(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_clear_port_feature(udev, port_id, USB_PORT_FEAT_POWER, 0);
+static inline int32 usb_hub_port_down_power(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_POWER, 0);
 }
 
 /**
  * @brief 强行将激活的端口下线 (逻辑强拔)
  */
-static inline int32 usb_hub_port_disable(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_clear_port_feature(udev, port_id, USB_PORT_FEAT_ENABLE, 0);
+static inline int32 usb_hub_port_disable(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_ENABLE, 0);
 }
 
 /**
  * @brief 发射标准热复位信号 (2.0物理拉低线路 / 3.0超高速 Hot Reset)
  * 🌟 这是发现新插入设备后，触发硬件使能的绝对第一步！
  */
-static inline int32 usb_hub_port_reset(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_set_port_feature(udev, port_id, USB_PORT_FEAT_RESET, 0);
+static inline int32 usb_hub_port_reset(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_set_port_feature(udev, port_num, USB_PORT_FEAT_RESET, 0);
 }
 
 
@@ -116,31 +116,31 @@ static inline int32 usb_hub_port_reset(usb_dev_t *udev, uint8 port_id) {
 /**
  * @brief 强迫 2.0 端口进入挂起 (Suspend) 状态
  */
-static inline int32 usb_hub_port_set_suspend20(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_set_port_feature(udev, port_id, USB_PORT_FEAT_SUSPEND, 0);
+static inline int32 usb_hub_port_set_suspend20(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_set_port_feature(udev, port_num, USB_PORT_FEAT_SUSPEND, 0);
 }
 
 /**
  * @brief 向 2.0 端口发射 Resume 信号将其从挂起中唤醒
  */
-static inline int32 usb_hub_port_clear_suspend20(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_clear_port_feature(udev, port_id, USB_PORT_FEAT_SUSPEND, 0);
+static inline int32 usb_hub_port_clear_suspend20(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_SUSPEND, 0);
 }
 
 /**
  * @brief 强制 2.0 端口执行特定电气合规性测试 (Compliance Test)
  * @param test_selector 测试类型选择子 (如 J_STATE, K_STATE, SE0_NAK 等)
  */
-static inline int32 usb_hub_port_set_test_mode(usb_dev_t *udev, uint8 port_id, uint8 test_selector) {
-    return usb_hub_set_port_feature(udev, port_id, USB_PORT_FEAT_TEST, test_selector);
+static inline int32 usb_hub_port_set_test_mode(usb_dev_t *udev, uint8 port_num, uint8 test_selector) {
+    return usb_hub_set_port_feature(udev, port_num, USB_PORT_FEAT_TEST, test_selector);
 }
 
 /**
  * @brief 控制 2.0 工业级扩展坞上的端口指示灯 (LED) 颜色或闪烁模式
  * @param indicator_selector 灯光状态选择子 (如 1=琥珀色, 2=绿色, 0=关闭)
  */
-static inline int32 usb_hub_port_set_indicator(usb_dev_t *udev, uint8 port_id, uint8 indicator_selector) {
-    return usb_hub_set_port_feature(udev, port_id, USB_PORT_FEAT_INDICATOR, indicator_selector);
+static inline int32 usb_hub_port_set_indicator(usb_dev_t *udev, uint8 port_num, uint8 indicator_selector) {
+    return usb_hub_set_port_feature(udev, port_num, USB_PORT_FEAT_INDICATOR, indicator_selector);
 }
 
 
@@ -152,8 +152,8 @@ static inline int32 usb_hub_port_set_indicator(usb_dev_t *udev, uint8 port_id, u
  * @brief 🔥 [大锤物理强刷] 发射 Warm Reset 信号！
  * 🌟 当超高速链路不幸跌落至 SS.Inactive 硬件死锁状态时，这是唯一的解药！
  */
-static inline int32 usb_hub_port_bh_reset(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_set_port_feature(udev, port_id, USB_PORT_FEAT_BH_PORT_RESET, 0);
+static inline int32 usb_hub_port_bh_reset(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_set_port_feature(udev, port_num, USB_PORT_FEAT_BH_PORT_RESET, 0);
 }
 
 /**
@@ -182,39 +182,39 @@ typedef enum : uint8 {
  * @param target_link_state 目标链路状态 (如 USB3_PORT_LINK_U3 代表命令设备深度休眠)
  */
 static inline int32
-usb_hub_port_set_link_state(usb_dev_t *udev, uint8 port_id, usb3_set_link_state_e target_link_state) {
-    return usb_hub_set_port_feature(udev, port_id, USB_PORT_FEAT_LINK_STATE, target_link_state);
+usb_hub_port_set_link_state(usb_dev_t *udev, uint8 port_num, usb3_set_link_state_e target_link_state) {
+    return usb_hub_set_port_feature(udev, port_num, USB_PORT_FEAT_LINK_STATE, target_link_state);
 }
 
 /**
  * @brief 设置 3.0 端口在空闲多久后可以自动切换到 U1 低功耗待机状态
  * @param timeout_val 超时系数 (单位: 1微秒，0xFF代表永不限制)
  */
-static inline int32 usb_hub_port_set_u1_timeout(usb_dev_t *udev, uint8 port_id, uint8 timeout_val) {
-    return usb_hub_set_port_feature(udev, port_id, USB_PORT_FEAT_U1_TIMEOUT, timeout_val);
+static inline int32 usb_hub_port_set_u1_timeout(usb_dev_t *udev, uint8 port_num, uint8 timeout_val) {
+    return usb_hub_set_port_feature(udev, port_num, USB_PORT_FEAT_U1_TIMEOUT, timeout_val);
 }
 
 /**
  * @brief 设置 3.0 端口在空闲多久后可以自动切换到 U2 深度低功耗状态
  * @param timeout_val 超时系数 (单位: 256微秒)
  */
-static inline int32 usb_hub_port_set_u2_timeout(usb_dev_t *udev, uint8 port_id, uint8 timeout_val) {
-    return usb_hub_set_port_feature(udev, port_id, USB_PORT_FEAT_U2_TIMEOUT, timeout_val);
+static inline int32 usb_hub_port_set_u2_timeout(usb_dev_t *udev, uint8 port_num, uint8 timeout_val) {
+    return usb_hub_set_port_feature(udev, port_num, USB_PORT_FEAT_U2_TIMEOUT, timeout_val);
 }
 
 /**
  * @brief 配置超高速远程唤醒过滤掩码
  * @param wake_mask 允许唤醒的条件位图 (如开启远程插拔唤醒、过流唤醒等)
  */
-static inline int32 usb_hub_port_set_remote_wake_mask(usb_dev_t *udev, uint8 port_id, uint8 wake_mask) {
-    return usb_hub_set_port_feature(udev, port_id, USB_PORT_FEAT_REMOTE_WAKE_MASK, wake_mask);
+static inline int32 usb_hub_port_set_remote_wake_mask(usb_dev_t *udev, uint8 port_num, uint8 wake_mask) {
+    return usb_hub_set_port_feature(udev, port_num, USB_PORT_FEAT_REMOTE_WAKE_MASK, wake_mask);
 }
 
 /**
  * @brief 强制超高速端口无脑接受主机的硬件电源管理 (PM) 握手协商
  */
-static inline int32 usb_hub_port_force_linkpm_accept(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_set_port_feature(udev, port_id, USB_PORT_FEAT_FORCE_LINKPM_ACCEPT, 0);
+static inline int32 usb_hub_port_force_linkpm_accept(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_set_port_feature(udev, port_num, USB_PORT_FEAT_FORCE_LINKPM_ACCEPT, 0);
 }
 
 
@@ -225,37 +225,37 @@ static inline int32 usb_hub_port_force_linkpm_accept(usb_dev_t *udev, uint8 port
 /**
  * @brief 确认并签收 [物理插拔] 事件 (解除 Bit 16 报警)
  */
-static inline int32 usb_hub_port_clear_connection_change(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_clear_port_feature(udev, port_id, USB_PORT_FEAT_C_CONNECTION, 0);
+static inline int32 usb_hub_port_clear_connection_change(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_C_CONNECTION, 0);
 }
 
 /**
  * @brief 确认并签收 [端口硬件级强行禁用] 事件 (解除 Bit 17 报警)
  */
-static inline int32 usb_hub_port_clear_enable_change(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_clear_port_feature(udev, port_id, USB_PORT_FEAT_C_ENABLE, 0);
+static inline int32 usb_hub_port_clear_enable_change(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_C_ENABLE, 0);
 }
 
 /**
  * @brief 确认并签收 [2.0挂起苏醒完成] 事件 (解除 Bit 18 报警)
  */
-static inline int32 usb_hub_port_clear_suspend_change(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_clear_port_feature(udev, port_id, USB_PORT_FEAT_C_SUSPEND, 0);
+static inline int32 usb_hub_port_clear_suspend_change(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_C_SUSPEND, 0);
 }
 
 /**
  * @brief 确认并签收 [端口短路过流] 事件 (解除 Bit 19 报警)
  */
-static inline int32 usb_hub_port_clear_over_current_change(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_clear_port_feature(udev, port_id, USB_PORT_FEAT_C_OVER_CURRENT, 0);
+static inline int32 usb_hub_port_clear_over_current_change(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_C_OVER_CURRENT, 0);
 }
 
 /**
  * @brief 确认并签收 [标准复位完成] 事件 (解除 Bit 20 报警)
  * 🌟 在单任务轮询状态机中，刷完这个原语，即代表端口彻底降服，可以直接下发 SetAddress 分配拓扑地址。
  */
-static inline int32 usb_hub_port_clear_reset_change(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_clear_port_feature(udev, port_id, USB_PORT_FEAT_C_RESET, 0);
+static inline int32 usb_hub_port_clear_reset_change(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_C_RESET, 0);
 }
 
 
@@ -267,23 +267,23 @@ static inline int32 usb_hub_port_clear_reset_change(usb_dev_t *udev, uint8 port_
  * @brief 确认并签收 [超高速物理链路状态突变] 事件 (解除 Bit 25 报警)
  * 🌟 比如链路成功从 Rx.Detect 晋升为完全体 U0 状态时触发的喜报，必须发此指令确认签收。
  */
-static inline int32 usb_hub_port_clear_link_state_change(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_clear_port_feature(udev, port_id, USB_PORT_FEAT_C_PORT_LINK_STATE, 0);
+static inline int32 usb_hub_port_clear_link_state_change(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_C_PORT_LINK_STATE, 0);
 }
 
 /**
  * @brief 确认并签收 [物理层阻抗/配置异常严重错误] 事件 (解除 Bit 26 报警)
  */
-static inline int32 usb_hub_port_clear_config_error_change(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_clear_port_feature(udev, port_id, USB_PORT_FEAT_C_PORT_CONFIG_ERROR, 0);
+static inline int32 usb_hub_port_clear_config_error_change(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_C_PORT_CONFIG_ERROR, 0);
 }
 
 /**
  * @brief 确认并签收 [大锤 Warm Reset 复位完成] 事件 (解除 Bit 29 报警)
  * 🌟 当你用大锤把死锁的链路救活后，硬件会抛出此事件，必须立刻通过此函数“确认签收”，否则总线永无宁日。
  */
-static inline int32 usb_hub_port_clear_bh_reset_change(usb_dev_t *udev, uint8 port_id) {
-    return usb_hub_clear_port_feature(udev, port_id, USB_PORT_FEAT_C_BH_PORT_RESET, 0);
+static inline int32 usb_hub_port_clear_bh_reset_change(usb_dev_t *udev, uint8 port_num) {
+    return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_C_BH_PORT_RESET, 0);
 }
 
 
@@ -509,7 +509,7 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
         // 分配 hub 端口内存并解析哪些是不可拆卸端口
         hub->ports = kzalloc((udev->hub_num_ports + 1) * sizeof(hub_port_t));
         for (uint8 i = 1; i <= udev->hub_num_ports; i++) {
-            hub->ports[i].port_id = i;
+            hub->ports[i].port_num = i;
             uint16 removable_bitmap = hub30_desc->device_removable;
             hub->ports[i].is_removable = !((removable_bitmap >> i) & 1);
         }
@@ -550,7 +550,7 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
         // 分配 hub 端口内存并解析哪些是不可拆卸端口
         hub->ports = kzalloc((udev->hub_num_ports + 1) * sizeof(hub_port_t));
         for (uint8 i = 1; i <= udev->hub_num_ports; i++) {
-            hub->ports[i].port_id = i;
+            hub->ports[i].port_num = i;
             uint8 byte_idx = i / 8;
             uint8 bit_idx = i % 8;
             hub->ports[i].is_removable = !((hub20_desc->device_removable[byte_idx] >> bit_idx) & 1);
@@ -569,16 +569,16 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     usb_fill_bulk_urb(hub->int_urb, udev, ep1, hub->port_bitmap_status, ep1->max_packet_size);
 
     //5.所有端口上电
-    for (uint8 i = 1; i <= udev->hub_num_ports; i++) {
-        usb_hub_port_up_power(udev, i);
+    for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
+        usb_hub_port_up_power(udev, port_num);
     }
 
     //6.等待100毫秒等待hub物理状态稳定
     //mdelay(100);
 
     //7.第一次初始化hub后手动扫描每个端口是否有设备防止遗漏
-    for (uint8 i = 1; i <= udev->hub_num_ports; i++) {
-        usb_hub_process_port_event(udev,i);
+    for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
+        usb_hub_process_port_event(udev,port_num);
     }
 
     //8.提交到 xHCI 队列，后续有设备插入拔出等异步实现
