@@ -15,6 +15,11 @@ extern usb_drv_t *create_usb_storage_driver();
 
 extern usb_drv_t *create_usb_hub_driver();
 
+typedef struct {
+    uint32 count;
+    xhci_hcd_t *xhcd;
+};
+
 //创建一个pcie总线和usb总线
 INIT_TEXT void bus_init(void){
 
@@ -45,5 +50,11 @@ INIT_TEXT void bus_init(void){
 
     usb_drv_t *usb_hub_driver = create_usb_hub_driver();
     usb_drv_register(usb_hub_driver);
+
+    //xhci hub事件守护程序
+    while (1) {
+
+
+    }
 
 }

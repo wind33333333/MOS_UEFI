@@ -82,14 +82,14 @@ static inline int32 usb_hub_clear_port_feature(usb_dev_t *udev, uint8 port_num, 
 /**
  * @brief 给指定物理端口闭合继电器通电 (VBUS 5V 上电)
  */
-static inline int32 usb_hub_port_up_power(usb_dev_t *udev, uint8 port_num) {
+static inline int32 usb_hub_port_power_on(usb_dev_t *udev, uint8 port_num) {
     return usb_hub_set_port_feature(udev, port_num, USB_PORT_FEAT_POWER, 0);
 }
 
 /**
  * @brief 给指定物理端口断电
  */
-static inline int32 usb_hub_port_down_power(usb_dev_t *udev, uint8 port_num) {
+static inline int32 usb_hub_port_power_off(usb_dev_t *udev, uint8 port_num) {
     return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_POWER, 0);
 }
 
@@ -345,7 +345,7 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
     // 💥 动作 A：致命过流保护 (最高优先级)
     if (init_port_status & USB_PORT_STAT_C_OVERCURRENT) {
         color_printk(RED, BLACK, "[Hub Port %d] OVERCURRENT! Powering off...\n", port_num);
-        usb_hub_port_down_power(udev, port_num);
+        usb_hub_port_power_off(udev, port_num);
         port->state = PORT_STATE_DISCONNECTED; // 软件状态复位
         // TODO: 回收该端口上可能存在的 usb_dev_t
         return;
@@ -580,7 +580,7 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
 
     //4.所有端口上电
     for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
-        usb_hub_port_up_power(udev, port_num);
+        usb_hub_port_power_on(udev, port_num);
     }
 
     //5.等待100毫秒等待hub物理状态稳定

@@ -769,6 +769,23 @@ static void xhci_port_clear(xhci_hcd_t *xhcd, uint8 port_num, uint32 portsc) {
     xhci_write_port(xhcd, port_num, portsc);
 }
 
+//xhci端口上电
+void xhci_port_power_on(xhci_hcd_t *xhcd,uint8 port_num) {
+    uint32 portsc = xhci_read_port(xhcd, port_num);
+    portsc &= ~XHCI_PORTSC_W1C_MASK;
+    portsc |= XHCI_PORTSC_PP;
+    xhci_write_port(xhcd, port_num, portsc);
+    //等待20ms
+}
+
+//xhci端口断电
+void xhci_port_power_off(xhci_hcd_t *xhcd, uint8 port_num) {
+    uint32 portsc = xhci_read_port(xhcd, port_num);
+    portsc &= ~(XHCI_PORTSC_W1C_MASK|XHCI_PORTSC_PP);
+    xhci_write_port(xhcd, port_num, portsc);
+    //等待20ms
+}
+
 /**
  * @brief xHCI 硬核物理复位引擎 (支持运行时错误抢救 & 2.0 初始化)
  */
@@ -1307,6 +1324,11 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     /* 5. 轰鸣点火！启动全局 xHCI 控制器 (此时 USBCMD.RS 和 INTE 置 1) */
     /* 一旦执行完这句代码，随时可能有真实的硬件中断砸进 xhci_isr！*/
     xhci_start(xhcd);
+
+    //6 给xhci所有端口上电
+    for (uint8 port_num = 1; port_num <= xhcd->max_ports; port_num++) {
+        xhci_port_power_on(xhcd, port_num);
+    }
 
 
     color_printk(
