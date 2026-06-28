@@ -192,7 +192,7 @@ typedef struct {
     // 如果端口是空的，这里必须是 NULL
     usb_dev_t *child_dev;
 
-} hub_port_t;
+} usb_hub_port_t;
 
 
 
@@ -211,7 +211,7 @@ typedef struct usb_hub_t {
     uint16             irq_buf_len;
 
     // 4. 下游拓扑阵列 (运行时动态分配)
-    hub_port_t         *ports;
+    usb_hub_port_t         *ports;
 
     // 5. 双总线伴侣
     struct usb_hub_t   *companion_hub;

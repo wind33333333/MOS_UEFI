@@ -1122,8 +1122,8 @@ typedef struct xhci_hcd_t{
     // ==========================================
     // 5. 软硬件映射与并发控制 (Software State)
     // ==========================================
-    // xhci_port_t       *ports;             // 端口逻辑对象数组
     struct usb_dev_t    **udevs;           // 插槽到设备的逻辑映射 (通过 Slot ID 查找 usb_dev_t)
+    struct usb_hub_port_t *xhci_port       // xhci原生端口
 
     // 注意：事件环不是一个，它是和中断器绑定的！这里根据 max_intrs 动态分配！
     xhci_event_ring_t*  event_ring_arr;

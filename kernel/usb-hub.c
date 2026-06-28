@@ -314,7 +314,7 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
 
     // 获取该端口在操作系统层面的软件备忘录
     usb_hub_t *hub = udev->drv_data;
-    hub_port_t *port = &hub->ports[port_num];
+    usb_hub_port_t *port = &hub->ports[port_num];
 
     color_printk(GREEN, BLACK, "[Hub Port %d] Async IRQ! Status: %#x, Current State: %d\n",
                  port_num, init_port_status, port->state);
@@ -520,7 +520,7 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
         hub->power_delay_ms = hub30_desc->power_on_to_power_good << 1;
 
         // 分配 hub 端口内存并解析哪些是不可拆卸端口
-        hub->ports = kzalloc((udev->hub_num_ports + 1) * sizeof(hub_port_t));
+        hub->ports = kzalloc((udev->hub_num_ports + 1) * sizeof(usb_hub_port_t));
         for (uint8 i = 1; i <= udev->hub_num_ports; i++) {
             hub->ports[i].port_num = i;
             uint16 removable_bitmap = hub30_desc->device_removable;
@@ -561,7 +561,7 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
         hub->power_delay_ms = hub20_desc->power_on_to_power_good << 1;
 
         // 分配 hub 端口内存并解析哪些是不可拆卸端口
-        hub->ports = kzalloc((udev->hub_num_ports + 1) * sizeof(hub_port_t));
+        hub->ports = kzalloc((udev->hub_num_ports + 1) * sizeof(usb_hub_port_t));
         for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
             hub->ports[port_num].port_num = port_num;
             uint8 byte_idx = port_num / 8;
