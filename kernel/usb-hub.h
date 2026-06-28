@@ -182,7 +182,7 @@ typedef enum : uint8 {
  * @brief Hub 的单个下游端口状态追踪器
  * 这个结构体完全由软件维护，是对物理端口状态的抽象。
  */
-typedef struct {
+typedef struct usb_hub_port_t{
     uint8  port_num;       // 端口号 (1-based，从 1 开始)
     boolean is_removable; // 🌟 新增：这个设备是热插拔的，还是主板焊死的？
 

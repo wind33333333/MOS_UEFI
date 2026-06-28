@@ -157,7 +157,7 @@ typedef struct {
                                - PRC (位 21): 端口复位变化
                                - PLC (位 22): 端口链路状态变化
                                - CEC (位 23): 配置错误变化
-                               - CAS (位 24): 冷连接状态
+                               - CAS (位 24): 冷连接状态设备在系统冷启动时就已经插在上面了
                                - WCE (位 25): 连接唤醒使能
                                - WDE (位 26): 断开唤醒使能
                                - WOE (位 27)：过流唤醒使能
@@ -199,7 +199,22 @@ typedef struct {
 #define XHCI_PLS_TEST_MODE       (11<<5)  // 测试模式，USB 端口进入特定测试状态，用于硬件或协议测试
 #define XHCI_PLS_RESUME          (12<<5)  // 恢复状态，USB 设备从挂起状态恢复，通常由主机发起
 
-#define XHCI_PORTSC_W1C_MASK     0xFE0002 //写1清0掩码
+//需要保留的位
+#define XHCI_PORTSC_PRESERVE_MASK ( XHCI_PORTSC_PR \
+                                    XHCI_PORTSC_PIC \
+                                    XHCI_PORTSC_WCE \
+                                    XHCI_PORTSC_WDE \
+                                    XHCI_PORTSC_WOE \
+)
+// 提取出快照中所有变成了 1 的“突变标志 (RW1C)” (17~24位)
+#define XHCI_PORTSC_CHANGE_MASK (XHCI_PORTSC_CSC (1 << 17) | \
+                                XHCI_PORTSC_PEC (1 << 18) | \
+                                XHCI_PORTSC_WRC (1 << 19) | \
+                                XHCI_PORTSC_OCC (1 << 20) | \
+                                XHCI_PORTSC_PRC (1 << 21) | \
+                                XHCI_PORTSC_PLC (1 << 22) | \
+                                XHCI_PORTSC_CEC (1 << 23) | \
+                                XHCI_PORTSC_CAS (1 << 24))
 
         // 端口电源管理状态和控制寄存器 (PORTPMSC),控制电源管理和U1/U2状态,具体字段依赖于协议（USB2或USB3）
         uint32 portpmsc;
@@ -1123,7 +1138,7 @@ typedef struct xhci_hcd_t{
     // 5. 软硬件映射与并发控制 (Software State)
     // ==========================================
     struct usb_dev_t    **udevs;           // 插槽到设备的逻辑映射 (通过 Slot ID 查找 usb_dev_t)
-    struct usb_hub_port_t *xhci_port       // xhci原生端口
+    struct usb_hub_port_t *ports;          // xhci原生端口
 
     // 注意：事件环不是一个，它是和中断器绑定的！这里根据 max_intrs 动态分配！
     xhci_event_ring_t*  event_ring_arr;

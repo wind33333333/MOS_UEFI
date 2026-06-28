@@ -881,6 +881,46 @@ int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_num) {
 
 }
 
+// 处理主板直连端口的插拔与复位逻辑
+void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
+    uint32 portsc = xhci_read_port(xhcd, port_num);
+    usb_hub_port_t *port = &xhcd->ports[port_num];
+
+    // 1. 清除硬件的中断状态标志 (Acknowledge)
+    if (portsc & XHCI_PORTSC_CSC)  xhci_clear_portsc_csc(xhcd, port_num);
+    if (portsc & XHCI_PORTSC_PRC)  xhci_clear_portsc_prc(xhcd, port_num);
+    // ... 清除其他突变标志
+
+    // 2. 新设备插入：发起复位
+    if ((portsc & XHCI_PORTSC_CSC) || ((portsc & XHCI_PORTSC_CCS) && port->state == PORT_STATE_DISCONNECTED)) {
+        if (portsc & XHCI_PORTSC_CCS) {
+            // 物理层有设备，且软件不知情 -> 发起复位！
+            xhci_port_reset(xhcd, port_num);
+            port->state = PORT_STATE_WAITING_HOT_RESET;
+            return; // 等待硬件发 PRC (Port Reset Change) 中断
+        } else {
+            // 设备拔出
+            // 回收 xhcd->udevs[slot_id]，释放结构体，重置端口
+            port->state = PORT_STATE_DISCONNECTED;
+            port->child_dev = NULL;
+            return;
+        }
+    }
+
+    // 3. 接收复位完成事件 (PRC)
+    if (portsc & XHCI_PORTSC_PRC) {
+        if (port->state == PORT_STATE_WAITING_HOT_RESET && (portsc & XHCI_PORTSC_PED)) {
+            // 硬件已处于 Enabled 状态，复位成功！
+            port->state = PORT_STATE_ENABLED;
+
+            // 💥 终极动作：分配 Slot，下发 SetAddress，并创建 usb_dev_t 汽车！
+            // 创建出来的汽车，记录它的 parent_hub = NULL, root_port_num = port_num
+            // 然后挂载到 port->child_dev 上。
+            xhci_enumerate_new_device(xhcd, port_num);
+        }
+    }
+}
+
 
 //xhci port扫描
 void xhci_port_scan(xhci_hcd_t *xhcd){
@@ -1269,8 +1309,18 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhcd->op_reg->dcbaap = va_to_pa(xhcd->dcbaap); //把设备上下文基地址数组表的物理地址写入寄存器
     xhcd->op_reg->config = xhcd->max_slots; //把最大插槽数量写入寄存器
 
-    //xhci支持多少个slot就分配多少个udev结构
-    xhcd->udevs = kzalloc((xhcd->max_slots+1)<<3);
+    //xhci支持多少个slot就分配多少个udev结构指针
+    xhcd->udevs = kzalloc((xhcd->max_slots+1) * sizeof(void*));
+
+    //xhci原生端口分配usb_hub_t结构内存,并设置好端口状态信息
+    xhcd->ports = kzalloc((xhcd->max_ports+1) * sizeof(usb_hub_port_t));
+    for (uint8 port_num = 1; port_num <= xhcd->max_ports; port_num++) {
+        uint32 portsc = xhci_read_port(xhcd,port_num);
+        xhcd->ports[port_num].is_removable = !((portsc & XHCI_PORTSC_DR)>>30);
+        xhcd->ports[port_num].port_num = port_num;
+        xhcd->ports[port_num].state = PORT_STATE_DISCONNECTED;
+
+    }
 
     /*初始化命令环*/
     xhci_alloc_submit_ring(&xhcd->cmd_ring,32); //命令环分配32个槽位
