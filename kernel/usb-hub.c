@@ -363,28 +363,17 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
             // -------------------------------------------------------------
             color_printk(GREEN, BLACK, "[Hub Port %d] Async: New Device. Firing Reset...\n", port_num);
 
-            if (udev->port_speed > USB_SPEED_HIGH) {
-                //usb 3.0 设备
-                uint32 link_state = init_port_status & USB3_PORT_STAT_LINK_MASK;
-
-                if (link_state == USB3_PORT_LINK_SS_INACTIVE) {
-                    usb_hub_port_bh_reset(udev, port_num); // 抡大锤
-                    port->state = PORT_STATE_WAITING_WARM_RESET;
-                } else if (link_state != USB3_PORT_LINK_U0) {
-                    usb_hub_port_reset(udev, port_num);    // 温柔复位
-                    port->state = PORT_STATE_WAITING_HOT_RESET;
+            if ((udev->port_speed > USB_SPEED_HIGH) &&
+                ((init_port_status & USB3_PORT_STAT_LINK_MASK) == USB3_PORT_LINK_SS_INACTIVE)) {
+                // USB 3.0 设备且链路死锁，抡大锤：暖复位 (BH Reset)
+                usb_hub_port_bh_reset(udev, port_num);
+                port->state = PORT_STATE_WAITING_WARM_RESET;
                 } else {
-                    // 插入即 U0，直接就绪
-                    port->state = PORT_STATE_ENABLED;
-                    // TODO: 直接发起 SetAddress 异步控制传输！
-                    usb_hub_port_eunm(udev, port_num);
-
+                    // 💥 无论 2.0 还是正常的 3.0 (含 U0)，统统一律发送常规热复位！
+                    // 强制净化设备内部的 Endpoint 0 状态机，洗脑回 Default 状态
+                    usb_hub_port_reset(udev, port_num);    // 温柔复位：热复位
+                    port->state = PORT_STATE_WAITING_HOT_RESET;
                 }
-            } else {
-                // 2.0 传统复位
-                usb_hub_port_reset(udev, port_num);
-                port->state = PORT_STATE_WAITING_HOT_RESET;
-            }
 
             return; // 💥 第一棒交接完毕，CPU 解放！
 

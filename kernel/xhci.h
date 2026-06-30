@@ -199,22 +199,16 @@ typedef struct {
 #define XHCI_PLS_TEST_MODE       (11<<5)  // 测试模式，USB 端口进入特定测试状态，用于硬件或协议测试
 #define XHCI_PLS_RESUME          (12<<5)  // 恢复状态，USB 设备从挂起状态恢复，通常由主机发起
 
-//需要保留的位
-#define XHCI_PORTSC_PRESERVE_MASK ( XHCI_PORTSC_PR \
-                                    XHCI_PORTSC_PIC \
-                                    XHCI_PORTSC_WCE \
-                                    XHCI_PORTSC_WDE \
-                                    XHCI_PORTSC_WOE \
-)
+// 🛡️ xHCI 端口寄存器安全保留掩码 (只保留 RWS 和 R/W 属性的安全位)
+#define XHCI_PORTSC_PRESERVE_MASK ( XHCI_PORTSC_PP  | XHCI_PORTSC_PIC | \
+                                    XHCI_PORTSC_WCE |  XHCI_PORTSC_WDE |  XHCI_PORTSC_WOE)
+
+
 // 提取出快照中所有变成了 1 的“突变标志 (RW1C)” (17~24位)
-#define XHCI_PORTSC_CHANGE_MASK (XHCI_PORTSC_CSC (1 << 17) | \
-                                XHCI_PORTSC_PEC (1 << 18) | \
-                                XHCI_PORTSC_WRC (1 << 19) | \
-                                XHCI_PORTSC_OCC (1 << 20) | \
-                                XHCI_PORTSC_PRC (1 << 21) | \
-                                XHCI_PORTSC_PLC (1 << 22) | \
-                                XHCI_PORTSC_CEC (1 << 23) | \
-                                XHCI_PORTSC_CAS (1 << 24))
+#define XHCI_PORTSC_CHANGE_MASK (XHCI_PORTSC_CSC | XHCI_PORTSC_PEC | \
+                                 XHCI_PORTSC_WRC | XHCI_PORTSC_OCC | \
+                                 XHCI_PORTSC_PRC | XHCI_PORTSC_PLC | \
+                                 XHCI_PORTSC_CEC | XHCI_PORTSC_CAS)
 
         // 端口电源管理状态和控制寄存器 (PORTPMSC),控制电源管理和U1/U2状态,具体字段依赖于协议（USB2或USB3）
         uint32 portpmsc;
