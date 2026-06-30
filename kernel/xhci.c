@@ -840,7 +840,7 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
             // 物理层有设备，且软件不知情 -> 发起复位！
             uint8 spc_idx = xhcd->port_to_spc[port_num];
             boolean is_usb3 = (xhcd->spc[spc_idx].major_bcd >= 0x03);
-            if (is_usb3 && (portsc & XHCI_PORTSC_PLS_MASK) == XHCI_PLS_INACTIVE) {
+            if (is_usb3 && (portsc & XHCI_PORTSC_PLS_MASK) == XHCI_PORTSC_PLS_INACTIVE) {
                 xhci_port_reset_warm(xhcd,port_num); // 暖复位 usb3.0复位
                 port->state = PORT_STATE_WAITING_WARM_RESET;
             } else {
@@ -861,7 +861,8 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
 
     // 3. 接收复位完成事件 (PRC)
     if (portsc & XHCI_PORTSC_PRC) {
-        if (port->state == PORT_STATE_WAITING_HOT_RESET && (portsc & XHCI_PORTSC_PED)) {
+        if (port->state == PORT_STATE_WAITING_HOT_RESET ||
+            port->state == PORT_STATE_WAITING_WARM_RESET) {
             // 硬件已处于 Enabled 状态，复位成功！
             port->state = PORT_STATE_ENABLED;
 
