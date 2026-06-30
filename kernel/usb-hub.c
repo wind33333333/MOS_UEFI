@@ -104,7 +104,7 @@ static inline int32 usb_hub_port_disable(usb_dev_t *udev, uint8 port_num) {
  * @brief 发射标准热复位信号 (2.0物理拉低线路 / 3.0超高速 Hot Reset)
  * 🌟 这是发现新插入设备后，触发硬件使能的绝对第一步！
  */
-static inline int32 usb_hub_port_reset(usb_dev_t *udev, uint8 port_num) {
+static inline int32 usb_hub_port_reset_hot(usb_dev_t *udev, uint8 port_num) {
     return usb_hub_set_port_feature(udev, port_num, USB_PORT_FEAT_RESET, 0);
 }
 
@@ -152,7 +152,7 @@ static inline int32 usb_hub_port_set_indicator(usb_dev_t *udev, uint8 port_num, 
  * @brief 🔥 [大锤物理强刷] 发射 Warm Reset 信号！
  * 🌟 当超高速链路不幸跌落至 SS.Inactive 硬件死锁状态时，这是唯一的解药！
  */
-static inline int32 usb_hub_port_bh_reset(usb_dev_t *udev, uint8 port_num) {
+static inline int32 usb_hub_port_reset_warm(usb_dev_t *udev, uint8 port_num) {
     return usb_hub_set_port_feature(udev, port_num, USB_PORT_FEAT_BH_PORT_RESET, 0);
 }
 
@@ -304,10 +304,10 @@ void usb_hub_port_eunm(usb_dev_t *parent_hub, uint8 port_num) {
  * @param port_num 发生事件的端口号 (从 1 开始)
  */
 void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
-    uint32 init_port_status = 0;
+    uint32 portsc = 0;
 
     // 📸 1. 获取引发中断的初始物理快照
-    if (usb_hub_port_get_status(udev, port_num, &init_port_status) < 0) {
+    if (usb_hub_port_get_status(udev, port_num, &portsc) < 0) {
         color_printk(RED, BLACK, "[Hub Port %d] Failed to read port status!\n", port_num);
         return;
     }
@@ -317,24 +317,24 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
     usb_hub_port_t *port = &hub->ports[port_num];
 
     color_printk(GREEN, BLACK, "[Hub Port %d] Async IRQ! Status: %#x, Current State: %d\n",
-                 port_num, init_port_status, port->state);
+                 port_num, portsc, port->state);
 
     // =========================================================================
     // 🧽 阶段一：硬件保洁区 (Acknowledge) - 见 1 擦 1，防止中断风暴
     // =========================================================================
     // 1. 跨代际通用报警
-    if (init_port_status & USB_PORT_STAT_C_OVERCURRENT) usb_hub_port_clear_over_current_change(udev, port_num);
-    if (init_port_status & USB_PORT_STAT_C_RESET)       usb_hub_port_clear_reset_change(udev, port_num);
-    if (init_port_status & USB_PORT_STAT_C_CONNECTION)  usb_hub_port_clear_connection_change(udev, port_num);
+    if (portsc & USB_PORT_STAT_C_OVERCURRENT) usb_hub_port_clear_over_current_change(udev, port_num);
+    if (portsc & USB_PORT_STAT_C_RESET)       usb_hub_port_clear_reset_change(udev, port_num);
+    if (portsc & USB_PORT_STAT_C_CONNECTION)  usb_hub_port_clear_connection_change(udev, port_num);
 
     // 2. 代际独占报警
     if (udev->port_speed > USB_SPEED_HIGH) {
-        if (init_port_status & USB3_PORT_STAT_C_BH_RESET)   usb_hub_port_clear_bh_reset_change(udev, port_num);
-        if (init_port_status & USB3_PORT_STAT_C_LINK_STATE) usb_hub_port_clear_link_state_change(udev, port_num);
-        if (init_port_status & USB3_PORT_STAT_C_CONFIG_ERR) usb_hub_port_clear_config_error_change(udev, port_num);
+        if (portsc & USB3_PORT_STAT_C_BH_RESET)   usb_hub_port_clear_bh_reset_change(udev, port_num);
+        if (portsc & USB3_PORT_STAT_C_LINK_STATE) usb_hub_port_clear_link_state_change(udev, port_num);
+        if (portsc & USB3_PORT_STAT_C_CONFIG_ERR) usb_hub_port_clear_config_error_change(udev, port_num);
     } else {
-        if (init_port_status & USB2_PORT_STAT_C_ENABLE)     usb_hub_port_clear_enable_change(udev, port_num);
-        if (init_port_status & USB2_PORT_STAT_C_SUSPEND)    usb_hub_port_clear_suspend_change(udev, port_num);
+        if (portsc & USB2_PORT_STAT_C_ENABLE)     usb_hub_port_clear_enable_change(udev, port_num);
+        if (portsc & USB2_PORT_STAT_C_SUSPEND)    usb_hub_port_clear_suspend_change(udev, port_num);
     }
 
 
@@ -343,7 +343,7 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
     // =========================================================================
 
     // 💥 动作 A：致命过流保护 (最高优先级)
-    if (init_port_status & USB_PORT_STAT_C_OVERCURRENT) {
+    if (portsc & USB_PORT_STAT_C_OVERCURRENT) {
         color_printk(RED, BLACK, "[Hub Port %d] OVERCURRENT! Powering off...\n", port_num);
         usb_hub_port_power_off(udev, port_num);
         port->state = PORT_STATE_DISCONNECTED; // 软件状态复位
@@ -354,24 +354,24 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
     // 🔌 动作 B：物理层插拔突变 或 扫街抓到的“哑巴”设备
     // 触发条件 1：硬件报告了插拔突变 (C_CONNECTION)
     // 触发条件 2：硬件物理上插着设备 (CONNECTION)，但我们的软件备忘录却认为它还没连接 (DISCONNECTED) -> 这就是扫街兜底抓到的！
-    if ((init_port_status & USB_PORT_STAT_C_CONNECTION) ||
-        ((init_port_status & USB_PORT_STAT_CONNECTION) && port->state == PORT_STATE_DISCONNECTED)) {
+    if ((portsc & USB_PORT_STAT_C_CONNECTION) ||
+        ((portsc & USB_PORT_STAT_CONNECTION) && port->state == PORT_STATE_DISCONNECTED)) {
 
-        if (init_port_status & USB_PORT_STAT_CONNECTION) {
+        if (portsc & USB_PORT_STAT_CONNECTION) {
             // -------------------------------------------------------------
             // 🟢 新设备插入：开局第一棒，发射复位命令，更新备忘录后立刻撤退！
             // -------------------------------------------------------------
             color_printk(GREEN, BLACK, "[Hub Port %d] Async: New Device. Firing Reset...\n", port_num);
 
             if ((udev->port_speed > USB_SPEED_HIGH) &&
-                ((init_port_status & USB3_PORT_STAT_LINK_MASK) == USB3_PORT_LINK_SS_INACTIVE)) {
+                ((portsc & USB3_PORT_STAT_LINK_MASK) == USB3_PORT_LINK_SS_INACTIVE)) {
                 // USB 3.0 设备且链路死锁，抡大锤：暖复位 (BH Reset)
-                usb_hub_port_bh_reset(udev, port_num);
+                usb_hub_port_reset_warm(udev, port_num);
                 port->state = PORT_STATE_WAITING_WARM_RESET;
                 } else {
                     // 💥 无论 2.0 还是正常的 3.0 (含 U0)，统统一律发送常规热复位！
                     // 强制净化设备内部的 Endpoint 0 状态机，洗脑回 Default 状态
-                    usb_hub_port_reset(udev, port_num);    // 温柔复位：热复位
+                    usb_hub_port_reset_hot(udev, port_num);    // 温柔复位：热复位
                     port->state = PORT_STATE_WAITING_HOT_RESET;
                 }
 
@@ -389,7 +389,7 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
     }
 
     // 🎯 动作 C：复位接力棒！(接收 C_RESET 或 C_BH_RESET 硬件回执)
-    if ((init_port_status & USB_PORT_STAT_C_RESET) || (init_port_status & USB3_PORT_STAT_C_BH_RESET)) {
+    if ((portsc & USB_PORT_STAT_C_RESET) || (portsc & USB3_PORT_STAT_C_BH_RESET)) {
 
         // 翻开备忘录对账：我确实在等复位吗？
         if (port->state == PORT_STATE_WAITING_HOT_RESET ||
@@ -397,13 +397,13 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
 
             // 最终检阅：复位完成了，硬件真的 Enable 且处于可用状态了吗？
             boolean is_30 = (udev->port_speed > USB_SPEED_HIGH);
-            boolean is_enabled = (init_port_status & USB_PORT_STAT_ENABLE) != 0;
-            boolean is_u0 = ((init_port_status & USB3_PORT_STAT_LINK_MASK) == USB3_PORT_LINK_U0);
+            boolean is_enabled = (portsc & USB_PORT_STAT_ENABLE) != 0;
+            boolean is_u0 = ((portsc & USB3_PORT_STAT_LINK_MASK) == USB3_PORT_LINK_U0);
 
             if (is_enabled && (!is_30 || is_u0)) {
                 // 提取设备真实速度 (此时取出的速度是绝对准确的)
-                uint32 raw_speed = is_30 ? ((init_port_status & USB3_PORT_STAT_SPEED_MASK) >> 10)
-                                          : (init_port_status & USB2_PORT_STAT_SPEED_MASK);
+                uint32 raw_speed = is_30 ? ((portsc & USB3_PORT_STAT_SPEED_MASK) >> 10)
+                                          : (portsc & USB2_PORT_STAT_SPEED_MASK);
 
                 color_printk(GREEN, BLACK, "[Hub Port %d] Async: Reset Success! Speed: %#x. Ready for Enum!\n", port_num, raw_speed);
 
@@ -423,11 +423,11 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
     }
 
     // 💤 动作 D：链路与电源状态突变处理 (包含主动唤醒与被动死锁)
-    if (!(init_port_status & USB_PORT_STAT_C_CONNECTION)) {
+    if (!(portsc & USB_PORT_STAT_C_CONNECTION)) {
 
         // 🚀 USB 3.0 高级链路状态机
-        if (udev->port_speed > USB_SPEED_HIGH && (init_port_status & USB3_PORT_STAT_C_LINK_STATE)) {
-            uint32 current_link = init_port_status & USB3_PORT_STAT_LINK_MASK;
+        if (udev->port_speed > USB_SPEED_HIGH && (portsc & USB3_PORT_STAT_C_LINK_STATE)) {
+            uint32 current_link = portsc & USB3_PORT_STAT_LINK_MASK;
 
             if (port->state == PORT_STATE_WAITING_LINK_CHANGE) {
                 // 情景 1：我们主动下发的链路跳转指令完成了
@@ -439,7 +439,7 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
             } else if (port->state == PORT_STATE_ENABLED && current_link == USB3_PORT_LINK_SS_INACTIVE) {
                 // 情景 2：纯被动物理塌方！正在飙数据，突然死锁了
                 color_printk(RED, BLACK, "[Hub 3.x Port %d] PASSIVE CRASH! Deploying Emergency Hammer...\n", port_num);
-                usb_hub_port_bh_reset(udev, port_num);
+                usb_hub_port_reset_warm(udev, port_num);
                 port->state = PORT_STATE_WAITING_WARM_RESET; // 切入大锤等待态
             } else if (port->state == PORT_STATE_SUSPENDED && current_link == USB3_PORT_LINK_U0) {
                 // 情景 3：设备被外部唤醒 (Remote Wakeup)
@@ -451,7 +451,7 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
 
         // 🐢 USB 2.0 传统电源状态机
         if (udev->port_speed <= USB_SPEED_HIGH) {
-            if (init_port_status & USB2_PORT_STAT_C_SUSPEND) {
+            if (portsc & USB2_PORT_STAT_C_SUSPEND) {
                 // 无论主动还是被动，C_SUSPEND 都意味着唤醒完成
                 if (port->state == PORT_STATE_WAITING_RESUME || port->state == PORT_STATE_SUSPENDED) {
                     color_printk(GREEN, BLACK, "[Hub 2.0 Port %d] Woke up from Suspend!\n", port_num);
@@ -459,11 +459,11 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
                     // TODO: 恢复外设驱动工作
                 }
             }
-            if (init_port_status & USB2_PORT_STAT_C_ENABLE) {
+            if (portsc & USB2_PORT_STAT_C_ENABLE) {
                 // 2.0 被动断连报警 (EMI 干扰或物理层错误)
                 if (port->state == PORT_STATE_ENABLED) {
                     color_printk(RED, BLACK, "[Hub 2.0 Port %d] Unexpected Disable! Attempting Rescue...\n", port_num);
-                    usb_hub_port_reset(udev, port_num);
+                    usb_hub_port_reset_hot(udev, port_num);
                     port->state = PORT_STATE_WAITING_HOT_RESET; // 尝试盲拉一把
                 }
             }

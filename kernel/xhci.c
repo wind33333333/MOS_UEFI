@@ -800,49 +800,6 @@ static void xhci_port_power_off(xhci_hcd_t *xhcd, uint8 port_num) {
     //等待20ms
 }
 
-/**
- * @brief xHCI 硬核物理复位引擎 (支持运行时错误抢救 & 2.0 初始化)
- */
-static int32 xhci_port_reset(xhci_hcd_t *xhcd, uint8 port_num) {
-    uint32 portsc = xhci_read_port(xhcd, port_num);
-
-    uint8 spc_idx = xhcd->port_to_spc[port_num];
-    boolean is_usb3 = (xhcd->spc[spc_idx].major_bcd >= 0x03);
-
-    // ---------------------------------------------------------
-    // 【未来重构点】：这部分将成为 "Issue Reset" (动作下发)
-    // ---------------------------------------------------------
-    if (is_usb3 && (portsc & XHCI_PORTSC_PLS_MASK) == XHCI_PLS_INACTIVE) {
-        portsc |= XHCI_PORTSC_WPR; // 暖复位 usb3.0复位
-    } else {
-        portsc |= XHCI_PORTSC_PR;  // 热复位 usb2.0复位
-    }
-    xhci_write_port(xhcd, port_num, portsc);
-
-    return 0; // 彻底复位且使能成功！
-}
-
-/**
- * @brief xHCI 端口枚举初始化 (专供 Hub 线程在设备插入时调用)
- */
-static int32 xhci_port_init(xhci_hcd_t *xhcd, uint8 port_num) {
-    uint32 portsc = xhci_read_port(xhcd, port_num);
-    if (!(portsc & XHCI_PORTSC_CCS)) return -1;
-
-    // ==========================================
-    // USB 3.0 极速通道：硬件已搞定，清理现场后直接放行！
-    // ==========================================
-    if (portsc & XHCI_PORTSC_PED) {
-        xhci_port_clear(xhcd, port_num, portsc);
-        return 0; // 成功！准备去分配 Address
-    }
-
-    // ==========================================
-    // USB 2.0 或假死兜底：委托给硬核复位引擎
-    // ==========================================
-    return xhci_port_reset(xhcd, port_num);
-}
-
 
 //xhci端口插入设备处理
 int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_num) {
@@ -881,8 +838,17 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
     if ((portsc & XHCI_PORTSC_CSC) || ((portsc & XHCI_PORTSC_CCS) && port->state == PORT_STATE_DISCONNECTED)) {
         if (portsc & XHCI_PORTSC_CCS) {
             // 物理层有设备，且软件不知情 -> 发起复位！
-            xhci_port_reset(xhcd, port_num);
-            port->state = PORT_STATE_WAITING_HOT_RESET;
+            uint8 spc_idx = xhcd->port_to_spc[port_num];
+            boolean is_usb3 = (xhcd->spc[spc_idx].major_bcd >= 0x03);
+            if (is_usb3 && (portsc & XHCI_PORTSC_PLS_MASK) == XHCI_PLS_INACTIVE) {
+                xhci_port_reset_warm(xhcd,port_num); // 暖复位 usb3.0复位
+                port->state = PORT_STATE_WAITING_WARM_RESET;
+            } else {
+                //usb3.0 2.0共用复位
+                xhci_port_reset_hot(xhcd,port_num);
+                port->state = PORT_STATE_WAITING_HOT_RESET;
+            }
+
             return; // 等待硬件发 PRC (Port Reset Change) 中断
         } else {
             // 设备拔出
