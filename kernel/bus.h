@@ -14,3 +14,4 @@ typedef struct bus_type_t{
 } bus_type_t;
 
 void bus_init(void);
+

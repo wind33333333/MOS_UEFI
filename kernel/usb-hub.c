@@ -286,15 +286,6 @@ static inline int32 usb_hub_port_clear_bh_reset_change(usb_dev_t *udev, uint8 po
     return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_C_BH_PORT_RESET, 0);
 }
 
-
-void usb_hub_port_eunm(usb_dev_t *parent_hub, uint8 port_num) {
-    usb_dev_t *udev = usb_dev_create(parent_hub->xhcd, parent_hub,port_num);
-    usb_if_create(udev);
-    usb_dev_register(udev);
-    usb_if_register(udev);
-}
-
-
 // =========================================================================
 // 🚀 核心处理引擎：全异步端口事件分发器
 // =========================================================================
@@ -413,7 +404,7 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
                 // 💥 真正的异步枚举动作在这里发生：
                 // TODO: 组装一个 Setup_Packet 为 SET_ADDRESS 的 URB，
                 // 挂载下一步回调函数后，下发给 xHCI 命令环！
-                usb_hub_port_eunm(udev, port_num);
+                usb_port_eunm(udev->xhcd,udev, port_num);
 
             } else {
                 color_printk(RED, BLACK, "[Hub Port %d] Async: Reset finished but port dead!\n", port_num);
@@ -467,6 +458,25 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
                     port->state = PORT_STATE_WAITING_HOT_RESET; // 尝试盲拉一把
                 }
             }
+        }
+    }
+
+    // =========================================================================
+    // 🚀 阶段三：清理完成，复活 Hub 轮询 (防中断风暴 & 防重入提交)
+    // =========================================================================
+    // 此时“阶段一”的 clear 操作已经全部下发并完成，硬件不再报警。
+    // 我们必须在此刻复活中断轮询。
+    if (hub && hub->int_urb) {
+        // 🛡️ 核心防线：防止多端口事件导致的重复提交！
+        // 只有当 URB 确实处于“已完成/空闲”状态时，我们才去提交它。
+        if (hub->int_urb->is_done == TRUE) {
+            // 抢占提交权！立刻置为 FALSE，这样即使队列里还有其他端口的事件排队，
+            // 它们执行到这里时也会因为 is_done 为 FALSE 而跳过，完美避免重复提交！
+            hub->int_urb->is_done = FALSE;
+
+            // 重新唤醒底层的轮询
+            usb_submit_urb(hub->int_urb);
+            // color_printk(BLUE, BLACK, "[Hub] Polling URB Resurrected!\n");
         }
     }
 }
@@ -572,30 +582,22 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
         usb_hub_port_power_on(udev, port_num);
     }
 
-    //5.等待100毫秒等待hub物理状态稳定
-    // uint32 times = 0x5000000;
-    // while (times) {
-    //     times--;
-    //     asm_pause();
-    // }
-
-    //6.第一次初始化hub后手动扫描每个端口是否有设备防止遗漏
-    for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
-        usb_hub_process_port_event(udev,port_num);
-    }
-
-    //7.配置好中断 URB,提交队列后续有设备插入拔出等异步实现
+    //5.配置好中断 URB,提交队列后续有设备插入拔出等异步实现
     hub->int_urb = usb_alloc_urb();
     usb_fill_int_urb(hub->int_urb, udev, ep1, hub->port_bitmap_status, ep1->max_packet_size,ep1->interval);
     usb_submit_urb(hub->int_urb);
+
+    //6.第一次初始化hub后手动扫描每个端口是否有设备防止遗漏
+    for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
+        usb_event_queue_push(USB_EVENT_HUB_PORT,udev,port_num);
+    }
+
 
     while (hub->int_urb->is_done == FALSE) {
         asm_pause();
     }
 
     color_printk(RED,BLACK, "usb_hub bitmap:%#x  \n", hub->port_bitmap_status[0]);
-
-
 
 }
 

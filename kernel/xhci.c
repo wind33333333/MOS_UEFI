@@ -650,6 +650,75 @@ static inline xhci_submit_ring_t* xhci_get_ring_by_pa(usb_ep_t *ep, uint64 trb_p
     return NULL;
 }
 
+// =========================================================================
+// 2. 核心操作 API
+// =========================================================================
+// 全局唯一的 USB 事件队列实例 (开机分配在 BSS 段，完全告别 kmalloc)
+static usb_event_queue_t g_usb_event_queue;
+/**
+ * @brief 初始化队列 (系统启动时调用一次)
+ */
+void usb_event_queue_init(void) {
+    g_usb_event_queue.head = 0;
+    g_usb_event_queue.tail = 0;
+}
+
+/**
+ * @brief [生产者] 投递端口事件
+ * @note 运行在硬件中断 (ISR) 上下文中，要求极速，不可阻塞！
+ * @return boolean TRUE-成功，FALSE-队列溢出满
+ */
+boolean usb_event_queue_push(usb_event_type_e type, void *parent, uint8 port_num) {
+    // 预测下一个写入位置
+    uint32 next_tail = (g_usb_event_queue.tail + 1) % USB_EVENT_QUEUE_SIZE;
+
+    // 检查是否撞上消费者指针 (队列满)
+    if (next_tail == g_usb_event_queue.head) {
+        // 内核级警告：主循环处理太慢，或者发生了极其严重的中断风暴！
+        // color_printk(RED, BLACK, "FATAL: USB Event Queue Overflow!\n");
+        return FALSE;
+    }
+
+    // 写入数据 (纯内存拷贝，耗时极短)
+    usb_port_event_t *evt = &g_usb_event_queue.events[g_usb_event_queue.tail];
+    evt->type = type;
+    evt->parent_dev = parent;
+    evt->port_num = port_num;
+
+    // 🌟 核心防线：编译器内存屏障，强制确保数据先落盘，再更新 tail 指针
+    __asm__ __volatile__("": : :"memory");
+
+    g_usb_event_queue.tail = next_tail;
+    return TRUE;
+}
+
+/**
+ * @brief [消费者] 弹出端口事件
+ * @note 运行在主循环底半部，安全、无惧阻塞。
+ * @param out_event 弹出的事件拷贝存放处
+ * @return boolean TRUE-成功拿到任务，FALSE-队列为空
+ */
+boolean usb_event_queue_pop(usb_port_event_t *out_event) {
+    // 检查队列是否为空
+    if (g_usb_event_queue.head == g_usb_event_queue.tail) {
+        return FALSE;
+    }
+
+    // 拷贝数据
+    usb_port_event_t *evt = &g_usb_event_queue.events[g_usb_event_queue.head];
+    out_event->type = evt->type;
+    out_event->parent_dev = evt->parent_dev;
+    out_event->port_num = evt->port_num;
+
+    // 🌟 核心防线：编译器内存屏障，确保数据读完后，再更新 head 指针放行空间
+    __asm__ __volatile__("": : :"memory");
+
+    g_usb_event_queue.head = (g_usb_event_queue.head + 1) % USB_EVENT_QUEUE_SIZE;
+    return TRUE;
+}
+
+
+
 // 传输任务处理 (多核完美并发版)
 void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
     uint64 trb_pa     = evt_trb->transfer_event.tr_trb_ptr;
@@ -672,6 +741,9 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
         return;
     }
 
+    // 提前声明一个指针，用来接住刚刚完成结算的那个 URB
+    usb_urb_t *completed_urb = NULL;
+
     // =======================================================
     // 🔒 2. 获取该环的专属锁 (绝不影响其他 Stream 的提交)
     // =======================================================
@@ -693,6 +765,9 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
             urb->status = xhci_translate_error(comp_code);
             urb->actual_length = urb->transfer_len - evt_trb->transfer_event.tr_len;
             urb->is_done = TRUE;
+
+            // 抓获这个 URB，赋值给外部指针
+            completed_urb = urb;
             break; // 找到了就跳出循环
         }
     }
@@ -700,21 +775,30 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
     // 🔓 4. 解锁释放
     spin_unlock_irqrestore(&target_ring->ring_lock, cpu_flags);
 
+    // 如果没找到对应的 URB，直接退出
+    if (completed_urb == NULL) return;
+
     // =======================================================
     // 🌟 特殊通道：Hub 的 Interrupt IN Endpoint
     // =======================================================
     if (udev->is_hub) {
         usb_hub_t *hub = udev->drv_data;
-            // 通知Hub驱动处理发生状态变化的端口
+
+        // 🛡️ 核心防线：必须严格比对地址！
+        // 只有当完成的这个 URB，确确实实是咱们挂在 Hub 上的那个中断轮询 URB 时，才放行！
+        // 这样就完美过滤掉了 Hub 的 Control URB (如 GetPortStatus)
+        if (hub && completed_urb == hub->int_urb) {
+
+            // 遍历位图，通知后台处理
             for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
                 uint8 byte_idx = port_num / 8;
                 uint8 bit_idx = port_num % 8;
-                if(hub->port_bitmap_status[byte_idx] & (1<<bit_idx)) {
-                    usb_hub_process_port_event(udev, port_num);
-                };
 
-            // 重新提交，持续监听后续中断
-            usb_submit_urb(hub->int_urb);
+                if (hub->port_bitmap_status[byte_idx] & (1 << bit_idx)) {
+                    // ⚡ 极速操作：只写纸条投递到队列！
+                    usb_event_queue_push(USB_EVENT_HUB_PORT, udev, port_num);
+                }
+            }
         }
     }
 }
@@ -801,17 +885,11 @@ static void xhci_port_power_off(xhci_hcd_t *xhcd, uint8 port_num) {
 }
 
 
-//xhci端口插入设备处理
-int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_num) {
-        if (xhci_port_init(xhcd, port_num) == 0) {
-            usb_dev_t *udev = usb_dev_create(xhcd, NULL,port_num);
-            usb_if_create(udev);
-            usb_dev_register(udev);
-            usb_if_register(udev);
-        } else {
-            // 如果复位失败，比如劣质 U 盘无法响应，直接跳过，保护操作系统不挂死
-            color_printk(YELLOW, BLACK, "[xHCI] Ignored faulty device on port %d.\n", port_num);
-        }
+void usb_port_eunm(xhci_hcd_t *xhcd,usb_dev_t *parent_hub, uint8 port_num) {
+    usb_dev_t *udev = usb_dev_create(xhcd, parent_hub,port_num);
+    usb_if_create(udev);
+    usb_dev_register(udev);
+    usb_if_register(udev);
 }
 
 //xhci端口拔出设备处理
@@ -821,55 +899,137 @@ int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_num) {
 
 }
 
-// 处理主板直连端口的插拔与复位逻辑
+
+/**
+ * @brief 处理主板直连端口的插拔与复位逻辑 (全状态位覆盖)
+ */
 void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
     uint32 portsc = xhci_read_port(xhcd, port_num);
     usb_hub_port_t *port = &xhcd->ports[port_num];
 
-    // 1. 清除硬件的中断状态标志 (Acknowledge)
+    color_printk(GREEN, BLACK, "[xHCI Port %d] Async IRQ! PORTSC: %#x, Current State: %d\n",
+                 port_num, portsc, port->state);
+
+    // =========================================================================
+    // 🧽 1. 硬件保洁区 (Acknowledge) - 靶向批量清零
+    // =========================================================================
     uint32 changes_to_clear = portsc & XHCI_PORTSC_CHANGE_MASK;
     if (changes_to_clear) {
+        // 使用白名单安全掩码，防止 PED 断连和 PP 断电
         uint32 clear_val = (portsc & XHCI_PORTSC_PRESERVE_MASK) | changes_to_clear;
         xhci_write_port(xhcd, port_num, clear_val);
     }
 
+    // =========================================================================
+    // 🚨 2. 灾难级错误处理 (最高优先级)
+    // =========================================================================
 
-    // 2. 新设备插入：发起复位
-    if ((portsc & XHCI_PORTSC_CSC) || ((portsc & XHCI_PORTSC_CCS) && port->state == PORT_STATE_DISCONNECTED)) {
-        if (portsc & XHCI_PORTSC_CCS) {
-            // 物理层有设备，且软件不知情 -> 发起复位！
+    // 💥 OCC (位 20): 过流变化 (Over-Current Change)
+    if (portsc & XHCI_PORTSC_OCC) {
+        if (portsc & XHCI_PORTSC_OCA) { // OCA(位3)=1 表示当前正处于短路状态
+            color_printk(RED, BLACK, "[xHCI Port %d] FATAL: Over-current detected! Powering down.\n", port_num);
+            xhci_port_power_off(xhcd, port_num); // 紧急切断 5V 供电
+            port->state = PORT_STATE_DISCONNECTED;
+            if (port->child_dev) {
+                // TODO: 销毁该设备及其子设备
+                port->child_dev = NULL;
+            }
+            return; // 发生短路，终止后续处理
+        } else {
+            color_printk(YELLOW, BLACK, "[xHCI Port %d] Over-current resolved. Restoring power.\n", port_num);
+            xhci_port_power_on(xhcd, port_num); // 短路解除，重新上电
+        }
+    }
+
+    // 💥 CEC (位 23): 配置错误变化 (Config Error Change) - USB 3.0 专属
+    if (portsc & XHCI_PORTSC_CEC) {
+        color_printk(RED, BLACK, "[xHCI Port %d] Bad Cable or PHY Error! Configuration failed.\n", port_num);
+        port->state = PORT_STATE_DISCONNECTED;
+        return;
+    }
+
+    // =========================================================================
+    // 🔌 3. 物理插拔处理 (Connection & Detach)
+    // =========================================================================
+
+    // CSC (位 17): 热插拔 / CAS (位 24): 冷启动设备检测 / 软件兜底检测
+    if ((portsc & XHCI_PORTSC_CSC) ||
+        (portsc & XHCI_PORTSC_CAS) ||
+        ((portsc & XHCI_PORTSC_CCS) && port->state == PORT_STATE_DISCONNECTED)) {
+
+        if (portsc & XHCI_PORTSC_CCS) { // 物理层有设备，准备发起复位
             uint8 spc_idx = xhcd->port_to_spc[port_num];
             boolean is_usb3 = (xhcd->spc[spc_idx].major_bcd >= 0x03);
+
             if (is_usb3 && (portsc & XHCI_PORTSC_PLS_MASK) == XHCI_PORTSC_PLS_INACTIVE) {
-                xhci_port_reset_warm(xhcd,port_num); // 暖复位 usb3.0复位
+                color_printk(YELLOW, BLACK, "[xHCI Port %d] USB 3.0 Deadlock. Issuing Warm Reset.\n", port_num);
+                xhci_port_reset_warm(xhcd, port_num); // 暖复位抡大锤
                 port->state = PORT_STATE_WAITING_WARM_RESET;
             } else {
-                //usb3.0 2.0共用复位
-                xhci_port_reset_hot(xhcd,port_num);
+                color_printk(GREEN, BLACK, "[xHCI Port %d] Issuing Hot Reset.\n", port_num);
+                xhci_port_reset_hot(xhcd, port_num);  // 常规热复位
                 port->state = PORT_STATE_WAITING_HOT_RESET;
             }
-
-            return; // 等待硬件发 PRC (Port Reset Change) 中断
+            return; // 🎯 关键：发射复位命令后立刻返回，等待复位完成的中断
         } else {
             // 设备拔出
-            // 回收 xhcd->udevs[slot_id]，释放结构体，重置端口
+            color_printk(YELLOW, BLACK, "[xHCI Port %d] Device Detached.\n", port_num);
             port->state = PORT_STATE_DISCONNECTED;
-            port->child_dev = NULL;
+            if (port->child_dev) {
+                // TODO: 执行设备销毁逻辑，释放槽位 (Slot ID) 和相关数据结构
+                port->child_dev = NULL;
+            }
             return;
         }
     }
 
-    // 3. 接收复位完成事件 (PRC)
-    if (portsc & XHCI_PORTSC_PRC) {
+    // =========================================================================
+    // 🚀 4. 复位完成回执 (Reset Completion)
+    // =========================================================================
+
+    // PRC (位 21): 热复位完成 / WRC (位 19): 暖复位完成
+    if ((portsc & XHCI_PORTSC_PRC) || (portsc & XHCI_PORTSC_WRC)) {
         if (port->state == PORT_STATE_WAITING_HOT_RESET ||
             port->state == PORT_STATE_WAITING_WARM_RESET) {
-            // 硬件已处于 Enabled 状态，复位成功！
-            port->state = PORT_STATE_ENABLED;
 
-            // 💥 终极动作：分配 Slot，下发 SetAddress，并创建 usb_dev_t 汽车！
-            // 创建出来的汽车，记录它的 parent_hub = NULL, root_port_num = port_num
-            // 然后挂载到 port->child_dev 上。
-            xhci_enumerate_new_device(xhcd, port_num);
+            // 防御性编程：复位完成了，端口真的 Enabled 了吗？
+            if (portsc & XHCI_PORTSC_PED) {
+                color_printk(GREEN, BLACK, "[xHCI Port %d] Reset Complete & Enabled! Enumerating...\n", port_num);
+                port->state = PORT_STATE_ENABLED;
+
+                // 💥 终极动作：下发 Enable Slot -> Set Address -> 获取描述符
+                usb_port_eunm(xhcd,NULL, port_num);
+            } else {
+                color_printk(RED, BLACK, "[xHCI Port %d] Reset Complete but port NOT Enabled! Reset failed.\n", port_num);
+                port->state = PORT_STATE_DISCONNECTED;
+            }
+        }
+    }
+
+    // =========================================================================
+    // 📉 5. 异常掉线与链路变化 (State Drops & Link Changes)
+    // =========================================================================
+
+    // PEC (位 18): 端口使能变化 (Port Enabled/Disabled Change)
+    if (portsc & XHCI_PORTSC_PEC) {
+        // 如果端口突然变成 Disabled (PED=0)，且我们原本以为它是 Enabled 的
+        if (!(portsc & XHCI_PORTSC_PED) && port->state == PORT_STATE_ENABLED) {
+            color_printk(RED, BLACK, "[xHCI Port %d] Spontaneous Disable (EMI or Error)!\n", port_num);
+            port->state = PORT_STATE_DISCONNECTED;
+            if (port->child_dev) port->child_dev = NULL; // 销毁设备
+        }
+    }
+
+    // PLC (位 22): 端口链路状态变化 (Port Link State Change)
+    if (portsc & XHCI_PORTSC_PLC) {
+        uint32 link_state = (portsc & XHCI_PORTSC_PLS_MASK) >> 5;
+        // 这里常用于处理高级电源管理 (LPM, U1/U2/U3 状态机的休眠与唤醒)
+        // 对于基础 USB 栈，我们目前只做日志记录
+        // color_printk(WHITE, BLACK, "[xHCI Port %d] Link State changed to: %x\n", port_num, link_state);
+
+        if (link_state == XHCI_PORTSC_PLS_RESUME) {
+            // 收到唤醒信号 (Resume)
+            // TODO: 发送 U0 信号结束休眠
         }
     }
 }
@@ -877,18 +1037,8 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
 
 //xhci port扫描
 void xhci_port_scan(xhci_hcd_t *xhcd){
-    //等待硬件完成端口初始化
-     // uint32 times = 0x5000000;
-     // while (times) {
-     //     times--;
-     //     asm_pause();
-     // }
-
-    for (uint8 i = 1; i <= xhcd->max_ports; i++) {
-        uint32 portsc = xhci_read_port(xhcd,i);
-        if (portsc & XHCI_PORTSC_CCS ) {//目前采用轮训等待方式暂时只要ccs置为就进行初始化
-            xhci_handle_port_connection(xhcd, i);
-        }
+    for (uint8 port_num = 1; port_num <= xhcd->max_ports; port_num++) {
+        usb_event_queue_push(USB_EVENT_XHCI_ROOT_PORT,xhcd,port_num);
     }
 }
 
@@ -896,37 +1046,7 @@ void xhci_port_scan(xhci_hcd_t *xhcd){
 //端口状态处理
 void xhci_handle_port_status_change(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
     uint8 port_num = evt_trb->prot_status_change_event.port_num;
-    uint32 portsc = xhci_read_port(xhcd,port_num);
-
-    // 1. 验明正身：真的是这个端口发生了插拔吗？
-    if (portsc & XHCI_PORTSC_CSC) {
-        // 2. 🌟 核心分发：看当前的绝对物理状态！
-        if (portsc & XHCI_PORTSC_CCS) {
-            // ➡️ 跳转去执行设备枚举 (就是你上一轮封装的函数)
-
-            color_printk(GREEN,BLACK,"usb device plug port:%d  \n",port_num);
-            //xhci_handle_port_connection(xhcd, port_num);
-
-        } else {
-            // ⬅️ 跳转去执行设备清理
-            color_printk(RED,BLACK,"usb device unplug port:%d  \n",port_num);
-            //xhci_handle_port_disconnection(xhcd, port_num);
-        }
-    }
-
-    // 1. 保护现场：将读到的数值中所有的 W1C 位强行置 0，防止误杀其他未处理的中断
-    portsc &= ~XHCI_PORTSC_W1C_MASK;
-
-    // 2. 暴力美学，全量清零：
-    // 不分 2.0 和 3.0，把所有可能在复位/插入时产生的状态变化位一次性砸成 1！
-    // 对于 2.0 端口，WRC 和 PLC 写 1 纯属空操作，极其安全。
-    portsc |= XHCI_PORTSC_PRC |
-              XHCI_PORTSC_CSC |
-              XHCI_PORTSC_PEC |
-              XHCI_PORTSC_WRC |
-              XHCI_PORTSC_PLC;
-
-    xhci_write_port(xhcd, port_num, portsc);
+    usb_event_queue_push(USB_EVENT_XHCI_ROOT_PORT,xhcd,port_num);
 }
 
 

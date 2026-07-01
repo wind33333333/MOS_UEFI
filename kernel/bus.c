@@ -15,10 +15,6 @@ extern usb_drv_t *create_usb_storage_driver();
 
 extern usb_drv_t *create_usb_hub_driver();
 
-typedef struct {
-    uint32 count;
-    xhci_hcd_t *xhcd;
-};
 
 //创建一个pcie总线和usb总线
 INIT_TEXT void bus_init(void){
@@ -37,6 +33,8 @@ INIT_TEXT void bus_init(void){
     list_head_init(&usb_bus_type.dev_list);
     list_head_init(&usb_bus_type.drv_list);   //创建usb总线
 
+    void usb_event_queue_init(void);
+
     pcie_bus_type.name = "PCIe Bus Type";
     pcie_bus_type.match = pcie_bus_match;
     pcie_bus_type.probe = pcie_bus_probe;
@@ -51,10 +49,38 @@ INIT_TEXT void bus_init(void){
     usb_drv_t *usb_hub_driver = create_usb_hub_driver();
     usb_drv_register(usb_hub_driver);
 
-    //xhci hub事件守护程序
-    while (1) {
 
 
-    }
+    // =========================================================================
+    // 3. 系统级调度中心 (守护程序示范)
+    // =========================================================================
+
+    /**
+     * @brief USB 核心底半部守护进程 (放在操作系统的 main_loop 中不断轮询)
+     * * 这种架构的魔力在于：你在选区代码中的 `xhci_process_port_event` 以及
+     * 外接 Hub 的 `usb_hub_process_port_event`，都被移到了这里慢条斯理地执行！
+     */
+        usb_port_event_t evt;
+        // 一直掏出来处理
+        while (1) {
+            usb_event_queue_pop(&evt);
+            switch (evt.type) {
+                case USB_EVENT_XHCI_ROOT_PORT: {
+                    xhci_hcd_t *xhcd = (xhci_hcd_t *)evt.parent_dev;
+                    // 👉 这里调用你写好的原生端口超级状态机
+                    xhci_process_port_event(xhcd, evt.port_num);
+                    break;
+                }
+                case USB_EVENT_HUB_PORT: {
+                    usb_dev_t *hub_dev = (usb_dev_t *)evt.parent_dev;
+                    // 👉 这里调用你写好的外接 Hub 端口状态机
+                    usb_hub_process_port_event(hub_dev, evt.port_num);
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+
 
 }
