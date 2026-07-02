@@ -1,6 +1,7 @@
 #include "bus.h"
 #include "pcie.h"
 #include "usb-core.h"
+#include "usb-hub.h"
 
 //pcie总线
 bus_type_t pcie_bus_type;
@@ -63,7 +64,7 @@ INIT_TEXT void bus_init(void){
         usb_port_event_t evt;
         // 一直掏出来处理
         while (1) {
-            usb_event_queue_pop(&evt);
+            if (usb_event_queue_pop(&evt) == FALSE) continue;
             switch (evt.type) {
                 case USB_EVENT_XHCI_ROOT_PORT: {
                     xhci_hcd_t *xhcd = (xhci_hcd_t *)evt.parent_dev;
@@ -71,10 +72,28 @@ INIT_TEXT void bus_init(void){
                     xhci_process_port_event(xhcd, evt.port_num);
                     break;
                 }
-                case USB_EVENT_HUB_PORT: {
+                case USB_EVENT_HUB_WORK: {
                     usb_dev_t *hub_dev = (usb_dev_t *)evt.parent_dev;
-                    // 👉 这里调用你写好的外接 Hub 端口状态机
-                    usb_hub_process_port_event(hub_dev, evt.port_num);
+                    usb_hub_t *hub = hub_dev->drv_data;
+
+                    // 1. 在安全的底半部上下文中，慢慢遍历 working_bitmap
+                    for (uint8 port_num = 1; port_num <= hub_dev->hub_num_ports; port_num++) {
+                        uint8 byte_idx = port_num / 8;
+                        uint8 bit_idx = port_num % 8;
+
+                        if (hub->port_bitmap_status[byte_idx] & (1 << bit_idx)) {
+                            // 👉 去执行清除标志、复位等阻塞型控制传输
+                            usb_hub_process_port_event(hub_dev, port_num);
+                        }
+                    }
+
+                    // 2. 💥 所有报警端口都已经处理完毕，硬件标志已经被彻底抹除！
+                    // 此时由底半部负责统一将轮询 URB“复活”！
+                    if (hub->int_urb->is_done == TRUE) {
+                        asm_mem_set(hub->port_bitmap_status,0,32);
+                        hub->int_urb->is_done = FALSE;
+                        usb_submit_urb(hub->int_urb);
+                    }
                     break;
                 }
                 default:

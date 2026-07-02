@@ -781,26 +781,17 @@ void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
     // =======================================================
     // 🌟 特殊通道：Hub 的 Interrupt IN Endpoint
     // =======================================================
-    if (udev->is_hub) {
+    if (udev->is_hub ) {
         usb_hub_t *hub = udev->drv_data;
-
         // 🛡️ 核心防线：必须严格比对地址！
         // 只有当完成的这个 URB，确确实实是咱们挂在 Hub 上的那个中断轮询 URB 时，才放行！
         // 这样就完美过滤掉了 Hub 的 Control URB (如 GetPortStatus)
         if (hub && completed_urb == hub->int_urb) {
+            usb_event_queue_push(USB_EVENT_HUB_WORK, udev, 0);
 
-            // 遍历位图，通知后台处理
-            for (uint8 port_num = 1; port_num <= udev->hub_num_ports; port_num++) {
-                uint8 byte_idx = port_num / 8;
-                uint8 bit_idx = port_num % 8;
-
-                if (hub->port_bitmap_status[byte_idx] & (1 << bit_idx)) {
-                    // ⚡ 极速操作：只写纸条投递到队列！
-                    usb_event_queue_push(USB_EVENT_HUB_PORT, udev, port_num);
-                }
-            }
         }
     }
+
 }
 
 
@@ -1038,7 +1029,17 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
 //xhci port扫描
 void xhci_port_scan(xhci_hcd_t *xhcd){
     for (uint8 port_num = 1; port_num <= xhcd->max_ports; port_num++) {
-        usb_event_queue_push(USB_EVENT_XHCI_ROOT_PORT,xhcd,port_num);
+        uint32 portsc = xhci_read_port(xhcd, port_num);
+        usb_hub_port_t *port = &xhcd->ports[port_num];
+
+        // 🎯 核心过滤条件：只把真正有设备（CCS=1），且我们软件系统还没记录的端口塞进队列。
+        // 这完美过滤了那几十个空端口，不浪费一丝一毫 CPU 性能。
+        if ((portsc & XHCI_PORTSC_CCS) && port->state == PORT_STATE_DISCONNECTED) {
+            // 作为兜底，直接送入队列。
+            // 当你的底半部 xhci_process_port_event 被唤醒时，
+            // 它会看到 CCS=1 且状态是 DISCONNECTED，自动触发复位流程！
+            usb_event_queue_push(USB_EVENT_XHCI_ROOT_PORT, xhcd, port_num);
+        }
     }
 }
 

@@ -1198,7 +1198,7 @@ void usb_port_eunm(xhci_hcd_t *xhcd,struct usb_dev_t *parent_hub, uint8 port_num
 typedef enum {
     USB_EVENT_NONE = 0,
     USB_EVENT_XHCI_ROOT_PORT, // 来源：xHCI 原生根端口中断
-    USB_EVENT_HUB_PORT        // 来源：外接 USB Hub 状态中断
+    USB_EVENT_HUB_WORK        // 来源：外接 USB Hub 状态中断
 } usb_event_type_e;
 
 /**
