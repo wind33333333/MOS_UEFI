@@ -409,14 +409,8 @@ int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
     // 4. 将面单抛给底层调度引擎
     int32 posix_err = usb_submit_urb(urb);
 
-    uint32 times = 0x7000000;
-    while (urb->is_done == FALSE && times) {
+    while (urb->is_done == FALSE) {
         asm_pause();
-        times--;
-    }
-
-    if (times == 0) {
-        posix_err = ETIMEDOUT;
     }
 
     usb_free_urb(urb);
@@ -1288,6 +1282,8 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
 
     // ---下发命令 ---
     err = usb_ctx_addr_dev(udev);
+
+    color_printk(BLUE,BLACK,"enable_slot_ep0  !!!\n");
     return err;
 }
 
@@ -1325,6 +1321,7 @@ static inline int32 usb_get_dev_desc(usb_dev_t *udev) {
     // 挂载到内核对象树上
     udev->dev_desc = dev_desc;
 
+    color_printk(BLUE,BLACK,"get_dev_desc  !!!\n");
     return 0;
 }
 
@@ -1347,6 +1344,7 @@ static inline int usb_get_cfg_desc(usb_dev_t *udev) {
 
     usb_set_cfg(udev);          //启用配置
 
+    color_printk(BLUE,BLACK,"get_cfg_desc  !!!\n");
     return 0;
 }
 
@@ -1407,6 +1405,8 @@ static inline int usb_get_string_desc(usb_dev_t *udev) {
     udev->product = string_ascii[1];
     udev->serial_number = string_ascii[2];
     kfree(desc_head);
+
+    color_printk(BLUE,BLACK,"get_string_desc  !!!\n");
     return 0;
 }
 
@@ -1439,8 +1439,6 @@ usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, usb_dev_t *parent_hub,uint32 port_nu
     udev->dev.type = &usb_dev_type;
     udev->dev.parent = &xhcd->xdev->dev;
     udev->dev.bus = &usb_bus_type;
-
-    color_printk(GREEN,BLACK,"udev:%s  !!!\n",udev->manufacturer);
 
     usb_enable_slot_ep0(udev); //启用slot 和 ep0
     usb_get_dev_desc(udev);    //获取设备描述符
