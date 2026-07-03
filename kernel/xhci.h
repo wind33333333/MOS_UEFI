@@ -140,7 +140,7 @@ typedef struct {
     // 端口寄存器数组 (PORTSC, PORTPMSC, PORTLI, PORTHLPMC), 偏移 0x400起,每个端口占用16字节，按端口数量动态分配
     struct {
         // 端口状态和控制寄存器 (PORTSC), 32位
-        uint32 portsc; /*  - CCS (位 0): 当前连接状态（1=设备连接 0=设备未连接）
+        uint32 portsc; /*      - CCS (位 0): 当前连接状态（1=设备连接 0=设备未连接）
                                - PED (位 1): 端口已启用/禁用 （1=启用 0=禁用）
                                - TM  (位 2)：1=隧道模式 0=本地模式
                                - OCA (位 3)：过电流激活 （1=该端口处于过流状态 0=该端口不存在过流情况）
@@ -1143,18 +1143,18 @@ typedef struct xhci_hcd_t{
 
 
 //读端口
-static inline uint32 xhci_read_port(xhci_hcd_t *xhcd,uint8 port_num) {
+static inline uint32 xhci_read_portsc(xhci_hcd_t *xhcd,uint8 port_num) {
     return xhcd->op_reg->portregs[port_num-1].portsc;
 }
 
 //写端口
-static inline void  xhci_write_port(xhci_hcd_t *xhcd,uint8 port_num,uint32 protsc) {
+static inline void  xhci_write_portsc(xhci_hcd_t *xhcd,uint8 port_num,uint32 protsc) {
     xhcd->op_reg->portregs[port_num-1].portsc = protsc;
 }
 
 //获取端口速率id
 static inline uint8 xhci_get_psi (xhci_hcd_t *xhcd,uint8 port_num) {
-    uint32 portsc = xhci_read_port(xhcd,port_num);
+    uint32 portsc = xhci_read_portsc(xhcd,port_num);
     return  (portsc >> 10) & 0xF;
 }
 

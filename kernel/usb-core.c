@@ -1440,6 +1440,8 @@ usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, usb_dev_t *parent_hub,uint32 port_nu
     udev->dev.parent = &xhcd->xdev->dev;
     udev->dev.bus = &usb_bus_type;
 
+    color_printk(GREEN,BLACK,"udev:%s  !!!\n",udev->manufacturer);
+
     usb_enable_slot_ep0(udev); //启用slot 和 ep0
     usb_get_dev_desc(udev);    //获取设备描述符
     usb_get_cfg_desc(udev);    //获取配置描述符

@@ -829,22 +829,22 @@ void xhci_handle_cmd_completion(xhci_hcd_t *xhcd,xhci_trb_t *evt_trb) {
  * @brief 发起端口热复位 (Hot Reset - 适用于 USB 2.0 & 3.0 常规设备)
  */
 void xhci_port_reset_hot(xhci_hcd_t *xhcd, uint8 port_num) {
-    uint32 portsc = xhci_read_port(xhcd, port_num);
+    uint32 portsc = xhci_read_portsc(xhcd, port_num);
 
     // 构造安全回写值：保留安全位 | 设置热复位位(RW1S)
     portsc = (portsc & XHCI_PORTSC_PRESERVE_MASK) | XHCI_PORTSC_PR;
-    xhci_write_port(xhcd, port_num, portsc);
+    xhci_write_portsc(xhcd, port_num, portsc);
 }
 
 /**
  * @brief 发起端口暖复位 (Warm Reset - 仅适用于 USB 3.0 链路死锁救援)
  */
 void xhci_port_reset_warm(xhci_hcd_t *xhcd, uint8 port_num) {
-    uint32 portsc = xhci_read_port(xhcd, port_num);
+    uint32 portsc = xhci_read_portsc(xhcd, port_num);
 
     // 构造安全回写值：保留安全位 | 设置暖复位位(RW1S)
     portsc = (portsc & XHCI_PORTSC_PRESERVE_MASK) | XHCI_PORTSC_WPR;
-    xhci_write_port(xhcd, port_num, portsc);
+    xhci_write_portsc(xhcd, port_num, portsc);
 }
 
 /**
@@ -852,26 +852,26 @@ void xhci_port_reset_warm(xhci_hcd_t *xhcd, uint8 port_num) {
  * 物理不断电，但切断数据链路通信。
  */
 void xhci_port_disable(xhci_hcd_t *xhcd, uint8 port_num) {
-    uint32 portsc = xhci_read_port(xhcd, port_num);
+    uint32 portsc = xhci_read_portsc(xhcd, port_num);
 
     // 构造安全回写值：保留安全位 | 故意给 PED 写 1 (触发 RW1CS 禁用效果)
     uint32 val = (portsc & XHCI_PORTSC_PRESERVE_MASK) | XHCI_PORTSC_PED;
-    xhci_write_port(xhcd, port_num, val);
+    xhci_write_portsc(xhcd, port_num, val);
 }
 
 //xhci端口上电
 static void xhci_port_power_on(xhci_hcd_t *xhcd,uint8 port_num) {
-    uint32 portsc = xhci_read_port(xhcd, port_num);
+    uint32 portsc = xhci_read_portsc(xhcd, port_num);
     portsc |= XHCI_PORTSC_PP;
-    xhci_write_port(xhcd, port_num, portsc);
+    xhci_write_portsc(xhcd, port_num, portsc);
     //等待20ms
 }
 
 //xhci端口断电
 static void xhci_port_power_off(xhci_hcd_t *xhcd, uint8 port_num) {
-    uint32 portsc = xhci_read_port(xhcd, port_num);
+    uint32 portsc = xhci_read_portsc(xhcd, port_num);
     portsc &= ~XHCI_PORTSC_PP;
-    xhci_write_port(xhcd, port_num, portsc);
+    xhci_write_portsc(xhcd, port_num, portsc);
     //等待20ms
 }
 
@@ -895,7 +895,7 @@ int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_num) {
  * @brief 处理主板直连端口的插拔与复位逻辑 (全状态位覆盖)
  */
 void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
-    uint32 portsc = xhci_read_port(xhcd, port_num);
+    uint32 portsc = xhci_read_portsc(xhcd, port_num);
     usb_hub_port_t *port = &xhcd->ports[port_num];
 
     color_printk(GREEN, BLACK, "[xHCI Port %d] Async IRQ! PORTSC: %#x, Current State: %d\n",
@@ -908,7 +908,7 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
     if (changes_to_clear) {
         // 使用白名单安全掩码，防止 PED 断连和 PP 断电
         uint32 clear_val = (portsc & XHCI_PORTSC_PRESERVE_MASK) | changes_to_clear;
-        xhci_write_port(xhcd, port_num, clear_val);
+        xhci_write_portsc(xhcd, port_num, clear_val);
     }
 
     // =========================================================================
@@ -985,7 +985,8 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
 
             // 防御性编程：复位完成了，端口真的 Enabled 了吗？
             if (portsc & XHCI_PORTSC_PED) {
-                color_printk(GREEN, BLACK, "[xHCI Port %d] Reset Complete & Enabled! Enumerating...\n", port_num);
+                uint32 portsc = xhci_read_portsc(xhcd, port_num);
+                color_printk(GREEN, BLACK, "[xHCI Port %d] Reset Complete & portsc:%#x & Enabled! Enumerating...\n", port_num,portsc);
                 port->state = PORT_STATE_ENABLED;
 
                 // 💥 终极动作：下发 Enable Slot -> Set Address -> 获取描述符
@@ -1029,7 +1030,7 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
 //xhci port扫描
 void xhci_port_scan(xhci_hcd_t *xhcd){
     for (uint8 port_num = 1; port_num <= xhcd->max_ports; port_num++) {
-        uint32 portsc = xhci_read_port(xhcd, port_num);
+        uint32 portsc = xhci_read_portsc(xhcd, port_num);
         usb_hub_port_t *port = &xhcd->ports[port_num];
 
         // 🎯 核心过滤条件：只把真正有设备（CCS=1），且我们软件系统还没记录的端口塞进队列。
@@ -1389,7 +1390,7 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     //xhci原生端口分配usb_hub_t结构内存,并设置好端口状态信息
     xhcd->ports = kzalloc((xhcd->max_ports+1) * sizeof(usb_hub_port_t));
     for (uint8 port_num = 1; port_num <= xhcd->max_ports; port_num++) {
-        uint32 portsc = xhci_read_port(xhcd,port_num);
+        uint32 portsc = xhci_read_portsc(xhcd,port_num);
         xhcd->ports[port_num].is_removable = !((portsc & XHCI_PORTSC_DR)>>30);
         xhcd->ports[port_num].port_num = port_num;
         xhcd->ports[port_num].state = PORT_STATE_DISCONNECTED;

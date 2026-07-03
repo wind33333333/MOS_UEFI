@@ -64,6 +64,7 @@ INIT_TEXT void bus_init(void){
         usb_port_event_t evt;
         // 一直掏出来处理
         while (1) {
+            asm_pause();
             if (usb_event_queue_pop(&evt) == FALSE) continue;
             switch (evt.type) {
                 case USB_EVENT_XHCI_ROOT_PORT: {
