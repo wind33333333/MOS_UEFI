@@ -493,6 +493,11 @@ static inline void *usb_get_in_ctx_entry(input_ctrl_ctx_t *input_ctx, uint32 dci
     return (uint8 *)input_ctx + ctx_size * (dci + 1);
 }
 
+// 获取 Output Context (Device Context) 数组中的指定条目
+static inline void *usb_get_out_ctx_entry(void *out_ctx, uint32 dci, uint8 ctx_size) {
+    return (uint8 *)out_ctx + ctx_size * dci;
+}
+
 /**
  * @brief 开启一个事务：将硬件真实状态同步到input
  */
@@ -1280,10 +1285,14 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     uep0->ring_max_trbs = 32;  //32个trb槽位就够了
     usb_alloc_ep_ring(uep0);
 
+    color_printk(BLUE,BLACK,"max_packet:%d interval:%d trq_phys_addr:%#lx slot_id:%d  \n",uep0->max_packet_size,uep0->interval,uep0->trq_phys_addr,udev->slot_id);
+
     // ---下发命令 ---
     err = usb_ctx_addr_dev(udev);
 
-    color_printk(BLUE,BLACK,"enable_slot_ep0  !!!\n");
+    xhci_ep_ctx_t *ep_ctx = usb_get_out_ctx_entry(udev->out_ctx,1,xhcd->ctx_size);
+
+    color_printk(BLUE,BLACK,"enable_slot_ep0  err:%#x ep_state:%d  !!!\n",err,ep_ctx->ep_state);
     return err;
 }
 
@@ -1301,17 +1310,28 @@ static inline int32 usb_get_dev_desc(usb_dev_t *udev) {
     // ============================
     // 全速设备 (FS) 的 8 字节刺探与修正逻辑
     // ============================
-    if (udev->port_speed == USB_SPEED_FULL) {
+    /*if (udev->port_speed == USB_SPEED_FULL) {
 
         // 探针：只拿前 8 字节
         _usb_get_dev_desc(udev,dev_desc,8);
+        color_printk(BLUE,BLACK,"dev desc max packet size:%d  ep0 max paket size:%d !!!\n",dev_desc->max_packet_size0,udev->eps[1]->max_packet_size);
 
         if (dev_desc->max_packet_size0 != 8) {
             usb_ep_t *ep0 = udev->eps[1];
             ep0->max_packet_size = dev_desc->max_packet_size0;
             usb_ctx_slot_ep0_eval(udev);
         }
+    }*/
+
+    if (udev->port_speed <= USB_SPEED_HIGH) {
+        // 探针：只拿前 8 字节
+        _usb_get_dev_desc(udev,dev_desc,8);
+        color_printk(BLUE,BLACK,"dev desc max packet size:%d  ep0 max paket size:%d !!!\n",dev_desc->max_packet_size0,udev->eps[1]->max_packet_size);
+        usb_ep_t *ep0 = udev->eps[1];
+        ep0->max_packet_size = dev_desc->max_packet_size0;
+        usb_ctx_slot_ep0_eval(udev);
     }
+
 
     // ============================
     // 获取完整的 18 字节设备描述符

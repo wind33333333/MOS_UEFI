@@ -989,6 +989,21 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
                 color_printk(GREEN, BLACK, "[xHCI Port %d] Reset Complete & portsc:%#x & Enabled! Enumerating...\n", port_num,portsc);
                 port->state = PORT_STATE_ENABLED;
 
+                // =======================================================
+                // 🌟 架构师级修复：在这里等待复位恢复期！
+                // =======================================================
+                uint8 spc_idx = xhcd->port_to_spc[port_num];
+                boolean is_usb3 = (xhcd->spc[spc_idx].major_bcd >= 0x03);
+                if (!is_usb3) {
+                    // USB 2.0 规范：复位结束后，必须给设备固件 10ms~50ms 的清醒时间。
+                    // 因为我们现在处于底半部守护进程 (Daemon) 中，这里延时极其安全。
+                    uint32 times = 0x2000000;
+                    while (times) {
+                        times--;
+                        asm_pause();
+                    }
+                }
+
                 // 💥 终极动作：下发 Enable Slot -> Set Address -> 获取描述符
                 usb_port_eunm(xhcd,NULL, port_num);
             } else {
