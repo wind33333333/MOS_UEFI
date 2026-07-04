@@ -409,8 +409,7 @@ int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
     // 4. 将面单抛给底层调度引擎
     int32 posix_err = usb_submit_urb(urb);
 
-    uint32 times = 0x30000000;
-    while (urb->is_done == FALSE && times--) {
+    while (urb->is_done == FALSE) {
         asm_pause();
     }
 
@@ -1292,8 +1291,7 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     // 1. USB 3.0 (SuperSpeed) 必定是 512。
     // 2. USB 2.0 (High Speed) 协议规定必定是 64。
     // 3. USB 1.1 (Full/Low Speed) 可能是 8/16/32/64，为了绝对安全，先盲猜最小包长 8，后续靠 BSR=1 探出真实大小来修正！
-    uint32 mps = (udev->port_speed >= USB_SPEED_SUPER) ? 512 :
-                 (udev->port_speed == USB_SPEED_HIGH)  ? 64  : 8;
+    uint32 mps = (udev->port_speed >= USB_SPEED_SUPER) ? 512 : 64;
 
     // 5. 填充端点 0 数据结构
     uep0->ep_dci = 1;
