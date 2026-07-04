@@ -409,7 +409,8 @@ int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
     // 4. 将面单抛给底层调度引擎
     int32 posix_err = usb_submit_urb(urb);
 
-    while (urb->is_done == FALSE) {
+    uint32 times = 0x30000000;
+    while (urb->is_done == FALSE && times--) {
         asm_pause();
     }
 
@@ -592,11 +593,13 @@ static inline void usb_ctx_ep_drop(usb_dev_t *udev, usb_ep_t *ep) {
 
 
 typedef enum : uint8 {
-    USB_CTX_CMD_ADDR,    // 事务：分配地址 (无中生有创世)
-    USB_CTX_CMD_EVAL,    // 事务：评估上下文 (微调参数，如 EP0 包长)
-    USB_CTX_CMD_CFG,      // 事务：配置端点 (常规增删业务端点，DC=0)
+    USB_CTX_CMD_ADDR_BSR1,   // 事务：分配地址占坑 (BSR=1, 配内存但不发物理包)
+    USB_CTX_CMD_ADDR_BSR0,   // 事务：分配地址动真格 (BSR=0, 发送 SET_ADDRESS 包)
+    USB_CTX_CMD_EVAL,        // 事务：评估上下文 (微调参数，如更新 EP0 包长)
+    USB_CTX_CMD_CFG,         // 事务：配置端点 (常规增删业务端点，DC=0)
     USB_CTX_CMD_DECFG_ALL    // 事务：格式化端点 (一键抹除所有业务端点，保留 EP0，DC=1)
 } usb_ctx_cmd_e;
+
 
 /**
  * @brief [物理通信] 统一事务提交引擎：下发命令，等待判决，同步状态
@@ -608,12 +611,13 @@ static int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type) {
     input_ctrl_ctx_t *in_ctx = udev->in_ctx;
     int32 ret = 0;
 
-    // 1. 发射物理指令
+    // 1. 发射物理指令 (完美映射底层 BSR 标志)
     switch (cmd_type) {
-        case USB_CTX_CMD_ADDR:      ret = xhci_cmd_addr_dev(udev->xhcd, udev->slot_id, in_ctx); break;
-        case USB_CTX_CMD_EVAL:      ret = xhci_cmd_eval_ctx(udev->xhcd, udev->slot_id, in_ctx); break;
-        case USB_CTX_CMD_CFG:       ret = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, in_ctx, 0); break;
-        case USB_CTX_CMD_DECFG_ALL:     ret = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, NULL, 1); break;
+        case USB_CTX_CMD_ADDR_BSR1: ret = xhci_cmd_addr_dev(udev->xhcd, udev->slot_id, in_ctx, 1); break;
+        case USB_CTX_CMD_ADDR_BSR0: ret = xhci_cmd_addr_dev(udev->xhcd, udev->slot_id, in_ctx, 0); break;
+        case USB_CTX_CMD_EVAL:      ret = xhci_cmd_eval_ctx(udev->xhcd, udev->slot_id, in_ctx);    break;
+        case USB_CTX_CMD_CFG:       ret = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, in_ctx, 0);   break;
+        case USB_CTX_CMD_DECFG_ALL: ret = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, NULL, 1);     break;
         default: return -EINVAL;
     }
 
@@ -631,12 +635,26 @@ static int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type) {
 }
 
 
-//地址分配 + EP0 初始化（创世）
-static int32 usb_ctx_addr_dev(usb_dev_t *udev) {
+/**
+ * @brief 地址分配阶段一：占坑 (BSR = 1)
+ * @note 用于 USB 2.0/1.1 初始化盲猜包长阶段，仅在主控内部激活 Default 态，不发包。
+ */
+int32 usb_ctx_addr_dev_bsr1(usb_dev_t *udev) {
     usb_ctx_in_sync(udev);
-    usb_ctx_ep_add(udev,udev->eps[1]);
+    usb_ctx_ep_add(udev, udev->eps[1]);
     usb_ctx_slot_update(udev);
-    return usb_ctx_commit(udev,USB_CTX_CMD_ADDR);
+    return usb_ctx_commit(udev, USB_CTX_CMD_ADDR_BSR1);
+}
+
+/**
+ * @brief 地址分配阶段二：正式发证 (BSR = 0)
+ * @note 向物理总线发送真正的 SET_ADDRESS 包，使设备进入 Addressed 稳态。
+ */
+int32 usb_ctx_addr_dev_bsr0(usb_dev_t *udev) {
+    usb_ctx_in_sync(udev);
+    usb_ctx_ep_add(udev, udev->eps[1]);
+    usb_ctx_slot_update(udev);
+    return usb_ctx_commit(udev, USB_CTX_CMD_ADDR_BSR0);
 }
 
 //配置slot context
@@ -1246,35 +1264,38 @@ void usb_if_register(usb_dev_t *udev) {
 
 
 /**
- * @brief 阶段 1：分配设备上下文，配置 Slot 和 EP0，并赋予物理地址
+ * @brief 阶段 1：分配设备上下文，配置 Slot 和 EP0，并赋予物理地址 (支持 BSR 两阶段探测)
  * @param udev USB 设备对象
  * @return int32 0 表示成功，-1 表示失败
  */
 static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     xhci_hcd_t *xhcd = udev->xhcd;
 
-    //启用插槽
-    int32 err = xhci_cmd_enable_slot(xhcd,udev->root_port_num,&udev->slot_id); //启用插槽
+    // 1. 启用插槽 (Enable Slot)
+    int32 err = xhci_cmd_enable_slot(xhcd, udev->root_port_num, &udev->slot_id);
     if (err < 0) return err;
 
-    //分配设备上下文
+    // 2. 分配设备上下文 (Output Context)
     uint8 ctx_size = xhcd->ctx_size;
     udev->out_ctx = kzalloc_dma(XHCI_DEVICE_CONTEXT_COUNT * ctx_size);
     xhcd->dcbaap[udev->slot_id] = va_to_pa(udev->out_ctx);
     xhcd->udevs[udev->slot_id] = udev;
 
-    //分配input上下文
+    // 3. 分配输入上下文 (Input Context)
     udev->in_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * ctx_size);
 
-    //挂载到 O(1) 路由表
+    // 4. 挂载到 O(1) 路由表
     usb_ep_t *uep0 = kzalloc(sizeof(usb_ep_t));
-    udev->eps[1] = uep0;  //警告端点0为eps1，方便后续通过ep-dci查找端点。
+    udev->eps[1] = uep0;
 
-    // --- 计算初始 Max Packet Size ---
+    // --- 计算初始 Max Packet Size (MPS0) ---
+    // 1. USB 3.0 (SuperSpeed) 必定是 512。
+    // 2. USB 2.0 (High Speed) 协议规定必定是 64。
+    // 3. USB 1.1 (Full/Low Speed) 可能是 8/16/32/64，为了绝对安全，先盲猜最小包长 8，后续靠 BSR=1 探出真实大小来修正！
     uint32 mps = (udev->port_speed >= USB_SPEED_SUPER) ? 512 :
                  (udev->port_speed == USB_SPEED_HIGH)  ? 64  : 8;
 
-    //填充端点0
+    // 5. 填充端点 0 数据结构
     uep0->ep_dci = 1;
     uep0->cerr = 3;
     uep0->ep_type = 4; // Control Endpoint
@@ -1282,19 +1303,64 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     uep0->average_trb_length = mps;
     uep0->max_streams_exp = 0;
     uep0->enable_streams_exp = 0;
-    uep0->ring_max_trbs = 32;  //32个trb槽位就够了
+    uep0->ring_max_trbs = 32;
     usb_alloc_ep_ring(uep0);
 
-    color_printk(BLUE,BLACK,"max_packet:%d interval:%d trq_phys_addr:%#lx slot_id:%d  \n",uep0->max_packet_size,uep0->interval,uep0->trq_phys_addr,udev->slot_id);
+    color_printk(BLUE, BLACK, "Prepared EP0 - max_packet:%d trq_phys_addr:%#lx slot_id:%d\n",
+                 uep0->max_packet_size, uep0->trq_phys_addr, udev->slot_id);
 
-    // ---下发命令 ---
-    err = usb_ctx_addr_dev(udev);
+    // =========================================================================
+    // 🚀 核心改造：按设备代际分发 BSR 枚举策略
+    // =========================================================================
+    if (udev->port_speed <= USB_SPEED_HIGH) {
+        // USB 2.0 规范：复位结束后，必须给设备固件 10ms~50ms 的清醒时间。
+        // 因为我们现在处于底半部守护进程 (Daemon) 中，这里延时极其安全。
+        uint32 times = 0x5000000;
+        while (times) {
+            times--;
+            asm_pause();
+        }
 
-    xhci_ep_ctx_t *ep_ctx = usb_get_out_ctx_entry(udev->out_ctx,1,xhcd->ctx_size);
+        // USB 3.0跳过，USB 2.0/1.1 两阶段探雷通道占坑 (BSR = 1)。仅配置内存，不发物理包，不需要等设备清醒
+        usb_ctx_addr_dev_bsr1(udev);
 
-    color_printk(BLUE,BLACK,"enable_slot_ep0  err:%#x ep_state:%d  !!!\n",err,ep_ctx->ep_state);
-    return err;
+        xhci_ep_ctx_t *ep_ctx = usb_get_out_ctx_entry(udev->out_ctx, 1, xhcd->ctx_size);
+
+        // 如果状态是 1 (Running)，说明彻底枚举成功！
+        color_printk(BLUE, BLACK, "enable_slot_ep0 success! ep_state:%d \n", ep_ctx->ep_state);
+
+        // 阶段 2.2：物理敲门探测，获取真实的 MaxPacketSize0 发送 GetDescriptor(Device) 只读前 8 字节。如果失败说明还没醒，可在此函数内循环重试。
+        usb_dev_desc_t *dev_desc = kzalloc_dma(sizeof(usb_dev_desc_t));
+        _usb_get_dev_desc(udev,dev_desc,8);
+        uint8 real_mps = dev_desc->max_packet_size0;
+        kfree(dev_desc);
+        if (real_mps == 0) {
+            color_printk(RED, BLACK, "Device at Slot %d failed to wake up!\n", udev->slot_id);
+            return -1;
+        }
+
+        // 阶段 2.3：修正 Input Context 中的包大小 (如果刚才猜错了)
+        if (real_mps != mps) {
+            uep0->max_packet_size = real_mps;
+            color_printk(YELLOW, BLACK, "Corrected MPS0 to %d bytes.\n", real_mps);
+            usb_ctx_slot_ep0_eval(udev);
+        }
+    }
+    // BSR = 0 发送 SET_ADDRESS！
+    usb_ctx_addr_dev_bsr0(udev);
+
+    // =========================================================================
+    // 🎯 最终检阅
+    // =========================================================================
+    xhci_ep_ctx_t *ep_ctx1 = usb_get_out_ctx_entry(udev->out_ctx, 1, xhcd->ctx_size);
+
+    // 如果状态是 1 (Running)，说明彻底枚举成功！
+    color_printk(BLUE, BLACK, "enable_slot_ep0 success! ep_state:%d \n", ep_ctx1->ep_state);
+
+    return 0;
 }
+
+
 
 /**
  * @brief 阶段 2：通过 EP0 获取设备描述符，并动态修正全速设备的 MPS
@@ -1306,32 +1372,6 @@ static inline int32 usb_get_dev_desc(usb_dev_t *udev) {
 
     // 分配设备描述符的 DMA 内存
     usb_dev_desc_t *dev_desc = kzalloc_dma(sizeof(usb_dev_desc_t));
-
-    // ============================
-    // 全速设备 (FS) 的 8 字节刺探与修正逻辑
-    // ============================
-    /*if (udev->port_speed == USB_SPEED_FULL) {
-
-        // 探针：只拿前 8 字节
-        _usb_get_dev_desc(udev,dev_desc,8);
-        color_printk(BLUE,BLACK,"dev desc max packet size:%d  ep0 max paket size:%d !!!\n",dev_desc->max_packet_size0,udev->eps[1]->max_packet_size);
-
-        if (dev_desc->max_packet_size0 != 8) {
-            usb_ep_t *ep0 = udev->eps[1];
-            ep0->max_packet_size = dev_desc->max_packet_size0;
-            usb_ctx_slot_ep0_eval(udev);
-        }
-    }*/
-
-    if (udev->port_speed <= USB_SPEED_HIGH) {
-        // 探针：只拿前 8 字节
-        _usb_get_dev_desc(udev,dev_desc,8);
-        color_printk(BLUE,BLACK,"dev desc max packet size:%d  ep0 max paket size:%d !!!\n",dev_desc->max_packet_size0,udev->eps[1]->max_packet_size);
-        usb_ep_t *ep0 = udev->eps[1];
-        ep0->max_packet_size = dev_desc->max_packet_size0;
-        usb_ctx_slot_ep0_eval(udev);
-    }
-
 
     // ============================
     // 获取完整的 18 字节设备描述符
@@ -1370,13 +1410,14 @@ static inline int usb_get_cfg_desc(usb_dev_t *udev) {
 
 //获取字符串描述符
 static inline int usb_get_string_desc(usb_dev_t *udev) {
-
     usb_desc_head_t *desc_head = kzalloc_dma(2);
 
     //获取语言ID描述符
     uint16 language_id;
     _usb_get_string_desc(udev,0,0,desc_head,2);
     usb_string_desc_t *language_desc = kzalloc_dma(desc_head->length);    // 分配真实长度的 DMA 内存
+
+    color_printk(BLUE,BLACK,"get_string_desc1  !!!\n");
 
     // 正式拉取
     _usb_get_string_desc(udev,0,0,language_desc,desc_head->length);
@@ -1389,6 +1430,7 @@ static inline int usb_get_string_desc(usb_dev_t *udev) {
         kfree(language_desc);
     }
 
+    color_printk(BLUE,BLACK,"get_string_desc2  !!!\n");
 
     //默认设备都支持美式英语
     uint8 string_index[3] = {
@@ -1426,7 +1468,7 @@ static inline int usb_get_string_desc(usb_dev_t *udev) {
     udev->serial_number = string_ascii[2];
     kfree(desc_head);
 
-    color_printk(BLUE,BLACK,"get_string_desc  !!!\n");
+    color_printk(BLUE,BLACK,"get_string_desc3  !!!\n");
     return 0;
 }
 

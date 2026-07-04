@@ -346,19 +346,33 @@ int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id) {
 }
 
 
-//设置设备地址
-int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id,input_ctrl_ctx_t *in_ctx) {
-    // 1. 组装cmd_trb
+// =========================================================================
+// 设置设备地址 (支持 BSR 两阶段控制)
+// =========================================================================
+/**
+ * @param xhcd    xHCI 控制器实例
+ * @param slot_id 目标 Slot ID
+ * @param in_ctx  输入上下文 (包含 EP0 的配置)
+ * @param bsr_flag 0: 正常赋址 (发包); 1: 阻塞发包 (仅配内存)
+ */
+int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id, input_ctrl_ctx_t *in_ctx, uint8 bsr_flag) {
+    // 1. 组装 cmd_trb
     xhci_trb_t cmd_trb = {0};
     cmd_trb.addr_dev.trb_type = XHCI_TRB_TYPE_ADDRESS_DEVICE;
+
+    // 确保传入的地址是物理地址 (DMA要求)
     cmd_trb.addr_dev.input_ctx_ptr = va_to_pa(in_ctx);
     cmd_trb.addr_dev.slot_id = slot_id;
-    cmd_trb.addr_dev.bsr = 0;
 
-    int32 status = xhci_submit_cmd(xhcd,&cmd_trb,NULL);
+    // 🛡️ 核心：根据传入的标志控制物理行为
+    // BSR = 1 (Block Set Address Request): 不向物理总线发送 SET_ADDRESS
+    // BSR = 0 : 真正向总线地址 0 发送 SET_ADDRESS 数据包
+    cmd_trb.addr_dev.bsr = bsr_flag;
+
+    // 2. 提交到命令环并等待完成
+    int32 status = xhci_submit_cmd(xhcd, &cmd_trb, NULL);
 
     return status;
-
 }
 
 /**
@@ -992,7 +1006,7 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
                 // =======================================================
                 // 🌟 架构师级修复：在这里等待复位恢复期！
                 // =======================================================
-                uint8 spc_idx = xhcd->port_to_spc[port_num];
+                /*uint8 spc_idx = xhcd->port_to_spc[port_num];
                 boolean is_usb3 = (xhcd->spc[spc_idx].major_bcd >= 0x03);
                 if (!is_usb3) {
                     // USB 2.0 规范：复位结束后，必须给设备固件 10ms~50ms 的清醒时间。
@@ -1002,7 +1016,7 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
                         times--;
                         asm_pause();
                     }
-                }
+                }*/
 
                 // 💥 终极动作：下发 Enable Slot -> Set Address -> 获取描述符
                 usb_port_eunm(xhcd,NULL, port_num);
