@@ -1430,6 +1430,11 @@ void usb_dev_init(usb_dev_t *udev) {
     usb_get_cfg_desc(udev);
     usb_get_string_desc(udev);
 
+    //注册设备
+    usb_if_create(udev);
+    usb_dev_register(udev);
+    usb_if_register(udev);
+
     return;
 }
 
