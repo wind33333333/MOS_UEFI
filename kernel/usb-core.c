@@ -1402,17 +1402,87 @@ static inline int usb_get_string_desc(usb_dev_t *udev) {
     return 0;
 }
 
-//创建usb设备
-usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, usb_dev_t *parent_hub,uint32 port_num) {
+// =========================================================================
+// 🚀 终极版：统一设备创建引擎 (智能适配原生端口与级联Hub)
+// =========================================================================
+usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, usb_dev_t *parent_hub, uint32 port_num) {
     usb_dev_t *udev = kzalloc(sizeof(usb_dev_t));
-    uint8 psi = xhci_get_psi(xhcd, port_num);
-    uint8 spc_idx = xhcd->port_to_spc[port_num];
     udev->xhcd = xhcd;
-    udev->port_speed = xhcd->spc[spc_idx].psi_dict[psi].mapped_speed;
-    udev->speed_kbps = xhcd->spc[spc_idx].psi_dict[psi].speed_kbps;
-    udev->psiv = xhcd->spc[spc_idx].psi_dict[psi].psiv;
 
-    // USB 2.0 规范：复位结束后，必须给设备固件 10ms~50ms 的清醒时间。usb 3.0直接跳过
+    if (parent_hub == NULL) {
+        // ==========================================================
+        // 🔵 路线 A：主板直连外设 (Root Hub Port)
+        // ==========================================================
+        udev->root_port_num = port_num; // 🌟 物理坐标在这里！(1 ~ MaxPorts)
+        udev->parent_port_num = 0;      // 🌟 没爹，当然是0！
+        udev->route_string = 0;         // 直连无路由
+        udev->hub_depth = 0;
+        udev->parent_hub = NULL;
+
+        // 【速率继承】：直接读取 xHCI 寄存器，并从 SPC (支持协议表) 中提权
+        uint8 psi = xhci_get_psi(xhcd, port_num);
+        uint8 spc_idx = xhcd->port_to_spc[port_num];
+
+        xhci_psi_t *psi_dect = &xhcd->spc[spc_idx].psi_dict[psi];
+        udev->port_speed = psi_dect->mapped_speed;
+        udev->speed_kbps = psi_dect->speed_kbps;
+        udev->psiv = psi_dect->psiv;
+
+    } else {
+        // ==========================================================
+        // 🟡 路线 B：级联外接 Hub 外设 (External Hub Port)
+        // ==========================================================
+        udev->parent_hub = parent_hub;
+        udev->root_port_num = parent_hub->root_port_num; // 继承亲爹的根端口
+        udev->parent_port_num = port_num;
+        udev->hub_depth = parent_hub->hub_depth + 1;
+
+        uint8 shift = parent_hub->hub_depth << 2;
+        udev->route_string = parent_hub->route_string | (port_num << shift);
+
+        // 💥 【核心修复：外接 Hub 的速率继承逻辑】
+        uint32 portsc = 0;
+        // 向外接 Hub 发送控制包获取端口状态 (假设你在前面已经或者可以获取到)
+        usb_hub_port_get_status(parent_hub, port_num, &portsc);
+
+        if (parent_hub->port_speed > USB_SPEED_HIGH) {
+            // 1. USB 3.0+ Hub：根据 USB-IF 规范，3.0 Hub 节点下只跑 3.0 设备！
+            udev->port_speed = USB_SPEED_SUPER;
+        } else {
+            // 2. USB 2.0 Hub：必须解析 wPortStatus 状态包的位 9 和位 10
+            // Bit 9: Low Speed, Bit 10: High Speed. 都不亮就是 Full Speed.
+            if (portsc & (1 << 9)) {
+                udev->port_speed = USB_SPEED_LOW;
+            } else if (portsc & (1 << 10)) {
+                udev->port_speed = USB_SPEED_HIGH;
+            } else {
+                udev->port_speed = USB_SPEED_FULL;
+            }
+        }
+
+
+        // 🌟 【终极严谨修正：反向查字典确认硬件 PSIV】🌟
+        // 拿着刚刚推断出的 udev->port_speed，去主控的字典里找它真正对应的 psiv
+        uint8 root_port = udev->root_port_num;
+        uint8 spc_idx = xhcd->port_to_spc[root_port];
+        xhci_psi_t *psi_dict = xhcd->spc[spc_idx].psi_dict;
+        // PSI 取值范围通常是 0~15 (4个 bit)
+        for (int i = 0; i < 16; i++) {
+            // 如果字典中记录的映射速度，刚好等同于我们当前设备的速度
+            if (psi_dict[i].mapped_speed == udev->port_speed) {
+                udev->speed_kbps = psi_dict[i].speed_kbps; //物理带宽
+                udev->psiv = psi_dict[i].psiv; //硬件真实的 PSIV
+                break; // 找到了就立刻退出
+            }
+        }
+
+    }
+
+    // ==========================================================
+    // 🚀 生命周期初始化 (Life Cycle)
+    // ==========================================================
+
+    // USB 2.0/1.1 规范：复位结束后，必须给设备固件 10ms~50ms 的清醒时间。USB 3.0 直接跳过
     if (udev->port_speed <= USB_SPEED_HIGH) {
         uint32 times = 0x5000000;
         while (times) {
@@ -1421,30 +1491,16 @@ usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd, usb_dev_t *parent_hub,uint32 port_nu
         }
     }
 
-    // 【级联外设】
-    udev->parent_hub = parent_hub;
-    if (parent_hub != NULL) {
-        udev->root_port_num = parent_hub->root_port_num; // 继承亲爹的根端口
-        udev->parent_port_num = port_num;;
-        udev->hub_depth = parent_hub->hub_depth + 1;
-        uint8 shift = parent_hub->hub_depth << 2;
-        udev->route_string = parent_hub->route_string | (port_num << shift);
-    }else {
-        // 【主板直连外设】
-        udev->root_port_num = port_num; // 🌟 物理坐标在这里！(1 ~ MaxPorts)
-        udev->parent_port_num = 0;      // 🌟 既然没爹，当然是0！完美契合 xHCI 规范！
-        udev->route_string = 0;         // 直连无路由
-        udev->hub_depth = 0;
-    }
-
+    // 挂载总线对象模型
     udev->dev.type = &usb_dev_type;
     udev->dev.parent = &xhcd->xdev->dev;
     udev->dev.bus = &usb_bus_type;
 
-    usb_enable_slot_ep0(udev); //启用slot 和 ep0
-    usb_get_dev_desc(udev);    //获取设备描述符
-    usb_get_cfg_desc(udev);    //获取配置描述符
-    usb_get_string_desc(udev); //获取字符串描述符
+    // 启动完美的“一步到位”枚举机！
+    usb_enable_slot_ep0(udev);
+    usb_get_dev_desc(udev);
+    usb_get_cfg_desc(udev);
+    usb_get_string_desc(udev);
 
     return udev;
 }

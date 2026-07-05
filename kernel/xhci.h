@@ -1068,7 +1068,7 @@ typedef enum : uint8 {
 // xHCI 速率翻译字典条目 (纯软件解析版)
 // ==========================================
 typedef struct {
-    uint8               psiv;           // 速度 ID (Port Speed ID Value, 1~15)
+    uint8               psiv;           // 速度 ID (Port Speed ID Value, 1~15) 这个是实际需要写入 slot context中的数值
 
     // 🌟 核心：直接在初始化时算出绝对速率，运行时 O(1) 直接拿！
     uint32              speed_kbps;     // 绝对物理速率 (如 12, 480, 5000, 10000 Mbps)
