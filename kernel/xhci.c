@@ -353,9 +353,8 @@ int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id) {
  * @param xhcd    xHCI 控制器实例
  * @param slot_id 目标 Slot ID
  * @param in_ctx  输入上下文 (包含 EP0 的配置)
- * @param bsr_flag 0: 正常赋址 (发包); 1: 阻塞发包 (仅配内存)
  */
-int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id, input_ctrl_ctx_t *in_ctx, uint8 bsr_flag) {
+int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id, input_ctrl_ctx_t *in_ctx) {
     // 1. 组装 cmd_trb
     xhci_trb_t cmd_trb = {0};
     cmd_trb.addr_dev.trb_type = XHCI_TRB_TYPE_ADDRESS_DEVICE;
@@ -365,9 +364,9 @@ int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id, input_ctrl_ctx_t *in_ct
     cmd_trb.addr_dev.slot_id = slot_id;
 
     // 🛡️ 核心：根据传入的标志控制物理行为
-    // BSR = 1 (Block Set Address Request): 不向物理总线发送 SET_ADDRESS
+    // BSR = 1 : 已经被遗弃，强行发送会出错
     // BSR = 0 : 真正向总线地址 0 发送 SET_ADDRESS 数据包
-    cmd_trb.addr_dev.bsr = bsr_flag;
+    cmd_trb.addr_dev.bsr = 0;
 
     // 2. 提交到命令环并等待完成
     int32 status = xhci_submit_cmd(xhcd, &cmd_trb, NULL);
