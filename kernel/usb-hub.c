@@ -373,8 +373,8 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
     usb_hub_t *hub = udev->drv_data;
     usb_hub_port_t *port = &hub->ports[port_num];
 
-    color_printk(GREEN, BLACK, "[Hub Port %d] Async IRQ! Status: %#x, Current State: %d\n",
-                 port_num, portsc, port->state);
+    color_printk(GREEN, BLACK, "[Hub Port %d] Async IRQ! Status: %#x, Current State: %d hub_speed:%d  \n",
+                 port_num, portsc, port->state,udev->port_speed);
 
     // =========================================================================
     // 🧽 阶段一：硬件保洁区 (Acknowledge) - 见 1 擦 1，防止中断风暴

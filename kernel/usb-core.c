@@ -1326,7 +1326,6 @@ static inline int32 usb_get_dev_desc(usb_dev_t *udev) {
     _usb_get_dev_desc(udev,dev_desc,sizeof(usb_dev_desc_t));
     // 挂载到内核对象树上
     udev->dev_desc = dev_desc;
-    color_printk(BLUE,BLACK,"get_dev_desc  !!!\n");
     return 0;
 }
 
@@ -1424,7 +1423,7 @@ void usb_dev_init(usb_dev_t *udev) {
     udev->dev.parent = &udev->xhcd->xdev->dev;
     udev->dev.bus = &usb_bus_type;
 
-    // 启动完美的“一步到位”枚举机！
+    //设备初始化
     usb_enable_slot_ep0(udev);
     usb_get_dev_desc(udev);
     usb_get_cfg_desc(udev);
@@ -1435,6 +1434,8 @@ void usb_dev_init(usb_dev_t *udev) {
     usb_dev_register(udev);
     usb_if_register(udev);
 
+    //打印设备信息
+    color_printk(YELLOW,BLACK,"usb-dev:%s %s %s   \n",udev->manufacturer,udev->product,udev->serial_number);
     return;
 }
 
