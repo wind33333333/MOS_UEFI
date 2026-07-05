@@ -286,7 +286,7 @@ static inline int32 usb_hub_port_clear_bh_reset_change(usb_dev_t *udev, uint8 po
     return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_C_BH_PORT_RESET, 0);
 }
 
-static inline void usb_hub_port_dev_create(usb_dev_t *parent_hub, uint8 port_num) {
+static inline void usb_hub_port_dev_create(usb_dev_t *parent_hub, uint8 port_num,uint32 portsc) {
     usb_dev_t *udev = kzalloc(sizeof(usb_dev_t));
     udev->xhcd = parent_hub->xhcd;
     xhci_hcd_t *xhcd = udev->xhcd;
@@ -300,9 +300,6 @@ static inline void usb_hub_port_dev_create(usb_dev_t *parent_hub, uint8 port_num
     udev->route_string = parent_hub->route_string | (port_num << shift);
 
     // 向外接 Hub 发送控制包获取端口状态
-    uint32 portsc = 0;
-    usb_hub_port_get_status(parent_hub, port_num, &portsc);
-
     if (parent_hub->port_speed > USB_SPEED_HIGH) {
         // 1. USB 3.0+ Hub：根据 USB-IF 规范，3.0 Hub 节点下只跑 3.0 设备！
         switch (portsc & USB3_PORT_STAT_SPEED_MASK) {
@@ -470,6 +467,7 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
 
                 // 💥 真正的异步枚举动作在这里发生：
                 // TODO: 组装 SET_ADDRESS URB 下发给 xHCI
+                usb_hub_port_dev_create(udev, port_num,portsc);
             } else {
                 color_printk(RED, BLACK, "[Hub Port %d] Async: Reset finished but port dead!\n", port_num);
                 port->state = PORT_STATE_DISCONNECTED; // 救不回来，放弃治疗
