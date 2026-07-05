@@ -889,11 +889,27 @@ static void xhci_port_power_off(xhci_hcd_t *xhcd, uint8 port_num) {
 }
 
 
-void usb_port_eunm(xhci_hcd_t *xhcd,usb_dev_t *parent_hub, uint8 port_num) {
-    usb_dev_t *udev = usb_dev_create(xhcd, parent_hub,port_num);
-    usb_if_create(udev);
-    usb_dev_register(udev);
-    usb_if_register(udev);
+void xhci_port_dev_create(xhci_hcd_t *xhcd, uint8 port_num) {
+    usb_dev_t *udev = kzalloc(sizeof(usb_dev_t));
+    udev->xhcd = xhcd;
+
+    udev->root_port_num = port_num; // 🌟 物理坐标在这里！(1 ~ MaxPorts)
+    udev->parent_port_num = 0;      // 🌟 没爹，当然是0！
+    udev->route_string = 0;         // 直连无路由
+    udev->hub_depth = 0;
+    udev->parent_hub = NULL;
+
+    // 【速率继承】：直接读取 xHCI 寄存器，并从 SPC (支持协议表) 中提权
+    uint8 psi = xhci_get_psi(xhcd, port_num);
+    uint8 spc_idx = xhcd->port_to_spc[port_num];
+
+    xhci_psi_t *psi_dect = &xhcd->spc[spc_idx].psi_dict[psi];
+    udev->port_speed = psi_dect->mapped_speed;
+    udev->speed_kbps = psi_dect->speed_kbps;
+    udev->psiv = psi_dect->psiv;
+
+    //usb设备初始化
+    usb_dev_init(udev);
 }
 
 //xhci端口拔出设备处理
@@ -1003,7 +1019,7 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
                 port->state = PORT_STATE_ENABLED;
 
                 // 💥 终极动作：下发 Enable Slot -> Set Address -> 获取描述符
-                usb_port_eunm(xhcd,NULL, port_num);
+                xhci_port_dev_create(xhcd,port_num);
             } else {
                 color_printk(RED, BLACK, "[xHCI Port %d] Reset Complete but port NOT Enabled! Reset failed.\n", port_num);
                 port->state = PORT_STATE_DISCONNECTED;
@@ -1311,12 +1327,16 @@ static inline int32 xhci_parse_supported_protocols(xhci_hcd_t *xhcd) {
                     uint8 lp = (protocol_speed>> 14) & 0x3; // 提取 Link Protocol
 
                     if (lp == 1) {
-                        // LP = 01 代表 SuperSpeedPlus (Gen 2 / Gen 2x2 等)
-                        parsed_psi->mapped_speed = USB_SPEED_SUPER_PLUS;
+                        // 🌟 核心分流：通过真实的 kbps 速率，区分 10G 和 20G
+                        if (parsed_psi->speed_kbps >= 20000000) {
+                            parsed_psi->mapped_speed = USB_SPEED_SUPER_20G;
+                        } else {
+                            parsed_psi->mapped_speed = USB_SPEED_SUPER_10G;
+                        }
                     } else {
                         // LP = 00 代表 SuperSpeed (Gen 1)
                         // 🌟 此时，即使 SSIC 跑到了 5830 Mbps，它依然会乖乖待在 SUPER_SPEED 阵营！
-                        parsed_psi->mapped_speed = USB_SPEED_SUPER;
+                        parsed_psi->mapped_speed = USB_SPEED_SUPER_5G;
                     }
                 }
 
@@ -1343,7 +1363,7 @@ static inline int32 xhci_parse_supported_protocols(xhci_hcd_t *xhcd) {
                 // PSIV = 4 (SuperSpeed, 5Gbps)
                 spc->psi_dict[4].psiv = 4;
                 spc->psi_dict[4].speed_kbps = 5000000;
-                spc->psi_dict[4].mapped_speed = USB_SPEED_SUPER;
+                spc->psi_dict[4].mapped_speed = USB_SPEED_SUPER_5G;
             }
         }
 

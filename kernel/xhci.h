@@ -1060,8 +1060,9 @@ typedef enum : uint8 {
     USB_SPEED_LOW        = 1, // 1.5 Mbps (USB 1.1)
     USB_SPEED_FULL       = 2, // 12 Mbps (USB 1.1)
     USB_SPEED_HIGH       = 3, // 480 Mbps (USB 2.0)
-    USB_SPEED_SUPER      = 4, // 5 Gbps (USB 3.0)
-    USB_SPEED_SUPER_PLUS = 5, // 10/20 Gbps (USB 3.1/3.2)
+    USB_SPEED_SUPER_5G   = 4, // 5 Gbps (USB 3.2)
+    USB_SPEED_SUPER_10G  = 5, // 10 Gbps (USB 3.2 Gen 2x1)
+    USB_SPEED_SUPER_20G  = 6, // 20 Gbps (USB 3.2 Gen 2x2)
 }usb_port_speed_e;
 
 // ==========================================
@@ -1185,7 +1186,6 @@ int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
 int32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
 int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci_submit_ring_t *transfer_ring);
 int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id);
-void usb_port_eunm(xhci_hcd_t *xhcd,struct usb_dev_t *parent_hub, uint8 port_num);
 
 // =========================================================================
 // 1. 数据结构定义

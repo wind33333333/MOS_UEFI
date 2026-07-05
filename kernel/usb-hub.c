@@ -286,6 +286,74 @@ static inline int32 usb_hub_port_clear_bh_reset_change(usb_dev_t *udev, uint8 po
     return usb_hub_clear_port_feature(udev, port_num, USB_PORT_FEAT_C_BH_PORT_RESET, 0);
 }
 
+static inline void usb_hub_port_dev_create(usb_dev_t *parent_hub, uint8 port_num) {
+    usb_dev_t *udev = kzalloc(sizeof(usb_dev_t));
+    udev->xhcd = parent_hub->xhcd;
+    xhci_hcd_t *xhcd = udev->xhcd;
+
+    udev->parent_hub = parent_hub;
+    udev->root_port_num = parent_hub->root_port_num; // 继承亲爹的根端口
+    udev->parent_port_num = port_num;
+    udev->hub_depth = parent_hub->hub_depth + 1;
+
+    uint8 shift = parent_hub->hub_depth << 2;
+    udev->route_string = parent_hub->route_string | (port_num << shift);
+
+    // 向外接 Hub 发送控制包获取端口状态
+    uint32 portsc = 0;
+    usb_hub_port_get_status(parent_hub, port_num, &portsc);
+
+    if (parent_hub->port_speed > USB_SPEED_HIGH) {
+        // 1. USB 3.0+ Hub：根据 USB-IF 规范，3.0 Hub 节点下只跑 3.0 设备！
+        switch (portsc & USB3_PORT_STAT_SPEED_MASK) {
+            case USB3_PORT_STAT_SPEED_5G:
+                udev->port_speed = USB_SPEED_SUPER_5G;
+                break;
+            case USB3_PORT_STAT_SPEED_10G:
+                udev->port_speed = USB_SPEED_SUPER_10G;
+                break;
+            case USB3_PORT_STAT_SPEED_20G:
+                udev->port_speed = USB_SPEED_SUPER_20G;
+            default:
+                break;
+        }
+    } else {
+        // 2. USB 2.0 Hub：必须解析 wPortStatus 状态包的位 9 和位 10
+        // Bit 9: Low Speed, Bit 10: High Speed. 都不亮就是 Full Speed.
+        switch (portsc & USB2_PORT_STAT_SPEED_MASK) {
+            case USB2_PORT_STAT_FULL_SPEED:
+                udev->port_speed = USB_SPEED_FULL;
+                break;
+            case USB2_PORT_STAT_LOW_SPEED:
+                udev->port_speed = USB_SPEED_LOW;
+                break;
+            case USB2_PORT_STAT_HIGH_SPEED:
+                udev->port_speed = USB_SPEED_HIGH;
+                break;
+            default:
+                break;
+        }
+    }
+
+    // 🌟 【终极严谨修正：反向查字典确认硬件 PSIV】🌟
+    // 拿着刚刚推断出的 udev->port_speed，去主控的字典里找它真正对应的 psiv
+    uint8 root_port = udev->root_port_num;
+    uint8 spc_idx = xhcd->port_to_spc[root_port];
+    xhci_psi_t *psi_dict = xhcd->spc[spc_idx].psi_dict;
+    // PSI 取值范围通常是 0~15 (4个 bit)
+    for (int i = 0; i < 16; i++) {
+        // 如果字典中记录的映射速度，刚好等同于我们当前设备的速度
+        if (psi_dict[i].mapped_speed == udev->port_speed) {
+            udev->speed_kbps = psi_dict[i].speed_kbps; //物理带宽
+            udev->psiv = psi_dict[i].psiv; //硬件真实的 PSIV
+            break; // 找到了就立刻退出
+        }
+    }
+
+    usb_dev_init(udev);
+
+}
+
 // =========================================================================
 // 🚀 核心处理引擎：纯粹的单端口事件分发器 (剥离了 URB 提交逻辑)
 // =========================================================================
@@ -315,16 +383,16 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
     // 🧽 阶段一：硬件保洁区 (Acknowledge) - 见 1 擦 1，防止中断风暴
     // =========================================================================
     if (portsc & USB_PORT_STAT_C_OVERCURRENT) usb_hub_port_clear_over_current_change(udev, port_num);
-    if (portsc & USB_PORT_STAT_C_RESET)       usb_hub_port_clear_reset_change(udev, port_num);
-    if (portsc & USB_PORT_STAT_C_CONNECTION)  usb_hub_port_clear_connection_change(udev, port_num);
+    if (portsc & USB_PORT_STAT_C_RESET) usb_hub_port_clear_reset_change(udev, port_num);
+    if (portsc & USB_PORT_STAT_C_CONNECTION) usb_hub_port_clear_connection_change(udev, port_num);
 
     if (udev->port_speed > USB_SPEED_HIGH) {
-        if (portsc & USB3_PORT_STAT_C_BH_RESET)   usb_hub_port_clear_bh_reset_change(udev, port_num);
+        if (portsc & USB3_PORT_STAT_C_BH_RESET) usb_hub_port_clear_bh_reset_change(udev, port_num);
         if (portsc & USB3_PORT_STAT_C_LINK_STATE) usb_hub_port_clear_link_state_change(udev, port_num);
         if (portsc & USB3_PORT_STAT_C_CONFIG_ERR) usb_hub_port_clear_config_error_change(udev, port_num);
     } else {
-        if (portsc & USB2_PORT_STAT_C_ENABLE)     usb_hub_port_clear_enable_change(udev, port_num);
-        if (portsc & USB2_PORT_STAT_C_SUSPEND)    usb_hub_port_clear_suspend_change(udev, port_num);
+        if (portsc & USB2_PORT_STAT_C_ENABLE) usb_hub_port_clear_enable_change(udev, port_num);
+        if (portsc & USB2_PORT_STAT_C_SUSPEND) usb_hub_port_clear_suspend_change(udev, port_num);
     }
 
 
@@ -348,7 +416,6 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
     // 🔌 动作 B：物理层插拔突变 或 扫街兜底
     if ((portsc & USB_PORT_STAT_C_CONNECTION) ||
         ((portsc & USB_PORT_STAT_CONNECTION) && port->state == PORT_STATE_DISCONNECTED)) {
-
         if (portsc & USB_PORT_STAT_CONNECTION) {
             color_printk(GREEN, BLACK, "[Hub Port %d] Async: New Device. Firing Reset...\n", port_num);
 
@@ -370,7 +437,6 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
                 port->state = PORT_STATE_WAITING_HOT_RESET;
             }
             return; // 🛡️ 安全退出，发射第一棒命令完毕
-
         } else {
             color_printk(YELLOW, BLACK, "[Hub Port %d] Async: Device Disconnected!\n", port_num);
             port->state = PORT_STATE_DISCONNECTED;
@@ -385,10 +451,8 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
 
     // 🎯 动作 C：复位接力棒！
     if ((portsc & USB_PORT_STAT_C_RESET) || (portsc & USB3_PORT_STAT_C_BH_RESET)) {
-
         if (port->state == PORT_STATE_WAITING_HOT_RESET ||
             port->state == PORT_STATE_WAITING_WARM_RESET) {
-
             boolean is_30 = (udev->port_speed > USB_SPEED_HIGH);
             boolean is_u0 = ((portsc & USB3_PORT_STAT_LINK_MASK) == USB3_PORT_LINK_U0);
 
@@ -396,15 +460,16 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
             boolean is_enabled = is_30 ? is_u0 : ((portsc & USB_PORT_STAT_ENABLE) != 0);
 
             if (is_enabled) {
-                uint32 raw_speed = is_30 ? ((portsc & USB3_PORT_STAT_SPEED_MASK) >> 10)
-                                         : (portsc & USB2_PORT_STAT_SPEED_MASK);
+                uint32 raw_speed = is_30
+                                       ? ((portsc & USB3_PORT_STAT_SPEED_MASK) >> 10)
+                                       : (portsc & USB2_PORT_STAT_SPEED_MASK);
 
-                color_printk(GREEN, BLACK, "[Hub Port %d] Async: Reset Success! Speed: %#x. Ready for Enum!\n", port_num, raw_speed);
+                color_printk(GREEN, BLACK, "[Hub Port %d] Async: Reset Success! Speed: %#x. Ready for Enum!\n",
+                             port_num, raw_speed);
                 port->state = PORT_STATE_ENABLED;
 
                 // 💥 真正的异步枚举动作在这里发生：
                 // TODO: 组装 SET_ADDRESS URB 下发给 xHCI
-                usb_port_eunm(udev->xhcd, udev, port_num);
             } else {
                 color_printk(RED, BLACK, "[Hub Port %d] Async: Reset finished but port dead!\n", port_num);
                 port->state = PORT_STATE_DISCONNECTED; // 救不回来，放弃治疗
@@ -464,7 +529,8 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     udev->drv_data = hub;
     usb_if_alt_t *if_alt = NULL;
 
-    if (udev->port_speed > USB_SPEED_HIGH) { //1. 3.0hub 初始化分支
+    if (udev->port_speed > USB_SPEED_HIGH) {
+        //1. 3.0hub 初始化分支
         color_printk(GREEN,BLACK, "hub3.0!!! speed:%d psiv:%d port:%d  \n", udev->port_speed, udev->psiv,
                      udev->root_port_num);
 
@@ -497,7 +563,8 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
             uint16 removable_bitmap = hub30_desc->device_removable;
             hub->ports[i].is_removable = !((removable_bitmap >> i) & 1);
         }
-    } else {//1. 2.0hub 初始化分支
+    } else {
+        //1. 2.0hub 初始化分支
         color_printk(GREEN,BLACK, "hub2.0!!! speed:%d psiv:%d port:%d  \n", udev->port_speed, udev->psiv,
                      udev->root_port_num);
         // ==========================================
@@ -556,10 +623,8 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
 
     //5.配置好中断 URB,提交队列后续有设备插入拔出等异步实现
     hub->int_urb = usb_alloc_urb();
-    usb_fill_int_urb(hub->int_urb, udev, ep1, hub->port_bitmap_status, ep1->max_packet_size,ep1->interval);
+    usb_fill_int_urb(hub->int_urb, udev, ep1, hub->port_bitmap_status, ep1->max_packet_size, ep1->interval);
     usb_submit_urb(hub->int_urb);
-
-
 }
 
 

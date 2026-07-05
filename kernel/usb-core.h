@@ -574,7 +574,7 @@ static inline void *usb_get_next_desc(usb_desc_head_t *head) {
 
 extern struct bus_type_t usb_bus_type;
 
-usb_dev_t *usb_dev_create(xhci_hcd_t *xhcd,usb_dev_t *parent_hub, uint32 port_num);
+void usb_dev_init(usb_dev_t *udev);
 
 //注册usb设备
 static inline void usb_dev_register(usb_dev_t *usb_dev) {
