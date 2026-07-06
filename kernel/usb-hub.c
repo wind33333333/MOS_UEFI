@@ -523,6 +523,13 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
 //hub驱动
 int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     usb_dev_t *udev = uif->udev;
+
+    // USB 规范硬性限制：外部 Hub 最多级联 5 层。udev->hub_depth = 0 代表第一级外接 Hub ... 为 4 代表第五级外接 Hub。
+    if (udev->hub_depth >= 5) {
+        color_printk(RED, BLACK, "USB Topology Error: Hub cascade depth (%d) exceeds 5 levels limit!\n", udev->hub_depth + 1);
+        return -E2BIG; // 返回“参数过大”或适当的错误码，让系统放弃匹配此驱动
+    }
+
     usb_hub_t *hub = kzalloc(sizeof(usb_hub_t));
     hub->uif = uif;
     hub->port_status = kzalloc_dma(sizeof(uint32));

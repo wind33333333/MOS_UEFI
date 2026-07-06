@@ -5,6 +5,7 @@
 // ==========================================================
 #define EPERM        1  /* Operation not permitted (操作不允许) */
 #define EIO          5  /* I/O error (底层硬件/总线读写错误) */
+#define E2BIG       7   // Argument list too long
 #define EAGAIN      11  /* Try again (资源暂时不可用) */
 #define ENOMEM      12  /* Out of memory (资源或内存耗尽) */
 #define	EBUSY		16	/* Device or resource busy 设备或资源繁忙 */
