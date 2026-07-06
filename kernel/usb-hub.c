@@ -23,6 +23,10 @@ static inline int32 usb_hub30_get_desc(usb_dev_t *udev, void *buf) {
                            USB_REQ_GET_DESCRIPTOR, (USB_DESC_TYPE_HUB30 << 8) | 0, 0, sizeof(usb_hub30_desc_t));
 }
 
+// 设置hub深度
+static inline int32 usb_hub30_set_depth(usb_dev_t *udev) {
+    return usb_control_msg(udev, NULL,USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_DEVICE,HUB_REQ_SET_HUB_DEPTH, udev->hub_depth,0,0);
+}
 
 // ==========================================
 // 🔍 Hub 端口状态读取 (有数据阶段)
@@ -293,14 +297,14 @@ static inline void usb_hub_port_dev_create(usb_dev_t *parent_hub, uint8 port_num
 
     udev->parent_hub = parent_hub;
     udev->root_port_num = parent_hub->root_port_num; // 继承亲爹的根端口
-    udev->parent_port_num = port_num;
     udev->hub_depth = parent_hub->hub_depth + 1;
-
     uint8 shift = parent_hub->hub_depth << 2;
     udev->route_string = parent_hub->route_string | (port_num << shift);
 
     // 向外接 Hub 发送控制包获取端口状态
     if (parent_hub->port_speed > USB_SPEED_HIGH) {
+        udev->parent_hub_slot_id = 0;
+        udev->parent_port_num = 0;
         // 1. USB 3.0+ Hub：根据 USB-IF 规范，3.0 Hub 节点下只跑 3.0 设备！
         switch (portsc & USB3_PORT_STAT_SPEED_MASK) {
             case USB3_PORT_STAT_SPEED_5G:
@@ -315,6 +319,8 @@ static inline void usb_hub_port_dev_create(usb_dev_t *parent_hub, uint8 port_num
                 break;
         }
     } else {
+        udev->parent_hub_slot_id = parent_hub->slot_id;
+        udev->parent_port_num = port_num;
         // 2. USB 2.0 Hub：必须解析 wPortStatus 状态包的位 9 和位 10
         // Bit 9: Low Speed, Bit 10: High Speed. 都不亮就是 Full Speed.
         switch (portsc & USB2_PORT_STAT_SPEED_MASK) {
@@ -528,6 +534,8 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     usb_if_alt_t *if_alt = NULL;
 
     if (udev->port_speed > USB_SPEED_HIGH) {
+        usb_hub30_set_depth(udev);
+
         //1. 3.0hub 初始化分支
         color_printk(GREEN,BLACK, "hub3.0!!! speed:%d psiv:%d port:%d  \n", udev->port_speed, udev->psiv,
                      udev->root_port_num);

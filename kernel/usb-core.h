@@ -279,34 +279,56 @@ typedef enum :uint8 {
 } usb_data_dir_e;
 
 // ============================================================================
-// USB 具体请求指令枚举 (对应 bRequest)
-// 注意：0x00~0x0F 通常为标准请求，0x20以上及 0xFE/0xFF 常用于类特定请求
+// 1. USB 标准请求 (Standard Requests) - 适用于所有设备
+// 规范出处：USB 2.0 Spec Chapter 9 / USB 3.2 Spec Chapter 9
+// 触发条件：Setup 包的 bmRequestType 字段 Type 位为 0 (Standard)
 // ============================================================================
 typedef enum : uint8 {
-    // ------------------------------------------------------------------------
-    // 【USB 标准请求】(当 RequestType == USB_REQ_TYPE_STANDARD 时有效)
-    // ------------------------------------------------------------------------
-    USB_REQ_GET_STATUS        = 0x00, // 获取状态 (比如看看设备是自供电还是总线供电，端点有没有Halt)
-    USB_REQ_CLEAR_FEATURE     = 0x01, // 清除特性 (★我们在撬开卡死端点时用的就是这个！)
+    USB_REQ_GET_STATUS        = 0x00, // 获取状态。常用场景：查询设备是总线供电还是自供电、是否支持远程唤醒；或查询特定端点是否处于 Halt (卡死) 状态。
+    USB_REQ_CLEAR_FEATURE     = 0x01, // 清除特性。常用场景：当某个 Endpoint 发生错误被 STALL (卡死) 时，用这个命令清除 Halt 标志，让端点起死回生。
     // 0x02 是保留的
-    USB_REQ_SET_FEATURE       = 0x03, // 设置特性 (比如让设备进入测试模式，或挂起特定端点)
+    USB_REQ_SET_FEATURE       = 0x03, // 设置特性。常用场景：让设备进入特定的测试模式 (Test Mode)，或者开启设备的远程唤醒 (Remote Wakeup) 功能。
     // 0x04 是保留的
-    USB_REQ_SET_ADDRESS       = 0x05, // 设置地址 (设备刚插入时地址为0，xHCI用这个给它分配一个 1~127 的新地址)
-    USB_REQ_GET_DESCRIPTOR    = 0x06, // 获取描述符 (★枚举设备、获取厂商PID/VID、端点配置全靠它)
-    USB_REQ_SET_DESCRIPTOR    = 0x07, // 设置描述符 (极少使用，通常用于固件更新)
-    USB_REQ_GET_CONFIGURATION = 0x08, // 获取当前配置 (看看设备现在处于哪种工作模式)
-    USB_REQ_SET_CONFIGURATION = 0x09, // 设置当前配置 (告诉设备：“你现在作为U盘模式启动吧”)
-    USB_REQ_GET_INTERFACE     = 0x0A, // 获取当前接口备用设置
-    USB_REQ_SET_INTERFACE     = 0x0B, // 设置接口备用设置 (常见于带麦克风和音响的复合 USB 耳机切换采样率)
-    USB_REQ_SYNCH_FRAME       = 0x0C, // 同步帧 (仅用于等时传输，如音频/视频设备同步时间戳)
+    USB_REQ_SET_ADDRESS       = 0x05, // 设置地址。核心枚举步骤：设备刚插入时默认响应地址 0，xHCI 通过此命令为其分配一个 1~127 的全局唯一地址。
+    USB_REQ_GET_DESCRIPTOR    = 0x06, // 获取描述符。最高频命令：获取设备描述符 (查 VID/PID)、配置描述符、字符串描述符、BOS 描述符等，摸清设备的底细。
+    USB_REQ_SET_DESCRIPTOR    = 0x07, // 设置描述符。极少使用：允许主机修改设备内部的描述符，通常仅在某些特殊的设备固件升级 (DFU) 场景下才会用到。
+    USB_REQ_GET_CONFIGURATION = 0x08, // 获取当前配置。查询当前设备正处于哪一个配置值 (Configuration Value) 下工作。
+    USB_REQ_SET_CONFIGURATION = 0x09, // 设置当前配置。枚举分水岭：发送此命令非 0 值后，设备内部的所有端点才真正被激活，设备正式进入 Configured (可用) 状态。
+    USB_REQ_GET_INTERFACE     = 0x0A, // 获取接口备用设置。查询指定接口当前正在使用哪个备用设置 (Alternate Setting)。
+    USB_REQ_SET_INTERFACE     = 0x0B, // 设置接口备用设置。多媒体利器：常见于 USB 摄像头 (UVC) 或声卡 (UAC)，用来切换不同的带宽模式 (例如切换不同的视频分辨率或音频采样率)。
+    USB_REQ_SYNCH_FRAME       = 0x0C, // 同步帧。仅用于等时传输 (Isochronous) 端点，主机用它来设定或同步音频/视频流的数据帧时间戳。
+} usb_std_request_e;
 
-    // ------------------------------------------------------------------------
-    // 【Mass Storage (BOT) 类专属请求】(当 qtype == USB_REQ_TYPE_CLASS 时有效)
-    // ------------------------------------------------------------------------
-    BOT_REQ_GET_MAX_LUN       = 0xFE, // 获取最大逻辑单元号 (问读卡器：“你身上插了几个SD卡？”)
-    BOT_REQ_MASS_STORAGE_RESET= 0xFF  // 批量仅复位 (★核弹按钮：让U盘的协议状态机瞬间清零重启)
+// ============================================================================
+// 2. USB Hub 类专属请求 (Hub Class Requests)
+// 规范出处：USB 2.0 Spec Chapter 11 / USB 3.2 Spec Chapter 10
+// 触发条件：Setup 包的 bmRequestType 字段 Type 位为 1 (Class) 且目标为 Hub
+// ============================================================================
+typedef enum : uint8 {
+    // 【USB 2.0 Hub 专属：事务转换器 (TT) 控制】
+    // 背景：当高速 (480Mbps) Hub 下面挂载了全速/低速设备时，Hub 内部的 TT 负责做速率转换。
+    HUB_REQ_CLEAR_TT_BUFFER   = 0x08, // 清除 TT 缓冲区。当发往全/低速设备的 Split 事务发生严重错误卡死时，主机发此命令清空 Hub 内部积压的数据。
+    HUB_REQ_RESET_TT          = 0x09, // 复位 TT。当 TT 内部状态机彻底崩溃时，强制重启该 Hub 端口的事务转换器硬件逻辑。
+    HUB_REQ_GET_TT_STATE      = 0x0A, // 获取 TT 状态。通常用于底层 Debug，获取 TT 当前处于什么内部状态。
+    HUB_REQ_STOP_TT           = 0x0B, // 停止 TT。暂停 TT 的工作，以便主机去读取 TT 的内部状态用于故障排查。
 
-} usb_request_e;
+    // 【USB 3.0 (SuperSpeed) Hub 专属】
+    HUB_REQ_SET_HUB_DEPTH     = 0x0C, // 🌟 设置 Hub 深度。强制命令：必须在 Set Configuration 后、读 Hub 描述符前发送！告诉 Hub 它在拓扑树的第几层，否则 Hub 无法正确解析 20-bit 的路由字符串。
+    HUB_REQ_GET_PORT_ERR_COUNT= 0x0D, // 获取端口错误计数。用于读取 SuperSpeed 链路特有的物理层链路错误次数 (Link Error Count)，评估线材质量或信号完整性。
+
+    // 注意：Hub 真正高频使用的控制端口上电、复位的指令其实是复用了标准的 SET_FEATURE/CLEAR_FEATURE，
+    // 只不过 wValue 传入的是 PORT_POWER (8), PORT_RESET (4) 等特定的 Feature Selector。
+} usb_hub_request_e;
+
+// ============================================================================
+// 3. USB 大容量存储 (Mass Storage BOT) 专属请求
+// 规范出处：USB Mass Storage Class Bulk-Only Transport (BOT) Spec
+// 触发条件：Setup 包的 bmRequestType 字段 Type 位为 1 (Class) 且目标为 U盘/移动硬盘接口
+// ============================================================================
+typedef enum : uint8 {
+    BOT_REQ_GET_MAX_LUN       = 0xFE, // 获取最大逻辑单元号。问读卡器：“你有几个插槽？” 设备返回 LUN 的最大编号 (例如返回 3，代表有 0,1,2,3 共 4 个槽位)。U盘通常返回 0。
+    BOT_REQ_MASS_STORAGE_RESET= 0xFF  // 批量仅复位 (BOT Reset)。★核弹级自救按钮：当 U盘内部的 SCSI 协议状态机卡死 (Bulk 端点 STALL) 时，发此命令让其命令解析器重启，但物理 USB 链路不会断开。通常配合 CLEAR_FEATURE 恢复端点一起使用。
+} usb_bot_request_e;
 
 // ============================================================================
 // USB 标准特性选择器枚举 (对应 Clear Feature / Set Feature 的 wValue 字段)
@@ -341,7 +363,7 @@ typedef struct usb_setup_packet_t {
     usb_data_dir_e  dtd       : 1;
 
     //bRequest
-    usb_request_e   request; //请求代码
+    uint8           request; //请求代码
 
     //wValue
     uint16          value; //请求值，具体含义由 b_request 定义 例如：GET_DESCRIPTOR 中，w_value 高字节为描述符类型，低字节为索引
@@ -449,6 +471,7 @@ typedef struct usb_dev_t{
     device_t                        dev;               // 继承系统基础设备对象
     struct usb_dev_t                *parent_hub;       // 亲爹指针 (直连主板则为 NULL)
     uint8                           root_port_num;     // 🌟 新增：认祖归宗，主板上的物理根端口号
+    uint8                           parent_hub_slot_id;
     uint8                           parent_port_num;   // 替代原来的 port_num：插在亲爹的第几个口上？
     uint8                           psiv;             // xHCI 专属的底层 DMA 挡位 (用于填 Slot Context)
     usb_port_speed_e                port_speed;       // 🌟 1. 保留全局标准枚举 (供状态机流转和描述符解析使用)
@@ -608,7 +631,7 @@ int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_num);
 
 int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
                       usb_data_dir_e dtd, usb_req_type_e req_type, usb_recipient_e recipient,
-                      usb_request_e request, uint16 value, uint16 index,uint16 length);
+                      uint8 request, uint16 value, uint16 index,uint16 length);
 
 
 // ==========================================

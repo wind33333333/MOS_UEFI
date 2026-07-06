@@ -388,7 +388,7 @@ void usb_fill_int_urb(usb_urb_t *urb,
  */
 int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
                       usb_data_dir_e dtd, usb_req_type_e req_type, usb_recipient_e recipient,
-                      usb_request_e request, uint16 value, uint16 index,uint16 length) {
+                      uint8 request, uint16 value, uint16 index,uint16 length) {
     // 1. 在这里统一组装 Setup 包！
     usb_setup_packet_t setup_pkg = {
         .dtd       = dtd,
@@ -541,7 +541,7 @@ static void usb_ctx_slot_update(usb_dev_t *udev) {
     slot->route_string = udev->route_string;
     slot->speed = udev->psiv;
     slot->root_hub_port_num = udev->root_port_num;
-    slot->parent_hub_slot_id = udev->parent_hub ? udev->parent_hub->slot_id : 0;
+    slot->parent_hub_slot_id = udev->parent_hub_slot_id;
     slot->parent_port_num = udev->parent_port_num;
 
     // 核心算法：算出投影位图并更新 context_entries,先删后建
@@ -1295,6 +1295,11 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
 
     //发送 SET_ADDRESS！
     usb_ctx_addr_dev(udev);
+
+    xhci_slot_ctx_t *slot_ctx= usb_get_out_ctx_entry(udev->out_ctx,0,ctx_size);
+    xhci_ep_ctx_t *ep0_ctx = usb_get_out_ctx_entry(udev->out_ctx,1,ctx_size);
+    color_printk(YELLOW,BLACK,"slot state:%d route_string:%#x root_hub_port_num:%d parent_hub_slot_id:%d  parent_port_num:%d  ep0 state:%d  \n",\
+        slot_ctx->slot_state,slot_ctx->route_string,slot_ctx->root_hub_port_num,slot_ctx->parent_hub_slot_id,slot_ctx->parent_port_num,ep0_ctx->ep_state);
     return 0;
 }
 
@@ -1406,6 +1411,9 @@ static inline int usb_get_string_desc(usb_dev_t *udev) {
 // 🚀 终极版：统一设备创建引擎 (智能适配原生端口与级联Hub)
 // =========================================================================
 void usb_dev_init(usb_dev_t *udev) {
+    color_printk(YELLOW,BLACK,"root_port_num:%d parent_hub_slot_id:%d parent_port_num:%d hub_depth:%d rout_string:%#x port_speed:%d  \n",\
+        udev->root_port_num,udev->parent_hub_slot_id,udev->parent_port_num,udev->hub_depth,udev->route_string,udev->port_speed);
+
     // ==========================================================
     // 🚀 生命周期初始化 (Life Cycle)
     // ==========================================================

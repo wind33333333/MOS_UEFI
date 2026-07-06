@@ -894,6 +894,7 @@ void xhci_port_dev_create(xhci_hcd_t *xhcd, uint8 port_num) {
     udev->xhcd = xhcd;
 
     udev->root_port_num = port_num; // 🌟 物理坐标在这里！(1 ~ MaxPorts)
+    udev->parent_hub_slot_id = 0;
     udev->parent_port_num = 0;      // 🌟 没爹，当然是0！
     udev->route_string = 0;         // 直连无路由
     udev->hub_depth = 0;
