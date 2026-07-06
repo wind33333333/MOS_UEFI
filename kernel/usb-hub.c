@@ -379,8 +379,7 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
     usb_hub_t *hub = udev->drv_data;
     usb_hub_port_t *port = &hub->ports[port_num];
 
-    color_printk(GREEN, BLACK, "[Hub Port %d] Async IRQ! Status: %#x, Current State: %d hub_speed:%d  \n",
-                 port_num, portsc, port->state,udev->port_speed);
+    //color_printk(GREEN, BLACK, "[Hub Port %d] Async IRQ! Status: %#x, Current State: %d hub_speed:%d  \n",port_num, portsc, port->state,udev->port_speed);
 
     // =========================================================================
     // 🧽 阶段一：硬件保洁区 (Acknowledge) - 见 1 擦 1，防止中断风暴
@@ -420,7 +419,7 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
     if ((portsc & USB_PORT_STAT_C_CONNECTION) ||
         ((portsc & USB_PORT_STAT_CONNECTION) && port->state == PORT_STATE_DISCONNECTED)) {
         if (portsc & USB_PORT_STAT_CONNECTION) {
-            color_printk(GREEN, BLACK, "[Hub Port %d] Async: New Device. Firing Reset...\n", port_num);
+            //color_printk(GREEN, BLACK, "[Hub Port %d] Async: New Device. Firing Reset...\n", port_num);
 
             // 🛡️ 防御：如果因为抖动导致状态机没清理干净，强行清理旧设备防内存泄漏！
             if (port->child_dev != NULL) {
@@ -467,8 +466,7 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
                                        ? ((portsc & USB3_PORT_STAT_SPEED_MASK) >> 10)
                                        : (portsc & USB2_PORT_STAT_SPEED_MASK);
 
-                color_printk(GREEN, BLACK, "[Hub Port %d] Async: Reset Success! Speed: %#x. Ready for Enum!\n",
-                             port_num, raw_speed);
+                //color_printk(GREEN, BLACK, "[Hub Port %d] Async: Reset Success! Speed: %#x. Ready for Enum!\n",port_num, raw_speed);
                 port->state = PORT_STATE_ENABLED;
 
                 // 💥 真正的异步枚举动作在这里发生：
@@ -534,11 +532,7 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     usb_if_alt_t *if_alt = NULL;
 
     if (udev->port_speed > USB_SPEED_HIGH) {
-        usb_hub30_set_depth(udev);
-
-        //1. 3.0hub 初始化分支
-        color_printk(GREEN,BLACK, "hub3.0!!! speed:%d psiv:%d port:%d  \n", udev->port_speed, udev->psiv,
-                     udev->root_port_num);
+        usb_hub30_set_depth(udev);  //usb3.0hub需要设置hub深度
 
         if_alt = usb_find_alt_if(uif, 0x9,USB_MATCH_ANY,USB_MATCH_ANY);
         if (if_alt == NULL) return -ENODEV;
@@ -570,9 +564,6 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
             hub->ports[i].is_removable = !((removable_bitmap >> i) & 1);
         }
     } else {
-        //1. 2.0hub 初始化分支
-        color_printk(GREEN,BLACK, "hub2.0!!! speed:%d psiv:%d port:%d  \n", udev->port_speed, udev->psiv,
-                     udev->root_port_num);
         // ==========================================
         // 🐢 USB 2.0/1.1 (High/Full/Low Speed) Hub 处理逻辑
         // ==========================================

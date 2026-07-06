@@ -928,8 +928,7 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
     uint32 portsc = xhci_read_portsc(xhcd, port_num);
     usb_hub_port_t *port = &xhcd->ports[port_num];
 
-    color_printk(GREEN, BLACK, "[xHCI Port %d] Async IRQ! PORTSC: %#x, Current State: %d\n",
-                 port_num, portsc, port->state);
+    //color_printk(GREEN, BLACK, "[xHCI Port %d] Async IRQ! PORTSC: %#x, Current State: %d\n",port_num, portsc, port->state);
 
     // =========================================================================
     // 🧽 1. 硬件保洁区 (Acknowledge) - 靶向批量清零
@@ -987,7 +986,7 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
                 xhci_port_reset_warm(xhcd, port_num); // 暖复位抡大锤
                 port->state = PORT_STATE_WAITING_WARM_RESET;
             } else {
-                color_printk(GREEN, BLACK, "[xHCI Port %d] Issuing Hot Reset.\n", port_num);
+                //color_printk(GREEN, BLACK, "[xHCI Port %d] Issuing Hot Reset.\n", port_num);
                 xhci_port_reset_hot(xhcd, port_num);  // 常规热复位
                 port->state = PORT_STATE_WAITING_HOT_RESET;
             }
@@ -1016,7 +1015,7 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
             // 防御性编程：复位完成了，端口真的 Enabled 了吗？
             if (portsc & XHCI_PORTSC_PED) {
                 uint32 portsc = xhci_read_portsc(xhcd, port_num);
-                color_printk(GREEN, BLACK, "[xHCI Port %d] Reset Complete & portsc:%#x & Enabled! Enumerating...\n", port_num,portsc);
+                //color_printk(GREEN, BLACK, "[xHCI Port %d] Reset Complete & portsc:%#x & Enabled! Enumerating...\n", port_num,portsc);
                 port->state = PORT_STATE_ENABLED;
 
                 // 💥 终极动作：下发 Enable Slot -> Set Address -> 获取描述符

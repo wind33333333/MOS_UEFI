@@ -1411,9 +1411,6 @@ static inline int usb_get_string_desc(usb_dev_t *udev) {
 // 🚀 终极版：统一设备创建引擎 (智能适配原生端口与级联Hub)
 // =========================================================================
 void usb_dev_init(usb_dev_t *udev) {
-    color_printk(YELLOW,BLACK,"root_port_num:%d parent_hub_slot_id:%d parent_port_num:%d hub_depth:%d rout_string:%#x port_speed:%d  \n",\
-        udev->root_port_num,udev->parent_hub_slot_id,udev->parent_port_num,udev->hub_depth,udev->route_string,udev->port_speed);
-
     // ==========================================================
     // 🚀 生命周期初始化 (Life Cycle)
     // ==========================================================
@@ -1443,7 +1440,8 @@ void usb_dev_init(usb_dev_t *udev) {
     usb_if_register(udev);
 
     //打印设备信息
-    color_printk(YELLOW,BLACK,"usb-dev:%s %s %s   \n",udev->manufacturer,udev->product,udev->serial_number);
+    color_printk(YELLOW,BLACK,"usb-dev:%s %s %s root_port_num:%d parent_hub_slot_id:%d parent_port_num:%d hub_depth:%d rout_string:%#x port_speed:%d  \n", \
+        udev->manufacturer,udev->product,udev->serial_number,udev->root_port_num,udev->parent_hub_slot_id,udev->parent_port_num,udev->hub_depth,udev->route_string,udev->port_speed);
     return;
 }
 
