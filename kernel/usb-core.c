@@ -540,9 +540,9 @@ static void usb_ctx_slot_update(usb_dev_t *udev) {
     // ===================================================================
     slot->route_string = udev->route_string;
     slot->speed = udev->psiv;
-    slot->root_hub_port_num = udev->root_port_num;
-    slot->parent_hub_slot_id = udev->parent_hub_slot_id;
-    slot->parent_port_num = udev->parent_port_num;
+    slot->root_hub_port_num = udev->root_hub_port_num;
+    slot->tt_hub_slot_id = udev->tt_hub_slot_id;
+    slot->tt_port_num = udev->tt_port_num;
 
     // 核心算法：算出投影位图并更新 context_entries,先删后建
     uint32 projected_map = (udev->active_ep_map & ~input_ctrl_ctx->drop_context_flags) | input_ctrl_ctx->add_context_flags;
@@ -1259,7 +1259,7 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     xhci_hcd_t *xhcd = udev->xhcd;
 
     // 1. 启用插槽 (Enable Slot)
-    int32 err = xhci_cmd_enable_slot(xhcd, udev->root_port_num, &udev->slot_id);
+    int32 err = xhci_cmd_enable_slot(xhcd, udev->root_hub_port_num, &udev->slot_id);
     if (err < 0) return err;
 
     // 2. 分配设备上下文 (Output Context)
@@ -1299,7 +1299,7 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     xhci_slot_ctx_t *slot_ctx= usb_get_out_ctx_entry(udev->out_ctx,0,ctx_size);
     xhci_ep_ctx_t *ep0_ctx = usb_get_out_ctx_entry(udev->out_ctx,1,ctx_size);
     color_printk(YELLOW,BLACK,"slot state:%d route_string:%#x root_hub_port_num:%d parent_hub_slot_id:%d  parent_port_num:%d  ep0 state:%d  \n",\
-        slot_ctx->slot_state,slot_ctx->route_string,slot_ctx->root_hub_port_num,slot_ctx->parent_hub_slot_id,slot_ctx->parent_port_num,ep0_ctx->ep_state);
+        slot_ctx->slot_state,slot_ctx->route_string,slot_ctx->root_hub_port_num,slot_ctx->tt_hub_slot_id,slot_ctx->tt_port_num,ep0_ctx->ep_state);
     return 0;
 }
 
@@ -1440,8 +1440,8 @@ void usb_dev_init(usb_dev_t *udev) {
     usb_if_register(udev);
 
     //打印设备信息
-    color_printk(YELLOW,BLACK,"usb-dev:%s %s %s root_port_num:%d parent_hub_slot_id:%d parent_port_num:%d hub_depth:%d rout_string:%#x port_speed:%d  \n", \
-        udev->manufacturer,udev->product,udev->serial_number,udev->root_port_num,udev->parent_hub_slot_id,udev->parent_port_num,udev->hub_depth,udev->route_string,udev->port_speed);
+    color_printk(YELLOW,BLACK,"usb-dev:%s %s %s root_port_num:%d tt_hub_slot_id:%d tt_port_num:%d hub_depth:%d rout_string:%#x port_speed:%d  \n", \
+        udev->manufacturer,udev->product,udev->serial_number,udev->root_hub_port_num,udev->tt_hub_slot_id,udev->tt_port_num,udev->hub_depth,udev->route_string,udev->port_speed);
     return;
 }
 

@@ -909,8 +909,8 @@ typedef struct xhci_slot_ctx_t{
     uint8 num_ports;         // [31:24] 端口数量 (仅Hub有效)
 
     // Dword 2
-    uint8 parent_hub_slot_id;// [7:0] 父集线器插槽 ID
-    uint8 parent_port_num;   // [15:8] 父端口号
+    uint8  tt_hub_slot_id;      // TT Hub 插槽 ID (仅当全/低速设备挂在高速Hub下才填，其余全填0)
+    uint8  tt_port_num;         // TT Hub 端口号 (规则同上)
     uint16 tt_think_time:2;     // [17:16] TT 思考时间
     uint16 rsvd_dw2_18:4;       // [21:18] 保留
     uint16 interrupter_target:10;// [31:22] 目标中断器编号

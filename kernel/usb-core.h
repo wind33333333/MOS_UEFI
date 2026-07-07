@@ -470,9 +470,9 @@ typedef struct usb_dev_t{
     // 1. 通用总线拓扑与设备模型
     device_t                        dev;               // 继承系统基础设备对象
     struct usb_dev_t                *parent_hub;       // 亲爹指针 (直连主板则为 NULL)
-    uint8                           root_port_num;     // 🌟 新增：认祖归宗，主板上的物理根端口号
-    uint8                           parent_hub_slot_id;
-    uint8                           parent_port_num;   // 替代原来的 port_num：插在亲爹的第几个口上？
+    uint8                           root_hub_port_num;     // 🌟 新增：认祖归宗，主板上的物理根端口号
+    uint8                           tt_hub_slot_id;
+    uint8                           tt_port_num;   // 替代原来的 port_num：插在亲爹的第几个口上？
     uint8                           psiv;             // xHCI 专属的底层 DMA 挡位 (用于填 Slot Context)
     usb_port_speed_e                port_speed;       // 🌟 1. 保留全局标准枚举 (供状态机流转和描述符解析使用)
     uint32                          speed_kbps;       // 🌟 2. 新增：扁平化的绝对物理带宽 (供高级驱动精确计算资源)

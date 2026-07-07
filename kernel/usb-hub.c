@@ -296,15 +296,15 @@ static inline void usb_hub_port_dev_create(usb_dev_t *parent_hub, uint8 port_num
     xhci_hcd_t *xhcd = udev->xhcd;
 
     udev->parent_hub = parent_hub;
-    udev->root_port_num = parent_hub->root_port_num; // 继承亲爹的根端口
+    udev->root_hub_port_num = parent_hub->root_hub_port_num; // 继承亲爹的根端口
     udev->hub_depth = parent_hub->hub_depth + 1;
     uint8 shift = parent_hub->hub_depth << 2;
     udev->route_string = parent_hub->route_string | (port_num << shift);
+    udev->tt_hub_slot_id = 0;
+    udev->tt_port_num = 0;
 
     // 向外接 Hub 发送控制包获取端口状态
     if (parent_hub->port_speed > USB_SPEED_HIGH) {
-        udev->parent_hub_slot_id = 0;
-        udev->parent_port_num = 0;
         // 1. USB 3.0+ Hub：根据 USB-IF 规范，3.0 Hub 节点下只跑 3.0 设备！
         switch (portsc & USB3_PORT_STAT_SPEED_MASK) {
             case USB3_PORT_STAT_SPEED_5G:
@@ -319,8 +319,6 @@ static inline void usb_hub_port_dev_create(usb_dev_t *parent_hub, uint8 port_num
                 break;
         }
     } else {
-        udev->parent_hub_slot_id = parent_hub->slot_id;
-        udev->parent_port_num = port_num;
         // 2. USB 2.0 Hub：必须解析 wPortStatus 状态包的位 9 和位 10
         // Bit 9: Low Speed, Bit 10: High Speed. 都不亮就是 Full Speed.
         switch (portsc & USB2_PORT_STAT_SPEED_MASK) {
@@ -336,11 +334,23 @@ static inline void usb_hub_port_dev_create(usb_dev_t *parent_hub, uint8 port_num
             default:
                 break;
         }
+
+        // 只有全速/低速才去追踪 TT
+        if (udev->port_speed <= USB_SPEED_FULL) {
+            if (parent_hub->port_speed == USB_SPEED_HIGH) {
+                udev->tt_hub_slot_id = parent_hub->slot_id;
+                udev->tt_port_num = port_num;
+            }else {
+                udev->tt_hub_slot_id = parent_hub->tt_hub_slot_id;
+                udev->tt_port_num = parent_hub->tt_port_num;
+            }
+        }
+
     }
 
     // 🌟 【终极严谨修正：反向查字典确认硬件 PSIV】🌟
     // 拿着刚刚推断出的 udev->port_speed，去主控的字典里找它真正对应的 psiv
-    uint8 root_port = udev->root_port_num;
+    uint8 root_port = udev->root_hub_port_num;
     uint8 spc_idx = xhcd->port_to_spc[root_port];
     xhci_psi_t *psi_dict = xhcd->spc[spc_idx].psi_dict;
     // PSI 取值范围通常是 0~15 (4个 bit)
