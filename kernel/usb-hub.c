@@ -470,14 +470,11 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
 
             // 🛡️ 修复 USB 3.0 的 Enable 陷阱：USB 3.0 的端口 Enable 位永远是 0，必须靠 U0 判定！
             boolean is_enabled = is_30 ? is_u0 : ((portsc & USB_PORT_STAT_ENABLE) != 0);
-
             if (is_enabled) {
-                uint32 raw_speed = is_30
-                                       ? ((portsc & USB3_PORT_STAT_SPEED_MASK) >> 10)
-                                       : (portsc & USB2_PORT_STAT_SPEED_MASK);
-
-                //color_printk(GREEN, BLACK, "[Hub Port %d] Async: Reset Success! Speed: %#x. Ready for Enum!\n",port_num, raw_speed);
                 port->state = PORT_STATE_ENABLED;
+
+                usb_hub_port_get_status(udev, port_num, &portsc);
+                color_printk(GREEN, BLACK, "Port Status: %#x   \n",portsc);
 
                 // 💥 真正的异步枚举动作在这里发生：
                 // TODO: 组装 SET_ADDRESS URB 下发给 xHCI

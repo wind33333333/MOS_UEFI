@@ -1018,6 +1018,9 @@ void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num) {
                 //color_printk(GREEN, BLACK, "[xHCI Port %d] Reset Complete & portsc:%#x & Enabled! Enumerating...\n", port_num,portsc);
                 port->state = PORT_STATE_ENABLED;
 
+                portsc = xhci_read_portsc(xhcd, port_num);
+                color_printk(GREEN, BLACK, "Port Status: %#x   \n",portsc);
+
                 // 💥 终极动作：下发 Enable Slot -> Set Address -> 获取描述符
                 xhci_port_dev_create(xhcd,port_num);
             } else {
