@@ -1295,11 +1295,6 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
 
     //发送 SET_ADDRESS！
     usb_ctx_addr_dev(udev);
-
-    xhci_slot_ctx_t *slot_ctx= usb_get_out_ctx_entry(udev->out_ctx,0,ctx_size);
-    xhci_ep_ctx_t *ep0_ctx = usb_get_out_ctx_entry(udev->out_ctx,1,ctx_size);
-    color_printk(YELLOW,BLACK,"slot state:%d route_string:%#x root_hub_port_num:%d parent_hub_slot_id:%d  parent_port_num:%d  ep0 state:%d  \n",\
-        slot_ctx->slot_state,slot_ctx->route_string,slot_ctx->root_hub_port_num,slot_ctx->tt_hub_slot_id,slot_ctx->tt_port_num,ep0_ctx->ep_state);
     return 0;
 }
 
