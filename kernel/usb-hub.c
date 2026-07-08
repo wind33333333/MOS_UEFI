@@ -472,10 +472,6 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
             boolean is_enabled = is_30 ? is_u0 : ((portsc & USB_PORT_STAT_ENABLE) != 0);
             if (is_enabled) {
                 port->state = PORT_STATE_ENABLED;
-
-                usb_hub_port_get_status(udev, port_num, &portsc);
-                color_printk(GREEN, BLACK, "Port Status: %#x   \n",portsc);
-
                 // 💥 真正的异步枚举动作在这里发生：
                 // TODO: 组装 SET_ADDRESS URB 下发给 xHCI
                 usb_hub_port_dev_create(udev, port_num,portsc);
