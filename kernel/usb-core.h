@@ -1,6 +1,4 @@
 #pragma once
-#include <sys/types.h>
-
 #include "moslib.h"
 #include "device.h"
 #include "driver.h"
