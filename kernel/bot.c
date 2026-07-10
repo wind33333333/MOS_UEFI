@@ -4,6 +4,7 @@
 #include "usb-core.h"
 #include "scsi.h"
 #include "slub.h"
+#include "xhci-cmd.h"
 
 /* @brief 执行 Request Sense 命令获取错误详情
  * @return int32 0 表示成功获取 Sense 数据，负数表示 POSIX 错误码
@@ -45,26 +46,51 @@ static int32 bot_request_sense(scsi_cmnd_t *cmnd,scsi_sense_t *sense_buf) {
     return posix_err;
 }
 
+// ============================================================================
+// 💾 USB BOT (Bulk-Only Transport) 协议控制层
+// ============================================================================
+
 /**
- * @brief 获取 BOT 协议设备最大 LUN 数量
- * @return uint8 哪怕失败了，也要做最坏的打算 (返回 1 个 LUN)
+ * @brief 获取 BOT 协议设备最大 LUN (Logical Unit Number) 数量
+ * @param udev   目标 USB 设备
+ * @param if_num U盘大容量存储接口所在的接口号 (通常为 0)
+ * @return uint8 实际存在的 LUN 数量 (保底为 1)
  */
 uint8 bot_get_max_lun(usb_dev_t *udev, uint8 if_num) {
+    // xHCI 严格要求数据缓冲区不能在内核栈上，必须使用 DMA 连续内存
     uint8 *max_lun = kzalloc_dma(64);
     if (!max_lun) {
-        return -ENOMEM; // ★ 物理防御：内存分配失败时，保底认为有 1 个 LUN
+        // 🌟 修复高危 Bug：不再返回负数错误码！
+        // 物理防御：内存分配失败时，保底认为只有 1 个 LUN (编号 0)
+        return 1;
     }
 
-    // ★ 架构防御：必须捕获错误码！因为 90% 的低端 U 盘会在这里返回 STALL (-EPIPE)
+    // 🌟 一键生成 bmRequestType: 10100001b (0xA1)
+    // 方向: IN, 类型: CLASS (类特定), 接收者: INTERFACE (接口)
+    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_CLASS, USB_REQ_REC_INTERFACE);
+
+    // ★ 架构防御：必须捕获错误码！
+    // 许多低端物理 U 盘，或者像 QEMU 中某些未完全实现 BOT 规范的虚拟驱动，
+    // 压根不支持这个可选命令，会直接在 EP0 上返回 STALL (-EPIPE)。
     int32 posix_err = usb_control_msg(udev, max_lun,
-                                USB_DIR_IN, USB_REQ_TYPE_CLASS, USB_RECIP_INTERFACE,
-                                BOT_REQ_GET_MAX_LUN, 0, if_num, 1);
+                                      req_type,
+                                      BOT_REQ_GET_MAX_LUN,
+                                      0,       // wValue: 规范强制要求填 0
+                                      if_num,  // wIndex: 目标接口号
+                                      1);      // wLength: 只需要 1 个字节
+
     uint8 num_luns;
     if (posix_err < 0) {
-        // U 盘傲娇抗议 (STALL) 或通信失败，根据 USB 规范，原谅它并默认为 0（加上面的+1后为1个LUN）
+        // U 盘傲娇抗议 (STALL) 或通信失败，根据 USB Mass Storage 规范：
+        // 遇到 STALL 应该原谅它，并默认设备只包含 1 个 LUN (即最大 LUN 号为 0)。
         color_printk(YELLOW, BLACK, "BOT: Get Max LUN failed/STALL (%d). Defaulting to 1 LUN.\n", posix_err);
         num_luns = 1;
+
+        // ⚠️ 注意：根据严格的 BOT 规范，如果这里发生了 STALL，
+        // 理论上你还需要紧接着调用 usb_clear_ep_halt() 清除 EP0 的错误状态，
+        // 才能继续发送后续的 CBW (命令块包装) 数据！
     } else {
+        // 规范中返回的是最大索引号 (比如返回 0 代表有 1 个槽位，返回 3 代表有 4 个槽位)
         num_luns = (*max_lun) + 1;
     }
 
@@ -90,19 +116,41 @@ static int32 bot_ep_reset(usb_dev_t *udev,uint8 ep_dci) {
     return 0;
 }
 
-/**
- * bot协议u盘重置
- */
-static int32 bot_mass_storage_reset(usb_dev_t *udev,uint8 if_num) {
+// ============================================================================
+// 💾 USB BOT (Bulk-Only Transport) 协议控制层
+// ============================================================================
 
-    // 动作 1：发送特定的 0xFF 控制命令，将 U 盘内部状态机重置
-    int32 posix_err =usb_control_msg(udev, NULL,
-                           USB_DIR_OUT, USB_REQ_TYPE_CLASS, USB_RECIP_INTERFACE,
-                           BOT_REQ_MASS_STORAGE_RESET, 0, if_num, 0);
+/**
+ * @brief 发送 BOT 大容量存储复位命令 (Mass Storage Reset)
+ * @param udev   目标 USB 设备
+ * @param if_num U盘大容量存储协议所在的接口号 (通常为 0)
+ * @note ⚠️ 灾难恢复核心：当 U 盘卡死 (CSW 阶段错误或连续 STALL) 时调用。
+ * 这只是软重启 U 盘的命令解析器，不会导致物理链路断开或地址丢失。
+ */
+static inline int32 bot_mass_storage_reset(usb_dev_t *udev, uint8 if_num) {
+    // 🌟 一键生成 bmRequestType: 00100001b (0x21)
+    // 方向: OUT (主机发往设备), 类型: CLASS (类特定), 接收者: INTERFACE (接口)
+    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_CLASS, USB_REQ_REC_INTERFACE);
+
+    // 动作 1：下发特定的 0xFF (BOT_REQ_MASS_STORAGE_RESET) 控制命令
+    int32 posix_err = usb_control_msg(udev, NULL,
+                                      req_type,
+                                      BOT_REQ_MASS_STORAGE_RESET,
+                                      0,       // wValue: 规范强制要求必须为 0
+                                      if_num,  // wIndex: 目标接口号
+                                      0);      // wLength: 纯命令，无后续数据阶段
+
     if (posix_err < 0) {
-        color_printk(RED,BLACK,"Bot Recovery Reset Fail! \n");
+        // 如果连核弹按钮都按不下去 (控制端点也挂了)，说明 U 盘可能已经物理掉线或彻底死机
+        color_printk(RED, BLACK, "BOT: Recovery Reset failed (%d)!\n", posix_err);
         return posix_err;
     }
+
+    // 💡 架构师备忘录：
+    // 执行完此函数返回 0 后，外部调用者必须紧接着调用你之前写好的：
+    // usb_clear_ep_halt(udev, bulk_in_dci);
+    // usb_clear_ep_halt(udev, bulk_out_dci);
+    // 只有这三步连招打完，U 盘的数据通道才会真正重新开放！
 
     return 0;
 }

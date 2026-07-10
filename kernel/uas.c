@@ -3,6 +3,7 @@
 #include  "usb-core.h"
 #include "scsi.h"
 #include "errno.h"
+#include "xhci-cmd.h"
 
 
 

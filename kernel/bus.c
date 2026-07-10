@@ -2,6 +2,7 @@
 #include "pcie.h"
 #include "usb-core.h"
 #include "usb-hub.h"
+#include "xhci-service.h"
 
 //pcie总线
 bus_type_t pcie_bus_type;

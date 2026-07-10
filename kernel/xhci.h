@@ -328,648 +328,141 @@ typedef struct {
 //==================================================================================
 
 
-
-//============================= TRB集合 ===============================================
-
-
-// ============================================================================
-// xHCI 规范 6.4.5: TRB 完成码 (按【事件归属类型】严格物理隔离版)
-// 设计目的：完美适配 xhci_execute_command_sync 与 xhci_execute_transfer_sync
-// ============================================================================
-typedef enum : int8 {
-    // ==========================================================
-    // 【第 1 阵营：通用与系统级事件】 (Shared / System Level)
-    // 归属：命令和传输都可能遇到，或者属于主板硬件级崩溃。
-    // 处理建议：在 cmd 和 transfer 的函数中都需要做基础的拦截。
-    // ==========================================================
-    XHCI_COMP_TIMEOUT                    = -1, // [系统软件] 超时/未获取到事件
-    XHCI_COMP_INVALID                    = 0,  // [通用] 非法状态
-    XHCI_COMP_SUCCESS                    = 1,  // [通用] 完美成功
-    XHCI_COMP_TRB_ERROR                  = 5,  // [通用] TRB 格式非法 (填错字段、Chain不对等)
-    XHCI_COMP_RESOURCE_ERROR             = 7,  // [通用] 主板 xHC 控制器内部资源/内存耗尽
-    XHCI_COMP_VF_EVENT_RING_FULL_ERROR   = 16, // [通用] 虚拟功能事件环满爆 (SR-IOV)
-    XHCI_COMP_EVENT_RING_FULL_ERROR      = 21, // [通用] 真实事件环满爆 (内核中断处理太慢)
-    XHCI_COMP_EVENT_LOST_ERROR           = 32, // [通用] 事件丢失 (事件环溢出导致主板丢弃回执)
-    XHCI_COMP_UNDEFINED_ERROR            = 33, // [通用] 未定义的致命硬件崩溃
-
-    // ==========================================================
-    // 【第 2 阵营：命令事件专属】 (Command Event Only)
-    // 归属：仅由 Command Ring 触发。
-    // 处理建议：全部塞进 xhci_execute_command_sync 的 switch-case 中。
-    // ==========================================================
-    XHCI_COMP_BANDWIDTH_ERROR            = 8,  // [命令] 配置端点时，USB 总线带宽不足
-    XHCI_COMP_NO_SLOTS_AVAILABLE_ERROR   = 9,  // [命令] Enable Slot 时，主板分配不出新槽位
-    XHCI_COMP_INVALID_STREAM_TYPE_ERROR  = 10, // [命令] 配置流上下文时，Stream Type 非法
-    XHCI_COMP_SLOT_NOT_ENABLED_ERROR     = 11, // [命令] 对未经 Enable 的槽位下发了命令
-    XHCI_COMP_ENDPOINT_NOT_ENABLED_ERROR = 12, // [命令] 对未经初始化的端点下发了命令
-    XHCI_COMP_PARAMETER_ERROR            = 17, // [命令] Context 上下文结构体参数填错或未对齐
-    XHCI_COMP_CONTEXT_STATE_ERROR        = 19, // [命令] 状态机时序错误 (如：乱发 Reset Endpoint)
-    XHCI_COMP_COMMAND_RING_STOPPED       = 24, // [命令] 正常回执：命令环已成功停止
-    XHCI_COMP_COMMAND_ABORTED            = 25, // [命令] 正常回执：命令已被成功中止
-    XHCI_COMP_SECONDARY_BANDWIDTH_ERROR  = 35, // [命令] 配置端点辅助带宽时出错
-
-    // ==========================================================
-    // 【第 3 阵营：传输事件专属】 (Transfer Event Only)
-    // 归属：仅由 Transfer Ring (EP0-31) 通信触发。
-    // 处理建议：全部塞进 xhci_execute_transfer_sync 的 switch-case 中。
-    // ==========================================================
-    XHCI_COMP_DATA_BUFFER_ERROR          = 2,  // [传输] 数据缓冲区错误 (主机内存 DMA 寻址失败)
-    XHCI_COMP_BABBLE_ERROR               = 3,  // [传输] 喋喋不休 (U盘发来的数据超出预期，端点 Halted)
-    XHCI_COMP_USB_TRANSACTION_ERROR      = 4,  // [传输] 物理链路车祸 (超时/CRC失败，端点 Halted)
-    XHCI_COMP_STALL_ERROR                = 6,  // [传输] 逻辑卡死 (U盘主动拒绝服务，端点 Halted)
-    XHCI_COMP_SHORT_PACKET               = 13, // [传输] 短包响应 (数据少于预期，BOT 中属正常)
-    XHCI_COMP_RING_UNDERRUN              = 14, // [传输] 等时环下溢出 (发数据太慢)
-    XHCI_COMP_RING_OVERRUN               = 15, // [传输] 等时环上溢出 (收数据太慢)
-    XHCI_COMP_BANDWIDTH_OVERRUN_ERROR    = 18, // [传输] 带宽超载 (设备发送过量数据)
-    XHCI_COMP_NO_PING_RESPONSE_ERROR     = 20, // [传输] USB 3.0 链路无 Ping 响应
-    XHCI_COMP_INCOMPATIBLE_DEVICE_ERROR  = 22, // [传输] 试图与不兼容的设备通信
-    XHCI_COMP_MISSED_SERVICE_ERROR       = 23, // [传输] 等时传输错过了时间微帧
-    XHCI_COMP_STOPPED                    = 26, // [传输] 正常回执：传输流被主板强行刹车
-    XHCI_COMP_STOPPED_LENGTH_INVALID     = 27, // [传输] 正常回执：刹车时残余长度无法计算
-    XHCI_COMP_STOPPED_SHORT_PACKET       = 28, // [传输] 正常回执：刹车时刚好遇到短包
-    XHCI_COMP_MAX_EXIT_LATENCY_TOO_LARGE = 29, // [传输] 链路从休眠唤醒失败
-    XHCI_COMP_ISOCH_BUFFER_OVERRUN       = 31, // [传输] 等时接收缓冲区上溢
-    XHCI_COMP_INVALID_STREAM_ID_ERROR    = 34, // [传输] UAS 协议中发了非法的 Stream ID
-    XHCI_COMP_SPLIT_TRANSACTION_ERROR    = 36  // [传输] USB 2.0 Hub 拆分事务失败
-} xhci_trb_comp_code_e;
-
-
-// ============================================================================
-// xHCI TRB 类型枚举 (对应所有 TRB Dword 3 的 Bits 10-15: type)
-// 规范出处: xHCI Spec 1.2 - Table 132 (TRB Type Definitions)
-// ============================================================================
-typedef enum ：uint32 {
-    XHCI_TRB_TYPE_RESERVED = 0,          // 0: 保留 (非法 TRB)
-
-    XHCI_TRB_TYPE_LINK         = 6,      // 链接 TRB (传输环和命令环通用★ 物理内存环填满时，用它跳回环的开头)
-
-    // ========================================================================
-    // 【传输环 TRB】(Transfer Ring) - 塞入端点环，用于真实的数据搬运
-    // ========================================================================
-    XHCI_TRB_TYPE_NORMAL       = 1,      // 普通传输 (BOT 数据进出的绝对主力)
-    XHCI_TRB_TYPE_SETUP_STAGE  = 2,      // 控制传输：Setup 阶段 (★ 你刚才写的 8 字节包就是它)
-    XHCI_TRB_TYPE_DATA_STAGE   = 3,      // 控制传输：数据阶段
-    XHCI_TRB_TYPE_STATUS_STAGE = 4,      // 控制传输：状态确认阶段
-    XHCI_TRB_TYPE_ISOCH        = 5,      // 等时传输 (用于 USB 麦克风、摄像头等实时设备)
-    XHCI_TRB_TYPE_EVENT_DATA   = 7,      // 事件数据 (给虚拟化或者特殊同步用的)
-    XHCI_TRB_TYPE_NO_OP        = 8,      // 空操作 TRB (占坑用)
-
-    // ========================================================================
-    // 【命令环 TRB】(Command Ring) - 塞入全局命令环，用于控制 xHCI 主板硬件
-    // ========================================================================
-    XHCI_TRB_TYPE_ENABLE_SLOT       = 9,  // 启用设备槽 (设备刚插入时的第一步！)
-    XHCI_TRB_TYPE_DISABLE_SLOT      = 10, // 禁用设备槽 (设备拔出时清理内存)
-    XHCI_TRB_TYPE_ADDRESS_DEVICE    = 11, // 分配设备地址 (告诉 xHCI 给设备发 Set Address 命令)
-    XHCI_TRB_TYPE_CONFIGURE_EP      = 12, // 配置端点 (激活 Bulk IN/OUT 管道全靠它)
-    XHCI_TRB_TYPE_EVALUATE_CTX      = 13, // 评估上下文 (比如告诉硬件：这个 U 盘最大包长是 512)
-    XHCI_TRB_TYPE_RESET_EP          = 14, // 复位端点 (★ 清除 STALL 卡死时必发的神兵利器)
-    XHCI_TRB_TYPE_STOP_EP           = 15, // 停止端点 (强行踩刹车，中止正在进行的传输)
-    XHCI_TRB_TYPE_SET_TR_DEQUEUE    = 16, // 设置出队指针 (★ STALL 恢复后，强行拨动硬件的出队指针)
-    XHCI_TRB_TYPE_RESET_DEVICE      = 17, // 复位设备
-    XHCI_TRB_TYPE_FORCE_EVENT       = 18, // 强制事件 (SR-IOV 虚拟化常用)
-    XHCI_TRB_TYPE_NEGOTIATE_BW      = 19, // 协商带宽
-    XHCI_TRB_TYPE_SET_LATENCY_TOL   = 20, // 设置延迟容忍度
-    XHCI_TRB_TYPE_GET_PORT_BW       = 21, // 获取端口带宽
-    XHCI_TRB_TYPE_FORCE_HEADER      = 22, // 强制包头
-    XHCI_TRB_TYPE_NO_OP_CMD         = 23, // 空操作命令 (测试命令环通不通时用)
-
-    // ========================================================================
-    // 【事件环 TRB】(Event Ring) - xHCI 硬件主动写入内存，触发 CPU 中断的回执
-    // ========================================================================
-    XHCI_TRB_TYPE_TRANSFER_EVENT    = 32, // 传输完成事件 (★ 汇报 Normal/Setup 等传输的对错，如短包/STALL)
-    XHCI_TRB_TYPE_CMD_COMPLETION    = 33, // 命令完成事件 (★ 汇报 Reset EP 等主板命令是否成功)
-    XHCI_TRB_TYPE_PORT_STATUS_CHG   = 34, // 端口状态改变事件 (★ 最关键的中断：U盘插入或拔出的瞬间产生！)
-    XHCI_TRB_TYPE_BANDWIDTH_REQ     = 35, // 带宽请求事件
-    XHCI_TRB_TYPE_DOORBELL          = 36, // 门铃事件
-    XHCI_TRB_TYPE_HOST_CTRL         = 37, // 主机控制器事件
-    XHCI_TRB_TYPE_DEVICE_NOTIFY     = 38, // 设备通知事件
-    XHCI_TRB_TYPE_MFINDEX_WRAP      = 39  // 微帧索引翻转事件
-
-    // 48 到 63 是厂商自定义 (Vendor Defined)，通常不用管
-} trb_type_e;
-
-// ============================================================================
-// xHCI 规范 6.4.4.1: 链接 TRB (Link TRB, Type = 6)
-// 作用：放置在 Ring 的末尾，将硬件执行指针引回 Ring 的头部，并翻转硬件的周期期待值。
-// ============================================================================
-typedef struct trb_link_t{
-    // Dword 0 & 1: 下一个 Ring Segment (环段) 的首地址。
-    // 在我们这种单段环 (Single-Segment Ring) 的设计中，这里永远填 Ring 第 0 个 TRB 的物理地址！
-    // 注意：地址必须是 16 字节对齐的 (也就是低 4 位必须为 0)。
-    uint64 ring_segment_ptr;
-
-    // Dword 2
-    uint32 rsvd1:22;          // Bits [21:0]: 保留，填 0
-    uint32 intr_target:10;    // Bits [31:22]: 目标中断器号 (通常填 0 即可)
-
-    // Dword 3 (x86 小端序，从低位开始)
-    uint32 cycle:1;           // Bit [0]: 硬件翻转位 (C)
-    uint32 toggle_cycle:1;    // Bit [1]: ★ 极度关键！切换周期位 (TC)。
-    uint32 rsvd2:2;           // Bits [3:2]: 保留，填 0
-    uint32 chain:1;           // Bit [4]: 链位 (CH)。在普通的 Link TRB 中填 0
-    uint32 ioc:1;             // Bit [5]: 完成时中断位 (IOC)。通常填 0，不让它产生多余中断
-    uint32 rsvd3:4;           // Bits [9:6]: 保留，填 0
-    uint32 trb_type:6;        // Bits [15:10]: 必须是 6 (XHCI_TRB_TYPE_LINK_TRB)
-    uint32 rsvd4:16;          // Bits [31:16]: 保留，填 0
-} trb_link_t;
-
-//============================================传输trb=================================
-
-// ============================================================================
-// Setup Stage TRB (Type 2) - 控制传输的第一阶段
-// ============================================================================
-
-// ============================================================================
-// xHCI 控制传输类型枚举 (对应 Setup TRB Dword 3 的 Bits 16-17: trt)
-// 作用：告诉硬件这次控制传输是否包含数据阶段，以及数据的方向。
-// ============================================================================
-typedef enum : uint32 {
-    TRB_TRT_NO_DATA   = 0, // 0 = 无数据阶段 (No Data Stage)场景：命令发出去就完事了，不需要额外的数据负载。
-    TRB_TRT_RESERVED  = 1, // 1 = 保留 (Reserved)    // 绝对不要使用，硬件会报错。
-    TRB_TRT_OUT_DATA  = 2, // 2 = OUT 数据阶段 (OUT Data Stage)场景：主机不仅发命令，还要把一坨内存数据强塞给设备。
-    TRB_TRT_IN_DATA   = 3 // 3 = IN 数据阶段 (IN Data Stage)场景：主机发完命令，张开嘴等设备把数据喂回来。
-} trb_trt_e;
-
-typedef enum : uint32 {
-    TRB_DIR_OUT = 0,
-    TRB_DIR_IN  = 1
-}trb_dir_e;
-
-typedef enum : uint32 {
-    TRB_IOC_DISABLE = 0,
-    TRB_IOC_ENABLE  = 1
-}trb_ioc_e;
-
-typedef enum : uint32 {
-    TRB_CHAIN_DISABLE = 0,
-    TRB_CHAIN_ENABLE  = 1
-}trb_chain_e;
-
-typedef enum : uint32 {
-    TRB_IDT_DISABLE = 0,
-    TRB_IDT_ENABLE  = 1
-}trb_idt_e;
-
-typedef struct trb_setup_stage_t{
-    // Dword 0-1:
-    uint64          usb_req_pkg;
-
-    // Dword 2: 长度与中断目标
-    uint32          trb_tr_len : 17; // 规范强制要求：Setup TRB 的长度必须固定填 8！
-    uint32          rsvd1            : 5;
-    uint32          int_target       : 10;
-
-    // Dword 3: 控制位
-    uint32          cycle : 1;
-    uint32          rsvd2 : 3;
-    trb_chain_e     chain : 1;  // ★ 必须填0
-    trb_ioc_e       ioc   : 1;  // 通常填 0，因为我们只关心最后一个 Status TRB 的完成中断
-    trb_idt_e       idt   : 1;  // ★ 必须填 1！(Immediate Data: 告诉硬件前 8 字节是数据本身，不是指针)
-    uint32          rsvd3 : 3;
-    trb_type_e      type  : 6;  // Bits 10-15: TRB 类型 (固定为 2)
-    trb_trt_e       trt   : 2;  // Bits 16-17: 传输类型 (见上方宏定义，极其重要)
-    uint32          rsvd4 : 14;
-} trb_setup_stage_t;
-
-// ============================================================================
-// Data Stage TRB (Type 3) - 控制传输的第二阶段 (可选)
-// ============================================================================
-typedef struct trb_data_stage_t {
-    // Dword 0-1: 数据缓冲区的 64 位物理地址 (PA)
-    uint64          data_buf_ptr;
-
-    // Dword 2: 长度控制
-    uint32          tr_len : 17; // 你要传输的实际数据长度
-    uint32          td_size      : 5;  // 剩余的包数 (简单起见常填 0)
-    uint32          int_target   : 10;
-
-    // Dword 3: 控制位
-    uint32          cycle : 1;
-    uint32          ent   : 1;  //评估下一个trb
-    uint32          isp   : 1;  // 短包中断
-    uint32          ns    : 1;  // No Snoop
-    trb_chain_e     chain : 1;  //
-    trb_ioc_e       ioc   : 1;  // 通常填 0
-    trb_idt_e       idt   : 1;  // 必须填 0 (说明前面是个指针)
-    uint32          rsvd1 : 3;
-    trb_type_e      type  : 6;  // Bits 10-15: TRB 类型 (固定为 3)
-    trb_dir_e       dir   : 1;  // ★ Bits 16: 数据方向 (0 = OUT 主机发给设备, 1 = IN 设备发给主机)
-    uint32          rsvd2 : 15;
-}trb_data_stage_t;
-
-// ============================================================================
-// Status Stage TRB (Type 4) - 控制传输的最终确认阶段
-// ============================================================================
-typedef struct trb_status_stage_t {
-    // Dword 0-1: 规范强制要求保留全 0！(状态阶段没有真实的数据负载)
-    uint64          rsvd0;
-
-    // Dword 2
-    uint32          rsvd1      : 22; // 必须全 0
-    uint32          int_target : 10;
-
-    // Dword 3: 控制位
-    uint32          cycle : 1;
-    uint32          ent   : 1;
-    uint32          rsvd2 : 2;
-    trb_chain_e     chain : 1;  // ★ 必须填 0！因为这是最后一节车厢了！
-    trb_ioc_e       ioc   : 1;  // ★ 必须填 1！(Interrupt On Completion：硬件跑完这个 TRB，才向内核汇报)
-    uint32          rsvd3 : 4;
-    trb_type_e      type  : 6;  // Bits 10-15: TRB 类型 (固定为 4)
-    trb_dir_e       dir   : 1;  // ★ Bits 16: 握手方向 (如果是 No Data 或 OUT，这里填 1； 如果 Data是 IN，这里填 0)
-    uint32          rsvd4 : 15;
-}trb_status_stage_t;
-
-// Normal TRB (TRB Type = 1) - 用于 Bulk(批量) 和 Interrupt(中断) 端点的数据传输
-typedef struct trb_normal_t{
-    // DW0 & DW1: 数据缓冲区的 64 位物理地址
-    uint64 data_buf_ptr;
-
-    // DW2
-    uint32 trb_tr_len : 17; // [16:0] 传输长度 (这一个 TRB 要传输多少字节)
-    uint32 td_size : 5;     // [21:17] 剩余包数的估算值 (TD Size)
-    uint32 int_target : 10; // [31:22] 中断目标 (指引硬件去敲哪个中断向量，通常填 0)
-
-    // DW3
-    uint32 cycle : 1;       // [0] Cycle Bit (C) - 拥有权流转标志
-    uint32 ent : 1;         // [1] Evaluate Next TRB (ENT) - 告诉硬件提前评估下一个 TRB
-    uint32 isp : 1;         // [2] Interrupt on Short Packet (ISP) - 遇到短包就立刻触发中断
-    uint32 ns : 1;          // [3] No Snoop (NS) - PCIe 缓存一致性优化 (通常填 0)
-    trb_chain_e chain : 1;       // [4] Chain bit (CH) - 链条标志！极其重要！
-    trb_ioc_e ioc : 1;         // [5] Interrupt On Completion (IOC) - 跑完这个 TRB 后给我发个中断！
-    trb_idt_e idt : 1;         // [6] Immediate Data (IDT) - 是否将数据直接塞在指针字段里 (Normal TRB 通常 0)
-    uint32 reserved_1: 3;   // [9:7] 保留
-    trb_type_e trb_type : 6;    // [15:10] TRB 类型 (Normal TRB 固定填 1)
-    uint32 reserved_2 : 16; // [31:16] 保留
-}trb_normal_t;
-
-//===================================================================
-
-
-//==================================命令trb==================================================
-
-// ============================================================================
-// xHCI 规范 6.4.3.3: 复位设备命令 TRB (Reset Device Command, Type = 11)
-// 作用：当设备发生灾难性故障且已完成物理端口复位后，通知控制器清空该设备的
-//       内部所有传输状态，将其强行拉回 Default 状态。
-// ============================================================================
-typedef struct trb_reset_device_cmd_t{
-    uint32 rsvd1[3];          // Dword 0, 1, 2: 保留，必须全填 0
-
-    // Dword 3
-    uint32 cycle:1;           // [0] 硬件翻转位 (C)
-    uint32 rsvd2:9;           // [9:1] 保留，填 0
-    trb_type_e trb_type:6;        // [15:10] 必须是 11 (XHCI_TRB_TYPE_RESET_DEVICE)
-    uint32 rsvd3:8;           // [23:16] 保留，填 0
-
-    // ★ 狙击目标：你要抢救哪个坑位？
-    uint32 slot_id:8;         // [31:24] 目标 Slot ID
-} trb_reset_dev_t;
-
-// ============================================================================
-// xHCI 规范 6.4.3.5: 配置端点命令 TRB (Configure Endpoint Command, Type = 12)
-// 作用：评估 Input Context，增加/删除端点，或者修改已存在端点的参数。
-// ============================================================================
-typedef struct trb_cfg_ep_t{
-    uint64 input_ctx_ptr; // [63:0] 输入上下文物理基址 (必须64字节对齐)
-    uint32 rsvd1;             // [31:0] 保留
-
-    // Dword 3
-    uint32 cycle:1;           // [0] 硬件翻转位 (C)
-    uint32 rsvd2:8;           // [8:1] 保留
-
-    // ★ 架构师武器：一键清空标志！
-    // 填 0 = 正常配置/修改端点。
-    // 填 1 = Deconfigure！直接砍掉除了 EP0 之外的所有端点，退回 Address 状态！
-    uint32 dc:1;              // [9] 取消配置标志 (Deconfigure)
-
-    trb_type_e trb_type:6;        // [15:10] 必须是 12 (XHCI_TRB_TYPE_CONFIGURE_ENDPOINT)
-    uint32 rsvd3:8;           // [23:16] 保留
-    uint32 slot_id:8;         // [31:24] 目标 Slot ID
-} trb_cfg_ep_t;
-
-// ============================================================================
-// xHCI 规范 6.4.3.8: 停止端点命令 TRB (Stop Endpoint Command, Type = 15)
-// 作用：强制主板 xHC 芯片停止处理指定端点的传输环，并将端点状态机切入 "Stopped"。
-// 核心用途：用于传输超时后的主动中止 (Abort Transfer) 和环指针的重新对齐。
-// ============================================================================
-typedef struct trb_stop_ep_t{
-    uint32 rsvd1[3];          // Dword 0, 1, 2: 保留，必须全填 0
-
-    // Dword 3
-    uint32 cycle:1;           // Bit [0]: 硬件翻转位 (C)
-    uint32 rsvd2:9;           // Bits [9:1]: 保留，填 0
-    trb_type_e trb_type:6;        // Bits [15:10]: 必须是 15 (XHCI_TRB_TYPE_STOP_EP)
-    // ★ 狙击目标：精准定位到具体的设备和具体的管道
-    uint32 ep_dci:5;           // Bits [20:16]: 目标 Endpoint ID (1~31)
-    uint32 rsvd3:2;           // Bits [22:21]: 保留，填 0
-    // ★ 挂起位：0 = 彻底停止并丢弃内部缓存; 1 = 只是挂起(Suspend)，以后还能原样恢复。
-    // 在超时抢救场景中，我们永远填 0（彻底停止）！
-    uint32 suspend:1;         // Bit [23]: SP (Suspend) 位
-    uint32 slot_id:8;         // Bits [31:24]: 目标 Slot ID
-}trb_stop_ep_t;
-
-// ============================================================================
-// xHCI 规范 6.4.3.4: 分配设备地址命令 TRB (Address Device Command, Type = 11)
-// 作用：向新插入的 USB 设备分配总线地址，并初始化 Slot Context 和 EP0 Context。
-// ============================================================================
-typedef struct trb_addr_dev_t{
-    // Dword 0 & 1: ★ 极度关键！指向 Input Context (输入上下文) 的物理地址。
-    // 物理地址的最低 4 位必须为 0 (即 16 字节对齐)，
-    // 但在实际的 x64 系统中，强烈建议直接进行 64 字节 (物理页的 Cache Line) 对齐！
-    uint64 input_ctx_ptr;
-
-    // Dword 2
-    uint32 rsvd1;             // 保留，必须填 0
-
-    // Dword 3
-    uint32 cycle:1;           // Bit [0]: 硬件翻转位 (C)
-    uint32 rsvd2:8;           // Bits [8:1]: 保留，填 0
-
-    // ★ 架构师秘钥：BSR (Block Set Address Request)
-    // 填 0：主板在底层自动帮你给 U 盘发 SET_ADDRESS 控制传输请求（最常用！）。
-    // 填 1：主板只在内部配置上下文，但不向 U 盘发 SET_ADDRESS（用于某些高级 USB 3.0 设备的状态机跳跃）。
-    uint32 bsr:1;             // Bit [9]: 阻止设置地址请求位
-
-    trb_type_e  trb_type:6;        // Bits [15:10]: 必须是 11 (XHCI_TRB_TYPE_ADDRESS_DEVICE)
-    uint32 rsvd3:8;           // Bits [23:16]: 保留，填 0
-
-    // ★ 身份绑定：填入你刚才通过 Enable Slot 抢到的那个号码！
-    uint32 slot_id:8;         // Bits [31:24]: 目标 Slot ID
-}trb_addr_dev_t;
-
-//复位端点trb
-typedef struct trb_rest_ep_t{
-    uint32          rsvd0[3];
-    uint32          cycle:1;
-    uint32          rsvd1:8;
-    uint32          tsp:1;      // 常规填 0
-    trb_type_e      type:6;
-    uint32          ep_dci:5; // 端点索引 (DCI)，如 IN 是 3，OUT 是 4
-    uint32          rsvd2:3;
-    uint32          slot_id:8; // 设备槽位号
-}trb_rest_ep_t;
-
-// ============================================================================
-// xHCI 规范：设置出队指针命令 (Set TR Dequeue Pointer Command TRB)类型码：16 (XHCI_TRB_TYPE_SET_TR_DEQ)
-// ============================================================================
-typedef struct trb_set_tr_deq_ptr_t{
-    // Dword 0-1 (64位物理地址)
-    uint64 tr_deq_ptr; // ★ 极其致命：最低位 Bit 0 是 DCS (Dequeue Cycle State)，必须包含新指针所在位置的 Cycle 位！
-
-    // Dword 2
-    uint16 rsvd0;
-    uint16 stream_id;     // BOT 协议不支持 Stream，必须填 0
-
-    // Dword 3
-    uint32          cycle   : 1;
-    uint32          rsvd1   : 8;
-    uint32          tsp     : 1;
-    trb_type_e      type    : 6;      // ★ 必须填 16
-    uint32          ep_dci  : 5;      // 端点索引 (DCI)
-    uint32          rsvd2   : 3;
-    uint32          slot_id : 8;
-}trb_set_tr_deq_ptr_t;
-
-// ============================================================================
-// xHCI 规范 6.4.3.9: Enable Slot Command TRB
-// 作用：向主板 xHC 芯片申请一个空闲的设备槽位 (Slot)，主板会在完成事件中返回分配的 Slot ID
-// ============================================================================
-typedef struct trb_enable_slot_t {
-    uint32          rsvd0[3];       // Dword 0, 1, 2: 规范要求全部保留，必须清零
-
-    // Dword 3 (x86 小端序，从低位开始映射)
-    uint32          cycle:1;        // Bit 0: 翻转位 (C)，交由底层的 enqueue 函数处理
-    uint32          rsvd1:9;        // Bits 1-9: 保留，填 0
-    trb_type_e      type:6;         // Bits 10-15: TRB 类型，这里必须是 9 (Enable Slot)
-    uint32          slot_type:5;    // Bits 16-20: 槽位类型。对于常规的 USB 设备，直接填 0
-    uint32          rsvd2:11;       // Bits 21-31: 保留，填 0
-} trb_enable_slot_t;
-
-// ============================================================================
-// xHCI 规范 6.4.3.2: 禁用槽位命令 TRB (Disable Slot Command, Type = 10)
-// 作用：释放主板为该 Slot ID 分配的内部资源，使该 Slot ID 可以被再次分配。
-// ============================================================================
-typedef struct trb_disable_slot_t{
-    uint32 rsvd1[3];          // Dword 0, 1, 2: 保留，必须全填 0
-
-    // Dword 3
-    uint32 cycle:1;           // Bit [0]: 硬件翻转位 (C)
-    uint32 rsvd2:9;           // Bits [9:1]: 保留，填 0
-    trb_type_e trb_type:6;        // Bits [15:10]: 必须是 10 (XHCI_TRB_TYPE_DISABLE_SLOT)
-    uint32 rsvd3:8;           // Bits [23:16]: 保留，填 0
-
-    // ★ 绝杀目标：告诉主板你要超度哪个设备
-    uint32 slot_id:8;         // Bits [31:24]: 目标 Slot ID
-}trb_disable_slot_t;
-
-// ============================================================================
-// xHCI 规范 6.4.3.6: 评估上下文命令 TRB (Evaluate Context Command, Type = 13)
-// 作用：通知主板更新设备上下文中某些字段 (最常用：更新全速设备的 EP0 最大包长)
-// ============================================================================
-typedef struct trb_eval_ctx_t{
-    uint64 input_ctx_ptr; // [63:0] 输入上下文物理基址 (要求对齐)
-    uint32 rsvd1;             // [31:0] 保留
-
-    // Dword 3
-    uint32 cycle:1;           // [0] 硬件翻转位 (C)
-    uint32 rsvd2:9;           // [9:1] 保留，全填 0
-    trb_type_e trb_type:6;        // [15:10] 必须是 13 (XHCI_TRB_TYPE_EVALUATE_CONTEXT)
-    uint32 rsvd3:8;           // [23:16] 保留，全填 0
-    uint32 slot_id:8;         // [31:24] 目标 Slot ID
-} trb_eval_ctx_t;
-
-//=================================================================================================
-
-
-//============================ 事件trb ============================================================
-
-// 1. 命令完成事件 (Command Completion Event, Type = 33)
-// 发生场景：你发了 Enable Slot, Address Device 等主板命令后，主板的回执。
-typedef struct trb_cmd_comp_event_t{
-    uint64                    cmd_trb_ptr;       // Dword 0 & 1: 刚才引发该事件的 Command TRB 物理地址
-    uint32                    cmd_comp_param:24; // Dword 2 [23:0]: 命令完成参数 (通常为 0，个别命令有用)
-    xhci_trb_comp_code_e      comp_code:8;       // Dword 2 [31:24]: 完成码 (对应 xhci_comp_code_t)
-
-    uint32                    cycle:1;           // Dword 3 [0]: 硬件翻转位
-    uint32                    rsvd1:9;           // Dword 3 [9:1]: 保留
-    trb_type_e                trb_type:6;        // Dword 3 [15:10]: 必须是 33 (XHCI_TRB_TYPE_CMD_COMP_EVENT)
-    uint32                    vf_id:8;           // Dword 3 [23:16]: 虚拟功能 ID (SR-IOV 专用，常规填 0)
-    uint32                    slot_id:8;         // Dword 3 [31:24]: ★ 极度重要！这里藏着主板分配的 Slot ID！
-}trb_cmd_comp_event_t;
-
-
-// 2. 传输事件 (Transfer Event, Type = 32)
-// 发生场景：U盘数据读写完成、Setup 控制传输完成等，端点产生的中断回执。
-typedef struct trb_transfer_event_t{
-    uint64                    tr_trb_ptr;        // Dword 0 & 1: 引发中断的那条 Transfer/Setup TRB 物理地址
-    uint32                    tr_len:24;   // Dword 2 [23:0]: ★ 极度重要！残余字节数 (没传完的数据量，短包时必看)
-    xhci_trb_comp_code_e      comp_code:8;       // Dword 2 [31:24]: 完成码 (如 SUCCESS, SHORT_PACKET, STALL)
-
-    uint32                    cycle:1;           // Dword 3 [0]: 硬件翻转位
-    uint32                    rsvd1:1;           // Dword 3 [1]: 保留
-    uint32                    event_data:1;      // Dword 3 [2]: ED 位 (是否为纯事件数据)
-    uint32                    rsvd2:7;           // Dword 3 [9:3]: 保留
-    trb_type_e                trb_type:6;        // Dword 3 [15:10]: 必须是 32 (XHCI_TRB_TYPE_TRANSFER_EVENT)
-    uint32                    ep_dci:5;           // Dword 3 [20:16]: 发生事件的端点 DCI (1 是 EP0，等)
-    uint32                    rsvd3:3;           // Dword 3 [23:21]: 保留
-    uint32                    slot_id:8;         // Dword 3 [31:24]: 发生事件的设备槽位号
-} trb_transfer_event_t;
-
-// ============================================================================
-// xHCI 规范 6.4.2.3: 端口状态改变事件 TRB (Port Status Change Event, Type = 34)
-// 发生场景：物理线缆的插拔、端口复位完成、或者链路电源状态改变时硬件主动上报。
-// ============================================================================
-typedef struct trb_port_status_change_event_t{
-    uint32      rsvd0:24;          // Dword 0 [23:0]: 保留，全 0
-    uint32      port_num:8;         // Dword 0 [31:24]: ★ 核心机密！发生状态改变的物理端口号 (比如 1 号口)
-
-    uint32      rsvd1;             // Dword 1: 保留，全 0
-    uint32      rsvd2;             // Dword 2: 保留，全 0
-
-    uint32      cycle:1;           // Dword 3 [0]: 硬件翻转位 (Cycle Bit)
-    uint32      rsvd3:9;           // Dword 3 [9:1]: 保留
-    trb_type_e  trb_type:6;        // Dword 3 [15:10]: 必须是 34 (XHCI_TRB_TYPE_PORT_STATUS_CHANGE_EVENT)
-    uint32      rsvd4:16;          // Dword 3 [31:16]: 保留
-}trb_port_status_change_event_t;
-
-// 主机控制器事件 TRB (类型 37：主板级遗言)
-typedef struct trb_host_ctrl_event_t {
-    uint32 reserved0;          // Dword 0: 0
-    uint32 reserved1;          // Dword 1: 0
-
-    // Dword 2
-    uint32 reserved2 : 24;     // Bit 0-23: 0
-    xhci_trb_comp_code_e comp_code : 8;      // Bit 24-31: 完成码 (死因)
-
-    // Dword 3
-    uint32 cycle     : 1;      // Bit 0: 周期位
-    uint32 reserved3 : 9;      // Bit 1-9: 0
-    trb_type_e trb_type  : 6;      // Bit 10-15: 37 (XHCI_TRB_TYPE_HOST_CTRL)
-    uint32 reserved4 : 16;     // Bit 16-31: 0
-} trb_host_ctrl_event_t;
-
-//================================================================================================
-
-//trb集合
-typedef union xhci_trb_t {
-    // 【视角 1：内存搬运工视角】(用于底层 enqueue 拷贝和清零)
-    uint64 raw[2];
-
-    //命令或传输环连接trb
-    trb_link_t link;
-
-    // 【视角 3：业务定制视角】(包含了所有具体的 TRB 解析格式) ... 以后加什么 TRB，就往这里塞什么 struct ...
-    //命令trb xhci命令环专用，用于发送启用插槽等
-    trb_cfg_ep_t         cfg_ep;
-    trb_stop_ep_t        stop_ep;
-    trb_addr_dev_t       addr_dev;
-    trb_disable_slot_t   disable_slot;
-    trb_enable_slot_t    enable_slot;
-    trb_set_tr_deq_ptr_t set_tr_deq_ptr;
-    trb_rest_ep_t        rest_ep;
-    trb_eval_ctx_t       eval_ctx;
-    trb_reset_dev_t      reset_dev;
-
-    //传输trb
-    //控制传输端点1专用，用于发送usb命令如获取设备描述符/设备信息等
-    trb_setup_stage_t        setup_stage;
-    trb_data_stage_t         data_stage;
-    trb_status_stage_t       status_stage;
-    trb_normal_t             normal;
-    //bulk端点专用端点2-31专用，用于数据传输如read 10 write10等
-
-    //事件trb
-    trb_cmd_comp_event_t           cmd_comp_event;
-    trb_transfer_event_t           transfer_event;
-    trb_port_status_change_event_t prot_status_change_event;
-    trb_host_ctrl_event_t          host_ctrl_event;
-}xhci_trb_t;
-
-//=========================================================================================
-
-
 //======================== 设备上下文结构 ==========================================
 
 // ============================================================================
-// Slot Context (32 字节核心部分，外部按需套一层 32/64 字节外壳)
+// 🔌 Slot Context (插槽上下文)
+// 规范出处: xHCI Spec 1.2 - 6.2.2 Slot Context
+// 作用：描述整个 USB 设备的全局属性 (速度、挂在哪个 Hub 端口、激活了几个端点)
 // ============================================================================
-typedef struct xhci_slot_ctx_t{
-    // Dword 0
-    uint32 route_string:20;     // [19:0] 路由字符串
-    uint32 speed:4;             // [23:20] 端口速度
-    uint32 rsvd_dw0_24:1;       // [24] 保留位 (规范中隐蔽的一位)
-    uint32 mtt:1;               // [25] 多重事务转换器
-    uint32 is_hub:1;            // [26] 1=集线器, 0=USB设备
-    uint32 context_entries:5;   // [31:27] 端点上下文条目数量 (1~31)
 
-    // Dword 1
-    uint16 max_exit_latency; // [15:0] 最大退出延迟 (us)
-    uint8 root_hub_port_num; // [23:16] 根集线器端口号
-    uint8 num_ports;         // [31:24] 端口数量 (仅Hub有效)
-
-    // Dword 2
-    uint8  tt_hub_slot_id;      // TT Hub 插槽 ID (仅当全/低速设备挂在高速Hub下才填，其余全填0)
-    uint8  tt_port_num;         // TT Hub 端口号 (规则同上)
-    uint16 tt_think_time:2;     // [17:16] TT 思考时间
-    uint16 rsvd_dw2_18:4;       // [21:18] 保留
-    uint16 interrupter_target:10;// [31:22] 目标中断器编号
-
-    // Dword 3
-    uint32 usb_device_address:8;// [7:0] 硬件分配的 USB 地址 (只读)
-    uint32 rsvd_dw3_8:19;       // [26:8] 保留
-    uint32 slot_state:5;        // [31:27] 插槽状态 (0=禁用, 1=默认, 2=寻址, 3=已配置)
-
-    uint32 reserved[4];         // 填充至 32 字节
+typedef struct xhci_slot_ctx_t {
+    uint32 dw0;          // 路由字符串、速度、Hub标志、端点上下文数量
+    uint32 dw1;          // 退出延迟、根集线器端口、子端口数量
+    uint32 dw2;          // TT (事务转换器) 相关信息、中断器目标
+    uint32 dw3;          // 设备地址 (硬件只读)、插槽状态
+    uint32 reserved[4];  // 填充至 32 字节核心大小 (x64 下外部容器需对齐至 64 字节)
 } xhci_slot_ctx_t;
 
+// ---------------------------------------------------------
+// ★ Slot Context DW0 装配宏
+// ---------------------------------------------------------
+#define SLOT_CTX_DW0_ROUTE(r)       ((r) & 0xFFFFF)         // [19:0] 路由字符串 (描述设备在 Hub 拓扑树中的路径，直连设备填 0)
+#define SLOT_CTX_DW0_SPEED(s)       (((s) & 0xF) << 20)     // [23:20] 端口速度 (1=全速, 2=低速, 3=高速, 4=超高速)
+#define SLOT_CTX_DW0_MTT            (1 << 25)               // [25] 多重事务转换器 (Multi-TT 标志，仅对高速 Hub 有效)
+#define SLOT_CTX_DW0_HUB            (1 << 26)               // [26] 集线器标志 (1=这是一个 Hub, 0=普通设备)
+#define SLOT_CTX_DW0_CTX_ENTRIES(c) (((c) & 0x1F) << 27)    // [31:27] ★极其重要：激活的端点上下文索引 (DCI)。比如只激活了 EP0，这里填 1；激活了 EP1 IN (DCI=3)，这里填 3。
+
+// ---------------------------------------------------------
+// ★ Slot Context DW1 装配宏
+// ---------------------------------------------------------
+#define SLOT_CTX_DW1_MAX_EXIT_LAT(l) ((l) & 0xFFFF)         // [15:0] 最大退出延迟 (us，超高速休眠唤醒用，常规填 0)
+#define SLOT_CTX_DW1_ROOT_PORT(p)    (((p) & 0xFF) << 16)   // [23:16] 根集线器端口号 (设备最终连接在主板的哪个物理端口上)
+#define SLOT_CTX_DW1_NUM_PORTS(p)    (((p) & 0xFF) << 24)   // [31:24] 端口数量 (只有当 DW0 的 Hub 标志为 1 时才需要填)
+
+// ---------------------------------------------------------
+// ★ Slot Context DW2 装配宏 (处理 USB 2.0 事务转换器)
+// ---------------------------------------------------------
+#define SLOT_CTX_DW2_TT_HUB_SLOT(s)  ((s) & 0xFF)           // [7:0] TT Hub 插槽 ID (当低速/全速设备挂在高速 Hub 下时必填，指向上级 Hub 的 Slot ID)
+#define SLOT_CTX_DW2_TT_PORT_NUM(p)  (((p) & 0xFF) << 8)    // [15:8] TT Hub 端口号 (指向上级 Hub 的物理端口)
+#define SLOT_CTX_DW2_TT_THINK_TIME(t)(((t) & 0x3) << 16)    // [17:16] TT 思考时间 (通常从 Hub 描述符中直接抄过来)
+#define SLOT_CTX_DW2_INTR_TARGET(i)  (((i) & 0x3FF) << 22)  // [31:22] 目标中断器编号 (指引该插槽的事件打向哪个硬件中断，通常填 0)
+
+// ---------------------------------------------------------
+// ★ Slot Context DW3 提取宏 (多数属于硬件回写的状态)
+// ---------------------------------------------------------
+#define SLOT_CTX_DW3_DEV_ADDR(dw3)   ((dw3) & 0xFF)         // [7:0] 获取硬件分配的 USB 总线地址 (Address Device 成功后硬件自动写入)
+#define SLOT_CTX_DW3_SLOT_STATE(dw3) (((dw3) >> 27) & 0x1F) // [31:27] 插槽当前状态 (0=Disabled, 1=Default, 2=Addressed, 3=Configured)
+
+
 // ============================================================================
-// Endpoint Context (32 字节核心部分)
+// 🎯 Endpoint Context (端点上下文)
+// 规范出处: xHCI Spec 1.2 - 6.2.3 Endpoint Context
+// 作用：描述单一数据管道的传输特性 (如 EP0 控制管道、EP1 批量管道)
 // ============================================================================
-typedef struct xhci_ep_ctx_t{
-    // Dword 0
-    uint16 ep_state:3;          // [2:0] 端点状态 (0=禁用, 1=运行, 2=暂停, 3=停止, 4=错误)
-    uint16 rsvd_dw0_3:5;        // [7:3] 保留
-    uint16 mult:2;              // [9:8] 突发乘数
-    uint16 max_pstreams:5;      // [14:10] 最大主数据流数量
-    uint16 lsa:1;               // [15] 线性流数组标志
-    uint8 interval;          // [23:16] 轮询间隔
-    uint8 max_esit_payload_hi;// [31:24] ESIT 有效载荷高 8 位
 
-    // Dword 1
-    uint8 rsvd_dw1_0:1;        // [0] 保留
-    uint8 cerr:2;              // [2:1] 错误计数 (通常填 3)
-    uint8 ep_type:3;           // [5:3] 端点类型 (4=控制传输, 6=Bulk In, 等)
-    uint8 rsvd_dw1_6:1;        // [6] 保留
-    uint8 hid:1;               // [7] 主机初始化的禁用流标志
-    uint8 max_burst_size;    // [15:8] 最大突发大小
-    uint16 max_packet_size;  // [31:16] 最大包长 (8, 64, 512)
-
-    //Dword 2 & 3
-    uint64 tr_dequeue_ptr;   //[0] 出队周期状态 (Cycle Bit) [3:1] 保留 (或 SCT 流上下文类型) [63:4] 传输环物理出队指针
-
-    // Dword 4
-    uint16 average_trb_length;// [15:0] 平均 TRB 长度
-    uint16 max_esit_payload_lo;// [31:16] ESIT 有效载荷低 16 位
-    uint32 reserved[3];         // 填充至 32 字节
+typedef struct xhci_ep_ctx_t {
+    uint32 dw0;          // 状态、突发乘数、流支持、轮询间隔
+    uint32 dw1;          // 错误计数(CErr)、端点类型、最大包长
+    uint64 tr_dequeue_ptr; // [63:4] 传输环出队指针 (物理地址)，[0] Cycle 状态
+    uint32 dw4;          // 平均 TRB 长度、最大 ESIT 负载
+    uint32 reserved[3];  // 填充至 32 字节核心大小
 } xhci_ep_ctx_t;
 
+// ---------------------------------------------------------
+// ★ Endpoint Context DW0 装配宏
+// ---------------------------------------------------------
+// EP State [2:0] (0=Disabled, 1=Running, 2=Halted, 3=Stopped, 4=Error) 通常只用于读取
+#define EP_CTX_DW0_MULT(m)           (((m) & 0x3) << 8)     // [9:8] 突发乘数 (SuperSpeed 等时传输专用，常规填 0)
+#define EP_CTX_DW0_MAX_PSTREAMS(p)   (((p) & 0x1F) << 10)   // [14:10] 最大流数量 (支持 UAS 协议时填入，值为 2 的幂指数。不支持填 0)
+#define EP_CTX_DW0_LSA               (1 << 15)              // [15] 线性流数组标志
+#define EP_CTX_DW0_INTERVAL(i)       (((i) & 0xFF) << 16)   // [23:16] 轮询间隔 (中断/等时端点必填，根据描述符的 bInterval 换算；批量/控制填 0)
+#define EP_CTX_DW0_MAX_ESIT_HI(e)    (((e) & 0xFF) << 24)   // [31:24] ESIT 有效载荷高 8 位 (周期性传输专用)
+
+// ---------------------------------------------------------
+// ★ Endpoint Context DW1 装配宏
+// ---------------------------------------------------------
+#define EP_CTX_DW1_CERR(c)           (((c) & 0x3) << 1)     // [2:1] ★错误计数 (Error Count)。规范建议直接填 3！表示硬件在重试 3 次失败后才上报 Error 放弃。
+#define EP_CTX_DW1_EP_TYPE(t)        (((t) & 0x7) << 3)     // [5:3] 端点类型 (极其重要，见下方字典)
+#define EP_CTX_DW1_HID               (1 << 7)               // [7] 主机初始化的禁用流标志 (Host Initiate Disable)
+#define EP_CTX_DW1_MAX_BURST(b)      (((b) & 0xFF) << 8)    // [15:8] 最大突发大小 (SuperSpeed 必填，从端点伴随描述符中获取，常规填 0)
+#define EP_CTX_DW1_MAX_PACKET(p)     (((p) & 0xFFFF) << 16) // [31:16] ★最大包长 (Max Packet Size)。全速 EP0 填 64，高速 Bulk 填 512，必须精准！
+
+// 端点类型字典 (用于 EP_CTX_DW1_EP_TYPE)
+#define EP_TYPE_NOT_VALID            0
+#define EP_TYPE_ISOCH_OUT            1
+#define EP_TYPE_BULK_OUT             2
+#define EP_TYPE_INTR_OUT             3
+#define EP_TYPE_CONTROL              4  // EP0 专属！双向控制端点
+#define EP_TYPE_ISOCH_IN             5
+#define EP_TYPE_BULK_IN              6
+#define EP_TYPE_INTR_IN              7
+
+// ---------------------------------------------------------
+// ★ Endpoint Context DW2 & DW3 装配宏 (tr_dequeue_ptr)
+// 此处直接使用 64 位整数，与 TRB parameter 处理方式一致
+// ---------------------------------------------------------
+
+// ---------------------------------------------------------
+// ★ Endpoint Context DW4 装配宏
+// ---------------------------------------------------------
+#define EP_CTX_DW4_AVG_TRB_LEN(l)    ((l) & 0xFFFF)         // [15:0] ★平均 TRB 长度。必须填！(Bulk 通常填 3072，Control 填 8，如果全填 0 xHC 可能会在调度时降低带宽优先级甚至罢工)
+#define EP_CTX_DW4_MAX_ESIT_LO(e)    (((e) & 0xFFFF) << 16) // [31:16] ESIT 有效载荷低 16 位
+
 // ============================================================================
-// Input Control Context
+// 🎛️ Input Control Context (输入控制上下文)
+// 规范出处: xHCI Spec 1.2 - 6.2.5.1 Input Control Context
+// 物理位置：永远位于 Input Context 内存块的最开头的 32 字节！
 // ============================================================================
-typedef struct input_ctrl_ctx_t{
-    uint32 drop_context_flags;  // Dword 0: 位 0 = Slot, 位 1 = EP0, 位 2 = EP1...
-    uint32 add_context_flags;   // Dword 1: 同上
-    uint32 reserved0[5];         // 填充至 20 字节
-    // ---------------------------------------------------------
-    // DWORD 7: 全局配置指令 (Configuration / Interface)
-    // ---------------------------------------------------------
-    // 告诉硬件本次 Configure Endpoint 命令的全局物理语境
-    uint32 configuration_value:8; // [7:0]   🌟 核心大闸！(配置描述符的值，通常为1)
-    uint32 interface_number:8;    // [15:8]  正在配置的接口号
-    uint32 alternate_setting:8;   // [23:16] 正在配置的备用设置 (Alt Setting)
-    uint32 reserved1:8;           // [31:24] 保留位 (必须为0)
-} input_ctrl_ctx_t;
+
+typedef struct xhci_input_ctrl_ctx_t {
+    uint32 drop_context_flags;  // DW0: 降级/删除标志 (要砍掉的端点)
+    uint32 add_context_flags;   // DW1: 新增/更新标志 (要激活或修改的端点及 Slot)
+    uint32 reserved[5];         // DW2-DW6: 保留区域 (必须严格清 0)
+    uint32 configuration;       // DW7: 全局配置指令 (Configuration / Interface)
+} xhci_input_ctrl_ctx_t;
+
+// ---------------------------------------------------------
+// ★ DW0 & DW1: Drop / Add Context Flags 标志位装配宏
+// xHCI 的端点索引 (DCI) 刚好完美映射到标志位的 Bit [1:31]。
+// Bit 0 专属留给 Slot Context。
+// ---------------------------------------------------------
+
+// 🌟 Slot Context 标志 (固定在 Bit 0)
+#define INPUT_CTRL_ADD_SLOT          (1 << 0)  // 告诉硬件：本次施工图里包含了 Slot Context 的更新 (Evaluate Context 命令常用)
+// 注意：规范明确指出 Drop Context Flag 的 Bit 0 是保留的 (必须为 0)，因为插槽一旦建立就不能单独 Drop，只能 Disable Slot。
+
+// 🌟 端点 Context 标志 (DCI: 1~31)
+// 例如：控制端点 EP0 的 DCI 是 1，对应 Bit 1。
+#define INPUT_CTRL_DROP_EP(dci)      (1 << (dci)) // 在 DW0 中标记：让硬件停止该端点并丢弃其状态！
+#define INPUT_CTRL_ADD_EP(dci)       (1 << (dci)) // 在 DW1 中标记：告诉硬件去读取下面的 Endpoint Context 并建立通道！
+
+// ---------------------------------------------------------
+// ★ DW7: 全局配置指令装配宏 (Configuration / Interface)
+// ---------------------------------------------------------
+#define INPUT_CTRL_DW7_CONFIG(c)     ((c) & 0xFF)           // [7:0]   🌟 核心大闸！配置描述符的值 (bConfigurationValue，通常为 1)
+#define INPUT_CTRL_DW7_INTERFACE(i)  (((i) & 0xFF) << 8)    // [15:8]  正在配置的接口号
+#define INPUT_CTRL_DW7_ALT_SETTING(a)(((a) & 0xFF) << 16)   // [23:16] 正在配置的备用设置 (Alternate Setting)
 
 #define XHCI_DEVICE_CONTEXT_COUNT 32
 #define XHCI_INPUT_CONTEXT_COUNT 33
@@ -981,13 +474,24 @@ typedef struct {
 
 //================================================================================
 
+
+// ============================================================================
+// 🌟 终极 TRB 结构体 (混合视角：64位物理地址 + 32位状态 + 32位控制)
+// 规范出处：xHCI Spec 1.2
+// 绝对保证 16 字节对齐，免疫一切编译器大小端及 Padding 陷阱！
+// ============================================================================
+typedef struct xhci_trb_t {
+    uint64 parameter;  // DW0 & DW1: 物理地址、事件指针、或 Setup 包的前 8 字节
+    uint32 status;     // DW2: 传输长度、中断目标、完成码等
+    uint32 control;    // DW3: Cycle位、TRB类型、IOC、端点号、槽位号等
+}xhci_trb_t;
+
 #pragma pack(pop)
 
 
 //============================ 软件抽象 ==========================================
 
-
-typedef struct {
+typedef struct xhci_submit_ring_t{
     // === [物理/内存层] ==================
     xhci_trb_t   *ring_base;        // 虚拟起始地址
     uint32       size;              // 容量
@@ -1005,7 +509,7 @@ typedef struct {
 
 
 // 硬件是生产者，软件是消费者
-typedef struct {
+typedef struct xhci_event_ring_t{
     xhci_trb_t   *ring_base;        // 虚拟起始地址
     uint32       ring_size;              // 事件环通常极大 (例如 1024)
     uint32       deq_idx;           // 🌟 只有出队游标！干净利落！
@@ -1036,7 +540,6 @@ typedef struct xhci_command_t {
     // 5. 同步原语
     volatile boolean is_done;    // 🌟 单任务环境的终极同步神器
 } xhci_command_t;
-
 
 typedef enum {
     XHCI_PORT_EMPTY = 0,
@@ -1159,75 +662,58 @@ static inline uint8 xhci_get_psi (xhci_hcd_t *xhcd,uint8 port_num) {
     return  (portsc >> 10) & 0xF;
 }
 
+//xhci原生端口操作命令
+//==========================================================================================
+/**
+ * @brief 发起端口热复位 (Hot Reset - 适用于 USB 2.0 & 3.0 常规设备)
+ */
+void xhci_port_reset_hot(xhci_hcd_t *xhcd, uint8 port_num) {
+    uint32 portsc = xhci_read_portsc(xhcd, port_num);
 
-
-//响铃
-static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 value) {
-    xhcd->db_reg[db_number] = value;
+    // 构造安全回写值：保留安全位 | 设置热复位位(RW1S)
+    portsc = (portsc & XHCI_PORTSC_PRESERVE_MASK) | XHCI_PORTSC_PR;
+    xhci_write_portsc(xhcd, port_num, portsc);
 }
 
-#define XHCI_RING_FULL -1
+/**
+ * @brief 发起端口暖复位 (Warm Reset - 仅适用于 USB 3.0 链路死锁救援)
+ */
+void xhci_port_reset_warm(xhci_hcd_t *xhcd, uint8 port_num) {
+    uint32 portsc = xhci_read_portsc(xhcd, port_num);
 
-int32 xhci_alloc_submit_ring(xhci_submit_ring_t *ring,uint32 size);
-int32 xhci_free_submit_ring(xhci_submit_ring_t *ring);
-
-uint64 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push) ;
-
-int32 xhci_translate_error(xhci_trb_comp_code_e comp_code);
-
-xhci_psi_t* xhci_spc_get_max_speed_entry(xhci_spc_t *spc);
-char* xhci_get_comp_code_str(xhci_trb_comp_code_e comp_code);
-int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 port_num, uint8 *out_slot_id);
-int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);
-int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id, input_ctrl_ctx_t *in_ctx);
-int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, uint8 slot_id, input_ctrl_ctx_t *in_ctx, uint8 dc);
-int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, uint8 slot_id, input_ctrl_ctx_t *in_ctx);
-int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
-int32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
-int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci_submit_ring_t *transfer_ring);
-int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id);
-
-// =========================================================================
-// 1. 数据结构定义
-// =========================================================================
-
+    // 构造安全回写值：保留安全位 | 设置暖复位位(RW1S)
+    portsc = (portsc & XHCI_PORTSC_PRESERVE_MASK) | XHCI_PORTSC_WPR;
+    xhci_write_portsc(xhcd, port_num, portsc);
+}
 
 /**
- * @brief 事件类型枚举，用于区分是主板直连还是外接Hub
+ * @brief 强制禁用端口 (Disable Port)
+ * 物理不断电，但切断数据链路通信。
  */
-typedef enum {
-    USB_EVENT_NONE = 0,
-    USB_EVENT_XHCI_ROOT_PORT, // 来源：xHCI 原生根端口中断
-    USB_EVENT_HUB_WORK        // 来源：外接 USB Hub 状态中断
-} usb_event_type_e;
+void xhci_port_disable(xhci_hcd_t *xhcd, uint8 port_num) {
+    uint32 portsc = xhci_read_portsc(xhcd, port_num);
 
-/**
- * @brief 队列中传递的“小纸条” (事件载体)
- */
-typedef struct {
-    usb_event_type_e type;    // 事件类型
-    void *parent_dev;         // 上下文指针 (若是根端口则指向 xhci_hcd_t；若是Hub则指向 usb_dev_t)
-    uint8 port_num;           // 发生状态改变的物理端口号 (从 1 开始)
-} usb_port_event_t;
+    // 构造安全回写值：保留安全位 | 故意给 PED 写 1 (触发 RW1CS 禁用效果)
+    uint32 val = (portsc & XHCI_PORTSC_PRESERVE_MASK) | XHCI_PORTSC_PED;
+    xhci_write_portsc(xhcd, port_num, val);
+}
 
-// 预分配环形队列大小 (必须足够大以容纳插拔瞬间的中断风暴)
-#define USB_EVENT_QUEUE_SIZE 256
+//xhci端口上电
+static void xhci_port_power_on(xhci_hcd_t *xhcd,uint8 port_num) {
+    uint32 portsc = xhci_read_portsc(xhcd, port_num);
+    portsc |= XHCI_PORTSC_PP;
+    xhci_write_portsc(xhcd, port_num, portsc);
+    //等待20ms
+}
 
-/**
- * @brief 静态环形队列结构
- */
-typedef struct {
-    usb_port_event_t events[USB_EVENT_QUEUE_SIZE];
-    volatile uint32 head; // 消费者 (主循环) 读取位置
-    volatile uint32 tail; // 生产者 (ISR/轮询) 写入位置
-} usb_event_queue_t;
-
-
-boolean usb_event_queue_pop(usb_port_event_t *out_event);
-boolean usb_event_queue_push(usb_event_type_e type, void *parent, uint8 port_num);
-void xhci_process_port_event(xhci_hcd_t *xhcd, uint8 port_num);
-void usb_hub_process_port_event(struct usb_dev_t *udev, uint8 port_num);
-void usb_event_queue_init(void);
+//xhci端口断电
+static void xhci_port_power_off(xhci_hcd_t *xhcd, uint8 port_num) {
+    uint32 portsc = xhci_read_portsc(xhcd, port_num);
+    portsc &= ~XHCI_PORTSC_PP;
+    xhci_write_portsc(xhcd, port_num, portsc);
+    //等待20ms
+}
+//=======================================================================================
 
 
 

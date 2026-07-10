@@ -255,125 +255,133 @@ typedef struct {
 
 } usb_hub30_desc_t;
 
-typedef enum : uint8 {
-    USB_RECIP_DEVICE    = 0,  //设备
-    USB_RECIP_INTERFACE = 1,  //接口
-    USB_RECIP_ENDPOINT  = 2,  //端点
-    USB_RECIP_OTHER     = 3   //其他
-} usb_recipient_e;
-
-// USB 请求类型枚举 (对应 bmRequestType 的 Bits 5-6:type)
-typedef enum : uint8 {
-    USB_REQ_TYPE_STANDARD = 0, // 0 = 标准请求 (Standard Request)场景：设备枚举、获取设备描述符 (Get Descriptor)、分配地址 (Set Address)、清除端点卡死 (Clear Feature) 等。
-    USB_REQ_TYPE_CLASS    = 1, // 1 = 类特定请求 (Class Request)比如我们 U 盘 (Mass Storage Class) 专属的 BOT Mass Storage Reset (0xFF) 和 Get Max LUN (0xFE)。
-    USB_REQ_TYPE_VENDOR   = 2,  // 2 = 厂商自定义请求 (Vendor Request)
-    USB_REQ_TYPE_RESERVED = 3   // 3 = 保留 (Reserved)
-} usb_req_type_e;
-
-// USB 数据传输方向枚举 (对应 bmRequestType 的 Bit 7: dtd)
-typedef enum :uint8 {
-    USB_DIR_OUT = 0, // 0 = OUT (主机到设备 / Host to Device)作用：控制传输的数据阶段，数据是由主机发送给设备的。注意：如果这个控制请求根本【没有】数据阶段（比如只发一个没有参数的命令），按照规范，方向也必须填 OUT(0)。
-    USB_DIR_IN  = 1  // 1 = IN (设备到主机 / Device to Host)作用：控制传输的数据阶段，主机期待设备把数据传回来，场景：比如你想读取 U 盘的最大 LUN (Get Max LUN)，或者读取设备的描述符 (Get Descriptor) 时。
-} usb_data_dir_e;
-
 // ============================================================================
-// 1. USB 标准请求 (Standard Requests) - 适用于所有设备
-// 规范出处：USB 2.0 Spec Chapter 9 / USB 3.2 Spec Chapter 9
-// 触发条件：Setup 包的 bmRequestType 字段 Type 位为 0 (Standard)
+// 📦 USB 标准 Setup 控制请求包 (严格 8 字节对齐)
+// 规范出处: USB 2.0 Spec, Section 9.3 (USB Device Requests)
 // ============================================================================
-typedef enum : uint8 {
-    USB_REQ_GET_STATUS        = 0x00, // 获取状态。常用场景：查询设备是总线供电还是自供电、是否支持远程唤醒；或查询特定端点是否处于 Halt (卡死) 状态。
-    USB_REQ_CLEAR_FEATURE     = 0x01, // 清除特性。常用场景：当某个 Endpoint 发生错误被 STALL (卡死) 时，用这个命令清除 Halt 标志，让端点起死回生。
-    // 0x02 是保留的
-    USB_REQ_SET_FEATURE       = 0x03, // 设置特性。常用场景：让设备进入特定的测试模式 (Test Mode)，或者开启设备的远程唤醒 (Remote Wakeup) 功能。
-    // 0x04 是保留的
-    USB_REQ_SET_ADDRESS       = 0x05, // 设置地址。核心枚举步骤：设备刚插入时默认响应地址 0，xHCI 通过此命令为其分配一个 1~127 的全局唯一地址。
-    USB_REQ_GET_DESCRIPTOR    = 0x06, // 获取描述符。最高频命令：获取设备描述符 (查 VID/PID)、配置描述符、字符串描述符、BOS 描述符等，摸清设备的底细。
-    USB_REQ_SET_DESCRIPTOR    = 0x07, // 设置描述符。极少使用：允许主机修改设备内部的描述符，通常仅在某些特殊的设备固件升级 (DFU) 场景下才会用到。
-    USB_REQ_GET_CONFIGURATION = 0x08, // 获取当前配置。查询当前设备正处于哪一个配置值 (Configuration Value) 下工作。
-    USB_REQ_SET_CONFIGURATION = 0x09, // 设置当前配置。枚举分水岭：发送此命令非 0 值后，设备内部的所有端点才真正被激活，设备正式进入 Configured (可用) 状态。
-    USB_REQ_GET_INTERFACE     = 0x0A, // 获取接口备用设置。查询指定接口当前正在使用哪个备用设置 (Alternate Setting)。
-    USB_REQ_SET_INTERFACE     = 0x0B, // 设置接口备用设置。多媒体利器：常见于 USB 摄像头 (UVC) 或声卡 (UAC)，用来切换不同的带宽模式 (例如切换不同的视频分辨率或音频采样率)。
-    USB_REQ_SYNCH_FRAME       = 0x0C, // 同步帧。仅用于等时传输 (Isochronous) 端点，主机用它来设定或同步音频/视频流的数据帧时间戳。
-} usb_std_request_e;
-
-// ============================================================================
-// 2. USB Hub 类专属请求 (Hub Class Requests)
-// 规范出处：USB 2.0 Spec Chapter 11 / USB 3.2 Spec Chapter 10
-// 触发条件：Setup 包的 bmRequestType 字段 Type 位为 1 (Class) 且目标为 Hub
-// ============================================================================
-typedef enum : uint8 {
-    // 【USB 2.0 Hub 专属：事务转换器 (TT) 控制】
-    // 背景：当高速 (480Mbps) Hub 下面挂载了全速/低速设备时，Hub 内部的 TT 负责做速率转换。
-    HUB_REQ_CLEAR_TT_BUFFER   = 0x08, // 清除 TT 缓冲区。当发往全/低速设备的 Split 事务发生严重错误卡死时，主机发此命令清空 Hub 内部积压的数据。
-    HUB_REQ_RESET_TT          = 0x09, // 复位 TT。当 TT 内部状态机彻底崩溃时，强制重启该 Hub 端口的事务转换器硬件逻辑。
-    HUB_REQ_GET_TT_STATE      = 0x0A, // 获取 TT 状态。通常用于底层 Debug，获取 TT 当前处于什么内部状态。
-    HUB_REQ_STOP_TT           = 0x0B, // 停止 TT。暂停 TT 的工作，以便主机去读取 TT 的内部状态用于故障排查。
-
-    // 【USB 3.0 (SuperSpeed) Hub 专属】
-    HUB_REQ_SET_HUB_DEPTH     = 0x0C, // 🌟 设置 Hub 深度。强制命令：必须在 Set Configuration 后、读 Hub 描述符前发送！告诉 Hub 它在拓扑树的第几层，否则 Hub 无法正确解析 20-bit 的路由字符串。
-    HUB_REQ_GET_PORT_ERR_COUNT= 0x0D, // 获取端口错误计数。用于读取 SuperSpeed 链路特有的物理层链路错误次数 (Link Error Count)，评估线材质量或信号完整性。
-
-    // 注意：Hub 真正高频使用的控制端口上电、复位的指令其实是复用了标准的 SET_FEATURE/CLEAR_FEATURE，
-    // 只不过 wValue 传入的是 PORT_POWER (8), PORT_RESET (4) 等特定的 Feature Selector。
-} usb_hub_request_e;
-
-// ============================================================================
-// 3. USB 大容量存储 (Mass Storage BOT) 专属请求
-// 规范出处：USB Mass Storage Class Bulk-Only Transport (BOT) Spec
-// 触发条件：Setup 包的 bmRequestType 字段 Type 位为 1 (Class) 且目标为 U盘/移动硬盘接口
-// ============================================================================
-typedef enum : uint8 {
-    BOT_REQ_GET_MAX_LUN       = 0xFE, // 获取最大逻辑单元号。问读卡器：“你有几个插槽？” 设备返回 LUN 的最大编号 (例如返回 3，代表有 0,1,2,3 共 4 个槽位)。U盘通常返回 0。
-    BOT_REQ_MASS_STORAGE_RESET= 0xFF  // 批量仅复位 (BOT Reset)。★核弹级自救按钮：当 U盘内部的 SCSI 协议状态机卡死 (Bulk 端点 STALL) 时，发此命令让其命令解析器重启，但物理 USB 链路不会断开。通常配合 CLEAR_FEATURE 恢复端点一起使用。
-} usb_bot_request_e;
-
-// ============================================================================
-// USB 标准特性选择器枚举 (对应 Clear Feature / Set Feature 的 wValue 字段)
-// ============================================================================
-typedef enum : uint16 {
-    // ------------------------------------------------------------------------
-    // 【发给 Endpoint (端点) 的特性】(当 recipient == ENDPOINT 时)
-    // ------------------------------------------------------------------------
-    // 作用：清除它，就能解开端点的 STALL 状态，让数据通道重新开放。
-    // ★ 在 BOT 错误恢复中，你的 value 必须填这个！
-    USB_FEATURE_ENDPOINT_HALT        = 0x00,
-
-    // ------------------------------------------------------------------------
-    // 【发给 Device (设备) 的特性】(当 recipient == DEVICE 时)
-    // ------------------------------------------------------------------------
-    USB_FEATURE_DEVICE_REMOTE_WAKEUP = 0x01, // 远程唤醒 (比如敲击休眠键盘唤醒电脑)
-    USB_FEATURE_TEST_MODE            = 0x02, // 测试模式 (主要用于主板硬件出厂测试)
-
-    // USB 3.0 新增设备特性
-    USB_FEATURE_U1_ENABLE            = 0x30, // 允许进入 U1 节能状态
-    USB_FEATURE_U2_ENABLE            = 0x31  // 允许进入 U2 节能状态
-} usb_feature_selector_e;
-
-
-/*
- * usb 8字节请求包
- */
 typedef struct usb_setup_packet_t {
-    //bmRequestType
-    usb_recipient_e recipient : 5;
-    usb_req_type_e  req_type  : 2;
-    usb_data_dir_e  dtd       : 1;
-
-    //bRequest
-    uint8           request; //请求代码
-
-    //wValue
-    uint16          value; //请求值，具体含义由 b_request 定义 例如：GET_DESCRIPTOR 中，w_value 高字节为描述符类型，低字节为索引
-
-    //wIndex
-    uint16          index; //索引或偏移，具体含义由 b_request 定义 例如：接口号、端点号或字符串描述符索引
-
-    //wLength
-    uint16          length; //数据阶段的传输长度（字节）主机到设备：发送的数据长度 设备到主机：请求的数据长度
-}usb_setup_packet_t;
+    uint8  request_type; // 请求类型、数据方向和接收者
+    uint8  request;      // 请求代码 (如 GET_DESCRIPTOR, SET_ADDRESS)
+    uint16 value;        // 请求值 (具体含义由 bRequest 决定)
+    uint16 index;        // 索引或偏移 (如 接口号、端点号)
+    uint16 length;       // 数据阶段的传输长度（字节）
+} usb_setup_packet_t;
 
 #pragma pack(pop)
+
+// ============================================================================
+// 🛠️ bmRequestType 宏装配器 (Bitmask Macros)
+// ============================================================================
+// 1. 数据传输方向 (Data Transfer Direction) - Bit 7
+#define USB_REQ_DIR_OUT         (0 << 7) // 主机 -> 设备 (Host to Device)
+#define USB_REQ_DIR_IN          (1 << 7) // 设备 -> 主机 (Device to Host)
+
+// 2. 请求类型 (Type) - Bits 6:5
+#define USB_REQ_TYPE_STANDARD   (0 << 5) // 标准请求 (所有的基础枚举都用这个)
+#define USB_REQ_TYPE_CLASS      (1 << 5) // 类特定请求 (如 HID 报告, 大容量存储 BOT Reset)
+#define USB_REQ_TYPE_VENDOR     (2 << 5) // 厂商自定义请求
+#define USB_REQ_TYPE_RESERVED   (3 << 5) // 保留
+
+// 3. 接收者 (Recipient) - Bits 4:0
+#define USB_REQ_REC_DEVICE      0x00     // 接收者：设备全局
+#define USB_REQ_REC_INTERFACE   0x01     // 接收者：特定接口 (Interface)
+#define USB_REQ_REC_ENDPOINT    0x02     // 接收者：特定端点 (Endpoint)
+#define USB_REQ_REC_OTHER       0x03     // 接收者：其他 (如 Hub 的特定端口)
+
+// 🌟 终极装配宏：一键生成 bmRequestType
+#define USB_BM_REQ_TYPE(dir, type, rec) ((dir) | (type) | (rec))
+
+// ---------------------------------------------------------
+// 📖 附赠：标准 bRequest 代码字典 (USB 2.0 Spec Table 9-4)这些是所有 USB 设备都必须无条件支持的基础命令 (统称 Chapter 9 请求)
+// ---------------------------------------------------------
+// 🔍 状态与控制类
+#define USB_REQ_GET_STATUS        0x00  // 获取状态。用于查询设备是否自供电/支持远程唤醒，或者查询某个端点是否处于 STALL（卡死）状态。
+#define USB_REQ_CLEAR_FEATURE     0x01  // 清除特性。最常用的保命命令：当 U 盘发生严重错误端点被 Halt 时，主机发这个命令去清除端点的 STALL 状态。
+#define USB_REQ_SET_FEATURE       0x03  // 设置特性。比如让设备进入挂起/测试模式，或者设置某个特定端点的特性。
+
+// 🎫 身份与地址类
+#define USB_REQ_SET_ADDRESS       0x05  // 设置地址。枚举第一步：主控给刚插入的设备分配一个 1~127 的唯一地址。（注意：在 xHCI 中，这通常由底层的 Address Device TRB 硬件代劳，较少由软件发控制传输打包）。
+
+// 📂 描述符获取类 (核心枚举命令)
+#define USB_REQ_GET_DESCRIPTOR    0x06  // 获取描述符。最高频命令！系统查户口专用，用来读取设备是啥、有几个接口、要多大电流、叫什么名字。
+#define USB_REQ_SET_DESCRIPTOR    0x07  // 设置描述符。非常罕见，允许主机修改设备的描述符（绝大多数设备是只读的，不支持此命令）。
+
+// ⚙️ 配置与接口激活类
+#define USB_REQ_GET_CONFIGURATION 0x08  // 获取配置。问设备：“你现在用的是几号配置？”
+#define USB_REQ_SET_CONFIGURATION 0x09  // 设置配置。枚举的关键一步：读完所有描述符后，主机发送此命令激活某个配置（通常是 Config 1），设备这才真正通电开始工作。
+#define USB_REQ_GET_INTERFACE     0x0A  // 获取接口。查询当前接口正在使用的是哪个备用设置 (Alternate Setting)。
+#define USB_REQ_SET_INTERFACE     0x0B  // 设置接口。常用于带宽需求可变的设备（如 USB 摄像头、麦克风），用来在不同的等时流 (Isochronous) 带宽方案间实时切换。
+
+
+
+// ---------------------------------------------------------
+// 📑 描述符类型字典 (填入 wValue 的高字节)当你发送 USB_REQ_GET_DESCRIPTOR 时，告诉设备你想拿哪份“档案”
+// ---------------------------------------------------------
+#define USB_DESC_TYPE_DEVICE      0x01  // 设备描述符。每个设备只有 1 个。包含最重要的 VID (厂商ID), PID (产品ID), 以及 bMaxPacketSize0 (端点0最大包长)。
+#define USB_DESC_TYPE_CONFIG      0x02  // 配置描述符。包含总功耗信息。获取它时，设备通常会连带把下面的 Interface 和 Endpoint 描述符像糖葫芦一样一并返回！
+#define USB_DESC_TYPE_STRING      0x03  // 字符串描述符。人类可读的文本，比如制造厂商叫 "Kingston"，产品名叫 "DataTraveler 3.0"。
+#define USB_DESC_TYPE_INTERFACE   0x04  // 接口描述符。定义该接口是鼠标 (HID)、U盘 (Mass Storage) 还是网卡。
+#define USB_DESC_TYPE_ENDPOINT    0x05  // 端点描述符。定义该管道是 IN 还是 OUT，是 Bulk、Interrupt 还是 Isochronous，以及最大传输带宽。
+#define USB_DESC_TYPE_BOS         0x0F  // BOS描述符 (Binary Object Store)。USB 3.0+ 专属档案。用来查询设备是否支持 SuperSpeed (5Gbps+) 特性及高级链路电源管理 (LPM)。
+
+
+// ============================================================================
+// 🔌 1. USB Hub 类专属请求 (Hub Class Requests)
+// 规范出处：USB 2.0 Spec Chapter 11 / USB 3.2 Spec Chapter 10
+// 触发条件：Setup 包的 bmRequestType (Type = Class, Recipient = Device/Other)
+// ============================================================================
+
+// 【USB 2.0 Hub 专属：事务转换器 (TT) 控制】
+// 背景：当高速 (480Mbps) Hub 下面挂载了全速/低速设备 (如老式键盘) 时，Hub 内部的 TT 负责做速率转换缓存。
+#define HUB_REQ_CLEAR_TT_BUFFER     0x08 // 清除 TT 缓冲区。当发往全/低速设备的 Split 事务发生严重错误卡死时，主机发此命令清空 Hub 内部积压的数据。
+#define HUB_REQ_RESET_TT            0x09 // 复位 TT。当 TT 内部状态机彻底崩溃时，强制重启该 Hub 端口的事务转换器硬件逻辑。
+#define HUB_REQ_GET_TT_STATE        0x0A // 获取 TT 状态。主要用于底层内核 Debug。
+#define HUB_REQ_STOP_TT             0x0B // 停止 TT。暂停 TT 工作，以便主机读取内部状态用于故障排查。
+
+// 【USB 3.0 (SuperSpeed) Hub 专属】
+#define HUB_REQ_SET_HUB_DEPTH       0x0C // 🌟 设置 Hub 深度。强制时序：必须在 Set Configuration 之后、读 Hub 描述符之前发送！告诉 Hub 它在拓扑树的第几层，否则 Hub 无法正确解析 20-bit 的路由字符串。
+#define HUB_REQ_GET_PORT_ERR_COUNT  0x0D // 获取端口错误计数。读取 SuperSpeed 物理层链路错误次数，评估线材质量或信号完整性。
+
+// ★ 架构师备忘录：
+// Hub 真正高频使用的控制端口上电、复位的指令，其实是复用了标准的 USB_REQ_SET_FEATURE / USB_REQ_CLEAR_FEATURE。
+// 只是需要在 wValue 中传入特定的 Hub Feature Selector，比如 PORT_POWER (8) 或 PORT_RESET (4)。
+
+
+// ============================================================================
+// 💾 2. USB 大容量存储 (Mass Storage BOT) 专属请求
+// 规范出处：USB Mass Storage Class Bulk-Only Transport (BOT) Spec
+// 触发条件：Setup 包的 bmRequestType (Type = Class, Recipient = Interface)
+// ============================================================================
+#define BOT_REQ_GET_MAX_LUN         0xFE // 获取最大逻辑单元号 (Logical Unit Number)。问读卡器：“你有几个插槽？” 设备返回最大编号（例如返回 3，代表有 0~3 共 4 个槽位）。单体 U盘通常返回 0。
+
+#define BOT_REQ_MASS_STORAGE_RESET  0xFF // 批量仅复位 (BOT Reset)。
+// ★ 灾难恢复核弹按钮：在协议转换或异常测试中，如果 U 盘内部的 SCSI 命令解析器卡死 (Bulk 端点连续 STALL)，
+// 发送此命令可让其命令解析器软重启，且不会导致物理 USB 链路断开（无需重新走地址分配和枚举）。
+
+
+// ============================================================================
+// 🎛️ 3. USB 标准特性选择器 (Feature Selectors)
+// 对应 Clear Feature / Set Feature 请求的 wValue 字段
+// ============================================================================
+
+// ------------------------------------------------------------------------
+// 【发给 Endpoint (端点) 的特性】(当 recipient == ENDPOINT 时)
+// ------------------------------------------------------------------------
+#define USB_FEATURE_ENDPOINT_HALT   0x00
+// 作用：清除它 (Clear Feature)，就能解开端点的 STALL 状态，让数据通道重新开放。
+// ★ 连招技巧：在 BOT 错误恢复中，发送完 BOT_REQ_MASS_STORAGE_RESET 后，必须紧接着向对应的 Bulk IN 和 Bulk OUT 端点发送 Clear Feature(ENDPOINT_HALT)，两者配合才能彻底救活卡死的 U 盘！
+
+// ------------------------------------------------------------------------
+// 【发给 Device (设备) 的特性】(当 recipient == DEVICE 时)
+// ------------------------------------------------------------------------
+#define USB_FEATURE_DEVICE_REMOTE_WAKEUP 0x01 // 远程唤醒 (比如敲击休眠键盘唤醒整台电脑)
+#define USB_FEATURE_TEST_MODE            0x02 // 测试模式 (主要用于主板硬件层面的出厂眼图测试)
+
+// 【USB 3.0 新增设备级节能特性】
+#define USB_FEATURE_U1_ENABLE            0x30 // 允许设备进入 U1 节能状态 (微秒级唤醒)
+#define USB_FEATURE_U2_ENABLE            0x31 // 允许设备进入 U2 节能状态 (毫秒级唤醒)
+
+
 
 //=============================================================
 
@@ -504,7 +512,7 @@ typedef struct usb_dev_t{
     uint8                           slot_id;
     uint16                          interrupter_target;
     void                            *out_ctx;    // 硬件状态
-    input_ctrl_ctx_t                *in_ctx;     // 软件状态
+    xhci_input_ctrl_ctx_t           *in_ctx;     // 软件状态
     uint32                          active_ep_map;       //当前活跃的端点图
     xhci_hcd_t                      *xhcd;              // xhci控制器
     void                            *drv_data;
@@ -623,19 +631,13 @@ usb_if_alt_t* usb_find_alt_if(usb_if_t *uif, int16 class, int16 subclass, int16 
 int32 usb_enable_alt_if(usb_if_alt_t *new_alt);
 int32 usb_cfg_alt_streams(usb_if_alt_t *alt, uint8 want_streams_exp);
 
-
-int32 xhci_handle_port_connection (xhci_hcd_t *xhcd,uint8 port_num);
-int32 xhci_handle_port_disconnection(xhci_hcd_t *xhcd,uint8 port_num);
-
 int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
-                      usb_data_dir_e dtd, usb_req_type_e req_type, usb_recipient_e recipient,
-                      uint8 request, uint16 value, uint16 index,uint16 length);
+                      uint8 request_type,uint8 request, uint16 value, uint16 index, uint16 length);
 
 
-// ==========================================
-// 🚦 端点状态控制 API (直通控制传输枢纽)
-// ==========================================
-
+// ============================================================================
+// 🚦 端点状态控制与接口配置 API (极简封装版)
+// ============================================================================
 /**
  * @brief 端点解锁 (清除端点 Halt / 清除 Stall 状态)
  * @param udev   目标设备
@@ -643,9 +645,15 @@ int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
  * @note 用于抢救出现 STALL 错误的端点。无数据阶段，length = 0。
  */
 static inline int32 usb_clear_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
+    // 🌟 发往 Endpoint 的标准控制请求
+    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_ENDPOINT);
+
     return usb_control_msg(udev, NULL,
-                           USB_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_RECIP_ENDPOINT,
-                           USB_REQ_CLEAR_FEATURE, USB_FEATURE_ENDPOINT_HALT, epdci_to_epaddr(ep_dci), 0);
+                           req_type,
+                           USB_REQ_CLEAR_FEATURE,
+                           USB_FEATURE_ENDPOINT_HALT, // wValue: 清除 Halt 特性
+                           epdci_to_epaddr(ep_dci),   // wIndex: 目标端点物理地址
+                           0);                        // wLength: 0
 }
 
 /**
@@ -655,9 +663,14 @@ static inline int32 usb_clear_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
  * @note 通常用于模拟错误或调试。无数据阶段，length = 0。
  */
 static inline int32 usb_set_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
+    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_ENDPOINT);
+
     return usb_control_msg(udev, NULL,
-                           USB_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_RECIP_ENDPOINT,
-                           USB_REQ_SET_FEATURE, USB_FEATURE_ENDPOINT_HALT, epdci_to_epaddr(ep_dci), 0);
+                           req_type,
+                           USB_REQ_SET_FEATURE,
+                           USB_FEATURE_ENDPOINT_HALT, // wValue: 设置 Halt 特性
+                           epdci_to_epaddr(ep_dci),   // wIndex: 目标端点物理地址
+                           0);                        // wLength: 0
 }
 
 /**
@@ -665,9 +678,15 @@ static inline int32 usb_set_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
  * @note 这是一个纯命令传输，没有后续的数据包，因此 buffer 为 NULL，length 为 0。
  */
 static inline int32 usb_set_cfg(usb_dev_t *udev) {
+    // 🌟 发往整个 Device 的标准控制请求
+    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
+
     return usb_control_msg(udev, NULL,
-                           USB_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_RECIP_DEVICE,
-                           USB_REQ_SET_CONFIGURATION, udev->config_desc->configuration_value, 0, 0);
+                           req_type,
+                           USB_REQ_SET_CONFIGURATION,
+                           udev->config_desc->configuration_value, // wValue: 要激活的配置号
+                           0,                                      // wIndex: 0
+                           0);                                     // wLength: 0
 }
 
 /**
@@ -675,11 +694,16 @@ static inline int32 usb_set_cfg(usb_dev_t *udev) {
  * @note 用于在复合设备 (如带有多个备用设置的摄像头或声卡) 中切换接口的 Alternate Setting。
  */
 static inline int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
-    return usb_control_msg(udev, NULL,
-                           USB_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_RECIP_INTERFACE,
-                           USB_REQ_SET_INTERFACE, alt_num, if_num, 0);
-}
+    // 🌟 发往指定 Interface 的标准控制请求
+    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_INTERFACE);
 
+    return usb_control_msg(udev, NULL,
+                           req_type,
+                           USB_REQ_SET_INTERFACE,
+                           alt_num, // wValue: 备用设置号 (Alternate Setting)
+                           if_num,  // wIndex: 接口号 (Interface Number)
+                           0);      // wLength: 0
+}
 
 int32 usb_ctx_slot_cfg(usb_dev_t *udev);
 int32 usb_ctx_slot_ep0_eval(usb_dev_t *udev);
