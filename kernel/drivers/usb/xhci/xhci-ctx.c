@@ -3,7 +3,7 @@
 #include "xhci-hcd.h"
 #include "xhci-ring.h"
 #include "errno.h"
-#include "../../../mm/include/slub.h"
+#include "slub.h"
 #include "usb-core.h"
 
 
