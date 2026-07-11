@@ -1,4 +1,4 @@
-#include "xhci.h"
+#include "xhci-hw.h"
 #include "printk.h"
 #include "pcie.h"
 #include "slub.h"
@@ -10,7 +10,7 @@
 #include "usb-hub.h"
 #include "xhci-ring.h"
 #include "xhci-service.h"
-
+#include "xhci-hcd.h"
 
 //xhci设备操作命令
 //=====================================================================================
@@ -102,13 +102,12 @@ static inline void xhci_disable_intr(xhci_hcd_t *xhcd,uint16 intr_number) {
 }
 //=========================================================================================
 
-
 /**
  * @brief 遍历协议块字典，获取其支持的最高物理速率条目
  * @param spc 目标支持协议能力块 (Supported Protocol Capability)
  * @return xhci_psi_t* 指向最高速率条目的指针。如果该协议块为空，返回 NULL。
  */
-xhci_psi_t* xhci_spc_get_max_speed_entry(xhci_spc_t *spc) {
+/*xhci_psi_t* xhci_spc_get_max_speed_entry(xhci_spc_t *spc) {
     // 🌟 1. 内核级防御：防止空指针 Panic
     if (!spc) {
         return NULL;
@@ -128,7 +127,7 @@ xhci_psi_t* xhci_spc_get_max_speed_entry(xhci_spc_t *spc) {
 
     // 返回最终的赢家（包含了 psiv, speed_kbps, mapped_speed 等所有精粹信息）
     return max_psi;
-}
+}*/
 
 
 //xhic扩展能力搜索

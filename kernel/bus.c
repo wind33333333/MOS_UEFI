@@ -3,6 +3,7 @@
 #include "usb-core.h"
 #include "usb-hub.h"
 #include "xhci-service.h"
+#include "xhci-ring.h"
 
 //pcie总线
 bus_type_t pcie_bus_type;
@@ -94,7 +95,7 @@ INIT_TEXT void bus_init(void){
                     if (hub->int_urb->is_done == TRUE) {
                         asm_mem_set(hub->port_bitmap_status,0,32);
                         hub->int_urb->is_done = FALSE;
-                        usb_submit_urb(hub->int_urb);
+                        xhci_submit_urb(hub->int_urb);
                     }
                     break;
                 }

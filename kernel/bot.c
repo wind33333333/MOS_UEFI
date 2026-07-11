@@ -5,6 +5,8 @@
 #include "scsi.h"
 #include "slub.h"
 #include "xhci-cmd.h"
+#include "xhci-hcd.h"
+#include "xhci-ring.h"
 
 /* @brief 执行 Request Sense 命令获取错误详情
  * @return int32 0 表示成功获取 Sense 数据，负数表示 POSIX 错误码
@@ -220,7 +222,7 @@ int32 bot_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     asm_mem_cpy(cmnd->scsi_cdb, cbw->scsi_cdb, cmnd->scsi_cdb_len);
 
     usb_fill_bulk_urb(urb, udev, out_ep, cbw, sizeof(bot_cbw_t));
-    posix_err = usb_submit_urb(urb);
+    posix_err = xhci_submit_urb(urb);
     if (posix_err < 0) goto cleanup;
 
     // 等结果
@@ -243,7 +245,7 @@ int32 bot_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
         usb_ep_t *ep = (cmnd->dir == SCSI_DIR_IN) ? in_ep : out_ep;
 
         usb_fill_bulk_urb(urb, udev, ep, cmnd->data_buf, cmnd->data_len);
-        posix_err = usb_submit_urb(urb);
+        posix_err = xhci_submit_urb(urb);
         if (posix_err < 0) goto cleanup;
 
         // 等结果
@@ -274,7 +276,7 @@ int32 bot_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     uint8 csw_retry_count = 0;
 retry_csw:
     usb_fill_bulk_urb(urb, udev, in_ep, csw, sizeof(bot_csw_t));
-    posix_err = usb_submit_urb(urb);
+    posix_err = xhci_submit_urb(urb);
     if (posix_err < 0) goto cleanup;
 
     // 等结果

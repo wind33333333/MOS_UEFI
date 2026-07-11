@@ -1,4 +1,7 @@
 #include "usb-hub.h"
+#include "xhci-ring.h"
+#include "xhci-hcd.h"
+#include "xhci-ctx.h"
 #include "errno.h"
 #include "printk.h"
 #include "slub.h"
@@ -656,7 +659,7 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     }
 
     //2.设置udev为hub模式
-    usb_ctx_slot_cfg(udev);
+    xhci_ctx_slot_cfg(udev);
 
     //3.启用接口
     usb_ep_t *ep1 = &if_alt->eps[0];
@@ -671,7 +674,7 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     //5.配置好中断 URB,提交队列后续有设备插入拔出等异步实现
     hub->int_urb = usb_alloc_urb();
     usb_fill_int_urb(hub->int_urb, udev, ep1, hub->port_bitmap_status, ep1->max_packet_size, ep1->interval);
-    usb_submit_urb(hub->int_urb);
+    xhci_submit_urb(hub->int_urb);
 }
 
 

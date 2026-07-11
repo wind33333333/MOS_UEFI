@@ -1,5 +1,5 @@
 #include "usb-storage.h"
-#include "xhci.h"
+#include "xhci-hw.h"
 #include "usb-core.h"
 #include "printk.h"
 #include "scsi.h"

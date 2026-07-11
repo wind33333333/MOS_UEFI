@@ -1,6 +1,5 @@
 #pragma once
 #include "moslib.h"
-#include "pcie.h"
 
 #pragma pack(push,1)
 
@@ -318,15 +317,6 @@ typedef struct {
                                   PSIM = bits[31:16]：速率尾数（mantissa）*/
 }xhci_ecap_supported_protocol;
 
-/* ERST条目结构 (16字节) */
-typedef struct {
-    uint64 ring_seg_base; // 段的64位物理基地址 (位[63:6]有效，位[5:0]为0)
-    uint32 ring_seg_size; // 段中TRB的数量 (16到4096)
-    uint32 reserved; // 保留位，初始化为0
-} xhci_erst_t;
-
-//==================================================================================
-
 
 //======================== 设备上下文结构 ==========================================
 
@@ -387,7 +377,7 @@ typedef struct xhci_ep_ctx_t {
     uint64 tr_dequeue_ptr; // [63:4] 传输环出队指针 (物理地址)，[0] Cycle 状态
     uint32 dw4;          // 平均 TRB 长度、最大 ESIT 负载
     uint32 reserved[3];  // 填充至 32 字节核心大小
-} xhci_ep_ctx_t;
+}  xhci_ep_ctx_t;
 
 // ---------------------------------------------------------
 // ★ Endpoint Context DW0 装配宏
@@ -440,7 +430,7 @@ typedef struct xhci_input_ctrl_ctx_t {
     uint32 add_context_flags;   // DW1: 新增/更新标志 (要激活或修改的端点及 Slot)
     uint32 reserved[5];         // DW2-DW6: 保留区域 (必须严格清 0)
     uint32 configuration;       // DW7: 全局配置指令 (Configuration / Interface)
-} xhci_input_ctrl_ctx_t;
+}  xhci_input_ctrl_ctx_t;
 
 // ---------------------------------------------------------
 // ★ DW0 & DW1: Drop / Add Context Flags 标志位装配宏
@@ -467,13 +457,20 @@ typedef struct xhci_input_ctrl_ctx_t {
 #define XHCI_DEVICE_CONTEXT_COUNT 32
 #define XHCI_INPUT_CONTEXT_COUNT 33
 
-typedef struct {
+
+
+/* ERST条目结构 (16字节) */
+typedef struct xhci_erst_t {
+    uint64 ring_seg_base; // 段的64位物理基地址 (位[63:6]有效，位[5:0]为0)
+    uint32 ring_seg_size; // 段中TRB的数量 (16到4096)
+    uint32 reserved; // 保留位，初始化为0
+} xhci_erst_t;
+
+
+typedef struct xhci_stream_ctx_t {
     uint64 tr_dequeue; // TR Dequeue Ptr+ DCS(位0)
     uint64 reserved;
-} xhci_stream_ctx_t;
-
-//================================================================================
-
+}xhci_stream_ctx_t;
 
 // ============================================================================
 // 🌟 终极 TRB 结构体 (混合视角：64位物理地址 + 32位状态 + 32位控制)
@@ -486,234 +483,177 @@ typedef struct xhci_trb_t {
     uint32 control;    // DW3: Cycle位、TRB类型、IOC、端点号、槽位号等
 }xhci_trb_t;
 
+// ============================================================================
+// 📖 TRB 类型字典 (TRB Types)
+// 对应 DW3 [15:10]
+// ============================================================================
+// 传输环 TRB(Transfer Ring)
+#define TRB_TYPE_NORMAL              1   // 普通数据传输
+#define TRB_TYPE_SETUP_STAGE         2   // 控制传输：Setup 阶段
+#define TRB_TYPE_DATA_STAGE          3   // 控制传输：Data 阶段
+#define TRB_TYPE_STATUS_STAGE        4   // 控制传输：Status 阶段
+#define TRB_TYPE_ISOCH               5   // 等时传输
+#define TRB_TYPE_LINK                6   // 链接 TRB (环形闭环)
+#define TRB_TYPE_EVENT_DATA          7   // 事件数据 (给虚拟化或者特殊同步用的)
+#define TRB_TYPE_NO_OP               8   // 空操作 TRB (占坑用)
+
+// 命令 TRB (Command Ring)
+#define TRB_TYPE_ENABLE_SLOT         9   // 启用设备槽
+#define TRB_TYPE_DISABLE_SLOT        10  // 禁用设备槽
+#define TRB_TYPE_ADDRESS_DEVICE      11  // 分配设备地址
+#define TRB_TYPE_CONFIGURE_EP        12  // 配置端点
+#define TRB_TYPE_EVALUATE_CTX        13  // 评估上下文
+#define TRB_TYPE_RESET_EP            14  // 复位端点 (解 STALL)
+#define TRB_TYPE_STOP_EP             15  // 停止端点 (中止传输)
+#define TRB_TYPE_SET_TR_DEQUEUE      16  // 设置出队指针
+#define TRB_TYPE_RESET_DEVICE        17  // 复位设备
+#define TRB_TYPE_FORCE_EVENT         18  // 强制事件 (SR-IOV 虚拟化常用)
+#define TRB_TYPE_NEGOTIATE_BW        19  // 协商带宽
+#define TRB_TYPE_SET_LATENCY_TOL     20  // 设置延迟容忍度
+#define TRB_TYPE_GET_PORT_BW         21  // 获取端口带宽
+#define TRB_TYPE_FORCE_HEADER        22  // 强制包头
+#define TRB_TYPE_NO_OP_CMD           23  // 空操作命令 (测试命令环通不通时用)
+
+// 事件 TRB (Event Ring)
+#define TRB_TYPE_TRANSFER_EVENT      32  // 传输完成事件
+#define TRB_TYPE_CMD_COMPLETION      33  // 命令完成事件
+#define TRB_TYPE_PORT_STATUS_CHG     34  // 端口状态改变事件
+#define TRB_TYPE_BANDWIDTH_REQ       35  // 带宽请求事件
+#define TRB_TYPE_DOORBELL            36  // 门铃事件
+#define TRB_TYPE_HOST_CTRL           37  // 主机控制器事件
+#define TRB_TYPE_DEVICE_NOTIFY       38  // 设备通知事件
+#define TRB_TYPE_MFINDEX_WRAP        39  // 微帧索引翻转事件
+
+// ============================================================================
+// 📖 TRB 完成码字典 (Completion Codes)
+// 对应事件 TRB 的 DW2 [31:24]
+// ============================================================================
+// 【通用与系统级事件】 (Shared / System Level)
+#define COMP_SUCCESS                     1  // [通用] 完美成功
+#define COMP_TRB_ERROR                   5  // [通用] TRB 格式非法 (填错字段、Chain不对等)
+#define COMP_RESOURCE_ERROR              7  // [通用] 主板 xHC 控制器内部资源/内存耗尽
+#define COMP_VF_EVENT_RING_FULL_ERROR    16 // [通用] 虚拟功能事件环满爆 (SR-IOV)
+#define COMP_EVENT_RING_FULL_ERROR       21 // [通用] 真实事件环满爆 (内核中断处理太慢)
+#define COMP_EVENT_LOST_ERROR            32 // [通用] 事件丢失 (事件环溢出导致主板丢弃回执)
+#define COMP_UNDEFINED_ERROR             33 // [通用] 未定义的致命硬件崩溃
+
+// 【命令事件专属】 (Command Event Only)
+#define COMP_BANDWIDTH_ERROR             8  // [命令] 配置端点时，USB 总线带宽不足
+#define COMP_NO_SLOTS_AVAILABLE_ERROR    9  // [命令] Enable Slot 时，主板分配不出新槽位
+#define COMP_INVALID_STREAM_TYPE_ERROR   10 // [命令] 配置流上下文时，Stream Type 非法
+#define COMP_SLOT_NOT_ENABLED_ERROR      11 // [命令] 对未经 Enable 的槽位下发了命令
+#define COMP_ENDPOINT_NOT_ENABLED_ERROR  12 // [命令] 对未经初始化的端点下发了命令
+#define COMP_PARAMETER_ERROR             17 // [命令] Context 上下文结构体参数填错或未对齐
+#define COMP_CONTEXT_STATE_ERROR         19 // [命令] 状态机时序错误 (如：乱发 Reset Endpoint)
+#define COMP_COMMAND_RING_STOPPED        24 // [命令] 正常回执：命令环已成功停止
+#define COMP_COMMAND_ABORTED             25 // [命令] 正常回执：命令已被成功中止
+#define COMP_SECONDARY_BANDWIDTH_ERROR   35 // [命令] 配置端点辅助带宽时出错
+
+// 【传输事件专属】 (Transfer Event Only)
+#define COMP_DATA_BUFFER_ERROR           2  // [传输] 数据缓冲区错误 (主机内存 DMA 寻址失败)
+#define COMP_BABBLE_ERROR                3  // [传输] 喋喋不休 (U盘发来的数据超出预期，端点 Halted)
+#define COMP_USB_TRANSACTION_ERROR       4  // [传输] 物理链路车祸 (超时/CRC失败，端点 Halted)
+#define COMP_STALL_ERROR                 6  // [传输] 逻辑卡死 (U盘主动拒绝服务，端点 Halted)
+#define COMP_SHORT_PACKET                13 // [传输] 短包响应 (数据少于预期，BOT 中属正常)
+#define COMP_RING_UNDERRUN               14 // [传输] 等时环下溢出 (发数据太慢)
+#define COMP_RING_OVERRUN                15 // [传输] 等时环上溢出 (收数据太慢)
+#define COMP_BANDWIDTH_OVERRUN_ERROR     18 // [传输] 带宽超载 (设备发送过量数据)
+#define COMP_NO_PING_RESPONSE_ERROR      20 // [传输] USB 3.0 链路无 Ping 响应
+#define COMP_INCOMPATIBLE_DEVICE_ERROR   22 // [传输] 试图与不兼容的设备通信
+#define COMP_MISSED_SERVICE_ERROR        23 // [传输] 等时传输错过了时间微帧
+#define COMP_STOPPED                     26 // [传输] 正常回执：传输流被主板强行刹车
+#define COMP_STOPPED_LENGTH_INVALID      27 // [传输] 正常回执：刹车时残余长度无法计算
+#define COMP_STOPPED_SHORT_PACKET        28 // [传输] 正常回执：刹车时刚好遇到短包
+#define COMP_MAX_EXIT_LATENCY_TOO_LARGE  29 // [传输] 链路从休眠唤醒失败
+#define COMP_ISOCH_BUFFER_OVERRUN        31 // [传输] 等时接收缓冲区上溢
+#define COMP_INVALID_STREAM_ID_ERROR     34 // [传输] UAS 协议中发了非法的 Stream ID
+#define COMP_SPLIT_TRANSACTION_ERROR     36 // [传输] USB 2.0 Hub 拆分事务失败
+
+// ============================================================================
+// ⚙️ DW3 (Control) 通用标志位宏
+// ============================================================================
+// 基础控制位 (按位或 | )
+#define TRB_CYCLE                    (1 << 0)  // [0] Cycle Bit (所有 TRB 通用)
+#define TRB_TOGGLE_CYCLE             (1 << 1)  // [1] Toggle Cycle (Link TRB 专用)
+#define TRB_ENT                      (1 << 1)  // [1] Evaluate Next TRB
+#define TRB_ISP                      (1 << 2)  // [2] Interrupt on Short Packet
+#define TRB_NS                       (1 << 3)  // [3] No Snoop (PCIe 缓存一致性，通常设为 0)
+#define TRB_CHAIN                    (1 << 4)  // [4] Chain Bit (串联多个 TRB)
+#define TRB_IOC                      (1 << 5)  // [5] Interrupt On Completion (完成后发中断)
+#define TRB_IDT                      (1 << 6)  // [6] Immediate Data (Setup阶段将命令放进指针区)
+#define TRB_BEI                      (1 << 9)  // [9] Block Event Interrupt (Normal TRB专用：阻止事件中断，用于频繁传输的降本增效)
+
+// ---------------------------------------------------------
+// ★ DW3 装配宏 (Write/Set) - 用于填充发出 TRB
+// ---------------------------------------------------------
+#define TRB_SET_TYPE(t)              (((t) & 0x3F) << 10)  // [15:10] 设置 TRB 类型
+#define TRB_SET_DIR_IN               (1 << 16)             // [16] 传输方向：IN (设备到主机)
+#define TRB_SET_DIR_OUT              (0 << 16)             // [16] 传输方向：OUT (主机到设备)
+
+// Setup TRB 专用的 TRT (Transfer Type) [17:16]
+#define TRB_SET_TRT_NO_DATA          (0 << 16) // 0 = 无数据阶段 (No Data Stage)场景：命令发出去就完事了，不需要额外的数据负载。
+#define TRB_SET_TRT_OUT_DATA         (2 << 16) // 2 = OUT 数据阶段 (OUT Data Stage)场景：主机不仅发命令，还要把一坨内存数据强塞给设备。
+#define TRB_SET_TRT_IN_DATA          (3 << 16) // 3 = IN 数据阶段 (IN Data Stage)场景：主机发完命令，张开嘴等设备把数据喂回来。
+
+// 各种 ID 的装配 [24:31] / [16:20]
+#define TRB_SET_EP_ID(ep_id)         (((ep_id) & 0x1F) << 16)   // [20:16] Endpoint ID (DCI)
+#define TRB_SET_SLOT_ID(slot_id)     (((slot_id) & 0xFF) << 24) // [31:24] Slot ID
+
+// 特殊命令控制位
+#define TRB_SET_BSR                  (1 << 9)  // Address Device 的 BSR 位 (Block Set Address Request)
+#define TRB_SET_DC                   (1 << 9)  // Configure EP 的 DC 位 (Deconfigure)
+#define TRB_SET_TSP                  (1 << 9)  // Reset EP / Set TR Dequeue 专用的 TSP 位 (Target State Preserved) ★ 补充
+#define TRB_SET_SUSPEND              (1 << 23) // Stop EP 的 Suspend 位
+
+// ---------------------------------------------------------
+// ★ DW3 提取宏 (Read/Get) - 用于解析事件 TRB
+// ---------------------------------------------------------
+#define TRB_GET_CYCLE(dw3)           ((dw3) & 0x1)            // [0] 提取事件 TRB 的 Cycle 位 (用于判断事件环是否翻转) ★ 极其重要补充
+#define TRB_GET_EVENT_DATA(dw3)      (((dw3) >> 2) & 0x1)     // [2] 提取传输事件的 ED 位 (判断是不是 Event Data TRB 产生的) ★ 补充
+#define TRB_GET_TYPE(dw3)            (((dw3) >> 10) & 0x3F)   // [15:10] 提取 TRB 类型
+#define TRB_GET_EP_ID(dw3)           (((dw3) >> 16) & 0x1F)   // [20:16] 提取发生事件的端点 ID
+#define TRB_GET_VF_ID(dw3)           (((dw3) >> 16) & 0xFF)   // [23:16] 提取虚拟功能 ID (SR-IOV / 虚拟机直通场景) ★ 补充
+#define TRB_GET_SLOT_ID(dw3)         (((dw3) >> 24) & 0xFF)   // [31:24] 提取设备槽位号
+
+// ============================================================================
+// 📊 DW2 (Status) 通用标志位宏
+// ============================================================================
+
+// ---------------------------------------------------------
+// ★ DW2 装配宏 (Write/Set) - 用于填充发出 TRB
+// ---------------------------------------------------------
+#define TRB_SET_TR_LEN(len)          ((len) & 0x1FFFF)       // [16:0] 传输长度 (最大 128KB-1)
+#define TRB_SET_STREAM_ID(sid)       ((sid) & 0xFFFF)        // [15:0] Stream ID (Set TR Dequeue Pointer 或 UAS 大容量存储流传输时必须配置) ★ UAS协议必备补充
+#define TRB_SET_TD_SIZE(size)        (((size) & 0x1F) << 17) // [21:17] 剩余包数估计
+#define TRB_SET_INTR_TARGET(irq)     (((irq) & 0x3FF) << 22) // [31:22] 目标中断器号 (Interrupter Target)
+
+// ---------------------------------------------------------
+// ★ DW2 提取宏 (Read/Get) - 用于解析事件 TRB
+// ---------------------------------------------------------
+#define TRB_GET_TR_LEN(dw2)          ((dw2) & 0xFFFFFF)      // [23:0] 传输事件的残余长度 (Short Packet 时必看)
+#define TRB_GET_CMD_COMP_PARAM(dw2)  ((dw2) & 0xFFFFFF)      // [23:0] 命令完成事件的附加参数 (Command Completion Parameter) ★ 补充
+#define TRB_GET_COMP_CODE(dw2)       (((dw2) >> 24) & 0xFF)  // [31:24] 事件的完成码 (成功/失败原因)
+
+// ============================================================================
+// 📦 DW0 & DW1 (Parameter) 特殊解析与装配宏
+// 绝大多数情况下 DW0 & DW1 拼成一个 64 位物理地址，但在少数事件/命令中另有他用
+// ============================================================================
+
+// ---------------------------------------------------------
+// ★ DW0 / DW1 装配宏
+// ---------------------------------------------------------
+// 解除 STALL 时：Set TR Dequeue Pointer 命令的指针最低位 (Bit 0) 必须携带出队周期状态 (DCS)
+#define TRB_SET_DEQ_CYCLE_STATE(dcs) ((dcs) & 0x1)           // [0] DCS (Dequeue Cycle State) ★ 致命补充：解 STALL 必备！
+
+// ---------------------------------------------------------
+// ★ DW0 提取宏
+// ---------------------------------------------------------
+// 端口状态改变事件 (Port Status Change Event) 时，DW0 [31:24] 存放的是物理端口号！
+#define TRB_GET_PORT_ID(dw0)         (((dw0) >> 24) & 0xFF)  // [31:24] 提取热插拔事件的 Root Hub 端口号 ★ 核心补充：Hub 枚举入口！
+
 #pragma pack(pop)
 
 
-//============================ 软件抽象 ==========================================
-
-typedef struct xhci_submit_ring_t{
-    // === [物理/内存层] ==================
-    xhci_trb_t   *ring_base;        // 虚拟起始地址
-    uint32       size;              // 容量
-
-    // === [逻辑游标层] ==================
-    uint32       enq_idx;           // 写游标
-    uint32       deq_idx;           // 读游标
-    uint8        cycle;             // 生产 Cycle 状态
-
-    // === [并发与调度层] ===
-    uint32   ring_lock;             // 保护当前环的唯一自旋锁
-    list_head_t  pending_list;      // 在此环上排队等待硬件完成的面单 (URB 或 Command)
-
-} xhci_submit_ring_t;
-
-
-// 硬件是生产者，软件是消费者
-typedef struct xhci_event_ring_t{
-    xhci_trb_t   *ring_base;        // 虚拟起始地址
-    uint32       ring_size;              // 事件环通常极大 (例如 1024)
-    uint32       deq_idx;           // 🌟 只有出队游标！干净利落！
-    uint8        cycle;             // 软件期望硬件写入的 Cycle 状态
-
-    // 🌟 事件环独有的物理结构
-    xhci_erst_t *erst_base;   // 指向 ERST 段表内存的虚拟地址
-    uint32       erst_size;
-
-    uint32      ring_lock;
-} xhci_event_ring_t;
-
-
-typedef struct xhci_command_t {
-    // 1. 链表锚点
-    list_head_t     node;
-
-    // 2. 身份识别凭证
-    uint64       cmd_trb_pa;
-
-    int32        status;
-
-    // 4. 战利品 (硬件回执包裹)
-    uint8        slot_id;
-    uint32       comp_code;
-    uint32       comp_param;
-
-    // 5. 同步原语
-    volatile boolean is_done;    // 🌟 单任务环境的终极同步神器
-} xhci_command_t;
-
-typedef enum {
-    XHCI_PORT_EMPTY = 0,
-    XHCI_PORT_DEV,
-    XHCI_PORT_HUB,
-} xhci_port_type_t;
-
-//xhci端口
-typedef struct {
-    union {
-        struct usb_hub_t *usb_hub;      // hub设备
-        struct usb_dev_t *usb_dev;      // usb设备
-    };
-    xhci_port_type_t type;                     //1 = usb_dev , 2 = usb_hub;
-}xhci_port_t;
-
-
-//端口速率
-typedef enum : uint8 {
-    USB_SPEED_UNKNOWN    = 0, // 未知/未连接/出错
-    USB_SPEED_LOW        = 1, // 1.5 Mbps (USB 1.1)
-    USB_SPEED_FULL       = 2, // 12 Mbps (USB 1.1)
-    USB_SPEED_HIGH       = 3, // 480 Mbps (USB 2.0)
-    USB_SPEED_SUPER_5G   = 4, // 5 Gbps (USB 3.2)
-    USB_SPEED_SUPER_10G  = 5, // 10 Gbps (USB 3.2 Gen 2x1)
-    USB_SPEED_SUPER_20G  = 6, // 20 Gbps (USB 3.2 Gen 2x2)
-}usb_port_speed_e;
-
-// ==========================================
-// xHCI 速率翻译字典条目 (纯软件解析版)
-// ==========================================
-typedef struct {
-    uint8               psiv;           // 速度 ID (Port Speed ID Value, 1~15) 这个是实际需要写入 slot context中的数值
-
-    // 🌟 核心：直接在初始化时算出绝对速率，运行时 O(1) 直接拿！
-    uint32              speed_kbps;     // 绝对物理速率 (如 12, 480, 5000, 10000 Mbps)
-
-    // 预解析好的硬件属性
-    uint8               is_full_duplex; // 是否全双工 (PFD)
-    uint8               is_symmetric;   // 是否对称链路 (PLT)
-
-    // 🌟 终极映射：直接绑定到 USB Core 的标准速率枚举！
-    usb_port_speed_e    mapped_speed;
-} xhci_psi_t;
-
-typedef struct {
-    uint8  major_bcd;           // 协议主版本（DW0[31:24]，常见 0x02=USB2，0x03=USB3.x）
-    uint8  minor_bcd;           // 协议次版本（DW0[23:16]，如 0x10=USB3.1 等）
-    char8  name[4];             // 协议名字符串（DW1，常见 "USB " = 0x20425355）
-    uint16 proto_defined;       // 协议自定义字段（DW2[27:16]，USB2/USB3 各自有含义）
-    uint8  port_first;          // 覆盖端口起始号（DW2[7:0]，1-based）
-    uint8  port_count;          // 连续覆盖端口数量（DW2[15:8]）
-    uint8  slot_type;           // Protocol Slot Type（DW3[4:0]）
-    xhci_psi_t psi_dict[16];    // psi字典
-} xhci_spc_t;
-
-
-//xhci控制器
-typedef struct xhci_hcd_t{
-    // ==========================================
-    // 1. 硬件属性 (Hardware Capabilities)
-    // ==========================================
-    uint8               major_bcd;          // 主版本号
-    uint8               minor_bcd;          // 次版本号
-    uint8               ctx_size;           // 设备上下文字节数 (32 还是 64 字节)
-    uint8               max_ports;          // 最大物理端口数量 (MaxPorts)
-    uint8               max_slots;          // 最大逻辑插槽数量 (MaxSlots)
-    uint16              max_intrs;          // 最大中断器数量 (MaxIntrs)
-    uint8               max_streams_exp;    //  最大支持流指数2^(n+1)
-
-    // ==========================================
-    // 2. 协议支持扩展与拓扑路由 (Topology Routing)
-    // ==========================================
-    uint8               spc_count;
-    xhci_spc_t          spc[8];
-    uint8               port_to_spc[256];         // O(1): 物理口 -> SPC 索引
-
-    // ==========================================
-    // 3. MMIO 硬件寄存器指针 (Registers Mapping)
-    // ==========================================
-    xhci_cap_regs_t     *cap_reg;           // 能力寄存器 (只读)
-    xhci_op_regs_t      *op_reg;            // 操作寄存器 (控制全局状态)
-    xhci_rt_regs_t      *rt_reg;            // 运行时寄存器 (中断管理)
-    xhci_db_regs_t      *db_reg;            // 门铃寄存器 (敲门砖)
-    xhci_ext_regs_t     *ext_reg;           // 扩展寄存器链表起始地址
-
-    // ==========================================
-    // 4. DMA 核心共享内存 (Host <-> Device)
-    // ==========================================
-    uint64              *dcbaap;            // 设备上下文基址数组 (物理地址数组)
-    xhci_submit_ring_t  cmd_ring;           // 全局单例：命令环 (Command Ring)
-
-    // ==========================================
-    // 5. 软硬件映射与并发控制 (Software State)
-    // ==========================================
-    struct usb_dev_t    **udevs;           // 插槽到设备的逻辑映射 (通过 Slot ID 查找 usb_dev_t)
-    struct usb_hub_port_t *ports;          // xhci原生端口
-
-    // 注意：事件环不是一个，它是和中断器绑定的！这里根据 max_intrs 动态分配！
-    xhci_event_ring_t*  event_ring_arr;
-    uint16              enable_num_event_ring;  // 启用中断器数量，取cpu核心数量和max_intrs最小值
-
-    pcie_dev_t          *xdev;
-} xhci_hcd_t;
-
-
-//读端口
-static inline uint32 xhci_read_portsc(xhci_hcd_t *xhcd,uint8 port_num) {
-    return xhcd->op_reg->portregs[port_num-1].portsc;
-}
-
-//写端口
-static inline void  xhci_write_portsc(xhci_hcd_t *xhcd,uint8 port_num,uint32 protsc) {
-    xhcd->op_reg->portregs[port_num-1].portsc = protsc;
-}
-
-//获取端口速率id
-static inline uint8 xhci_get_psi (xhci_hcd_t *xhcd,uint8 port_num) {
-    uint32 portsc = xhci_read_portsc(xhcd,port_num);
-    return  (portsc >> 10) & 0xF;
-}
-
-//xhci原生端口操作命令
-//==========================================================================================
-/**
- * @brief 发起端口热复位 (Hot Reset - 适用于 USB 2.0 & 3.0 常规设备)
- */
-void xhci_port_reset_hot(xhci_hcd_t *xhcd, uint8 port_num) {
-    uint32 portsc = xhci_read_portsc(xhcd, port_num);
-
-    // 构造安全回写值：保留安全位 | 设置热复位位(RW1S)
-    portsc = (portsc & XHCI_PORTSC_PRESERVE_MASK) | XHCI_PORTSC_PR;
-    xhci_write_portsc(xhcd, port_num, portsc);
-}
-
-/**
- * @brief 发起端口暖复位 (Warm Reset - 仅适用于 USB 3.0 链路死锁救援)
- */
-void xhci_port_reset_warm(xhci_hcd_t *xhcd, uint8 port_num) {
-    uint32 portsc = xhci_read_portsc(xhcd, port_num);
-
-    // 构造安全回写值：保留安全位 | 设置暖复位位(RW1S)
-    portsc = (portsc & XHCI_PORTSC_PRESERVE_MASK) | XHCI_PORTSC_WPR;
-    xhci_write_portsc(xhcd, port_num, portsc);
-}
-
-/**
- * @brief 强制禁用端口 (Disable Port)
- * 物理不断电，但切断数据链路通信。
- */
-void xhci_port_disable(xhci_hcd_t *xhcd, uint8 port_num) {
-    uint32 portsc = xhci_read_portsc(xhcd, port_num);
-
-    // 构造安全回写值：保留安全位 | 故意给 PED 写 1 (触发 RW1CS 禁用效果)
-    uint32 val = (portsc & XHCI_PORTSC_PRESERVE_MASK) | XHCI_PORTSC_PED;
-    xhci_write_portsc(xhcd, port_num, val);
-}
-
-//xhci端口上电
-static void xhci_port_power_on(xhci_hcd_t *xhcd,uint8 port_num) {
-    uint32 portsc = xhci_read_portsc(xhcd, port_num);
-    portsc |= XHCI_PORTSC_PP;
-    xhci_write_portsc(xhcd, port_num, portsc);
-    //等待20ms
-}
-
-//xhci端口断电
-static void xhci_port_power_off(xhci_hcd_t *xhcd, uint8 port_num) {
-    uint32 portsc = xhci_read_portsc(xhcd, port_num);
-    portsc &= ~XHCI_PORTSC_PP;
-    xhci_write_portsc(xhcd, port_num, portsc);
-    //等待20ms
-}
-//=======================================================================================
 
 
 

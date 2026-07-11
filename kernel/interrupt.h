@@ -1,6 +1,5 @@
 #pragma once
 
-#include "linkage.h"
 #include "moslib.h"
 
 // 定义中断处理函数

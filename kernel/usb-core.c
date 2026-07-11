@@ -1,290 +1,12 @@
-#include "usb-core.h"
 #include "slub.h"
-#include "vmm.h"
 #include "printk.h"
-#include "pcie.h"
 #include "errno.h"
-#include "xhci-cmd.h"
 #include "xhci-ring.h"
+#include "xhci-ctx.h"
+#include "xhci-hcd.h"
+#include "usb-core.h"
+#include "pcie.h"
 
-//======================================= 传输环命令 ===========================================================
-
-/**
- * @brief 纯物理层的主板级 STALL 抢救 (只救主板，不救 U 盘)
- * @return int32 0 表示主板端点恢复成功，负数表示主板硬件已物理级死亡
- */
-static inline int32 xhci_recover_stall(usb_dev_t *udev, uint8 ep_dci) {
-    int32 posix_err;
-    color_printk(YELLOW, BLACK, "[xHCI CPR] Executing Host-side STALL recovery for DCI=%d\n", ep_dci);
-
-    // 抢救第 1 步：主板级解挂
-    posix_err = xhci_cmd_reset_ep(udev->xhcd, udev->slot_id, ep_dci);
-    if (posix_err < 0) {
-        color_printk(RED, BLACK, "[xHCI CPR FATAL] Reset EP Command failed: %d\n", posix_err);
-        return posix_err; // 抢救失败，主板拒绝解挂！
-    }
-
-    // 抢救第 2 步：重置出队指针
-    posix_err = xhci_cmd_set_tr_deq_ptr(udev->xhcd, udev->slot_id, ep_dci, udev->eps[ep_dci]->ring_arr);
-    if (posix_err < 0) {
-        color_printk(RED, BLACK, "[xHCI CPR FATAL] Set TR Deq Ptr Command failed: %d\n", posix_err);
-        return posix_err; // 指针重置失败，传输环彻底报废！
-    }
-
-    return 0; // 主板端点抢救成功，可以接受新一轮的投递了
-}
-
-/**
- * @brief [内联执行器] 处理 EP0 控制传输 (三阶段)
- * @note 依赖最新版 16 字节宏装配架构与纯净版 usb_setup_packet_t。
- * Cycle 位和 wmb() 屏障已由 xhci_submit_ring_enq 底层引擎接管！
- */
-static inline uint64 xhci_submit_control_transfer(usb_urb_t *urb, xhci_submit_ring_t *ring, uint8 wants_ioc) {
-    uint64 last_trb_pa = 0;
-    xhci_trb_t trb = {0}; // 每次循环前复用并清零
-
-    // =======================================================
-    // 🌟 核心修复：适配刚刚重构的无位域版 usb_setup_packet_t
-    // =======================================================
-    uint16 length  = urb->setup_packet->length;
-
-    // 通过位掩码安全提取数据方向 (Bit 7: 1=IN, 0=OUT)
-    uint8  req_dir = urb->setup_packet->request_type & USB_REQ_DIR_IN;
-
-    // =======================================================
-    // [阶段 1: Setup TRB] - 告诉设备要做什么
-    // =======================================================
-
-    // 🚀 终极炫技：IDT=1 时，直接把 8 字节的结构体当成一个 64 位整数塞进 parameter！
-    trb.parameter = *(uint64 *)urb->setup_packet;
-
-    trb.status = TRB_SET_TR_LEN(8); // 规范强求：Setup TRB 长度必须为 8
-
-    uint32 setup_ctrl = TRB_SET_TYPE(TRB_TYPE_SETUP_STAGE) | TRB_IDT;
-
-    // 配置 TRT (Transfer Type) 告知硬件后续是否有数据
-    if (length == 0) {
-        setup_ctrl |= TRB_SET_TRT_NO_DATA;
-    } else if (req_dir == USB_REQ_DIR_IN) {
-        setup_ctrl |= TRB_SET_TRT_IN_DATA;
-    } else {
-        setup_ctrl |= TRB_SET_TRT_OUT_DATA;
-    }
-
-    trb.control = setup_ctrl;
-    xhci_submit_ring_enq(ring, &trb);
-
-    // =======================================================
-    // [阶段 2: Data TRB] - 搬运实际数据 (可选)
-    // =======================================================
-    if (length != 0 && urb->transfer_buf != NULL) {
-        trb.parameter = va_to_pa(urb->transfer_buf);
-        trb.status    = TRB_SET_TR_LEN(length);
-
-        uint32 data_ctrl = TRB_SET_TYPE(TRB_TYPE_DATA_STAGE);
-        if (req_dir == USB_REQ_DIR_IN) {
-            data_ctrl |= TRB_SET_DIR_IN;
-        } else {
-            data_ctrl |= TRB_SET_DIR_OUT;
-        }
-
-        trb.control = data_ctrl;
-        xhci_submit_ring_enq(ring, &trb);
-    }
-
-    // =======================================================
-    // [阶段 3: Status TRB] - 最终握手确认
-    // =======================================================
-    trb.parameter = 0;
-    trb.status    = 0;
-
-    uint32 status_ctrl = TRB_SET_TYPE(TRB_TYPE_STATUS_STAGE);
-
-    // 🛡️ 握手方向与数据方向永远相反。没数据或发数据时，要收状态(IN)；收数据时，要发状态(OUT)。
-    if (length == 0 || req_dir == USB_REQ_DIR_OUT) {
-        status_ctrl |= TRB_SET_DIR_IN;
-    } else {
-        status_ctrl |= TRB_SET_DIR_OUT;
-    }
-
-    // 根据上层请求，决定是否在最后一环触发硬件中断 (IOC)
-    if (wants_ioc) {
-        status_ctrl |= TRB_IOC;
-    }
-
-    trb.control = status_ctrl;
-    last_trb_pa = xhci_submit_ring_enq(ring, &trb);
-
-    return last_trb_pa;
-}
-
-
-/**
- * @brief [内联执行器] 处理 Bulk/Interrupt 普通传输 (大块切片与 ZLP)
- * @note 依赖最新版 16 字节宏装配架构。
- * 内存屏障 wmb()、Cycle 状态位、以及 Link TRB 闭环均由底层 xhci_submit_ring_enq 引擎自动维护！
- */
-static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_submit_ring_t *ring, uint8 wants_ioc) {
-    uint64 last_trb_pa = 0;
-    xhci_trb_t trb; // 临时装配容器
-
-    uint32 left_len   = urb->transfer_len;
-    uint64 current_pa = va_to_pa(urb->transfer_buf);
-
-    // 1. 获取端点最大包长，防呆兜底 512 字节
-    uint16 max_packet = urb->ep ? urb->ep->max_packet_size : 512;
-    if (max_packet == 0) max_packet = 512;
-
-    // 2. 判定是否需要追加 ZLP (零长度数据包：数据量刚好是最大包长的整数倍，且带短包结束标志)
-    uint8 needs_zlp = (urb->transfer_flags & URB_ZERO_PACKET) &&
-                      (urb->transfer_len > 0) &&
-                      ((urb->transfer_len % max_packet) == 0);
-
-    // 3. 核心切片循环：解决物理内存跨越 64KB 边界导致 DMA 越界车祸的问题
-    while (left_len > 0) {
-        // 计算当前物理地址距离下一个 64KB 对齐边界还有多大空间 (0x10000 = 64KB)
-        uint32 space_to_boundary = 0x10000 - (uint32)(current_pa & 0xFFFF);
-
-        uint8  has_more_data = (left_len > space_to_boundary);
-        uint32 chunk_len     = has_more_data ? space_to_boundary : left_len;
-
-        // 🌟 状态计算逻辑完美内聚为局部变量，防止脏状态在循环内交叉污染
-        // 核心修复：如果数据没发完，或者虽然数据发完了但必须跟一个 ZLP，Chain 都必须为 1，告诉硬件它们属于同一个 TD 传输块
-        uint32 chain = (has_more_data || needs_zlp) ? TRB_CHAIN : 0;
-
-        // 核心修复：全村唯一的 IOC 只能在绝对的最后一块 TRB 上点亮 (防双重中断风暴)
-        uint32 ioc   = (!has_more_data && !needs_zlp && wants_ioc) ? TRB_IOC : 0;
-
-        // 🚀 使用重构后的参数字、状态字、控制字进行纯粹的位或装配
-        trb.parameter = current_pa;
-        trb.status    = TRB_SET_TR_LEN(chunk_len) | TRB_SET_INTR_TARGET(0);
-        trb.control   = TRB_SET_TYPE(TRB_TYPE_NORMAL) | chain | ioc;
-
-        // 推入硬件命令环
-        last_trb_pa = xhci_submit_ring_enq(ring, &trb);
-
-        current_pa += chunk_len;
-        left_len   -= chunk_len;
-    }
-
-    // =======================================================
-    // 🎁 4. 极客彩蛋追加：精准下发 ZLP 空车厢
-    // =======================================================
-    if (needs_zlp) {
-        // 指针停在哪无所谓，长度强制为 0
-        trb.parameter = current_pa;
-        trb.status    = TRB_SET_TR_LEN(0) | TRB_SET_INTR_TARGET(0);
-
-        // 绝对的最后一环，拉断链条 (chain = 0)，并赋予这节空车厢唤醒 CPU 的权利 (wants_ioc)
-        uint32 zlp_ctrl = TRB_SET_TYPE(TRB_TYPE_NORMAL);
-        if (wants_ioc) {
-            zlp_ctrl |= TRB_IOC;
-        }
-        trb.control = zlp_ctrl;
-
-        last_trb_pa = xhci_submit_ring_enq(ring, &trb);
-    }
-
-    return last_trb_pa;
-}
-
-
-
-/**
- * @brief xHCI 终极大一统提交引擎 (URB 核心调度器)
- * 职责：解析纯逻辑的 URB 面单，将其翻译为 xHCI 硬件认识的 TRB 物理切片，
- * 压入对应的传输环，精确处理 ZLP 与中断边界，并最终敲响物理门铃。
- * * @param urb 已经由上层驱动填好的 URB 标准电子面单
- * @return int 0 表示提交成功，负数表示失败
- */
-int32 usb_submit_urb(usb_urb_t *urb) {
-    // ==========================================================
-    // 1. 终极防御：面单防呆校验
-    // ==========================================================
-    if (!urb || !urb->udev || !urb->ep) {
-        return -EINVAL; // (22) Invalid argument: 面单要素不全
-    }
-
-    // 如果是普通传输且没有数据，也没有强行要求发 0 字节包，直接视为成功返回
-    if (urb->setup_packet == NULL && urb->transfer_len == 0 &&
-        !(urb->transfer_flags & URB_ZERO_PACKET)) {
-        return 0;
-    }
-
-    // ==========================================================
-    // 2. 自动解包：提取物理寻址信息
-    // ==========================================================
-    xhci_hcd_t  *xhcd    = urb->udev->xhcd;
-    uint8       slot_id  = urb->udev->slot_id;
-    usb_ep_t    *ep = urb->ep;
-    xhci_submit_ring_t *ring = &ep->ring_arr[urb->stream_id];
-
-    // 计算真实的敲门铃目标值 (DCI + Stream ID 偏移)
-    uint32 db_target = ep->ep_dci | ((uint32)urb->stream_id << 16);
-
-    // 👑 标志位翻译哲学：默认开启中断，除非显式指定了 URB_NO_INTERRUPT
-    uint8 wants_ioc = !(urb->transfer_flags & URB_NO_INTERRUPT);
-
-    uint64 last_trb_pa = 0;
-
-    // ==========================================================
-    // 3. 多态路由分发 (根据端点描述符的硬件属性进行精准打击)
-    // ==========================================================
-
-    //加锁
-    uint64 cpu_flags;
-    spin_lock_irqsave(&ring->ring_lock, &cpu_flags);
-
-    // 从端点上下文中提取真实的端点类型 (枚举时解析到的)
-    uint8 usb_trans_type = ep->ep_type & 3;
-    switch (usb_trans_type) {
-        // 👑 路由 1：控制传输 (专属的三阶段状态机)
-        case USB_EP_TYPE_CONTROL:
-            if (urb->setup_packet == NULL) return -EINVAL; // 控制传输必须有 Setup 包
-            last_trb_pa = xhci_submit_control_transfer(urb, ring, wants_ioc);
-            break;
-
-            // 👑 路由 2：同步传输 (摄像头/麦克风/声卡)
-        case USB_EP_TYPE_ISOCH:
-            // 以后写多媒体驱动时，在这里挂载 Isoch TRB 引擎
-            // last_trb_pa = xhci_submit_isoc_transfer(urb, ring, wants_ioc);
-            color_printk(RED, BLACK, "ISOC Transfer not implemented yet!\n");
-            return -ENOSYS; // (38) Function not implemented: 驱动暂未实现该功能
-
-            // 👑 路由 3：批量传输 (U盘) & 中断传输 (键鼠)
-            // 它们在 xHCI 底层完全共享 Normal TRB 切片大循环！
-        case USB_EP_TYPE_BULK:
-        case USB_EP_TYPE_INTR:
-            last_trb_pa = xhci_submit_normal_transfer(urb, ring, wants_ioc);
-            break;
-
-        default:
-            color_printk(RED, BLACK, "Unknown Endpoint Type!\n");
-            return -EPROTO; // (71) Protocol error: 端点描述符解析出错了
-    }
-
-    // ==========================================================
-    // 3. 状态回填供上层同步等待使用
-    // ==========================================================
-    urb->last_trb_pa = last_trb_pa;
-    urb->status = -EINPROGRESS; // (115) Operation now in progress: 异步操作已入队，正在执行！
-    urb->is_done = FALSE;    // 🌟 初始化为未完成
-
-    if (!(urb->transfer_flags & URB_NO_INTERRUPT)) {
-        // 需要中断：挂入链表，等 ISR 叫醒
-        list_add_tail(&ring->pending_list, &urb->node);
-    }
-
-    //解锁
-    spin_unlock_irqrestore(&ring->ring_lock, cpu_flags);
-
-    // ==========================================================
-    // ★ 终极一击：精确敲响对应端点 / Stream 的物理门铃！
-    // ==========================================================
-    xhci_ring_doorbell(xhcd, slot_id, db_target);
-
-    return 0;
-}
 
 /**
  * @brief 动态分配一个纯净的 URB 面单
@@ -463,7 +185,7 @@ int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
     usb_fill_control_urb(urb, udev, udev->eps[1], &setup_pkg, data_buf, length);
 
     // 4. 将面单抛给底层调度引擎
-    int32 posix_err = usb_submit_urb(urb);
+    int32 posix_err = xhci_submit_urb(urb);
     if (posix_err < 0) {
         usb_free_urb(urb);
         return posix_err; // 提交入队直接失败
@@ -564,428 +286,10 @@ static inline int32 usb_get_bos_desc(usb_dev_t *udev, void *buf, uint16 len) {
 
 //=============================================================================================================
 
-/**
- * @brief 将 USB 描述符中的 bInterval 换算为 xHCI 硬件要求的指数值
- *
- * @param interval 设备端点描述符中读取的原始值
- * @param speed     设备当前的运行速度
- * @return uint32   符合 xHCI Endpoint Context Interval 字段规范的值
- */
-static inline uint32 xhci_calc_interval(uint8 interval, usb_port_speed_e speed) {
-    if (interval == 0) return 0;
-    if (speed >= USB_SPEED_HIGH) {
-        // 高速/超高速：本身就是指数格式
-        return interval - 1;
-    } else {
-        // 低速/全速：线性毫秒格式，转为以 125us 为底的微帧指数
-        return 34 - asm_lzcnt32(interval);
-    }
-}
 
-//============================================== 上下文操作函数 ===========================================================
-
-//获取 Input Context 数组中的指定条目
-static inline void *usb_get_in_ctx_entry(xhci_input_ctrl_ctx_t *input_ctx, uint32 dci,uint8 ctx_size) {
-    return (uint8 *)input_ctx + ctx_size * (dci + 1);
-}
-
-// 获取 Output Context (Device Context) 数组中的指定条目
-static inline void *usb_get_out_ctx_entry(void *out_ctx, uint32 dci, uint8 ctx_size) {
-    return (uint8 *)out_ctx + ctx_size * dci;
-}
-
-/**
- * @brief 开启一个事务：将硬件真实状态同步到input
- */
-static void usb_ctx_in_sync(usb_dev_t *udev) {
-    // 1. 物理清零管控中心 (Input Control Context，占 1 个 ctx_size)
-    // 彻底消灭上一次下发命令残留的 Add/Drop 幽灵标志位
-    xhci_input_ctrl_ctx_t *input_ctrl_ctx = udev->in_ctx;
-    input_ctrl_ctx->add_context_flags = 0;
-    input_ctrl_ctx->drop_context_flags = 0;
-
-    // 2. 完美的移花接木：将主板维护的 Device Context 拷贝到 Input Context 的数据区
-    // 注意偏移量：Input Context 从第 1 个条目开始，才是 Slot 和 EP
-    uint8 ctx_size = udev->xhcd->ctx_size;
-    void *in_ctx = usb_get_in_ctx_entry(input_ctrl_ctx,0,ctx_size);
-
-    // 3. 拷贝 32 个 Context (1 个 Slot + 31 个 EP)
-    asm_mem_cpy(udev->out_ctx, in_ctx, ctx_size * 32);
-}
-
-
-// ============================================================================
-// 📦 上下文状态机管理 (纯宏装配版)
-// ============================================================================
-
-/**
- * @brief [纯内存] 全量同步 Slot 上下文
- * @note 无论是创世(Address)、基建(CFG_EP)还是微调(EVAL_CTX)，统一调用此函数。
- * 硬件会根据下发的命令类型，自动提取它关心的字段，忽略不关心的字段。
- * @param udev 目标 USB 设备 (真理之源)
- */
-static void usb_ctx_slot_update(usb_dev_t *udev) {
-    xhci_input_ctrl_ctx_t *input_ctrl_ctx = udev->in_ctx;
-
-    // 1. 强制打上 Slot 图纸被涂改的标记 (Bit 0 特权)
-    // 既然是全量同步，Slot 必定被修改，直接置位
-    input_ctrl_ctx->add_context_flags |= INPUT_CTRL_ADD_SLOT;
-
-    // 2. 拿到 Slot Context 的图纸指针
-    xhci_slot_ctx_t *slot = usb_get_in_ctx_entry(input_ctrl_ctx, 0, udev->xhcd->ctx_size);
-
-    // 🌟 核心算法：算出投影位图并更新 context_entries, 先删后建
-    uint32 projected_map = (udev->active_ep_map & ~input_ctrl_ctx->drop_context_flags) | input_ctrl_ctx->add_context_flags;
-    // 使用前导零计算最高被激活的端点 DCI
-    uint32 entries = 31 - asm_lzcnt32(projected_map);
-
-    // ===================================================================
-    // 🛡️ DW0：基础物理、路由属性与端点极值
-    // ===================================================================
-    uint32 dw0 = SLOT_CTX_DW0_ROUTE(udev->route_string) |
-                 SLOT_CTX_DW0_SPEED(udev->psiv) |
-                 SLOT_CTX_DW0_CTX_ENTRIES(entries);
-
-    if (udev->hub_mtt) dw0 |= SLOT_CTX_DW0_MTT;
-    if (udev->is_hub)  dw0 |= SLOT_CTX_DW0_HUB;
-
-    slot->dw0 = dw0;
-
-    // ===================================================================
-    // 🛡️ DW1：集线器全局拓扑属性 (Configure Endpoint 基建阶段核心)
-    // ===================================================================
-    slot->dw1 = SLOT_CTX_DW1_MAX_EXIT_LAT(udev->max_exit_latency) |
-                SLOT_CTX_DW1_ROOT_PORT(udev->root_hub_port_num) |
-                SLOT_CTX_DW1_NUM_PORTS(udev->hub_num_ports);
-
-    // ===================================================================
-    // 🛡️ DW2：行政路由与电源管理 (Evaluate Context 微调阶段核心)
-    // ===================================================================
-    slot->dw2 = SLOT_CTX_DW2_TT_HUB_SLOT(udev->tt_hub_slot_id) |
-                SLOT_CTX_DW2_TT_PORT_NUM(udev->tt_port_num) |
-                SLOT_CTX_DW2_TT_THINK_TIME(udev->hub_ttt) |
-                SLOT_CTX_DW2_INTR_TARGET(udev->interrupter_target);
-
-    // DW3 通常由硬件回写 (如设备地址)，或者在初始化时置 0
-    slot->dw3 = 0;
-}
-
-
-/**
- * @brief [纯内存] 增加并配置一个端点上下文
- * @param udev 目标 USB 设备
- * @param ep   端点结构体
- */
-static void usb_ctx_ep_add(usb_dev_t *udev, usb_ep_t *ep) {
-    xhci_input_ctrl_ctx_t *input_ctrl_ctx = udev->in_ctx;
-    uint8 dci = ep->ep_dci;
-
-    // 1. 在 Input Control Context 中点亮新增该端点的标志
-    input_ctrl_ctx->add_context_flags |= INPUT_CTRL_ADD_EP(dci);
-
-    // 2. 获取该端点在内存中的独立 Context 块
-    xhci_ep_ctx_t *ep_ctx = usb_get_in_ctx_entry(input_ctrl_ctx, dci, udev->xhcd->ctx_size);
-
-
-    // ===================================================================
-    // 🛡️ DW0：突发传输、数据流、轮询间隔与高位负载
-    // ===================================================================
-    uint32 dw0 = EP_CTX_DW0_MULT(ep->mult) |
-                 EP_CTX_DW0_MAX_PSTREAMS(ep->enable_streams_exp) |
-                 EP_CTX_DW0_INTERVAL(xhci_calc_interval(ep->interval, udev->port_speed)) |
-                 EP_CTX_DW0_MAX_ESIT_HI(ep->max_esit_payload >> 16);
-
-    if (ep->lsa) dw0 |= EP_CTX_DW0_LSA;
-    ep_ctx->dw0 = dw0;
-
-    // ===================================================================
-    // 🛡️ DW1：错误容忍、端点类型与最大包长
-    // ===================================================================
-    uint32 dw1 = EP_CTX_DW1_CERR(ep->cerr) |
-                 EP_CTX_DW1_EP_TYPE(ep->ep_type) |
-                 EP_CTX_DW1_MAX_BURST(ep->max_burst) |
-                 EP_CTX_DW1_MAX_PACKET(ep->max_packet_size);
-
-    if (ep->hid) dw1 |= EP_CTX_DW1_HID;
-    ep_ctx->dw1 = dw1;
-
-    // ===================================================================
-    // 🛡️ DW2 & DW3：出队指针与初始 Cycle 状态 (合并在 64 位赋值中)
-    // ===================================================================
-    ep_ctx->tr_dequeue_ptr = ep->trq_phys_addr;
-
-    // ===================================================================
-    // 🛡️ DW4：平均 TRB 长度与低位负载
-    // ===================================================================
-    ep_ctx->dw4 = EP_CTX_DW4_AVG_TRB_LEN(ep->average_trb_length) |
-                  EP_CTX_DW4_MAX_ESIT_LO(ep->max_esit_payload);
-}
-
-
-//删除一个端点上下文
-static inline void usb_ctx_ep_drop(usb_dev_t *udev, usb_ep_t *ep) {
-    udev->in_ctx->drop_context_flags |= (1 << ep->ep_dci);
-}
-
-
-typedef enum : uint8 {
-    USB_CTX_CMD_ADDR,        // 事务：分配地址动
-    USB_CTX_CMD_EVAL,        // 事务：评估上下文 (微调参数，如更新 EP0 包长)
-    USB_CTX_CMD_CFG,         // 事务：配置端点 (常规增删业务端点，DC=0)
-    USB_CTX_CMD_DECFG_ALL    // 事务：格式化端点 (一键抹除所有业务端点，保留 EP0，DC=1)
-} usb_ctx_cmd_e;
-
-
-/**
- * @brief [物理通信] 统一事务提交引擎：下发命令，等待判决，同步状态
- * @param udev     目标 USB 设备
- * @param cmd_type 事务指令类型
- * @return 0 表示成功，非 0 表示硬件拒绝并已回滚
- */
-static int32 usb_ctx_commit(usb_dev_t *udev, usb_ctx_cmd_e cmd_type) {
-    xhci_input_ctrl_ctx_t *in_ctx = udev->in_ctx;
-    int32 ret = 0;
-
-    // 1. 发射物理指令
-    switch (cmd_type) {
-        case USB_CTX_CMD_ADDR:      ret = xhci_cmd_addr_dev(udev->xhcd, udev->slot_id, in_ctx); break;
-        case USB_CTX_CMD_EVAL:      ret = xhci_cmd_eval_ctx(udev->xhcd, udev->slot_id, in_ctx);    break;
-        case USB_CTX_CMD_CFG:       ret = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, in_ctx, 0);   break;
-        case USB_CTX_CMD_DECFG_ALL: ret = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, NULL, 1);     break;
-        default: return -EINVAL;
-    }
-
-    if (ret != 0) return ret; // 硬件拒绝，完美回滚
-
-    // 2. 🌟 事务成功，真理对齐！(修复了你的状态丢失 Bug)
-    if (cmd_type == USB_CTX_CMD_DECFG_ALL) {
-        udev->active_ep_map = (1 << 0) | (1 << 1); // 仅留 Slot 和 EP0
-    } else {
-        udev->active_ep_map &= ~udev->in_ctx->drop_context_flags;
-        udev->active_ep_map |= udev->in_ctx->add_context_flags;
-    }
-
-    return 0;
-}
-
-
-/**
- * @note 向物理总线发送 SET_ADDRESS 包，使设备进入 Addressed 稳态。
- */
-int32 usb_ctx_addr_dev(usb_dev_t *udev) {
-    usb_ctx_in_sync(udev);
-    usb_ctx_ep_add(udev, udev->eps[1]);
-    usb_ctx_slot_update(udev);
-    return usb_ctx_commit(udev, USB_CTX_CMD_ADDR);
-}
-
-//配置slot context
-int32 usb_ctx_slot_cfg(usb_dev_t *udev) {
-    usb_ctx_in_sync(udev);
-    usb_ctx_slot_update(udev);
-    return usb_ctx_commit(udev,USB_CTX_CMD_CFG);
-}
-
-//微调slot ep0 context
-int32 usb_ctx_slot_ep0_eval(usb_dev_t *udev) {
-    usb_ctx_in_sync(udev);
-    usb_ctx_ep_add(udev,udev->eps[1]);
-    usb_ctx_slot_update(udev);
-    return usb_ctx_commit(udev,USB_CTX_CMD_EVAL);
-}
-
-
-//批量增删改业务端点
-int32 usb_ctx_eps_cfg(usb_if_alt_t *drop_uif_alt,usb_if_alt_t *add_uif_alt) {
-
-    usb_dev_t *udev = NULL;
-    uint8 drop_num_ep = 0;
-    uint8 add_num_ep = 0;
-
-    // 1. 提取设备指针并进行防御性检查
-    if (drop_uif_alt) {
-        udev = drop_uif_alt->uif->udev;
-        drop_num_ep = drop_uif_alt->if_desc->num_endpoints;
-    }
-
-    if (add_uif_alt) {
-        udev = add_uif_alt->uif->udev;
-        add_num_ep = add_uif_alt->if_desc->num_endpoints;
-    }
-
-    // 2. 基础校验
-    if (udev == NULL) return -EINVAL;
-
-    // 🌟 逻辑修正：如果新旧配置都没有业务端点，直接返回成功 (No-op)
-    if (drop_num_ep == 0 && add_num_ep == 0) {
-        return 0;
-    }
-
-    // 4. 准备 Input Context
-    usb_ctx_in_sync(udev);
-
-    // 5. Drop 旧端点
-    for (uint8 i = 0; i < drop_num_ep; i++) {
-        usb_ctx_ep_drop(udev,&drop_uif_alt->eps[i]);
-    }
-
-    // 6. Add 新端点
-    for (uint8 i = 0; i < add_num_ep; i++) {
-        usb_ctx_ep_add(udev,&add_uif_alt->eps[i]);
-    }
-
-    // 7. 更新 Slot Context（重新计算 context_entries）
-    usb_ctx_slot_update(udev);
-
-    // 8. 提交 Configure Endpoint 命令
-    return usb_ctx_commit(udev,USB_CTX_CMD_CFG);
-}
-
-//批量清空业务端点
-int32 usb_ctx_deconfigure_all(usb_dev_t *udev ) {
-    return usb_ctx_commit(udev,USB_CTX_CMD_DECFG_ALL);
-}
-
-
-
-//===================================================================================================================
 
 device_type_t usb_dev_type = {"usb-dev"};
 device_type_t usb_if_type = {"usb-if"};
-
-// 给端点分配环 (终极统一抽象版)
-static int32 usb_alloc_ep_ring(usb_ep_t *ep) {
-    uint64 tr_dequeue_ptr;
-
-    int32 err;
-
-    // 安全边界截断
-    uint32 streams_exp = ep->enable_streams_exp;
-
-    if (streams_exp) {
-        // ==========================================================
-        // 👑 情况 B：流模式 (Stream Mode - 适用于 USB 3.0 UAS 等)
-        // ==========================================================
-        uint32 num_streams = (1 << streams_exp)+1;           // 流环的第0个不能用，所以需要：2^4 +1 = 17
-        uint32 num_streams_array = 1 << (streams_exp + 1);     // 硬件要求流数组需要按倍数对齐，例如streams_exp=4,则2^5 = 32
-
-        // 1. 给硬件 DMA 读的上下文数组 (必须 16 字节对齐)
-        xhci_stream_ctx_t *streams_ctx_array = kzalloc_dma(num_streams_array * sizeof(xhci_stream_ctx_t));
-        if (streams_ctx_array == NULL) return -ENOMEM;
-
-        // 记录上下文，方便后续释放内存
-        ep->streams_ctx_array = streams_ctx_array;
-
-        // 2. ★ 核心重构：给软件管理的统一环数组 (分配 N+1 个)
-        // 索引 0 闲置防越界，索引 1~N 对应真实的 Stream ID
-        ep->ring_arr = kzalloc(num_streams * sizeof(xhci_submit_ring_t));
-        if (ep->ring_arr == NULL) return -ENOMEM;
-
-        // 更新逻辑状态
-        ep->lsa = 1; // 线性流数组标志
-        ep->hid = 1; // 主机初始化禁用标志
-
-        // 初始化每一个流环
-        for (uint32 s = 1; s < num_streams; s++) {
-            // 对数组中的每一个环进行物理分配
-            err = xhci_alloc_submit_ring(&ep->ring_arr[s],ep->ring_max_trbs);
-            if (err < 0) return err;
-
-            // 将分配好的环的物理地址，写入硬件要求的 Context 数组中
-            // SCT=1 (Primary TRB Ring: bit 1~3), DCS=1 (bit 0)
-            streams_ctx_array[s].tr_dequeue = va_to_pa(ep->ring_arr[s].ring_base) | (1 << 1) | 1;
-            streams_ctx_array[s].reserved = 0;
-        }
-
-        // Stream ID 0 在硬件规范中是保留的，必须清零
-        streams_ctx_array[0].tr_dequeue = 0;
-        streams_ctx_array[0].reserved = 0;
-
-        // 硬件 Endpoint Context 需要的是整个 Stream Context 数组的首地址
-        tr_dequeue_ptr = va_to_pa(streams_ctx_array);
-
-    } else {
-        // ==========================================================
-        // 👑 情况 A：非流模式 (No-Stream Mode - 经典 Transfer Ring)
-        // ==========================================================
-
-        // 1. ★ 核心重构：给软件管理的统一环数组 (仅分配 1 个)
-        ep->ring_arr = kzalloc(sizeof(xhci_submit_ring_t));
-        if (ep->ring_arr == NULL) return -ENOMEM;
-
-        // 2. 分配并初始化这唯一的环 (它就是 rings[0])
-        err = xhci_alloc_submit_ring(&ep->ring_arr[0],ep->ring_max_trbs);
-        if (err < 0) return err;
-
-        // 更新逻辑状态
-        ep->lsa = 0;
-        ep->hid = 0;
-
-        // 硬件 Endpoint Context 直接要这个单一环的物理首地址，DCS=1
-        tr_dequeue_ptr = va_to_pa(ep->ring_arr[0].ring_base) | 1;
-    }
-
-    // ==========================================================
-    // 终极赋值：写回端点上下文结构体
-    // ==========================================================
-    ep->cerr = 3;
-    ep->trq_phys_addr = tr_dequeue_ptr; // 供后续写入 xHCI 硬件的 Endpoint Context
-
-    return 0;
-}
-
-
-
-// 释放端点环 (终极统一抽象版)
-static int32 usb_free_ep_ring(usb_ep_t *ep) {
-    // 0. 防御性拦截：如果根本没分配过，直接返回
-    if (ep == NULL || ep->ring_arr == NULL) {
-        return -EINVAL;
-    }
-
-    if (ep->enable_streams_exp > 0) {
-        // ==========================================================
-        // 👑 情况 B：流模式 (Stream Mode) 的销毁
-        // ==========================================================
-
-        // 1. 释放每一个具体的流环 (TRB 物理内存)
-        uint32 enable_num_streams = (1<<ep->enable_streams_exp)+1;
-        for (uint32 s = 1; s < enable_num_streams; s++) {
-            xhci_free_submit_ring(&ep->ring_arr[s]);
-        }
-
-        // 2. 释放专供硬件读取的 DMA 上下文数组
-        if (ep->streams_ctx_array != NULL) {
-            kfree(ep->streams_ctx_array); // ★ 修复：流模式特有的 DMA 内存释放
-            ep->streams_ctx_array = NULL;
-        }
-
-    } else {
-        // ==========================================================
-        // 👑 情况 A：非流模式 (No-Stream Mode) 的销毁
-        // ==========================================================
-
-        // 释放那唯一的普通传输环
-        xhci_free_submit_ring(&ep->ring_arr[0]);
-    }
-
-    // ==========================================================
-    // ★ 终极统一回收：拆除统一调度层
-    // ==========================================================
-    // 无论是流模式分配的 N+1 个元素的数组，还是非流模式分配的 1 个元素的数组，
-    // 它们都是用 kzalloc 申请的，最后在这里一刀切释放！
-    kfree(ep->ring_arr);
-    ep->ring_arr = NULL;
-
-    // 清理端点逻辑状态，恢复出厂设置，防止悬空指针引发 Use-After-Free
-    ep->enable_streams_exp = 0; // 如果你结构体里还没删干净，顺手清一下
-    ep->lsa = 0;
-    ep->hid = 0;
-    ep->trq_phys_addr = 0;
-
-    return 0; // 成功释放
-}
-
 
 /**
  * @brief 在接口中寻找匹配指定 Class/SubClass/Protocol 的备用接口
@@ -1039,11 +343,11 @@ int32 usb_enable_alt_if(usb_if_alt_t *new_alt) {
     uint8 new_num_eps = new_alt->if_desc->num_endpoints;
     for (uint8 i = 0; i < new_num_eps; i++) {
         // ★ OOM 防御：分配环可能因为物理 DMA 内存耗尽而失败
-        posix = usb_alloc_ep_ring(&new_alt->eps[i]);
+        posix = xhci_alloc_ep_ring(&new_alt->eps[i]);
         if (posix < 0) {
             color_printk(RED, BLACK, "USB: OOM allocating rings during Alt setting!\n");
             // 局部回滚：释放刚才循环里已经分配成功的前几个端点
-            for (uint8 j = 0; j < i; j++) usb_free_ep_ring(&new_alt->eps[j]);
+            for (uint8 j = 0; j < i; j++) xhci_free_ep_ring(&new_alt->eps[j]);
             return posix;
         }
     }
@@ -1051,11 +355,11 @@ int32 usb_enable_alt_if(usb_if_alt_t *new_alt) {
     // ==========================================================
     // 阶段 2：[硬件预演] 向 xHCI 提交图纸，等待主板总线裁决
     // ==========================================================
-    posix = usb_ctx_eps_cfg(old_alt, new_alt);
+    posix = xhci_ctx_eps_cfg(old_alt, new_alt);
     if (posix < 0) {
         color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, bandwidth rejected!\n");
         // 主板拒绝了这份图纸（通常是总线带宽不足），安全释放刚分配的 RAM
-        for (uint8 i = 0; i < new_num_eps; i++) usb_free_ep_ring(&new_alt->eps[i]);
+        for (uint8 i = 0; i < new_num_eps; i++) xhci_free_ep_ring(&new_alt->eps[i]);
         return posix;
     }
 
@@ -1067,10 +371,10 @@ int32 usb_enable_alt_if(usb_if_alt_t *new_alt) {
         color_printk(RED, BLACK, "USB: Device rejected Set Interface command! Rolling back...\n");
 
         // ★ 核心修复：外设抗旨不尊，必须强制让 xHCI 主板回滚到旧状态！
-        usb_ctx_eps_cfg(new_alt, old_alt);
+        xhci_ctx_eps_cfg(new_alt, old_alt);
 
         // 释放为新端点分配的废弃环内存
-        for (uint8 i = 0; i < new_num_eps; i++) usb_free_ep_ring(&new_alt->eps[i]);
+        for (uint8 i = 0; i < new_num_eps; i++) xhci_free_ep_ring(&new_alt->eps[i]);
         return posix; // 操作系统、主板、物理外设毫发无伤地回到了切换前的健康状态！
     }
 
@@ -1082,7 +386,7 @@ int32 usb_enable_alt_if(usb_if_alt_t *new_alt) {
         for (uint8 i = 0; i < old_num_eps; i++) {
             usb_ep_t *ep = &old_alt->eps[i];
             udev->eps[ep->ep_dci] = NULL; // 从全局路由表摘除
-            usb_free_ep_ring(ep);         // 彻底释放旧物理内存
+            xhci_free_ep_ring(ep);         // 彻底释放旧物理内存
         }
     }
 
@@ -1384,57 +688,6 @@ void usb_if_register(usb_dev_t *udev) {
     }
 }
 
-
-/**
- * @brief 阶段 1：分配设备上下文，配置 Slot 和 EP0，并赋予物理地址 (支持 BSR 两阶段探测)
- * @param udev USB 设备对象
- * @return int32 0 表示成功，-1 表示失败
- */
-static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
-    xhci_hcd_t *xhcd = udev->xhcd;
-
-    // 1. 启用插槽 (Enable Slot)
-    int32 err = xhci_cmd_enable_slot(xhcd, udev->root_hub_port_num, &udev->slot_id);
-    if (err < 0) return err;
-
-    // 2. 分配设备上下文 (Output Context)
-    uint8 ctx_size = xhcd->ctx_size;
-    udev->out_ctx = kzalloc_dma(XHCI_DEVICE_CONTEXT_COUNT * ctx_size);
-    xhcd->dcbaap[udev->slot_id] = va_to_pa(udev->out_ctx);
-    xhcd->udevs[udev->slot_id] = udev;
-
-    // 3. 分配输入上下文 (Input Context)
-    udev->in_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * ctx_size);
-
-    // 4. 挂载到 O(1) 路由表
-    usb_ep_t *uep0 = kzalloc(sizeof(usb_ep_t));
-    udev->eps[1] = uep0;
-
-    // --- 计算初始 Max Packet Size (MPS0) ---
-    // 1. USB 3.0 (SuperSpeed) 必定是 512。
-    // 2. USB 2.0 (High Speed) 协议规定必定是 64。
-    // 3. USB 1.1 (Full/Low Speed) 可能是 8/16/32/64，为了绝对安全，先盲猜最小包长 8
-    uint32 mps = (udev->port_speed >= USB_SPEED_SUPER_5G) ? 512 :
-                 (udev->port_speed == USB_SPEED_HIGH)  ? 64  : 8;
-
-    // 5. 填充端点 0 数据结构
-    uep0->ep_dci = 1;
-    uep0->cerr = 3;
-    uep0->ep_type = 4; // Control Endpoint
-    uep0->max_packet_size = mps;
-    uep0->average_trb_length = mps;
-    uep0->max_streams_exp = 0;
-    uep0->enable_streams_exp = 0;
-    uep0->ring_max_trbs = 32;
-    usb_alloc_ep_ring(uep0);
-
-    //发送 SET_ADDRESS！
-    usb_ctx_addr_dev(udev);
-    return 0;
-}
-
-
-
 /**
  * @brief 阶段 2：通过 EP0 获取设备描述符，并动态修正全速设备的 MPS
  * @param udev USB 设备对象
@@ -1452,7 +705,7 @@ static inline int32 usb_get_dev_desc(usb_dev_t *udev) {
         if (dev_desc->max_packet_size0 != 8) {
             usb_ep_t *ep0 = udev->eps[1];
             ep0->max_packet_size = dev_desc->max_packet_size0;
-            usb_ctx_slot_ep0_eval(udev);
+            xhci_ctx_slot_ep0_eval(udev);
         }
     }
     // ============================
@@ -1559,7 +812,7 @@ void usb_dev_init(usb_dev_t *udev) {
     udev->dev.bus = &usb_bus_type;
 
     //设备初始化
-    usb_enable_slot_ep0(udev);
+    xhci_enable_slot_ep0(udev);
     usb_get_dev_desc(udev);
     usb_get_cfg_desc(udev);
     usb_get_string_desc(udev);

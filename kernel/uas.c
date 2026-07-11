@@ -4,6 +4,7 @@
 #include "scsi.h"
 #include "errno.h"
 #include "xhci-cmd.h"
+#include "xhci-ring.h"
 
 
 
@@ -117,14 +118,14 @@ int32 uas_abort_task(scsi_host_t *host, uint64 scsi_lun, uint16 target_tag) {
     // [Step A] 提前放置 Status 哨兵，等 U 盘的回执
     usb_fill_bulk_urb(urb_status, udev, uas_data->status_ep, resp_iu, sizeof(uas_response_iu_t));
     urb_status->stream_id = stream_id; // TMF 也是走流并发的
-    posix_err = usb_submit_urb(urb_status);
+    posix_err = xhci_submit_urb(urb_status);
     if (posix_err < 0) goto cleanup;
 
     // [Step B] 投递 TMF 暗杀令
     usb_fill_bulk_urb(urb_cmd, udev, uas_data->cmd_ep, tm_iu, sizeof(uas_tm_iu_t));
     urb_cmd->stream_id = 0; // Command 管道规范要求流 ID 填 0
     urb_cmd->transfer_flags |= URB_NO_INTERRUPT; // 静音传输
-    posix_err = usb_submit_urb(urb_cmd);
+    posix_err = xhci_submit_urb(urb_cmd);
 
     if (posix_err < 0) {
         // TMF 发送失败，必须把前面的 Status 哨兵也撤回来
@@ -221,7 +222,7 @@ int32 uas_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     // [Step A] 提交 Status Pipe (唯一需要打断 CPU 的哨兵)
     usb_fill_bulk_urb(urb_status, udev, uas_data->status_ep, sense_iu, UAS_MAX_SENSE_LEN);
     urb_status->stream_id = stream_id;
-    posix_err = usb_submit_urb(urb_status);
+    posix_err = xhci_submit_urb(urb_status);
     if (posix_err < 0) goto cleanup;
 
     // [Step B] 提交 Data Pipe (静音传输)
@@ -230,7 +231,7 @@ int32 uas_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
         usb_fill_bulk_urb(urb_data, udev, data_ep, cmnd->data_buf, cmnd->data_len);
         urb_data->stream_id = stream_id;
         urb_data->transfer_flags |= URB_NO_INTERRUPT; // 静音！
-        posix_err = usb_submit_urb(urb_data);
+        posix_err = xhci_submit_urb(urb_data);
         if (posix_err < 0) {
             // ★ 深度防御提示：在真正的工业级驱动中，如果这里失败了，
             // 应该立刻调用 xhci_cmd_stop_ep 强行停止前面的 Status Pipe，防止硬件跑飞。
@@ -242,7 +243,7 @@ int32 uas_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     usb_fill_bulk_urb(urb_cmd, udev, uas_data->cmd_ep, cmd_iu, sizeof(uas_cmd_iu_t));
     urb_cmd->stream_id = 0; // Command Pipe 没有 Stream
     urb_cmd->transfer_flags |= URB_NO_INTERRUPT; // 静音！
-    posix_err = usb_submit_urb(urb_cmd);
+    posix_err = xhci_submit_urb(urb_cmd);
     if (posix_err < 0) goto cleanup;
 
     // 等结果

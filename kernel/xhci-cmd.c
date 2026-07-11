@@ -2,6 +2,9 @@
 #include "xhci-cmd.h"
 #include "xhci-ring.h"
 #include "vmm.h"
+#include "printk.h"
+#include "xhci-hcd.h"
+#include "usb-core.h"
 // =========================================================================
 // 🚀 xHCI 控制器全局命令发射器
 // =========================================================================
@@ -165,4 +168,29 @@ int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id) {
     cmd_trb.control = TRB_SET_TYPE(TRB_TYPE_RESET_DEVICE) | TRB_SET_SLOT_ID(slot_id);
 
     return xhci_submit_cmd(xhcd, &cmd_trb, NULL);
+}
+
+/**
+ * @brief 纯物理层的主板级 STALL 抢救 (只救主板，不救 U 盘)
+ * @return int32 0 表示主板端点恢复成功，负数表示主板硬件已物理级死亡
+ */
+static inline int32 xhci_recover_stall(usb_dev_t *udev, uint8 ep_dci) {
+    int32 posix_err;
+    color_printk(YELLOW, BLACK, "[xHCI CPR] Executing Host-side STALL recovery for DCI=%d\n", ep_dci);
+
+    // 抢救第 1 步：主板级解挂
+    posix_err = xhci_cmd_reset_ep(udev->xhcd, udev->slot_id, ep_dci);
+    if (posix_err < 0) {
+        color_printk(RED, BLACK, "[xHCI CPR FATAL] Reset EP Command failed: %d\n", posix_err);
+        return posix_err; // 抢救失败，主板拒绝解挂！
+    }
+
+    // 抢救第 2 步：重置出队指针
+    posix_err = xhci_cmd_set_tr_deq_ptr(udev->xhcd, udev->slot_id, ep_dci, udev->eps[ep_dci]->ring_arr);
+    if (posix_err < 0) {
+        color_printk(RED, BLACK, "[xHCI CPR FATAL] Set TR Deq Ptr Command failed: %d\n", posix_err);
+        return posix_err; // 指针重置失败，传输环彻底报废！
+    }
+
+    return 0; // 主板端点抢救成功，可以接受新一轮的投递了
 }
