@@ -2,7 +2,7 @@
 #include "errno.h"
 #include "printk.h"
 #include "usb-core.h"
-#include "slub.h"
+#include "../../../mm/include/slub.h"
 #include "xhci-cmd.h"
 #include "xhci-ring.h"
 #include "scsi.h"

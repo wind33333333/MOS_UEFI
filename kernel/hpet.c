@@ -1,6 +1,6 @@
 #include "hpet.h"
 #include "printk.h"
-#include "vmm.h"
+#include "mm/include/vmm.h"
 #include "acpi.h"
 
 hpet_registers_t hpet_registers;

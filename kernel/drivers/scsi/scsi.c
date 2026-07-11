@@ -1,5 +1,5 @@
 #include "scsi.h"
-#include "slub.h"
+#include "../../mm/include/slub.h"
 #include "printk.h"
 #include "bus.h"
 

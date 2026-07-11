@@ -5,9 +5,9 @@
 #include "xhci-ring.h"
 #include "../include/xhci-service.h"
 #include "printk.h"
-#include "vmm.h"
+#include "../../../mm/include/vmm.h"
 #include "errno.h"
-#include "slub.h"
+#include "../../../mm/include/slub.h"
 #include "pcie.h"
 
 

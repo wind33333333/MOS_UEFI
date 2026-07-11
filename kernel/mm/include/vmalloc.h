@@ -1,7 +1,7 @@
 #pragma once
 
-#include "moslib.h"
-#include "rbtree.h"
+#include "../../moslib.h"
+#include "../../rbtree.h"
 
 //60TB vmalloc映射区
 #define VMALLOC_START 0xFFFFC00000000000UL

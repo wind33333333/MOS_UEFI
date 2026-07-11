@@ -1,5 +1,5 @@
 #include "vmm.h"
-#include "buddy_system.h"
+#include "include/buddy_system.h"
 
 //映射一个页表
 int32 mmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, uint64 page_size) {

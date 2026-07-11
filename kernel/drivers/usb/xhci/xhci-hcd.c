@@ -9,7 +9,7 @@
 #include "errno.h"
 #include "usb-hub.h"
 #include "xhci-ring.h"
-#include "../include/xhci-service.h"
+#include "xhci-service.h"
 #include "xhci-hcd.h"
 
 //xhci设备操作命令

@@ -1,8 +1,8 @@
 #include "gdt.h"
 #include "tss.h"
-#include "vmm.h"
+#include "mm/include/vmm.h"
 #include "cpu.h"
-#include "slub.h"
+#include "mm/include/slub.h"
 
 INIT_DATA gdt_ptr_t gdt_ptr;
 

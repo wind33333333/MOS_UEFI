@@ -1,10 +1,8 @@
 #include "uefi.h"
 #include "vmm.h"
-#include "kernel_page_table.h"
 #include "linkage.h"
 #include "memblock.h"
 #include "printk.h"
-#include "slub.h"
 #include "vmalloc.h"
 
 void efi_runtime_service_map(void) {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "moslib.h"
+#include "../../moslib.h"
 #include "vmm.h"
 
 #define MAX_OBJECT_SIZE (1*1024*1024)

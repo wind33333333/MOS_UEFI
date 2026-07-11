@@ -22,6 +22,7 @@ CFLAGS:=$(strip ${CFLAGS})
 
 # 1. 编译选项：增加所有驱动的头文件寻宝地图
 INCLUDES := -I $(KERNEL) \
+			-I $(KERNEL)/mm/include/ \
             -I $(KERNEL)/drivers/usb/include/ \
             -I $(KERNEL)/drivers/scsi/ \
             -I $(KERNEL)/drivers/usb/xhci/

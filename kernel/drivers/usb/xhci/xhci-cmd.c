@@ -1,7 +1,7 @@
 #include "errno.h"
 #include "xhci-cmd.h"
 #include "xhci-ring.h"
-#include "vmm.h"
+#include "../../../mm/include/vmm.h"
 #include "printk.h"
 #include "xhci-hcd.h"
 #include "usb-core.h"
