@@ -1,12 +1,11 @@
-#include "bot.h"
+#include "usb-bot.h"
 #include "errno.h"
 #include "printk.h"
 #include "usb-core.h"
-#include "scsi.h"
 #include "slub.h"
 #include "xhci-cmd.h"
-#include "xhci-hcd.h"
 #include "xhci-ring.h"
+#include "scsi.h"
 
 /* @brief 执行 Request Sense 命令获取错误详情
  * @return int32 0 表示成功获取 Sense 数据，负数表示 POSIX 错误码

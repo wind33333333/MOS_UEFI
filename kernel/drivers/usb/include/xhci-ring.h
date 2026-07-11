@@ -1,5 +1,5 @@
 #pragma once
-#include "moslib.h" // 包含你的基本类型如 uint32, uint64 等
+#include "moslib.h"
 
 typedef struct xhci_trb_t xhci_trb_t;
 typedef struct xhci_submit_ring_t xhci_submit_ring_t;

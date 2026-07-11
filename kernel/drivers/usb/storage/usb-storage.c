@@ -1,10 +1,9 @@
 #include "usb-storage.h"
-#include "xhci-hw.h"
 #include "usb-core.h"
 #include "printk.h"
 #include "scsi.h"
-#include "uas.h"
-#include "bot.h"
+#include "usb-uas.h"
+#include "usb-bot.h"
 #include "slub.h"
 
 

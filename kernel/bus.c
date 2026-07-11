@@ -2,7 +2,7 @@
 #include "pcie.h"
 #include "usb-core.h"
 #include "usb-hub.h"
-#include "xhci-service.h"
+#include "drivers/usb/include/xhci-service.h"
 #include "xhci-ring.h"
 
 //pcie总线

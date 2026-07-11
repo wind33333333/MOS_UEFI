@@ -20,34 +20,59 @@ CFLAGS+= -nostdlib				# 不需要标准库
 CFLAGS:=$(strip ${CFLAGS})
 
 
-$(BUILD)/%.bin: $(BOOTLOADER)/%.asm
-	nasm $< -o $@
+# 1. 编译选项：增加所有驱动的头文件寻宝地图
+INCLUDES := -I $(KERNEL) \
+            -I $(KERNEL)/drivers/usb/include/ \
+            -I $(KERNEL)/drivers/scsi/ \
+            -I $(KERNEL)/drivers/usb/xhci/
 
-${BUILD}/kernel.bin: ${BUILD}/kernel.elf
-	objcopy --set-section-flags .bss=alloc,load,contents \
-			--set-section-flags .stack=alloc,load,contents \
- 			-I elf64-x86-64 -S -R ".eh_frame" -R ".comment" -O binary $^ $@
-	nm ${BUILD}/kernel.elf | sort > ${BUILD}/kernel.map
+CFLAGS := -m64 -fno-pic -fno-pie -mcmodel=large -O0 \
+          -fno-stack-protector -mstackrealign -g -fno-builtin -nostdlib \
+          $(CFLAGS) $(INCLUDES)
 
-${BUILD}/kernel.elf: ${BUILD}/head.o ${BUILD}/main.o ${BUILD}/printk.o ${BUILD}/interrupt.o \
- 				 ${BUILD}/acpi.o ${BUILD}/apic.o ${BUILD}/ioapic.o ${BUILD}/isr.o \
-				 ${BUILD}/vmm.o ${BUILD}/gdt.o ${BUILD}/tss.o ${BUILD}/cpu.o ${BUILD}/memblock.o \
-				 ${BUILD}/hpet.o ${BUILD}/apboot.o ${BUILD}/syscall.o ${BUILD}/buddy_system.o \
-				 ${BUILD}/slub.o ${BUILD}/kernel_page_table.o ${BUILD}/vmalloc.o ${BUILD}/rbtree.o \
-				 ${BUILD}/uefi.o ${BUILD}/bus.o ${BUILD}/device.o $(BUILD)/driver.o ${BUILD}/pcie.o \
-				 ${BUILD}/xhci-hcd.o ${BUILD}/xhci-cmd.o ${BUILD}/xhci-ring.o ${BUILD}/xhci-service.o ${BUILD}/xhci-ctx.o \
-				 ${BUILD}/usb-core.o ${BUILD}/scsi.o ${BUILD}/usb-storage.o \
-				 ${BUILD}/bot.o	${BUILD}/uas.o ${BUILD}/usb-hub.o
-	ld -b elf64-x86-64 -z muldefs -o $@ $^ -T $(KERNEL)/Kernel.lds
+# 2. 自动化获取所有源文件
+# 递归搜索 kernel 目录下的所有 .c 和 .S 文件
+C_SOURCES   := $(shell find $(KERNEL) -name "*.c")
+ASM_SOURCES := $(shell find $(KERNEL) -name "*.S")
 
+# 将源文件路径映射为 build 目录下的 .o 文件路径
+# 示例: kernel/drivers/usb/core/usb-core.c -> build/drivers/usb/core/usb-core.o
+OBJECTS := $(patsubst $(KERNEL)/%.c, $(BUILD)/%.o, $(C_SOURCES))
+OBJECTS += $(patsubst $(KERNEL)/%.S, $(BUILD)/%.o, $(ASM_SOURCES))
+
+# 3. 强制 head.o 在链接序列的最前端 (内核启动必须)
+START_OBJ := $(BUILD)/head.o
+OTHER_OBJS := $(filter-out $(START_OBJ), $(OBJECTS))
+
+# ==============================================================================
+# 自动化编译规则
+# ==============================================================================
+
+# 自动处理汇编文件并创建对应子目录
 $(BUILD)/%.o: $(BUILD)/%.s
+	@mkdir -p $(dir $@)
 	as --64 $< -o $@
 
 $(BUILD)/%.s: $(KERNEL)/%.S
+	@mkdir -p $(dir $@)
 	gcc -E $< > $@
 
+# 自动处理 C 代码，并在 build/ 目录下递归创建相应的子目录
 $(BUILD)/%.o: $(KERNEL)/%.c
-	gcc ${CFLAGS} -c $< -o $@
+	@mkdir -p $(dir $@)
+	gcc $(CFLAGS) -c $< -o $@
+
+# 链接内核：强制 START_OBJ 在最前面
+${BUILD}/kernel.elf: $(START_OBJ) $(OTHER_OBJS)
+	@mkdir -p $(dir $@)
+	ld -b elf64-x86-64 -z muldefs -o $@ $^ -T $(KERNEL)/Kernel.lds
+
+# 生成最终二进制镜像
+${BUILD}/kernel.bin: ${BUILD}/kernel.elf
+	objcopy --set-section-flags .bss=alloc,load,contents \
+	      --set-section-flags .stack=alloc,load,contents \
+	      -I elf64-x86-64 -S -R ".eh_frame" -R ".comment" -O binary $^ $@
+	nm ${BUILD}/kernel.elf | sort > ${BUILD}/kernel.map
 
 #clion gdb uefi符号挂载
 #source /opt/intel/udkdebugger/script/udk_gdb_script

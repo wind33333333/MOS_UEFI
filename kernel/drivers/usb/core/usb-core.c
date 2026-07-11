@@ -6,6 +6,7 @@
 #include "xhci-hcd.h"
 #include "usb-core.h"
 #include "pcie.h"
+#include "usb-def.h"
 
 
 /**

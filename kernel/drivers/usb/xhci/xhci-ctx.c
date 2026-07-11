@@ -1,6 +1,7 @@
 #include "xhci-ctx.h"
 #include "xhci-cmd.h"
 #include "xhci-hcd.h"
+#include "xhci-ring.h"
 #include "errno.h"
 #include "slub.h"
 #include "usb-core.h"

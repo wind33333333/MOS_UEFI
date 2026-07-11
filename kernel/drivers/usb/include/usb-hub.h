@@ -1,6 +1,7 @@
 #pragma once
 #include "moslib.h"
 #include "usb-core.h"
+#include "usb-def.h"
 
 // ============================================================================
 // 🎛️ USB 端口特征选择器 (Port Feature Selectors - 纯动作指令版)
@@ -172,7 +173,6 @@ typedef struct usb_hub_port_t{
     usb_dev_t *child_dev;
 
 } usb_hub_port_t;
-
 
 
 typedef struct usb_hub_t {
