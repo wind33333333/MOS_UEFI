@@ -171,46 +171,10 @@ static inline void xhci_ctx_ep_drop(usb_dev_t *udev, usb_ep_t *ep) {
 }
 
 
-typedef enum : uint8 {
-    XHCI_CTX_CMD_ADDR,        // 事务：分配地址动
-    XHCI_CTX_CMD_EVAL,        // 事务：评估上下文 (微调参数，如更新 EP0 包长)
-    XHCI_CTX_CMD_CFG,         // 事务：配置端点 (常规增删业务端点，DC=0)
-    XHCI_CTX_CMD_DECFG_ALL    // 事务：格式化端点 (一键抹除所有业务端点，保留 EP0，DC=1)
-} xhci_ctx_cmd_e;
-
-
-/**
- * @brief [物理通信] 统一事务提交引擎：下发命令，等待判决，同步状态
- * @param udev     目标 USB 设备
- * @param cmd_type 事务指令类型
- * @return 0 表示成功，非 0 表示硬件拒绝并已回滚
- */
-static int32 xhci_ctx_commit(usb_dev_t *udev, xhci_ctx_cmd_e cmd_type) {
-    xhci_input_ctrl_ctx_t *in_ctx = udev->in_ctx;
-    int32 ret = 0;
-
-    // 1. 发射物理指令
-    switch (cmd_type) {
-        case XHCI_CTX_CMD_ADDR:      ret = xhci_cmd_addr_dev(udev->xhcd, udev->slot_id, in_ctx); break;
-        case XHCI_CTX_CMD_EVAL:      ret = xhci_cmd_eval_ctx(udev->xhcd, udev->slot_id, in_ctx);    break;
-        case XHCI_CTX_CMD_CFG:       ret = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, in_ctx, 0);   break;
-        case XHCI_CTX_CMD_DECFG_ALL: ret = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, NULL, 1);     break;
-        default: return -EINVAL;
-    }
-
-    if (ret != 0) return ret; // 硬件拒绝，完美回滚
-
-    // 2. 🌟 事务成功，真理对齐！(修复了你的状态丢失 Bug)
-    if (cmd_type == XHCI_CTX_CMD_DECFG_ALL) {
-        udev->active_ep_map = (1 << 0) | (1 << 1); // 仅留 Slot 和 EP0
-    } else {
-        udev->active_ep_map &= ~udev->in_ctx->drop_context_flags;
-        udev->active_ep_map |= udev->in_ctx->add_context_flags;
-    }
-
-    return 0;
+static inline void xhci_up_ep_map(usb_dev_t *udev) {
+    udev->active_ep_map &= ~udev->in_ctx->drop_context_flags;
+    udev->active_ep_map |= udev->in_ctx->add_context_flags;
 }
-
 
 /**
  * @note 向物理总线发送 SET_ADDRESS 包，使设备进入 Addressed 稳态。
@@ -219,14 +183,18 @@ static inline int32 xhci_ctx_addr_dev(usb_dev_t *udev) {
     xhci_ctx_in_sync(udev);
     xhci_ctx_ep_add(udev, udev->eps[1]);
     xhci_ctx_slot_update(udev);
-    return xhci_ctx_commit(udev, XHCI_CTX_CMD_ADDR);
+    int32 err = xhci_cmd_addr_dev(udev->xhcd, udev->slot_id, udev->in_ctx);
+    if (err < 0) return err;
+    xhci_up_ep_map (udev);
 }
 
 //配置slot context
 int32 xhci_ctx_slot_cfg(usb_dev_t *udev) {
     xhci_ctx_in_sync(udev);
     xhci_ctx_slot_update(udev);
-    return xhci_ctx_commit(udev,XHCI_CTX_CMD_CFG);
+    int32 err = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, udev->in_ctx, 0);
+    if (err < 0) return err;
+    xhci_up_ep_map (udev);
 }
 
 //微调slot ep0 context
@@ -234,7 +202,9 @@ int32 xhci_ctx_slot_ep0_eval(usb_dev_t *udev) {
     xhci_ctx_in_sync(udev);
     xhci_ctx_ep_add(udev,udev->eps[1]);
     xhci_ctx_slot_update(udev);
-    return xhci_ctx_commit(udev,XHCI_CTX_CMD_EVAL);
+    int32 err = xhci_cmd_eval_ctx(udev->xhcd, udev->slot_id, udev->in_ctx);
+    if (err < 0) return err;
+    xhci_up_ep_map (udev);
 }
 
 
@@ -280,13 +250,16 @@ int32 xhci_ctx_eps_cfg(usb_if_alt_t *drop_uif_alt,usb_if_alt_t *add_uif_alt) {
     // 7. 更新 Slot Context（重新计算 context_entries）
     xhci_ctx_slot_update(udev);
 
-    // 8. 提交 Configure Endpoint 命令
-    return xhci_ctx_commit(udev,XHCI_CTX_CMD_CFG);
+    int32 err = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, udev->in_ctx, 0);
+    if (err < 0) return err;
+    xhci_up_ep_map (udev);
 }
 
 //批量清空业务端点
 int32 xhci_ctx_deconfigure_all(usb_dev_t *udev ) {
-    return xhci_ctx_commit(udev,XHCI_CTX_CMD_DECFG_ALL);
+    int32 err =xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, udev->in_ctx, 1);
+    if (err < 0) return err;
+    udev->active_ep_map = (1 << 0) | (1 << 1); // 仅留 Slot 和 EP0
 }
 
 
