@@ -102,34 +102,6 @@ static inline void xhci_disable_intr(xhci_hcd_t *xhcd,uint16 intr_number) {
 }
 //=========================================================================================
 
-/**
- * @brief 遍历协议块字典，获取其支持的最高物理速率条目
- * @param spc 目标支持协议能力块 (Supported Protocol Capability)
- * @return xhci_psi_t* 指向最高速率条目的指针。如果该协议块为空，返回 NULL。
- */
-/*xhci_psi_t* xhci_spc_get_max_speed_entry(xhci_spc_t *spc) {
-    // 🌟 1. 内核级防御：防止空指针 Panic
-    if (!spc) {
-        return NULL;
-    }
-
-    xhci_psi_t *max_psi = NULL;
-    uint32 max_speed_kbps = 0;
-
-    // 🌟 2. 遍历我们精心设计的 16 格 O(1) 抽屉
-    for (uint8 i = 0; i < 16; i++) {
-        // 4. 比较绝对物理速率 (Kbps)
-        if (spc->psi_dict[i].speed_kbps > max_speed_kbps) {
-            max_speed_kbps = spc->psi_dict[i].speed_kbps;
-            max_psi = &spc->psi_dict[i]; // 更新最高速率的候选者
-        }
-    }
-
-    // 返回最终的赢家（包含了 psiv, speed_kbps, mapped_speed 等所有精粹信息）
-    return max_psi;
-}*/
-
-
 //xhic扩展能力搜索
 static inline uint8 xhci_ecap_find(xhci_hcd_t *xhcd, void *ecap_arr, uint8 cap_id) {
     uint32 offset = xhcd->cap_reg->hccparams1 >> 16;
@@ -390,6 +362,11 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
         xhci_port_power_on(xhcd, port_num);
     }
 
+    for (uint8 i = 0; i < xhcd->spc_count; i++) {
+        xhci_spc_t *spc = &xhcd->spc[i];
+        color_printk(GREEN,BLACK, "spc%d %s%x.%x port_first:%d port_count:%d   \n", i, spc->name,
+                     spc->major_bcd, spc->minor_bcd, spc->port_first, spc->port_count);
+    }
 
     color_printk(
         GREEN,BLACK,
@@ -399,16 +376,7 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
         xhcd->ctx_size, xhcd->op_reg->usbcmd,
         xhcd->op_reg->usbsts);
 
-    for (uint8 i = 0; i < xhcd->spc_count; i++) {
-        xhci_spc_t *spc = &xhcd->spc[i];
-        color_printk(GREEN,BLACK, "spc%d %s%x.%x port_first:%d port_count:%d   \n", i, spc->name,
-                     spc->major_bcd, spc->minor_bcd, spc->port_first, spc->port_count);
-    }
-
     xhci_port_scan(xhcd);
-
-    color_printk(GREEN,BLACK, "\nUSBcmd:%#x  USBsts:%#x  \n", xhcd->op_reg->usbcmd,
-                 xhcd->op_reg->usbsts);
 
 }
 

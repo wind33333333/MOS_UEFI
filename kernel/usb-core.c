@@ -799,7 +799,7 @@ void usb_dev_init(usb_dev_t *udev) {
     // ==========================================================
     // USB 2.0/1.1 规范：复位结束后，必须给设备固件 10ms~50ms 的清醒时间。USB 3.0 直接跳过
     if (udev->port_speed <= USB_SPEED_HIGH) {
-        uint32 times = 0x5000000;
+        uint32 times = 0x2000000;
         while (times) {
             times--;
             asm_pause();
