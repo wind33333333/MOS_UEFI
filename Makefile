@@ -26,9 +26,7 @@ INCLUDES := -I $(KERNEL) \
             -I $(KERNEL)/drivers/scsi/ \
             -I $(KERNEL)/drivers/usb/xhci/
 
-CFLAGS := -m64 -fno-pic -fno-pie -mcmodel=large -O0 \
-          -fno-stack-protector -mstackrealign -g -fno-builtin -nostdlib \
-          $(CFLAGS) $(INCLUDES)
+CFLAGS := -fno-stack-protector -mstackrealign -g -fno-builtin -nostdlib $(CFLAGS) $(INCLUDES)
 
 # 2. 自动化获取所有源文件
 # 递归搜索 kernel 目录下的所有 .c 和 .S 文件
