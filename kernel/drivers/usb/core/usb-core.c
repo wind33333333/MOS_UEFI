@@ -193,10 +193,9 @@ int32 usb_control_msg(usb_dev_t *udev, void *data_buf,
     }
 
     // =======================================================
-    // 5. 阻塞等待与超时控制
+    // 5. 阻塞等待
     // =======================================================
-    uint32 times = 0x30000000;
-    while (urb->is_done == FALSE && times--) {
+    while (urb->is_done == FALSE) {
         asm_pause(); // 提示 CPU 让出流水线资源
     }
 
