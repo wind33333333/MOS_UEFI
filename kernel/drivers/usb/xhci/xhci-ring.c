@@ -1,8 +1,9 @@
 #include "xhci-ring.h"
 #include "xhci-hcd.h"
 #include "errno.h"
-#include "../../../mm/include/vmm.h"
-#include "../../../mm/include/slub.h"
+#include "vmm.h"
+#include "slub.h"
+#include "usb-dev.h"
 #include "usb-core.h"
 #include "printk.h"
 

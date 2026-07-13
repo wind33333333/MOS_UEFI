@@ -1,5 +1,5 @@
 #pragma once
-#include "../xhci/xhci-hw.h"
+#include "xhci-hw.h"
 
 typedef struct xhci_submit_ring_t{
     // === [物理/内存层] ==================

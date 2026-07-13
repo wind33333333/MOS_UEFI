@@ -1,10 +1,12 @@
 #include "usb-hub.h"
+#include "../include/usb-dev.h"
 #include "xhci-ring.h"
 #include "xhci-hcd.h"
 #include "xhci-ctx.h"
 #include "errno.h"
 #include "printk.h"
-#include "../../../mm/include/slub.h"
+#include "slub.h"
+#include "../include/usb-bus.h"
 
 
 // ==========================================

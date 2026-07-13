@@ -1,10 +1,12 @@
 #include "usb-storage.h"
 #include "usb-core.h"
+#include "../include/usb-dev.h"
+#include "../include/usb-bus.h"
 #include "printk.h"
 #include "scsi.h"
 #include "usb-uas.h"
 #include "usb-bot.h"
-#include "../../../mm/include/slub.h"
+#include "slub.h"
 
 
 extern scsi_host_template_t uas_host_template;

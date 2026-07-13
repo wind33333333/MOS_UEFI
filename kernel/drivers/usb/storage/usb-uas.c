@@ -1,6 +1,7 @@
 #include "usb-uas.h"
 #include "printk.h"
 #include "usb-core.h"
+#include "../include/usb-dev.h"
 #include "scsi.h"
 #include "errno.h"
 #include "xhci-cmd.h"

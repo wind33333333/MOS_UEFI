@@ -1,10 +1,10 @@
 #include "errno.h"
 #include "xhci-cmd.h"
 #include "xhci-ring.h"
-#include "../../../mm/include/vmm.h"
+#include "vmm.h"
 #include "printk.h"
 #include "xhci-hcd.h"
-#include "usb-core.h"
+#include "../include/usb-dev.h"
 // =========================================================================
 // 🚀 xHCI 控制器全局命令发射器
 // =========================================================================

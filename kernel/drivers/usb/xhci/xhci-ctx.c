@@ -4,7 +4,7 @@
 #include "xhci-ring.h"
 #include "errno.h"
 #include "slub.h"
-#include "usb-core.h"
+#include "../include/usb-dev.h"
 
 
 //============================================== 上下文操作函数 ===========================================================

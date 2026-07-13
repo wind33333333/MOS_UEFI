@@ -1,13 +1,14 @@
 #include "xhci-hcd.h"
 #include "usb-core.h"
+#include "../include/usb-dev.h"
 #include "usb-hub.h"
 #include "xhci-hw.h"
 #include "xhci-ring.h"
-#include "../include/xhci-service.h"
+#include "xhci-service.h"
 #include "printk.h"
-#include "../../../mm/include/vmm.h"
+#include "vmm.h"
 #include "errno.h"
-#include "../../../mm/include/slub.h"
+#include "slub.h"
 #include "pcie.h"
 
 

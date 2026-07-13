@@ -157,6 +157,8 @@ typedef enum : uint8 {
 } port_state_e;
 
 
+struct usb_dev_t;
+struct usb_if_t;
 
 /**
  * @brief Hub 的单个下游端口状态追踪器
@@ -170,14 +172,14 @@ typedef struct usb_hub_port_t{
 
     // 拓扑树指针：如果这个端口上插了东西，指向那个设备的实例
     // 如果端口是空的，这里必须是 NULL
-    usb_dev_t *child_dev;
+    struct usb_dev_t *child_dev;
 
 } usb_hub_port_t;
 
 
 typedef struct usb_hub_t {
     // 1. 向上挂载
-    usb_if_t           *uif;
+    struct usb_if_t           *uif;
 
     // 2. 硬件性格字典 (仅保留 Hub 专有的高级控制标志)
     uint32             power_delay_ms;  //上电等待时间
@@ -208,6 +210,6 @@ typedef struct usb_hub_t {
 
 } usb_hub_t;
 
-void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num);
+void usb_hub_process_port_event(struct usb_dev_t *udev, uint8 port_num);
 
 
