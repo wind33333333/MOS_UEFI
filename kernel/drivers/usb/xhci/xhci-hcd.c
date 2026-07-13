@@ -5,7 +5,7 @@
 #include "vmm.h"
 #include "driver.h"
 #include "vmalloc.h"
-#include "../include/usb-dev.h"
+#include "usb-dev.h"
 #include "errno.h"
 #include "usb-hub.h"
 #include "xhci-ring.h"

@@ -1,7 +1,7 @@
 #pragma once
 #include "moslib.h"
-#include "usb-core.h"
-#include "usb-def.h"
+#include "../include/usb-core.h"
+#include "../include/usb-def.h"
 
 // ============================================================================
 // 🎛️ USB 端口特征选择器 (Port Feature Selectors - 纯动作指令版)

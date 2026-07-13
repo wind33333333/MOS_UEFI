@@ -4,7 +4,7 @@
 #include "xhci-ring.h"
 #include "usb-core.h"
 #include "usb-def.h"
-#include "../include/usb-dev.h"
+#include "usb-dev.h"
 
 
 /**

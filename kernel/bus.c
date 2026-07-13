@@ -1,7 +1,7 @@
 #include "bus.h"
 #include "pcie.h"
 #include "usb-core.h"
-#include "usb-hub.h"
+#include "drivers/usb/core/usb-hub.h"
 #include "usb-bus.h"
 #include "drivers/usb/include/usb-dev.h"
 #include "xhci-service.h"
