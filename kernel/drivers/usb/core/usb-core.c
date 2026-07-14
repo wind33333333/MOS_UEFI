@@ -4,6 +4,7 @@
 #include "usb-core.h"
 #include "usb-def.h"
 #include "usb-dev.h"
+#include "xhci-hcd.h"
 
 
 /**
