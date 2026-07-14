@@ -2,10 +2,9 @@
 #include "errno.h"
 #include "printk.h"
 #include "usb-core.h"
-#include "../include/usb-dev.h"
+#include "usb-dev.h"
 #include "slub.h"
-#include "xhci-cmd.h"
-#include "xhci-ring.h"
+#include "xhci-hcd.h"
 #include "scsi.h"
 
 /* @brief 执行 Request Sense 命令获取错误详情

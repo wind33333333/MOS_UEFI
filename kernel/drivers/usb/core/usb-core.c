@@ -1,7 +1,6 @@
 #include "slub.h"
 #include "printk.h"
 #include "errno.h"
-#include "xhci-ring.h"
 #include "usb-core.h"
 #include "usb-def.h"
 #include "usb-dev.h"

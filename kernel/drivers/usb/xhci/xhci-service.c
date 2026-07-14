@@ -3,7 +3,6 @@
 #include "usb-dev.h"
 #include "usb-hub.h"
 #include "xhci-hw.h"
-#include "xhci-ring.h"
 #include "xhci-service.h"
 #include "printk.h"
 #include "vmm.h"

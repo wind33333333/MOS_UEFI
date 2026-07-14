@@ -3,7 +3,7 @@
 
 typedef struct xhci_submit_ring_t{
     // === [物理/内存层] ==================
-    struct xhci_trb_t   *ring_base;        // 虚拟起始地址
+    xhci_trb_t   *ring_base;        // 虚拟起始地址
     uint32       size;              // 容量
 
     // === [逻辑游标层] ==================
@@ -20,7 +20,7 @@ typedef struct xhci_submit_ring_t{
 
 // 硬件是生产者，软件是消费者
 typedef struct xhci_event_ring_t{
-    struct xhci_trb_t   *ring_base;        // 虚拟起始地址
+    xhci_trb_t   *ring_base;        // 虚拟起始地址
     uint32       ring_size;              // 事件环通常极大 (例如 1024)
     uint32       deq_idx;           // 🌟 只有出队游标！干净利落！
     uint8        cycle;             // 软件期望硬件写入的 Cycle 状态
@@ -79,9 +79,12 @@ typedef struct {
     xhci_psi_t psi_dict[16];    // psi字典
 } xhci_spc_t;
 
-struct usb_dev_t;
-struct usb_hub_port_t;
-struct pcie_dev_t;
+typedef struct usb_urb_t usb_urb_t;
+typedef struct usb_dev_t usb_dev_t;
+typedef struct usb_if_alt_t usb_if_alt_t;
+typedef struct usb_ep_t usb_ep_t;
+typedef struct usb_hub_port_t usb_hub_port_t;
+typedef struct pcie_dev_t pcie_dev_t;
 
 //xhci控制器
 typedef struct xhci_hcd_t{
@@ -121,14 +124,14 @@ typedef struct xhci_hcd_t{
     // ==========================================
     // 5. 软硬件映射与并发控制 (Software State)
     // ==========================================
-    struct usb_dev_t    **udevs;           // 插槽到设备的逻辑映射 (通过 Slot ID 查找 usb_dev_t)
-    struct usb_hub_port_t *ports;          // xhci原生端口
+    usb_dev_t    **udevs;           // 插槽到设备的逻辑映射 (通过 Slot ID 查找 usb_dev_t)
+    usb_hub_port_t *ports;          // xhci原生端口
 
     // 注意：事件环不是一个，它是和中断器绑定的！这里根据 max_intrs 动态分配！
     xhci_event_ring_t*  event_ring_arr;
     uint16              enable_num_event_ring;  // 启用中断器数量，取cpu核心数量和max_intrs最小值
 
-    struct pcie_dev_t          *xdev;
+    pcie_dev_t          *xdev;
 } xhci_hcd_t;
 
 //响铃
@@ -206,3 +209,48 @@ static inline  void xhci_port_power_off(xhci_hcd_t *xhcd, uint8 port_num) {
     //等待20ms
 }
 //=======================================================================================
+
+
+
+//====================================ring 接口函数=======================================
+uint64 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push);
+int32 xhci_event_ring_deq(xhci_event_ring_t *ring, xhci_trb_t *out_evt);
+int32 xhci_alloc_submit_ring(xhci_submit_ring_t *ring,uint32 size);  //分配发送环
+int32 xhci_free_submit_ring(xhci_submit_ring_t *ring); //释放发送环
+int32 xhci_alloc_event_ring(xhci_event_ring_t *ring,uint32 ring_size); //分配事件环
+int32 xhci_free_event_ring(xhci_event_ring_t *ring); //释放事件环
+int32 xhci_submit_cmd(xhci_hcd_t *xhcd, xhci_trb_t *cmd_trb,xhci_command_t *out_command);
+int32 xhci_alloc_ep_ring(usb_ep_t *ep);
+int32 xhci_free_ep_ring(usb_ep_t *ep);
+int32 xhci_submit_urb(usb_urb_t *urb);
+
+// 计算步进后的索引，自动跨越 Link TRB
+static inline uint32 xhci_submit_ring_next_idx(uint32 cur_idx,uint32 size) {
+    // 如果走到倒数第一个位置 (Link TRB)，直接绕回 0
+    return (++cur_idx == size - 1) ? 0 : cur_idx;
+}
+//==========================================================================================
+
+
+//================================= ctx接口函数===============================================
+int32 xhci_ctx_slot_cfg(usb_dev_t *udev);
+int32 xhci_ctx_slot_ep0_eval(usb_dev_t *udev);
+int32 xhci_ctx_eps_cfg(usb_if_alt_t *drop_uif_alt,usb_if_alt_t *add_uif_alt);
+int32 xhci_ctx_deconfigure_all(usb_dev_t *udev );
+int32 xhci_enable_slot_ep0(usb_dev_t *udev);
+//============================================================================================
+
+//================================= cmd命令 =================================================
+int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 port_num, uint8 *out_slot_id);
+int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);
+int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id, xhci_input_ctrl_ctx_t *in_ctx);
+int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, uint8 slot_id, xhci_input_ctrl_ctx_t *in_ctx, uint8 dc);
+int32 xhci_cmd_eval_ctx(xhci_hcd_t *xhcd, uint8 slot_id, xhci_input_ctrl_ctx_t *in_ctx);
+int32 xhci_cmd_stop_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
+int32 xhci_cmd_reset_ep(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci);
+int32 xhci_cmd_set_tr_deq_ptr(xhci_hcd_t *xhcd, uint8 slot_id, uint8 ep_dci,xhci_submit_ring_t *transfer_ring);
+int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id);
+//==================================================================================================
+
+
+

@@ -8,7 +8,6 @@
 #include "usb-dev.h"
 #include "errno.h"
 #include "usb-hub.h"
-#include "xhci-ring.h"
 #include "xhci-service.h"
 #include "xhci-hcd.h"
 

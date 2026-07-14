@@ -1,4 +1,3 @@
-#include "xhci-ring.h"
 #include "xhci-hcd.h"
 #include "errno.h"
 #include "vmm.h"

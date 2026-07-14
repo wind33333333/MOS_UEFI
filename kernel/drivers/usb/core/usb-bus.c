@@ -1,5 +1,5 @@
-#include "../include/usb-bus.h"
-#include "../include/usb-dev.h"
+#include "usb-bus.h"
+#include "usb-dev.h"
 
 device_type_t usb_dev_type = {"usb-dev"};
 device_type_t usb_if_type = {"usb-if"};

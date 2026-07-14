@@ -5,7 +5,7 @@
 #include "usb-bus.h"
 #include "drivers/usb/include/usb-dev.h"
 #include "xhci-service.h"
-#include "xhci-ring.h"
+#include "xhci-hcd.h"
 
 //pcie总线
 bus_type_t pcie_bus_type;
