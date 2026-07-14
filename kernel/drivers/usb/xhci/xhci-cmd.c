@@ -172,7 +172,7 @@ int32 xhci_cmd_reset_dev(xhci_hcd_t *xhcd, uint8 slot_id) {
  * @brief 纯物理层的主板级 STALL 抢救 (只救主板，不救 U 盘)
  * @return int32 0 表示主板端点恢复成功，负数表示主板硬件已物理级死亡
  */
-static inline int32 xhci_recover_stall(usb_dev_t *udev, uint8 ep_dci) {
+int32 xhci_recover_stall(usb_dev_t *udev, uint8 ep_dci) {
     int32 posix_err;
     color_printk(YELLOW, BLACK, "[xHCI CPR] Executing Host-side STALL recovery for DCI=%d\n", ep_dci);
 
