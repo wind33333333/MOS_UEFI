@@ -134,11 +134,6 @@ typedef struct xhci_hcd_t{
     pcie_dev_t          *xdev;
 } xhci_hcd_t;
 
-//响铃
-static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 value) {
-    xhcd->db_reg[db_number] = value;
-}
-
 
 //xhci原生端口操作命令
 //==========================================================================================
@@ -223,6 +218,11 @@ int32 xhci_submit_cmd(xhci_hcd_t *xhcd, xhci_trb_t *cmd_trb,xhci_command_t *out_
 int32 xhci_alloc_ep_ring(usb_ep_t *ep);
 int32 xhci_free_ep_ring(usb_ep_t *ep);
 int32 xhci_submit_urb(usb_urb_t *urb);
+
+//响铃
+static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 value) {
+    xhcd->db_reg[db_number] = value;
+}
 
 // 计算步进后的索引，自动跨越 Link TRB
 static inline uint32 xhci_submit_ring_next_idx(uint32 cur_idx,uint32 size) {
