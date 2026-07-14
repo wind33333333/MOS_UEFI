@@ -128,55 +128,6 @@ char* xhci_get_comp_code_str(uint8 comp_code) {
 
 
 
-
-
-
-//发送xhci命令
-int32 xhci_submit_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_command_t *out_command) {
-    // 1. 在外面慢吞吞地申请内存 (完全不占锁)
-    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
-    if (command == NULL) {
-        return -ENOMEM;
-    }
-
-    // 2. 尝试入队，并严格检查结果
-    uint64 cpu_flags;
-    spin_lock_irqsave(&xhcd->cmd_ring.ring_lock,&cpu_flags);
-    uint64 pa_or_err = xhci_submit_ring_enq(&xhcd->cmd_ring, cmd_trb);
-    if (pa_or_err == ENOMEM) { // 假设环满返回此宏或 -1
-        spin_unlock_irqrestore(&xhcd->cmd_ring.ring_lock, cpu_flags);
-        kfree(command);     // 入队失败，销毁面单
-        return -EBUSY;      // 返回系统繁忙
-    }
-
-    // 3. 组装面单并挂链
-    command->cmd_trb_pa = pa_or_err;
-    command->status = -EINPROGRESS;
-    command->is_done = FALSE;
-    list_add_tail(&xhcd->cmd_ring.pending_list, &command->node);
-    spin_unlock_irqrestore(&xhcd->cmd_ring.ring_lock, cpu_flags);
-
-    // 4. 敲击门铃，通知硬件
-    xhci_ring_doorbell(xhcd, 0, 0);
-
-    // 5. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
-    while (command->is_done == FALSE) {
-        asm_pause();
-        __asm__ __volatile__ ("" ::: "memory");
-    }
-
-    // 6. 返回结果
-    if (out_command != NULL) {
-        *out_command = *command;
-    }
-
-    // 7. 释放面单
-    kfree(command);
-
-    return out_command->status;
-}
-
-
 /**
  * @brief 分配并初始化 xHCI 提交环 (用于 Command Ring 和 Transfer Ring)
  * @param ring 指向要初始化的环形缓冲区控制块
@@ -249,6 +200,187 @@ int32 xhci_alloc_event_ring(xhci_event_ring_t *ring,uint32 ring_size) {
 int32 xhci_free_event_ring(xhci_event_ring_t *ring) {
 
 }
+
+
+// 给端点分配环 (终极统一抽象版)
+int32 xhci_alloc_ep_ring(usb_ep_t *ep) {
+    uint64 tr_dequeue_ptr;
+
+    int32 err;
+
+    // 安全边界截断
+    uint32 streams_exp = ep->enable_streams_exp;
+
+    if (streams_exp) {
+        // ==========================================================
+        // 👑 情况 B：流模式 (Stream Mode - 适用于 USB 3.0 UAS 等)
+        // ==========================================================
+        uint32 num_streams = (1 << streams_exp)+1;           // 流环的第0个不能用，所以需要：2^4 +1 = 17
+        uint32 num_streams_array = 1 << (streams_exp + 1);     // 硬件要求流数组需要按倍数对齐，例如streams_exp=4,则2^5 = 32
+
+        // 1. 给硬件 DMA 读的上下文数组 (必须 16 字节对齐)
+        xhci_stream_ctx_t *streams_ctx_array = kzalloc_dma(num_streams_array * sizeof(xhci_stream_ctx_t));
+        if (streams_ctx_array == NULL) return -ENOMEM;
+
+        // 记录上下文，方便后续释放内存
+        ep->streams_ctx_array = streams_ctx_array;
+
+        // 2. ★ 核心重构：给软件管理的统一环数组 (分配 N+1 个)
+        // 索引 0 闲置防越界，索引 1~N 对应真实的 Stream ID
+        ep->ring_arr = kzalloc(num_streams * sizeof(xhci_submit_ring_t));
+        if (ep->ring_arr == NULL) return -ENOMEM;
+
+        // 更新逻辑状态
+        ep->lsa = 1; // 线性流数组标志
+        ep->hid = 1; // 主机初始化禁用标志
+
+        // 初始化每一个流环
+        for (uint32 s = 1; s < num_streams; s++) {
+            // 对数组中的每一个环进行物理分配
+            err = xhci_alloc_submit_ring(&ep->ring_arr[s],ep->ring_max_trbs);
+            if (err < 0) return err;
+
+            // 将分配好的环的物理地址，写入硬件要求的 Context 数组中
+            // SCT=1 (Primary TRB Ring: bit 1~3), DCS=1 (bit 0)
+            streams_ctx_array[s].tr_dequeue = va_to_pa(ep->ring_arr[s].ring_base) | (1 << 1) | 1;
+            streams_ctx_array[s].reserved = 0;
+        }
+
+        // Stream ID 0 在硬件规范中是保留的，必须清零
+        streams_ctx_array[0].tr_dequeue = 0;
+        streams_ctx_array[0].reserved = 0;
+
+        // 硬件 Endpoint Context 需要的是整个 Stream Context 数组的首地址
+        tr_dequeue_ptr = va_to_pa(streams_ctx_array);
+
+    } else {
+        // ==========================================================
+        // 👑 情况 A：非流模式 (No-Stream Mode - 经典 Transfer Ring)
+        // ==========================================================
+
+        // 1. ★ 核心重构：给软件管理的统一环数组 (仅分配 1 个)
+        ep->ring_arr = kzalloc(sizeof(xhci_submit_ring_t));
+        if (ep->ring_arr == NULL) return -ENOMEM;
+
+        // 2. 分配并初始化这唯一的环 (它就是 rings[0])
+        err = xhci_alloc_submit_ring(&ep->ring_arr[0],ep->ring_max_trbs);
+        if (err < 0) return err;
+
+        // 更新逻辑状态
+        ep->lsa = 0;
+        ep->hid = 0;
+
+        // 硬件 Endpoint Context 直接要这个单一环的物理首地址，DCS=1
+        tr_dequeue_ptr = va_to_pa(ep->ring_arr[0].ring_base) | 1;
+    }
+
+    // ==========================================================
+    // 终极赋值：写回端点上下文结构体
+    // ==========================================================
+    ep->cerr = 3;
+    ep->trq_phys_addr = tr_dequeue_ptr; // 供后续写入 xHCI 硬件的 Endpoint Context
+
+    return 0;
+}
+
+
+
+// 释放端点环 (终极统一抽象版)
+int32 xhci_free_ep_ring(usb_ep_t *ep) {
+    // 0. 防御性拦截：如果根本没分配过，直接返回
+    if (ep == NULL || ep->ring_arr == NULL) {
+        return -EINVAL;
+    }
+
+    if (ep->enable_streams_exp > 0) {
+        // ==========================================================
+        // 👑 情况 B：流模式 (Stream Mode) 的销毁
+        // ==========================================================
+
+        // 1. 释放每一个具体的流环 (TRB 物理内存)
+        uint32 enable_num_streams = (1<<ep->enable_streams_exp)+1;
+        for (uint32 s = 1; s < enable_num_streams; s++) {
+            xhci_free_submit_ring(&ep->ring_arr[s]);
+        }
+
+        // 2. 释放专供硬件读取的 DMA 上下文数组
+        if (ep->streams_ctx_array != NULL) {
+            kfree(ep->streams_ctx_array); // ★ 修复：流模式特有的 DMA 内存释放
+            ep->streams_ctx_array = NULL;
+        }
+
+    } else {
+        // ==========================================================
+        // 👑 情况 A：非流模式 (No-Stream Mode) 的销毁
+        // ==========================================================
+
+        // 释放那唯一的普通传输环
+        xhci_free_submit_ring(&ep->ring_arr[0]);
+    }
+
+    // ==========================================================
+    // ★ 终极统一回收：拆除统一调度层
+    // ==========================================================
+    // 无论是流模式分配的 N+1 个元素的数组，还是非流模式分配的 1 个元素的数组，
+    // 它们都是用 kzalloc 申请的，最后在这里一刀切释放！
+    kfree(ep->ring_arr);
+    ep->ring_arr = NULL;
+
+    // 清理端点逻辑状态，恢复出厂设置，防止悬空指针引发 Use-After-Free
+    ep->enable_streams_exp = 0; // 如果你结构体里还没删干净，顺手清一下
+    ep->lsa = 0;
+    ep->hid = 0;
+    ep->trq_phys_addr = 0;
+
+    return 0; // 成功释放
+}
+
+
+//命令环发送xhci命令
+int32 xhci_submit_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_command_t *out_command) {
+    // 1. 在外面慢吞吞地申请内存 (完全不占锁)
+    xhci_command_t *command = kzalloc(sizeof(xhci_command_t));
+    if (command == NULL) {
+        return -ENOMEM;
+    }
+
+    // 2. 尝试入队，并严格检查结果
+    uint64 cpu_flags;
+    spin_lock_irqsave(&xhcd->cmd_ring.ring_lock,&cpu_flags);
+    uint64 pa_or_err = xhci_submit_ring_enq(&xhcd->cmd_ring, cmd_trb);
+    if (pa_or_err == ENOMEM) { // 假设环满返回此宏或 -1
+        spin_unlock_irqrestore(&xhcd->cmd_ring.ring_lock, cpu_flags);
+        kfree(command);     // 入队失败，销毁面单
+        return -EBUSY;      // 返回系统繁忙
+    }
+
+    // 3. 组装面单并挂链
+    command->cmd_trb_pa = pa_or_err;
+    command->status = -EINPROGRESS;
+    command->is_done = FALSE;
+    list_add_tail(&xhcd->cmd_ring.pending_list, &command->node);
+    spin_unlock_irqrestore(&xhcd->cmd_ring.ring_lock, cpu_flags);
+
+    // 4. 敲击门铃，通知硬件
+    xhci_ring_doorbell(xhcd, 0, 0);
+
+    // 5. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
+    while (command->is_done == FALSE) {
+        asm_pause();
+        __asm__ __volatile__ ("" ::: "memory");
+    }
+
+    // 6. 返回结果
+    if (out_command != NULL) {
+        *out_command = *command;
+    }
+
+    // 7. 释放面单
+    kfree(command);
+
+    return out_command->status;
+}
+
 
 /**
  * @brief [内联执行器] 处理 EP0 控制传输 (三阶段)
@@ -502,138 +634,7 @@ int32 xhci_submit_urb(usb_urb_t *urb) {
     return 0;
 }
 
-// 给端点分配环 (终极统一抽象版)
-int32 xhci_alloc_ep_ring(usb_ep_t *ep) {
-    uint64 tr_dequeue_ptr;
 
-    int32 err;
-
-    // 安全边界截断
-    uint32 streams_exp = ep->enable_streams_exp;
-
-    if (streams_exp) {
-        // ==========================================================
-        // 👑 情况 B：流模式 (Stream Mode - 适用于 USB 3.0 UAS 等)
-        // ==========================================================
-        uint32 num_streams = (1 << streams_exp)+1;           // 流环的第0个不能用，所以需要：2^4 +1 = 17
-        uint32 num_streams_array = 1 << (streams_exp + 1);     // 硬件要求流数组需要按倍数对齐，例如streams_exp=4,则2^5 = 32
-
-        // 1. 给硬件 DMA 读的上下文数组 (必须 16 字节对齐)
-        xhci_stream_ctx_t *streams_ctx_array = kzalloc_dma(num_streams_array * sizeof(xhci_stream_ctx_t));
-        if (streams_ctx_array == NULL) return -ENOMEM;
-
-        // 记录上下文，方便后续释放内存
-        ep->streams_ctx_array = streams_ctx_array;
-
-        // 2. ★ 核心重构：给软件管理的统一环数组 (分配 N+1 个)
-        // 索引 0 闲置防越界，索引 1~N 对应真实的 Stream ID
-        ep->ring_arr = kzalloc(num_streams * sizeof(xhci_submit_ring_t));
-        if (ep->ring_arr == NULL) return -ENOMEM;
-
-        // 更新逻辑状态
-        ep->lsa = 1; // 线性流数组标志
-        ep->hid = 1; // 主机初始化禁用标志
-
-        // 初始化每一个流环
-        for (uint32 s = 1; s < num_streams; s++) {
-            // 对数组中的每一个环进行物理分配
-            err = xhci_alloc_submit_ring(&ep->ring_arr[s],ep->ring_max_trbs);
-            if (err < 0) return err;
-
-            // 将分配好的环的物理地址，写入硬件要求的 Context 数组中
-            // SCT=1 (Primary TRB Ring: bit 1~3), DCS=1 (bit 0)
-            streams_ctx_array[s].tr_dequeue = va_to_pa(ep->ring_arr[s].ring_base) | (1 << 1) | 1;
-            streams_ctx_array[s].reserved = 0;
-        }
-
-        // Stream ID 0 在硬件规范中是保留的，必须清零
-        streams_ctx_array[0].tr_dequeue = 0;
-        streams_ctx_array[0].reserved = 0;
-
-        // 硬件 Endpoint Context 需要的是整个 Stream Context 数组的首地址
-        tr_dequeue_ptr = va_to_pa(streams_ctx_array);
-
-    } else {
-        // ==========================================================
-        // 👑 情况 A：非流模式 (No-Stream Mode - 经典 Transfer Ring)
-        // ==========================================================
-
-        // 1. ★ 核心重构：给软件管理的统一环数组 (仅分配 1 个)
-        ep->ring_arr = kzalloc(sizeof(xhci_submit_ring_t));
-        if (ep->ring_arr == NULL) return -ENOMEM;
-
-        // 2. 分配并初始化这唯一的环 (它就是 rings[0])
-        err = xhci_alloc_submit_ring(&ep->ring_arr[0],ep->ring_max_trbs);
-        if (err < 0) return err;
-
-        // 更新逻辑状态
-        ep->lsa = 0;
-        ep->hid = 0;
-
-        // 硬件 Endpoint Context 直接要这个单一环的物理首地址，DCS=1
-        tr_dequeue_ptr = va_to_pa(ep->ring_arr[0].ring_base) | 1;
-    }
-
-    // ==========================================================
-    // 终极赋值：写回端点上下文结构体
-    // ==========================================================
-    ep->cerr = 3;
-    ep->trq_phys_addr = tr_dequeue_ptr; // 供后续写入 xHCI 硬件的 Endpoint Context
-
-    return 0;
-}
-
-
-
-// 释放端点环 (终极统一抽象版)
-int32 xhci_free_ep_ring(usb_ep_t *ep) {
-    // 0. 防御性拦截：如果根本没分配过，直接返回
-    if (ep == NULL || ep->ring_arr == NULL) {
-        return -EINVAL;
-    }
-
-    if (ep->enable_streams_exp > 0) {
-        // ==========================================================
-        // 👑 情况 B：流模式 (Stream Mode) 的销毁
-        // ==========================================================
-
-        // 1. 释放每一个具体的流环 (TRB 物理内存)
-        uint32 enable_num_streams = (1<<ep->enable_streams_exp)+1;
-        for (uint32 s = 1; s < enable_num_streams; s++) {
-            xhci_free_submit_ring(&ep->ring_arr[s]);
-        }
-
-        // 2. 释放专供硬件读取的 DMA 上下文数组
-        if (ep->streams_ctx_array != NULL) {
-            kfree(ep->streams_ctx_array); // ★ 修复：流模式特有的 DMA 内存释放
-            ep->streams_ctx_array = NULL;
-        }
-
-    } else {
-        // ==========================================================
-        // 👑 情况 A：非流模式 (No-Stream Mode) 的销毁
-        // ==========================================================
-
-        // 释放那唯一的普通传输环
-        xhci_free_submit_ring(&ep->ring_arr[0]);
-    }
-
-    // ==========================================================
-    // ★ 终极统一回收：拆除统一调度层
-    // ==========================================================
-    // 无论是流模式分配的 N+1 个元素的数组，还是非流模式分配的 1 个元素的数组，
-    // 它们都是用 kzalloc 申请的，最后在这里一刀切释放！
-    kfree(ep->ring_arr);
-    ep->ring_arr = NULL;
-
-    // 清理端点逻辑状态，恢复出厂设置，防止悬空指针引发 Use-After-Free
-    ep->enable_streams_exp = 0; // 如果你结构体里还没删干净，顺手清一下
-    ep->lsa = 0;
-    ep->hid = 0;
-    ep->trq_phys_addr = 0;
-
-    return 0; // 成功释放
-}
 
 
 
