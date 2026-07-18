@@ -93,6 +93,7 @@ typedef struct {
 // 设备结构体：只保留一个链表头
 typedef struct {
     list_head_t field_list_head; // ★ 链表头
+    uint8       has_report_id;   // 0 表示无 ID，1 表示有 ID
     uint32      field_count;     // 纯粹用来做统计
     usb_urb_t   *int_urb;
     uint8       *report_buf;

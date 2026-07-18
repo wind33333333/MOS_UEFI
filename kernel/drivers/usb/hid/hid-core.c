@@ -95,6 +95,7 @@ static inline int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 len
                 // [核心修正]：遇到新的 Report ID 时，重置当前位移量。
                 // 带有 Report ID 的设备，实际数据包的第 0 个字节(8 bits)固定为 ID 本身。
                 // 所以属于该 ID 的真实数据字段必须从偏移量 8 开始。
+                hdev->has_report_id = 1;
                 current_bit_offset = 8;
             } else if (item_tag == HID_GLOBAL_TAG_REPORT_COUNT) {
                 global_report_count = data;
