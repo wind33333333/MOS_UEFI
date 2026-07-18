@@ -37,33 +37,45 @@ static inline int32 usb_hid_get_report_desc(usb_dev_t *udev, uint8 interface_num
 static inline int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 len) {
     uint32 ptr = 0;
 
-    // Global Items
+    // Global Items (全局状态)
     uint32 global_usage_page = 0;
     uint32 global_report_size = 0;
     uint32 global_report_count = 0;
     uint32 global_report_id = 0;
 
-    // Local Items
+    // Local Items (局部状态)
     uint32 local_usage = 0;
     uint32 local_usage_min = 0;
     uint32 local_usage_max = 0;
 
+    // 当前位移量记录器
     uint32 current_bit_offset = 0;
 
     while (ptr < len) {
         uint8 item_header = desc[ptr++];
+
+        // === 长项目防御屏障 ===
+        if (item_header == HID_LONG_ITEM_PREFIX) {
+            if (ptr + 2 > len) return -1;
+
+            uint8 datasize = desc[ptr];
+            uint32 skip_bytes = 2 + datasize;
+            if (ptr + skip_bytes > len) return -1;
+
+            ptr += skip_bytes;
+            continue;
+        }
+
         uint8 item_type = (item_header >> 2) & 0x03;
         uint8 item_tag  = (item_header >> 4) & 0x0F;
         uint8 item_size = item_header & 0x03;
 
         int param_bytes = (item_size == 3) ? 4 : item_size;
 
-        // 1. 越界保护
         if (ptr + param_bytes > len) {
-            return -1; // 描述符损坏，中止解析
+            return -1;
         }
 
-        // 2. 安全的内存读取 (替换 for 循环)
         uint32 data = 0;
         switch (param_bytes) {
             case 1: data = desc[ptr]; break;
@@ -72,58 +84,61 @@ static inline int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 len
         }
         ptr += param_bytes;
 
-        if (item_type == 1) {
-            // === Global Items ===
-            if (item_tag == 0x00) global_usage_page = data;
-            else if (item_tag == 0x07) global_report_size = data;
-            else if (item_tag == 0x08) global_report_id = data;    // Tag 0x08 是 Report ID
-            else if (item_tag == 0x09) global_report_count = data; // Tag 0x09 才是 Report Count
+        if (item_type == HID_ITEM_TYPE_GLOBAL) {
+            // === Global Items (全局项目) ===
+            if (item_tag == HID_GLOBAL_TAG_USAGE_PAGE) {
+                global_usage_page = data;
+            } else if (item_tag == HID_GLOBAL_TAG_REPORT_SIZE) {
+                global_report_size = data;
+            } else if (item_tag == HID_GLOBAL_TAG_REPORT_ID) {
+                global_report_id = data;
+                // [核心修正]：遇到新的 Report ID 时，重置当前位移量。
+                // 带有 Report ID 的设备，实际数据包的第 0 个字节(8 bits)固定为 ID 本身。
+                // 所以属于该 ID 的真实数据字段必须从偏移量 8 开始。
+                current_bit_offset = 8;
+            } else if (item_tag == HID_GLOBAL_TAG_REPORT_COUNT) {
+                global_report_count = data;
+            }
 
-        } else if (item_type == 2) {
-            // === Local Items ===
-            if (item_tag == 0x00) local_usage = data;     // 补全最常用的单 Usage
-            else if (item_tag == 0x01) local_usage_min = data;
-            else if (item_tag == 0x02) local_usage_max = data;
+        } else if (item_type == HID_ITEM_TYPE_LOCAL) {
+            // === Local Items (局部项目) ===
+            if (item_tag == HID_LOCAL_TAG_USAGE) local_usage = data;
+            else if (item_tag == HID_LOCAL_TAG_USAGE_MIN) local_usage_min = data;
+            else if (item_tag == HID_LOCAL_TAG_USAGE_MAX) local_usage_max = data;
 
-        } else if (item_type == 0) {
-            // === Main Items ===
-            // Tag 0x08 (Input), 0x09 (Output), 0x0B (Feature)
-            if (item_tag == 0x08 || item_tag == 0x09 || item_tag == 0x0B) {
+        } else if (item_type == HID_ITEM_TYPE_MAIN) {
+            // === Main Items (主项目) ===
+            if (item_tag == HID_MAIN_TAG_INPUT ||
+                item_tag == HID_MAIN_TAG_OUTPUT ||
+                item_tag == HID_MAIN_TAG_FEATURE) {
 
-                // 仅当该字段不是 Constant (常量占位符) 时，才记录为有效解析节点
                 if ((data & 0x01) == 0) {
                     hid_field_t *field = kmalloc(sizeof(hid_field_t));
                     if (!field) return -ENOMEM;
 
                     field->bit_offset = current_bit_offset;
                     field->bit_size   = global_report_size;
-                    field->report_count = global_report_count; // 必须记录 Count
+                    field->report_count = global_report_count;
+                    field->report_id  = global_report_id;  // 记录属于哪个 ID
                     field->usage_page = global_usage_page;
 
-                    // 兼容 Usage 和 Usage Min/Max 两种声明方式
                     field->usage_min  = local_usage_min ? local_usage_min : local_usage;
                     field->usage_max  = local_usage_max ? local_usage_max : local_usage;
 
                     field->is_array   = (data & 0x02) == 0;
-                    field->dir        = (item_tag == 0x09) ? 1 : 0;
+                    field->dir        = (item_tag == HID_MAIN_TAG_OUTPUT) ? 1 : 0;
 
                     list_add_tail(&hdev->field_list_head, &field->node);
                     hdev->field_count++;
                 }
 
-                // 无论是否为 Constant，位移量必须推进
                 current_bit_offset += (global_report_size * global_report_count);
             }
 
-            // 3. Local 变量生命周期修正：遇到任何 Main Item 必须清空
+            // 3. Local 变量生命周期修正：遇到任何 Main Item (包括 Collection) 必须清空
             local_usage = 0;
             local_usage_min = 0;
             local_usage_max = 0;
-
-            // 4. 处理 Report ID 切换时的位移重置 (基础实现)
-            if (item_tag == 0x08 && (data & 0x01)) {
-                // 如果存在多个 Report ID，后续解析需要基于 ID 独立维护偏移量
-            }
         }
     }
     return 0;
