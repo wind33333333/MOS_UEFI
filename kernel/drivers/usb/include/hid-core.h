@@ -74,26 +74,152 @@
 #define HID_LONG_ITEM_PREFIX            0xFE  // 长项目的固定头部前缀字节
 
 
+// === 最常用的核心 Usage Pages ===
+#define HID_USAGE_PAGE_GENERIC          0x01  // 通用桌面控制 (鼠标, 键盘主设备, 摇杆)
+#define HID_USAGE_PAGE_SIMULATION       0x02  // 模拟飞行/赛车控制
+#define HID_USAGE_PAGE_VR               0x03  // 虚拟现实控制
+#define HID_USAGE_PAGE_SPORT            0x04  // 体育运动控制 (如高尔夫模拟器)
+#define HID_USAGE_PAGE_GAME             0x05  // 游戏控制 (手柄)
+#define HID_USAGE_PAGE_KEYBOARD         0x07  // 键盘/键盘按键 (标准的 A-Z, 0-9 都在这里)
+#define HID_USAGE_PAGE_LEDS             0x08  // LED 指示灯 (如键盘的 CapsLock 灯)
+#define HID_USAGE_PAGE_BUTTON           0x09  // 通用按键 (比如鼠标的左键、右键)
+#define HID_USAGE_PAGE_ORDINAL          0x0A  // 序号 (通常表示 "第N个实例")
+#define HID_USAGE_PAGE_CONSUMER         0x0C  // 消费者设备 (非常重要！音量加减、静音、播放暂停等媒体键)
+
+// === 现代输入与传感器 ===
+#define HID_USAGE_PAGE_DIGITIZER        0x0D  // 数位板/触摸屏 (包含触控点、笔压等)
+#define HID_USAGE_PAGE_HAPTICS          0x0E  // 触觉反馈 (设备震动)
+#define HID_USAGE_PAGE_PHYSICAL_INPUT   0x0F  // 物理输入反馈 (如力回馈方向盘)
+#define HID_USAGE_PAGE_BATTERY_SYSTEM   0x85  // 电池系统 (获取无线鼠标的剩余电量)
+
+/* =========================================================
+ * Generic Desktop Usages (Usage Page: 0x01)
+ * ========================================================= */
+// --- 设备类别 (Application Collections) ---
+#define HID_USAGE_GENERIC_POINTER           0x01    // 物理指针
+#define HID_USAGE_GENERIC_MOUSE             0x02    // 鼠标
+#define HID_USAGE_GENERIC_JOYSTICK          0x04    // 摇杆
+#define HID_USAGE_GENERIC_GAMEPAD           0x05    // 游戏手柄
+#define HID_USAGE_GENERIC_KEYBOARD          0x06    // 键盘
+#define HID_USAGE_GENERIC_KEYPAD            0x07    // 小键盘
+#define HID_USAGE_GENERIC_MULTI_AXIS        0x08    // 多轴控制器
+
+// --- 坐标与轴向 (Dynamic Values) ---
+#define HID_USAGE_GENERIC_X                 0x30    // X轴 (通常是左右)
+#define HID_USAGE_GENERIC_Y                 0x31    // Y轴 (通常是上下)
+#define HID_USAGE_GENERIC_Z                 0x32    // Z轴
+#define HID_USAGE_GENERIC_RX                0x33    // X轴旋转
+#define HID_USAGE_GENERIC_RY                0x34    // Y轴旋转
+#define HID_USAGE_GENERIC_RZ                0x35    // Z轴旋转
+#define HID_USAGE_GENERIC_SLIDER            0x36    // 滑块
+#define HID_USAGE_GENERIC_DIAL              0x37    // 拨盘
+#define HID_USAGE_GENERIC_WHEEL             0x38    // 滚轮 (常见的鼠标滚轮)
+#define HID_USAGE_GENERIC_HATSWITCH         0x39    // 苦力帽 (手柄上的十字键)
+
+// --- 系统控制 (System Controls) ---
+#define HID_USAGE_GENERIC_SYS_CONTROL       0x80    // 系统控制总称
+#define HID_USAGE_GENERIC_SYS_POWER_DOWN    0x81    // 关机键
+#define HID_USAGE_GENERIC_SYS_SLEEP         0x82    // 睡眠键
+#define HID_USAGE_GENERIC_SYS_WAKE_UP       0x83    // 唤醒键
+
+/* =========================================================
+ * Button Usages (Usage Page: 0x09)
+ * ========================================================= */
+#define HID_USAGE_BUTTON_1                  0x01    // 按钮1 (鼠标左键)
+#define HID_USAGE_BUTTON_2                  0x02    // 按钮2 (鼠标右键)
+#define HID_USAGE_BUTTON_3                  0x03    // 按钮3 (鼠标中键)
+#define HID_USAGE_BUTTON_4                  0x04    // 按钮4 (鼠标侧键：后退)
+#define HID_USAGE_BUTTON_5                  0x05    // 按钮5 (鼠标侧键：前进)
+// ... 手柄会有 Button 6 到 Button 16 甚至更多，按需扩展即可
+
+/* =========================================================
+ * Keyboard Usages (Usage Page: 0x07)
+ * ========================================================= */
+#define HID_USAGE_KEYBOARD_NOEVENT          0x00    // 无按键按下
+#define HID_USAGE_KEYBOARD_ROLLOVER         0x01    // 按键冲突 (无键位冲突破解失败时发送)
+#define HID_USAGE_KEYBOARD_POSTFAIL         0x02    // 自检失败
+
+// --- 标准字母与数字 (示例) ---
+#define HID_USAGE_KEYBOARD_A                0x04    // 字母 A
+#define HID_USAGE_KEYBOARD_Z                0x1D    // 字母 Z
+#define HID_USAGE_KEYBOARD_1                0x1E    // 数字 1
+#define HID_USAGE_KEYBOARD_0                0x27    // 数字 0
+#define HID_USAGE_KEYBOARD_RETURN           0x28    // 回车 (Enter)
+#define HID_USAGE_KEYBOARD_ESCAPE           0x29    // Esc
+#define HID_USAGE_KEYBOARD_BACKSPACE        0x2A    // 退格 (Backspace)
+#define HID_USAGE_KEYBOARD_TAB              0x2B    // Tab
+#define HID_USAGE_KEYBOARD_SPACE            0x2C    // 空格 (Space)
+
+// --- 修饰键 (Modifiers，固定映射在 8 个 bit 里) ---
+#define HID_USAGE_KEYBOARD_LCTRL            0xE0    // 左 Ctrl
+#define HID_USAGE_KEYBOARD_LSHIFT           0xE1    // 左 Shift
+#define HID_USAGE_KEYBOARD_LALT             0xE2    // 左 Alt
+#define HID_USAGE_KEYBOARD_LGUI             0xE3    // 左 GUI (Windows键/Command键)
+#define HID_USAGE_KEYBOARD_RCTRL            0xE4    // 右 Ctrl
+#define HID_USAGE_KEYBOARD_RSHIFT           0xE5    // 右 Shift
+#define HID_USAGE_KEYBOARD_RALT             0xE6    // 右 Alt
+#define HID_USAGE_KEYBOARD_RGUI             0xE7    // 右 GUI
+
+/* =========================================================
+ * LED Usages (Usage Page: 0x08)
+ * ========================================================= */
+#define HID_USAGE_LED_NUM_LOCK              0x01    // 小键盘锁灯
+#define HID_USAGE_LED_CAPS_LOCK             0x02    // 大写锁灯
+#define HID_USAGE_LED_SCROLL_LOCK           0x03    // 滚动锁灯
+#define HID_USAGE_LED_COMPOSE               0x04    // 组合键灯
+#define HID_USAGE_LED_KANA                  0x05    // 日文 Kana 模式灯
+
+/* =========================================================
+ * Consumer Control Usages (Usage Page: 0x0C)
+ * ========================================================= */
+#define HID_USAGE_CONSUMER_CONTROL          0x01    // 消费类控制总类
+#define HID_USAGE_CONSUMER_PLAY_PAUSE       0xCD    // 播放/暂停
+#define HID_USAGE_CONSUMER_SCAN_NEXT_TRK    0xB5    // 下一曲
+#define HID_USAGE_CONSUMER_SCAN_PREV_TRK    0xB6    // 上一曲
+#define HID_USAGE_CONSUMER_MUTE             0xE2    // 静音
+#define HID_USAGE_CONSUMER_VOLUME_INC       0xE9    // 音量增加
+#define HID_USAGE_CONSUMER_VOLUME_DEC       0xEA    // 音量减少
+#define HID_USAGE_CONSUMER_AC_HOME          0x223   // 浏览器主页 (AC = Application Control)
+#define HID_USAGE_CONSUMER_AC_BACK          0x224   // 浏览器后退
+
+
+
+
 struct usb_if_t;
 
-// 描述“一段特定含义的数据”的结构体
-typedef struct {
-    list_head_t node;  // ★ 内核标准的双向链表节点
-    uint32 bit_offset;   // 这段数据在盲盒里的起始 bit 位置
-    uint32 bit_size;     // 这段数据占多少个 bit
-    uint32 report_count;
-    uint32 report_id;
-    uint32 usage_page;   // 字典大类 (比如 0x07 代表键盘)
-    uint32 usage_min;    // 字典具体词条范围起始
-    uint32 usage_max;    // 字典具体词条范围结束
-    uint8  is_array;     // 0: 位图(如Ctrl/Shift)  1: 数组(如普通按键)
-    uint8  dir;          // 0: Input (读按键), 1: Output (写指示灯)
+// HID 报告类型
+#define HID_REPORT_TYPE_INPUT   0
+#define HID_REPORT_TYPE_OUTPUT  1
+#define HID_REPORT_TYPE_FEATURE 2
+
+// 工业级 HID 字段节点 (中断提取地图)
+typedef struct hid_field_t {
+ list_head_t node;
+
+ uint8  report_type;    // 数据流动方向：INPUT, OUTPUT, FEATURE
+ uint8  report_id;      // 0 表示设备未使用 Report ID 功能
+
+ // 内存寻址信息
+ uint32 bit_offset;     // 该字段在 raw buffer 中的起始 bit 位置
+ uint32 bit_size;       // 该字段占用的 bit 数量 (Report Size)
+
+ // 语义属性
+ uint16 usage_page;     // 用途页 (如 Generic Desktop, Keyboard)
+ uint16 usage;          // 具体用途 (如 Mouse X, Button 1)
+ uint32 flags;          // Data/Const, Var/Array, Abs/Rel 等标志位
+
+ // 数据范围与量纲
+ int32  logical_min;
+ int32  logical_max;
+ int32  physical_min;
+ int32  physical_max;
+ uint32 unit;
+ int32  unit_exponent;
 } hid_field_t;
 
 // 设备结构体：只保留一个链表头
 typedef struct {
     list_head_t field_list_head; // ★ 链表头
-    uint8       has_report_id;   // 0 表示无 ID，1 表示有 ID
     uint32      field_count;     // 纯粹用来做统计
     usb_urb_t   *int_urb;
     uint8       *report_buf;

@@ -33,161 +33,224 @@ static inline int32 usb_hid_get_report_desc(usb_dev_t *udev, uint8 interface_num
 }
 
 
-// 动态解析器核心引擎
-static inline int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 len) {
+// Global 状态 (会被 Push/Pop 压栈)
+typedef struct {
+    uint16 usage_page;
+    int32  logical_min;
+    int32  logical_max;
+    int32  physical_min;
+    int32  physical_max;
+    uint32 unit;
+    int32  unit_exponent;
+    uint32 report_size;
+    uint32 report_count;
+    uint8  report_id;
+} hid_global_state_t;
+
+// Local 状态 (遇到 Main Item 后自动清空)
+#define MAX_USAGES_PER_ITEM 16
+typedef struct {
+    uint16 usages[MAX_USAGES_PER_ITEM];
+    uint32 usage_count;
+    uint16 usage_min;
+    uint16 usage_max;
+} hid_local_state_t;
+
+/* ==========================================
+ * 2. 辅助函数：符号扩展
+ * ========================================== */
+static int32 sign_extend(uint32 data, uint8 size_bytes) {
+    if (size_bytes == 1 && (data & 0x80))     return (int32)(data | 0xFFFFFF00);
+    if (size_bytes == 2 && (data & 0x8000))   return (int32)(data | 0xFFFF0000);
+    return (int32)data;
+}
+
+
+hid_field_t* hid_parse_report_desc(hid_dev_t *hdev,const uint8* desc, uint32 desc_len) {
+    // 状态机寄存器
+    hid_global_state_t global = {0};
+    hid_global_state_t global_stack[8] = {0}; // 深度 8 的栈
+    uint8 stack_ptr = 0;
+    hid_local_state_t  local = {0};
+
+    // Bit Offset 追踪器：维度为 [Report Type][Report ID]
+    // 索引 0 作为没有 Report ID 时的默认追踪器
+    uint32 bit_offsets[3][256] = {0};
+    boolean has_report_id = FALSE;
+
     uint32 ptr = 0;
+    while (ptr < desc_len) {
+        uint8 header = desc[ptr++];
+        uint8 item_size_code = header & 0x03;
+        uint8 item_type = (header >> 2) & 0x03;
+        uint8 item_tag  = (header >> 4) & 0x0F;
 
-    // Global Items (全局状态)
-    uint32 global_usage_page = 0;
-    uint32 global_report_size = 0;
-    uint32 global_report_count = 0;
-    uint32 global_report_id = 0;
-
-    // Local Items (局部状态)
-    uint32 local_usage = 0;
-    uint32 local_usage_min = 0;
-    uint32 local_usage_max = 0;
-
-    // 当前位移量记录器
-    uint32 current_bit_offset = 0;
-
-    while (ptr < len) {
-        uint8 item_header = desc[ptr++];
-
-        // === 长项目防御屏障 ===
-        if (item_header == HID_LONG_ITEM_PREFIX) {
-            if (ptr + 2 > len) return -1;
-
-            uint8 datasize = desc[ptr];
-            uint32 skip_bytes = 2 + datasize;
-            if (ptr + skip_bytes > len) return -1;
-
-            ptr += skip_bytes;
+        // Long Item 过滤
+        if (item_size_code == 3 && item_type == 3 && item_tag == 15) {
+            uint8 data_size = desc[ptr++];
+            ptr += 1 + data_size; // 跳过 tag 和 payload
             continue;
         }
 
-        uint8 item_type = (item_header >> 2) & 0x03;
-        uint8 item_tag  = (item_header >> 4) & 0x0F;
-        uint8 item_size = item_header & 0x03;
+        uint8 param_bytes = (item_size_code == 3) ? 4 : item_size_code;
+        uint32 raw_data = 0;
 
-        int param_bytes = (item_size == 3) ? 4 : item_size;
-
-        if (ptr + param_bytes > len) {
-            return -1;
+        for (int i = 0; i < param_bytes; i++) {
+            raw_data |= (desc[ptr + i] << (i * 8));
         }
-
-        uint32 data = 0;
-        switch (param_bytes) {
-            case 1: data = desc[ptr]; break;
-            case 2: data = desc[ptr] | (desc[ptr+1] << 8); break;
-            case 4: data = desc[ptr] | (desc[ptr+1] << 8) | (desc[ptr+2] << 16) | (desc[ptr+3] << 24); break;
-        }
+        int32 signed_data = sign_extend(raw_data, param_bytes);
         ptr += param_bytes;
 
-        if (item_type == HID_ITEM_TYPE_GLOBAL) {
-            // === Global Items (全局项目) ===
-            if (item_tag == HID_GLOBAL_TAG_USAGE_PAGE) {
-                global_usage_page = data;
-            } else if (item_tag == HID_GLOBAL_TAG_REPORT_SIZE) {
-                global_report_size = data;
-            } else if (item_tag == HID_GLOBAL_TAG_REPORT_ID) {
-                global_report_id = data;
-                // [核心修正]：遇到新的 Report ID 时，重置当前位移量。
-                // 带有 Report ID 的设备，实际数据包的第 0 个字节(8 bits)固定为 ID 本身。
-                // 所以属于该 ID 的真实数据字段必须从偏移量 8 开始。
-                hdev->has_report_id = 1;
-                current_bit_offset = 8;
-            } else if (item_tag == HID_GLOBAL_TAG_REPORT_COUNT) {
-                global_report_count = data;
+        // 处理 Local Items
+        if (item_type == 2) {
+            switch (item_tag) {
+                case 0x00: // Usage
+                    if (local.usage_count < MAX_USAGES_PER_ITEM)
+                        local.usages[local.usage_count++] = raw_data;
+                    break;
+                case 0x01: local.usage_min = raw_data; break;
+                case 0x02: local.usage_max = raw_data; break;
             }
+        }
+        // 处理 Global Items
+        else if (item_type == 1) {
+            switch (item_tag) {
+                case 0x00: global.usage_page = raw_data; break;
+                case 0x01: global.logical_min = signed_data; break;
+                case 0x02: global.logical_max = signed_data; break;
+                case 0x03: global.physical_min = signed_data; break;
+                case 0x04: global.physical_max = signed_data; break;
+                case 0x05: global.unit_exponent = signed_data; break;
+                case 0x06: global.unit = raw_data; break;
+                case 0x07: global.report_size = raw_data; break;
+                case 0x08:
+                    global.report_id = raw_data;
+                    has_report_id = TRUE;
+                    // 如果存在 Report ID，该端点的所有数据包前置 8 个 bit 的 ID
+                    // 因此我们需要将当前 ID 的追踪器初始偏移设为 8
+                    if (bit_offsets[HID_REPORT_TYPE_INPUT][global.report_id] == 0) {
+                        bit_offsets[HID_REPORT_TYPE_INPUT][global.report_id] = 8;
+                        bit_offsets[HID_REPORT_TYPE_OUTPUT][global.report_id] = 8;
+                        bit_offsets[HID_REPORT_TYPE_FEATURE][global.report_id] = 8;
+                    }
+                    break;
+                case 0x09: global.report_count = raw_data; break;
+                case 0x0A: // Push
+                    if (stack_ptr < 8) global_stack[stack_ptr++] = global;
+                    break;
+                case 0x0B: // Pop
+                    if (stack_ptr > 0) global = global_stack[--stack_ptr];
+                    break;
+            }
+        }
+        // 处理 Main Items (执行真正的解析生成逻辑)
+        else if (item_type == 0) {
+            if (item_tag == 0x08 /* Input */ || item_tag == 0x09 /* Output */ || item_tag == 0x0B /* Feature */) {
 
-        } else if (item_type == HID_ITEM_TYPE_LOCAL) {
-            // === Local Items (局部项目) ===
-            if (item_tag == HID_LOCAL_TAG_USAGE) local_usage = data;
-            else if (item_tag == HID_LOCAL_TAG_USAGE_MIN) local_usage_min = data;
-            else if (item_tag == HID_LOCAL_TAG_USAGE_MAX) local_usage_max = data;
+                uint8 r_type = (item_tag == 0x08) ? HID_REPORT_TYPE_INPUT :
+                                 (item_tag == 0x09) ? HID_REPORT_TYPE_OUTPUT : HID_REPORT_TYPE_FEATURE;
 
-        } else if (item_type == HID_ITEM_TYPE_MAIN) {
-            // === Main Items (主项目) ===
-            if (item_tag == HID_MAIN_TAG_INPUT ||
-                item_tag == HID_MAIN_TAG_OUTPUT ||
-                item_tag == HID_MAIN_TAG_FEATURE) {
+                // 按 Report Count 循环展开节点，实现 O(1) 提取地图
+                for (uint32 i = 0; i < global.report_count; i++) {
+                    hid_field_t* field = kmalloc(sizeof(hid_field_t));
 
-                if ((data & 0x01) == 0) {
-                    hid_field_t *field = kmalloc(sizeof(hid_field_t));
-                    if (!field) return -ENOMEM;
+                    // 1. 记录基础路由信息
+                    field->report_type = r_type;
+                    field->report_id   = global.report_id;
 
-                    field->bit_offset = current_bit_offset;
-                    field->bit_size   = global_report_size;
-                    field->report_count = global_report_count;
-                    field->report_id  = global_report_id;  // 记录属于哪个 ID
-                    field->usage_page = global_usage_page;
+                    // 2. 核心：位偏移计算与推进
+                    field->bit_offset = bit_offsets[r_type][global.report_id];
+                    field->bit_size   = global.report_size;
+                    bit_offsets[r_type][global.report_id] += global.report_size;
 
-                    field->usage_min  = local_usage_min ? local_usage_min : local_usage;
-                    field->usage_max  = local_usage_max ? local_usage_max : local_usage;
+                    // 3. 语义赋予 (解决 Usage 分配问题)
+                    field->usage_page = global.usage_page;
+                    field->flags      = raw_data; // Constant, Variable, Absolute 等
 
-                    field->is_array   = (data & 0x02) == 0;
-                    field->dir        = (item_tag == HID_MAIN_TAG_OUTPUT) ? 1 : 0;
+                    // 如果这是一个常量 (Padding)，系统仍然需要记录它的位移（上面已累加），
+                    // 但没必要生成具体的有效 usage，提取时应用层可根据 flag 忽略它
+                    if (!(raw_data & 0x01)) { // It is Data (not Constant)
+                        if (local.usage_count > 0) {
+                            // 优先从列出的 Usage 中取，如果不够用，最后一个 usage 兜底
+                            uint32 u_idx = (i < local.usage_count) ? i : (local.usage_count - 1);
+                            field->usage = local.usages[u_idx];
+                        } else if (local.usage_max > local.usage_min) {
+                            // 使用 Usage Min/Max 范围
+                            field->usage = local.usage_min + i;
+                        } else {
+                            field->usage = 0; // 缺乏 usage 信息
+                        }
+                    }
 
+                    // 4. 写入物理与逻辑边界
+                    field->logical_min   = global.logical_min;
+                    field->logical_max   = global.logical_max;
+                    field->physical_min  = (global.physical_max != 0 || global.physical_min != 0) ? global.physical_min : global.logical_min;
+                    field->physical_max  = (global.physical_max != 0 || global.physical_min != 0) ? global.physical_max : global.logical_max;
+                    field->unit          = global.unit;
+                    field->unit_exponent = global.unit_exponent;
+
+                    // 5. 挂载到链表
                     list_add_tail(&hdev->field_list_head, &field->node);
                     hdev->field_count++;
                 }
 
-                current_bit_offset += (global_report_size * global_report_count);
+                // 根据 HID 规范：Main Item 结束后，必须清空 Local 状态
+                for(int i = 0; i < MAX_USAGES_PER_ITEM; i++) local.usages[i] = 0;
+                local.usage_count = 0;
+                local.usage_min = 0;
+                local.usage_max = 0;
             }
-
-            // 3. Local 变量生命周期修正：遇到任何 Main Item (包括 Collection) 必须清空
-            local_usage = 0;
-            local_usage_min = 0;
-            local_usage_max = 0;
+            // 遇到 Collection (0x0A) 和 End Collection (0x0C)
+            // 在简单的平铺解析中，可以不保存 Collection 树结构，因为 Usage 和物理范围已绑定到具体 Field
+            else if (item_tag == 0x0A || item_tag == 0x0C) {
+                // 清理 Local 状态
+                local.usage_count = 0;
+                local.usage_min = 0;
+                local.usage_max = 0;
+            }
         }
     }
+
     return 0;
 }
 
 
-/**
- * @brief 从原始字节流中提取任意位偏移、任意位宽的值
- *
- * @param buf        原始数据的基地址 (例如 report_buf)
- * @param bit_offset 起始比特位的全局偏移量 (比如 13)
- * @param bit_size   需要提取的比特位长度 (比如 12，最大支持 32)
- * @return uint32_t  提取出的干净数值
- */
-uint32 extract_bits(const uint8 *buf, uint32 bit_offset, uint32 bit_size) {
-    // 0. 安全性防御：最大只提取 32 位
-    if (bit_size == 0) return 0;
-    if (bit_size > 32) bit_size = 32;
+// 传入 USB 端点读到的 raw buffer 和对应的 field
+int32 hid_extract_bits(const uint8* report_buf, const hid_field_t* field) {
+    uint32 offset = field->bit_offset;
+    uint32 size = field->bit_size;
 
-    // 1. 定位起始字节和在该字节内的局部位偏移
-    uint32 byte_index = bit_offset / 8; // 从哪个字节开始读
-    uint32 bit_shift  = bit_offset % 8; // 在第一个字节里要扔掉几个低位
+    // 防御性编程：丢弃无效数据或超大位宽
+    if (size == 0 || size > 32) return 0;
 
-    // 2. 准备一个 64 位的超大容器（为了防止跨字节截断）
-    uint64 accumulator = 0;
+    uint32 byte_idx = offset / 8;
+    uint32 bit_shift = offset % 8;
 
-    // 3. 计算需要吞入几个字节
-    // 最坏的情况：bit_shift 为 7，bit_size 为 32。
-    // 总共需要跨越 (7 + 32) = 39 个 bit。
-    // 39 / 8 = 4.875，说明最多需要读取 5 个字节。
-    int bytes_to_read = ((bit_shift + bit_size - 1) / 8) + 1;
-
-    // 4. 将这些字节按照小端序拼接到 64 位容器中
-    for (int i = 0; i < bytes_to_read; i++) {
-        // 将第 i 个字节向左推到对应的位置，然后按位或(OR)进去
-        accumulator |= ((uint64)buf[byte_index + i]) << (i * 8);
+    // 1. 跨字节读取数据
+    // 即使需要提取 32 位数据，加上偏移可能跨越 5 个字节
+    // 因此使用 uint64_t 作为拼装容器可以完美防止溢出
+    uint64 raw_data = 0;
+    uint32 bytes_to_read = (size + bit_shift + 7) / 8;
+    for (uint32 i = 0; i < bytes_to_read; i++) {
+        raw_data |= ((uint64)report_buf[byte_idx + i]) << (i * 8);
     }
 
-    // 5. 第一刀：切掉底部的废弃位 (右移)
-    accumulator >>= bit_shift;
+    // 2. 移位对齐并应用掩码 (Mask)
+    raw_data >>= bit_shift;
+    uint32 mask = (1ULL << size) - 1;
+    uint32 extracted_val = (uint32)(raw_data & mask);
 
-    // 6. 制作掩码 (Mask)
-    // 比如 bit_size = 12，我们要生成 0x00000FFF (低12位全为1)
-    // 技巧：1 左移 12 位变成 0x1000，减去 1 得到 0x0FFF
-    uint32 mask = (1UL << bit_size) - 1;
+    // 3. 符号扩展判断 (logical_min 的唯一作用)
+    if (field->logical_min < 0) {
+        uint32 sign_bit = 1 << (size - 1);
+        if (extracted_val & sign_bit) {
+            // 如果符号位是 1，按位取反掩码，将高位全部填充为 1
+            extracted_val |= ~mask;
+        }
+    }
 
-    // 7. 第二刀：切掉顶部多吞进去的位 (按位与)
-    return (uint32)(accumulator & mask);
+    return (int32)extracted_val;
 }
 
 
@@ -203,11 +266,11 @@ void hid_irq_handler(hid_dev_t *hdev) {
         // 只处理我们需要关心的部分：普通键盘按键 (Usage Page 0x07)
         if (field->usage_page == 0x07) {
 
-            if (field->is_array) {
+            if (1) {
                 // 处理 Array 模式：比如 6键无冲的 6 个字节
                 // 这里我们知道这块区域有多个按键，需要循环提取
                 // (为演示精简，假设我们只读这块区域的第一个按键)
-                uint32 key_code = extract_bits(raw_data, field->bit_offset, field->bit_size);
+                uint32 key_code = hid_extract_bits(hdev->report_buf,CONTAINER_OF(hdev->field_list_head.next,hid_field_t,node));
 
                 if (key_code > 0) {
                     color_printk(GREEN,BLACK,"Key Pressed! USB Scancode: 0x%x\n", key_code);
