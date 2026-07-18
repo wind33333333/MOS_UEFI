@@ -1,11 +1,12 @@
 #include "bus.h"
 #include "pcie.h"
 #include "usb-core.h"
-#include "drivers/usb/include/usb-hub.h"
+#include "usb-hub.h"
 #include "usb-bus.h"
-#include "drivers/usb/include/usb-dev.h"
+#include "usb-dev.h"
 #include "xhci-service.h"
 #include "xhci-hcd.h"
+#include "hid-core.h"
 
 //pcie总线
 bus_type_t pcie_bus_type;
@@ -53,6 +54,9 @@ INIT_TEXT void bus_init(void){
 
     usb_drv_t *usb_hub_driver = create_usb_hub_driver();
     usb_drv_register(usb_hub_driver);
+
+    usb_drv_t *usb_hid_driver = create_usb_hid_driver();
+    usb_drv_register(usb_hid_driver);
 
 
 

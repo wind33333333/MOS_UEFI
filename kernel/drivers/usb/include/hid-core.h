@@ -9,6 +9,7 @@ typedef struct {
     list_head_t node;  // ★ 内核标准的双向链表节点
     uint32 bit_offset;   // 这段数据在盲盒里的起始 bit 位置
     uint32 bit_size;     // 这段数据占多少个 bit
+    uint32 report_count;
     uint32 usage_page;   // 字典大类 (比如 0x07 代表键盘)
     uint32 usage_min;    // 字典具体词条范围起始
     uint32 usage_max;    // 字典具体词条范围结束
@@ -24,3 +25,5 @@ typedef struct {
     uint8       *report_buf;
     struct usb_if_t *uif;
 } hid_dev_t;
+
+usb_drv_t *create_usb_hid_driver();

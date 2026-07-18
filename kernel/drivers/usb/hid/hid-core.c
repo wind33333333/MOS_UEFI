@@ -34,64 +34,99 @@ static inline int32 usb_hid_get_report_desc(usb_dev_t *udev, uint8 interface_num
 
 
 // 动态解析器核心引擎
-static inline void hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 len) {
+static inline int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 len) {
     uint32 ptr = 0;
 
-    // 全局状态变量 (遇到 Global Item 时更新)
+    // Global Items
     uint32 global_usage_page = 0;
     uint32 global_report_size = 0;
     uint32 global_report_count = 0;
+    uint32 global_report_id = 0;
 
-    // 局部状态变量 (遇到 Local Item 时更新)
+    // Local Items
+    uint32 local_usage = 0;
     uint32 local_usage_min = 0;
     uint32 local_usage_max = 0;
 
-    // 记录当前解析到第几个 bit 了
     uint32 current_bit_offset = 0;
 
     while (ptr < len) {
         uint8 item_header = desc[ptr++];
-
-        // 解析 Header：获取类型 (Type) 和 标签 (Tag)
         uint8 item_type = (item_header >> 2) & 0x03;
         uint8 item_tag  = (item_header >> 4) & 0x0F;
-        uint8 item_size = item_header & 0x03; // 参数占几个字节
+        uint8 item_size = item_header & 0x03;
 
-        // 简单处理：假设参数只有 1 个字节长 (实际情况可能是 2或4 字节)
-        uint32 data = (item_size > 0) ? desc[ptr++] : 0;
+        int param_bytes = (item_size == 3) ? 4 : item_size;
+
+        // 1. 越界保护
+        if (ptr + param_bytes > len) {
+            return -1; // 描述符损坏，中止解析
+        }
+
+        // 2. 安全的内存读取 (替换 for 循环)
+        uint32 data = 0;
+        switch (param_bytes) {
+            case 1: data = desc[ptr]; break;
+            case 2: data = desc[ptr] | (desc[ptr+1] << 8); break;
+            case 4: data = desc[ptr] | (desc[ptr+1] << 8) | (desc[ptr+2] << 16) | (desc[ptr+3] << 24); break;
+        }
+        ptr += param_bytes;
 
         if (item_type == 1) {
-            // === Global Items (全局变量) ===
-            if (item_tag == 0x00) global_usage_page = data;   // 05: Usage Page
-            if (item_tag == 0x07) global_report_size = data;  // 75: Report Size
-            if (item_tag == 0x08) global_report_count = data; // 95: Report Count
+            // === Global Items ===
+            if (item_tag == 0x00) global_usage_page = data;
+            else if (item_tag == 0x07) global_report_size = data;
+            else if (item_tag == 0x08) global_report_id = data;    // Tag 0x08 是 Report ID
+            else if (item_tag == 0x09) global_report_count = data; // Tag 0x09 才是 Report Count
 
         } else if (item_type == 2) {
-            // === Local Items (局部变量) ===
-            if (item_tag == 0x01) local_usage_min = data; // 19: Usage Min
-            if (item_tag == 0x02) local_usage_max = data; // 29: Usage Max
+            // === Local Items ===
+            if (item_tag == 0x00) local_usage = data;     // 补全最常用的单 Usage
+            else if (item_tag == 0x01) local_usage_min = data;
+            else if (item_tag == 0x02) local_usage_max = data;
 
-        } else if (item_type == 0 && (item_tag == 0x08 || item_tag == 0x09)) {
-                // item_tag == 0x08 是 Input，item_tag == 0x09 是 Output
+        } else if (item_type == 0) {
+            // === Main Items ===
+            // Tag 0x08 (Input), 0x09 (Output), 0x0B (Feature)
+            if (item_tag == 0x08 || item_tag == 0x09 || item_tag == 0x0B) {
 
-            // 1. 创建一个新的解析规则字段
-            hid_field_t *field = &hdev->fields[hdev->field_count++];
-            field->bit_offset = current_bit_offset;
-            field->bit_size   = global_report_size;
-            field->usage_page = global_usage_page;
-            field->usage_min  = local_usage_min;
-            field->usage_max  = local_usage_max;
-            field->is_array   = (data & 0x02) == 0; // 判断是 Array 还是 Variable
-            field->dir = (item_tag == 0x09) ? 1 : 0; // 记录方向
+                // 仅当该字段不是 Constant (常量占位符) 时，才记录为有效解析节点
+                if ((data & 0x01) == 0) {
+                    hid_field_t *field = kmalloc(sizeof(hid_field_t));
+                    if (!field) return -ENOMEM;
 
-            // 2. 推进总 bit 偏移量指针，为下一个字段腾出空间
-            current_bit_offset += (global_report_size * global_report_count);
+                    field->bit_offset = current_bit_offset;
+                    field->bit_size   = global_report_size;
+                    field->report_count = global_report_count; // 必须记录 Count
+                    field->usage_page = global_usage_page;
 
-            // 3. 清空 Local 变量，但保留 Global 变量
+                    // 兼容 Usage 和 Usage Min/Max 两种声明方式
+                    field->usage_min  = local_usage_min ? local_usage_min : local_usage;
+                    field->usage_max  = local_usage_max ? local_usage_max : local_usage;
+
+                    field->is_array   = (data & 0x02) == 0;
+                    field->dir        = (item_tag == 0x09) ? 1 : 0;
+
+                    list_add_tail(&hdev->field_list_head, &field->node);
+                    hdev->field_count++;
+                }
+
+                // 无论是否为 Constant，位移量必须推进
+                current_bit_offset += (global_report_size * global_report_count);
+            }
+
+            // 3. Local 变量生命周期修正：遇到任何 Main Item 必须清空
+            local_usage = 0;
             local_usage_min = 0;
             local_usage_max = 0;
+
+            // 4. 处理 Report ID 切换时的位移重置 (基础实现)
+            if (item_tag == 0x08 && (data & 0x01)) {
+                // 如果存在多个 Report ID，后续解析需要基于 ID 独立维护偏移量
+            }
         }
     }
+    return 0;
 }
 
 
@@ -145,8 +180,9 @@ void hid_irq_handler(hid_dev_t *hdev) {
     uint8 *raw_data = hdev->report_buf; // 拿到最新传来的盲盒数据
 
     // 遍历我们当初生成的“模具”规则表
-    for (int i = 0; i < hdev->field_count; i++) {
-        hid_field_t *field = &hdev->fields[i];
+    list_head_t *cur_node;
+    list_for_each(cur_node,&hdev->field_list_head) {
+        hid_field_t *field = CONTAINER_OF(cur_node,hid_field_t, node);
 
         // 只处理我们需要关心的部分：普通键盘按键 (Usage Page 0x07)
         if (field->usage_page == 0x07) {
@@ -178,7 +214,6 @@ void hid_irq_handler(hid_dev_t *hdev) {
  * @return int 0 表示接管成功，非 0 表示失败
  */
 static int hid_probe(usb_if_t *uif,usb_id_t *uid) {
-    int ret = 0;
     usb_dev_t *udev = uif->udev;   // 从接口反向拿到物理设备对象
     hid_dev_t *hdev = NULL;
 
@@ -213,7 +248,6 @@ static int hid_probe(usb_if_t *uif,usb_id_t *uid) {
     uint8 *report_desc_buf = kzalloc(report_desc_len);
     
     // 发送 Control Transfer (控制传输) 向设备索要报告描述符
-    // USB_REQ_GET_DESCRIPTOR = 0x06, HID_REPORT_DESCRIPTOR_TYPE = 0x22
     usb_hid_get_report_desc(udev,if_alt->if_desc->interface_number,report_desc_buf,report_desc_len);
 
 
@@ -260,26 +294,16 @@ static void hid_remove(usb_if_t *uif) {
 // 4. 驱动注册与 ID 匹配表
 // =========================================================================
 
-// 匹配标准：类 0x03 (HID)
-static usb_id_t hid_id_table[] = {
-    {
-        .match_flags = USB_MATCH_INT_CLASS | USB_MATCH_ANY| USB_MATCH_ANY,
-        .if_class    = 0x03,
-        .if_subclass = 0x00,
-        .if_protocol = 0x00
-    },
-    { 0 } // 数组结束哨兵
-};
-
-usb_drv_t hid_driver = {
-    .drv = {
-        .name = "usb_hid",
-    },
-    .probe    = hid_probe,
-    .remove   = hid_remove,
-};
-
-// 在你的系统初始化函数中调用这个来注册驱动
-void usb_kbd_init(void) {
-    usb_drv_register(&hid_driver);
+usb_drv_t *create_usb_hid_driver() {
+    usb_drv_t *usb_drv = kzalloc(sizeof(usb_drv_t));
+    usb_id_t *id_table = kzalloc(sizeof(usb_id_t) * 2);
+    id_table[0].match_flags = USB_MATCH_INT_CLASS;
+    id_table[0].if_class = 0x3;
+    id_table[0].if_subclass = 0x00;
+    id_table[0].if_protocol = 0x00;
+    usb_drv->drv.name = "usb_hid";
+    usb_drv->drv.id_table = id_table;
+    usb_drv->probe = hid_probe;
+    usb_drv->remove = hid_remove;
+    return usb_drv;
 }
