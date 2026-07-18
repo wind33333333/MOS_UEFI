@@ -117,11 +117,13 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	  -drive if=none,id=uas_backend,format=raw,file=/home/wind3/disk-uas.img \
 	  -device usb-uas,id=uas_dev,bus=xhci.0,port=2 \
 	  -device scsi-hd,bus=uas_dev.0,scsi-id=0,lun=0,drive=uas_backend \
-	  `# --- 5. 外部 Hub (插入根端口 3，它是低速的) ---` \
-	  -device usb-hub,id=ext_hub,bus=xhci.0,port=3 \
+	  `# --- 8. 插入一把虚拟 USB 键盘 (直连 xHCI 根端口) ---` \
+      -device usb-kbd,id=vkbd,bus=xhci.0,port=3 \
+	  `# --- 5. 外部 Hub (插入根端口 4，它是低速的) ---` \
+	  -device usb-hub,id=ext_hub,bus=xhci.0,port=4 \
 	  `# --- 6. Hub 级联测试盘 (BOT 协议完美兼容低速，挂在 Hub 端口 1) ---` \
 	  -drive if=none,id=hub_bot_disk,format=raw,file=/home/wind3/disk-bot.img \
-	  -device usb-storage,drive=hub_bot_disk,bus=xhci.0,port=3.1 \
+	  -device usb-storage,drive=hub_bot_disk,bus=xhci.0,port=4.1 \
 	  `# --- 7. 留空的热插拔盘 (等你在 Telnet 里玩) ---` \
 	  -drive if=none,id=hotplug_disk,format=raw,file=/home/wind3/disk-bot.img &
 

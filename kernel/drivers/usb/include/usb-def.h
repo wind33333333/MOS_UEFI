@@ -185,10 +185,13 @@ typedef struct {
 描述符类型：0x21 = HID 描述符*/
 typedef struct {
     usb_desc_head_t head;
-    uint16 hid; // HID 版本号
-    uint8 country_code; // 国家代码（0=无）
-    uint8 num_descriptors; // 后面跟随的子描述符数量
-    // 后面通常跟 HID 报告描述符（类型0x22）等
+    uint16 bcd_hid;              // HID 协议版本号 (BCD码，如 0x0111 代表 1.11)
+    uint8  country_code;        // 国家/地区代码 (0x00 表示硬件不区分国家)
+    uint8  num_descriptors;     // 下级附属描述符的数量 (通常至少为 1)
+
+    // 下面是附属描述符的信息（绝大多数情况只有 1 个，即报告描述符）
+    uint8  report_descriptor_type;   // 附属描述符类型 (固定为 0x22，代表报告描述符)
+    uint16 report_descriptor_length; // ★ 附属描述符的总长度 (字节数)
 } usb_hid_desc_t;
 
 /**
@@ -321,6 +324,7 @@ typedef struct usb_setup_packet_t {
 #define USB_DESC_TYPE_INTERFACE   0x04  // 接口描述符。定义该接口是鼠标 (HID)、U盘 (Mass Storage) 还是网卡。
 #define USB_DESC_TYPE_ENDPOINT    0x05  // 端点描述符。定义该管道是 IN 还是 OUT，是 Bulk、Interrupt 还是 Isochronous，以及最大传输带宽。
 #define USB_DESC_TYPE_BOS         0x0F  // BOS描述符 (Binary Object Store)。USB 3.0+ 专属档案。用来查询设备是否支持 SuperSpeed (5Gbps+) 特性及高级链路电源管理 (LPM)。
+#define USB_DESC_TYPE_REPORT      0x22  // hid设备报告描述符
 
 
 // ============================================================================
