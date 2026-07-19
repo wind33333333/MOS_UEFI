@@ -109,21 +109,23 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	  -net none -S -s -monitor telnet:localhost:4444,server,nowait \
 	  `# --- 2. 核心总线与中断控制器 ---` \
 	  -device intel-iommu,intremap=on,caching-mode=on \
-	  -device qemu-xhci,id=xhci,msi=on,msix=on \
+      -device qemu-xhci,id=xhci,msi=on,msix=on,p2=8,p3=8 \
 	  `# --- 3. 启动盘 (BOT, 根端口 1) ---` \
 	  -drive if=none,id=bootdisk,format=raw,file=fat:rw:./esp \
-	  -device usb-storage,drive=bootdisk,bus=xhci.0,bootindex=1 \
+	  -device usb-storage,drive=bootdisk,bus=xhci.0,bootindex=1,port=1 \
 	  `# --- 4. UAS 高速测试盘 (必须直连根端口 2) ---` \
 	  -drive if=none,id=uas_backend,format=raw,file=/home/wind3/disk-uas.img \
 	  -device usb-uas,id=uas_dev,bus=xhci.0,port=2 \
 	  -device scsi-hd,bus=uas_dev.0,scsi-id=0,lun=0,drive=uas_backend \
+	  `# 2. 将标准的 USB HID 鼠标挂载到控制器的端口上---` \
+      -device usb-mouse,id=mouse1,bus=xhci.0,port=5 \
 	  `# --- 8. 插入一把虚拟 USB 键盘 (直连 xHCI 根端口) ---` \
-      -device usb-kbd,id=vkbd,bus=xhci.0,port=3 \
+      -device usb-kbd,id=vkbd,bus=xhci.0,port=6 \
 	  `# --- 5. 外部 Hub (插入根端口 4，它是低速的) ---` \
-	  -device usb-hub,id=ext_hub,bus=xhci.0,port=4 \
+	  -device usb-hub,id=ext_hub,bus=xhci.0,port=7 \
 	  `# --- 6. Hub 级联测试盘 (BOT 协议完美兼容低速，挂在 Hub 端口 1) ---` \
 	  -drive if=none,id=hub_bot_disk,format=raw,file=/home/wind3/disk-bot.img \
-	  -device usb-storage,drive=hub_bot_disk,bus=xhci.0,port=4.1 \
+	  -device usb-storage,drive=hub_bot_disk,bus=xhci.0,port=7.1 \
 	  `# --- 7. 留空的热插拔盘 (等你在 Telnet 里玩) ---` \
 	  -drive if=none,id=hotplug_disk,format=raw,file=/home/wind3/disk-bot.img &
 

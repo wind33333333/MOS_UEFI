@@ -66,8 +66,8 @@ typedef struct {
     uint16 usage_min;
     uint16 usage_max;
 
-    // 4. 独立通道偏移量追踪 (0:INPUT, 1:OUTPUT, 2:FEATURE)
-    uint32 channel_bit_offsets[3];
+    // 4 代表 Input/Output/Feature，256 代表合法的 Report ID (0~255)
+    uint32 channel_bit_offsets[3][256];
 } hid_parser_state_t;
 
 // =========================================================================
@@ -91,21 +91,24 @@ static uint32 fetch_item_data(uint8 *ptr, uint8 size) {
     return data;
 }
 
-/* STREAMING_CHUNK:初始化描述符解析器与解析主循环... */
+// 重构后的核心解析引擎
+// =========================================================================
 int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
-    hid_parser_state_t state;
-    asm_mem_set(&state, 0, sizeof(hid_parser_state_t));
+    // ★ 修复 2：防范内核栈溢出 (Kernel Stack Overflow)
+    // 升级二维数组后，结构体大小超 4KB，必须改用堆分配！
+    hid_parser_state_t *state = kzalloc(sizeof(hid_parser_state_t));
+    if (!state) return -1; // OOM 保护
 
     list_head_init(&hdev->field_list_head);
     hdev->field_count = 0;
 
     uint32 offset = 0;
+    int ret = -1; // 默认设定为失败状态
+
     while (offset < desc_len) {
-        // 1. 解析 Item 头
         uint8 item = desc[offset];
         if (item == 0xFE) {
-            // 遇到长项目 (Long Item)，目前 HID 外设极少使用，直接跳过
-            if (offset >= desc_len) return -1;
+            if (offset >= desc_len) goto parse_end; // 统一通过 goto 退出，确保释放 state
             offset += 1 + desc[offset + 1];
             continue;
         }
@@ -113,159 +116,168 @@ int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
         uint8 item_type = (item >> 2) & 0x03;
         uint8 item_tag = (item >> 4) & 0x0F;
         uint8 item_size = item & 0x03;
-        if (item_size == 3) item_size = 4; // HID 规范：size 位为 3 表示 4 字节数据
+        if (item_size == 3) item_size = 4;
 
-        if (offset + 1 + item_size > desc_len) return -1;
+        if (offset + 1 + item_size > desc_len) goto parse_end;
 
-        // 2. 提取数据并做符号扩展 (用于 min/max 判断)
         uint32 raw_data = fetch_item_data(&desc[offset + 1], item_size);
         int32 signed_data = sign_extend(raw_data, item_size);
         offset += (1 + item_size);
 
-        /* STREAMING_CHUNK:处理Global状态更新与栈操作... */
-        // 3. 状态机分发
         switch (item_type) {
             case HID_ITEM_TYPE_GLOBAL:
                 switch (item_tag) {
-                    case HID_GLOBAL_TAG_USAGE_PAGE: state.global.usage_page = raw_data;
+                    case HID_GLOBAL_TAG_USAGE_PAGE: state->global.usage_page = raw_data;
                         break;
-                    case HID_GLOBAL_TAG_LOGICAL_MIN: state.global.logical_min = signed_data;
+                    case HID_GLOBAL_TAG_LOGICAL_MIN: state->global.logical_min = signed_data;
                         break;
-                    case HID_GLOBAL_TAG_LOGICAL_MAX : state.global.logical_max = signed_data;
+                    case HID_GLOBAL_TAG_LOGICAL_MAX: state->global.logical_max = signed_data;
                         break;
-                    case HID_GLOBAL_TAG_PHYSICAL_MIN: state.global.physical_min = signed_data;
+                    case HID_GLOBAL_TAG_PHYSICAL_MIN: state->global.physical_min = signed_data;
                         break;
-                    case HID_GLOBAL_TAG_PHYSICAL_MAX: state.global.physical_max = signed_data;
+                    case HID_GLOBAL_TAG_PHYSICAL_MAX: state->global.physical_max = signed_data;
                         break;
-                    case HID_GLOBAL_TAG_UNIT_EXPONENT: state.global.unit_exponent = signed_data;
+                    case HID_GLOBAL_TAG_UNIT_EXPONENT: state->global.unit_exponent = signed_data;
                         break;
-                    case HID_GLOBAL_TAG_UNIT : state.global.unit = raw_data;
+                    case HID_GLOBAL_TAG_UNIT: state->global.unit = raw_data;
                         break;
-                    case HID_GLOBAL_TAG_REPORT_SIZE: state.global.report_size = raw_data;
+                    case HID_GLOBAL_TAG_REPORT_SIZE: state->global.report_size = raw_data;
                         break;
-                    case HID_GLOBAL_TAG_REPORT_ID: state.global.report_id = (uint8) raw_data;
+                    case HID_GLOBAL_TAG_REPORT_ID: state->global.report_id = (uint8) raw_data;
                         break;
-                    case HID_GLOBAL_TAG_REPORT_COUNT: state.global.report_count = raw_data;
+                    case HID_GLOBAL_TAG_REPORT_COUNT: state->global.report_count = raw_data;
                         break;
 
-                    // ★ 核心防御：多级嵌套集合的堆栈管理
                     case HID_GLOBAL_TAG_PUSH:
-                        if (state.stack_depth < MAX_GLOBAL_STACK) {
-                            state.global_stack[state.stack_depth] = state.global; // 结构体拷贝
-                            state.stack_depth++;
+                        if (state->stack_depth < MAX_GLOBAL_STACK) {
+                            state->global_stack[state->stack_depth] = state->global;
+                            state->stack_depth++;
                         }
                         break;
                     case HID_GLOBAL_TAG_POP:
-                        if (state.stack_depth > 0) {
-                            state.stack_depth--;
-                            state.global = state.global_stack[state.stack_depth]; // 恢复环境
+                        if (state->stack_depth > 0) {
+                            state->stack_depth--;
+                            state->global = state->global_stack[state->stack_depth];
                         }
                         break;
                 }
                 break;
 
-            /* STREAMING_CHUNK:处理Local状态暂存逻辑... */
             case HID_ITEM_TYPE_LOCAL:
                 switch (item_tag) {
                     case HID_LOCAL_TAG_USAGE:
-                        if (state.local_usage_count < MAX_LOCAL_USAGES) {
-                            // 拼装完整的 Usage ID：如果设备发的是 16bit 短 ID，则拼上 Global 的 Page
+                        if (state->local_usage_count < MAX_LOCAL_USAGES) {
                             uint32 full_id = raw_data;
                             if (item_size <= 2) {
-                                full_id = (state.global.usage_page << 16) | (raw_data & 0xFFFF);
+                                full_id = (state->global.usage_page << 16) | (raw_data & 0xFFFF);
                             }
-                            state.local_usages[state.local_usage_count++] = full_id;
+                            state->local_usages[state->local_usage_count++] = full_id;
                         }
                         break;
-                    case HID_LOCAL_TAG_USAGE_MIN: state.usage_min = (uint16) raw_data;
+                    case HID_LOCAL_TAG_USAGE_MIN: state->usage_min = (uint16) raw_data;
                         break;
-                    case HID_LOCAL_TAG_USAGE_MAX: state.usage_max = (uint16) raw_data;
+                    case HID_LOCAL_TAG_USAGE_MAX: state->usage_max = (uint16) raw_data;
                         break;
                 }
                 break;
 
-            /* STREAMING_CHUNK:处理Main标签并生成Block节点... */
             case HID_ITEM_TYPE_MAIN:
-                if (item_tag == HID_MAIN_TAG_INPUT  || item_tag == HID_MAIN_TAG_OUTPUT || item_tag == HID_MAIN_TAG_FEATURE) {
-                    if (state.global.report_size == 0 || state.global.report_count == 0) {
-                        goto reset_local; // 无效块，重置 Local 并跳过
+                if (item_tag == HID_MAIN_TAG_INPUT || item_tag == HID_MAIN_TAG_OUTPUT || item_tag ==
+                    HID_MAIN_TAG_FEATURE) {
+                    if (state->global.report_size == 0 || state->global.report_count == 0) {
+                        goto reset_local;
                     }
 
-                    // 确定物理通道索引
-                    uint8 type_idx = (item_tag == HID_MAIN_TAG_INPUT ) ? 0 : (item_tag == HID_MAIN_TAG_OUTPUT) ? 1 : 2;
+                    uint8 type_idx = (item_tag == HID_MAIN_TAG_INPUT) ? 0 : (item_tag == HID_MAIN_TAG_OUTPUT) ? 1 : 2;
 
-                    // ★ 工业级优化：依据 report_count 严格单次分配内存，解决堆碎片问题
-                    uint32 alloc_size = sizeof(hid_field_t) + (state.global.report_count * sizeof(hid_usage_t));
+                    uint32 alloc_size = sizeof(hid_field_t) + (state->global.report_count * sizeof(hid_usage_t));
                     hid_field_t *field = kzalloc(alloc_size);
-                    if (!field) return -1; // OOM
+                    if (!field) {
+                        // OOM 时跳转清理（目前仅退出，后续可加上释放链表的逻辑）
+                        goto parse_end;
+                    }
 
-                    // === 映射公有属性 ===
                     field->report_type = type_idx;
-                    field->report_id = state.global.report_id;
+                    field->report_id = state->global.report_id;
                     field->flags = raw_data;
-                    field->report_count = state.global.report_count;
-                    field->bit_size = state.global.report_size;
-                    field->usage_page = state.global.usage_page;
-                    field->usage_min = state.usage_min;
-                    field->usage_max = state.usage_max;
+                    field->report_count = state->global.report_count;
+                    field->bit_size = state->global.report_size;
+                    field->usage_page = state->global.usage_page;
+                    field->usage_min = state->usage_min;
+                    field->usage_max = state->usage_max;
 
-                    field->logical_min = state.global.logical_min;
-                    field->logical_max = state.global.logical_max;
-                    field->unit = state.global.unit;
-                    field->unit_exponent = state.global.unit_exponent;
+                    field->logical_min = state->global.logical_min;
+                    field->logical_max = state->global.logical_max;
+                    field->unit = state->global.unit;
+                    field->unit_exponent = state->global.unit_exponent;
 
-                    // ★ 规范 6.2.2.7：兜底换算，防止上层物理换算出现除 0 异常
-                    field->physical_min = (state.global.physical_min == 0 && state.global.physical_max == 0)
-                                              ? state.global.logical_min
-                                              : state.global.physical_min;
-                    field->physical_max = (state.global.physical_min == 0 && state.global.physical_max == 0)
-                                              ? state.global.logical_max
-                                              : state.global.physical_max;
+                    field->physical_min = (state->global.physical_min == 0 && state->global.physical_max == 0)
+                                              ? state->global.logical_min
+                                              : state->global.physical_min;
+                    field->physical_max = (state->global.physical_min == 0 && state->global.physical_max == 0)
+                                              ? state->global.logical_max
+                                              : state->global.physical_max;
 
-                    // 设置当前 Block 起点，并推进通道的寻址游标
-                    field->bit_offset = state.channel_bit_offsets[type_idx];
-                    state.channel_bit_offsets[type_idx] += (state.global.report_size * state.global.report_count);
+                    // ==========================================================
+                    // ★ 修复 3：独立追踪每一个 Report ID 的偏移量
+                    // ==========================================================
+                    uint8 r_id = state->global.report_id;
+                    field->bit_offset = state->channel_bit_offsets[type_idx][r_id];
+                    state->channel_bit_offsets[type_idx][r_id] += (
+                        state->global.report_size * state->global.report_count);
+                    // ==========================================================
 
-                    /* STREAMING_CHUNK:处理私有属性数组的自动展开与挂载... */
-                    // === 映射私有属性 (Usage 路由字典) ===
-                    field->usages = (hid_usage_t *) (field + 1); // 指向尾随内存
+                    field->usages = (hid_usage_t *) (field + 1);
 
-                    // 不给 Constant 数据( Padding ) 赋语义
                     if (!(raw_data & 0x01)) {
-                        if (state.local_usage_count == 0 && state.usage_max > state.usage_min) {
-                            // 场景 A：批量声明 (Usage Min/Max)，内核自动展开
-                            for (uint32 i = 0; i < state.global.report_count; i++) {
-                                if (state.usage_min + i <= state.usage_max) {
-                                    // 防越界
-                                    field->usages[i].hid_id = (state.global.usage_page << 16) | (state.usage_min + i);
-                                }
-                            }
+                        if (!(field->flags & 0x02)) {
+                            // Array 模式保持为空，留给提取引擎记录状态
                         } else {
-                            // 场景 B：离散声明，多退少补 (超出的 count 因 zalloc 自动为 0)
-                            uint32 copy_count = (state.local_usage_count < state.global.report_count)
-                                                    ? state.local_usage_count
-                                                    : state.global.report_count;
-                            for (uint32 i = 0; i < copy_count; i++) {
-                                field->usages[i].hid_id = state.local_usages[i];
+                            // ★ 修复：只要 max >= min 且 max 不为 0，就优先认为是区间声明 (Min/Max)
+                            if (state->usage_max >= state->usage_min && state->usage_max != 0) {
+                                for (uint32 i = 0; i < state->global.report_count; i++) {
+                                    if (state->usage_min + i <= state->usage_max) {
+                                        field->usages[i].hid_id =
+                                                (state->global.usage_page << 16) | (state->usage_min + i);
+                                    }
+                                }
+                            } else if (state->local_usage_count > 0) {
+                                // 离散声明 (Usage)
+                                uint32 copy_count = (state->local_usage_count < state->global.report_count)
+                                                        ? state->local_usage_count
+                                                        : state->global.report_count;
+                                for (uint32 i = 0; i < copy_count; i++) {
+                                    field->usages[i].hid_id = state->local_usages[i];
+                                }
+                                // HID规范补充：如果离散 Usage 数量少于 Report Count，最后一个 Usage 自动延展
+                                uint32 last_usage = state->local_usages[copy_count - 1];
+                                for (uint32 i = copy_count; i < state->global.report_count; i++) {
+                                    field->usages[i].hid_id = last_usage;
+                                }
                             }
                         }
                     }
 
-                    // 挂载节点到设备总线
-                    list_add_tail(&hdev->field_list_head,&field->node);
+                    list_add_tail(&hdev->field_list_head, &field->node);
                     hdev->field_count++;
-
-                reset_local:
-                    // 清理 Local 状态，迎接下一个 Data Block
-                    state.local_usage_count = 0;
-                    state.usage_min = 0;
-                    state.usage_max = 0;
                 }
+                reset_local:
+                state->local_usage_count = 0;
+                state->usage_min = 0;
+                state->usage_max = 0;
                 break;
         }
     }
 
-    return 0;
+    ret = 0; // 全部执行完毕，标记为成功
+
+
+parse_end:
+    // ★ 修复 4：无论成功还是失败，在此处统一释放堆分配的上下文结构体
+    if (state) {
+        kfree(state); // 替换为你内核的 free 函数
+    }
+    return ret;
 }
 
 
