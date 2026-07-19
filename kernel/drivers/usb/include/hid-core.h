@@ -183,8 +183,6 @@
 #define HID_USAGE_CONSUMER_AC_BACK          0x224   // 浏览器后退
 
 
-
-
 struct usb_if_t;
 
 // HID 报告类型
@@ -192,38 +190,59 @@ struct usb_if_t;
 #define HID_REPORT_TYPE_OUTPUT  1
 #define HID_REPORT_TYPE_FEATURE 2
 
-// 工业级 HID 字段节点 (中断提取地图)
+
+/* STREAMING_CHUNK:定义私有属性(Usage)与公有属性(Field)结构体... */
+// 数据的【私有属性】 (What it means)
+typedef struct {
+    uint32 hid_id; // 硬件协议里的完整用途 ID (Page | ID)
+    uint16 event_type; // TheresaOS 内部事件类型 (如 EV_KEY, EV_REL)
+    uint16 event_code; // TheresaOS 内部具体键码 (如 TOS_KEY_A, TOS_REL_X)
+} hid_usage_t;
+
+
 typedef struct hid_field_t {
- list_head_t node;
+    list_head_t node; // 挂载到设备链表
 
- uint8  report_type;    // 数据流动方向：INPUT, OUTPUT, FEATURE
- uint8  report_id;      // 0 表示设备未使用 Report ID 功能
+    // === 通道与路由属性 ===
+    uint8 report_type; // 0:INPUT, 1:OUTPUT, 2:FEATURE
+    uint8 report_id; // 报文 ID
 
- // 内存寻址信息
- uint32 bit_offset;     // 该字段在 raw buffer 中的起始 bit 位置
- uint32 bit_size;       // 该字段占用的 bit 数量 (Report Size)
+    // === 物理寻址地图 (核心) ===
+    uint32 bit_offset; // 在 raw buffer 中的绝对起始偏移量
+    uint32 bit_size; // 单个元素的 bit 数量
+    uint32 report_count; // 元素个数 (以此为准严格分配内存)
 
- // 语义属性
- uint16 usage_page;     // 用途页 (如 Generic Desktop, Keyboard)
- uint16 usage;          // 具体用途 (如 Mouse X, Button 1)
- uint32 flags;          // Data/Const, Var/Array, Abs/Rel 等标志位
+    // === 硬件语义属性 ===
+    uint16 usage_page; // 全局用途页
+    uint32 flags; // Data/Const, Array/Var 等标志位
+    uint16 usage_min; // Array 模式下的身份下限
+    uint16 usage_max; // Array 模式下的身份上限
 
- // 数据范围与量纲
- int32  logical_min;
- int32  logical_max;
- int32  physical_min;
- int32  physical_max;
- uint32 unit;
- int32  unit_exponent;
+    // === ★ 私有属性路由表 (强制按 report_count 分配，紧接在结构体尾部) ===
+    hid_usage_t *usages;
+
+    // === 量纲与物理范围 ===
+    int32 logical_min; // 发送的数值逻辑下限
+    int32 logical_max;
+    int32 physical_min; // 代表的物理真实下限
+    int32 physical_max;
+    uint32 unit; // 物理单位
+    int32 unit_exponent; // 单位指数
 } hid_field_t;
 
-// 设备结构体：只保留一个链表头
+
+/*
+ * hid_dev: HID 物理设备实例
+ * 作为底层 USB 驱动和上层输入子系统之间的桥梁。
+ */
 typedef struct {
-    list_head_t field_list_head; // ★ 链表头
-    uint32      field_count;     // 纯粹用来做统计
-    usb_urb_t   *int_urb;
-    uint8       *report_buf;
-    struct usb_if_t *uif;
+    list_head_t field_list_head; // 解析出的全部数据块 (Block) 链表头
+    uint32 field_count; // 数据块的数量统计
+
+    // 以下为 TheresaOS 底层 USB 通信所需的上下文
+    void *int_urb; // 中断传输的 URB 指针
+    uint8 *report_buf; // 接收数据的 Raw Buffer
+    void *uif; // 绑定的 USB 接口实例 (usb_if)
 } hid_dev_t;
 
 usb_drv_t *create_usb_hid_driver();
