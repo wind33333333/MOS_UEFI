@@ -35,6 +35,7 @@ static inline int32 usb_hid_get_report_desc(usb_dev_t *udev, uint8 interface_num
 /* STREAMING_CHUNK:定义解析器内部常量与状态机上下文... */
 #define MAX_GLOBAL_STACK 4     // HID 规范要求的最小压栈深度
 #define MAX_LOCAL_USAGES 256   // 防止恶意描述符溢出的 Local 缓存上限
+#define MAX_COLLECTIONS 16
 
 /* STREAMING_CHUNK:定义Global栈与解析器State结构体... */
 // 独立的 Global 状态结构，为了方便 Push/Pop 时进行整块内存拷贝
@@ -53,6 +54,10 @@ typedef struct {
 
 // 解析引擎的完整上下文
 typedef struct {
+    // ★ 新增：用于追踪 Collection 嵌套层级的栈
+    uint32 collection_app_stack[MAX_COLLECTIONS];
+    uint32 collection_depth;
+
     // 1. 活动的 Global 属性
     hid_global_state_t global;
 
@@ -182,7 +187,34 @@ int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
                 break;
 
             case HID_ITEM_TYPE_MAIN:
-                if (item_tag == HID_MAIN_TAG_INPUT || item_tag == HID_MAIN_TAG_OUTPUT || item_tag ==
+                // ==========================================================
+                // ★ 新增 1：处理 Collection (0xA)
+                // ==========================================================
+                if (item_tag == HID_MAIN_TAG_COLLECTION) {
+                    if (state->collection_depth < MAX_COLLECTIONS) {
+                        // 默认继承上一层的 Application ID (处理嵌套 Physical/Logical 集合的情况)
+                        uint32 current_app = (state->collection_depth > 0) ?
+                                              state->collection_app_stack[state->collection_depth - 1] : 0;
+
+                        // HID规范：如果当前声明的是 Application Collection (raw_data == 0x01)
+                        if (raw_data == 0x01 && state->local_usage_count > 0) {
+                            // 提取刚刚通过 Local Tag 压入的完整 32 位 Usage 作为 Application ID
+                            current_app = state->local_usages[0];
+                        }
+
+                        // 压栈
+                        state->collection_app_stack[state->collection_depth++] = current_app;
+                    }
+                    goto reset_local; // Collection 同样会消耗掉 Local 状态
+                }else if (item_tag == HID_MAIN_TAG_END_COLLECTION) {
+                    // ==========================================================
+                    // ★ 新增 2：处理 End Collection (0xC)
+                    // ==========================================================
+                    if (state->collection_depth > 0) {
+                        state->collection_depth--; // 出栈，退回上一层
+                    }
+                    goto reset_local;
+                }else if (item_tag == HID_MAIN_TAG_INPUT || item_tag == HID_MAIN_TAG_OUTPUT || item_tag ==
                     HID_MAIN_TAG_FEATURE) {
                     if (state->global.report_size == 0 || state->global.report_count == 0) {
                         goto reset_local;
@@ -228,6 +260,9 @@ int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
                     // ==========================================================
 
                     field->usages = (hid_usage_t *) (field + 1);
+
+                    field->application_id = (state->collection_depth > 0) ?
+                                             state->collection_app_stack[state->collection_depth - 1] : 0;
 
                     if (!(raw_data & 0x01)) {
                         if (!(field->flags & 0x02)) {

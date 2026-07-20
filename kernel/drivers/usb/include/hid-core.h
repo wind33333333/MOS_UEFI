@@ -213,6 +213,7 @@ typedef struct hid_field_t {
     uint32 report_count; // 元素个数 (以此为准严格分配内存)
 
     // === 硬件语义属性 ===
+    uint32 application_id;
     uint16 usage_page; // 全局用途页
     uint32 flags; // Data/Const, Array/Var 等标志位
     uint16 usage_min; // Array 模式下的身份下限
