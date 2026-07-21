@@ -219,9 +219,6 @@ typedef struct hid_field_t {
     uint16 usage_min; // Array 模式下的身份下限
     uint16 usage_max; // Array 模式下的身份上限
 
-    // === ★ 私有属性路由表 (强制按 report_count 分配，紧接在结构体尾部) ===
-    hid_usage_t *usages;
-
     // === 量纲与物理范围 ===
     int32 logical_min; // 发送的数值逻辑下限
     int32 logical_max;
@@ -229,6 +226,9 @@ typedef struct hid_field_t {
     int32 physical_max;
     uint32 unit; // 物理单位
     int32 unit_exponent; // 单位指数
+
+    // === (强制按 report_count 分配，紧接在结构体尾部) ===
+    hid_usage_t usages[];
 } hid_field_t;
 
 

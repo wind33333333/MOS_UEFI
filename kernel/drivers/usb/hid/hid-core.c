@@ -45,8 +45,8 @@ typedef struct {
     int32 logical_max;
     int32 physical_min;
     int32 physical_max;
-    uint32 unit;
     int32 unit_exponent;
+    uint32 unit;
     uint32 report_size;
     uint32 report_count;
     uint8 report_id;
@@ -91,7 +91,7 @@ static int32 sign_extend(uint32 data, uint8 bytes) {
 static uint32 fetch_item_data(uint8 *ptr, uint8 size) {
     uint32 data = 0;
     for (uint8 i = 0; i < size; i++) {
-        data |= (ptr[i] << (i * 8));
+        data |= (ptr[i] << (i << 3));
     }
     return data;
 }
@@ -258,8 +258,6 @@ int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
                     state->channel_bit_offsets[type_idx][r_id] += (
                         state->global.report_size * state->global.report_count);
                     // ==========================================================
-
-                    field->usages = (hid_usage_t *) (field + 1);
 
                     field->application_id = (state->collection_depth > 0) ?
                                              state->collection_app_stack[state->collection_depth - 1] : 0;
