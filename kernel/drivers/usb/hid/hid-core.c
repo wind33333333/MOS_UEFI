@@ -205,7 +205,7 @@ int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
                         // 压栈
                         state->collection_app_stack[state->collection_depth++] = current_app;
                     }
-                    goto reset_local; // Collection 同样会消耗掉 Local 状态
+
                 }else if (item_tag == HID_MAIN_TAG_END_COLLECTION) {
                     // ==========================================================
                     // ★ 新增 2：处理 End Collection (0xC)
@@ -213,7 +213,7 @@ int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
                     if (state->collection_depth > 0) {
                         state->collection_depth--; // 出栈，退回上一层
                     }
-                    goto reset_local;
+
                 }else if (item_tag == HID_MAIN_TAG_INPUT || item_tag == HID_MAIN_TAG_OUTPUT || item_tag ==
                     HID_MAIN_TAG_FEATURE) {
                     if (state->global.report_size == 0 || state->global.report_count == 0) {
@@ -294,6 +294,7 @@ int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
                     list_add_tail(&hdev->field_list_head, &field->node);
                     hdev->field_count++;
                 }
+
                 reset_local:
                 state->local_usage_count = 0;
                 state->usage_min = 0;
