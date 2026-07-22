@@ -118,9 +118,9 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	  -device usb-uas,id=uas_dev,bus=xhci.0,port=2 \
 	  -device scsi-hd,bus=uas_dev.0,scsi-id=0,lun=0,drive=uas_backend \
 	  `# 2. 将标准的 USB HID 鼠标挂载到控制器的端口上---` \
-      -device usb-mouse,id=mouse1,bus=xhci.0,port=5 \
+      -device usb-mouse,id=mouse1,bus=xhci.0,port=6 \
 	  `# --- 8. 插入一把虚拟 USB 键盘 (直连 xHCI 根端口) ---` \
-      -device usb-kbd,id=vkbd,bus=xhci.0,port=6 \
+      -device usb-kbd,id=vkbd,bus=xhci.0,port=5 \
 	  `# --- 5. 外部 Hub (插入根端口 4，它是低速的) ---` \
 	  -device usb-hub,id=ext_hub,bus=xhci.0,port=7 \
 	  `# --- 6. Hub 级联测试盘 (BOT 协议完美兼容低速，挂在 Hub 端口 1) ---` \

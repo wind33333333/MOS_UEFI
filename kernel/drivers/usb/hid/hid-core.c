@@ -299,7 +299,6 @@ int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
                 state->local_usage_count = 0;
                 state->usage_min = 0;
                 state->usage_max = 0;
-                break;
         }
     }
 
