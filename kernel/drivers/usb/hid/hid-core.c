@@ -96,15 +96,45 @@ static uint32 fetch_item_data(uint8 *ptr, uint8 size) {
     return data;
 }
 
+uint32 hid_count_fields(const uint8 *desc, uint32 desc_len) {
+    uint32 count = 0;
+    uint32 offset = 0;
+
+    while (offset < desc_len) {
+        uint8 item = desc[offset];
+
+        if (item == 0xFE) {
+            offset += 1 + desc[offset + 1];
+            continue;
+        }
+
+
+        uint8 item_type = (item >> 2) & 0x03;
+        uint8 item_tag = (item >> 4) & 0x0F;
+        uint8 item_size = item & 0x03;
+        if (item_size == 3) item_size = 4;
+
+        // 核心逻辑：只要是 Main 项里的 Input, Output, Feature，就是 1 个 Field
+        if (item_type == HID_ITEM_TYPE_MAIN ) {
+            if (item_tag == HID_MAIN_TAG_INPUT ||
+                item_tag == HID_MAIN_TAG_OUTPUT ||
+                item_tag == HID_MAIN_TAG_FEATURE) {
+                count++;
+                }
+        }
+        offset += (1 + item_size); // 跳过当前 Item 的数据，看下一个
+    }
+    return count;
+}
+
 // 重构后的核心解析引擎
 // =========================================================================
-int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
+static int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
     // ★ 修复 2：防范内核栈溢出 (Kernel Stack Overflow)
     // 升级二维数组后，结构体大小超 4KB，必须改用堆分配！
     hid_parser_state_t *state = kzalloc(sizeof(hid_parser_state_t));
     if (!state) return -1; // OOM 保护
 
-    list_head_init(&hdev->field_list_head);
     hdev->field_count = 0;
 
     uint32 offset = 0;
@@ -228,6 +258,7 @@ int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
                         // OOM 时跳转清理（目前仅退出，后续可加上释放链表的逻辑）
                         goto parse_end;
                     }
+                    hdev->fields[hdev->field_count++] = field;
 
                     field->report_type = type_idx;
                     field->report_id = state->global.report_id;
@@ -290,9 +321,6 @@ int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
                             }
                         }
                     }
-
-                    list_add_tail(&hdev->field_list_head, &field->node);
-                    hdev->field_count++;
                 }
 
                 reset_local:
@@ -314,34 +342,133 @@ parse_end:
 }
 
 
-// 中断底半部回调函数 (每当收到 USB 数据包时被调用)
-void hid_irq_handler(hid_dev_t *hdev) {
-    uint8 *raw_data = hdev->report_buf; // 拿到最新传来的盲盒数据
 
-    // 遍历我们当初生成的“模具”规则表
-    list_head_t *cur_node;
-    list_for_each(cur_node, &hdev->field_list_head) {
-        hid_field_t *field = CONTAINER_OF(cur_node, hid_field_t, node);
 
-        // 只处理我们需要关心的部分：普通键盘按键 (Usage Page 0x07)
-        if (field->usage_page == 0x07) {
-            if (1) {
-                // 处理 Array 模式：比如 6键无冲的 6 个字节
-                // 这里我们知道这块区域有多个按键，需要循环提取
-                // (为演示精简，假设我们只读这块区域的第一个按键)
-                // uint32 key_code = hid_extract_bits(hdev->report_buf,
-                //                                    CONTAINER_OF(hdev->field_list_head.next, hid_field_t, node));
-                //
-                // if (key_code > 0) {
-                //     color_printk(GREEN,BLACK, "Key Pressed! USB Scancode: 0x%x\n", key_code);
-                // }
-            } else {
-                // 处理 Variable 模式：比如那 8 个独立的修饰键
-                // 同样可以使用 extract_bits 一位一位去抠出来看是 0 还是 1
+
+// 定义几个常见的 USB HID 用途页 (Usage Pages) 规范宏
+#define HID_UP_GENDESK   0x00010000 // 通用桌面设备 (鼠标X/Y轴等)
+#define HID_UP_KEYBOARD  0x00070000 // 标准键盘
+#define HID_UP_LED       0x00080000 // LED 状态灯
+#define HID_UP_BUTTON    0x00090000 // 鼠标/手柄物理按键
+
+// 假设我们有一个键盘 HID ID 到 TheresaOS 键码的映射表
+// (因为 USB 的键码和系统键码并不完全是一一对应，需要查表)
+uint16 hid_keyboard_map[256];
+
+/**
+ * @brief 将 HID 设备的 Usage 映射为 Input 系统的事件，并填充能力位图
+ *
+ * @param hdev  已经解析完 Report Descriptor 的 HID 设备指针
+ * @param idev  即将要向内核注册的 Input 系统设备指针
+ */
+void hid_map_usage_to_input(hid_dev_t *hdev, input_dev_t *idev) {
+    // 1. 遍历这个设备所有的 Field (数据切片模具)
+    for (int i = 0; i < hdev->field_count; i++) {
+        hid_field_t *field = hdev->fields[i];
+
+        // 2. 遍历这个 Field 下所有的 Usage (标签)
+        for (int j = 0; j < field->max_usage; j++) {
+            hid_usage_t *usage = &field->usages[j];
+
+            // 提取出高 16 位的 Usage Page
+            uint32 usage_page = usage->hid_id & 0xFFFF0000;
+            // 提取出低 16 位的 Usage ID
+            uint16 usage_id   = usage->hid_id & 0x0000FFFF;
+
+            // 默认情况下，先将其标记为系统不认识的无用事件
+            usage->event_type = 0;
+            usage->event_code = 0;
+
+            // 3. 开始核心路由与映射逻辑
+            switch (usage_page) {
+
+                // ==========================================
+                // 场景 A：这是一个标准键盘的按键
+                // ==========================================
+                case HID_UP_KEYBOARD:
+                    // 查表将 USB ID 转换成系统的 KEY_* 码 (比如 0x04 -> KEY_A)
+                    if (usage_id < 256) {
+                        usage->event_type = EV_KEY;
+                        usage->event_code = hid_keyboard_map[usage_id];
+                    }
+
+                    // 如果这个按键是系统认识的合规按键
+                    if (usage->event_code != 0) {
+                        // 宣告能力：这台设备支持发按键事件 (大类)
+                        SET_BIT(EV_KEY, idev->evbit);
+                        // 宣告能力：这台设备具体支持这个键码 (细节)
+                        SET_BIT(usage->event_code, idev->keybit);
+                    }
+                    break;
+
+                // ==========================================
+                // 场景 B：通用桌面设备 (主要是鼠标移动)
+                // ==========================================
+                case HID_UP_GENDESK:
+                    if (usage_id == 0x30) { // 0x30 代表 X 轴
+                        usage->event_type = EV_REL;
+                        usage->event_code = REL_X;
+                        SET_BIT(EV_REL, idev->evbit);
+                        SET_BIT(REL_X, idev->relbit);
+                    }
+                    else if (usage_id == 0x31) { // 0x31 代表 Y 轴
+                        usage->event_type = EV_REL;
+                        usage->event_code = REL_Y;
+                        SET_BIT(EV_REL, idev->evbit);
+                        SET_BIT(REL_Y, idev->relbit);
+                    }
+                    else if (usage_id == 0x38) { // 0x38 代表鼠标滚轮
+                        usage->event_type = EV_REL;
+                        usage->event_code = REL_WHEEL;
+                        SET_BIT(EV_REL, idev->evbit);
+                        SET_BIT(REL_WHEEL, idev->relbit);
+                    }
+                    break;
+
+                // ==========================================
+                // 场景 C：鼠标或手柄的点击按键
+                // ==========================================
+                case HID_UP_BUTTON:
+                    // USB 规范里，Button 1 通常是鼠标左键，Button 2 是右键
+                    usage->event_type = EV_KEY;
+                    // BTN_MOUSE = 0x110，减 1 是因为 usage_id 是从 1 开始的
+                    usage->event_code = BTN_MOUSE + (usage_id - 1);
+
+                    // 确保计算出来的键码没有越界
+                    if (usage->event_code <= KEY_MAX) {
+                        SET_BIT(EV_KEY, idev->evbit);
+                        SET_BIT(usage->event_code, idev->keybit);
+                    }
+                    break;
+
+                // ==========================================
+                // 场景 D：键盘的 LED 指示灯 (反向控制使用)
+                // ==========================================
+                case HID_UP_LED:
+                    usage->event_type = EV_LED;
+                    // USB 规范中 LED 编号 1 是 Num Lock, 2 是 Caps Lock
+                    if (usage_id == 0x01) { usage->event_code = LED_NUML; }
+                    else if (usage_id == 0x02) { usage->event_code = LED_CAPSL; }
+                    else if (usage_id == 0x03) { usage->event_code = LED_SCROLLL; }
+
+                    SET_BIT(EV_LED, idev->evbit);
+                    SET_BIT(usage->event_code, idev->ledbit);
+                    break;
+
+                // ==========================================
+                // 场景 E：系统无法识别的私有硬件数据
+                // ==========================================
+                default:
+                    // 这个设备可能是水冷头温度传感器、也可能是显卡灯光控制板
+                    // 我们不需要在 input_dev 里给它位图置位。
+                    // 直接跳过即可，保留它 event_type = 0 的状态。
+                    // 以后交给 hidraw 去原封不动地发给用户态程序。
+                    break;
             }
         }
     }
 }
+
 
 
 /**
@@ -352,27 +479,15 @@ void hid_irq_handler(hid_dev_t *hdev) {
  */
 static int hid_probe(usb_if_t *uif, usb_id_t *uid) {
     usb_dev_t *udev = uif->udev; // 从接口反向拿到物理设备对象
-    hid_dev_t *hdev = NULL;
-
-    // ==========================================
-    // Phase 1: 分配驱动私有数据结构并绑定
-    // ==========================================
-    hdev = kzalloc(sizeof(hid_dev_t));
-
-    hdev->uif = uif;
-
-    // 将我们自己的 hdev 挂载到 USB 接口的私有指针上，方便后续中断里拿出来用
-    uif->drv_data = hdev;
-
     usb_if_alt_t *if_alt = &uif->if_alts[0];
 
-    //3.启用接口
+    //1.启用接口
     usb_ep_t *ep1 = &if_alt->eps[0];
     ep1->ring_max_trbs = 32;
     usb_enable_alt_if(if_alt);
 
     // ==========================================
-    // Phase 3: 索要“报告描述符 (说明书)”
+    // Phase 2: 索要“报告描述符 (说明书)”
     // ==========================================
     // 通常我们先通过读取 HID 描述符知道报告描述符的长度，这里假设长度为 64 或 128
     // 我们直接申请一块临时内存用来接说明书
@@ -387,7 +502,17 @@ static int hid_probe(usb_if_t *uif, usb_id_t *uid) {
     // 发送 Control Transfer (控制传输) 向设备索要报告描述符
     usb_hid_get_report_desc(udev, if_alt->if_desc->interface_number, report_desc_buf, report_desc_len);
 
+    // ==========================================
+    // Phase 3: 分配驱动私有数据结构并绑定
+    // ==========================================
+    uint32 fields_count = hid_count_fields(report_desc_buf,report_desc_len);
+    hid_dev_t *hdev = kzalloc(sizeof(hid_dev_t)+fields_count*sizeof(hid_field_t*));
+    hdev->uif = uif;
 
+    // 将我们自己的 hdev 挂载到 USB 接口的私有指针上，方便后续中断里拿出来用
+    uif->drv_data = hdev;
+
+    
     // ==========================================
     // Phase 4: 运行解析引擎，建立“数据模具”
     // ==========================================
@@ -399,21 +524,53 @@ static int hid_probe(usb_if_t *uif, usb_id_t *uid) {
     kfree(report_desc_buf);
     report_desc_buf = NULL;
 
-    // ==========================================
-    // Phase 5: 初始化日常中断接收的内存 (盲盒)
-    // ==========================================
-    // 申请一块内存，用来存放以后每次中断发来的数据流 (注意：必须是支持 DMA 的内存)
-    hdev->report_buf = kzalloc_dma(ep1->max_packet_size);
 
     // ==========================================
-    // Phase 6: 注册到 TheresaOS 的 Input Subsystem (输入子系统)
+    // Phase 5: 注册到 TheresaOS 的 Input Subsystem (输入子系统)
     // ==========================================
     // 告诉系统：我这里有一个新设备准备好了，以后我的数据会发给 input_router
+    // ==========================================
+    // Phase 5: 注册到 TheresaOS 的 Input Subsystem (输入子系统)
+    // ==========================================
+
+    // 1. 向输入子系统申请一个干净的“账本”
+    input_dev_t *idev = kzalloc(sizeof(input_dev_t));
+
+    // 2. 填写设备基本信息
+    // 你可以从 Phase 1 获取的 USB 字符串描述符里把设备名字拷过来
+    asm_strcpy(idev->name, "USB HID Device\n");
+    idev->private_data = hdev; // 互相绑定
+    hdev->input = idev;        // 存入你自己的 hid_device_t 里
+
+    // 3. ★ 核心转换：把 Phase 4 的模具，翻译成 idev 的能力位图
+    // 需要你自己写一个函数，遍历 hdev 里的 hid_field_t，调用 SET_BIT()
+    hid_map_usage_to_input(hdev, idev);
+
+    // 4. 空账本拦截：检查这个设备到底是不是输入设备
+    if (!TEST_BIT(EV_KEY, idev->evbit) &&
+        !TEST_BIT(EV_REL, idev->evbit) &&
+        !TEST_BIT(EV_ABS, idev->evbit)) {
+
+        // 如果啥输入能力都没有 (比如是纯 RGB 调光器)
+        // 就销毁账本，不向 Input 子系统注册
+        kfree(idev);
+        hdev->input = NULL;
+
+        // 可以在这里走 hidraw 通道分支
+        // register_hidraw(hdev);
+
+        } else {
+            // 5. 正式注册：挂载到系统的全局 input 链表
+            // (注：如果是多核系统，这里需要加自旋锁)
+            // idev->next = g_input_device_list;
+            // g_input_device_list = idev;
+        }
 
 
     // ==========================================
-    // Phase 7: 启动引擎！投递第一个 URB
+    // Phase 6: 启动引擎！投递第一个 URB
     // ==========================================
+    hdev->report_buf = kzalloc_dma(ep1->max_packet_size);
     usb_fill_int_urb(hdev->int_urb, udev, ep1, hdev->report_buf, ep1->max_packet_size, ep1->interval);
     xhci_submit_urb(hdev->int_urb);
     return 0; // 成功！
