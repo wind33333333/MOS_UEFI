@@ -70,8 +70,11 @@
 #define KEY_RIGHTSHIFT      54
 #define KEY_LEFTALT         56
 #define KEY_CAPSLOCK        58
+#define KEY_102ND           86
 #define KEY_RIGHTCTRL       97
 #define KEY_RIGHTALT        100
+#define KEY_POWER           116
+#define KEY_KPEQUAL         117
 #define KEY_LEFTMETA        125     // 左 Windows/Super 键
 #define KEY_RIGHTMETA       126     // 右 Windows/Super 键
 #define KEY_COMPOSE         127     // 菜单键 (右侧 Win 和 Ctrl 之间)
