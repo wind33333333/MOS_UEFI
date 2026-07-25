@@ -330,6 +330,7 @@ typedef struct hid_field_t {
     uint8 report_id; // 报文 ID
 
     // === 物理寻址地图 (核心) ===
+    uint32 report_count; // 元素个数 (以此为准严格分配内存)
     uint32 bit_offset; // 在 raw buffer 中的绝对起始偏移量
     uint32 bit_size; // 单个元素的 bit 数量
 
@@ -349,7 +350,7 @@ typedef struct hid_field_t {
     int32 unit_exponent; // 单位指数
 
     // === (强制按 report_count 分配，紧接在结构体尾部) ===
-    uint32 report_count; // 元素个数 (以此为准严格分配内存)
+    uint32 max_usages;   // 内存中实际展开的 Usage 数量 (例如：256)
     hid_usage_t usages[]; //柔性数组动态计算长度
 } hid_field_t;
 

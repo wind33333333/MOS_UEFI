@@ -252,7 +252,27 @@ static int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) 
 
                     uint8 type_idx = (item_tag == HID_MAIN_TAG_INPUT) ? 0 : (item_tag == HID_MAIN_TAG_OUTPUT) ? 1 : 2;
 
-                    uint32 alloc_size = sizeof(hid_field_t) + (state->global.report_count * sizeof(hid_usage_t));
+                    // ==========================================================
+                    // ★ 核心重构：计算最大 Usage 数量 (Linux 暴力展开法)
+                    // ==========================================================
+                    uint32 max_usages = 0;
+
+                    if (state->usage_max >= state->usage_min && state->usage_max != 0) {
+                        // 区间声明模式 (如 0x00 ~ 0xFF，展开后是 256 个)
+                        max_usages = state->usage_max - state->usage_min + 1;
+                    } else if (state->local_usage_count > 0) {
+                        // 离散声明模式
+                        max_usages = state->local_usage_count;
+                    }
+
+                    // 兜底保护：防备某些劣质山寨键盘的描述符乱写
+                    // max_usages 绝对不能小于 report_count，否则后面解析 Payload 会越界
+                    if (max_usages < state->global.report_count) {
+                        max_usages = state->global.report_count;
+                    }
+
+                    // 按照 max_usages 分配内存，而不是 report_count！
+                    uint32 alloc_size = sizeof(hid_field_t) + (max_usages * sizeof(hid_usage_t));
                     hid_field_t *field = kzalloc(alloc_size);
                     if (!field) {
                         // OOM 时跳转清理（目前仅退出，后续可加上释放链表的逻辑）
@@ -263,6 +283,7 @@ static int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) 
                     field->report_type = type_idx;
                     field->report_id = state->global.report_id;
                     field->flags = raw_data;
+                    field->max_usages   = max_usages;
                     field->report_count = state->global.report_count;
                     field->bit_size = state->global.report_size;
                     field->usage_page = state->global.usage_page;
@@ -294,49 +315,34 @@ static int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) 
                                              state->collection_app_stack[state->collection_depth - 1] : 0;
 
                     field->flags = raw_data;
-                    if (HID_FIELD_IS_DATA(field->flags)) { // 仅处理 Data，跳过 Constant
-                        // 提取公共变量，强制编译器将其分配到寄存器中
+                    if (HID_FIELD_IS_DATA(field->flags)) {
                         uint32 page_base = state->global.usage_page << 16;
-                        uint32 count = state->global.report_count;
 
-                        if (HID_FIELD_IS_ARRAY(field->flags)) {
-                            // ==========================================
-                            // 场景 1：Array 模式
-                            // ==========================================
-                            for (uint32 i = 0; i < count; i++) {
-                                field->usages[i].hid_id = page_base;
-                            }
-                        } else if (state->usage_max >= state->usage_min && state->usage_max != 0) {
-                            // ==========================================
-                            // 场景 2：Variable 模式 (Min/Max 区间声明)
-                            // ==========================================
-                            // 提取循环边界：计算区间容量与 report_count 的交集，彻底消除循环内部的 if 判断
-                            uint32 range_limit = (state->usage_max - state->usage_min + 1);
-                            uint32 limit = (range_limit < count) ? range_limit : count;
+                        // ==========================================================
+                        // ★ 暴力展开：无视 Array/Variable，直接为所有可能的键建立实例
+                        // ==========================================================
+                        if (state->usage_max >= state->usage_min && state->usage_max != 0) {
 
-                            for (uint32 i = 0; i < limit; i++) {
+                            for (uint32 i = 0; i < max_usages; i++) {
+                                // 比如 6KRO 键盘，这里会顺滑地生成 0x070000 到 0x0700FF 这 256 个实例
                                 field->usages[i].hid_id = page_base | (state->usage_min + i);
                             }
-                            // 注意：如果 count > limit，多出的槽位在 kmalloc(zalloc) 阶段已被清零，无需额外处理。
+
                         } else if (state->local_usage_count > 0) {
-                            // ==========================================
-                            // 场景 3：Variable 模式 (离散 Usage 声明)
-                            // ==========================================
-                            uint32 copy_count = (state->local_usage_count < count)
-                                                    ? state->local_usage_count
-                                                    : count;
 
-                            for (uint32 i = 0; i < copy_count; i++) {
-                                field->usages[i].hid_id = state->local_usages[i];
+                            for (uint32 i = 0; i < max_usages; i++) {
+                                // 离散模式，如果不够就用最后一个补齐
+                                uint32 idx = (i < state->local_usage_count) ? i : (state->local_usage_count - 1);
+                                field->usages[i].hid_id = state->local_usages[idx];
                             }
 
-                            // 仅当确实需要延展时才进入此分支
-                            if (copy_count < count) {
-                                uint32 last_usage = state->local_usages[copy_count - 1];
-                                for (uint32 i = copy_count; i < count; i++) {
-                                    field->usages[i].hid_id = last_usage;
-                                }
+                        } else {
+
+                            // 极端异常兜底
+                            for (uint32 i = 0; i < max_usages; i++) {
+                                field->usages[i].hid_id = page_base;
                             }
+
                         }
                     }
                 }
@@ -543,7 +549,7 @@ void hid_map_usage_to_input(hid_dev_t *hdev, input_dev_t *idev) {
         hid_field_t *field = hdev->fields[i];
 
         // 2. 遍历这个 Field 下所有的 Usage (标签)
-        for (int j = 0; j < field->report_count; j++) {
+        for (int j = 0; j < field->max_usages; j++) {
             hid_usage_t *usage = &field->usages[j];
 
             // 提取出高 16 位的 Usage Page
@@ -564,38 +570,16 @@ void hid_map_usage_to_input(hid_dev_t *hdev, input_dev_t *idev) {
                 case HID_UP_KEYBOARD:
                     if (usage_id < 256) {
                         usage->event_code = hid_keyboard_map[usage_id];
-                    } else {
-                        usage->event_code = 0;
-                    }
 
-                    if (HID_FIELD_IS_VARIABLE(field->flags)) {
-                        // ---------------------------------------------------
-                        // 分支 1：Variable 模式 (如 L-Ctrl, R-Shift 等独立修饰键)
-                        // ---------------------------------------------------
-                        if (usage->event_code != 0) {
+                        if (usage->event_code != 0) { // 自动过滤 0x00 ~ 0x03 的无效键
                             usage->event_type = EV_KEY;
                             SET_BIT(EV_KEY, idev->evbit);
-                            SET_BIT(usage->event_code, idev->keybit);
+                            SET_BIT(usage->event_code, idev->keybit); // 完美的一对一能力注册
                         } else {
-                            // 微调：如果是不支持的 Variable 按键，打回原形，让 ISR 无视它
                             usage->event_type = 0;
-                        }
-                    } else {
-                        // ---------------------------------------------------
-                        // 分支 2：Array 模式 (如 6KRO 的常规按键槽位)
-                        // ---------------------------------------------------
-                        usage->event_type = EV_KEY; // 必须是 EV_KEY，让 ISR 知道这里要处理按键
-                        SET_BIT(EV_KEY, idev->evbit);
-
-                        for (int k = 0; k < 256; k++) {
-                            uint16 mapped_key = hid_keyboard_map[k];
-                            if (mapped_key != 0) { // 完美绕过 0~3 的错误码
-                                SET_BIT(mapped_key, idev->keybit);
-                            }
                         }
                     }
                     break;
-
                 // ==========================================
                 // 场景 B：通用桌面设备 (主要是鼠标移动)
                 // ==========================================
@@ -745,11 +729,6 @@ static int hid_probe(usb_if_t *uif, usb_id_t *uid) {
     // ==========================================
     // Phase 5: 注册到 TheresaOS 的 Input Subsystem (输入子系统)
     // ==========================================
-    // 告诉系统：我这里有一个新设备准备好了，以后我的数据会发给 input_router
-    // ==========================================
-    // Phase 5: 注册到 TheresaOS 的 Input Subsystem (输入子系统)
-    // ==========================================
-
     // 1. 向输入子系统申请一个干净的“账本”
     input_dev_t *idev = kzalloc(sizeof(input_dev_t));
 
@@ -779,8 +758,8 @@ static int hid_probe(usb_if_t *uif, usb_id_t *uid) {
         } else {
             // 5. 正式注册：挂载到系统的全局 input 链表
             // (注：如果是多核系统，这里需要加自旋锁)
-            // idev->next = g_input_device_list;
-            // g_input_device_list = idev;
+            idev->next = g_input_device_list;
+            g_input_device_list = idev;
         }
 
 
