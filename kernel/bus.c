@@ -21,6 +21,8 @@ extern usb_drv_t *create_usb_storage_driver();
 
 extern usb_drv_t *create_usb_hub_driver();
 
+extern list_head_t g_input_device_list;
+
 
 //创建一个pcie总线和usb总线
 INIT_TEXT void bus_init(void){
@@ -58,6 +60,7 @@ INIT_TEXT void bus_init(void){
     usb_drv_t *usb_hid_driver = create_usb_hid_driver();
     usb_drv_register(usb_hid_driver);
 
+    list_head_init(&g_input_device_list);
 
 
     // =========================================================================

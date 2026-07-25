@@ -671,6 +671,8 @@ void hid_map_usage_to_input(hid_dev_t *hdev, input_dev_t *idev) {
 }
 
 
+list_head_t g_input_device_list;
+
 
 /**
  * @brief USB HID 驱动的入口函数 (当 USB 核心层发现 HID 接口时调用)
@@ -743,7 +745,7 @@ static int hid_probe(usb_if_t *uif, usb_id_t *uid) {
     hid_map_usage_to_input(hdev, idev);
 
     // 4. 空账本拦截：检查这个设备到底是不是输入设备
-    if (!TEST_BIT(EV_KEY, idev->evbit) &&
+     if (!TEST_BIT(EV_KEY, idev->evbit) &&
         !TEST_BIT(EV_REL, idev->evbit) &&
         !TEST_BIT(EV_ABS, idev->evbit)) {
 
@@ -758,10 +760,8 @@ static int hid_probe(usb_if_t *uif, usb_id_t *uid) {
         } else {
             // 5. 正式注册：挂载到系统的全局 input 链表
             // (注：如果是多核系统，这里需要加自旋锁)
-            idev->next = g_input_device_list;
-            g_input_device_list = idev;
+            list_add_tail(&g_input_device_list,&idev->node);
         }
-
 
     // ==========================================
     // Phase 6: 启动引擎！投递第一个 URB

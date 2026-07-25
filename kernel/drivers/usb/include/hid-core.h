@@ -303,7 +303,7 @@ typedef struct input_dev_t {
 
  // 私有数据与链表
  void *private_data;         // 反向指向你底层的 hid_device_t
- struct input_dev_t *next;     // 挂载到全局设备链表
+ list_head_t   node;     // 挂载到全局设备链表
 } input_dev_t;
 
 
