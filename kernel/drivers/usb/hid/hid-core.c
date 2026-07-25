@@ -367,7 +367,7 @@ void hid_map_usage_to_input(hid_dev_t *hdev, input_dev_t *idev) {
         hid_field_t *field = hdev->fields[i];
 
         // 2. 遍历这个 Field 下所有的 Usage (标签)
-        for (int j = 0; j < field->max_usage; j++) {
+        for (int j = 0; j < field->report_count; j++) {
             hid_usage_t *usage = &field->usages[j];
 
             // 提取出高 16 位的 Usage Page
