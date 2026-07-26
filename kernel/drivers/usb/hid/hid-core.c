@@ -763,6 +763,7 @@ void hid_irq_complete(usb_urb_t *urb) {
         event->data_len = urb->actual_length;
         // 极速内存拷贝 (8 字节通常只要几个 CPU 时钟周期)
         asm_mem_cpy(hdev->report_buf,event->raw_data,  urb->actual_length);
+        //asm_mem_set(hdev->report_buf, 0, urb->actual_length);
 
         g_hid_raw_queue.head = next_head;
 
