@@ -280,7 +280,7 @@ static int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) 
                     }
                     hdev->fields[hdev->field_count++] = field;
 
-                    field->report_type = type_idx;
+                    field->report_type = item_tag;
                     field->report_id = state->global.report_id;
                     field->flags = raw_data;
                     field->max_usages   = max_usages;
@@ -366,6 +366,81 @@ parse_end:
 }
 
 
+/**
+ * @brief 从 HID 原始数据包中安全提取跨字节的位域 (支持小端序)
+ *
+ * @param report     指向 HID 数据包载荷的起始位置
+ * @param bit_offset 该字段在载荷中的绝对起始位 (单位: bit)
+ * @param bit_size   需要提取的位数 (最大支持 32 位)
+ * @return uint32    提取出的无符号原始数据
+ */
+static inline uint32 hid_extract_bits(const uint8 *report, uint32 bit_offset, uint32 bit_size) {
+    uint32 value = 0;
+    uint32 bits_extracted = 0; // 已成功提取的位数
+
+    // 容错处理：TheresaOS 目前的按键/鼠标状态机最大用 uint32 承载
+    if (bit_size == 0 || bit_size > 32) {
+        return 0;
+    }
+
+    // 1. 定位起始位置：计算从哪个字节的第几位开始切
+    uint32 current_byte = bit_offset / 8;
+    uint32 current_bit_in_byte = bit_offset % 8;
+
+    // 2. 循环提取：应对跨越多字节的情况
+    while (bits_extracted < bit_size) {
+
+        // 计算在当前这个字节里，我们能切下多少个 bit？
+        // 取“当前字节剩余 bit 数”与“还缺少的 bit 数”两者间的最小值
+        uint32 bits_to_take = 8 - current_bit_in_byte;
+        if (bits_to_take > (bit_size - bits_extracted)) {
+            bits_to_take = bit_size - bits_extracted;
+        }
+
+        // 制作截取掩码 (Mask)
+        // 例如：我们要取 3 个 bit，掩码就是 (1 << 3) - 1 = 7 (二进制 00000111)
+        uint8 mask = (1 << bits_to_take) - 1;
+
+        // 核心切割：
+        // a) 读取当前字节: report[current_byte]
+        // b) 将有用的数据右移到底部: >> current_bit_in_byte
+        // c) 用掩码滤掉高位的无关数据: & mask
+        uint8 extracted_chunk = (report[current_byte] >> current_bit_in_byte) & mask;
+
+        // 将切下来的这块肉，左移到最终结果正确的位置上，并拼装
+        value |= (extracted_chunk << bits_extracted);
+
+        // 推进状态机，为提取下一个字节做准备
+        bits_extracted += bits_to_take;
+        current_byte++;
+        current_bit_in_byte = 0; // 只要跨入下一个新字节，必然是从第 0 位开始读
+    }
+
+    return value;
+}
+
+
+/**
+ * @brief 将提取出的无符号位域恢复为有符号整数 (符号扩展)
+ *
+ * @param value    由 hid_extract_bits 提取出的无符号值
+ * @param bit_size 该位域的原始位长
+ * @return int32   带符号的实际数值
+ */
+static inline int32 hid_sign_extend(uint32 value, uint32 bit_size) {
+    if (bit_size == 0 || bit_size >= 32) return (int32)value;
+
+    // 检查这个数据的最高位（符号位）是否为 1
+    uint32 sign_bit = 1 << (bit_size - 1);
+
+    if (value & sign_bit) {
+        // 如果符号位是 1，说明是负数，我们需要把 bit_size 以上的高位全部补 1
+        uint32 mask = ~((1 << bit_size) - 1);
+        value |= mask;
+    }
+
+    return (int32)value;
+}
 
 
 
@@ -738,13 +813,14 @@ void hid_worker_thread_main(void *arg) {
 
             // 内层循环：根据 report_count 切肉
             for (uint32 j = 0; j < field->report_count; j++) {
-                //uint32 val = hid_extract_bits(raw_data, bit_pos, field->bit_size);
+                uint32 val = hid_extract_bits(raw_data, bit_pos, field->bit_size);
                 bit_pos += field->bit_size;
 
-                //if (val == 0) continue;
+                // 过滤掉无效值 (0 通常代表无动作 / 没有按键)
+                if (val == 0) continue;
 
-                // 查表，更新状态机 current_value... (你之前的逻辑)
-                // ...
+                color_printk(RED,BLACK,"%d ",val);
+
             }
         }
 

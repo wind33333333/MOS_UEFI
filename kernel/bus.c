@@ -77,6 +77,9 @@ INIT_TEXT void bus_init(void){
         // 一直掏出来处理
         while (1) {
             asm_pause();
+
+            hid_worker_thread_main(NULL);
+
             if (usb_event_queue_pop(&evt) == FALSE) continue;
             switch (evt.type) {
                 case USB_EVENT_XHCI_ROOT_PORT: {
@@ -112,8 +115,6 @@ INIT_TEXT void bus_init(void){
                 default:
                     break;
             }
-
-            hid_worker_thread_main(NULL);
 
         }
 
