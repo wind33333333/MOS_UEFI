@@ -567,6 +567,15 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
     }
 }
 
+void usb_hub_irq_complete(usb_urb_t* urb) {
+    usb_hub_t *hub = (usb_hub_t *)urb->private_data;
+    // 🛡️ 核心防线：必须严格比对地址！
+    if (hub && urb == hub->int_urb) {
+        // 将 Hub 的端口状态机推入工作队列异步执行
+        usb_event_queue_push(USB_EVENT_HUB_WORK, urb->udev, 0);
+    }
+}
+
 //hub驱动
 int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     usb_dev_t *udev = uif->udev;
@@ -674,7 +683,7 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
 
     //5.配置好中断 URB,提交队列后续有设备插入拔出等异步实现
     hub->int_urb = usb_alloc_urb();
-    usb_fill_int_urb(hub->int_urb, udev, ep1, hub->port_bitmap_status, ep1->max_packet_size, ep1->interval);
+    usb_fill_int_urb(hub->int_urb,usb_hub_irq_complete, hub,udev, ep1, hub->port_bitmap_status, ep1->max_packet_size, ep1->interval);
     xhci_submit_urb(hub->int_urb);
 }
 
@@ -693,3 +702,69 @@ usb_drv_t *create_usb_hub_driver() {
     usb_drv->remove = usb_hub_remove;
     return usb_drv;
 }
+
+// =========================================================================
+// 2. 核心操作 API
+// =========================================================================
+// 全局唯一的 USB 事件队列实例 (开机分配在 BSS 段，完全告别 kmalloc)
+static usb_event_queue_t g_usb_event_queue;
+/**
+ * @brief 初始化队列 (系统启动时调用一次)
+ */
+void usb_event_queue_init(void) {
+    g_usb_event_queue.head = 0;
+    g_usb_event_queue.tail = 0;
+}
+
+
+
+/**
+ * @brief [生产者] 投递端口事件
+ * @note 运行在硬件中断 (ISR) 上下文中，要求极速，不可阻塞！
+ * @return boolean TRUE-成功，FALSE-队列溢出满
+ */
+boolean usb_event_queue_push(usb_event_type_e type, void *parent, uint8 port_num) {
+    // 预测下一个写入位置
+    uint32 next_tail = (g_usb_event_queue.tail + 1) % USB_EVENT_QUEUE_SIZE;
+
+    // 检查是否撞上消费者指针 (队列满)
+    if (next_tail == g_usb_event_queue.head) {
+        // 内核级警告：主循环处理太慢，或者发生了极其严重的中断风暴！
+        // color_printk(RED, BLACK, "FATAL: USB Event Queue Overflow!\n");
+        return FALSE;
+    }
+
+    // 写入数据 (纯内存拷贝，耗时极短)
+    usb_port_event_t *evt = &g_usb_event_queue.events[g_usb_event_queue.tail];
+    evt->type = type;
+    evt->parent_dev = parent;
+    evt->port_num = port_num;
+
+    // 🌟 核心防线：编译器内存屏障，强制确保数据先落盘，再更新 tail 指针
+    __asm__ __volatile__("": : :"memory");
+
+    g_usb_event_queue.tail = next_tail;
+    return TRUE;
+}
+
+/**
+ * @brief [消费者] 弹出端口事件
+ * @note 运行在主循环底半部，安全、无惧阻塞。
+ * @param out_event 弹出的事件拷贝存放处
+ * @return boolean TRUE-成功拿到任务，FALSE-队列为空
+ */
+boolean usb_event_queue_pop(usb_port_event_t *out_event) {
+    // 检查队列是否为空
+    if (g_usb_event_queue.head == g_usb_event_queue.tail) {
+        return FALSE;
+    }
+
+    // 拷贝数据
+    usb_port_event_t *evt = &g_usb_event_queue.events[g_usb_event_queue.head];
+    out_event->type = evt->type;
+    out_event->parent_dev = evt->parent_dev;
+    out_event->port_num = evt->port_num;
+    g_usb_event_queue.head = (g_usb_event_queue.head + 1) % USB_EVENT_QUEUE_SIZE;
+    return TRUE;
+}
+

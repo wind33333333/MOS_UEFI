@@ -23,6 +23,7 @@ extern usb_drv_t *create_usb_hub_driver();
 
 extern list_head_t g_input_device_list;
 
+extern void hid_worker_thread_main(void *arg);
 
 //创建一个pcie总线和usb总线
 INIT_TEXT void bus_init(void){
@@ -111,6 +112,9 @@ INIT_TEXT void bus_init(void){
                 default:
                     break;
             }
+
+            hid_worker_thread_main(NULL);
+
         }
 
 

@@ -205,7 +205,7 @@ static inline void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_
     spin_lock_irqsave(&target_ring->ring_lock, &cpu_flags);
 
     // 在目标环的安全链表里进行小范围遍历
-    list_head_t *curr, *next;
+    list_head_t *curr=0, *next=0;
     list_for_each_safe(curr, next, &target_ring->pending_list){
         usb_urb_t *urb = CONTAINER_OF(curr, usb_urb_t, node);
 
@@ -235,23 +235,10 @@ static inline void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_
     // =======================================================
     // 🌟 6. 回调与唤醒：特殊通道与常规通道流转
     // =======================================================
-
-    // A. 特殊通道：Hub 的 Interrupt IN Endpoint
-    if (udev->is_hub) {
-        usb_hub_t *hub = (usb_hub_t *)udev->drv_data;
-        // 🛡️ 核心防线：必须严格比对地址！
-        if (hub && completed_urb == hub->int_urb) {
-            // 将 Hub 的端口状态机推入工作队列异步执行
-            usb_event_queue_push(USB_EVENT_HUB_WORK, udev, 0);
-        }
+    if (completed_urb->complete_func) {
+        completed_urb->complete_func(completed_urb);
     }
 
-    // B. 常规通道：唤醒在此 URB 上休眠的同步线程 (伪代码示意)
-    // if (completed_urb->complete_func) {
-    //     completed_urb->complete_func(completed_urb);
-    // } else {
-    //     semaphore_up(&completed_urb->wait_sem);
-    // }
 }
 
 
@@ -596,70 +583,6 @@ void xhci_port_scan(xhci_hcd_t *xhcd){
 }
 
 
-// =========================================================================
-// 2. 核心操作 API
-// =========================================================================
-// 全局唯一的 USB 事件队列实例 (开机分配在 BSS 段，完全告别 kmalloc)
-static usb_event_queue_t g_usb_event_queue;
-/**
- * @brief 初始化队列 (系统启动时调用一次)
- */
-void usb_event_queue_init(void) {
-    g_usb_event_queue.head = 0;
-    g_usb_event_queue.tail = 0;
-}
-
-
-
-/**
- * @brief [生产者] 投递端口事件
- * @note 运行在硬件中断 (ISR) 上下文中，要求极速，不可阻塞！
- * @return boolean TRUE-成功，FALSE-队列溢出满
- */
-boolean usb_event_queue_push(usb_event_type_e type, void *parent, uint8 port_num) {
-    // 预测下一个写入位置
-    uint32 next_tail = (g_usb_event_queue.tail + 1) % USB_EVENT_QUEUE_SIZE;
-
-    // 检查是否撞上消费者指针 (队列满)
-    if (next_tail == g_usb_event_queue.head) {
-        // 内核级警告：主循环处理太慢，或者发生了极其严重的中断风暴！
-        // color_printk(RED, BLACK, "FATAL: USB Event Queue Overflow!\n");
-        return FALSE;
-    }
-
-    // 写入数据 (纯内存拷贝，耗时极短)
-    usb_port_event_t *evt = &g_usb_event_queue.events[g_usb_event_queue.tail];
-    evt->type = type;
-    evt->parent_dev = parent;
-    evt->port_num = port_num;
-
-    // 🌟 核心防线：编译器内存屏障，强制确保数据先落盘，再更新 tail 指针
-    __asm__ __volatile__("": : :"memory");
-
-    g_usb_event_queue.tail = next_tail;
-    return TRUE;
-}
-
-/**
- * @brief [消费者] 弹出端口事件
- * @note 运行在主循环底半部，安全、无惧阻塞。
- * @param out_event 弹出的事件拷贝存放处
- * @return boolean TRUE-成功拿到任务，FALSE-队列为空
- */
-boolean usb_event_queue_pop(usb_port_event_t *out_event) {
-    // 检查队列是否为空
-    if (g_usb_event_queue.head == g_usb_event_queue.tail) {
-        return FALSE;
-    }
-
-    // 拷贝数据
-    usb_port_event_t *evt = &g_usb_event_queue.events[g_usb_event_queue.head];
-    out_event->type = evt->type;
-    out_event->parent_dev = evt->parent_dev;
-    out_event->port_num = evt->port_num;
-    g_usb_event_queue.head = (g_usb_event_queue.head + 1) % USB_EVENT_QUEUE_SIZE;
-    return TRUE;
-}
 
 
 

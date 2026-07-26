@@ -137,7 +137,7 @@ clean_all:
 	-mkdir -p build esp/efi/boot
 
 clean_kernel:
-	-rm -rf build/*.* esp/kernel.*
+	-rm -rf build/* esp/kernel.*
 
 clean_uefi:
 	-rm -rf build/DEBUG_GCC build/RELEASE_GCC  esp/efi/boot/bootx64.efi

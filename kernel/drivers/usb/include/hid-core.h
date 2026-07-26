@@ -354,6 +354,7 @@ typedef struct hid_field_t {
     hid_usage_t usages[]; //柔性数组动态计算长度
 } hid_field_t;
 
+struct usb_if_t;
 
 /*
  * hid_dev: HID 物理设备实例
@@ -361,9 +362,9 @@ typedef struct hid_field_t {
  */
 typedef struct {
     // 以下为 TheresaOS 底层 USB 通信所需的上下文
-    void *int_urb; // 中断传输的 URB 指针
+    usb_urb_t *int_urb; // 中断传输的 URB 指针
     uint8 *report_buf; // 接收数据的 Raw Buffer
-    void *uif; // 绑定的 USB 接口实例 (usb_if)
+    struct usb_if_t *uif; // 绑定的 USB 接口实例 (usb_if)
 
     input_dev_t *input;
 
@@ -372,3 +373,26 @@ typedef struct {
 } hid_dev_t;
 
 usb_drv_t *create_usb_hid_driver();
+
+
+
+
+// 假设 TheresaOS 最大支持 64 字节的 HID 报文（足够绝大部分键鼠）
+#define MAX_HID_RAW_PAYLOAD 64
+#define HID_RAW_QUEUE_SIZE  128
+
+// "生肉"事件包定义
+typedef struct {
+ hid_dev_t *hdev;                 // 这个数据归属于哪个 HID 设备
+ uint8 raw_data[MAX_HID_RAW_PAYLOAD]; // 从 URB 拷贝出来的原始数据
+ uint32 data_len;                    // 实际拷贝的数据长度
+} hid_raw_event_t;
+
+// 专门为 HID 准备的生肉环形队列
+typedef struct {
+ hid_raw_event_t events[HID_RAW_QUEUE_SIZE];
+ uint32 head; // 生产者写入位置
+ uint32 tail; // 消费者读取位置
+ // spinlock_t lock; // 如果你不用无锁算法，就需要一把自旋锁
+ // semaphore_t wait_sem; // 信号量，用于在队列空时休眠消费者线程
+} hid_raw_queue_t;

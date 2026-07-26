@@ -128,6 +128,8 @@ void usb_fill_bulk_urb(usb_urb_t *urb,
  * @param interval       轮询间隔时间 (硬件将依此频率向设备发出 IN Token)
  */
 void usb_fill_int_urb(usb_urb_t *urb,
+                      void (*complete_func)(struct usb_urb_t *urb),
+                      void *private_data,
                       usb_dev_t *udev,
                       usb_ep_t *ep,
                       void *transfer_buf,
@@ -146,6 +148,9 @@ void usb_fill_int_urb(usb_urb_t *urb,
     // ⏱️ 核心独占字段：配置硬件轮询频率
     // 注意：请确保你的 usb_urb_t 结构体中已经添加了 uint32 interval; 字段！
     urb->interval       = interval;
+
+    urb->complete_func = complete_func;
+    urb->private_data = private_data;
 
     urb->transfer_flags = 0;
     urb->status         = 0;

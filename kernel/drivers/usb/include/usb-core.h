@@ -34,7 +34,7 @@ struct usb_ep_t;
 /**
  * @brief USB 请求块 (USB Request Block) - 纯逻辑版
  */
-typedef struct usb_urb_t {
+typedef struct usb_urb_t{
     // === 1. 路由寻址区 ===
     struct usb_dev_t   *udev;        // 目标设备上下文
     struct usb_ep_t    *ep;          // 目标端点
@@ -54,7 +54,8 @@ typedef struct usb_urb_t {
     uint64      last_trb_pa;    // 最后一个 TRB 的物理地址 (仅做底层同步过渡用)
     int         status;         // URB 状态码
 
-    // void (*complete)(struct usb_urb *urb); // 未来做全异步驱动时，这里放回调函数
+    void (*complete_func)(struct usb_urb_t *urb);
+    void    *private_data; //回调函数的私有上下文 (通常指向设备驱动自己的数据结构，如 hid_device_t)
 
     list_head_t node;         // 挂载到端点 pending_urbs 的链表节点
 
@@ -90,7 +91,7 @@ usb_urb_t *usb_alloc_urb(void);
 void usb_free_urb(usb_urb_t *urb);
 void usb_fill_control_urb(usb_urb_t *urb,struct usb_dev_t *udev,struct usb_ep_t *ep,usb_setup_packet_t *setup_packet,void *transfer_buf,uint32 transfer_len);
 void usb_fill_bulk_urb(usb_urb_t *urb,struct usb_dev_t *udev,struct usb_ep_t *ep,void *transfer_buf,uint32 transfer_len);
-void usb_fill_int_urb(usb_urb_t *urb,struct usb_dev_t *udev,struct usb_ep_t *ep,void *transfer_buf,uint32 transfer_len,uint32 interval);
+void usb_fill_int_urb(usb_urb_t *urb,void (*complete_func)(struct usb_urb_t *urb),void *private_data,struct usb_dev_t *udev,struct usb_ep_t *ep,void *transfer_buf,uint32 transfer_len,uint32 interval);
 int32 usb_control_msg(struct usb_dev_t *udev, void *data_buf,uint8 request_type,uint8 request, uint16 value, uint16 index, uint16 length);
 
 
