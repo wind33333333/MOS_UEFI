@@ -7,6 +7,9 @@
 #define HID_UP_LED       0x00080000 // LED 状态灯
 #define HID_UP_BUTTON    0x00090000 // 鼠标/手柄物理按键
 
+
+list_head_t g_input_device_list;
+
 /*
  * USB HID 键盘 Usage ID 到 TheresaOS 内部键码 (KEY_*) 的映射表
  *
@@ -175,7 +178,7 @@ static const uint16 hid_keyboard_map[256] = {
  * @param hdev  已经解析完 Report Descriptor 的 HID 设备指针
  * @param idev  即将要向内核注册的 Input 系统设备指针
  */
-void hid_usage_to_input(hid_dev_t *hdev, input_dev_t *idev) {
+void hid_usage_to_input(hid_dev_t *hdev, hid_input_dev_t *idev) {
     // 1. 遍历这个设备所有的 Field (数据切片模具)
     for (int i = 0; i < hdev->field_count; i++) {
         hid_field_t *field = hdev->fields[i];
