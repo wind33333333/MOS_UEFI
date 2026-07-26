@@ -767,6 +767,7 @@ static int hid_probe(usb_if_t *uif, usb_id_t *uid) {
     // Phase 6: 启动引擎！投递第一个 URB
     // ==========================================
     hdev->report_buf = kzalloc_dma(ep1->max_packet_size);
+    hdev->int_urb = usb_alloc_urb();
     usb_fill_int_urb(hdev->int_urb, udev, ep1, hdev->report_buf, ep1->max_packet_size, ep1->interval);
     xhci_submit_urb(hdev->int_urb);
     return 0; // 成功！
