@@ -360,7 +360,7 @@ struct usb_if_t;
  * hid_dev: HID 物理设备实例
  * 作为底层 USB 驱动和上层输入子系统之间的桥梁。
  */
-typedef struct {
+typedef struct hid_dev_t {
     // 以下为 TheresaOS 底层 USB 通信所需的上下文
     usb_urb_t *int_urb; // 中断传输的 URB 指针
     uint8 *report_buf; // 接收数据的 Raw Buffer

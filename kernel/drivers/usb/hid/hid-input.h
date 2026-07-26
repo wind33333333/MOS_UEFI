@@ -1,5 +1,7 @@
 #pragma once
 
+#include "moslib.h"
+
 #define KEY_RESERVED        0
 
 // ==========================================
