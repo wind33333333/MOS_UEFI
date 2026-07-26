@@ -54,7 +54,7 @@ typedef struct usb_urb_t{
     uint64      last_trb_pa;    // 最后一个 TRB 的物理地址 (仅做底层同步过渡用)
     int         status;         // URB 状态码
 
-    void (*complete_func)(struct usb_urb_t *urb);
+    void    (*complete_func)(struct usb_urb_t *urb);
     void    *private_data; //回调函数的私有上下文 (通常指向设备驱动自己的数据结构，如 hid_device_t)
 
     list_head_t node;         // 挂载到端点 pending_urbs 的链表节点

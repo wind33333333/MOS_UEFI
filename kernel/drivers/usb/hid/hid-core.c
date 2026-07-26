@@ -96,7 +96,8 @@ static uint32 fetch_item_data(uint8 *ptr, uint8 size) {
     return data;
 }
 
-uint32 hid_count_fields(const uint8 *desc, uint32 desc_len) {
+//统计field个数
+static inline uint32 hid_count_fields(const uint8 *desc, uint32 desc_len) {
     uint32 count = 0;
     uint32 offset = 0;
 
@@ -129,7 +130,7 @@ uint32 hid_count_fields(const uint8 *desc, uint32 desc_len) {
 
 // 重构后的核心解析引擎
 // =========================================================================
-static int hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
+static inline int32 hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
     // ★ 修复 2：防范内核栈溢出 (Kernel Stack Overflow)
     // 升级二维数组后，结构体大小超 4KB，必须改用堆分配！
     hid_parser_state_t *state = kzalloc(sizeof(hid_parser_state_t));
@@ -418,30 +419,6 @@ static inline uint32 hid_extract_bits(const uint8 *report, uint32 bit_offset, ui
 
     return value;
 }
-
-
-/**
- * @brief 将提取出的无符号位域恢复为有符号整数 (符号扩展)
- *
- * @param value    由 hid_extract_bits 提取出的无符号值
- * @param bit_size 该位域的原始位长
- * @return int32   带符号的实际数值
- */
-static inline int32 hid_sign_extend(uint32 value, uint32 bit_size) {
-    if (bit_size == 0 || bit_size >= 32) return (int32)value;
-
-    // 检查这个数据的最高位（符号位）是否为 1
-    uint32 sign_bit = 1 << (bit_size - 1);
-
-    if (value & sign_bit) {
-        // 如果符号位是 1，说明是负数，我们需要把 bit_size 以上的高位全部补 1
-        uint32 mask = ~((1 << bit_size) - 1);
-        value |= mask;
-    }
-
-    return (int32)value;
-}
-
 
 
 // 定义几个常见的 USB HID 用途页 (Usage Pages) 规范宏

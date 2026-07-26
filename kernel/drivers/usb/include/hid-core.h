@@ -1,7 +1,7 @@
 #pragma once
 
 #include "moslib.h"
-#include "input.h"
+#include "hid-input.h"
 
 
 /*
