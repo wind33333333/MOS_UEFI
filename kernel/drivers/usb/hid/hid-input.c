@@ -175,7 +175,7 @@ static const uint16 hid_keyboard_map[256] = {
  * @param hdev  已经解析完 Report Descriptor 的 HID 设备指针
  * @param idev  即将要向内核注册的 Input 系统设备指针
  */
-void hid_map_usage_to_input(hid_dev_t *hdev, input_dev_t *idev) {
+void hid_usage_to_input(hid_dev_t *hdev, input_dev_t *idev) {
     // 1. 遍历这个设备所有的 Field (数据切片模具)
     for (int i = 0; i < hdev->field_count; i++) {
         hid_field_t *field = hdev->fields[i];

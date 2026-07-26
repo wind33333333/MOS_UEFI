@@ -152,3 +152,7 @@
 // 手柄按键(BTN_GAMEPAD)和一些极其特殊的硬件开关。
 #define KEY_MAX             0x2FF   // 767
 #define KEY_CNT             (KEY_MAX + 1)
+
+struct hid_dev_t;
+struct input_dev_t;
+void hid_usage_to_input(struct hid_dev_t *hdev, struct input_dev_t *idev);
