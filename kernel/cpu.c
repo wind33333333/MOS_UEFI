@@ -4,7 +4,7 @@
 #include "tss.h"
 #include "interrupt.h"
 #include "syscall.h"
-#include "printk.h"
+#include "include/printk.h"
 #include "vmm.h"
 #include "vmalloc.h"
 

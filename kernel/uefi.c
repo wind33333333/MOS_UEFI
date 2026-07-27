@@ -2,7 +2,7 @@
 #include "vmm.h"
 #include "linkage.h"
 #include "memblock.h"
-#include "printk.h"
+#include "include/printk.h"
 #include "vmalloc.h"
 
 void efi_runtime_service_map(void) {

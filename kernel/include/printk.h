@@ -1,9 +1,9 @@
 #pragma once
 
 #include <stdarg.h>
-#include "font.h"
-#include "linkage.h"
-#include "include/moslib.h"
+#include "../font.h"
+#include "../linkage.h"
+#include "moslib.h"
 
 
 void init_output(void);

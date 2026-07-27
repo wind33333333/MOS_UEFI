@@ -1,6 +1,6 @@
 #include "scsi.h"
 #include "slub.h"
-#include "printk.h"
+#include "../../include/printk.h"
 #include "bus.h"
 
 // 统一的 SCSI 任务执行器和错误处理逻辑

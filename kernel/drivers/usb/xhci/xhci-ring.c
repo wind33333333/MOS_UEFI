@@ -4,7 +4,7 @@
 #include "slub.h"
 #include "usb-dev.h"
 #include "usb-core.h"
-#include "printk.h"
+#include "../../../include/printk.h"
 
 uint64 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push) {
     // 1. 【双指针防溢出检查】

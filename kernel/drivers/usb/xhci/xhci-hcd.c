@@ -1,5 +1,5 @@
 #include "xhci-hw.h"
-#include "printk.h"
+#include "../../../include/printk.h"
 #include "pcie.h"
 #include "slub.h"
 #include "vmm.h"

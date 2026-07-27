@@ -2,7 +2,7 @@
 #include "acpi.h"
 #include "mm/include/slub.h"
 #include "cpu.h"
-#include "printk.h"
+#include "include/printk.h"
 #include "mm/include/vmm.h"
 
 ioapic_address_t ioapic_address;

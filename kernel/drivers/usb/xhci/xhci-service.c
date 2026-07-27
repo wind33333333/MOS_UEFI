@@ -4,7 +4,7 @@
 #include "usb-hub.h"
 #include "xhci-hw.h"
 #include "xhci-service.h"
-#include "printk.h"
+#include "../../../include/printk.h"
 #include "vmm.h"
 #include "errno.h"
 #include "slub.h"

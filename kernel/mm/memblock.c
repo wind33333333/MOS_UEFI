@@ -1,6 +1,6 @@
 #include "memblock.h"
 #include "vmm.h"
-#include "printk.h"
+#include "../include/printk.h"
 
 INIT_DATA memblock_t memblock;
 INIT_DATA memblock_type_t phy_vmemmap;

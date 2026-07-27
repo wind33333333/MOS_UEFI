@@ -1,7 +1,7 @@
 #include "vmalloc.h"
 #include "include/buddy_system.h"
 #include "slub.h"
-#include "printk.h"
+#include "../include/printk.h"
 #include "vmm.h"
 #include "kernel_page_table.h"
 

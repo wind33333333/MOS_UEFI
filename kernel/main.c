@@ -1,5 +1,5 @@
 #include "include/moslib.h"
-#include "printk.h"
+#include "include/printk.h"
 #include "ioapic.h"
 #include "buddy_system.h"
 #include "slub.h"
@@ -8,7 +8,7 @@
 #include "kernel_page_table.h"
 #include "memblock.h"
 #include "vmalloc.h"
-#include "rbtree.h"
+#include "include/rbtree.h"
 #include "uefi.h"
 #include "bus.h"
 

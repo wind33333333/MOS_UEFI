@@ -1,7 +1,7 @@
 #include "include/buddy_system.h"
 #include "kernel_page_table.h"
 #include "memblock.h"
-#include "printk.h"
+#include "../include/printk.h"
 
 buddy_system_t buddy_system;
 

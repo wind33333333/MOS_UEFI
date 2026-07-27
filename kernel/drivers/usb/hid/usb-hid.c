@@ -1,5 +1,5 @@
 #include "usb-hid.h"
-#include "printk.h"
+#include "../../../include/printk.h"
 #include "usb-core.h"
 #include "hid-core.h"
 #include "xhci-hcd.h"

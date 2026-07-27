@@ -1,5 +1,5 @@
 #include "interrupt.h"
-#include "printk.h"
+#include "include/printk.h"
 #include "include/moslib.h"
 #include "apic.h"
 #include "errno.h"

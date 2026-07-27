@@ -2,7 +2,7 @@
 #include "usb-core.h"
 #include "usb-dev.h"
 #include "usb-bus.h"
-#include "printk.h"
+#include "../../../include/printk.h"
 #include "scsi.h"
 #include "usb-uas.h"
 #include "usb-bot.h"
