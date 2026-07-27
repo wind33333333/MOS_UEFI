@@ -6,9 +6,9 @@
 #include "xhci-service.h"
 #include "../../../include/printk.h"
 #include "vmm.h"
-#include "errno.h"
+#include "../../../include/errno.h"
 #include "slub.h"
-#include "pcie.h"
+#include "../../../pcie/pcie.h"
 
 
 // 提取大于等于 val 的下一个 2 的幂次 (内核神技)

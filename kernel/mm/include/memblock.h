@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../../include/moslib.h"
-#include "../../uefi.h"
+#include "../../init/uefi.h"
 #include "vmm.h"
 
 #define MAX_MEMBLOCK 128

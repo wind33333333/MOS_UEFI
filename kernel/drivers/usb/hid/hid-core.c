@@ -4,7 +4,7 @@
 #include "usb-bus.h"
 #include "hid-core.h"
 #include "slub.h"
-#include "errno.h"
+#include "../../../include/errno.h"
 #include "xhci-hcd.h"
 #include "hid-parser.h"
 #include "hid-input.h"

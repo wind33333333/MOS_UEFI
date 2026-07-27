@@ -2,7 +2,7 @@
 
 #include "../../../include/moslib.h"
 #include "usb-def.h"
-#include "device.h"
+#include "../../include/device.h"
 #include "usb-core.h"
 
 

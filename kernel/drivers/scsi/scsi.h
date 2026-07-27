@@ -1,6 +1,6 @@
 #pragma once
 #include "../../include/moslib.h"
-#include "device.h"
+#include "../include/device.h"
 
 #pragma pack(push,1)
 

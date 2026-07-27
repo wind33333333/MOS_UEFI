@@ -3,7 +3,7 @@
 #include "slub.h"
 #include "../include/printk.h"
 #include "vmm.h"
-#include "kernel_page_table.h"
+#include "../init/kernel_page_table.h"
 
 //忙碌树
 rb_root_t used_vmap_area_root;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../../include/moslib.h"
-#include "../../linkage.h"
+#include "../../init/linkage.h"
 
 //页级别
 typedef enum {
