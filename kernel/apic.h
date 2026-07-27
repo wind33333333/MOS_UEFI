@@ -1,5 +1,5 @@
 #pragma once
-#include "moslib.h"
+#include "include/moslib.h"
 
 void init_apic(void);
 void enable_apic_time (uint64 time,uint32 model,uint32 ivt);

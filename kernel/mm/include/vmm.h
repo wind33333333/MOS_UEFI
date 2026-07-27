@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../moslib.h"
+#include "../../include/moslib.h"
 #include "../../linkage.h"
 
 //页级别

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "moslib.h"
+#include "../../../include/moslib.h"
 #include "usb-def.h"
 #include "device.h"
 #include "usb-core.h"

@@ -1,5 +1,5 @@
 #pragma once
-#include "moslib.h"
+#include "../../../include/moslib.h"
 #include "interrupt.h"
 
 struct xhci_hcd_t;

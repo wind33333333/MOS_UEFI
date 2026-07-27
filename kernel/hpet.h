@@ -1,6 +1,6 @@
 #pragma once
 
-#include "moslib.h"
+#include "include/moslib.h"
 
 
 #define ENABLE_HPET_TIMES(TIMS_CONF,TIMS_COMP,TIME,MODEL,IRQ) \

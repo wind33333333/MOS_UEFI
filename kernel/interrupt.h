@@ -1,6 +1,6 @@
 #pragma once
 
-#include "moslib.h"
+#include "include/moslib.h"
 
 // 定义中断处理函数
 void ignore(void);

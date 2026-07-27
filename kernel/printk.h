@@ -3,7 +3,7 @@
 #include <stdarg.h>
 #include "font.h"
 #include "linkage.h"
-#include "moslib.h"
+#include "include/moslib.h"
 
 
 void init_output(void);

@@ -1,5 +1,5 @@
 #pragma once
-#include "moslib.h"
+#include "../../../include/moslib.h"
 #include "usb-def.h"
 
 struct usb_dev_t;

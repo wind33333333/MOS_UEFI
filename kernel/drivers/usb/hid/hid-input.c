@@ -2,6 +2,7 @@
 #include "hid-core.h"
 #include "slub.h"
 
+
 // 定义几个常见的 USB HID 用途页 (Usage Pages) 规范宏
 #define HID_UP_GENDESK   0x00010000 // 通用桌面设备 (鼠标X/Y轴等)
 #define HID_UP_KEYBOARD  0x00070000 // 标准键盘

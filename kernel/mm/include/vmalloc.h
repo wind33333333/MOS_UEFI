@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../moslib.h"
+#include "../../include/moslib.h"
 #include "../../rbtree.h"
 
 //60TB vmalloc映射区

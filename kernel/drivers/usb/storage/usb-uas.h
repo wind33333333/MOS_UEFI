@@ -1,5 +1,5 @@
 #pragma once
-#include "moslib.h"
+#include "../../../include/moslib.h"
 
 #pragma pack(push,1)
 //UAS Command IU (主机 -> 设备)

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "moslib.h"
+#include "include/moslib.h"
 #include "acpi.h"
 
 typedef void VOID;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "moslib.h"
+#include "include/moslib.h"
 
 //TSS起始选择子
 #define TSS_DESCRIPTOR_START_INDEX 5

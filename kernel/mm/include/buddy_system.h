@@ -1,5 +1,5 @@
 #pragma once
-#include "moslib.h"
+#include "../../include/moslib.h"
 #include "slub.h"
 #include "vmm.h"
 

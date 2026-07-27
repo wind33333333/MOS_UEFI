@@ -1,6 +1,6 @@
 #pragma once
 
-#include "moslib.h"
+#include "include/moslib.h"
 
 uint8 font_ascii[256][16]=
 {

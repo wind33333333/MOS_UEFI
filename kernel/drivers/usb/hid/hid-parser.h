@@ -1,6 +1,6 @@
 #pragma once
 
-#include "moslib.h"
+#include "../../../include/moslib.h"
 
 /* =========================================================================
  * HID 字段标志位定义 (严格对应 USB HID Specification v1.11, Section 6.2.2.5)
