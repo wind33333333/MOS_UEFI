@@ -1,6 +1,6 @@
 #include "hid-input.h"
 #include "hid-core.h"
-#include "slub.h"
+#include "../../../include/slub.h"
 
 
 // 定义几个常见的 USB HID 用途页 (Usage Pages) 规范宏

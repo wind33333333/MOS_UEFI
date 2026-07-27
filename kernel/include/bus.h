@@ -1,5 +1,5 @@
 #pragma once
-#include "../../include/moslib.h"
+#include "moslib.h"
 
 struct device_t;
 struct driver_t;

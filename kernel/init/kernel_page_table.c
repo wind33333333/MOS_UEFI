@@ -1,7 +1,7 @@
-#include "../kernel_page_table.h"
+#include "kernel_page_table.h"
 #include "buddy_system.h"
 #include "memblock.h"
-#include "../include/printk.h"
+#include "printk.h"
 #include "vmm.h"
 
 uint64 *kpml4t_ptr; //正式内核页表

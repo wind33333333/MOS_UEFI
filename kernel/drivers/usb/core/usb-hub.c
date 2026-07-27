@@ -1,9 +1,9 @@
 #include "usb-hub.h"
 #include "usb-dev.h"
-#include "xhci-hcd.h"
+#include "../xhci/xhci-hcd.h"
 #include "../../../include/errno.h"
 #include "../../../include/printk.h"
-#include "slub.h"
+#include "../../../include/slub.h"
 #include "usb-bus.h"
 
 

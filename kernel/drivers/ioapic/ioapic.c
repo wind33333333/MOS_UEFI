@@ -1,9 +1,9 @@
-#include "../../ioapic.h"
-#include "../acpi/acpi.h"
-#include "../../mm/include/slub.h"
-#include "../../x64cpu/cpu.h"
+#include "ioapic.h"
+#include "../../include/acpi.h"
+#include "../../include/slub.h"
+#include "../../x64/cpu.h"
 #include "../../include/printk.h"
-#include "../../mm/include/vmm.h"
+#include "../../include/vmm.h"
 
 ioapic_address_t ioapic_address;
 

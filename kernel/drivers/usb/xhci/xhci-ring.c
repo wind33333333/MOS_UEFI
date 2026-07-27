@@ -1,9 +1,9 @@
 #include "xhci-hcd.h"
 #include "../../../include/errno.h"
-#include "vmm.h"
-#include "slub.h"
-#include "usb-dev.h"
-#include "usb-core.h"
+#include "../../../include/vmm.h"
+#include "../../../include/slub.h"
+#include "../core/usb-dev.h"
+#include "../core/usb-core.h"
 #include "../../../include/printk.h"
 
 uint64 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push) {

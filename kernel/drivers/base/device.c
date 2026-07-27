@@ -1,6 +1,6 @@
-#include "../include/device.h"
+#include "device.h"
 #include "driver.h"
-#include "../../bus.h"
+#include "bus.h"
 
 //向总线注册设备
 void device_register(device_t *dev) {

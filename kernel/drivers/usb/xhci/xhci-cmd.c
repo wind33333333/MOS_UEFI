@@ -1,8 +1,8 @@
 #include "../../../include/errno.h"
-#include "vmm.h"
+#include "../../../include/vmm.h"
 #include "../../../include/printk.h"
 #include "xhci-hcd.h"
-#include "usb-dev.h"
+#include "../core/usb-dev.h"
 // =========================================================================
 // 🚀 xHCI 控制器全局命令发射器
 // =========================================================================

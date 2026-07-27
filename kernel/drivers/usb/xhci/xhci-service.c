@@ -1,14 +1,14 @@
 #include "xhci-hcd.h"
-#include "usb-core.h"
-#include "usb-dev.h"
-#include "usb-hub.h"
+#include "../core/usb-core.h"
+#include "../core/usb-dev.h"
+#include "../core/usb-hub.h"
 #include "xhci-hw.h"
 #include "xhci-service.h"
-#include "../../../include/printk.h"
+#include "printk.h"
 #include "vmm.h"
-#include "../../../include/errno.h"
+#include "errno.h"
 #include "slub.h"
-#include "../../../pcie/pcie.h"
+#include "pcie.h"
 
 
 // 提取大于等于 val 的下一个 2 的幂次 (内核神技)

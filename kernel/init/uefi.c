@@ -1,8 +1,8 @@
-#include "../uefi.h"
+#include "uefi.h"
 #include "vmm.h"
 #include "linkage.h"
 #include "memblock.h"
-#include "../include/printk.h"
+#include "printk.h"
 #include "vmalloc.h"
 
 void efi_runtime_service_map(void) {

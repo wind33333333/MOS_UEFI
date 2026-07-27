@@ -1,5 +1,5 @@
-#include "memblock.h"
-#include "vmm.h"
+#include "../include/memblock.h"
+#include "../include/vmm.h"
 #include "../include/printk.h"
 
 INIT_DATA memblock_t memblock;

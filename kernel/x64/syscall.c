@@ -1,4 +1,4 @@
-#include "../syscall.h"
+#include "syscall.h"
 #include "cpu.h"
 
 INIT_TEXT void init_syscall(void){

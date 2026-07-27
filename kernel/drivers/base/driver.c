@@ -1,6 +1,6 @@
-#include "../include/driver.h"
-#include "../../device.h"
-#include "../../bus.h"
+#include "driver.h"
+#include "device.h"
+#include "bus.h"
 
 
 //向总线注册驱动

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../../../include/moslib.h"
+#include "moslib.h"
 #include "usb-def.h"
-#include "../../include/device.h"
+#include "device.h"
 #include "usb-core.h"
 
 

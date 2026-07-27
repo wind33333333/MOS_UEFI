@@ -1,5 +1,5 @@
-#include "../apic.h"
-#include "../cpu.h"
+#include "apic.h"
+#include "cpu.h"
 
 INIT_TEXT void init_apic(void) {
     uint64 value;

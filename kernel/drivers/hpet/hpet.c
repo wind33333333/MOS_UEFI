@@ -1,7 +1,7 @@
-#include "../../hpet.h"
-#include "../../include/printk.h"
-#include "../../mm/include/vmm.h"
-#include "../acpi/acpi.h"
+#include "hpet.h"
+#include "printk.h"
+#include "vmm.h"
+#include "acpi.h"
 
 hpet_registers_t hpet_registers;
 hpet_t hpet1;

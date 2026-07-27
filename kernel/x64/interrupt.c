@@ -1,8 +1,8 @@
 #include "interrupt.h"
-#include "../include/printk.h"
-#include "../include/moslib.h"
+#include "printk.h"
+#include "moslib.h"
 #include "apic.h"
-#include "../include/errno.h"
+#include "errno.h"
 
 /*********************************************************** 系统异常处理函数 *****************************************************************************/
 

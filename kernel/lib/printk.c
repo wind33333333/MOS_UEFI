@@ -1,7 +1,7 @@
 #include "../include/printk.h"
-#include "vmm.h"
+#include "../include/vmm.h"
 #include "../init/uefi.h"
-#include "vmalloc.h"
+#include "../include/vmalloc.h"
 
 void putchar(unsigned int *fb, int Xsize, int x, int y, unsigned int FRcolor, unsigned int BKcolor,
              unsigned char font) {

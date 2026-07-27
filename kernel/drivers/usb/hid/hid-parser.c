@@ -1,6 +1,6 @@
 #include "hid-parser.h"
 #include "hid-core.h"
-#include "slub.h"
+#include "../../../include/slub.h"
 
 
 /* STREAMING_CHUNK:定义解析器内部常量与状态机上下文... */

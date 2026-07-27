@@ -1,6 +1,6 @@
-#include "include/buddy_system.h"
+#include "../include/buddy_system.h"
 #include "../init/kernel_page_table.h"
-#include "memblock.h"
+#include "../include/memblock.h"
 #include "../include/printk.h"
 
 buddy_system_t buddy_system;

@@ -1,8 +1,8 @@
-#include "vmalloc.h"
-#include "include/buddy_system.h"
-#include "slub.h"
+#include "../include/vmalloc.h"
+#include "../include/buddy_system.h"
+#include "../include/slub.h"
 #include "../include/printk.h"
-#include "vmm.h"
+#include "../include/vmm.h"
 #include "../init/kernel_page_table.h"
 
 //忙碌树

@@ -1,9 +1,9 @@
 #include "usb-dev.h"
 #include "usb-bus.h"
-#include "../../../include/errno.h"
-#include "../../../pcie/pcie.h"
-#include "xhci-hcd.h"
-#include "../../../include/printk.h"
+#include "errno.h"
+#include "pcie.h"
+#include "../xhci/xhci-hcd.h"
+#include "printk.h"
 #include "slub.h"
 
 extern device_type_t usb_dev_type;

@@ -21,12 +21,7 @@ CFLAGS:=$(strip ${CFLAGS})
 
 
 # 1. 编译选项：增加所有驱动的头文件寻宝地图
-INCLUDES := -I $(KERNEL) \
-			-I $(KERNEL)/include/ \
-			-I $(KERNEL)/mm/include/ \
-            -I $(KERNEL)/drivers/usb/include/ \
-            -I $(KERNEL)/drivers/scsi/ \
-            -I $(KERNEL)/drivers/usb/xhci/
+INCLUDES := -I $(KERNEL)/include/
 
 CFLAGS := -fno-stack-protector -mstackrealign -g -fno-builtin -nostdlib $(CFLAGS) $(INCLUDES)
 
@@ -41,7 +36,7 @@ OBJECTS := $(patsubst $(KERNEL)/%.c, $(BUILD)/%.o, $(C_SOURCES))
 OBJECTS += $(patsubst $(KERNEL)/%.S, $(BUILD)/%.o, $(ASM_SOURCES))
 
 # 3. 强制 head.o 在链接序列的最前端 (内核启动必须)
-START_OBJ := $(BUILD)/head.o
+START_OBJ := $(BUILD)/init/head.o
 OTHER_OBJS := $(filter-out $(START_OBJ), $(OBJECTS))
 
 # ==============================================================================
@@ -65,7 +60,7 @@ $(BUILD)/%.o: $(KERNEL)/%.c
 # 链接内核：强制 START_OBJ 在最前面
 ${BUILD}/kernel.elf: $(START_OBJ) $(OTHER_OBJS)
 	@mkdir -p $(dir $@)
-	ld -b elf64-x86-64 -z muldefs -o $@ $^ -T $(KERNEL)/Kernel.lds
+	ld -b elf64-x86-64 -z muldefs -o $@ $^ -T $(KERNEL)/init/Kernel.lds
 
 # 生成最终二进制镜像
 ${BUILD}/kernel.bin: ${BUILD}/kernel.elf

@@ -1,12 +1,12 @@
-#include "../include/bus.h"
-#include "pcie/pcie.h"
-#include "usb-core.h"
-#include "usb-hub.h"
-#include "usb-bus.h"
-#include "usb-dev.h"
-#include "xhci-service.h"
-#include "xhci-hcd.h"
-#include "hid-core.h"
+#include "bus.h"
+#include "pcie.h"
+#include "../usb/core/usb-core.h"
+#include "../usb/core/usb-hub.h"
+#include "../usb/core/usb-bus.h"
+#include "../usb/core/usb-dev.h"
+#include "../usb/xhci/xhci-service.h"
+#include "../usb/xhci/xhci-hcd.h"
+#include "../usb/hid/hid-core.h"
 
 //pcie总线
 bus_type_t pcie_bus_type;

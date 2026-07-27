@@ -1,6 +1,6 @@
-#include "slub.h"
-#include "buddy_system.h"
-#include "vmm.h"
+#include "../include/slub.h"
+#include "../include/buddy_system.h"
+#include "../include/vmm.h"
 
 //kmem_cache专用缓存池
 char kmem_cache_name[] = {"kmem_cache"};

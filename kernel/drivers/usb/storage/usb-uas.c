@@ -1,10 +1,10 @@
 #include "usb-uas.h"
-#include "../../../include/printk.h"
-#include "usb-core.h"
-#include "usb-dev.h"
-#include "scsi.h"
-#include "../../../include/errno.h"
-#include "xhci-hcd.h"
+#include "printk.h"
+#include "../core/usb-core.h"
+#include "../core/usb-dev.h"
+#include "../drivers/scsi/scsi.h"
+#include "errno.h"
+#include "../xhci/xhci-hcd.h"
 
 
 

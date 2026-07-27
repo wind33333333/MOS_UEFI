@@ -1,5 +1,5 @@
 #pragma once
-#include "../include/moslib.h"
+#include "moslib.h"
 
 #define IA32_PAT_MSR        0x277        //设置页属性PAT类型
 #define IA32_EFER_MSR       0xC0000080   // 扩展功能寄存器（Extended Feature Enable Register）

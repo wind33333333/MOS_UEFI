@@ -1,16 +1,16 @@
 #include "../include/moslib.h"
 #include "../include/printk.h"
-#include "../drivers/ioapic/ioapic.h"
-#include "buddy_system.h"
-#include "slub.h"
-#include "../x64cpu/cpu.h"
+#include "../include/ioapic.h"
+#include "../include/buddy_system.h"
+#include "../include/slub.h"
+#include "../x64/cpu.h"
 #include "../drivers/hpet/hpet.h"
 #include "kernel_page_table.h"
-#include "memblock.h"
-#include "vmalloc.h"
+#include "../include/memblock.h"
+#include "../include/vmalloc.h"
 #include "../include/rbtree.h"
 #include "uefi.h"
-#include "../drivers/include/bus.h"
+#include "../include/bus.h"
 
 INIT_TEXT void init_kernel(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段

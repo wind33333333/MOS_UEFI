@@ -1,8 +1,8 @@
 #include "usb-hid.h"
 #include "../../../include/printk.h"
-#include "usb-core.h"
+#include "../core/usb-core.h"
 #include "hid-core.h"
-#include "xhci-hcd.h"
+#include "../xhci/xhci-hcd.h"
 #include "hid-parser.h"
 
 // 全局唯一的 HID 生肉队列

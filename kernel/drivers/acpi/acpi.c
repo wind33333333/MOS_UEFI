@@ -1,4 +1,4 @@
-#include "../../acpi.h"
+#include "acpi.h"
 #include "../../init/uefi.h"
 
 /*

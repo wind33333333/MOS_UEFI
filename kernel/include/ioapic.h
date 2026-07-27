@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../include/moslib.h"
+#include "moslib.h"
 
 void init_ioapic(void);
 

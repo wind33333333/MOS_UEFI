@@ -1,8 +1,8 @@
 #pragma once
-#include "../include/moslib.h"
-#include "../include/device.h"
-#include "../base/driver.h"
-#include "../../x64cpu/interrupt.h"
+#include "moslib.h"
+#include "device.h"
+#include "driver.h"
+#include "../x64/interrupt.h"
 
 #pragma pack(push,1)
 

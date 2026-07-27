@@ -1,7 +1,7 @@
 #include "xhci-hcd.h"
 #include "../../../include/errno.h"
-#include "slub.h"
-#include "usb-dev.h"
+#include "../../../include/slub.h"
+#include "../core/usb-dev.h"
 
 
 //============================================== 上下文操作函数 ===========================================================

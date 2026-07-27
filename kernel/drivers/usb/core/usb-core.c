@@ -1,10 +1,10 @@
-#include "slub.h"
+#include "../../../include/slub.h"
 #include "../../../include/printk.h"
 #include "../../../include/errno.h"
 #include "usb-core.h"
 #include "usb-def.h"
 #include "usb-dev.h"
-#include "xhci-hcd.h"
+#include "../xhci/xhci-hcd.h"
 
 
 /**

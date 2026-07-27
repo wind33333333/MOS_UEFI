@@ -1,5 +1,5 @@
 #pragma once
-#include "../../include/moslib.h"
+#include "moslib.h"
 
 #pragma pack(push,1)
 //region acpi通用头
