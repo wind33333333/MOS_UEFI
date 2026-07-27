@@ -1,5 +1,6 @@
 #include "hid-input.h"
 #include "hid-core.h"
+#include "slub.h"
 
 // 定义几个常见的 USB HID 用途页 (Usage Pages) 规范宏
 #define HID_UP_GENDESK   0x00010000 // 通用桌面设备 (鼠标X/Y轴等)
@@ -178,7 +179,7 @@ static const uint16 hid_keyboard_map[256] = {
  * @param hdev  已经解析完 Report Descriptor 的 HID 设备指针
  * @param idev  即将要向内核注册的 Input 系统设备指针
  */
-void hid_usage_to_input(hid_dev_t *hdev, hid_input_dev_t *idev) {
+static inline void hid_usage_to_input(hid_dev_t *hdev, hid_input_dev_t *idev) {
     // 1. 遍历这个设备所有的 Field (数据切片模具)
     for (int i = 0; i < hdev->field_count; i++) {
         hid_field_t *field = hdev->fields[i];
@@ -303,4 +304,38 @@ void hid_usage_to_input(hid_dev_t *hdev, hid_input_dev_t *idev) {
             }
         }
     }
+}
+
+void hid_create_input_dev(hid_dev_t *hdev) {
+    // 1. 向输入子系统申请一个干净的“账本”
+    hid_input_dev_t *idev = kzalloc(sizeof(hid_input_dev_t));
+
+    // 2. 填写设备基本信息
+    // 你可以从 Phase 1 获取的 USB 字符串描述符里把设备名字拷过来
+    asm_strcpy(idev->name, "USB HID Device\n");
+    idev->private_data = hdev; // 互相绑定
+    hdev->input = idev;        // 存入你自己的 hid_device_t 里
+
+    // 3. ★ 核心转换：把 Phase 4 的模具，翻译成 idev 的能力位图
+    // 需要你自己写一个函数，遍历 hdev 里的 hid_field_t，调用 SET_BIT()
+    hid_usage_to_input(hdev, idev);
+
+    // 4. 空账本拦截：检查这个设备到底是不是输入设备
+    if (!TEST_BIT(EV_KEY, idev->evbit) &&
+       !TEST_BIT(EV_REL, idev->evbit) &&
+       !TEST_BIT(EV_ABS, idev->evbit)) {
+
+        // 如果啥输入能力都没有 (比如是纯 RGB 调光器)
+        // 就销毁账本，不向 Input 子系统注册
+        kfree(idev);
+        hdev->input = NULL;
+
+        // 可以在这里走 hidraw 通道分支
+        // register_hidraw(hdev);
+
+       } else {
+           // 5. 正式注册：挂载到系统的全局 input 链表
+           // (注：如果是多核系统，这里需要加自旋锁)
+           list_add_tail(&g_input_device_list,&idev->node);
+       }
 }

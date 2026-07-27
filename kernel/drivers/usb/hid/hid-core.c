@@ -68,7 +68,7 @@ static inline uint32 hid_count_fields(const uint8 *desc, uint32 desc_len) {
     return count;
 }
 
-
+extern void hid_irq_complete(usb_urb_t *urb);
 
 /**
  * @brief USB HID 驱动的入口函数 (当 USB 核心层发现 HID 接口时调用)
@@ -123,41 +123,10 @@ static int hid_probe(usb_if_t *uif, usb_id_t *uid) {
     kfree(report_desc_buf);
     report_desc_buf = NULL;
 
-
     // ==========================================
     // Phase 5: 注册到 TheresaOS 的 Input Subsystem (输入子系统)
     // ==========================================
-    // 1. 向输入子系统申请一个干净的“账本”
-    hid_input_dev_t *idev = kzalloc(sizeof(hid_input_dev_t));
-
-    // 2. 填写设备基本信息
-    // 你可以从 Phase 1 获取的 USB 字符串描述符里把设备名字拷过来
-    asm_strcpy(idev->name, "USB HID Device\n");
-    idev->private_data = hdev; // 互相绑定
-    hdev->input = idev;        // 存入你自己的 hid_device_t 里
-
-    // 3. ★ 核心转换：把 Phase 4 的模具，翻译成 idev 的能力位图
-    // 需要你自己写一个函数，遍历 hdev 里的 hid_field_t，调用 SET_BIT()
-    hid_usage_to_input(hdev, idev);
-
-    // 4. 空账本拦截：检查这个设备到底是不是输入设备
-     if (!TEST_BIT(EV_KEY, idev->evbit) &&
-        !TEST_BIT(EV_REL, idev->evbit) &&
-        !TEST_BIT(EV_ABS, idev->evbit)) {
-
-        // 如果啥输入能力都没有 (比如是纯 RGB 调光器)
-        // 就销毁账本，不向 Input 子系统注册
-        kfree(idev);
-        hdev->input = NULL;
-
-        // 可以在这里走 hidraw 通道分支
-        // register_hidraw(hdev);
-
-        } else {
-            // 5. 正式注册：挂载到系统的全局 input 链表
-            // (注：如果是多核系统，这里需要加自旋锁)
-            list_add_tail(&g_input_device_list,&idev->node);
-        }
+    hid_create_input_dev(hdev);
 
     // ==========================================
     // Phase 6: 启动引擎！投递第一个 URB

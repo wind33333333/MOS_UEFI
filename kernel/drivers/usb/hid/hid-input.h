@@ -197,9 +197,6 @@
 
 
 
-
-
-
 // ==========================================
 // 位图操作宏 (内核常用技巧：将位数转换为 long 的数组大小)
 // x64 平台下，unsigned long 是 64 位 (8 字节)
@@ -221,7 +218,7 @@ typedef struct input_event {
 
 #define INPUT_BUFFER_SIZE 64 // 环形缓冲区大小 (必须是 2 的幂，方便位运算取模)
 
-typedef struct input_dev_t {
+typedef struct hid_input_dev_t {
     char name[64];              // 设备名称，例如 "USB Keyboard"
 
     // 能力位图 (告诉系统这个设备能干什么)
@@ -241,4 +238,5 @@ typedef struct input_dev_t {
 } hid_input_dev_t;
 
 struct hid_dev_t;
-void hid_usage_to_input(struct hid_dev_t *hdev, struct input_dev_t *idev);
+
+void hid_create_input_dev(struct hid_dev_t *hdev);

@@ -229,9 +229,9 @@ typedef struct hid_field_t {
  */
 typedef struct hid_dev_t {
     // 以下为 TheresaOS 底层 USB 通信所需的上下文
-    usb_urb_t *int_urb; // 中断传输的 URB 指针
+    struct usb_urb_t *int_urb; // 中断传输的 URB 指针
     uint8 *report_buf; // 接收数据的 Raw Buffer
-    usb_if_t *uif; // 绑定的 USB 接口实例 (usb_if)
+    struct usb_if_t *uif; // 绑定的 USB 接口实例 (usb_if)
 
     struct hid_input_dev_t *input;
 
@@ -239,5 +239,5 @@ typedef struct hid_dev_t {
     hid_field_t *fields[];  // field柔性指针数组
 } hid_dev_t;
 
-usb_drv_t *create_usb_hid_driver();
+struct usb_drv_t *create_usb_hid_driver();
 
