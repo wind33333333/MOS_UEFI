@@ -182,7 +182,7 @@
 #define HID_USAGE_CONSUMER_AC_HOME          0x223   // 浏览器主页 (AC = Application Control)
 #define HID_USAGE_CONSUMER_AC_BACK          0x224   // 浏览器后退
 
-struct hid_input_dev_t;
+struct input_dev_t;
 
 /* STREAMING_CHUNK:定义私有属性(Usage)与公有属性(Field)结构体... */
 // 数据的【私有属性】 (What it means)
@@ -233,7 +233,7 @@ typedef struct hid_dev_t {
     uint8 *report_buf; // 接收数据的 Raw Buffer
     struct usb_if_t *uif; // 绑定的 USB 接口实例 (usb_if)
 
-    struct hid_input_dev_t *input;
+    struct input_dev_t *input;
 
     uint32 field_count;    // 数量统计
     hid_field_t *fields[];  // field柔性指针数组

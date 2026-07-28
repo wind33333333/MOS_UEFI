@@ -34,8 +34,6 @@ static inline int32 usb_hid_get_report_desc(usb_dev_t *udev, uint8 interface_num
 
 
 
-
-
 //统计field个数
 static inline uint32 hid_count_fields(const uint8 *desc, uint32 desc_len) {
     uint32 count = 0;

@@ -1,6 +1,7 @@
 #include "hid-input.h"
 #include "hid-core.h"
-#include "../../../include/slub.h"
+#include "input.h"
+#include "slub.h"
 
 
 // 定义几个常见的 USB HID 用途页 (Usage Pages) 规范宏
@@ -180,7 +181,7 @@ static const uint16 hid_keyboard_map[256] = {
  * @param hdev  已经解析完 Report Descriptor 的 HID 设备指针
  * @param idev  即将要向内核注册的 Input 系统设备指针
  */
-static inline void hid_usage_to_input(hid_dev_t *hdev, hid_input_dev_t *idev) {
+static inline void hid_usage_to_input(hid_dev_t *hdev, input_dev_t *idev) {
     // 1. 遍历这个设备所有的 Field (数据切片模具)
     for (int i = 0; i < hdev->field_count; i++) {
         hid_field_t *field = hdev->fields[i];
@@ -309,7 +310,7 @@ static inline void hid_usage_to_input(hid_dev_t *hdev, hid_input_dev_t *idev) {
 
 void hid_create_input_dev(hid_dev_t *hdev) {
     // 1. 向输入子系统申请一个干净的“账本”
-    hid_input_dev_t *idev = kzalloc(sizeof(hid_input_dev_t));
+    input_dev_t *idev = kzalloc(sizeof(input_dev_t));
 
     // 2. 填写设备基本信息
     // 你可以从 Phase 1 获取的 USB 字符串描述符里把设备名字拷过来
