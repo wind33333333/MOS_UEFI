@@ -1,7 +1,7 @@
-#include "../include/printk.h"
-#include "../include/vmm.h"
+#include "printk.h"
+#include "vmm.h"
 #include "../init/uefi.h"
-#include "../include/vmalloc.h"
+#include "vmalloc.h"
 
 void putchar(unsigned int *fb, int Xsize, int x, int y, unsigned int FRcolor, unsigned int BKcolor,
              unsigned char font) {
@@ -266,6 +266,42 @@ int vsprintf(char *buf, const char *fmt, va_list args) {
     return str - buf;
 }
 
+/**
+ * @brief 帧缓冲终端向上滚屏 1 个字符行高度
+ * @param BKcolor 滚屏后底部空白新行要填充的背景色
+ */
+static void console_scroll_up(unsigned int BKcolor) {
+    // 1. 计算一整行字符占用的总像素点数
+    unsigned long pixels_per_row = (unsigned long)Pos.PixelsPerScanLine * Pos.YCharSize;
+    // 2. 计算屏幕垂直方向最多能容纳的字符行数
+    int max_lines = Pos.YResolution / Pos.YCharSize;
+
+    // 3. 需要向高地址偏移移动的像素总量（第 1 行到末行的像素总数）
+    unsigned long copy_pixels = pixels_per_row * (max_lines - 1);
+
+    unsigned int *dest = Pos.FB_addr;                  // 目标：第 0 行像素起始地址
+    unsigned int *src  = Pos.FB_addr + pixels_per_row; // 源头：第 1 行像素起始地址
+
+    /*
+     * [拷贝旧画面]：将屏幕第 1 ~ 末行整体向上平移 1 行
+     * 注意：由于是向上移动（src > dest），从前向后按顺序拷贝绝不会引发覆盖冲突
+     * 如果你的内核里已经实现了优化的 asm_mem_cpy，这里强烈建议换成：
+     * asm_mem_cpy(dest, src, copy_pixels * sizeof(unsigned int));
+     */
+    asm_mem_cpy(src,dest,copy_pixels*4);
+
+    /*
+     * [擦除底部新行]：将最后一行的行区域用背景色涂满
+     */
+    unsigned int *last_line = Pos.FB_addr + copy_pixels;
+    for (unsigned long i = 0; i < pixels_per_row; i++) {
+        last_line[i] = BKcolor;
+    }
+
+    // 4. 将光标 Y 轴拉回到屏幕最底下的最后一有效行
+    Pos.YPosition = max_lines - 1;
+}
+
 int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ...) {
     spin_lock(&Pos.lock);
     int i = 0;
@@ -312,18 +348,21 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
             Pos.XPosition++;
         }
 
-
+        // 处理自动折行
         if (Pos.XPosition >= (Pos.XResolution / Pos.XCharSize)) {
             Pos.YPosition++;
             Pos.XPosition = 0;
         }
+
+        // 【核心修改点】：当 Y 轴越界到达屏幕底部时，不再归零触发回绕，而是调用上滚屏函数
         if (Pos.YPosition >= (Pos.YResolution / Pos.YCharSize)) {
-            Pos.YPosition = 0;
+            console_scroll_up(BKcolor);
         }
     }
-    Pos.lock = 0; //解锁
+    Pos.lock = 0; // 解锁
     return i;
 }
+
 
 //全局变量buf
 char buf[4096];
