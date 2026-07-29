@@ -193,6 +193,57 @@
 #define LED_MAX         0x0F    // 最大支持 15
 #define LED_CNT         (LED_MAX + 1) // 16
 
+/*
+ * =====================================================================
+ * TheresaOS Input Event Codes - Absolute Axes (绝对坐标轴宏定义)
+ * 对应 event_type == EV_ABS (0x03)
+ * =====================================================================
+ */
+
+#define ABS_X           0x00  /* X 轴绝对坐标 (手柄左摇杆X / 触摸屏横坐标) */
+#define ABS_Y           0x01  /* Y 轴绝对坐标 (手柄左摇杆Y / 触摸屏纵坐标) */
+#define ABS_Z           0x02  /* Z 轴 / 扳机键 (L2/R2 线性压感) */
+#define ABS_RX          0x03  /* 右摇杆 X 轴 */
+#define ABS_RY          0x04  /* 右摇杆 Y 轴 */
+#define ABS_RZ          0x05  /* 右摇杆 Z 轴 / 右扳机 */
+#define ABS_THROTTLE    0x06  /* 飞行摇杆油门 */
+#define ABS_RUDDER      0x07  /* 飞行摇杆方向舵 */
+#define ABS_WHEEL       0x08  /* 绝对方向盘轴 */
+#define ABS_GAS         0x09  /* 油门踏板 */
+#define ABS_BRAKE       0x0a  /* 刹车踏板 */
+
+/*
+ * 手柄方向键 (D-Pad / Hat Switch)
+ * 通常用方向帽的 X/Y 变化表达 (-1=左/上, 1=右/下, 0=居中)
+ */
+#define ABS_HAT0X       0x10  /* 方向盘帽 0 X 轴 */
+#define ABS_HAT0Y       0x11  /* 方向盘帽 0 Y 轴 */
+#define ABS_HAT1X       0x12  /* 方向盘帽 1 X 轴 */
+#define ABS_HAT1Y       0x13  /* 方向盘帽 1 Y 轴 */
+
+/*
+ * 绘图板 (Digitizer) 专有扩展属性
+ */
+#define ABS_PRESSURE    0x18  /* 笔尖接触压力 (Pressure) */
+#define ABS_DISTANCE    0x19  /* 悬停距离 (Hover Distance) */
+#define ABS_TILT_X      0x1a  /* 笔尖倾斜度 X Axis */
+#define ABS_TILT_Y      0x1b  /* 笔尖倾斜度 Y Axis */
+
+/*
+ * 多指触控面板 (Multi-Touch MT) 相关协议扩展
+ */
+#define ABS_MT_SLOT     0x2f  /* 当前多指触控槽位 ID */
+#define ABS_MT_TOUCH_MAJOR 0x30 /* 触摸接触区域长轴 */
+#define ABS_MT_POSITION_X  0x35 /* 多指触控槽内的 X 坐标 */
+#define ABS_MT_POSITION_Y  0x36 /* 多指触控槽内的 Y 坐标 */
+#define ABS_MT_TRACKING_ID 0x37 /* 手指追踪唯一标号 (-1 表示手指抬起) */
+
+/*
+ * 边界宏定义 — 用于给 input_dev 动态分配位图 (absbit) 和参数数组内存
+ */
+#define ABS_MAX         0x3f
+#define ABS_CNT         (ABS_MAX + 1)
+
 
 // ==========================================
 // 位图操作宏 (内核常用技巧：将位数转换为 long 的数组大小)
@@ -222,6 +273,7 @@ typedef struct input_dev_t {
     uint64 evbit[BITS_TO_LONGS(EV_CNT)];
     uint64 keybit[BITS_TO_LONGS(KEY_CNT)];
     uint64 relbit[BITS_TO_LONGS(REL_CNT)];
+    uint64 absbit[BITS_TO_LONGS(ABS_CNT)];
     uint64 ledbit[BITS_TO_LONGS(LED_CNT)];
 
     // 无锁环形缓冲区 (Ring Buffer)，ISR 负责生产，上层负责消费

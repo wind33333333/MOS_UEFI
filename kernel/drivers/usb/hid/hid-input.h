@@ -2,7 +2,7 @@
 
 #include "moslib.h"
 
-#define HID_ID(page, usage) (((uint32_t)(page) << 16) | ((uint32_t)(usage) & 0xFFFF))
+#define HID_ID(page, usage) (((uint32)(page) << 16) | ((uint32)(usage) & 0xFFFF))
 
 // 定义几个常见的 USB HID 用途页 (Usage Pages) 规范宏
 #define HID_UP_GENDESK   0x01 // 通用桌面设备 (鼠标X/Y轴等)
