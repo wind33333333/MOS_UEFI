@@ -286,3 +286,4 @@ typedef struct input_dev_t {
     list_head_t   node;     // 挂载到全局设备链表
 } input_dev_t;
 
+extern list_head_t g_input_dev_list;

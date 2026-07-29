@@ -4,8 +4,6 @@
 #include "slub.h"
 
 
-list_head_t g_input_dev_list;
-
 /*
  * USB HID 键盘 Usage ID 到 TheresaOS 内部键码 (KEY_*) 的映射表
  *
