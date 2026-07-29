@@ -21,7 +21,7 @@ extern usb_drv_t *create_usb_storage_driver();
 
 extern usb_drv_t *create_usb_hub_driver();
 
-extern list_head_t g_input_device_list;
+extern list_head_t g_input_dev_list;
 
 extern void hid_worker_thread_main(void *arg);
 
@@ -61,7 +61,7 @@ INIT_TEXT void bus_init(void){
     usb_drv_t *usb_hid_driver = create_usb_hid_driver();
     usb_drv_register(usb_hid_driver);
 
-    list_head_init(&g_input_device_list);
+    list_head_init(&g_input_dev_list);
 
 
     // =========================================================================

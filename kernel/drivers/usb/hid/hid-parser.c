@@ -1,6 +1,6 @@
 #include "hid-parser.h"
 #include "hid-core.h"
-#include "../../../include/slub.h"
+#include "slub.h"
 
 
 /* STREAMING_CHUNK:定义解析器内部常量与状态机上下文... */
@@ -80,7 +80,7 @@ int32 hid_parse_report_desc(hid_dev_t *hdev, uint8 *desc, uint32 desc_len) {
 
     while (offset < desc_len) {
         uint8 item = desc[offset];
-        if (item == 0xFE) {
+        if (item == HID_LONG_ITEM_PREFIX) {
             if (offset >= desc_len) goto parse_end; // 统一通过 goto 退出，确保释放 state
             offset += 1 + desc[offset + 1];
             continue;

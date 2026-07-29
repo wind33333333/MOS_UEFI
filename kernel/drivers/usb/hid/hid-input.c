@@ -4,14 +4,7 @@
 #include "slub.h"
 
 
-// 定义几个常见的 USB HID 用途页 (Usage Pages) 规范宏
-#define HID_UP_GENDESK   0x00010000 // 通用桌面设备 (鼠标X/Y轴等)
-#define HID_UP_KEYBOARD  0x00070000 // 标准键盘
-#define HID_UP_LED       0x00080000 // LED 状态灯
-#define HID_UP_BUTTON    0x00090000 // 鼠标/手柄物理按键
-
-
-list_head_t g_input_device_list;
+list_head_t g_input_dev_list;
 
 /*
  * USB HID 键盘 Usage ID 到 TheresaOS 内部键码 (KEY_*) 的映射表
@@ -176,133 +169,148 @@ static const uint16 hid_keyboard_map[256] = {
 };
 
 /**
- * @brief 将 HID 设备的 Usage 映射为 Input 系统的事件，并填充能力位图
+ * @brief 将 HID 设备的 Usage 映射为 TheresaOS Input 系统的事件，并填充驱动能力位图
  *
- * @param hdev  已经解析完 Report Descriptor 的 HID 设备指针
- * @param idev  即将要向内核注册的 Input 系统设备指针
+ * @param hdev  已经完成 Report Descriptor 解析的 HID 硬件设备结构体指针
+ * @param idev  即将要向内核 input 子系统注册的输入设备节点指针
  */
 static inline void hid_usage_to_input(hid_dev_t *hdev, input_dev_t *idev) {
-    // 1. 遍历这个设备所有的 Field (数据切片模具)
+    // 1. 遍历设备描述符解析出的所有逻辑字段 (Field 可以理解为比特流的解包模具)
     for (int i = 0; i < hdev->field_count; i++) {
         hid_field_t *field = hdev->fields[i];
 
-        // 2. 遍历这个 Field 下所有的 Usage (标签)
+        // 2. 遍历当前 Field 下绑定的所有用途子项 (Usage)
         for (int j = 0; j < field->max_usages; j++) {
             hid_usage_t *usage = &field->usages[j];
 
-            // 提取出高 16 位的 Usage Page
-            uint32 usage_page = usage->hid_id & 0xFFFF0000;
-            // 提取出低 16 位的 Usage ID
-            uint16 usage_id   = usage->hid_id & 0x0000FFFF;
+            /*
+             * 提取 32 位 HID_ID 中的高低字节：
+             *   - 高 16 位：Usage Page (功能字典类别)，例如 0x0007 (键盘页)
+             *   - 低 16 位：Usage ID   (具体字段序号)，例如 0x0004 (字母 A 键)
+             * 注意：高位一定要用 '>> 16' 右移，否则结果为 0x00070000 无法匹配 switch 分支
+             */
+            uint32 usage_page = (usage->hid_id >> 16) & 0xFFFF;
+            uint16 usage_id   = usage->hid_id & 0xFFFF;
 
-            // 默认情况下，先将其标记为系统不认识的无用事件
+            // 默认先重置为无效事件，方便 ISR 中断响应函数查表时以 (event_type == 0) 为条件极速忽略
             usage->event_type = 0;
             usage->event_code = 0;
 
-            // 3. 开始核心路由与映射逻辑
+            // 3. 根据 Usage Page 进入分类映射路由
             switch (usage_page) {
 
-                // ==========================================
-                // 场景 A：这是一个标准键盘的按键
-                // ==========================================
-                case HID_UP_KEYBOARD:
-                    if (usage_id < 256) {
-                        usage->event_code = hid_keyboard_map[usage_id];
+            // ==========================================
+            // 场景 A：键盘及小键盘按键页 (0x07)
+            // ==========================================
+            case HID_UP_KEYBOARD:
+                // 标准主键盘区域序号范围在 0x00 ~ 0xFF 内
+                if (usage_id < 256) {
+                    // 通过查表将 USB HID 键盘键码转化为 TheresaOS 的物理键码 (例如 KEY_A)
+                    usage->event_code = hid_keyboard_map[usage_id];
 
-                        if (usage->event_code != 0) { // 自动过滤 0x00 ~ 0x03 的无效键
-                            usage->event_type = EV_KEY;
-                            SET_BIT(EV_KEY, idev->evbit);
-                            SET_BIT(usage->event_code, idev->keybit); // 完美的一对一能力注册
-                        } else {
-                            usage->event_type = 0;
-                        }
-                    }
-                    break;
-                // ==========================================
-                // 场景 B：通用桌面设备 (主要是鼠标移动)
-                // ==========================================
-                case HID_UP_GENDESK:
-                    if (usage_id == 0x30) { // 0x30 代表 X 轴
-                        usage->event_type = EV_REL;
-                        usage->event_code = REL_X;
-                        SET_BIT(EV_REL, idev->evbit);
-                        SET_BIT(REL_X, idev->relbit);
-                    }
-                    else if (usage_id == 0x31) { // 0x31 代表 Y 轴
-                        usage->event_type = EV_REL;
-                        usage->event_code = REL_Y;
-                        SET_BIT(EV_REL, idev->evbit);
-                        SET_BIT(REL_Y, idev->relbit);
-                    }
-                    else if (usage_id == 0x38) { // 0x38 代表鼠标滚轮
-                        usage->event_type = EV_REL;
-                        usage->event_code = REL_WHEEL;
-                        SET_BIT(EV_REL, idev->evbit);
-                        SET_BIT(REL_WHEEL, idev->relbit);
-                    }
-                    break;
-
-                // ==========================================
-                // 场景 C：鼠标或手柄的点击按键
-                // ==========================================
-                case HID_UP_BUTTON:
-                    // USB 规范里，Button 1 通常是鼠标左键，Button 2 是右键
-                    usage->event_type = EV_KEY;
-                    // BTN_MOUSE = 0x110，减 1 是因为 usage_id 是从 1 开始的
-                    usage->event_code = BTN_MOUSE + (usage_id - 1);
-
-                    // 确保计算出来的键码没有越界
-                    if (usage->event_code <= KEY_MAX) {
+                    // 0x00(无事件)、0x01~0x03(错误占位符) 转化后为 0，需滤除
+                    if (usage->event_code != 0) {
+                        usage->event_type = EV_KEY;
+                        // 向 input_dev 宣称设备支持按键事件类型
                         SET_BIT(EV_KEY, idev->evbit);
+                        // 向 input_dev 的按键位图注册此具体键码
                         SET_BIT(usage->event_code, idev->keybit);
                     }
-                    break;
+                }
+                break;
 
-                // ==========================================
-                // 场景 D：键盘的 LED 指示灯 (反向控制使用)
-                // ==========================================
-                case HID_UP_LED:
-                    usage->event_type = EV_LED;
-                    switch (usage_id) {
-                        // --- 传统三大键盘指示灯 ---
-                        case 0x01: usage->event_code = LED_NUML;      break; // Num Lock
-                        case 0x02: usage->event_code = LED_CAPSL;     break; // Caps Lock
-                        case 0x03: usage->event_code = LED_SCROLLL;   break; // Scroll Lock
+            // ==========================================
+            // 场景 B：通用桌面设备页 (0x01: 包含轴、滚轮、方向帽等)
+            // ==========================================
+            case HID_UP_GENDESK:
+                switch (usage_id) {
+                case HID_GD_X: // 0x30: X 轴
+                case HID_GD_Y: // 0x31: Y 轴
+                    /*
+                     * 关键消歧逻辑：同样的 Usage Page 和 Usage ID，量纲可能完全相反！
+                     * 必须通过 field->application_id 查询当前是“鼠标”还是“手柄/数位板”
+                     */
+                    if (field->application_id == HID_ID(HID_UP_GENDESK, HID_GD_MOUSE) ||
+                        field->application_id == HID_ID(HID_UP_GENDESK, HID_GD_POINTER)) {
+                        // 鼠标平移是相对运动，报告的是 delta 偏移量
+                        usage->event_type = EV_REL;
+                        usage->event_code = (usage_id == HID_GD_X) ? REL_X : REL_Y;
+                        SET_BIT(EV_REL, idev->evbit);
+                        SET_BIT(usage->event_code, idev->relbit);
+                    } else {
+                        // 手柄摇杆、触摸屏、绘图板是绝对位置
+                        usage->event_type = EV_ABS;
+                        usage->event_code = (usage_id == HID_GD_X) ? ABS_X : ABS_Y;
+                        SET_BIT(EV_ABS, idev->evbit);
+                        SET_BIT(usage->event_code, idev->absbit);
 
-                            // --- 国际化及特殊键盘指示灯 ---
-                        case 0x04: usage->event_code = LED_COMPOSE;   break; // Compose 键指示灯
-                        case 0x05: usage->event_code = LED_KANA;      break; // 日语 Kana(假名) 输入指示灯
-
-                            // --- 现代多媒体及电源状态指示灯 ---
-                        case 0x09: usage->event_code = LED_MUTE;      break; // 静音指示灯 (Mute)
-                        case 0x19: usage->event_code = LED_MAIL;      break; // 消息等待 (Message Waiting / 邮件灯)
-                        case 0x27: usage->event_code = LED_SLEEP;     break; // 待机指示灯 (Stand-By)
-                        case 0x4B: usage->event_code = LED_MISC;      break; // 通用指示灯 (Generic Indicator)
-                        case 0x4C: usage->event_code = LED_SUSPEND;   break; // 系统挂起 (System Suspend)
-                        case 0x4D: usage->event_code = LED_CHARGING;  break; // 外接电源/充电 (External Power Connected)
-
-                            // --- 兜底处理 ---
-                        default:
-                            /*
-                             * 对于我们不关心（或不需要支持）的其他几十种冷门指示灯，
-                             * 直接将 event_type 清零，或者标记为非法。
-                             * 这样你在第二遍解析（挂载字段）时，就可以通过判断 event_type == 0
-                             * 来跳过这个无效的 Usage，避免浪费你的 flexible array 内存和遍历时间。
-                             */
-                            usage->event_type = 0;
-                            usage->event_code = 0;
-                            break;
+                        // 注意：这里后续要将 field->logical_min / logical_max 写入 idev 的 ABS 参数集
+                        // 以便 OS 用户态窗口计算对物理屏幕坐标的缩放比例
                     }
-
-                // ==========================================
-                // 场景 E：系统无法识别的私有硬件数据
-                // ==========================================
-                default:
-                    // 这个设备可能是水冷头温度传感器、也可能是显卡灯光控制板
-                    // 我们不需要在 input_dev 里给它位图置位。
-                    // 直接跳过即可，保留它 event_type = 0 的状态。
-                    // 以后交给 hidraw 去原封不动地发给用户态程序。
                     break;
+
+                case HID_GD_WHEEL: // 0x38: 鼠标垂直滚轮
+                    usage->event_type = EV_REL;
+                    usage->event_code = REL_WHEEL;
+                    SET_BIT(EV_REL, idev->evbit);
+                    SET_BIT(REL_WHEEL, idev->relbit);
+                    break;
+                }
+                break;
+
+            // ==========================================
+            // 场景 C：鼠标、手柄及微动开关按键页 (0x09)
+            // ==========================================
+            case HID_UP_BUTTON:
+                usage->event_type = EV_KEY;
+                /*
+                 * HID 标准中 Button 从 1 开始 (1=左键, 2=右键, 3=中键)
+                 * 内核中通常按 BTN_MOUSE (鼠标按键基址 0x110) 进行连续递增映射
+                 */
+                usage->event_code = BTN_MOUSE + (usage_id - 1);
+
+                // 边界防御：保证计算出的物理键码没超出最大支持范围
+                if (usage->event_code <= KEY_MAX) {
+                    SET_BIT(EV_KEY, idev->evbit);
+                    SET_BIT(usage->event_code, idev->keybit);
+                }
+                break;
+
+            // ==========================================
+            // 场景 D：键盘 LED 指示灯控制页 (0x08 - Output Report)
+            // ==========================================
+            case HID_UP_LED:
+                switch (usage_id) {
+                // --- 常规三大功能锁状态灯 ---
+                case 0x01: usage->event_code = LED_NUML;    break; // Num Lock
+                case 0x02: usage->event_code = LED_CAPSL;   break; // Caps Lock
+                case 0x03: usage->event_code = LED_SCROLLL; break; // Scroll Lock
+
+                // --- 国际化及输入法灯 ---
+                case 0x04: usage->event_code = LED_COMPOSE; break; // Compose 键
+                case 0x05: usage->event_code = LED_KANA;    break; // 日语 Kana 切换灯
+
+                // --- 兜底过滤 ---
+                default:   usage->event_code = 0;           break;
+                }
+
+                // 完成对应事件的位图注册
+                if (usage->event_code != 0) {
+                    usage->event_type = EV_LED;
+                    SET_BIT(EV_LED, idev->evbit);
+                    SET_BIT(usage->event_code, idev->ledbit);
+                }
+                break;
+
+            // ==========================================
+            // 场景 E：未定义或厂商自定义页 (0xFF00 等)
+            // ==========================================
+            default:
+                /*
+                 * 私有协议字段（如水冷驱动、宏按键板等）不在系统通用 input 事件树中做位图注册，
+                 * 保持 event_type = 0。后续中断数据直接留给 /dev/hidrawX 透传到应用层态程序处理。
+                 */
+                break;
             }
         }
     }
@@ -338,6 +346,6 @@ void hid_create_input_dev(hid_dev_t *hdev) {
        } else {
            // 5. 正式注册：挂载到系统的全局 input 链表
            // (注：如果是多核系统，这里需要加自旋锁)
-           list_add_tail(&g_input_device_list,&idev->node);
+           list_add_tail(&g_input_dev_list,&idev->node);
        }
 }
