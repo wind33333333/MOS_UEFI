@@ -9,7 +9,7 @@ struct input_dev_t;
 typedef struct {
     uint32 hid_id; // 硬件协议里的完整用途 ID (Page | ID)
     uint16 event_type; // TheresaOS 内部事件类型 (如 EV_KEY, EV_REL)
-    uint16 event_code; // TheresaOS 内部具体键码 (如 TOS_KEY_A, TOS_REL_X)
+    uint16 event_code; // TheresaOS 内部具体键码 (如 KEY_A, REL_X)
 } hid_usage_t;
 
 
