@@ -1,5 +1,5 @@
 #pragma once
-#include "../../../include/moslib.h"
+#include "moslib.h"
 
 #pragma pack(push,1)
 
@@ -650,6 +650,9 @@ typedef struct xhci_trb_t {
 // ---------------------------------------------------------
 // 端口状态改变事件 (Port Status Change Event) 时，DW0 [31:24] 存放的是物理端口号！
 #define TRB_GET_PORT_ID(dw0)         (((dw0) >> 24) & 0xFF)  // [31:24] 提取热插拔事件的 Root Hub 端口号 ★ 核心补充：Hub 枚举入口！
+
+// 提取 ED 位的宏
+#define TRB_EVENT_ED_BIT    (1 << 2)
 
 #pragma pack(pop)
 

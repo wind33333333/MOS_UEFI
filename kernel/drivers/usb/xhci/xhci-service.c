@@ -166,6 +166,13 @@ static inline int32 xhci_translate_error(uint8 comp_code) {
 
 // 传输任务处理 (多核完美并发版)
 static inline void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
+    // 提前声明一个指针，用来接住刚刚完成结算的那个 URB
+    usb_urb_t *completed_urb = NULL;
+
+    if (evt_trb->control & TRB_EVENT_ED_BIT) {
+        completed_urb = (usb_urb_t*)evt_trb->parameter;
+    }
+
     // =======================================================
     // 🛡️ 1. 纯粹的宏解析：彻底告别联合体位域的隐患
     // =======================================================
@@ -195,8 +202,6 @@ static inline void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_
         return;
     }
 
-    // 提前声明一个指针，用来接住刚刚完成结算的那个 URB
-    usb_urb_t *completed_urb = NULL;
 
     // =======================================================
     // 🔒 4. 获取该环的专属锁 (绝不影响其他 Stream 的提交)

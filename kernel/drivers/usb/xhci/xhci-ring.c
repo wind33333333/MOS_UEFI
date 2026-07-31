@@ -1,10 +1,10 @@
 #include "xhci-hcd.h"
-#include "../../../include/errno.h"
-#include "../../../include/vmm.h"
-#include "../../../include/slub.h"
+#include "errno.h"
+#include "vmm.h"
+#include "slub.h"
 #include "../core/usb-dev.h"
 #include "../core/usb-core.h"
-#include "../../../include/printk.h"
+#include "printk.h"
 
 uint64 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push) {
     // 1. 【双指针防溢出检查】
@@ -455,12 +455,23 @@ static inline uint64 xhci_submit_control_transfer(usb_urb_t *urb, xhci_submit_ri
         status_ctrl |= TRB_SET_DIR_OUT;
     }
 
-    // 根据上层请求，决定是否在最后一环触发硬件中断 (IOC)
+    status_ctrl |= TRB_CHAIN;
+    trb.control = status_ctrl;
+    xhci_submit_ring_enq(ring, &trb);
+
+    // =======================================================
+    // 🎁 [阶段 4: Event Data TRB] - T-NUA 架构的零开销信标
+    // =======================================================
+    trb.parameter = (uint64)urb; // 🚀 核心魔法：把 URB 虚拟指针存给硬件！
+    trb.status    = TRB_SET_INTR_TARGET(0);
+    uint32 ed_ctrl = TRB_SET_TYPE(TRB_TYPE_EVENT_DATA);
+
+    // 🌟 架构演进：全村唯一的 IOC 只能在绝对的最后一环点亮
     if (wants_ioc) {
-        status_ctrl |= TRB_IOC;
+        ed_ctrl |= TRB_IOC;
     }
 
-    trb.control = status_ctrl;
+    trb.control = ed_ctrl;
     last_trb_pa = xhci_submit_ring_enq(ring, &trb);
 
     return last_trb_pa;
@@ -468,13 +479,13 @@ static inline uint64 xhci_submit_control_transfer(usb_urb_t *urb, xhci_submit_ri
 
 
 /**
- * @brief [内联执行器] 处理 Bulk/Interrupt 普通传输 (大块切片与 ZLP)
+ * @brief [内联执行器] 处理 Bulk/Interrupt 普通传输 (引入 Event Data TRB 极速上下文)
  * @note 依赖最新版 16 字节宏装配架构。
  * 内存屏障 wmb()、Cycle 状态位、以及 Link TRB 闭环均由底层 xhci_submit_ring_enq 引擎自动维护！
  */
 static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_submit_ring_t *ring, uint8 wants_ioc) {
     uint64 last_trb_pa = 0;
-    xhci_trb_t trb; // 临时装配容器
+    xhci_trb_t trb = {0}; // 临时装配容器
 
     uint32 left_len   = urb->transfer_len;
     uint64 current_pa = va_to_pa(urb->transfer_buf);
@@ -483,10 +494,16 @@ static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_submit_rin
     uint16 max_packet = urb->ep ? urb->ep->max_packet_size : 512;
     if (max_packet == 0) max_packet = 512;
 
-    // 2. 判定是否需要追加 ZLP (零长度数据包：数据量刚好是最大包长的整数倍，且带短包结束标志)
-    uint8 needs_zlp = (urb->transfer_flags & URB_ZERO_PACKET) &&
-                      (urb->transfer_len > 0) &&
-                      ((urb->transfer_len % max_packet) == 0);
+    // 2. 判定是否需要追加 ZLP (零长度数据包)
+    // 🌟 强化兜底：如果本来就是 0 字节传输请求，强制视为 ZLP；或者是整数倍且要求 ZLP。
+    uint8 needs_zlp = (urb->transfer_len == 0) ||
+                      ((urb->transfer_flags & URB_ZERO_PACKET) &&
+                      ((urb->transfer_len % max_packet) == 0));
+
+    // 防御：如果既没有数据，也不是 ZLP，直接退出 (避免下发违法的孤儿 Event Data TRB)
+    if (left_len == 0 && !needs_zlp) {
+        return 0;
+    }
 
     // 3. 核心切片循环：解决物理内存跨越 64KB 边界导致 DMA 越界车祸的问题
     while (left_len > 0) {
@@ -496,12 +513,11 @@ static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_submit_rin
         uint8  has_more_data = (left_len > space_to_boundary);
         uint32 chunk_len     = has_more_data ? space_to_boundary : left_len;
 
-        // 🌟 状态计算逻辑完美内聚为局部变量，防止脏状态在循环内交叉污染
-        // 核心修复：如果数据没发完，或者虽然数据发完了但必须跟一个 ZLP，Chain 都必须为 1，告诉硬件它们属于同一个 TD 传输块
-        uint32 chain = (has_more_data || needs_zlp) ? TRB_CHAIN : 0;
-
-        // 核心修复：全村唯一的 IOC 只能在绝对的最后一块 TRB 上点亮 (防双重中断风暴)
-        uint32 ioc   = (!has_more_data && !needs_zlp && wants_ioc) ? TRB_IOC : 0;
+        // 🌟 架构演进：代码极度精简！
+        // 因为不论循环是否结束、不论有没有 ZLP，绝对的最后一环一定是我们追加的 Event Data TRB。
+        // 所以这里的所有 Normal TRB 必须统统设置 TRB_CHAIN，并且绝对不能设置 TRB_IOC！
+        uint32 chain = TRB_CHAIN;
+        uint32 ioc   = 0;
 
         // 🚀 使用重构后的参数字、状态字、控制字进行纯粹的位或装配
         trb.parameter = current_pa;
@@ -509,29 +525,44 @@ static inline uint64 xhci_submit_normal_transfer(usb_urb_t *urb, xhci_submit_rin
         trb.control   = TRB_SET_TYPE(TRB_TYPE_NORMAL) | chain | ioc;
 
         // 推入硬件命令环
-        last_trb_pa = xhci_submit_ring_enq(ring, &trb);
+        xhci_submit_ring_enq(ring, &trb);
 
         current_pa += chunk_len;
         left_len   -= chunk_len;
     }
 
     // =======================================================
-    // 🎁 4. 极客彩蛋追加：精准下发 ZLP 空车厢
+    // 🎁 4. 极客彩蛋：精准下发 ZLP 空车厢
     // =======================================================
     if (needs_zlp) {
         // 指针停在哪无所谓，长度强制为 0
         trb.parameter = current_pa;
         trb.status    = TRB_SET_TR_LEN(0) | TRB_SET_INTR_TARGET(0);
 
-        // 绝对的最后一环，拉断链条 (chain = 0)，并赋予这节空车厢唤醒 CPU 的权利 (wants_ioc)
-        uint32 zlp_ctrl = TRB_SET_TYPE(TRB_TYPE_NORMAL);
-        if (wants_ioc) {
-            zlp_ctrl |= TRB_IOC;
-        }
-        trb.control = zlp_ctrl;
+        // 🌟 架构演进：ZLP 也不再是最后一环了，依然要保持 CHAIN=1，且不能触发中断
+        trb.control = TRB_SET_TYPE(TRB_TYPE_NORMAL) | TRB_CHAIN;
 
-        last_trb_pa = xhci_submit_ring_enq(ring, &trb);
+        xhci_submit_ring_enq(ring, &trb);
     }
+
+    // =======================================================
+    // 🚀 5. T-NUA 终极护城河：Event Data TRB 信标
+    // =======================================================
+    // 将上层 URB 的虚拟指针强转存入前 64 位
+    trb.parameter = (uint64)urb;
+    trb.status    = TRB_SET_INTR_TARGET(0);
+
+    uint32 ed_ctrl = TRB_SET_TYPE(TRB_TYPE_EVENT_DATA);
+
+    // 🌟 全村唯一的 IOC 只能在这里点亮
+    if (wants_ioc) {
+        ed_ctrl |= TRB_IOC;
+    }
+
+    trb.control = ed_ctrl;
+
+    // 真正推入这最后一环，并拿到它的物理地址 (可做兜底方案的 fallback)
+    last_trb_pa = xhci_submit_ring_enq(ring, &trb);
 
     return last_trb_pa;
 }

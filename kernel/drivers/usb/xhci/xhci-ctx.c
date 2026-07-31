@@ -1,6 +1,6 @@
 #include "xhci-hcd.h"
-#include "../../../include/errno.h"
-#include "../../../include/slub.h"
+#include "errno.h"
+#include "slub.h"
 #include "../core/usb-dev.h"
 
 
