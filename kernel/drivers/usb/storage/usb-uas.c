@@ -1,6 +1,5 @@
 #include "usb-uas.h"
 #include "printk.h"
-#include "../core/usb-core.h"
 #include "../core/usb-dev.h"
 #include "../drivers/scsi/scsi.h"
 #include "errno.h"
@@ -106,35 +105,35 @@ int32 uas_abort_task(scsi_host_t *host, uint64 scsi_lun, uint16 target_tag) {
     tm_iu->task_tag = asm_bswap16(target_tag); // ★ 告诉固件：杀掉它！
     tm_iu->lun = asm_bswap64(scsi_lun);
 
-    // 3. 构建 URB 监听组 (TMF 只需要 Status 和 Command 两个管子)
-    usb_urb_t *urb_status = usb_alloc_urb();
-    usb_urb_t *urb_cmd    = usb_alloc_urb();
-
-    if (!urb_status || !urb_cmd) {
-        posix_err = -ENOMEM;
-        goto cleanup;
-    }
-
     // [Step A] 提前放置 Status 哨兵，等 U 盘的回执
-    usb_fill_bulk_urb(urb_status, udev, uas_data->status_ep, resp_iu, sizeof(uas_response_iu_t));
-    urb_status->stream_id = stream_id; // TMF 也是走流并发的
-    posix_err = xhci_submit_urb(urb_status);
+    xhci_data_req_t req ={
+        resp_iu,
+        sizeof(uas_response_iu_t),
+        0,
+        0,
+        NULL,
+        stream_id,
+        NULL
+    };
+
+    posix_err = xhci_submit_stream(uas_data->status_ep,&req);
     if (posix_err < 0) goto cleanup;
 
     // [Step B] 投递 TMF 暗杀令
-    usb_fill_bulk_urb(urb_cmd, udev, uas_data->cmd_ep, tm_iu, sizeof(uas_tm_iu_t));
-    urb_cmd->stream_id = 0; // Command 管道规范要求流 ID 填 0
-    urb_cmd->transfer_flags |= URB_NO_INTERRUPT; // 静音传输
-    posix_err = xhci_submit_urb(urb_cmd);
+    req.buf = tm_iu;
+    req.length = sizeof(uas_tm_iu_t);
+    req.flags = 0;
+    req.task_id = 0;
+    req.waker = NULL;
+    req.stream_id = 0;
+    req.cb = NULL;
+
+    posix_err = xhci_submit_normal(uas_data->cmd_ep,&req);
 
     if (posix_err < 0) {
         // TMF 发送失败，必须把前面的 Status 哨兵也撤回来
         xhci_cmd_stop_ep(udev->xhcd, udev->slot_id, uas_data->status_ep->ep_dci);
         goto cleanup;
-    }
-
-    while (urb_status->is_done == FALSE) {
-        asm_pause();
     }
 
 
@@ -154,9 +153,6 @@ int32 uas_abort_task(scsi_host_t *host, uint64 scsi_lun, uint16 target_tag) {
     }
 
 cleanup:
-    // 回收资源
-    if (urb_status) usb_free_urb(urb_status);
-    if (urb_cmd)    usb_free_urb(urb_cmd);
 
     // 把“杀手任务”的 tag 还给 UAS 并发槽
     uas_free_request(uas_data, tag);
@@ -187,7 +183,7 @@ int32 uas_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     }
 
     // 2. 准备 UAS Command IU (命令信息单元)
-    // 👑 架构师点赞：UAS 规范强制大端序 (Big Endian)，这里的 asm_bswap 处理得极其专业！
+    // 👑 架构师点赞：UAS 规范强制大端序 (Big Endian)
     cmd_iu->tag = asm_bswap16(tag);
     cmd_iu->iu_id = UAS_CMD_IU_ID;  // Command IU
     cmd_iu->prio_attr = 0x00;       // Simple Task
@@ -196,42 +192,37 @@ int32 uas_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     asm_mem_cpy(cmnd->scsi_cdb, cmd_iu->scsi_cdb, cmnd->scsi_cdb_len);
 
     // ============================================================
-    // 3. 面单分发 (分配独立 URB)
-    // ============================================================
-    usb_urb_t *urb_status = usb_alloc_urb();
-    usb_urb_t *urb_data   = NULL;
-    usb_urb_t *urb_cmd    = usb_alloc_urb();
-
-    if (urb_status == NULL || urb_cmd == NULL) {
-        posix_err = -ENOMEM;
-        goto cleanup;
-    }
-
-    if (cmnd->data_buf && cmnd->data_len) {
-        urb_data = usb_alloc_urb();
-        if (urb_data == NULL) {
-            posix_err = -ENOMEM;
-            goto cleanup;
-        }
-    }
-
-    // ============================================================
     // 4. 提交传输并自动敲门铃 (逆序投递流水线)
     // ============================================================
 
     // [Step A] 提交 Status Pipe (唯一需要打断 CPU 的哨兵)
-    usb_fill_bulk_urb(urb_status, udev, uas_data->status_ep, sense_iu, UAS_MAX_SENSE_LEN);
-    urb_status->stream_id = stream_id;
-    posix_err = xhci_submit_urb(urb_status);
+    xhci_data_req_t req ={
+        sense_iu,
+        UAS_MAX_SENSE_LEN,
+        TX_IOC,
+        0,
+        NULL,
+        stream_id,
+        NULL
+    };
+
+    posix_err = xhci_submit_stream(uas_data->status_ep,&req);
+
     if (posix_err < 0) goto cleanup;
 
     // [Step B] 提交 Data Pipe (静音传输)
-    if (urb_data != NULL) {
+    if (cmnd->data_buf && cmnd->data_len) {
         usb_ep_t *data_ep = (cmnd->dir == SCSI_DIR_IN) ? uas_data->data_in_ep : uas_data->data_out_ep;
-        usb_fill_bulk_urb(urb_data, udev, data_ep, cmnd->data_buf, cmnd->data_len);
-        urb_data->stream_id = stream_id;
-        urb_data->transfer_flags |= URB_NO_INTERRUPT; // 静音！
-        posix_err = xhci_submit_urb(urb_data);
+
+        req.buf = cmnd->data_buf;
+        req.length = cmnd->data_len;
+        req.flags = 0;
+        req.task_id = 0;
+        req.waker = NULL;
+        req.stream_id =stream_id;
+        req.cb = NULL;
+
+        posix_err = xhci_submit_stream(data_ep,&req);
         if (posix_err < 0) {
             // ★ 深度防御提示：在真正的工业级驱动中，如果这里失败了，
             // 应该立刻调用 xhci_cmd_stop_ep 强行停止前面的 Status Pipe，防止硬件跑飞。
@@ -240,15 +231,21 @@ int32 uas_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     }
 
     // [Step C] 提交 Command Pipe (静音下达开火指令)
-    usb_fill_bulk_urb(urb_cmd, udev, uas_data->cmd_ep, cmd_iu, sizeof(uas_cmd_iu_t));
-    urb_cmd->stream_id = 0; // Command Pipe 没有 Stream
-    urb_cmd->transfer_flags |= URB_NO_INTERRUPT; // 静音！
-    posix_err = xhci_submit_urb(urb_cmd);
+    req.buf = cmd_iu;
+    req.length = sizeof(uas_cmd_iu_t);
+    req.flags = 0;
+    req.task_id = 0;
+    req.waker = NULL;
+    req.stream_id =0;
+    req.cb = NULL;
+
+    posix_err = xhci_submit_normal(uas_data->cmd_ep,&req);
     if (posix_err < 0) goto cleanup;
 
-    // 等结果
-    while (urb_status->is_done == FALSE) {
+    // 4. 🌀 核心魔法：原地轮询死等 (Busy-Wait)
+    while (uas_data->status_ep->tracker[stream_id].is_completed == FALSE) {
         asm_pause();
+        __asm__ __volatile__ ("" ::: "memory");
     }
 
     // ============================================================
@@ -264,11 +261,6 @@ int32 uas_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     }
 
 cleanup:
-    // 👑 过河拆桥：统一回收所有并发申请的面单与槽位
-    if (urb_status) usb_free_urb(urb_status);
-    if (urb_data)   usb_free_urb(urb_data);
-    if (urb_cmd)    usb_free_urb(urb_cmd);
-
     uas_free_request(uas_data, tag);
 
     // 👑 唯一出口：向 SCSI 中间层汇报总线物理状态

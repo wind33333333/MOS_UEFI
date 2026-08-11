@@ -1,6 +1,5 @@
 #include "usb-hid.h"
-#include "../../../include/printk.h"
-#include "../core/usb-core.h"
+#include "printk.h"
 #include "hid-core.h"
 #include "../xhci/xhci-hcd.h"
 #include "hid-parser.h"
@@ -9,8 +8,8 @@
 hid_raw_queue_t g_hid_raw_queue;
 
 
-void hid_irq_complete(usb_urb_t *urb) {
-    hid_dev_t *hdev = urb->private_data;
+void hid_irq_complete(void *hdev1) {
+    hid_dev_t *hdev = hdev1;
 
     // 2. 将数据推入生肉队列 (这里用伪代码示意锁操作，具体看你的内核基建)
     // spin_lock(&g_hid_raw_queue.lock);
@@ -19,9 +18,9 @@ void hid_irq_complete(usb_urb_t *urb) {
     if (next_head != g_hid_raw_queue.tail) { // 队列没满
         hid_raw_event_t *event = &g_hid_raw_queue.events[g_hid_raw_queue.head];
         event->hdev = hdev;
-        event->data_len = urb->actual_length;
+        event->data_len = hdev->report_len;
         // 极速内存拷贝 (8 字节通常只要几个 CPU 时钟周期)
-        asm_mem_cpy(hdev->report_buf,event->raw_data,  urb->actual_length);
+        asm_mem_cpy(hdev->report_buf,event->raw_data,  hdev->report_len);
         g_hid_raw_queue.head = next_head;
 
         // 唤醒可能正在沉睡的后台解析线程
@@ -33,7 +32,7 @@ void hid_irq_complete(usb_urb_t *urb) {
     // spin_unlock(&g_hid_raw_queue.lock);
 
     // 3. 极速续命：在硬中断中立刻将 URB 交还给 xHCI，保证键盘不会“掉线”
-    xhci_submit_urb(urb);
+    xhci_submit_normal(hdev->interrupt_ep,&hdev->req);
 }
 
 

@@ -1,7 +1,7 @@
 #pragma once
-#include "../../../include/moslib.h"
-#include "usb-core.h"
+#include "moslib.h"
 #include "usb-def.h"
+#include "../xhci/xhci-hcd.h"
 
 // ============================================================================
 // 🎛️ USB 端口特征选择器 (Port Feature Selectors - 纯动作指令版)
@@ -186,8 +186,9 @@ typedef struct usb_hub_t {
     boolean            is_individual_pwr;  //是否独立供电控制
     boolean            is_individual_ocp;  //是否独立过流保护
 
+    usb_ep_t        *interrupt_ep;
+
     // 3. 中断雷达 (运行时内存)
-    usb_urb_t          *irq_urb;
     uint8              *irq_buffer;
     uint16             irq_buf_len;
 
@@ -206,7 +207,8 @@ typedef struct usb_hub_t {
     uint32             lock;
     uint32             *port_status;
     uint8              *port_bitmap_status;
-    usb_urb_t          *int_urb;
+    xhci_data_req_t    req;
+
 
 } usb_hub_t;
 

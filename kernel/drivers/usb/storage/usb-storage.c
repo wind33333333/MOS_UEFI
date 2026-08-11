@@ -1,5 +1,4 @@
 #include "usb-storage.h"
-#include "../core/usb-core.h"
 #include "../core/usb-dev.h"
 #include "../core/usb-bus.h"
 #include "printk.h"

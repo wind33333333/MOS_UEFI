@@ -2,7 +2,6 @@
 #include "usb-bus.h"
 #include "errno.h"
 #include "pcie.h"
-#include "../xhci/xhci-hcd.h"
 #include "printk.h"
 #include "slub.h"
 
@@ -62,11 +61,11 @@ int32 usb_enable_alt_if(usb_if_alt_t *new_alt) {
     uint8 new_num_eps = new_alt->if_desc->num_endpoints;
     for (uint8 i = 0; i < new_num_eps; i++) {
         // ★ OOM 防御：分配环可能因为物理 DMA 内存耗尽而失败
-        posix = xhci_alloc_ep_ring(&new_alt->eps[i]);
+        posix = xhci_alloc_ep_resource(&new_alt->eps[i]);
         if (posix < 0) {
             color_printk(RED, BLACK, "USB: OOM allocating rings during Alt setting!\n");
             // 局部回滚：释放刚才循环里已经分配成功的前几个端点
-            for (uint8 j = 0; j < i; j++) xhci_free_ep_ring(&new_alt->eps[j]);
+            for (uint8 j = 0; j < i; j++) xhci_free_ep_resource(&new_alt->eps[j]);
             return posix;
         }
     }
@@ -78,7 +77,7 @@ int32 usb_enable_alt_if(usb_if_alt_t *new_alt) {
     if (posix < 0) {
         color_printk(RED, BLACK, "xHCI: Switch AltSetting failed, bandwidth rejected!\n");
         // 主板拒绝了这份图纸（通常是总线带宽不足），安全释放刚分配的 RAM
-        for (uint8 i = 0; i < new_num_eps; i++) xhci_free_ep_ring(&new_alt->eps[i]);
+        for (uint8 i = 0; i < new_num_eps; i++) xhci_free_ep_resource(&new_alt->eps[i]);
         return posix;
     }
 
@@ -93,7 +92,7 @@ int32 usb_enable_alt_if(usb_if_alt_t *new_alt) {
         xhci_ctx_eps_cfg(new_alt, old_alt);
 
         // 释放为新端点分配的废弃环内存
-        for (uint8 i = 0; i < new_num_eps; i++) xhci_free_ep_ring(&new_alt->eps[i]);
+        for (uint8 i = 0; i < new_num_eps; i++) xhci_free_ep_resource(&new_alt->eps[i]);
         return posix; // 操作系统、主板、物理外设毫发无伤地回到了切换前的健康状态！
     }
 
@@ -105,7 +104,7 @@ int32 usb_enable_alt_if(usb_if_alt_t *new_alt) {
         for (uint8 i = 0; i < old_num_eps; i++) {
             usb_ep_t *ep = &old_alt->eps[i];
             udev->eps[ep->ep_dci] = NULL; // 从全局路由表摘除
-            xhci_free_ep_ring(ep);         // 彻底释放旧物理内存
+            xhci_free_ep_resource(ep);         // 彻底释放旧物理内存
         }
     }
 
@@ -190,15 +189,23 @@ int32 usb_cfg_alt_streams(usb_if_alt_t *alt, uint8 want_streams_exp) {
  * @note 全局唯一，不需要索引，不需要语言 ID (wIndex = 0)
  */
 static inline int32 _usb_get_dev_desc(usb_dev_t *udev, void *buf, uint16 len) {
-    // 🌟 一键生成 bmRequestType: 10000000b (0x80)
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
+    xhci_ctrl_req_t req = {
+        buf,
+        len,
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
 
-    return usb_control_msg(udev, buf,
-                           req_type,
-                           USB_REQ_GET_DESCRIPTOR,
-                           (USB_DESC_TYPE_DEVICE << 8) | 0, // wValue: 高字节类型，低字节索引 0
-                           0,                               // wIndex: 0
-                           len);                            // wLength
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
+    req.setup_packet.request = USB_REQ_GET_DESCRIPTOR;
+    req.setup_packet.value =  (USB_DESC_TYPE_DEVICE << 8) | 0;
+    req.setup_packet.index = 0;
+    req.setup_packet.length = len;
+
+   return xhci_submit_control(udev,&req);
+
 }
 
 /**
@@ -206,14 +213,23 @@ static inline int32 _usb_get_dev_desc(usb_dev_t *udev, void *buf, uint16 len) {
  * @param config_index 配置的索引 (通常为 0，代表第 1 个配置)
  */
 static inline int32 _usb_get_cfg_desc(usb_dev_t *udev, uint8 config_index, void *buf, uint16 len) {
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
+    xhci_ctrl_req_t req = {
+        buf,
+        len,
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
 
-    return usb_control_msg(udev, buf,
-                           req_type,
-                           USB_REQ_GET_DESCRIPTOR,
-                           (USB_DESC_TYPE_CONFIG << 8) | config_index, // wValue: 高字节类型，低字节指定配置
-                           0,                                          // wIndex: 0
-                           len);
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
+    req.setup_packet.request = USB_REQ_GET_DESCRIPTOR;
+    req.setup_packet.value =  (USB_DESC_TYPE_CONFIG << 8) | config_index;
+    req.setup_packet.index = 0;
+    req.setup_packet.length = len;
+
+    return xhci_submit_control(udev,&req);
+
 }
 
 /**
@@ -222,14 +238,22 @@ static inline int32 _usb_get_cfg_desc(usb_dev_t *udev, uint8 config_index, void 
  * @param lang_id      语言 ID (通常传入 0x0409 代表美式英语)
  */
 static inline int32 _usb_get_string_desc(usb_dev_t *udev, uint8 string_index, uint16 lang_id, void *buf, uint16 len) {
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
+    xhci_ctrl_req_t req = {
+        buf,
+        len,
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
 
-    return usb_control_msg(udev, buf,
-                           req_type,
-                           USB_REQ_GET_DESCRIPTOR,
-                           (USB_DESC_TYPE_STRING << 8) | string_index, // wValue: 指定要拿几号字符串
-                           lang_id,                                    // 🌟 wIndex: 字符串特例，这里放语言 ID!
-                           len);
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
+    req.setup_packet.request = USB_REQ_GET_DESCRIPTOR;
+    req.setup_packet.value =  (USB_DESC_TYPE_STRING << 8) | string_index;
+    req.setup_packet.index = lang_id;
+    req.setup_packet.length = len;
+
+    return xhci_submit_control(udev,&req);
 }
 
 /**
@@ -237,14 +261,23 @@ static inline int32 _usb_get_string_desc(usb_dev_t *udev, uint8 string_index, ui
  * @note 全局唯一，不需要索引 (wIndex = 0)
  */
 static inline int32 usb_get_bos_desc(usb_dev_t *udev, void *buf, uint16 len) {
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
+    xhci_ctrl_req_t req = {
+        buf,
+        len,
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
 
-    return usb_control_msg(udev, buf,
-                           req_type,
-                           USB_REQ_GET_DESCRIPTOR,
-                           (USB_DESC_TYPE_BOS << 8) | 0,
-                           0,
-                           len);
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
+    req.setup_packet.request = USB_REQ_GET_DESCRIPTOR;
+    req.setup_packet.value =  (USB_DESC_TYPE_BOS << 8) | 0;
+    req.setup_packet.index = 0;
+    req.setup_packet.length = len;
+
+    return xhci_submit_control(udev,&req);
+
 }
 
 
@@ -272,7 +305,7 @@ static inline void usb_ep_desc_params(usb_ep_t *cur_ep, usb_ep_desc_t *ep_desc) 
     cur_ep->lsa = 0;
     cur_ep->hid = 0;
 
-    cur_ep->ring_arr = NULL;
+    cur_ep->rings = NULL;
     cur_ep->streams_ctx_array = NULL;
     cur_ep->enable_streams_exp = 0;
 
@@ -435,6 +468,7 @@ int32 usb_if_create(usb_dev_t *udev) {
             case USB_DESC_TYPE_ENDPOINT: {
                 if (cur_alt) {
                     cur_ep = eps_pool++; // 🌟 获取当前端点实体
+                    cur_ep->udev = udev;
                     usb_ep_desc_params(cur_ep, (usb_ep_desc_t *)desc_head);
                 }
                 break;

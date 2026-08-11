@@ -1,6 +1,6 @@
-#include "../../../include/errno.h"
-#include "../../../include/vmm.h"
-#include "../../../include/printk.h"
+#include "errno.h"
+#include "vmm.h"
+#include "printk.h"
 #include "xhci-hcd.h"
 #include "../core/usb-dev.h"
 // =========================================================================
@@ -36,10 +36,10 @@ int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 port_num, uint8 *out_slot_id)
     cmd_trb.control = TRB_SET_TYPE(TRB_TYPE_ENABLE_SLOT) | (((uint32)slot_type & 0x1F) << 16);
 
     // 5. 提交命令并等待完成
-    xhci_command_t command = {0};
-    int32 status = xhci_submit_cmd(xhcd, &cmd_trb, &command);
+    xhci_cmd_io_tracker_t out_cmd_io_tracker = {0};
+    int32 status = xhci_submit_cmd(xhcd, &cmd_trb, &out_cmd_io_tracker);
 
-    *out_slot_id = command.slot_id;
+    *out_slot_id = out_cmd_io_tracker.out_slot_id;
     return status;
 }
 
@@ -184,7 +184,7 @@ int32 xhci_recover_stall(usb_dev_t *udev, uint8 ep_dci) {
     }
 
     // 抢救第 2 步：重置出队指针
-    posix_err = xhci_cmd_set_tr_deq_ptr(udev->xhcd, udev->slot_id, ep_dci, udev->eps[ep_dci]->ring_arr);
+    posix_err = xhci_cmd_set_tr_deq_ptr(udev->xhcd, udev->slot_id, ep_dci, udev->eps[ep_dci]->rings);
     if (posix_err < 0) {
         color_printk(RED, BLACK, "[xHCI CPR FATAL] Set TR Deq Ptr Command failed: %d\n", posix_err);
         return posix_err; // 指针重置失败，传输环彻底报废！

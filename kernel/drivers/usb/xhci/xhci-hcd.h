@@ -1,27 +1,97 @@
 #pragma once
+#include "../core/usb-def.h"
 #include "xhci-hw.h"
 
-typedef struct xhci_submit_ring_t{
-    // === [物理/内存层] ==================
-    xhci_trb_t   *ring_base;        // 虚拟起始地址
-    uint32       size;              // 容量
+#define XHCI_CMD_RING_LEN  256                   // 命令环深度 (必须是 2 的幂次)
+#define XHCI_CMD_RING_MASK (NOVA_CMD_RING_LEN - 1)
 
-    // === [逻辑游标层] ==================
-    uint32       enq_idx;           // 写游标
-    uint32       deq_idx;           // 读游标
-    uint8        cycle;             // 生产 Cycle 状态
+/* 3. 命令环影子上下文表项 (O(1) 按位对应槽位) */
+typedef struct xhci_cmd_io_tracker_t{
+    void     *async_waker;     // 指向协程/进程/异步 Task 的 Waker 句柄
+    uint32   out_slot_id;     // [输出直放指针] 用于接收 Enable Slot 成功返回的 Slot ID
+    int32    out_hw_status;   // [输出状态码] 用于回填硬件 Completion Code
+    boolean  is_completed;     // 任务完成原子标示
+}xhci_cmd_io_tracker_t;
 
-    // === [并发与调度层] ===
-    uint32   ring_lock;             // 保护当前环的唯一自旋锁
-    list_head_t  pending_list;      // 在此环上排队等待硬件完成的面单 (URB 或 Command)
+#define XHCI_CONTROL_TRANSFER_RING_LEN  256                   // 控制传输环深度 (必须是 2 的幂次)
+#define XHCI_CONTROL_TRANSFER_RING_MASK (NOVA_CMD_RING_LEN - 1)
+/* =========================================================================
+ * 🌟 统一传输环影子槽位节点 (EP0 控制传输 与 EP1~31 普通传输 完全归一同构！)
+ * 不再有任何 usb_urb_t 历史包袱，纯粹以 task_id / user_data 驱动
+ * ========================================================================= */
+typedef struct xhci_transfer_io_tracker_t {
+    void     *async_waker;       // 挂起的协程 / 异步任务 Waker 句柄
+    uint64  task_id;           // 上层用户态/eBPF驱动下发的任务唯一标号 (user_data)
+    uint32  actual_bytes;      // [输出] DMA 实际收发成功的真实字节数
+    int32   hw_status;         // [输出] xHCI 硬件状态码 (1 = SUCCESS)
+    boolean   is_completed;      // 任务完成原子标示
+    void (*cb)(void *context);
+} xhci_transfer_io_tracker_t;
 
+
+/* 传输控制掩码 */
+#define TX_IOC          (1 << 0)  // 终点 TRB 强制点亮 IOC=1 中断位
+#define TX_ZERO_PACKET  (1 << 1)  // 整数倍长度时自动追加一格 0 字节 ZLP
+#define TX_BLOCKED      (1 << 2)  // 阻塞
+
+/**
+ * @brief [USB 控制平面] EP0 控制传输请求
+ * @note 专供 xhci_submit_control 使用。严格匹配 SETUP 阶段需求。
+ */
+typedef struct xhci_ctrl_req_t {
+    // 1. 数据阶段缓冲 (如果没有数据阶段，buf 为 NULL, length 为 0)
+    void               *buf;           // [0~7B]
+    uint32             length;         // [8~11B]
+
+    // 2. 传输控制
+    uint32             flags;          // [12~15B] TX_IOC 等标志
+    uint64             task_id;        // [16~23B] 控制请求流水号
+    void               *waker;         // [24~31B] 异步唤醒句柄
+
+    // 3. 🌟 绝对独占：控制传输的心脏 —— 8 字节 SETUP 报文
+    union {
+        uint64             setup_packet_raw;
+        usb_setup_packet_t setup_packet;
+    };                                 // [32~39B]
+
+    // (结构体总大小: 40 Bytes，可按需 padding 到 64 Bytes 对齐 Cache Line)
+} xhci_ctrl_req_t;
+
+/**
+ * @brief [数据平面] 批量/中断/流端点 纯数据传输请求
+ * @note 专供 xhci_submit_normal 和 xhci_submit_stream 使用。
+ */
+typedef struct xhci_data_req_t {
+    // 1. 核心数据缓冲
+    void               *buf;           // [0~7B] 数据缓冲区 DMA 基址
+    uint32             length;         // [8~11B] 有效负载长度
+
+    // 2. 传输控制
+    uint32             flags;          // [12~15B] TX_IOC, TX_ZERO_PACKET 等
+    uint64             task_id;        // [16~23B] SCSI Task Tag 等业务凭证
+    void               *waker;         // [24~31B] 异步唤醒句柄
+
+    // 3. 🌟 数据面特有属性：流通道 ID
+    uint16             stream_id;      // [32~33B] UAS 目标硬件流通道 (普通传输置 0)
+
+    void (*cb)(void *context);
+    // (结构体总大小: 34 Bytes，远小于 64 Bytes，内存密度极高)
+} xhci_data_req_t;
+
+
+
+typedef struct  xhci_submit_ring_t {
+    xhci_trb_t *ring_base;     // 原生硬件 TRB 虚拟基址
+    int32     enq_idx;       // 生产者游标
+    int32     deq_idx;       // 消费者游标
+    int32     size;     // 环深度 (32 / 64 / 256 / 1024)
+    uint8     cycle;         // 当前硬件 Cycle Toggle Bit (0/1)
 } xhci_submit_ring_t;
-
 
 // 硬件是生产者，软件是消费者
 typedef struct xhci_event_ring_t{
     xhci_trb_t   *ring_base;        // 虚拟起始地址
-    uint32       ring_size;              // 事件环通常极大 (例如 1024)
+    uint32       ring_size;         // 事件环通常极大 (例如 1024)
     uint32       deq_idx;           // 🌟 只有出队游标！干净利落！
     uint8        cycle;             // 软件期望硬件写入的 Cycle 状态
 
@@ -33,23 +103,6 @@ typedef struct xhci_event_ring_t{
 } xhci_event_ring_t;
 
 
-typedef struct xhci_command_t {
-    // 1. 链表锚点
-    list_head_t     node;
-
-    // 2. 身份识别凭证
-    uint64       cmd_trb_pa;
-
-    int32        status;
-
-    // 4. 战利品 (硬件回执包裹)
-    uint8        slot_id;
-    uint32       comp_code;
-    uint32       comp_param;
-
-    // 5. 同步原语
-    volatile boolean is_done;    // 🌟 单任务环境的终极同步神器
-} xhci_command_t;
 
 // ==========================================
 // xHCI 速率翻译字典条目 (纯软件解析版)
@@ -79,7 +132,6 @@ typedef struct {
     xhci_psi_t psi_dict[16];    // psi字典
 } xhci_spc_t;
 
-typedef struct usb_urb_t usb_urb_t;
 typedef struct usb_dev_t usb_dev_t;
 typedef struct usb_if_alt_t usb_if_alt_t;
 typedef struct usb_ep_t usb_ep_t;
@@ -119,7 +171,8 @@ typedef struct xhci_hcd_t{
     // 4. DMA 核心共享内存 (Host <-> Device)
     // ==========================================
     uint64              *dcbaap;            // 设备上下文基址数组 (物理地址数组)
-    xhci_submit_ring_t  cmd_ring;           // 全局单例：命令环 (Command Ring)
+    xhci_submit_ring_t    cmd_ring;           // 全局单例：命令环 (Command Ring)
+    xhci_cmd_io_tracker_t *cmd_io_tracker;  //I/O 追踪器 / 发送追踪表
 
     // ==========================================
     // 5. 软硬件映射与并发控制 (Software State)
@@ -208,16 +261,18 @@ static inline  void xhci_port_power_off(xhci_hcd_t *xhcd, uint8 port_num) {
 
 
 //====================================ring 接口函数=======================================
-uint64 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push);
+int32 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push);
 int32 xhci_event_ring_deq(xhci_event_ring_t *ring, xhci_trb_t *out_evt);
 int32 xhci_alloc_submit_ring(xhci_submit_ring_t *ring,uint32 size);  //分配发送环
 int32 xhci_free_submit_ring(xhci_submit_ring_t *ring); //释放发送环
 int32 xhci_alloc_event_ring(xhci_event_ring_t *ring,uint32 ring_size); //分配事件环
 int32 xhci_free_event_ring(xhci_event_ring_t *ring); //释放事件环
-int32 xhci_submit_cmd(xhci_hcd_t *xhcd, xhci_trb_t *cmd_trb,xhci_command_t *out_command);
-int32 xhci_alloc_ep_ring(usb_ep_t *ep);
-int32 xhci_free_ep_ring(usb_ep_t *ep);
-int32 xhci_submit_urb(usb_urb_t *urb);
+int32 xhci_submit_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_cmd_io_tracker_t *out_tracker);
+int32 xhci_submit_control(struct usb_dev_t *udev,const xhci_ctrl_req_t *req);
+int32 xhci_submit_normal(usb_ep_t *ep, const xhci_data_req_t *req);
+int32 xhci_submit_stream(usb_ep_t *ep, const xhci_data_req_t *req);
+int32 xhci_alloc_ep_resource(usb_ep_t *ep);
+int32 xhci_free_ep_resource(usb_ep_t *ep);
 
 //响铃
 static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 value) {

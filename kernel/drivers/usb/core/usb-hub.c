@@ -1,9 +1,9 @@
 #include "usb-hub.h"
 #include "usb-dev.h"
 #include "../xhci/xhci-hcd.h"
-#include "../../../include/errno.h"
-#include "../../../include/printk.h"
-#include "../../../include/slub.h"
+#include "errno.h"
+#include "printk.h"
+#include "slub.h"
 #include "usb-bus.h"
 
 
@@ -24,12 +24,23 @@ static inline int32 usb_hub20_get_desc(usb_dev_t *udev, void *buf) {
     // 方向: IN, 类型: CLASS (类特定), 接收者: DEVICE
     uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_CLASS, USB_REQ_REC_DEVICE);
 
-    return usb_control_msg(udev, buf,
-                           req_type,
-                           USB_REQ_GET_DESCRIPTOR,
-                           (USB_DESC_TYPE_HUB20 << 8) | 0, // wValue: 高字节 0x29，低字节 0
-                           0,                              // wIndex: 0
-                           sizeof(usb_hub20_desc_t));      // wLength: 2.0 Hub 描述符大小
+    xhci_ctrl_req_t req = {
+        buf,
+        sizeof(usb_hub20_desc_t),
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
+
+    req.setup_packet.request_type = req_type;
+    req.setup_packet.request =  USB_REQ_GET_DESCRIPTOR;
+    req.setup_packet.value = (USB_DESC_TYPE_HUB20 << 8) | 0;
+    req.setup_packet.index = 0;
+    req.setup_packet.length = sizeof(usb_hub20_desc_t);
+
+    return xhci_submit_control(udev,&req);
+
 }
 
 /**
@@ -39,12 +50,23 @@ static inline int32 usb_hub20_get_desc(usb_dev_t *udev, void *buf) {
 static inline int32 usb_hub30_get_desc(usb_dev_t *udev, void *buf) {
     uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_CLASS, USB_REQ_REC_DEVICE);
 
-    return usb_control_msg(udev, buf,
-                           req_type,
-                           USB_REQ_GET_DESCRIPTOR,
-                           (USB_DESC_TYPE_HUB30 << 8) | 0, // wValue: 高字节 0x2A，低字节 0
-                           0,                              // wIndex: 0
-                           sizeof(usb_hub30_desc_t));      // wLength: 3.0 Hub 描述符大小
+    xhci_ctrl_req_t req = {
+        buf,
+        sizeof(usb_hub30_desc_t),
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
+
+    req.setup_packet.request_type = req_type;
+    req.setup_packet.request =  USB_REQ_GET_DESCRIPTOR;
+    req.setup_packet.value =  (USB_DESC_TYPE_HUB30 << 8) | 0;
+    req.setup_packet.index = 0;
+    req.setup_packet.length = sizeof(usb_hub30_desc_t);
+
+    return xhci_submit_control(udev,&req);
+
 }
 
 /**
@@ -52,16 +74,23 @@ static inline int32 usb_hub30_get_desc(usb_dev_t *udev, void *buf) {
  * @note 必须在 Set Configuration 之后、获取 Hub 描述符之前发送。
  */
 static inline int32 usb_hub30_set_depth(usb_dev_t *udev) {
-    // 🌟 一键生成 bmRequestType: 00100000b (0x20)
-    // 方向: OUT, 类型: CLASS (类特定), 接收者: DEVICE
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_CLASS, USB_REQ_REC_DEVICE);
+    xhci_ctrl_req_t req = {
+        NULL,
+        0,
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
 
-    return usb_control_msg(udev, NULL,
-                           req_type,
-                           HUB_REQ_SET_HUB_DEPTH,
-                           udev->hub_depth, // wValue: Hub 所在的拓扑深度 (Root Hub 下直连为 0)
-                           0,               // wIndex: 0
-                           0);              // wLength: 纯命令，无数据阶段
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_CLASS, USB_REQ_REC_DEVICE);
+    req.setup_packet.request =  HUB_REQ_SET_HUB_DEPTH;
+    req.setup_packet.value =  udev->hub_depth;
+    req.setup_packet.index = 0;
+    req.setup_packet.length = 0;
+
+    return xhci_submit_control(udev,&req);
+
 }
 
 
@@ -80,17 +109,22 @@ static int32 usb_hub_port_get_status(usb_dev_t *udev, uint8 port_num, uint32 *po
     usb_hub_t *hub = (usb_hub_t *)udev->drv_data;
     uint32 *port_sts = hub->port_status;
 
-    // 🌟 一键生成 bmRequestType: 10100011b (0xA3)
-    // 方向: IN, 类型: CLASS, 接收者: OTHER (代表目标是端口)
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_CLASS, USB_REQ_REC_OTHER);
+    xhci_ctrl_req_t req = {
+        port_sts,
+        4,
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
 
-    // 2. 干净的纯血控制传输，直接让 xHCI 硬件把数据 DMA 到这个常驻缓冲区
-    int32 ret = usb_control_msg(udev, port_sts,
-                                req_type,
-                                USB_REQ_GET_STATUS,
-                                0,        // wValue: 0
-                                port_num, // wIndex: 端口号
-                                4);       // wLength: 状态固定为 4 字节
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_CLASS, USB_REQ_REC_OTHER);
+    req.setup_packet.request =  USB_REQ_GET_STATUS;
+    req.setup_packet.value =  0;
+    req.setup_packet.index = port_num;
+    req.setup_packet.length = 4;
+
+    int32 ret = xhci_submit_control(udev,&req);
 
     if (ret == 0) {
         *port_status = *port_sts;
@@ -111,19 +145,23 @@ static int32 usb_hub_port_get_status(usb_dev_t *udev, uint8 port_num, uint32 *po
  * @param ext_arg 扩展参数。如果是 3.0 链路控制或 2.0 测试模式，会自动打包进 wIndex 的高 8 位。
  */
 static inline int32 usb_hub_port_set_feature(usb_dev_t *udev, uint8 port_num, uint16 feature, uint8 ext_arg) {
-    // 🌟 一键生成 bmRequestType: 00100011b (0x23)
-    // 方向: OUT, 类型: CLASS, 接收者: OTHER
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_CLASS, USB_REQ_REC_OTHER);
+    xhci_ctrl_req_t req = {
+        NULL,
+        0,
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
 
-    // 将 ext_arg 拼接到 wIndex 的高字节，port_num 放在低字节
-    uint16 index = ((uint16)ext_arg << 8) | port_num;
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_CLASS, USB_REQ_REC_OTHER);;
+    req.setup_packet.request =  USB_REQ_SET_FEATURE;
+    req.setup_packet.value =  feature;
+    req.setup_packet.index = ((uint16)ext_arg << 8) | port_num;
+    req.setup_packet.length = 0;
 
-    return usb_control_msg(udev, NULL,
-                           req_type,
-                           USB_REQ_SET_FEATURE,
-                           feature, // wValue: 特征宏 (如复位、上电)
-                           index,   // wIndex: 高位扩展 + 低位端口号
-                           0);      // wLength: 0 (纯命令)
+    return xhci_submit_control(udev,&req);
+
 }
 
 /**
@@ -131,16 +169,22 @@ static inline int32 usb_hub_port_set_feature(usb_dev_t *udev, uint8 port_num, ui
  * @param feature 要擦除的特征或事件报警 (如 USB_HUB_PORT_FEAT_C_CONNECTION)
  */
 static inline int32 usb_hub_port_clear_feature(usb_dev_t *udev, uint8 port_num, uint16 feature, uint8 ext_arg) {
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_CLASS, USB_REQ_REC_OTHER);
+    xhci_ctrl_req_t req = {
+        NULL,
+        0,
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
 
-    uint16 index = ((uint16)ext_arg << 8) | port_num;
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_CLASS, USB_REQ_REC_OTHER);
+    req.setup_packet.request =  USB_REQ_CLEAR_FEATURE;
+    req.setup_packet.value =  feature;
+    req.setup_packet.index = ((uint16)ext_arg << 8) | port_num;;
+    req.setup_packet.length = 0;
 
-    return usb_control_msg(udev, NULL,
-                           req_type,
-                           USB_REQ_CLEAR_FEATURE,
-                           feature, // wValue: 要清除的特征宏
-                           index,   // wIndex: 高位扩展 + 低位端口号
-                           0);      // wLength: 0 (纯命令)
+    return xhci_submit_control(udev,&req);
 }
 
 // =========================================================================
@@ -567,13 +611,9 @@ void usb_hub_process_port_event(usb_dev_t *udev, uint8 port_num) {
     }
 }
 
-void usb_hub_irq_complete(usb_urb_t* urb) {
-    usb_hub_t *hub = (usb_hub_t *)urb->private_data;
-    // 🛡️ 核心防线：必须严格比对地址！
-    if (hub && urb == hub->int_urb) {
-        // 将 Hub 的端口状态机推入工作队列异步执行
-        usb_event_queue_push(USB_EVENT_HUB_WORK, urb->udev, 0);
-    }
+void usb_hub_irq_complete(void* hub1) {
+    usb_hub_t *hub = (usb_hub_t *) hub1;
+    usb_event_queue_push(USB_EVENT_HUB_WORK, hub->uif->udev, 0);
 }
 
 //hub驱动
@@ -673,6 +713,7 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
 
     //3.启用接口
     usb_ep_t *ep1 = &if_alt->eps[0];
+    hub->interrupt_ep = ep1;
     ep1->ring_max_trbs = 32;
     usb_enable_alt_if(if_alt);
 
@@ -682,9 +723,17 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     }
 
     //5.配置好中断 URB,提交队列后续有设备插入拔出等异步实现
-    hub->int_urb = usb_alloc_urb();
-    usb_fill_int_urb(hub->int_urb,usb_hub_irq_complete, hub,udev, ep1, hub->port_bitmap_status, ep1->max_packet_size, ep1->interval);
-    xhci_submit_urb(hub->int_urb);
+
+    xhci_data_req_t *req = &hub->req;
+    req->buf = hub->port_bitmap_status;
+    req->length = ep1->max_packet_size;
+    req->flags = TX_IOC;
+    req->task_id = 0;
+    req->waker = hub;
+    req->stream_id = 0;
+    req->cb = usb_hub_irq_complete;
+    xhci_submit_normal(ep1,req);
+
 }
 
 

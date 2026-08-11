@@ -1,6 +1,5 @@
 #include "bus.h"
 #include "pcie.h"
-#include "../usb/core/usb-core.h"
 #include "../usb/core/usb-hub.h"
 #include "../usb/core/usb-bus.h"
 #include "../usb/core/usb-dev.h"
@@ -103,13 +102,8 @@ INIT_TEXT void bus_init(void){
                         }
                     }
 
-                    // 2. 💥 所有报警端口都已经处理完毕，硬件标志已经被彻底抹除！
-                    // 此时由底半部负责统一将轮询 URB“复活”！
-                    if (hub->int_urb->is_done == TRUE) {
-                        asm_mem_set(hub->port_bitmap_status,0,32);
-                        hub->int_urb->is_done = FALSE;
-                        xhci_submit_urb(hub->int_urb);
-                    }
+                    xhci_submit_normal(hub->interrupt_ep,&hub->req);
+
                     break;
                 }
                 default:

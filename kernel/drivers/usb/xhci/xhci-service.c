@@ -1,5 +1,4 @@
 #include "xhci-hcd.h"
-#include "../core/usb-core.h"
 #include "../core/usb-dev.h"
 #include "../core/usb-hub.h"
 #include "xhci-hw.h"
@@ -30,11 +29,11 @@ static inline uint64 roundup_pow_of_two(uint64 val) {
  */
 static inline xhci_submit_ring_t* xhci_get_ring_by_pa(usb_ep_t *ep, uint64 trb_pa) {
     if (ep->enable_streams_exp == 0) {
-        return &ep->ring_arr[0];
+        return &ep->rings[0];
     }
 
     // 1. 获取物理字节大小
-    uint64 ring_byte_size = ep->ring_arr[1].size << 4;
+    uint64 ring_byte_size = ep->rings[1].size << 4;
 
     // 🌟 防御陷阱：强制向上取整到 2 的幂次，对齐伙伴系统的真实分配粒度！
     uint64 buddy_aligned_size = roundup_pow_of_two(ring_byte_size);
@@ -50,8 +49,8 @@ static inline xhci_submit_ring_t* xhci_get_ring_by_pa(usb_ep_t *ep, uint64 trb_p
     uint32 streams_count = (1 << ep->enable_streams_exp) + 1;
     for (uint32 s = 1; s < streams_count; s++) {
         // 由于是严格相等的寄存器比较，这里绝不会有分支预测惩罚
-        if (ep->ring_arr[s].ring_base == target_base_va) {
-            return &ep->ring_arr[s];
+        if (ep->rings[s].ring_base == target_base_va) {
+            return &ep->rings[s];
         }
     }
 
@@ -166,16 +165,6 @@ static inline int32 xhci_translate_error(uint8 comp_code) {
 
 // 传输任务处理 (多核完美并发版)
 static inline void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
-    // 提前声明一个指针，用来接住刚刚完成结算的那个 URB
-    usb_urb_t *completed_urb = NULL;
-
-    if (evt_trb->control & TRB_EVENT_ED_BIT) {
-        completed_urb = (usb_urb_t*)evt_trb->parameter;
-    }
-
-    // =======================================================
-    // 🛡️ 1. 纯粹的宏解析：彻底告别联合体位域的隐患
-    // =======================================================
     // 物理地址直接从 DW0 & DW1 (parameter) 提取
     uint64 trb_pa     = evt_trb->parameter;
 
@@ -187,6 +176,7 @@ static inline void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_
     uint8  evt_ep_dci = TRB_GET_EP_ID(evt_trb->control);
     uint8  slot_id    = TRB_GET_SLOT_ID(evt_trb->control);
 
+
     // =======================================================
     // 2. 软硬件映射验证
     // =======================================================
@@ -195,53 +185,42 @@ static inline void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_
     usb_ep_t *ep = udev->eps[evt_ep_dci];
     if (ep == NULL) return;
 
-    // 🌟 3. 逆向定位：找出真正发生事件的那个环！(支持多 Stream)
-    xhci_submit_ring_t *target_ring = xhci_get_ring_by_pa(ep, trb_pa);
-    if (target_ring == NULL) {
-        color_printk(RED, BLACK, "xHCI: Ghost TRB PA %llx from hardware!\n", trb_pa);
-        return;
+    xhci_submit_ring_t *ring;
+    xhci_transfer_io_tracker_t *tracker;
+    uint16 trb_idx;
+
+    // 第三步：多态获取追踪器（完美兼容普通与流模式）
+    if (ep->enable_streams_exp > 0) {
+        // [流模式] (如 UAS Data/Status)：追踪器跟 Stream ID 绑定
+        uint32 ring_size = ep->ring_max_trbs<<4;
+        uint64 offset = trb_pa - va_to_pa(ep->rings[1].ring_base);
+        uint16 stream_id = offset / ring_size +1;
+        trb_idx = offset % ring_size >> 4;
+
+        ring    = &ep->rings[stream_id];
+        tracker = &ep->tracker[stream_id];
+
+
+    } else {
+        // [普通模式] 追踪器跟数组下标绑定
+        ring    = ep->rings;
+        trb_idx = (trb_pa - va_to_pa(ring->ring_base)) >> 4;
+        tracker = &ep->tracker[trb_idx];
     }
 
+    tracker->is_completed = TRUE;
 
-    // =======================================================
-    // 🔒 4. 获取该环的专属锁 (绝不影响其他 Stream 的提交)
-    // =======================================================
-    uint64 cpu_flags;
-    spin_lock_irqsave(&target_ring->ring_lock, &cpu_flags);
+    int32 ring_mask = ring->size - 1;
+    int32 next_deq = (trb_idx + 1) & ring_mask;
 
-    // 在目标环的安全链表里进行小范围遍历
-    list_head_t *curr=0, *next=0;
-    list_for_each_safe(curr, next, &target_ring->pending_list){
-        usb_urb_t *urb = CONTAINER_OF(curr, usb_urb_t, node);
-
-        // 🎯 物理地址对上了！这就是硬件刚刚做完的任务
-        if (urb->last_trb_pa == trb_pa) {
-            // 结算账单
-            xhci_submit_ring_update_deq_idx(target_ring, trb_pa); // 更新软件维护的出队指针
-            list_del_init(curr);                                  // 从 pending 链表摘除
-
-            urb->status = xhci_translate_error(comp_code);
-            // 🎯 使用刚提取的 remainder 计算实际传输长度
-            urb->actual_length = urb->transfer_len - remainder;
-            urb->is_done = TRUE;
-
-            // 抓获这个 URB，赋值给外部指针
-            completed_urb = urb;
-            break; // 找到了就跳出循环
-        }
+    if (next_deq == ring_mask) {
+        next_deq = 0;
     }
 
-    // 🔓 5. 解锁释放
-    spin_unlock_irqrestore(&target_ring->ring_lock, cpu_flags);
+    ring->deq_idx = next_deq;
 
-    // 如果没找到对应的 URB，直接退出
-    if (completed_urb == NULL) return;
-
-    // =======================================================
-    // 🌟 6. 回调与唤醒：特殊通道与常规通道流转
-    // =======================================================
-    if (completed_urb->complete_func) {
-        completed_urb->complete_func(completed_urb);
+    if (tracker->cb != NULL) {
+        tracker->cb(tracker->async_waker);
     }
 
 }
@@ -249,55 +228,47 @@ static inline void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_
 
 
 // =========================================================================
-// 🚀 命令完成事件 TRB 处理程序 (宏解析重构版)
+// 🚀 命令完成事件 TRB 处理程序 (集成 deq_idx 推进与对齐)
 // =========================================================================
 static inline void xhci_handle_cmd_completion(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
-    xhci_submit_ring_t *cmd_ring = &xhcd->cmd_ring;
+    xhci_submit_ring_t *ring = &xhcd->cmd_ring;
+    int32 ring_mask = ring->size - 1;
 
-    // =======================================================
-    // 🛡️ 1. 纯粹的宏解析：精准剥离，拒绝联合体位域陷阱
-    // =======================================================
-    // DW0 & DW1: 原始命令 TRB 的 64 位物理地址
-    uint64 trb_pa     = evt_trb->parameter;
-
-    // DW2: 提取附加参数与完成码
+    // 1. DW2: 提取附加参数与完成码
     uint32 comp_param = TRB_GET_CMD_COMP_PARAM(evt_trb->status);
     uint32 comp_code  = TRB_GET_COMP_CODE(evt_trb->status);
-
     // DW3: 提取可能分配到的 Slot ID
     uint8  slot_id    = TRB_GET_SLOT_ID(evt_trb->control);
 
-    // =======================================================
-    // 🔒 2. 获取命令环自旋锁，保护 pending_list
-    // =======================================================
-    uint64 cpu_flags;
-    spin_lock_irqsave(&cmd_ring->ring_lock, &cpu_flags);
+    // 2.【O(1) 物理定位】计算刚刚完成的命令在命令环数组中的真实下标
+    uint32 idx = (uint32)((evt_trb->parameter - va_to_pa(ring->ring_base)) >> 4);
+    idx &= ring_mask; // 掩码保护，防止极端硬件报错时下标越界
 
-    // 3. 遍历该命令环上所有正在飞的 "面单"
-    list_head_t *curr, *next;
-    list_for_each_safe(curr, next, &cmd_ring->pending_list) {
-        xhci_command_t *command = CONTAINER_OF(curr, xhci_command_t, node);
+    // 3. 【唤醒与数据注入】查表回填影子节点
+    xhci_cmd_io_tracker_t *tracker = &xhcd->cmd_io_tracker[idx];
+    tracker->async_waker   = 0;
+    tracker->out_slot_id   = slot_id;
+    tracker->out_hw_status = xhci_translate_error(comp_code);
+    tracker->is_completed  = TRUE;
 
-        if (command->cmd_trb_pa == trb_pa) {
-            // 结算账单，更新软件出队指针
-            xhci_submit_ring_update_deq_idx(cmd_ring, trb_pa);
-            list_del_init(curr);
+    // =====================================================================
+    // 4. 🔥【核心要点：更新软件 deq_idx 消费者指针】
+    // =====================================================================
+    // 既然 hardware 刚吃完了 cmd_shadow_idx，那么下一个待消费的坑位就是 +1
+    int32 next_deq = (idx + 1) & ring_mask;
 
-            // 填充完成状态，供发起命令的线程读取
-            command->slot_id    = slot_id;
-            command->comp_code  = comp_code;
-            command->comp_param = comp_param;
-            command->status     = xhci_translate_error(comp_code);
-            command->is_done = TRUE;
-            break;
-        }
+    // 【Link TRB 越界快进】
+    // 如果 next_deq 正好踩在了 ring_mask (且该槽位已被用作 Link TRB)，
+    // 硬件 DMA 会自动跳过它回到 0，因此我们的软件 deq_idx 也必须直接归 0！
+    if (next_deq == ring_mask) {
+        next_deq = 0;
     }
 
-    // 🔓 4. 解锁释放
-    spin_unlock_irqrestore(&cmd_ring->ring_lock, cpu_flags);
+    // 更新到命令环结构体中，释放被占用的队列坑位
+    ring->deq_idx = next_deq;
 
-    // 注意：如果是阻塞式 API (xhci_execute_command_sync)，
-    // 你可能还需要在这里调用 semaphore_up / completion_done 唤醒等待的线程。
+    // 5. 如果有因为 ENOMEM 而休眠等待命令环槽位的生产者线程，此时可触发唤醒
+    // sys_wake_up_ring_producers(ring);
 }
 
 

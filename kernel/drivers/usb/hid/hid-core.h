@@ -1,6 +1,7 @@
 #pragma once
 
 #include "moslib.h"
+#include "../xhci/xhci-hcd.h"
 
 struct input_dev_t;
 
@@ -49,8 +50,10 @@ typedef struct hid_field_t {
  */
 typedef struct hid_dev_t {
     // 以下为 TheresaOS 底层 USB 通信所需的上下文
-    struct usb_urb_t *int_urb; // 中断传输的 URB 指针
+    struct usb_ep_t    *interrupt_ep;
+    xhci_data_req_t    req;
     uint8 *report_buf; // 接收数据的 Raw Buffer
+    uint16 report_len;
     struct usb_if_t *uif; // 绑定的 USB 接口实例 (usb_if)
 
     struct input_dev_t *input;

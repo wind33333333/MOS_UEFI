@@ -284,6 +284,7 @@ int32 xhci_enable_slot_ep0(usb_dev_t *udev) {
     // 4. 挂载到 O(1) 路由表
     usb_ep_t *uep0 = kzalloc(sizeof(usb_ep_t));
     udev->eps[1] = uep0;
+    uep0->udev = udev;
 
     // --- 计算初始 Max Packet Size (MPS0) ---
     // 1. USB 3.0 (SuperSpeed) 必定是 512。
@@ -294,14 +295,13 @@ int32 xhci_enable_slot_ep0(usb_dev_t *udev) {
 
     // 5. 填充端点 0 数据结构
     uep0->ep_dci = 1;
-    uep0->cerr = 3;
     uep0->ep_type = 4; // Control Endpoint
     uep0->max_packet_size = mps;
     uep0->average_trb_length = mps;
     uep0->max_streams_exp = 0;
     uep0->enable_streams_exp = 0;
-    uep0->ring_max_trbs = 32;
-    xhci_alloc_ep_ring(uep0);
+    uep0->ring_max_trbs = XHCI_CONTROL_TRANSFER_RING_LEN;
+    xhci_alloc_ep_resource(uep0);
 
     //发送 SET_ADDRESS！
     xhci_ctx_addr_dev(udev);

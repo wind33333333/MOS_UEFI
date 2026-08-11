@@ -614,6 +614,7 @@ typedef struct xhci_trb_t {
 #define TRB_GET_EP_ID(dw3)           (((dw3) >> 16) & 0x1F)   // [20:16] 提取发生事件的端点 ID
 #define TRB_GET_VF_ID(dw3)           (((dw3) >> 16) & 0xFF)   // [23:16] 提取虚拟功能 ID (SR-IOV / 虚拟机直通场景) ★ 补充
 #define TRB_GET_SLOT_ID(dw3)         (((dw3) >> 24) & 0xFF)   // [31:24] 提取设备槽位号
+#define TRB_GET_EVENT_DATA_BIT(dw3)   (((dw3) >> 2) & 0x1U)  // [DW3 Bit 2]     提取事件数据标志 (Event Data Bit: 0=TRB Pointer, 1=Event Data)
 
 // ============================================================================
 // 📊 DW2 (Status) 通用标志位宏
@@ -634,6 +635,7 @@ typedef struct xhci_trb_t {
 #define TRB_GET_CMD_COMP_PARAM(dw2)  ((dw2) & 0xFFFFFF)      // [23:0] 命令完成事件的附加参数 (Command Completion Parameter) ★ 补充
 #define TRB_GET_COMP_CODE(dw2)       (((dw2) >> 24) & 0xFF)  // [31:24] 事件的完成码 (成功/失败原因)
 
+
 // ============================================================================
 // 📦 DW0 & DW1 (Parameter) 特殊解析与装配宏
 // 绝大多数情况下 DW0 & DW1 拼成一个 64 位物理地址，但在少数事件/命令中另有他用
@@ -651,10 +653,22 @@ typedef struct xhci_trb_t {
 // 端口状态改变事件 (Port Status Change Event) 时，DW0 [31:24] 存放的是物理端口号！
 #define TRB_GET_PORT_ID(dw0)         (((dw0) >> 24) & 0xFF)  // [31:24] 提取热插拔事件的 Root Hub 端口号 ★ 核心补充：Hub 枚举入口！
 
-// 提取 ED 位的宏
-#define TRB_EVENT_ED_BIT    (1 << 2)
+
+// DW3 (Control): 🌟 核心分流开关！Bit[2] 为 ED (Event Data Bit)
+// ED == 1 -> 说明 evt->parameter 带回的是咱们填在 Event Data TRB 里的 user_data/urb
+// ED == 0 -> 说明 evt->parameter 带回的是指令所在的物理内存地址 PA
+#define TRB_EVENT_ED_BIT                (1 << 2)
+#define TRB_IS_EVENT_DATA_TYPE(control) (((control) & TRB_EVENT_ED_BIT) != 0)
+
+#define TRB_GET_STREAM_ID(parameter) ((parameter)>>48UL) //获取stream_id
+#define TRB_GET_TASK_ID(parameter) ((parameter)&0xFFFFFFFFUL) //获取TASK_id
+
 
 #pragma pack(pop)
+
+
+
+
 
 
 

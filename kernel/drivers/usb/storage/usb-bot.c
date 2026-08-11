@@ -1,7 +1,6 @@
 #include "usb-bot.h"
 #include "errno.h"
 #include "printk.h"
-#include "../core/usb-core.h"
 #include "../core/usb-dev.h"
 #include "slub.h"
 #include "../xhci/xhci-hcd.h"
@@ -66,19 +65,25 @@ uint8 bot_get_max_lun(usb_dev_t *udev, uint8 if_num) {
         return 1;
     }
 
-    // 🌟 一键生成 bmRequestType: 10100001b (0xA1)
-    // 方向: IN, 类型: CLASS (类特定), 接收者: INTERFACE (接口)
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_CLASS, USB_REQ_REC_INTERFACE);
-
     // ★ 架构防御：必须捕获错误码！
     // 许多低端物理 U 盘，或者像 QEMU 中某些未完全实现 BOT 规范的虚拟驱动，
     // 压根不支持这个可选命令，会直接在 EP0 上返回 STALL (-EPIPE)。
-    int32 posix_err = usb_control_msg(udev, max_lun,
-                                      req_type,
-                                      BOT_REQ_GET_MAX_LUN,
-                                      0,       // wValue: 规范强制要求填 0
-                                      if_num,  // wIndex: 目标接口号
-                                      1);      // wLength: 只需要 1 个字节
+    xhci_ctrl_req_t req = {
+        max_lun,
+        1,
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
+
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_CLASS, USB_REQ_REC_INTERFACE);;
+    req.setup_packet.request =  BOT_REQ_GET_MAX_LUN;
+    req.setup_packet.value = 0;
+    req.setup_packet.index = if_num;
+    req.setup_packet.length = 1;
+
+    int32 posix_err = xhci_submit_control(udev,&req);
 
     uint8 num_luns;
     if (posix_err < 0) {
@@ -129,17 +134,23 @@ static int32 bot_ep_reset(usb_dev_t *udev,uint8 ep_dci) {
  * 这只是软重启 U 盘的命令解析器，不会导致物理链路断开或地址丢失。
  */
 static inline int32 bot_mass_storage_reset(usb_dev_t *udev, uint8 if_num) {
-    // 🌟 一键生成 bmRequestType: 00100001b (0x21)
-    // 方向: OUT (主机发往设备), 类型: CLASS (类特定), 接收者: INTERFACE (接口)
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_CLASS, USB_REQ_REC_INTERFACE);
-
     // 动作 1：下发特定的 0xFF (BOT_REQ_MASS_STORAGE_RESET) 控制命令
-    int32 posix_err = usb_control_msg(udev, NULL,
-                                      req_type,
-                                      BOT_REQ_MASS_STORAGE_RESET,
-                                      0,       // wValue: 规范强制要求必须为 0
-                                      if_num,  // wIndex: 目标接口号
-                                      0);      // wLength: 纯命令，无后续数据阶段
+    xhci_ctrl_req_t req = {
+         NULL,
+        0,
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
+
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_CLASS, USB_REQ_REC_INTERFACE);
+    req.setup_packet.request =  BOT_REQ_MASS_STORAGE_RESET;
+    req.setup_packet.value = 0;
+    req.setup_packet.index = if_num;
+    req.setup_packet.length = 1;
+
+    int32 posix_err = xhci_submit_control(udev,&req);
 
     if (posix_err < 0) {
         // 如果连核弹按钮都按不下去 (控制端点也挂了)，说明 U 盘可能已经物理掉线或彻底死机
@@ -203,12 +214,6 @@ int32 bot_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     uint32 tag = ++bot_data->tag;
     int32 posix_err = 0;
 
-    // 动态申请通用 URB 面单 (整个函数生命周期内复用)
-    usb_urb_t *urb = usb_alloc_urb();
-    if (urb == NULL) {
-        return -ENOMEM;
-    }
-
     // ============================================================
     // 🔴 Stage 1: 发送 CBW (Command Block Wrapper)
     // ============================================================
@@ -220,14 +225,18 @@ int32 bot_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     cbw->scsi_cdb_len  = cmnd->scsi_cdb_len;
     asm_mem_cpy(cmnd->scsi_cdb, cbw->scsi_cdb, cmnd->scsi_cdb_len);
 
-    usb_fill_bulk_urb(urb, udev, out_ep, cbw, sizeof(bot_cbw_t));
-    posix_err = xhci_submit_urb(urb);
-    if (posix_err < 0) goto cleanup;
+    xhci_data_req_t req ={
+        cbw,
+        sizeof(bot_cbw_t),
+        TX_IOC | TX_BLOCKED,
+        0,
+        NULL,
+        0,
+        NULL
+    };
 
-    // 等结果
-    while (urb->is_done == FALSE) {
-        asm_pause();
-    }
+    xhci_submit_normal(out_ep,&req);
+
 
     // if (posix_err < 0) {
     //     color_printk(RED, BLACK, "BOT: CBW Failed (%d). Executing Full Recovery...\n", posix_err);
@@ -241,22 +250,23 @@ int32 bot_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     // 🟡 Stage 2: 数据传输 (Data Stage) - 可选
     // ============================================================
     if (cmnd->data_buf && cmnd->data_len) {
-        usb_ep_t *ep = (cmnd->dir == SCSI_DIR_IN) ? in_ep : out_ep;
+        usb_ep_t *data_ep = (cmnd->dir == SCSI_DIR_IN) ? in_ep : out_ep;
 
-        usb_fill_bulk_urb(urb, udev, ep, cmnd->data_buf, cmnd->data_len);
-        posix_err = xhci_submit_urb(urb);
-        if (posix_err < 0) goto cleanup;
+        req.buf = cmnd->data_buf;
+        req.length = cmnd->data_len;
+        req.flags = TX_IOC | TX_BLOCKED;
+        req.task_id = 0;
+        req.waker = NULL;
+        req.stream_id = 0;
+        req.cb = NULL;
 
-        // 等结果
-        while (urb->is_done == FALSE) {
-            asm_pause();
-        }
+        posix_err = xhci_submit_normal(data_ep,&req);
 
         if (posix_err < 0) {
             if (posix_err == -EPIPE) {
                 color_printk(YELLOW, BLACK, "BOT Stage 2: Data STALL. Clearing Halt...\n");
                 // ⚔️ 错误处理：短包早退是常态。使用“狙击枪”单点疏通 (软硬双解锁)
-                bot_ep_reset(udev, ep->ep_dci);
+                bot_ep_reset(udev, data_ep->ep_dci);
 
                 // 强制放行，必须去拿 CSW 探明死因
                 posix_err = 0;
@@ -274,15 +284,16 @@ int32 bot_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     // ============================================================
     uint8 csw_retry_count = 0;
 retry_csw:
-    usb_fill_bulk_urb(urb, udev, in_ep, csw, sizeof(bot_csw_t));
-    posix_err = xhci_submit_urb(urb);
+    req.buf = csw;
+    req.length = sizeof(bot_csw_t);
+    req.flags = TX_IOC | TX_BLOCKED;
+    req.task_id = 0;
+    req.waker = NULL;
+    req.stream_id= 0;
+    req.cb = NULL;
+
+    posix_err = xhci_submit_normal(in_ep,&req);
     if (posix_err < 0) goto cleanup;
-
-    // 等结果
-    while (urb->is_done == FALSE) {
-        asm_pause();
-    }
-
 
     if (posix_err == -EPIPE && csw_retry_count == 0) {
         color_printk(YELLOW, BLACK, "BOT Stage 3: CSW STALL. Clearing and retrying...\n");
@@ -330,7 +341,6 @@ retry_csw:
     }
 
 cleanup:
-    if (urb != NULL) usb_free_urb(urb);
     return posix_err;
 }
 
@@ -343,3 +353,4 @@ scsi_host_template_t bot_host_template = {
     .reset_host = NULL,
     .abort_command = NULL,
 };
+

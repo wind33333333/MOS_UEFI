@@ -1,10 +1,30 @@
 #pragma once
-
+#include "../xhci/xhci-hcd.h"
 #include "moslib.h"
 #include "usb-def.h"
 #include "device.h"
-#include "usb-core.h"
 
+
+//端点转Dci
+static inline uint8 epaddr_to_epdci(uint8 ep) {
+    asm volatile(
+        "rolb $1,%0"
+        :"+q"(ep)
+        :
+        :"cc");
+    return ep;
+}
+
+//Dci转端点
+static inline uint8 epdci_to_epaddr(uint8 dci) {
+    asm volatile(
+        "rorb $1,%0"
+        :"+q"(dci)
+        :
+        :"cc");
+    return dci;
+
+}
 
 // ============================================================================
 // 🚄 USB 端口与设备逻辑运行速率 (USB Port/Device Speeds)
@@ -18,9 +38,10 @@
 #define USB_SPEED_SUPER_10G  5  // 超高速 10 Gbps (USB 3.2 Gen 2x1)
 #define USB_SPEED_SUPER_20G  6  // 超高速 20 Gbps (USB 3.2 Gen 2x2)
 
-
 //usb端点
 typedef struct usb_ep_t {
+    struct usb_dev_t *udev;     //回指所属设备
+
     // 1. 通用 USB 逻辑特性 (完全独立于硬件，直接来源于描述符)
     uint8       ep_type;           // 端点：控制/批量/中断/等时
     uint16      max_packet_size;   //wMaxPacketSize：解码后的单次最大包长
@@ -32,10 +53,6 @@ typedef struct usb_ep_t {
     uint16      bytes_per_interval; // wBytesPerInterval：周期性端点每 ESIT 传输字节数
     uint8       mult;               // USB 2.0 High-Speed 高带宽事务 (Mult) 处理 0=1 transaction, 1=2 trans, 2=3 trans
 
-    // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
-    void        *extras_desc;
-    uint16      extras_len;
-
     // 2. 仅为 xHCI 定制的强绑定硬件特性 (Endpoint Context 推导值与 DMA 资源)
     uint8       ep_dci;            // xHCI 专属的设备上下文索引 (Device Context Index, 1~31)
     uint8       cerr;              // xHCI 错误重试计数 (通常设为 3)
@@ -45,14 +62,15 @@ typedef struct usb_ep_t {
     uint16      average_trb_length;// xHCI 专用的 DMA 预取启发值 (Average TRB Length)
     uint64      trq_phys_addr;     // xHCI 硬件出队指针 (TR Dequeue Pointer) 物理地址
 
-    // ★ 统一传输环数组：
-    // 情况 A (非流模式): 分配大小为 1 的数组。rings[0] 就是普通的 transfer_ring。
-    // 情况 B (流模式)  : 分配大小为 num_streams + 1 的数组。rings[1...N] 是流环。
+    uint32             ring_max_trbs; // 上层驱动期望的环大小
     uint8              enable_streams_exp;// xHCI 实际向主板申请并启用的流指数
-    uint32             ring_max_trbs; // 上层驱动期望的环大小 (0 表示使用 Core 默认值)
-    struct xhci_submit_ring_t *ring_arr;            // xHCI 传输环数组 (普通模式大小为1，流模式大小为 N+1)
-    void               *streams_ctx_array;   // xHCI 流上下文数组的 DMA 内存基地址
+    void        *streams_ctx_array;  // [8 Bytes] xHCI 硬件 Stream Context Array DMA 指针
+    xhci_submit_ring_t *rings;       // 传输环
+    xhci_transfer_io_tracker_t *tracker; // 普通端点trb个数为长度，以trb物理地址做下标。流端点stream数量为长度，用stream_id做下标
 
+    // 动态数组：紧随端点后的 class-specific/未知描述符块，枚举层不解释语义，交给类驱动（例如 UAS）按需解析
+    void        *extras_desc;
+    uint16      extras_len;
 } usb_ep_t;
 
 
@@ -114,7 +132,7 @@ typedef struct usb_dev_t{
 
     // 3. 逻辑端点与接口路由 (暴露给业务层驱动的资源)
     usb_if_t                        *ifs;              // 接口指针根据接口数量动态分配
-    usb_ep_t                        *eps[32];          // eps[0]仅占位，eps[1]-eps[31]=端点1-31
+    usb_ep_t                        *eps[32];          // eps[1]仅占位，eps[1]-eps[31]=端点1-31
 
     // 4. 仅为xhci定制强绑定
     uint8                           slot_id;
@@ -152,14 +170,23 @@ int32 usb_cfg_alt_streams(usb_if_alt_t *alt, uint8 want_streams_exp);
  */
 static inline int32 usb_clear_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
     // 🌟 发往 Endpoint 的标准控制请求
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_ENDPOINT);
+    xhci_ctrl_req_t req = {
+        NULL,
+        0,
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
 
-    return usb_control_msg(udev, NULL,
-                           req_type,
-                           USB_REQ_CLEAR_FEATURE,
-                           USB_FEATURE_ENDPOINT_HALT, // wValue: 清除 Halt 特性
-                           epdci_to_epaddr(ep_dci),   // wIndex: 目标端点物理地址
-                           0);                        // wLength: 0
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_ENDPOINT);;
+    req.setup_packet.request = USB_REQ_CLEAR_FEATURE;
+    req.setup_packet.value = USB_FEATURE_ENDPOINT_HALT;
+    req.setup_packet.index = epdci_to_epaddr(ep_dci);
+    req.setup_packet.length = 0;
+
+    return xhci_submit_control(udev,&req);
+
 }
 
 /**
@@ -169,14 +196,23 @@ static inline int32 usb_clear_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
  * @note 通常用于模拟错误或调试。无数据阶段，length = 0。
  */
 static inline int32 usb_set_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_ENDPOINT);
 
-    return usb_control_msg(udev, NULL,
-                           req_type,
-                           USB_REQ_SET_FEATURE,
-                           USB_FEATURE_ENDPOINT_HALT, // wValue: 设置 Halt 特性
-                           epdci_to_epaddr(ep_dci),   // wIndex: 目标端点物理地址
-                           0);                        // wLength: 0
+        xhci_ctrl_req_t req = {
+        NULL,
+        0,
+        TX_IOC,
+        0,
+        NULL,
+        0};
+
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_ENDPOINT);;
+    req.setup_packet.request =  USB_REQ_SET_FEATURE;
+    req.setup_packet.value = USB_FEATURE_ENDPOINT_HALT;
+    req.setup_packet.index = epdci_to_epaddr(ep_dci);
+    req.setup_packet.length = 0;
+
+    return xhci_submit_control(udev,&req);
+
 }
 
 /**
@@ -184,15 +220,23 @@ static inline int32 usb_set_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
  * @note 这是一个纯命令传输，没有后续的数据包，因此 buffer 为 NULL，length 为 0。
  */
 static inline int32 usb_set_cfg(usb_dev_t *udev) {
-    // 🌟 发往整个 Device 的标准控制请求
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
+    xhci_ctrl_req_t req = {
+        NULL,
+        0,
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
 
-    return usb_control_msg(udev, NULL,
-                           req_type,
-                           USB_REQ_SET_CONFIGURATION,
-                           udev->config_desc->configuration_value, // wValue: 要激活的配置号
-                           0,                                      // wIndex: 0
-                           0);                                     // wLength: 0
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
+    req.setup_packet.request =  USB_REQ_SET_CONFIGURATION;
+    req.setup_packet.value = udev->config_desc->configuration_value;
+    req.setup_packet.index = 0;
+    req.setup_packet.length = 0;
+
+    return xhci_submit_control(udev,&req);
+
 }
 
 /**
@@ -200,13 +244,21 @@ static inline int32 usb_set_cfg(usb_dev_t *udev) {
  * @note 用于在复合设备 (如带有多个备用设置的摄像头或声卡) 中切换接口的 Alternate Setting。
  */
 static inline int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
-    // 🌟 发往指定 Interface 的标准控制请求
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_INTERFACE);
+    xhci_ctrl_req_t req = {
+        NULL,
+        0,
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
 
-    return usb_control_msg(udev, NULL,
-                           req_type,
-                           USB_REQ_SET_INTERFACE,
-                           alt_num, // wValue: 备用设置号 (Alternate Setting)
-                           if_num,  // wIndex: 接口号 (Interface Number)
-                           0);      // wLength: 0
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_INTERFACE);
+    req.setup_packet.request =  USB_REQ_SET_INTERFACE;
+    req.setup_packet.value = alt_num;
+    req.setup_packet.index = if_num;
+    req.setup_packet.length = 0;
+
+    return xhci_submit_control(udev,&req);
+
 }

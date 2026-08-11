@@ -304,8 +304,9 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     }
 
     /*初始化命令环*/
-    xhci_alloc_submit_ring(&xhcd->cmd_ring,32); //命令环分配32个槽位
+    xhci_alloc_submit_ring(&xhcd->cmd_ring,XHCI_CMD_RING_LEN); //命令环分配256个槽位
     xhcd->op_reg->crcr = va_to_pa(xhcd->cmd_ring.ring_base) | 1; //命令环物理地址写入crcr寄存器，置位rcs
+    xhcd->cmd_io_tracker = kmalloc(sizeof(xhci_cmd_io_tracker_t)*XHCI_CMD_RING_LEN);
 
     /*初始化中断器*/
     //可以根据cpu核心和MaxIntrs取小值设置多事件环。暂时设置1个事件环

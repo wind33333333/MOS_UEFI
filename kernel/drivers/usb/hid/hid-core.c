@@ -1,4 +1,3 @@
-#include "../core/usb-core.h"
 #include "../core/usb-dev.h"
 #include "../core/usb-def.h"
 #include "../core/usb-bus.h"
@@ -17,19 +16,24 @@
  * @param length        从 HID 描述符里解析出来的 wReportDescriptorLength
  */
 static inline int32 usb_hid_get_report_desc(usb_dev_t *udev, uint8 interface_num, void *buf, uint16 length) {
-    // 1. 组装 bmRequestType:
-    //    10000001b (0x81) = 传输方向 IN | 标准请求 | 接收者为 Interface
-    uint8 req_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN,
-                                     USB_REQ_TYPE_STANDARD,
-                                     USB_REQ_REC_INTERFACE);
 
-    // 2. 发送控制传输指令
-    return usb_control_msg(udev, buf,
-                           req_type,
-                           USB_REQ_GET_DESCRIPTOR, // bRequest: 0x06 (获取描述符)
-                           (USB_DESC_TYPE_REPORT << 8) | 0, // wValue: 高字节 0x22 (Report类型)，默认低字节 0 (索引)
-                           interface_num, // wIndex: 必须填它所属的接口号！
-                           length); // wLength: 想要拉取的字节数 (如 63)
+    xhci_ctrl_req_t req = {
+        buf,
+        4,
+        TX_IOC,
+        0,
+        NULL,
+        0,
+    };
+
+    req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN,USB_REQ_TYPE_STANDARD,USB_REQ_REC_INTERFACE);
+    req.setup_packet.request =  USB_REQ_GET_DESCRIPTOR;
+    req.setup_packet.value =  (USB_DESC_TYPE_REPORT << 8) | 0;
+    req.setup_packet.index = interface_num;
+    req.setup_packet.length = length;
+
+    int32 ret = xhci_submit_control(udev,&req);
+
 }
 
 
@@ -66,7 +70,8 @@ static inline uint32 hid_count_fields(const uint8 *desc, uint32 desc_len) {
     return count;
 }
 
-extern void hid_irq_complete(usb_urb_t *urb);
+
+extern void hid_irq_complete(void *urb);
 
 /**
  * @brief USB HID 驱动的入口函数 (当 USB 核心层发现 HID 接口时调用)
@@ -105,6 +110,7 @@ static int hid_probe(usb_if_t *uif, usb_id_t *uid) {
     uint32 fields_count = hid_count_fields(report_desc_buf,report_desc_len);
     hid_dev_t *hdev = kzalloc(sizeof(hid_dev_t)+fields_count*sizeof(hid_field_t*));
     hdev->uif = uif;
+    hdev->interrupt_ep = ep1;
 
     // 将我们自己的 hdev 挂载到 USB 接口的私有指针上，方便后续中断里拿出来用
     uif->drv_data = hdev;
@@ -129,11 +135,18 @@ static int hid_probe(usb_if_t *uif, usb_id_t *uid) {
     // ==========================================
     // Phase 6: 启动引擎！投递第一个 URB
     // ==========================================
+    xhci_data_req_t *req = &hdev->req;
     hdev->report_buf = kzalloc_dma(ep1->max_packet_size);
-    hdev->int_urb = usb_alloc_urb();
-    usb_fill_int_urb(hdev->int_urb, hid_irq_complete,hdev,udev, ep1, hdev->report_buf, ep1->max_packet_size, ep1->interval);
-    xhci_submit_urb(hdev->int_urb);
-    return 0; // 成功！
+    hdev->report_len = ep1->max_packet_size;
+    req->buf = hdev->report_buf;
+    req->length = ep1->max_packet_size;
+    req->flags = TX_IOC;
+    req->task_id = 0;
+    req->waker = hdev;
+    req->stream_id = 0;
+    req->cb = hid_irq_complete;
+    xhci_submit_normal(ep1,req);
+
 }
 
 static void hid_remove(usb_if_t *uif) {
