@@ -79,7 +79,6 @@ typedef struct xhci_data_req_t {
 } xhci_data_req_t;
 
 
-
 typedef struct  xhci_submit_ring_t {
     xhci_trb_t *ring_base;     // 原生硬件 TRB 虚拟基址
     int32     enq_idx;       // 生产者游标
@@ -87,6 +86,7 @@ typedef struct  xhci_submit_ring_t {
     int32     size;     // 环深度 (32 / 64 / 256 / 1024)
     uint8     cycle;         // 当前硬件 Cycle Toggle Bit (0/1)
 } xhci_submit_ring_t;
+
 
 // 硬件是生产者，软件是消费者
 typedef struct xhci_event_ring_t{
@@ -138,6 +138,7 @@ typedef struct usb_ep_t usb_ep_t;
 typedef struct usb_hub_port_t usb_hub_port_t;
 typedef struct pcie_dev_t pcie_dev_t;
 
+
 //xhci控制器
 typedef struct xhci_hcd_t{
     // ==========================================
@@ -170,14 +171,14 @@ typedef struct xhci_hcd_t{
     // ==========================================
     // 4. DMA 核心共享内存 (Host <-> Device)
     // ==========================================
-    uint64              *dcbaap;            // 设备上下文基址数组 (物理地址数组)
+    uint64                *dcbaap;            // 设备上下文基址数组 (物理地址数组)
     xhci_submit_ring_t    cmd_ring;           // 全局单例：命令环 (Command Ring)
-    xhci_cmd_io_tracker_t *cmd_io_tracker;  //I/O 追踪器 / 发送追踪表
+    xhci_cmd_io_tracker_t *cmd_io_tracker;    //I/O 追踪器 / 发送追踪表
 
     // ==========================================
     // 5. 软硬件映射与并发控制 (Software State)
     // ==========================================
-    usb_dev_t    **udevs;           // 插槽到设备的逻辑映射 (通过 Slot ID 查找 usb_dev_t)
+    usb_dev_t      **udevs;         // 插槽到设备的逻辑映射 (通过 Slot ID 查找 usb_dev_t)
     usb_hub_port_t *ports;          // xhci原生端口
 
     // 注意：事件环不是一个，它是和中断器绑定的！这里根据 max_intrs 动态分配！
@@ -279,24 +280,17 @@ static inline void xhci_ring_doorbell(xhci_hcd_t *xhcd, uint8 db_number, uint32 
     xhcd->db_reg[db_number] = value;
 }
 
-// 计算步进后的索引，自动跨越 Link TRB
-static inline uint32 xhci_submit_ring_next_idx(uint32 cur_idx,uint32 size) {
-    // 如果走到倒数第一个位置 (Link TRB)，直接绕回 0
-    return (++cur_idx == size - 1) ? 0 : cur_idx;
-}
-//==========================================================================================
-
 
 //================================= ctx接口函数===============================================
+int32 xhci_ctx_addr_dev(usb_dev_t *udev);
 int32 xhci_ctx_slot_cfg(usb_dev_t *udev);
 int32 xhci_ctx_slot_ep0_eval(usb_dev_t *udev);
 int32 xhci_ctx_eps_cfg(usb_if_alt_t *drop_uif_alt,usb_if_alt_t *add_uif_alt);
 int32 xhci_ctx_deconfigure_all(usb_dev_t *udev );
-int32 xhci_enable_slot_ep0(usb_dev_t *udev);
 //============================================================================================
 
 //================================= cmd命令 =================================================
-int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 port_num, uint8 *out_slot_id);
+int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 port_num);
 int32 xhci_cmd_disable_slot(xhci_hcd_t *xhcd, uint8 slot_id);
 int32 xhci_cmd_addr_dev(xhci_hcd_t *xhcd, uint8 slot_id, xhci_input_ctrl_ctx_t *in_ctx);
 int32 xhci_cmd_cfg_ep(xhci_hcd_t *xhcd, uint8 slot_id, xhci_input_ctrl_ctx_t *in_ctx, uint8 dc);

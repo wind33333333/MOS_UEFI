@@ -14,9 +14,9 @@
  * @param out_slot_id 用于接收硬件返回的 Slot ID
  * @return int32      0 表示成功，负数表示失败
  */
-int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 port_num, uint8 *out_slot_id) {
+int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 port_num) {
     // 🌟 1. 内核级防御：参数校验
-    if (!xhcd || !out_slot_id || port_num == 0 || port_num > xhcd->max_ports) {
+    if (!xhcd || port_num == 0 || port_num > xhcd->max_ports) {
         return -EINVAL;
     }
 
@@ -39,8 +39,7 @@ int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 port_num, uint8 *out_slot_id)
     xhci_cmd_io_tracker_t out_cmd_io_tracker = {0};
     int32 status = xhci_submit_cmd(xhcd, &cmd_trb, &out_cmd_io_tracker);
 
-    *out_slot_id = out_cmd_io_tracker.out_slot_id;
-    return status;
+    return out_cmd_io_tracker.out_slot_id;
 }
 
 /**

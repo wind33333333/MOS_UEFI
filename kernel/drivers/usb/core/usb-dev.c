@@ -600,6 +600,53 @@ static inline int usb_get_string_desc(usb_dev_t *udev) {
     return 0;
 }
 
+/**
+ * @brief 阶段 1：分配设备上下文，配置 Slot 和 EP0，并赋予物理地址 (支持 BSR 两阶段探测)
+ * @param udev USB 设备对象
+ * @return int32 0 表示成功，-1 表示失败
+ */
+static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
+    xhci_hcd_t *xhcd = udev->xhcd;
+
+    // 1. 启用插槽 (Enable Slot)
+    udev->slot_id= xhci_cmd_enable_slot(xhcd, udev->root_hub_port_num);
+
+    // 2. 分配设备上下文 (Output Context)
+    uint8 ctx_size = xhcd->ctx_size;
+    udev->out_ctx = kzalloc_dma(XHCI_DEVICE_CONTEXT_COUNT * ctx_size);
+    xhcd->dcbaap[udev->slot_id] = va_to_pa(udev->out_ctx);
+    xhcd->udevs[udev->slot_id] = udev;
+
+    // 3. 分配输入上下文 (Input Context)
+    udev->in_ctx = kzalloc_dma(XHCI_INPUT_CONTEXT_COUNT * ctx_size);
+
+    // 4. 挂载到 O(1) 路由表
+    usb_ep_t *uep0 = &udev->ep0;
+    udev->eps[1] = uep0;
+    uep0->udev = udev;
+
+    // --- 计算初始 Max Packet Size (MPS0) ---
+    // 1. USB 3.0 (SuperSpeed) 必定是 512。
+    // 2. USB 2.0 (High Speed) 协议规定必定是 64。
+    // 3. USB 1.1 (Full/Low Speed) 可能是 8/16/32/64，为了绝对安全，先盲猜最小包长 8
+    uint32 mps = (udev->port_speed >= USB_SPEED_SUPER_5G) ? 512 :
+                 (udev->port_speed == USB_SPEED_HIGH)  ? 64  : 8;
+
+    // 5. 填充端点 0 数据结构
+    uep0->ep_dci = 1;
+    uep0->ep_type = 4; // Control Endpoint
+    uep0->max_packet_size = mps;
+    uep0->average_trb_length = mps;
+    uep0->max_streams_exp = 0;
+    uep0->enable_streams_exp = 0;
+    uep0->ring_max_trbs = XHCI_CONTROL_TRANSFER_RING_LEN;
+    xhci_alloc_ep_resource(uep0);
+
+    //发送 SET_ADDRESS！
+    xhci_ctx_addr_dev(udev);
+    return 0;
+}
+
 
 
 // =========================================================================
@@ -624,7 +671,7 @@ void usb_dev_init(usb_dev_t *udev) {
     udev->dev.bus = &usb_bus_type;
 
     //设备初始化
-    xhci_enable_slot_ep0(udev);
+    usb_enable_slot_ep0(udev);
     usb_get_dev_desc(udev);
     usb_get_cfg_desc(udev);
     usb_get_string_desc(udev);

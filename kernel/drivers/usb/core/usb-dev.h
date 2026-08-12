@@ -132,7 +132,8 @@ typedef struct usb_dev_t{
 
     // 3. 逻辑端点与接口路由 (暴露给业务层驱动的资源)
     usb_if_t                        *ifs;              // 接口指针根据接口数量动态分配
-    usb_ep_t                        *eps[32];          // eps[1]仅占位，eps[1]-eps[31]=端点1-31
+    usb_ep_t                        *eps[32];          // 为了方便通过dci定位，eps[0]为空仅占位，控制端点ep0 = eps[1] ，普通数据传输端点in/out ep1-ep15 = eps[2]-eps[31]
+    usb_ep_t                        ep0;               // usb设备必定存在控制端点0，方便方位直接写入结构。
 
     // 4. 仅为xhci定制强绑定
     uint8                           slot_id;
