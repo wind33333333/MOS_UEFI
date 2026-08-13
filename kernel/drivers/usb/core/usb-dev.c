@@ -43,9 +43,11 @@ usb_if_alt_t* usb_find_alt_if(usb_if_t *uif, int16 class, int16 subclass, int16 
  * @note 这是 USB 接口切换的核心函数，包含完整的资源分配、xHCI 上下文更新、
  *       设备端 Set Interface 命令以及双向回滚机制
  */
-int32 usb_enable_alt_if(usb_if_alt_t *new_alt) {
+int32 usb_enable_alt_if(usb_if_alt_t *new_alt,uint32 ring_max_trbs, uint8 want_streams_exp) {
     // 1. 终极防御：空指针拦截
     if (new_alt == NULL || new_alt->uif == NULL) return -EINVAL;
+
+    int32 streams_exp = usb_cfg_alt_streams(new_alt,want_streams_exp);
 
     int32 posix = 0;
     usb_if_t *uif = new_alt->uif;
@@ -61,7 +63,7 @@ int32 usb_enable_alt_if(usb_if_alt_t *new_alt) {
     uint8 new_num_eps = new_alt->if_desc->num_endpoints;
     for (uint8 i = 0; i < new_num_eps; i++) {
         // ★ OOM 防御：分配环可能因为物理 DMA 内存耗尽而失败
-        posix = xhci_alloc_ep_resource(&new_alt->eps[i]);
+        posix = xhci_alloc_ep_resource(&new_alt->eps[i],ring_max_trbs);
         if (posix < 0) {
             color_printk(RED, BLACK, "USB: OOM allocating rings during Alt setting!\n");
             // 局部回滚：释放刚才循环里已经分配成功的前几个端点
@@ -117,7 +119,7 @@ int32 usb_enable_alt_if(usb_if_alt_t *new_alt) {
     }
     uif->activity_if_alt = new_alt;
 
-    return 0;
+    return streams_exp;
 }
 
 /**
@@ -639,8 +641,7 @@ static inline int32 usb_enable_slot_ep0(usb_dev_t *udev) {
     uep0->average_trb_length = mps;
     uep0->max_streams_exp = 0;
     uep0->enable_streams_exp = 0;
-    uep0->ring_max_trbs = XHCI_CONTROL_TRANSFER_RING_LEN;
-    xhci_alloc_ep_resource(uep0);
+    xhci_alloc_ep_resource(uep0,XHCI_CONTROL_TRANSFER_RING_LEN);
 
     //发送 SET_ADDRESS！
     xhci_ctx_addr_dev(udev);

@@ -34,7 +34,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
         // ==========================================================
         for (uint8 i = 0; i < 4; i++) {
             usb_ep_t *ep = &uas_if_alt->eps[i];
-            ep->ring_max_trbs = 256;
+            //ep->ring_max_trbs = 256;
 
             usb_uas_pipe_usage_desc_t *pipe_usage_desc = ep->extras_desc;
             if (!pipe_usage_desc) continue;
@@ -48,8 +48,10 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
             }
         }
 
-        uint8 streams_exp = usb_cfg_alt_streams(uas_if_alt,6);
-        usb_enable_alt_if(uas_if_alt);
+        // uint8 streams_exp = usb_cfg_alt_streams(uas_if_alt,6);
+        // usb_enable_alt_if(uas_if_alt);
+
+        uint8 streams_exp = usb_enable_alt_if(uas_if_alt,256,6);
 
         uint16 streams_pool_size = 0;
         //初始化tag_bitmap
@@ -84,7 +86,7 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
 
         for (uint8 i = 0; i < 2; i++) {
             usb_ep_t *ep = &bot_if_alt->eps[i];
-            ep->ring_max_trbs = 256;
+            //ep->ring_max_trbs = 256;
             if (ep->ep_dci & 1) {
                 bot_data->in_ep = ep;
             } else {
@@ -92,9 +94,9 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
             }
         }
 
-        usb_cfg_alt_streams(bot_if_alt,0);
-        usb_enable_alt_if(bot_if_alt);
-
+        // usb_cfg_alt_streams(bot_if_alt,0);
+        // usb_enable_alt_if(bot_if_alt);
+        usb_enable_alt_if(bot_if_alt,256,0);
 
         //uint8 max_lun = bot_get_max_lun(uif->udev,uif->if_num);
 

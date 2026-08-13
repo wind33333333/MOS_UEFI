@@ -272,7 +272,7 @@ int32 xhci_submit_cmd(xhci_hcd_t *xhcd,xhci_trb_t *cmd_trb,xhci_cmd_io_tracker_t
 int32 xhci_submit_control(struct usb_dev_t *udev,const xhci_ctrl_req_t *req);
 int32 xhci_submit_normal(usb_ep_t *ep, const xhci_data_req_t *req);
 int32 xhci_submit_stream(usb_ep_t *ep, const xhci_data_req_t *req);
-int32 xhci_alloc_ep_resource(usb_ep_t *ep);
+int32 xhci_alloc_ep_resource(usb_ep_t *ep,uint32 ring_max_trbs);
 int32 xhci_free_ep_resource(usb_ep_t *ep);
 
 //响铃

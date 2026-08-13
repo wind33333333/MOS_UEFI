@@ -178,13 +178,14 @@ int32 xhci_alloc_event_ring(xhci_event_ring_t *ring, uint32 ring_size) {
 
 
 // 给端点分配资源 (终极统一抽象版)
-int32 xhci_alloc_ep_resource(usb_ep_t *ep) {
+int32 xhci_alloc_ep_resource(usb_ep_t *ep,uint32 ring_max_trbs) {
     int32 err;
+
+    ep->cerr = 3; //所有端点允许错误3次
+    ep->ring_max_trbs = ring_max_trbs;
 
     // 安全边界截断
     uint32 streams_exp = ep->enable_streams_exp;
-
-    ep->cerr = 3; //所有端点允许错误3次
     if (streams_exp) {
         // ==========================================================
         // 👑 情况 B：流模式 (Stream Mode - 适用于 USB 3.0 UAS 等)
@@ -208,7 +209,7 @@ int32 xhci_alloc_ep_resource(usb_ep_t *ep) {
         ep->lsa = 1; // 线性流数组标志
         ep->hid = 1; // 主机初始化禁用标志
 
-        uint64 stream_ring_size = sizeof(xhci_trb_t) * ep->ring_max_trbs;
+        uint64 stream_ring_size = sizeof(xhci_trb_t) * ring_max_trbs;
         void *stream_ring_base = kzalloc_dma(stream_ring_size * (num_streams - 1));
 
         // 初始化每一个流环
@@ -218,7 +219,7 @@ int32 xhci_alloc_ep_resource(usb_ep_t *ep) {
             ring->ring_base = stream_ring_base;
             ring->enq_idx = 0; // 生产者(CPU)入队游标
             ring->deq_idx = 0; // 消费者(硬件)出队游标
-            ring->size = ep->ring_max_trbs; // 环的总长度 (包含 Link TRB)
+            ring->size = ring_max_trbs; // 环的总长度 (包含 Link TRB)
             ring->cycle = 1; // ★ xHCI 规范：新初始化的环，硬件期待的 Cycle 起始值必须为 1
 
             // 将分配好的环的物理地址，写入硬件要求的 Context 数组中
@@ -247,7 +248,7 @@ int32 xhci_alloc_ep_resource(usb_ep_t *ep) {
         if (ep->rings == NULL) return -ENOMEM;
 
         // 2. 分配并初始化这唯一的环 (它就是 rings[0])
-        err = xhci_alloc_submit_ring(ep->rings, ep->ring_max_trbs);
+        err = xhci_alloc_submit_ring(ep->rings, ring_max_trbs);
         if (err < 0) return err;
 
         // 更新逻辑状态
@@ -258,7 +259,7 @@ int32 xhci_alloc_ep_resource(usb_ep_t *ep) {
         ep->trq_phys_addr = va_to_pa(ep->rings->ring_base) | 1;
 
         //6. 配置io跟踪表
-        ep->tracker = kmalloc(sizeof(xhci_transfer_io_tracker_t) * ep->ring_max_trbs);
+        ep->tracker = kmalloc(sizeof(xhci_transfer_io_tracker_t) * ring_max_trbs);
     }
 
     return 0;
