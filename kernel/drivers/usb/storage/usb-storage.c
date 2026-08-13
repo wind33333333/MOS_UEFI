@@ -48,9 +48,6 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
             }
         }
 
-        // uint8 streams_exp = usb_cfg_alt_streams(uas_if_alt,6);
-        // usb_enable_alt_if(uas_if_alt);
-
         uint8 streams_exp = usb_enable_alt_if(uas_if_alt,256,6);
 
         uint16 streams_pool_size = 0;
@@ -94,8 +91,6 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
             }
         }
 
-        // usb_cfg_alt_streams(bot_if_alt,0);
-        // usb_enable_alt_if(bot_if_alt);
         usb_enable_alt_if(bot_if_alt,256,0);
 
         //uint8 max_lun = bot_get_max_lun(uif->udev,uif->if_num);

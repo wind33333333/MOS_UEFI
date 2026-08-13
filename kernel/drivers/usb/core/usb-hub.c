@@ -714,8 +714,6 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     //3.启用接口
     usb_ep_t *ep1 = &if_alt->eps[0];
     hub->interrupt_ep = ep1;
-    // ep1->ring_max_trbs = 32;
-    // usb_enable_alt_if(if_alt);
     usb_enable_alt_if(if_alt,32,0);
 
     //4.所有端口上电
