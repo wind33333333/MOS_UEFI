@@ -6,14 +6,13 @@
 
 
 int32 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push) {
-    // 1. 【双指针防溢出检查】
-    // 如果再走一步就撞上消费者游标了，说明环满了！
-    int32 enq_idx = ring->enq_idx;
-    int32 ring_mask = ring->size - 1;
-    int32 next_enq = enq_idx + 1 & ring_mask;
-    if (next_enq == ring->deq_idx) {
-        return ENOMEM; // 满了拒绝写入
+    // 1. 🌟 O(1) 终极极简防溢出检查
+    if (ring->free_trbs == 0) {
+        return ENOMEM;
     }
+
+    uint32 enq_idx = ring->enq_idx;
+    uint32 ring_mask = ring->size - 1;
 
     // 2. 处理 Link TRB 跨越与 Cycle 翻转
     if (enq_idx == ring_mask) {
@@ -24,9 +23,7 @@ int32 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push) {
         link_trb->control =
                 TRB_SET_TYPE(TRB_TYPE_LINK) | TRB_TOGGLE_CYCLE | (trb_push->control & TRB_CHAIN) | ring->cycle;
         ring->cycle ^= 1; // 翻转操作系统的软件 Cycle 状态，迎接下一轮的覆写
-
         enq_idx = 0;
-        next_enq = 1;
     }
 
 
@@ -36,8 +33,9 @@ int32 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push) {
     trb->status = trb_push->status;
     trb->control = trb_push->control | ring->cycle;
 
-    // 4. 更新生产者游标
-    ring->enq_idx = next_enq;
+    // 4. 更新状态
+    ring->enq_idx = enq_idx + 1;
+    ring->free_trbs--; // 🌟 消耗了一个可用配额
 
     return enq_idx;
 }
@@ -145,6 +143,7 @@ int32 xhci_alloc_submit_ring(xhci_submit_ring_t *ring, uint32 size) {
     // 2. 初始化软件状态机与游标
     ring->enq_idx = 0; // 生产者(CPU)入队游标
     ring->deq_idx = 0; // 消费者(硬件)出队游标
+    ring->free_trbs = size - 1; //空闲trb数量
     ring->size = size; // 环的总长度 (包含 Link TRB)
     ring->cycle = 1; // ★ xHCI 规范：新初始化的环，硬件期待的 Cycle 起始值必须为 1
 
@@ -160,6 +159,7 @@ int32 xhci_free_submit_ring(xhci_submit_ring_t *ring) {
     ring->enq_idx = 0;
     ring->deq_idx = 0;
     ring->size = 0;
+    ring->free_trbs = 0;
     ring->cycle = 0;
 }
 

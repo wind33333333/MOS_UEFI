@@ -77,6 +77,7 @@ int32 usb_ep_alloc_resource(usb_ep_t *ep,uint32 ring_max_trbs) {
             ring->ring_base = stream_ring_base;
             ring->enq_idx = 0; // 生产者(CPU)入队游标
             ring->deq_idx = 0; // 消费者(硬件)出队游标
+            ring->free_trbs = ring_max_trbs - 1;
             ring->size = ring_max_trbs; // 环的总长度 (包含 Link TRB)
             ring->cycle = 1; // ★ xHCI 规范：新初始化的环，硬件期待的 Cycle 起始值必须为 1
 

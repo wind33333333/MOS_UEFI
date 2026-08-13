@@ -85,7 +85,7 @@ static int hid_probe(usb_if_t *uif, usb_id_t *uid) {
 
     //1.启用接口
     usb_ep_t *ep1 = &if_alt->eps[0];
-    usb_enable_alt_if(if_alt,32,0);
+    usb_enable_alt_if(if_alt,8,0);
 
     // ==========================================
     // Phase 2: 索要“报告描述符 (说明书)”

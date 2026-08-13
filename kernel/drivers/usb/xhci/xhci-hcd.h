@@ -81,10 +81,11 @@ typedef struct xhci_data_req_t {
 
 typedef struct  xhci_submit_ring_t {
     xhci_trb_t *ring_base;     // 原生硬件 TRB 虚拟基址
-    int32     enq_idx;       // 生产者游标
-    int32     deq_idx;       // 消费者游标
-    int32     size;     // 环深度 (32 / 64 / 256 / 1024)
-    uint8     cycle;         // 当前硬件 Cycle Toggle Bit (0/1)
+    uint32     enq_idx;       // 生产者游标
+    uint32     deq_idx;       // 消费者游标
+    uint32     size;          // 环深度 (32 / 64 / 256 / 1024)
+    uint32     free_trbs;
+    uint8      cycle;         // 当前硬件 Cycle Toggle Bit (0/1)
 } xhci_submit_ring_t;
 
 

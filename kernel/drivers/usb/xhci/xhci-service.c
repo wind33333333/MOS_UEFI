@@ -210,14 +210,17 @@ static inline void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_
 
     tracker->is_completed = TRUE;
 
+// 更新硬件消费指针
     int32 ring_mask = ring->size - 1;
-    int32 next_deq = (trb_idx + 1) & ring_mask;
+    ring->deq_idx = (trb_idx + 1) & ring_mask;
 
-    if (next_deq == ring_mask) {
-        next_deq = 0;
+    // 如果硬件正好跨过了 Link TRB，再往前推一格 (回到0)
+    if (ring->deq_idx == ring_mask) {
+        ring->deq_idx = 0;
     }
 
-    ring->deq_idx = next_deq;
+    // 🌟 归还空间配额 (多核环境下这里可以是原子加法 atomic_inc)
+    ring->free_trbs++;
 
     if (tracker->cb != NULL) {
         tracker->cb(tracker->async_waker);
@@ -232,7 +235,6 @@ static inline void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_
 // =========================================================================
 static inline void xhci_handle_cmd_completion(xhci_hcd_t *xhcd, xhci_trb_t *evt_trb) {
     xhci_submit_ring_t *ring = &xhcd->cmd_ring;
-    int32 ring_mask = ring->size - 1;
 
     // 1. DW2: 提取附加参数与完成码
     uint32 comp_param = TRB_GET_CMD_COMP_PARAM(evt_trb->status);
@@ -241,32 +243,25 @@ static inline void xhci_handle_cmd_completion(xhci_hcd_t *xhcd, xhci_trb_t *evt_
     uint8  slot_id    = TRB_GET_SLOT_ID(evt_trb->control);
 
     // 2.【O(1) 物理定位】计算刚刚完成的命令在命令环数组中的真实下标
-    uint32 idx = (uint32)((evt_trb->parameter - va_to_pa(ring->ring_base)) >> 4);
-    idx &= ring_mask; // 掩码保护，防止极端硬件报错时下标越界
+    uint32 trb_idx = (uint32)((evt_trb->parameter - va_to_pa(ring->ring_base)) >> 4);
 
     // 3. 【唤醒与数据注入】查表回填影子节点
-    xhci_cmd_io_tracker_t *tracker = &xhcd->cmd_io_tracker[idx];
+    xhci_cmd_io_tracker_t *tracker = &xhcd->cmd_io_tracker[trb_idx];
     tracker->async_waker   = 0;
     tracker->out_slot_id   = slot_id;
     tracker->out_hw_status = xhci_translate_error(comp_code);
     tracker->is_completed  = TRUE;
 
-    // =====================================================================
-    // 4. 🔥【核心要点：更新软件 deq_idx 消费者指针】
-    // =====================================================================
-    // 既然 hardware 刚吃完了 cmd_shadow_idx，那么下一个待消费的坑位就是 +1
-    int32 next_deq = (idx + 1) & ring_mask;
+    uint32 ring_mask = ring->size - 1;
+    ring->deq_idx = (trb_idx + 1) & ring_mask;
 
-    // 【Link TRB 越界快进】
-    // 如果 next_deq 正好踩在了 ring_mask (且该槽位已被用作 Link TRB)，
-    // 硬件 DMA 会自动跳过它回到 0，因此我们的软件 deq_idx 也必须直接归 0！
-    if (next_deq == ring_mask) {
-        next_deq = 0;
+    // 如果硬件正好跨过了 Link TRB，再往前推一格 (回到0)
+    if (ring->deq_idx == ring_mask) {
+        ring->deq_idx = 0;
     }
 
-    // 更新到命令环结构体中，释放被占用的队列坑位
-    ring->deq_idx = next_deq;
-
+    // 🌟 归还空间配额 (多核环境下这里可以是原子加法 atomic_inc)
+    ring->free_trbs++;
     // 5. 如果有因为 ENOMEM 而休眠等待命令环槽位的生产者线程，此时可触发唤醒
     // sys_wake_up_ring_producers(ring);
 }
