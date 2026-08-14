@@ -280,6 +280,41 @@ static inline void asm_rdtscp(uint32 *apic_id,uint64 *timestamp) {
             );
 }
 
+/**
+ * @brief 高精度起跑线读表 (Start)
+ */
+static inline uint64 asm_rdtsc_start(void) {
+    uint32 lo, hi;
+    // lfence 充当起跑前的栅栏，防止乱序
+    __asm__ __volatile__ (
+        "lfence\n\t"
+        "rdtsc"
+        : "=a"(lo), "=d"(hi)
+        :: "memory"
+    );
+    return ((uint64)hi << 32) | lo;
+}
+
+/**
+ * @brief 高精度终点线读表 (End)
+ * @param core_id (可选) 用来接收当前运行的核心号，不需要传 NULL
+ */
+static inline uint64 asm_rdtsc_end(uint32 *core_id) {
+    uint32 lo, hi, aux;
+    // rdtscp 自带前半段屏障，lfence 充当后半段屏障
+    __asm__ __volatile__ (
+        "rdtscp\n\t"
+        "lfence"
+        : "=a"(lo), "=d"(hi), "=c"(aux)
+        :: "memory"
+    );
+    if (core_id) {
+        *core_id = aux;
+    }
+    return ((uint64)hi << 32) | lo;
+}
+
+
 static inline uint64 asm_get_cr0(void) {
     uint64 cr0;
     __asm__ __volatile__(
