@@ -168,7 +168,6 @@ cleanup:
  */
 int32 uas_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     uas_data_t *uas_data = host->hostdata;
-    usb_dev_t *udev = uas_data->uif->udev;
 
     int32 posix_err = 0;
 
