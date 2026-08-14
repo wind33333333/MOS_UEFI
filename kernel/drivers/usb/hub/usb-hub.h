@@ -1,6 +1,6 @@
 #pragma once
 #include "moslib.h"
-#include "usb-def.h"
+#include "../core/usb-def.h"
 #include "../xhci/xhci-hcd.h"
 
 // ============================================================================

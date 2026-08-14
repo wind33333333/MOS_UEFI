@@ -7,7 +7,7 @@
 #include "vmalloc.h"
 #include "../core/usb-dev.h"
 #include "errno.h"
-#include "../core/usb-hub.h"
+#include "../hub/usb-hub.h"
 #include "xhci-service.h"
 #include "xhci-hcd.h"
 

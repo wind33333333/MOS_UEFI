@@ -1,6 +1,6 @@
 #include "bus.h"
 #include "pcie.h"
-#include "../usb/core/usb-hub.h"
+#include "../usb/hub/usb-hub.h"
 #include "../usb/core/usb-bus.h"
 #include "../usb/core/usb-dev.h"
 #include "../usb/xhci/xhci-service.h"

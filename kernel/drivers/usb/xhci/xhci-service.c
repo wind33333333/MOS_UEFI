@@ -1,6 +1,6 @@
 #include "xhci-hcd.h"
 #include "../core/usb-dev.h"
-#include "../core/usb-hub.h"
+#include "../hub/usb-hub.h"
 #include "xhci-hw.h"
 #include "xhci-service.h"
 #include "printk.h"

@@ -1,10 +1,10 @@
 #include "usb-hub.h"
-#include "usb-dev.h"
+#include "../core/usb-dev.h"
 #include "../xhci/xhci-hcd.h"
 #include "errno.h"
 #include "printk.h"
 #include "slub.h"
-#include "usb-bus.h"
+#include "../core/usb-bus.h"
 
 
 // ==========================================
