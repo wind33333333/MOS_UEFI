@@ -2,6 +2,7 @@
 #include "moslib.h"
 
 #pragma pack(push,1)
+
 //region acpi通用头
 typedef struct {
     uint32 signature;        // 表的签名，例如 "XSDT" "ACPI" "HPET" "MCFG"
@@ -23,7 +24,7 @@ typedef struct{
     uint8  bit_offset;       // 位偏移
     uint8  access_size;      // 访问大小
     uint64 address;         // 基地址
-} acpi_generic_adderss_t ;
+} acpi_generic_address_t ;
 //endregion
 
 //region mcfg表
@@ -46,7 +47,7 @@ typedef struct {
 typedef struct {
     acpi_header_t               acpi_header;                 // 标准 ACPI 表头
     uint32                      event_timer_block_id;        // 定时器块的 ID
-    acpi_generic_adderss_t      acpi_generic_adderss;        // GAS通用地址结构
+    acpi_generic_address_t         acpi_generic_adderss;        // GAS通用地址结构
     uint8                       hpet_number;                 // HPET 的编号
     uint16                      minimum_tick;                // HPET 支持的最小时间间隔
     uint8                       page_protection;             // 页保护属性
@@ -137,7 +138,7 @@ typedef struct {
 //region xsdt表
 typedef struct {
     acpi_header_t acpi_header;           // 标准 ACPI 表头
-    acpi_header_t *entry[];              // 指向其他 ACPI 表的 64 位指针数组
+    acpi_header_t *table_pointers[];     // 指向其他 ACPI 表的 64 位指针数组
 }  xsdt_t;
 //endregion
 
@@ -151,7 +152,7 @@ typedef struct {
 
     // ACPI 2.0 及以后版本的扩展
     uint32 length;               // 整个 RSDP 结构的长度
-    xsdt_t* xsdt_address;        // XSDT 表（64 位地址）
+    xsdt_t* xsdt_address;        // XSDT 表（物理地址）
     uint8 extended_checksum;     // 扩展校验和，覆盖整个 RSDP 结构
     uint8 reserved[3];           // 保留字段，必须为 0
 }  rsdp_t;

@@ -1,5 +1,6 @@
 #include "syscall.h"
 #include "cpu.h"
+#include "apic.h"
 
 INIT_TEXT void init_syscall(void){
     //执行syscall指令时 CS=IA32_STAR_MSR[bit32-bit47]&0xFFFC  SS=IA32_STAR_MSR[bit32-bit47]&0xFFFC+8

@@ -1,6 +1,7 @@
 #include "cpu.h"
 #include "apic.h"
 #include "gdt.h"
+#include "../drivers/hpet/hpet.h"
 #include "tss.h"
 #include "interrupt.h"
 #include "syscall.h"
@@ -22,11 +23,10 @@ INIT_TEXT void get_cpu_info(void) {
     asm_cpuid(0x80000004,0,(uint32*)&cpu_info.model_name[32],(uint32*)&cpu_info.model_name[36],(uint32*)&cpu_info.model_name[40],(uint32*)&cpu_info.model_name[44]);
 
     // 获取CPU频率
-    asm_cpuid(0x16,0,&cpu_info.fundamental_frequency,&cpu_info.maximum_frequency,&cpu_info.bus_frequency,&edx);
+    asm_cpuid(0x16,0,&cpu_info.fundamental_hz,&cpu_info.maximum_hz,&cpu_info.bus_hz,&edx);
 
-    // 获取CPU TSC频率
-    asm_cpuid(0x15,0,&eax,&ebx,&ecx,&edx);
-    cpu_info.tsc_frequency = eax&ebx&ecx ? ebx*ecx/eax : 0;
+    // 直接通过hpet校准 CPU TSC频率
+    cpu_info.tsc_hz = hpet_calibrate_tsc_hz(&hpet_dev,10);
 }
 
 INIT_TEXT void enable_cpu_advanced_features(void){
@@ -172,7 +172,7 @@ INIT_TEXT void init_bsp(void){
     init_apic();                               //初始化apic
     init_syscall();                            //初始化系统调用
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
-    color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_frequency,cpu_info.maximum_frequency,cpu_info.bus_frequency,cpu_info.tsc_frequency);
+    color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_hz,cpu_info.maximum_hz,cpu_info.bus_hz,cpu_info.tsc_hz);
 }
 
 INIT_DATA uint64 ap_boot_loader_address;

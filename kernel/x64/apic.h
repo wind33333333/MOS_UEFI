@@ -4,6 +4,12 @@
 void init_apic(void);
 void enable_apic_time (uint64 time,uint32 model,uint32 ivt);
 
+#define IA32_PAT_MSR        0x277        //设置页属性PAT类型
+#define IA32_EFER_MSR       0xC0000080   // 扩展功能寄存器（Extended Feature Enable Register）
+#define IA32_STAR_MSR       0xC0000081   // 系统调用目标寄存器（Segment Target Address Register）
+#define IA32_LSTAR_MSR      0xC0000082   // 64位系统调用入口寄存器（Long Mode System Call Target Address Register）
+#define IA32_CSTAR_MSR      0xC0000083   // 兼容模式系统调用入口寄存器（Compatibility Mode System Call Target Address Register）
+#define IA32_FMASK_MSR      0xC0000084   // 系统调用掩码寄存器（System Call Flag Mask Register）
 #define IA32_APIC_BASE_MSR                0x1B   // 本地APIC基地址寄存器（Local APIC Base Address Register）
 #define IA32_TSC_DEADLINE                 0x6E0  //TSC-Deadline时间戳计数器截止寄存器
 

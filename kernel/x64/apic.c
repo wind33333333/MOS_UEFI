@@ -16,11 +16,11 @@ INIT_TEXT void init_apic(void) {
 
     //SVR寄存器 bit0-7伪中断号，bit8启用local apic bit12禁用自动广播EOI
     value=asm_rdmsr(APIC_SPURIOUS_VECTOR_MSR);
-    value |= 0x1100;
+    value |= 0x11FF;
     asm_wrmsr(APIC_SPURIOUS_VECTOR_MSR,value);
 
     //TPR任务优先级寄存器
-    asm_wrmsr(APIC_TASK_PRIORITY_MSR,0x10);
+    asm_wrmsr(APIC_TASK_PRIORITY_MSR,0x0);
 
     //热传感器LVT寄存器 bit0-7中断号，bit8-10投递模式000 fixed, bit16屏蔽标志 0未屏蔽 1屏蔽
     asm_wrmsr(APIC_LVT_THERMAL_SENSOR_MSR,0x10022);
@@ -42,13 +42,11 @@ void enable_apic_time (uint64 time,uint32 model,uint32 ivt){
 
     uint32 model_ivt = model | ivt;
     //定时器LVT寄存器 bit0-7中断向量号,bit16屏蔽标志 0未屏蔽 1屏蔽,bit17 18 00/一次计数 01/周期计数 10/TSC-Deadline
-    asm_wrmsr(APIC_LVT_TIMER_MSR,model | ivt);
+    asm_wrmsr(APIC_LVT_TIMER_MSR,model_ivt);
 
     if(model == APIC_TSC_DEADLINE){
-        uint32 tmp;
-        uint64 timestamp;
-        asm_rdtscp(&tmp,&timestamp);
-        timestamp += time;
+        uint64 cur_tsc= asm_rdtsc_start();
+        uint64 timestamp=cur_tsc + time;
         asm_wrmsr(IA32_TSC_DEADLINE,timestamp);
     } else {
         //分频配置寄存器 bit0 bit1 bit3 0:2 1:4 2:8 3:16 8:32 9:64 0xA:128 0xB:1

@@ -398,25 +398,28 @@ static inline void asm_xsetbv(uint32 register_number,uint64 value) {
 }
 
 static inline uint64 asm_rdmsr(uint32 register_number) {
-    uint64 msr;
+    uint32 low, high;
     __asm__ __volatile__(
-            "rdmsr              \n\t"
-            "shlq   $32,%%rdx   \n\t"
-            "orq    %%rdx,%%rax \n\t"
-            : "=a"(msr)
-            : "c"(register_number)
-            : "memory"
-            );
-    return msr;
+        "rdmsr"
+        : "=a"(low), "=d"(high)    // 明确告诉编译器：这行指令覆盖了 EAX(=a) 和 EDX(=d)！
+        : "c"(register_number)     // 输入 MSR 地址到 ECX(=c)
+        : "memory"                 // 读外设可能产生副作用，加 memory 屏障
+    );
+
+    // 让 C 编译器去负责 64 位拼装，绝对不会出现寄存器污染！
+    return ((uint64)high << 32) | low;
 }
 
-static inline void asm_wrmsr(uint32 register_number,uint64 value) {
+static inline void asm_wrmsr(uint32 register_number, uint64 value) {
+    uint32 low = (uint32)value;           // 自动截取低 32 位
+    uint32 high = (uint32)(value >> 32);  // 获取高 32 位
+
     __asm__ __volatile__(
-            "wrmsr \n\t"
-            :
-            : "a"((uint32)(value & 0xFFFFFFFFUL)),"d"((uint32)(value >> 32)),"c"(register_number)
-            : "memory"
-            );
+        "wrmsr"
+        : // 没有输出
+        : "a"(low), "d"(high), "c"(register_number) // 明确绑定三个寄存器
+        : "memory"
+    );
 }
 
 static inline void asm_cpuid(uint32 in_eax, uint32 in_ecx,uint32 *out_eax, uint32 *out_ebx,uint32 *out_ecx, uint32 *out_edx) {
