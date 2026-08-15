@@ -4,8 +4,63 @@
 #include "../../x64/cpu.h"
 #include "../../include/printk.h"
 #include "../../include/vmm.h"
+#include "../include/vmalloc.h"
 
-ioapic_address_t ioapic_address;
+ioapic_devive_t ioapic_dev;
+
+
+// 基础读写原语
+static inline uint32 ioapic_read(struct ioapic_devive_t *dev, uint8 index) {
+    ioapic_hw_res_t *ioapic_hw_res = dev->ioapic_hw_res;
+    uint32 val;
+    //spin_lock(&ioapic_lock);
+    ioapic_hw_res->reg_sel = index;         // 1. 选中内部寄存器索引
+    val = ioapic_hw_res->reg_win;           // 2. 读出数据
+    //spin_unlock(&ioapic_lock);
+    return val;
+}
+
+static inline void ioapic_write(struct ioapic_devive_t *dev, uint8 index, uint32 val) {
+    ioapic_hw_res_t *ioapic_hw_res = dev->ioapic_hw_res;
+    //spin_lock(&ioapic_lock);
+    ioapic_hw_res->reg_sel = index;         // 1. 选中内部寄存器索引
+    ioapic_hw_res->reg_win = val;           // 2. 写入数据
+    //spin_unlock(&ioapic_lock);
+}
+
+// -------------------------------------------------------------
+// 高级抽象：配置指定引脚的 RTE (Redirection Table Entry)
+// -------------------------------------------------------------
+void ioapic_write_rte(struct ioapic_devive_t *dev, uint8 pin, ioapic_rte_t rte) {
+    // 架构师防线：防止越界访问
+    if (pin >= dev->max_intr_entries) {
+        color_printk(RED, BLACK, "[IOAPIC] Error: Pin %d exceeds max entries %d\n",
+                     pin, dev->max_intr_entries);
+        return;
+    }
+
+    // RTE 的索引计算公式：低32位索引 = 0x10 + 2*pin, 高32位 = 0x10 + 2*pin + 1
+    uint8 low_idx = 0x10 + (pin * 2);
+    uint8 high_idx = 0x10 + (pin * 2) + 1;
+
+    // 经典内核踩坑点：为了防止在写入过程中触发幽灵中断，必须先屏蔽(Mask)，再写值！
+
+    // 1. 构造一个先屏蔽的下半部分
+    ioapic_rte_t temp_rte = rte;
+    temp_rte.bits.mask = 1;
+
+    // 2. 先写入低 32 位（此时中断已被屏蔽）
+    ioapic_write(dev, low_idx, temp_rte.dwords.low_dword);
+
+    // 3. 再写入高 32 位（配置目标 CPU 等）
+    ioapic_write(dev, high_idx, rte.dwords.high_dword);
+
+    // 4. 最后重新写入低 32 位（解除屏蔽，如果用户传入的 rte.bits.mask 是 0 的话）
+    ioapic_write(dev, low_idx, rte.dwords.low_dword);
+}
+
+
+
 
 INIT_TEXT void init_ioapic(void) {
     //从madt表中获取关键数据
@@ -28,10 +83,9 @@ INIT_TEXT void init_ioapic(void) {
                 break;
             case 1: //ioapic
                 ioapic_entry_t *ioapic_entry = (ioapic_entry_t *) madt_entry;
-                ioapic_address.ioregsel = pa_to_va(ioapic_entry->ioapic_address);
-                ioapic_address.iowin = (uint32 *) ((uint64) ioapic_address.ioregsel + 0x10);
-                ioapic_address.eoi = (uint32 *) ((uint64) ioapic_address.ioregsel + 0x40);
-                color_printk(GREEN, BLACK, "IOAPIC Addr:%#lX\n", ioapic_entry->ioapic_address);
+                ioapic_dev.phys_addr = ioapic_entry->ioapic_address;
+                ioapic_dev.ioapic_hw_res = iomap(ioapic_dev.phys_addr,4096,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K );
+                color_printk(GREEN, BLACK, "IOAPIC pa:%#lx va:%#lx \n", ioapic_dev.phys_addr,ioapic_dev.ioapic_hw_res);
                 break;
             case 2: //中断重定向
                 interrupt_source_override_entry_t *iso_entry = (interrupt_source_override_entry_t *) madt_entry;
@@ -75,6 +129,7 @@ INIT_TEXT void init_ioapic(void) {
         madt_entry = (madt_header_t *) ((uint64) madt_entry + madt_entry->length);
     }
 
+
     //禁用8259A
     asm_io_out8(0x21,0xff);     //禁用主8259A
     asm_io_out8(0xA1,0xff);     //禁用从8259A
@@ -90,6 +145,7 @@ INIT_TEXT void init_ioapic(void) {
     asm_io_out8(0x43,0xB0);
     asm_io_out8(0x42,0);
     asm_io_out8(0x42,0);        //禁用8054计时器2
+
 
     //region 初始化ioapic
     //索引寄存器0xFEC00000 32bit bit0-7
@@ -180,4 +236,6 @@ INIT_TEXT void init_ioapic(void) {
     *ioapic_address.iowin=0x10038;
     *ioapic_address.ioregsel=IO_APIC_TBL15_HIGH32;        //从SATA中断
     *ioapic_address.iowin=0;
+
+    while (1);
 }
