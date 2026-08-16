@@ -16,12 +16,14 @@
 
 static uint64 m = 0;
 
-irqreturn_e tsc_isr(cpu_registers_t *regs, void *dev_id) {
-    uint64 cur_tsc = asm_rdtsc_end(0);
-    uint64 next_tsc = cpu_info.tsc_hz + cur_tsc;
-    asm_wrmsr(IA32_TSC_DEADLINE,next_tsc);
+uint64 apic_hz;
+
+irqreturn_e apic_isr(cpu_registers_t *regs, void *dev_id) {
+    asm_wrmsr(APIC_INITIAL_COUNT_MSR, apic_hz);
     color_printk(RED,BLACK,"%ds ",++m);
 }
+
+
 
 INIT_TEXT void init_kernel(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
@@ -36,15 +38,48 @@ INIT_TEXT void init_kernel(void) {
     video_mem_map();                           //映射显存到虚拟地址空间
     efi_runtime_service_map();                 //映射efi运行时服务到虚拟地址空间
     init_ioapic();                             //初始化ioapic
-    while (1);
     init_hpet();                               //初始化hpet
     init_bsp();                                //初始化bsp核心
 
-    uint32 tsc_isr_num = alloc_irq();
-    register_isr(tsc_isr_num,tsc_isr,NULL,"tsc-isr");
-    enable_apic_time(cpu_info.tsc_hz,APIC_TSC_DEADLINE,tsc_isr_num);
+
+    // =================================================================
+    // 探测 CPU 是否支持 Invariant TSC (永不停止的绝对时钟)
+    // =================================================================
+    {
+        uint32 eax, ebx, ecx, edx;
+        uint32 max_ext_leaf;
+
+        // 1. 首先，必须检查 CPU 是否支持 "扩展 CPUID 叶子"
+        // 发送 0x80000000，EAX 会返回支持的最大扩展功能号
+        asm_cpuid(0x80000000, &max_ext_leaf, &ebx, &ecx, &edx);
+
+        // 如果最大叶子号连 0x80000007 都不到，说明 CPU 极其古老，肯定不支持
+        if (max_ext_leaf < 0x80000007) {
+            color_printk(RED,BLACK,"no 0x80000007");
+        }
+
+        // 2. 查询高级电源管理信息 (Advanced Power Management)
+        asm_cpuid(0x80000007, &eax, &ebx, &ecx, &edx);
+
+        // 3. 检查 EDX 的第 8 位 (Bit 8: Invariant TSC)
+        if (edx & (1 << 8)) {
+            color_printk(GREEN,BLACK,"Invariant TSC");
+        } else {
+            color_printk(RED,BLACK,"no Invariant TSC");
+        }
+    }
 
     while (1);
+
+    apic_hz = hpet_calibrate_apic_hz(&hpet_dev,10);
+    color_printk(RED,BLACK,"apic_time_hz %d ",apic_hz);
+
+    uint32 tsc_isr_num = alloc_irq();
+    register_isr(tsc_isr_num,apic_isr,NULL,"tsc-isr");
+    enable_apic_time(apic_hz,APIC_ONESHOT,tsc_isr_num);
+
+    while (1);
+
     bus_init();                                //总线初始化
     init_ap();                                 //初始化ap核
 

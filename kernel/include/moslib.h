@@ -269,21 +269,10 @@ static inline void asm_ltr(uint16 tss_sel) {
             );
 }
 
-static inline void asm_rdtscp(uint32 *apic_id,uint64 *timestamp) {
-    __asm__ __volatile__(
-            "rdtscp                 \n\t"  // 执行 rdtscp 指令
-            "shlq    $32, %%rdx     \n\t"  // 将高 32 位左移 32 位
-            "orq     %%rdx, %%rax   \n\t"  // 合并高低位到 RAX
-            : "=a" (*timestamp),"=c" (*apic_id)
-            :
-            : "rdx","memory"
-            );
-}
-
 /**
  * @brief 高精度起跑线读表 (Start)
  */
-static inline uint64 asm_rdtsc_start(void) {
+static inline uint64 asm_rdtsc(void) {
     uint32 lo, hi;
     // lfence 充当起跑前的栅栏，防止乱序
     __asm__ __volatile__ (
@@ -299,20 +288,18 @@ static inline uint64 asm_rdtsc_start(void) {
  * @brief 高精度终点线读表 (End)
  * @param core_id (可选) 用来接收当前运行的核心号，不需要传 NULL
  */
-static inline uint64 asm_rdtsc_end(uint32 *core_id) {
-    uint32 lo, hi, aux;
+static inline uint64 asm_rdtscp(void) {
+    uint32 lo, hi;
     // rdtscp 自带前半段屏障，lfence 充当后半段屏障
     __asm__ __volatile__ (
         "rdtscp\n\t"
         "lfence"
-        : "=a"(lo), "=d"(hi), "=c"(aux)
+        : "=a"(lo), "=d"(hi)
         :: "memory"
     );
-    if (core_id) {
-        *core_id = aux;
-    }
     return ((uint64)hi << 32) | lo;
 }
+
 
 
 static inline uint64 asm_get_cr0(void) {
@@ -422,14 +409,71 @@ static inline void asm_wrmsr(uint32 register_number, uint64 value) {
     );
 }
 
-static inline void asm_cpuid(uint32 in_eax, uint32 in_ecx,uint32 *out_eax, uint32 *out_ebx,uint32 *out_ecx, uint32 *out_edx) {
-    __asm__ __volatile__(
-            "cpuid \n\t"
-            : "=a"(*out_eax),"=b"(*out_ebx),"=c"(*out_ecx),"=d"(*out_edx)
-            : "a"(in_eax),"c"(in_ecx)
-            : "memory"
-            );
+
+/**
+ * @brief 通用 CPUID 探测函数 (完整版，支持 Sub-leaf)
+ * * @param leaf    主功能号 (传入 EAX)
+ * @param subleaf 子功能号 (传入 ECX)
+ * @param eax     返回的 EAX 值
+ * @param ebx     返回的 EBX 值
+ * @param ecx     返回的 ECX 值
+ * @param edx     返回的 EDX 值
+ */
+static inline void asm_cpuid_count(uint32 leaf, uint32 subleaf,
+                               uint32 *eax, uint32 *ebx,
+                               uint32 *ecx, uint32 *edx) 
+{
+    // GCC/Clang 内联汇编魔法
+    // "=a", "=b", "=c", "=d" 分别强制编译器将结果输出到 eax, ebx, ecx, edx 寄存器
+    // "a", "c" 强制编译器在执行 cpuid 前，将 leaf 放入 eax，subleaf 放入 ecx
+    asm volatile("cpuid"
+                 : "=a"(*eax), "=b"(*ebx), "=c"(*ecx), "=d"(*edx)
+                 : "a"(leaf), "c"(subleaf)
+                 : "memory");
 }
+
+/**
+ * @brief 简易 CPUID 探测函数 (日常使用版，Sub-leaf 默认为 0)
+ * * 大部分基础查询（如 0x1, 0x15, 0x16 等）不需要 subleaf，
+ * 使用此宏/函数可以减少传参冗余。
+ */
+static inline void asm_cpuid(uint32 leaf,
+                         uint32 *eax, uint32 *ebx,
+                         uint32 *ecx, uint32 *edx) 
+{
+    // 直接复用底层函数，强制 subleaf (ECX) 为 0
+    asm_cpuid_count(leaf, 0, eax, ebx, ecx, edx);
+}
+
+// =================================================================
+// 👑 附加赠品：极简单寄存器探测函数
+// 如果你只关心某一个寄存器的返回值，用这些函数能让代码极其干净！
+// =================================================================
+
+static inline uint32 asm_cpuid_eax(uint32 leaf) {
+    uint32 eax, ebx, ecx, edx;
+    asm_cpuid(leaf, &eax, &ebx, &ecx, &edx);
+    return eax;
+}
+
+static inline uint32 asm_cpuid_ebx(uint32 leaf) {
+    uint32 eax, ebx, ecx, edx;
+    asm_cpuid(leaf, &eax, &ebx, &ecx, &edx);
+    return ebx;
+}
+
+static inline uint32 asm_cpuid_ecx(uint32 leaf) {
+    uint32 eax, ebx, ecx, edx;
+    asm_cpuid(leaf, &eax, &ebx, &ecx, &edx);
+    return ecx;
+}
+
+static inline uint32 asm_cpuid_edx(uint32 leaf) {
+    uint32 eax, ebx, ecx, edx;
+    asm_cpuid(leaf, &eax, &ebx, &ecx, &edx);
+    return edx;
+}
+
 
 static inline void *asm_mem_cpy(void *From, void *To, long Num) {
     int d0, d1, d2;

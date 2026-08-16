@@ -60,6 +60,52 @@ void ioapic_write_rte(struct ioapic_devive_t *dev, uint8 pin, ioapic_rte_t rte) 
 }
 
 
+// IOAPIC 内部寄存器偏移
+#define IOAPIC_REG_ID      0x00
+#define IOAPIC_REG_VER     0x01
+
+// -------------------------------------------------------------
+// 禁用指定 IOAPIC 的所有引脚中断
+// -------------------------------------------------------------
+void ioapic_disable_all_interrupts(struct ioapic_devive_t *dev) {
+    ioapic_dev.ioapic_hw_res = iomap(ioapic_dev.phys_addr,4096,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K );
+
+    // 1. 读取版本寄存器 (0x01)
+    uint32 ver = ioapic_read(dev, IOAPIC_REG_VER);
+
+    // 2. 解析最大引脚数
+    // Intel 规定：Version 寄存器的 Bit 16~23 存放的是 "Maximum Redirection Entry"
+    // 注意：硬件返回的是 (总数 - 1)，比如返回 23，说明有 24 个引脚 (0~23)
+    uint8 max_entries = ((ver >> 16) & 0xFF) + 1;
+
+    // 顺手把正确的数量存入我们的设备结构体中
+    dev->max_intr_entries = max_entries;
+
+    color_printk(GREEN, BLACK, "IOAPIC Disabling all %d pa:%#lx va:%#lx \n",max_entries, ioapic_dev.phys_addr,ioapic_dev.ioapic_hw_res);
+
+
+    // 3. 遍历每一个引脚，下达“封口令”
+    for (uint8 i = 0; i < max_entries; i++) {
+        ioapic_rte_t rte;
+
+        // 先将整个 64 位清零，这会清除之前可能遗留的电平极性和投递状态
+        rte.value = 0;
+
+        // 核心：设置 Mask 位 (Bit 16 = 1) -> 屏蔽中断！
+        rte.bits.mask = 1;
+
+        // 架构师防御性编程：
+        // 即使中断被屏蔽，我们也把默认触发模式切回安全的“边沿触发(Edge)”，
+        // 并且给一个合法的默认向量号（比如 0x20），防止某些存在 Bug 的芯片乱发信号。
+        rte.bits.trigger_mode = 0; // 0 = Edge
+        rte.bits.vector = 0x00;
+
+        // 写入硬件
+        ioapic_write_rte(dev, i, rte);
+    }
+
+}
+
 
 
 INIT_TEXT void init_ioapic(void) {
@@ -84,8 +130,6 @@ INIT_TEXT void init_ioapic(void) {
             case 1: //ioapic
                 ioapic_entry_t *ioapic_entry = (ioapic_entry_t *) madt_entry;
                 ioapic_dev.phys_addr = ioapic_entry->ioapic_address;
-                ioapic_dev.ioapic_hw_res = iomap(ioapic_dev.phys_addr,4096,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K );
-                color_printk(GREEN, BLACK, "IOAPIC pa:%#lx va:%#lx \n", ioapic_dev.phys_addr,ioapic_dev.ioapic_hw_res);
                 break;
             case 2: //中断重定向
                 interrupt_source_override_entry_t *iso_entry = (interrupt_source_override_entry_t *) madt_entry;
@@ -146,96 +190,6 @@ INIT_TEXT void init_ioapic(void) {
     asm_io_out8(0x42,0);
     asm_io_out8(0x42,0);        //禁用8054计时器2
 
+    ioapic_disable_all_interrupts(&ioapic_dev);
 
-    //region 初始化ioapic
-    //索引寄存器0xFEC00000 32bit bit0-7
-    //数据寄存器0xFEC00010 32bit
-    //EOI寄存器0xFEC00040 32bit bit0-7
-    //索引0 ioapic id寄存器 读写 32bit bit24-27
-    //索引1 ioapic版本寄存器 读 32bit bit0-7apic版本 bit16-23 +1可用rte寄存器数
-    //索引0x10-0x11 中断投递寄存器0 读写 0x10低32bit 0x11高32bit bit0-7中断号 bit16中断屏蔽位 bit56-63 local apic id
-    //...
-    //索引0x3E-0x3F 中断投递寄存器23 读写
-    //endregion
-    *ioapic_address.ioregsel=IO_APIC_TBL0_LOW32;
-    *ioapic_address.iowin=0x10030;
-    *ioapic_address.ioregsel=IO_APIC_TBL0_HIGH32;        //主8259A中断
-    *ioapic_address.iowin=0;
-
-    *ioapic_address.ioregsel=IO_APIC_TBL1_LOW32;
-    *ioapic_address.iowin=0x31;
-    *ioapic_address.ioregsel=IO_APIC_TBL1_HIGH32;        //ps2键盘中断
-    *ioapic_address.iowin=0;
-
-    *ioapic_address.ioregsel=IO_APIC_TBL2_LOW32;
-    *ioapic_address.iowin=0x10032;
-    *ioapic_address.ioregsel=IO_APIC_TBL2_HIGH32;        //8254定时器0/HPTE定时器0
-    *ioapic_address.iowin=0;
-
-    *ioapic_address.ioregsel=IO_APIC_TBL3_LOW32;
-    *ioapic_address.iowin=0x10000;
-    *ioapic_address.ioregsel=IO_APIC_TBL3_HIGH32;        //串口2中断
-    *ioapic_address.iowin=0;
-
-    *ioapic_address.ioregsel=IO_APIC_TBL4_LOW32;
-    *ioapic_address.iowin=0x10000;
-    *ioapic_address.ioregsel=IO_APIC_TBL4_HIGH32;        //串口1中断
-    *ioapic_address.iowin=0;
-
-    *ioapic_address.ioregsel=IO_APIC_TBL5_LOW32;
-    *ioapic_address.iowin=0x10000;
-    *ioapic_address.ioregsel=IO_APIC_TBL5_HIGH32;        //并口2中断
-    *ioapic_address.iowin=0;
-
-    *ioapic_address.ioregsel=IO_APIC_TBL6_LOW32;
-    *ioapic_address.iowin=0x10000;
-    *ioapic_address.ioregsel=IO_APIC_TBL6_HIGH32;        //软驱中断
-    *ioapic_address.iowin=0;
-
-    *ioapic_address.ioregsel=IO_APIC_TBL7_LOW32;
-    *ioapic_address.iowin=0x10000;
-    *ioapic_address.ioregsel=IO_APIC_TBL7_HIGH32;        //并口1中断
-    *ioapic_address.iowin=0;
-
-    *ioapic_address.ioregsel=IO_APIC_TBL8_LOW32;
-    *ioapic_address.iowin=0x10033;
-    *ioapic_address.ioregsel=IO_APIC_TBL8_HIGH32;        //CMOS RTC中断/HPTE定时器1
-    *ioapic_address.iowin=0;
-
-//    *ioapic_address.ioregsel=IO_APIC_TBL9_LOW32;
-//    *ioapic_address.iowin=0x10039;
-//    *ioapic_address.ioregsel=IO_APIC_TBL9_HIGH32;        //无
-//    *ioapic_address.iowin=0;
-//
-//    *ioapic_address.ioregsel=IO_APIC_TBL10_LOW32;
-//    *ioapic_address.iowin=0x1003A;
-//    *ioapic_address.ioregsel=IO_APIC_TBL10_HIGH32;       //无
-//    *ioapic_address.iowin=0;
-
-    *ioapic_address.ioregsel=IO_APIC_TBL11_LOW32;
-    *ioapic_address.iowin=0x10034;
-    *ioapic_address.ioregsel=IO_APIC_TBL11_HIGH32;        //HPTE 定时器2
-    *ioapic_address.iowin=0;
-
-    *ioapic_address.ioregsel=IO_APIC_TBL12_LOW32;
-    *ioapic_address.iowin=0x10035;
-    *ioapic_address.ioregsel=IO_APIC_TBL12_HIGH32;        //ps2鼠标 /HPET定时器3
-    *ioapic_address.iowin=0;
-
-    *ioapic_address.ioregsel=IO_APIC_TBL13_LOW32;
-    *ioapic_address.iowin=0x10036;
-    *ioapic_address.ioregsel=IO_APIC_TBL13_HIGH32;        //FERR/DMA
-    *ioapic_address.iowin=0;
-
-    *ioapic_address.ioregsel=IO_APIC_TBL14_LOW32;
-    *ioapic_address.iowin=0x10037;
-    *ioapic_address.ioregsel=IO_APIC_TBL14_HIGH32;        //主SATA中断
-    *ioapic_address.iowin=0;
-
-    *ioapic_address.ioregsel=IO_APIC_TBL15_LOW32;
-    *ioapic_address.iowin=0x10038;
-    *ioapic_address.ioregsel=IO_APIC_TBL15_HIGH32;        //从SATA中断
-    *ioapic_address.iowin=0;
-
-    while (1);
 }

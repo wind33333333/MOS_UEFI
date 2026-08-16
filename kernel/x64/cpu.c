@@ -15,15 +15,15 @@ uint32 *apic_id_table; //apic_id_table
 INIT_TEXT void get_cpu_info(void) {
     uint32 eax,ebx,ecx,edx;
     // 获取CPU厂商
-    asm_cpuid(0,0,(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[0],(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[4]);
+    asm_cpuid_count(0,0,(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[0],(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[4]);
 
     // 获取CPU型号
-    asm_cpuid(0x80000002,0,(uint32*)&cpu_info.model_name[0],(uint32*)&cpu_info.model_name[4],(uint32*)&cpu_info.model_name[8],(uint32*)&cpu_info.model_name[12]);
-    asm_cpuid(0x80000003,0,(uint32*)&cpu_info.model_name[16],(uint32*)&cpu_info.model_name[20],(uint32*)&cpu_info.model_name[24],(uint32*)&cpu_info.model_name[28]);
-    asm_cpuid(0x80000004,0,(uint32*)&cpu_info.model_name[32],(uint32*)&cpu_info.model_name[36],(uint32*)&cpu_info.model_name[40],(uint32*)&cpu_info.model_name[44]);
+    asm_cpuid_count(0x80000002,0,(uint32*)&cpu_info.model_name[0],(uint32*)&cpu_info.model_name[4],(uint32*)&cpu_info.model_name[8],(uint32*)&cpu_info.model_name[12]);
+    asm_cpuid_count(0x80000003,0,(uint32*)&cpu_info.model_name[16],(uint32*)&cpu_info.model_name[20],(uint32*)&cpu_info.model_name[24],(uint32*)&cpu_info.model_name[28]);
+    asm_cpuid_count(0x80000004,0,(uint32*)&cpu_info.model_name[32],(uint32*)&cpu_info.model_name[36],(uint32*)&cpu_info.model_name[40],(uint32*)&cpu_info.model_name[44]);
 
     // 获取CPU频率
-    asm_cpuid(0x16,0,&cpu_info.fundamental_hz,&cpu_info.maximum_hz,&cpu_info.bus_hz,&edx);
+    asm_cpuid_count(0x16,0,&cpu_info.fundamental_hz,&cpu_info.maximum_hz,&cpu_info.bus_hz,&edx);
 
     // 直接通过hpet校准 CPU TSC频率
     cpu_info.tsc_hz = hpet_calibrate_tsc_hz(&hpet_dev,10);
@@ -67,7 +67,7 @@ INIT_TEXT void enable_cpu_advanced_features(void){
     //PKE（bit 22）描述：启用内存保护密钥功能。该功能允许程序在不修改页表的情况下控制内存的访问权限。用途：提供更灵活的内存保护机制，用于区分不同的内存访问权限。
     //endregion
     tmp=0;
-    asm_cpuid(0x7,0,&eax,&ebx,&ecx,&edx);
+    asm_cpuid_count(0x7,0,&eax,&ebx,&ecx,&edx);
     if(ecx & 4)
         tmp |= 0x800;       //bit11 UMIP
 
@@ -80,7 +80,7 @@ INIT_TEXT void enable_cpu_advanced_features(void){
     if(ebx & 0x100000)
         tmp |= 0x200000;    //bit21 SMAP
 
-    asm_cpuid(0x1,0,&eax,&ebx,&ecx,&edx);
+    asm_cpuid_count(0x1,0,&eax,&ebx,&ecx,&edx);
     if(ecx & 0x20)
         tmp |= 0x2000;      //bit13 VMXE
 
@@ -101,7 +101,7 @@ INIT_TEXT void enable_cpu_advanced_features(void){
     //BNDCSR（bit 6）：描述：控制 MPX 的 BNDCSR 状态的保存与恢复。BNDCSR 用于管理 MPX 的边界检查寄存器。用途：启用该位后，处理器会保存和恢复 MPX 边界检查的控制状态。
     //PKRU（bit 8）：描述：控制 PKRU 状态的保存与恢复。PKRU（Protection Keys for Userspace）是内存保护的一种机制。用途：启用该位后，处理器会保存和恢复与 PKRU 相关的状态.
     //endregion
-    asm_cpuid(0x7,0x0,&eax,&ebx,&ecx,&edx);
+    asm_cpuid_count(0x7,0x0,&eax,&ebx,&ecx,&edx);
     tmp=(ebx & 0x10000) ? 0xE7 : 0x7;   //AVX512=0xE7 AVX256=0x7
     value = asm_xgetbv(0);
     value |= tmp;
@@ -163,7 +163,7 @@ INIT_TEXT uint32 cpuid_to_apicid(uint32 cpu_id) {
 
 INIT_TEXT void init_bsp(void){
     uint32 apic_id,cpu_id,tmp;
-    asm_cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
+    asm_cpuid_count(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
     get_cpu_info();                            //获取cpu信息
     init_gdt();                                //初始化GDT
@@ -205,7 +205,7 @@ INIT_TEXT void init_ap(void) {
 
 INIT_TEXT void ap_main(void){
     uint32 apic_id,cpu_id,tmp;
-    asm_cpuid(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);        //获取apic_ia
+    asm_cpuid_count(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);        //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);
     enable_cpu_advanced_features();
     //asm_set_cr3(kpml4t_ptr);
