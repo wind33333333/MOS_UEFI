@@ -409,6 +409,9 @@ static inline void asm_wrmsr(uint32 register_number, uint64 value) {
     );
 }
 
+static inline void asm_wbinvd () {
+    __asm__ __volatile__ ("wbinvd" : : : "memory");
+}
 
 /**
  * @brief 通用 CPUID 探测函数 (完整版，支持 Sub-leaf)
