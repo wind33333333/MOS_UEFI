@@ -218,11 +218,11 @@ void init_hpet(void) {
     // 3. 解析各个通道的能力
     for (uint8 i = 0; i < hpet_dev.num_timers; i++) {
         uint64 timer_cap = hpet_dev.hw_regs->timers[i].config_cap;
-        hpet_dev.channels[i].id = i;
-        hpet_dev.channels[i].is_present = TRUE;
-        hpet_dev.channels[i].supports_periodic = (timer_cap & (1 << 4)) != 0;
-        hpet_dev.channels[i].supports_64bit = (timer_cap & (1 << 5)) != 0;
-        hpet_dev.channels[i].allowed_irq_bitmap = (timer_cap >> 32) & 0xFFFFFFFF;
+        hpet_dev.hpet_timers[i].id = i;
+        hpet_dev.hpet_timers[i].is_present = TRUE;
+        hpet_dev.hpet_timers[i].supports_periodic = (timer_cap & (1 << 4)) != 0;
+        hpet_dev.hpet_timers[i].supports_64bit = (timer_cap & (1 << 5)) != 0;
+        hpet_dev.hpet_timers[i].allowed_irq_bitmap = (timer_cap >> 32) & 0xFFFFFFFF;
     }
 
     color_printk(YELLOW, BLACK, "HPET Clock Frequency: %dHz  TimerNum:%d PA:%#lx VA:%#lx \n",hpet_dev.frequency_hz,hpet_dev.num_timers,hpet_dev.phys_base_addr,hpet_dev.hw_regs);

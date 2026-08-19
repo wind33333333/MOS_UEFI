@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../include/moslib.h"
+#include "../x64/times.h"
 
 
 #define ENABLE_HPET_TIMES(TIMS_CONF,TIMS_COMP,TIME,MODEL,IRQ) \
@@ -73,10 +74,13 @@ typedef struct {
     boolean     is_enabled;            // 当前是否正在运行
     uint8  assigned_irq;          // 当前分配的 IRQ 号
 
+    // 每个通道都是一个独立的闹钟，它们各自向相应的 CPU 核心报到！
+    timer_t timer;
+
     // 回调钩子 (当该通道触发中断时，执行此函数)
     void     (*isr_callback)(void *ctx);
     void     *callback_ctx;
-} hpet_channel_t;
+} hpet_timer_t;
 
 
 // ---------------------------------------------------------
@@ -91,7 +95,6 @@ typedef struct {
     // === 核心时间属性 (只读缓存) ===
     uint32        period_fs;      // 时钟周期 (飞秒)
     uint64        frequency_hz;   // 🌟 算好的物理频率 (如 19200000 Hz)
-    uint8         num_timers;     // 拥有的有效定时器数量 (如 3)
     boolean            supports_64bit; // 主计数器是否原生 64 位
     boolean            legacy_routing; // 是否支持替换 PIT/RTC (Legacy Route)
 
@@ -99,7 +102,12 @@ typedef struct {
     boolean            is_running;     // ENABLE_CNF 是否已置位
 
     // === 子节点管理 ===
-    hpet_channel_t  channels[32];   // 独立的通道上下文数组
+    uint8         num_timers;     // 拥有的有效定时器数量 (如 3)
+    hpet_timer_t  hpet_timers[32];   // 独立的通道上下文数组
+
+    // === 🌟 全局时钟源抽象 ===
+    // 时钟源(看表)是全局的，整个 HPET 作为一个表
+    clock_t       clock;
 
     // === 内核同步 ===
     // spinlock_t   lock;           // 保护硬件寄存器并发写入的自旋锁

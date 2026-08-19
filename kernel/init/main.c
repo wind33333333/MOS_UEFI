@@ -13,6 +13,7 @@
 #include "../include/bus.h"
 #include "../x64/interrupt.h"
 #include "../x64/apic.h"
+#include "../x64/mtrr.h"
 
 static uint64 m = 0;
 
@@ -40,6 +41,23 @@ INIT_TEXT void init_kernel(void) {
     init_ioapic();                             //初始化ioapic
     init_hpet();                               //初始化hpet
     init_bsp();                                //初始化bsp核心
+
+    typedef struct {
+        uint64 base_address;
+        uint64 mask;
+    }mtrr_addr_map_t;
+
+    mtrr_addr_map_t mtrr_addr_map[10] = {0};
+
+    uint64 mtrr_cap = asm_rdmsr(MSR_MTRRcap);
+    uint8 vcnt = mtrr_cap&0xFF;
+    uint64 mtrr_type = asm_rdmsr(MSR_MTRRdefType);
+    color_printk(RED,BLACK,"mtrr_cap:%#x mtrr_type:%#x \n",mtrr_cap,mtrr_type);
+    for (uint8 i = 0; i < vcnt; i++) {
+        mtrr_addr_map[i].base_address = asm_rdmsr(MSR_MTRRphysBase(i));
+        mtrr_addr_map[i].mask = asm_rdmsr(MSR_MTRRphysMask(i));
+        color_printk(RED,BLACK,"mtrr[%d] phy_base:%#lx phy_mask:%#lx \n",i,mtrr_addr_map[i].base_address,mtrr_addr_map[i].mask);
+    }
 
 
     // =================================================================
