@@ -13,7 +13,6 @@
 #include "../include/bus.h"
 #include "../x64/interrupt.h"
 #include "../x64/apic.h"
-#include "../x64/mtrr.h"
 
 static uint64 m = 0;
 

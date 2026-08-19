@@ -9,6 +9,7 @@
 #define EAGAIN      11  /* Try again (资源暂时不可用) */
 #define ENOMEM      12  /* Out of memory (资源或内存耗尽) */
 #define	EBUSY		16	/* Device or resource busy 设备或资源繁忙 */
+#define EEXIST      17  /* File exists (页表已被占用) */
 #define ENODEV      19  /* No such device (设备被拔出或端点未激活) */
 #define EINVAL      22  /* nvalid Argument，无效参数 */
 #define ENOSPC      28  /* No space left on device (总线带宽耗尽) */
@@ -18,7 +19,7 @@
 #define EPROTO      71  /* Protocol error (协议错误，如签名不匹配) */
 #define EOVERFLOW   75  /* Value too large for defined data type (数值溢出/缓冲区溢出) */
 #define EILSEQ      84  /* Illegal byte sequence (数据非法/相位错误) */
-#define ENOTSUP     95  /* Operation not supported 不支持该操作” 或 “不支持该功能 */
+#define ENOTSUP     95 /* Operation not supported (不支持的页大小) */
 #define ENOBUFS     105  /* No buffer space available (环满爆/下溢出) */
 #define ESHUTDOWN   108  /* Cannot send after transport endpoint shutdown (端点已关闭/停机) */
 #define ETIMEDOUT   110  /* Connection timed out (事件环/传输环等待超时) */

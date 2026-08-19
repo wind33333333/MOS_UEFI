@@ -8,6 +8,7 @@
 #include "printk.h"
 #include "vmm.h"
 #include "vmalloc.h"
+#include "../x64/mtrr.h"
 
 cpu_info_t cpu_info;
 uint32 *apic_id_table; //apic_id_table
@@ -165,6 +166,8 @@ INIT_TEXT void init_bsp(void){
     uint32 apic_id,cpu_id,tmp;
     asm_cpuid_count(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
+
+    bsp_backup_mtrr_state();
     get_cpu_info();                            //获取cpu信息
     init_gdt();                                //初始化GDT
     init_tss();                                //初始化TSS

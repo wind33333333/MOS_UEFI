@@ -102,7 +102,7 @@ static inline uint32 find_vmap_area_insert_pos(rb_root_t *root, vmap_area_t *vma
         }
     }
     *out_parent = parent;
-    *out_link = link;
+    *out_link = *link;
     return 0;
 }
 
@@ -116,7 +116,7 @@ static inline uint32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,
                                       rb_augment_callbacks_f *augment_callbacks) {
     rb_node_t *parent, *link;
     find_vmap_area_insert_pos(root, vmap_area, &parent, &link);
-    rb_insert(root, &vmap_area->rb_node, parent, link, augment_callbacks);
+    rb_insert(root, &vmap_area->rb_node, parent, &link, augment_callbacks);
     return 0;
 }
 
@@ -129,12 +129,12 @@ static inline uint32 erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,
 }
 
 //设置空闲状态
-static inline set_free(vmap_area_t *vmap_area) {
+static inline void set_free(vmap_area_t *vmap_area) {
     vmap_area->flags &= 0xFFFFFFFFFFFFFFFEUL;
 }
 
 //设置忙碌状态
-static inline set_used(vmap_area_t *vmap_area) {
+static inline void set_used(vmap_area_t *vmap_area) {
     vmap_area->flags |= 1;
 }
 
@@ -327,7 +327,7 @@ void *vmalloc(uint64 size) {
     while (page_count--) {
         page_t *page = alloc_pages(0);
         if (!page) return NULL;
-        mmap(kpml4t_ptr, page_to_pa(page), (uint64 *) va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
+        vmmap(kpml4t_ptr, page_to_pa(page), (uint64 *) va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
         va += PAGE_4K_SIZE;
     }
     return (void*)vmap_area->va_start;
@@ -345,7 +345,7 @@ void vfree(void *ptr) {
     while (page_count--) {
         page_t *page = pa_to_page(find_page_table_entry(kpml4t_ptr, (void *) va, pte_level) & PAGE_PA_MASK);
         free_pages(page);
-        unmmap(kpml4t_ptr, (void *) va,PAGE_4K_SIZE);
+        unvmmap(kpml4t_ptr, (void *) va,PAGE_4K_SIZE);
         va += PAGE_4K_SIZE;
     }
     //释放虚拟地址
