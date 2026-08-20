@@ -4,6 +4,7 @@
 // POSIX 错误码标准定义 (节选核心)
 // ==========================================================
 #define EPERM        1  /* Operation not permitted (操作不允许) */
+#define ENOENT      2   /* No such file or directory (页表项不存在) */
 #define EIO          5  /* I/O error (底层硬件/总线读写错误) */
 #define E2BIG       7   // Argument list too long
 #define EAGAIN      11  /* Try again (资源暂时不可用) */

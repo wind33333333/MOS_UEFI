@@ -114,7 +114,7 @@ static inline uint32 get_pte_index(void *va)
 }
 
 int32 vmmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, uint64 page_size);
-int32 unvmmap(uint64 *pml4t, void *va,uint64 page_size);
+int32 unvmmap(uint64 *pml4t, void *va);
 int32 mmap_range(uint64 *pml4t, uint64 pa, void *va, uint64 size, uint64 attr,uint64 page_size);
 int32 unmmap_range(uint64 *pml4t, void *va, uint64 size, uint64 page_size);
 uint64 find_page_table_entry(uint64 *pml4t, void *va, page_level_e page_level);

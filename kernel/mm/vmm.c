@@ -12,167 +12,171 @@ static inline uint64 adjust_huge_page_attr(uint64 attr) {
 
 // 极致性能版：映射虚拟内存 (仅限新映射 P=0 -> P=1)
 int32 vmmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, uint64 page_size) {
-    // 🚀 ILP 优化：提前并发计算所有层级的索引
+    // 🛡️ 架构师防御：在触碰任何物理内存之前，先完成所有参数和对齐校验！(Fail-Fast)
+    if (page_size == PAGE_1G_SIZE) {
+        if (((uint64)va & 0x3FFFFFFF) || (pa & 0x3FFFFFFF)) return -EINVAL;
+    } else if (page_size == PAGE_2M_SIZE) {
+        if (((uint64)va & 0x1FFFFF) || (pa & 0x1FFFFF)) return -EINVAL;
+    } else if (page_size == PAGE_4K_SIZE) {
+        if (((uint64)va & 0xFFF) || (pa & 0xFFF)) return -EINVAL;
+    } else {
+        return -ENOTSUP; // 防止传入非法的页大小导致灾难
+    }
+
     uint32 idx_pml4 = ((uint64)va >> 39) & 0x1FF;
     uint32 idx_pdpt = ((uint64)va >> 30) & 0x1FF;
     uint32 idx_pd   = ((uint64)va >> 21) & 0x1FF;
     uint32 idx_pt   = ((uint64)va >> 12) & 0x1FF;
 
-    // 中间层目录必备权限：存在 (P)、可写 (RW)、继承最终页的用户态权限 (US)
+    uint64 *cur_table = pml4t;
+    uint64 raw_entry, next_pa;
+    page_t *new_page;
+
     uint64 dir_attr = PAGE_P | PAGE_RW | (attr & PAGE_US);
 
-    // 游标变量定义 (Pointer Chasing)
-    uint64 *cur_table = pa_to_va((uint64)pml4t); // 当前正在操作的页表虚拟地址
-    uint64 raw_entry;                            // 从页表中读出的包含属性的原始值
-    uint64 next_pa;                              // 剥离了属性的、纯净的下一级物理基址
-
     // ===================================================================
-    // 【Level 4: PML4 (Page Map Level 4)】
+    // 【Level 4: PML4】
     // ===================================================================
     raw_entry = cur_table[idx_pml4];
-    if (!(raw_entry & PAGE_P)) {
-        void *new_page = alloc_pages(0);
+    if (raw_entry & PAGE_P) {
+        next_pa = raw_entry & PAGE_PA_MASK;
+    } else {
+        new_page = alloc_pages(0);
         if (!new_page) return -ENOMEM;
-
-        // 完美保留你的优化：新分配的页地址本身就是纯净的，直接用，无需按位与
         next_pa = page_to_pa(new_page);
         asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
+        va_to_page(cur_table)->refcount++; // PML4 引用计数 +1
         cur_table[idx_pml4] = next_pa | dir_attr;
-    } else {
-        // 【致命 Bug 修复】：如果目录已存在，必须剥离下方的权限位，还原出纯净物理基址！
-        next_pa = raw_entry & PAGE_PA_MASK;
     }
 
     // ===================================================================
-    // 【Level 3: PDPT (Page Directory Pointer Table)】
+    // 【Level 3: PDPT】
     // ===================================================================
     cur_table = pa_to_va(next_pa);
-
-    // 1G 巨页拦截
     if (page_size == PAGE_1G_SIZE) {
-        if (((uint64)va & 0x3FFFFFFF) || (pa & 0x3FFFFFFF)) return -EINVAL;
         if (cur_table[idx_pdpt] & PAGE_P) return -EEXIST;
-
+        va_to_page(cur_table)->refcount++; // PDPT 引用计数 +1
         cur_table[idx_pdpt] = pa | adjust_huge_page_attr(attr);
-        return 0; // 映射成功
+        return 0;
     }
 
-    // 继续向下钻取
     raw_entry = cur_table[idx_pdpt];
-    if (!(raw_entry & PAGE_P)) {
-        void *new_page = alloc_pages(0);
+    if (raw_entry & PAGE_P) {
+        next_pa = raw_entry & PAGE_PA_MASK;
+    } else {
+        new_page = alloc_pages(0);
         if (!new_page) return -ENOMEM;
-
         next_pa = page_to_pa(new_page);
         asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
+        va_to_page(cur_table)->refcount++; // PDPT 引用计数 +1
         cur_table[idx_pdpt] = next_pa | dir_attr;
-    } else {
-        next_pa = raw_entry & PAGE_PA_MASK;
     }
 
     // ===================================================================
-    // 【Level 2: PD (Page Directory)】
+    // 【Level 2: PD】
     // ===================================================================
     cur_table = pa_to_va(next_pa);
-
-    // 2M 巨页拦截
     if (page_size == PAGE_2M_SIZE) {
-        if (((uint64)va & 0x1FFFFF) || (pa & 0x1FFFFF)) return -EINVAL;
         if (cur_table[idx_pd] & PAGE_P) return -EEXIST;
-
+        va_to_page(cur_table)->refcount++; // PD 引用计数 +1
         cur_table[idx_pd] = pa | adjust_huge_page_attr(attr);
-        return 0; // 映射成功
+        return 0;
     }
 
-    // 继续向下钻取
     raw_entry = cur_table[idx_pd];
-    if (!(raw_entry & PAGE_P)) {
-        void *new_page = alloc_pages(0);
+    if (raw_entry & PAGE_P) {
+        next_pa = raw_entry & PAGE_PA_MASK;
+    } else {
+        new_page = alloc_pages(0);
         if (!new_page) return -ENOMEM;
-
         next_pa = page_to_pa(new_page);
         asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
+        va_to_page(cur_table)->refcount++; // PD 引用计数 +1
         cur_table[idx_pd] = next_pa | dir_attr;
-    } else {
-        next_pa = raw_entry & PAGE_PA_MASK;
     }
 
     // ===================================================================
-    // 【Level 1: PT (Page Table)】
+    // 【Level 1: PT】
     // ===================================================================
     cur_table = pa_to_va(next_pa);
+    if (cur_table[idx_pt] & PAGE_P) return -EEXIST;
+    va_to_page(cur_table)->refcount++; // PT 引用计数 +1
+    cur_table[idx_pt] = pa | attr;
 
-    // 4K 普通页拦截
-    if (page_size == PAGE_4K_SIZE) {
-        if (((uint64)va & 0xFFF) || (pa & 0xFFF)) return -EINVAL;
-        if (cur_table[idx_pt] & PAGE_P) return -EEXIST;
-        cur_table[idx_pt] = pa | attr;
-        return 0; // 映射成功
-    }
-
-    return -ENOTSUP; // 不支持的页大小
+    return 0;
 }
 
 
+// 智能级联删除页表映射 (无参数侦测版)
+int32 unvmmap(uint64 *pml4t, void *va) {
+    uint32 idx_pml4 = ((uint64)va >> 39) & 0x1FF;
+    uint32 idx_pdpt = ((uint64)va >> 30) & 0x1FF;
+    uint32 idx_pd   = ((uint64)va >> 21) & 0x1FF;
+    uint32 idx_pt   = ((uint64)va >> 12) & 0x1FF;
 
-//删除一个页表映射
-int32 unvmmap(uint64 *pml4t, void *va, uint64 page_size) {
     uint64 *pdptt, *pdt, *ptt;
-    uint32 pml4e_index, pdpte_index, pde_index, pte_index;
+    uint64 raw_entry;
+    page_t *page;
 
-    pml4t = pa_to_va((uint64) pml4t);
-    pml4e_index = get_pml4e_index(va);
-    if (pml4t[pml4e_index] == 0) return -1; //pml4e无效
+    // 【Level 4: PML4】
+    raw_entry = pml4t[idx_pml4];
+    if (!(raw_entry & PAGE_P)) return -ENOENT;
 
-    pdptt = pa_to_va(pml4t[pml4e_index] & PAGE_PA_MASK);
-    pdpte_index = get_pdpte_index(va);
-    if (pdptt[pdpte_index] == 0) return -1; //pdpte无效
-    if (page_size == PAGE_1G_SIZE) {
-        //如果为1G巨页，跳转到巨页释放
-        pdptt[pdpte_index] = 0;
+    // 【Level 3: PDPT】 自动侦测 1GB
+    pdptt = pa_to_va(raw_entry & PAGE_PA_MASK);
+    raw_entry = pdptt[idx_pdpt];
+    if (!(raw_entry & PAGE_P)) return -ENOENT;
+
+    if (raw_entry & PAGE_PS) { // 1GB 叶子
+        pdptt[idx_pdpt] = 0;
         asm_invlpg(va);
-        goto huge_page;
+        goto cleanup_pdpt;
     }
 
-    pdt = pa_to_va(pdptt[pdpte_index] & PAGE_PA_MASK);
-    pde_index = get_pde_index(va);
-    if (pdt[pde_index] == 0) return -1; //pde无效
-    if (page_size == PAGE_2M_SIZE) {
-        //如果等于1则表示该页为2M大页，跳转到大页释放
-        pdt[pde_index] = 0;
+    // 【Level 2: PD】 自动侦测 2MB
+    pdt = pa_to_va(raw_entry & PAGE_PA_MASK);
+    raw_entry = pdt[idx_pd];
+    if (!(raw_entry & PAGE_P)) return -ENOENT;
+
+    if (raw_entry & PAGE_PS) { // 2MB 叶子
+        pdt[idx_pd] = 0;
         asm_invlpg(va);
-        goto big_page;
+        goto cleanup_pd;
     }
 
-    ptt = pa_to_va(pdt[pde_index] & PAGE_PA_MASK); //4K页
-    pte_index = get_pte_index(va);
-    ptt[pte_index] = 0;
+    // 【Level 1: PT】 4KB 碎页
+    ptt = pa_to_va(raw_entry & PAGE_PA_MASK);
+    raw_entry = ptt[idx_pt];
+    if (!(raw_entry & PAGE_P)) return -ENOENT;
+
+    ptt[idx_pt] = 0;
     asm_invlpg(va);
 
 
-    //ptt为空则释放
-    if (asm_forward_find_qword(ptt, 512, 0) == 0) {
-        free_pages(va_to_page(ptt));
-        pdt[pde_index] = 0;
-    } else {
-        return 0;
-    }
+// ===================================================================
+// 🧹 完美对称级联回收引擎 (Bottom-Up)
+// ===================================================================
+cleanup_pt:
+    page = va_to_page(ptt);
+    if (--page->refcount != 0) return 0;
+    pdt[idx_pd] = 0; // 物理页回收，父级指针断开
+    free_pages(page);
 
-big_page:
-    //pde为空则释放
-    if (asm_forward_find_qword(pdt, 512, 0) == 0) {
-        free_pages(va_to_page(pdt));
-        pdptt[pdpte_index] = 0;
-    } else {
-        return 0;
-    }
+cleanup_pd:
+    page = va_to_page(pdt);
+    if (--page->refcount != 0) return 0;
+    pdptt[idx_pdpt] = 0;
+    free_pages(page);
 
-huge_page:
-    //pdpt为空则释放
-    if (asm_forward_find_qword(pdptt, 512, 0) == 0) {
-        free_pages(va_to_page(pdptt));
-        pml4t[pml4e_index] = 0;
-    }
+cleanup_pdpt:
+    page = va_to_page(pdptt);
+    if (--page->refcount != 0) return 0;
+    pml4t[idx_pml4] = 0;
+    free_pages(page);
+
+cleanup_pml4:
+    // 【修复 Bug 2】保持引用计数绝对对称！
+    va_to_page(pml4t)->refcount--;
     return 0;
 }
 
