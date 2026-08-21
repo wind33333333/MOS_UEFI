@@ -89,29 +89,30 @@ static inline void *pa_to_va(uint64 pa) {
     return (void *)(pa | DIRECT_MAP_OFFSET);
 }
 
+/*
 // 计算 PML4E 索引
-static inline uint32 get_pml4e_index(void *va)
+static inline uint32 get_pml4e_index(uint64 va)
 {
-    return ((uint64)va >> PML4E_SHIFT) & 0x1FF;
+    return (va >> PML4E_SHIFT) & 0x1FF;
 }
 
 // 计算 PDPTE 索引
-static inline uint32 get_pdpte_index(void *va)
+static inline uint32 get_pdpte_index(uint64 va)
 {
-    return ((uint64)va >> PDPTE_SHIFT) & 0x1FF;
+    return (va >> PDPTE_SHIFT) & 0x1FF;
 }
 
 // 计算 PDE 索引
-static inline uint32 get_pde_index(void *va)
+static inline uint32 get_pde_index(uint64 va)
 {
-    return ((uint64)va >> PDE_SHIFT) & 0x1FF;
+    return (va >> PDE_SHIFT) & 0x1FF;
 }
 
 // 计算 PTE 索引
-static inline uint32 get_pte_index(void *va)
+static inline uint32 get_pte_index(uint64 va)
 {
-    return ((uint64)va >> PTE_SHIFT) & 0x1FF;
-}
+    return (va >> PTE_SHIFT) & 0x1FF;
+}*/
 
 int32 vmmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, uint64 page_size);
 int32 unvmmap(uint64 *pml4t, void *va);

@@ -256,6 +256,11 @@ static inline uint64 get_addr_end(uint64 addr, uint64 end, uint8 shift) {
     return (boundary - 1 < end - 1) ? boundary : end;
 }
 
+// 计算页表索引索引
+static inline uint32 get_table_idx(uint64 va,uint8 shift){
+    return (va >> shift) & 0x1FF;
+}
+
 // ===================================================================
 // 【Level 1: PT 层】 4KB 碎页横向铺砖
 // ===================================================================
@@ -278,7 +283,7 @@ static inline int32 map_pte_range(uint64 *pde, uint64 pa, uint64 va, uint64 end,
     }
 
     ptt = pa_to_va(*pde & PAGE_PA_MASK);
-    uint32 idx = (va >> 12) & 0x1FF;
+    uint32 idx = get_table_idx(va,PTE_SHIFT);
 
     // 🚀 横向铺砖：沿着 PTE 数组狂奔，完美利用 L1 Cache
     do {
@@ -312,12 +317,12 @@ static inline int32 map_pde_range(uint64 *pdpte, uint64 pa, uint64 va, uint64 en
     }
 
     pdt = pa_to_va(*pdpte & PAGE_PA_MASK);
-    uint32 idx = (va >> 21) & 0x1FF;
+    uint32 idx = get_table_idx(va,PDE_SHIFT);
     uint64 next;
 
     do {
         // ✂️ 神级切割：在这 2MB 范围内，我们能走多远？
-        next = get_addr_end(va, end, 21);
+        next = get_addr_end(va, end, PDE_SHIFT);
 
         // 🧠 巨页自适应降维打击：如果凑齐一整块 2MB 且对齐完美，直接挂载大页！
         if ((next - va) == PAGE_2M_SIZE && !(va & (PAGE_2M_SIZE - 1)) && !(pa & (PAGE_2M_SIZE - 1))) {
@@ -359,12 +364,12 @@ static inline int32 map_pdpte_range(uint64 *pml4e, uint64 pa, uint64 va, uint64 
     }
 
     pdptt = pa_to_va(*pml4e & PAGE_PA_MASK);
-    uint32 idx = (va >> 30) & 0x1FF;
+    uint32 idx = get_table_idx(va,PDPTE_SHIFT);
     uint64 next;
 
     do {
         // ✂️ 切割 1GB 边界
-        next = get_addr_end(va, end, 30);
+        next = get_addr_end(va, end, PDPTE_SHIFT);
 
         // 🧠 终极巨页自适应：满足 1GB 完美对齐
         if ((next - va) == PAGE_1G_SIZE && !(va & (PAGE_1G_SIZE - 1)) && !(pa & (PAGE_1G_SIZE - 1))) {
@@ -392,13 +397,13 @@ int32 vmmap_range(uint64 *pml4t, uint64 pa, void *start_va, uint64 length, uint6
     uint64 va = (uint64)start_va;
     uint64 end = va + length;
     uint64 *cur_pml4 = pa_to_va((uint64)pml4t);
-    uint32 idx = (va >> 39) & 0x1FF;
+    uint32 idx = get_table_idx(va,PML4E_SHIFT);
     uint64 next;
     int err = 0;
 
     do {
         // ✂️ 512GB 级边界切割
-        next = get_addr_end(va, end, 39);
+        next = get_addr_end(va, end, PML4E_SHIFT);
 
         // 直接派发给 PDPT 层
         err = map_pdpte_range(&cur_pml4[idx], pa, va, next, attr);
@@ -414,9 +419,9 @@ int32 vmmap_range(uint64 *pml4t, uint64 pa, void *start_va, uint64 length, uint6
 // ===================================================================
 // 【Level 1: PT 层】 横向推平 4KB 数据页
 // ===================================================================
-static inline int32 zap_pte_range(uint64 *pde, uint64 addr, uint64 end) {
+static inline int32 unmap_pte_range(uint64 *pde, uint64 addr, uint64 end) {
     uint64 *ptt = pa_to_va(*pde & PAGE_PA_MASK);
-    uint32 idx = (addr >> 12) & 0x1FF;
+    uint32 idx = get_table_idx(addr,PTE_SHIFT);
     page_t *page_pt = va_to_page(ptt);
 
     // 🚀 横向扫荡，没有函数调用，纯内存数组操作
@@ -440,14 +445,14 @@ static inline int32 zap_pte_range(uint64 *pde, uint64 addr, uint64 end) {
 // ===================================================================
 // 【Level 2: PD 层】 巨页侦测与任务切割
 // ===================================================================
-static inline int32 zap_pde_range(uint64 *pdpte, uint64 addr, uint64 end) {
+static inline int32 unmap_pde_range(uint64 *pdpte, uint64 addr, uint64 end) {
     uint64 *pdt = pa_to_va(*pdpte & PAGE_PA_MASK);
-    uint32 idx = (addr >> 21) & 0x1FF;
+    uint32 idx = get_table_idx(addr,PDE_SHIFT);
     uint64 next;
     page_t *page_pd = va_to_page(pdt);
 
     do {
-        next = get_addr_end(addr, end, 21);
+        next = get_addr_end(addr, end, PDE_SHIFT);
         uint64 pde = pdt[idx];
 
         if (!(pde & PAGE_P)) continue; // 极速跨越：发现空洞，直接跃过这 2MB！
@@ -461,7 +466,7 @@ static inline int32 zap_pde_range(uint64 *pdpte, uint64 addr, uint64 end) {
         }
 
         // 往下发配切割好的区间。如果下级被摧毁（返回1），当前层计数 -1
-        if (zap_pte_range(&pdt[idx], addr, next)) {
+        if (unmap_pte_range(&pdt[idx], addr, next)) {
             page_pd->refcount--;
         }
 
@@ -478,14 +483,14 @@ static inline int32 zap_pde_range(uint64 *pdpte, uint64 addr, uint64 end) {
 // ===================================================================
 // 【Level 3: PDPT 层】 巨页侦测与任务切割
 // ===================================================================
-static inline int32 zap_pdpte_range(uint64 *pml4e, uint64 addr, uint64 end) {
+static inline int32 unmap_pdpte_range(uint64 *pml4e, uint64 addr, uint64 end) {
     uint64 *pdptt = pa_to_va(*pml4e & PAGE_PA_MASK);
-    uint32 idx = (addr >> 30) & 0x1FF;
+    uint32 idx = get_table_idx(addr,PDPTE_SHIFT);
     uint64 next;
     page_t *page_pdpt = va_to_page(pdptt);
 
     do {
-        next = get_addr_end(addr, end, 30);
+        next = get_addr_end(addr, end, PDPTE_SHIFT);
         uint64 pdpte = pdptt[idx];
 
         if (!(pdpte & PAGE_P)) continue; // 极速跨越空洞 1GB
@@ -498,7 +503,7 @@ static inline int32 zap_pdpte_range(uint64 *pml4e, uint64 addr, uint64 end) {
             continue;
         }
 
-        if (zap_pde_range(&pdptt[idx], addr, next)) {
+        if (unmap_pde_range(&pdptt[idx], addr, next)) {
             page_pdpt->refcount--;
         }
 
@@ -520,20 +525,19 @@ int32 unvmmap_range(uint64 *pml4t, void *start_va, uint64 size) {
 
     uint64 addr = (uint64)start_va;
     uint64 end = addr + size;
-    uint64 *cur_pml4 = pa_to_va((uint64)pml4t);
-    uint32 idx = (addr >> 39) & 0x1FF;
+    uint32 idx = get_table_idx(addr,PML4E_SHIFT);
     uint64 next;
 
     do {
-        next = get_addr_end(addr, end, 39);
-        uint64 pml4e = cur_pml4[idx];
+        next = get_addr_end(addr, end, PML4E_SHIFT);
+        uint64 pml4e = pml4t[idx];
 
         if (!(pml4e & PAGE_P)) continue;
 
         // 顶层无需判断巨页，直接下发切割好的任务
-        if (zap_pdpte_range(&cur_pml4[idx], addr, next)) {
+        if (unmap_pdpte_range(&pml4t[idx], addr, next)) {
             // 注意：PML4 表是进程树根，即使全空也不在这里 free，仅维护计数对齐即可
-            va_to_page(cur_pml4)->refcount--;
+            va_to_page(pml4t)->refcount--;
         }
     } while (idx++, addr = next, addr != end);
 
