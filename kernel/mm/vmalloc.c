@@ -327,7 +327,7 @@ void *vmalloc(uint64 size) {
     while (page_count--) {
         page_t *page = alloc_pages(0);
         if (!page) return NULL;
-        vmmap(kpml4t_ptr, page_to_pa(page), (uint64 *) va,PAGE_ROOT_RW_4K,PAGE_4K_SIZE);
+        vmmap(kpml4t_ptr, page_to_pa(page), (uint64 *) va,PAGE_KERNEL,PAGE_4K_SIZE);
         va += PAGE_4K_SIZE;
     }
     return (void*)vmap_area->va_start;
@@ -343,9 +343,7 @@ void vfree(void *ptr) {
     uint64 va = vmap_area->va_start;
     uint64 page_count = vmap_area->va_end - vmap_area->va_start >> PAGE_4K_SHIFT;
     while (page_count--) {
-        page_t *page = pa_to_page(find_page_table_entry(kpml4t_ptr, (void *) va, pte_level) & PAGE_PA_MASK);
-        free_pages(page);
-        unvmmap(kpml4t_ptr, (void *) va,PAGE_4K_SIZE);
+        unvmmap(kpml4t_ptr, (void *) va);
         va += PAGE_4K_SIZE;
     }
     //释放虚拟地址

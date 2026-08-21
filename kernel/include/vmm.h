@@ -54,11 +54,11 @@ typedef enum {
 
 // --- 内核态 (Ring 0) 常用属性 ---
 #define PAGE_KERNEL         (PAGE_G | PAGE_NX | PAGE_RW | PAGE_P | CACHE_WB) // 1. 普通内核数据/堆栈
-#define PAGE_KERNEL_RX      (PAGE_G | PAGE_RW | PAGE_P | CACHE_WB)               // 内核代码段 (无NX)
-#define PAGE_KERNEL_RO      (PAGE_G | PAGE_NX | PAGE_P | CACHE_WB)               // 内核只读数据
+#define PAGE_KERNEL_RX      (PAGE_G | PAGE_RW | PAGE_P | CACHE_WB)           // 内核代码段 (无NX)
+#define PAGE_KERNEL_RO      (PAGE_G | PAGE_NX | PAGE_P | CACHE_WB)           // 内核只读数据
 #define PAGE_KERNEL_WUC     (PAGE_G | PAGE_NX | PAGE_RW | PAGE_P | CACHE_WUC) // 2. 普通外设 IO (顺从 MTRR，安全兜底)
-#define PAGE_KERNEL_UC      (PAGE_G | PAGE_NX | PAGE_RW | PAGE_P | CACHE_UC) // 3. 暴力外设 IO (无视 MTRR，六亲不认的强制直达！)
 #define PAGE_KERNEL_WC      (PAGE_G | PAGE_NX | PAGE_RW | PAGE_P | CACHE_WC) // 4. 高吞吐 IO (强行聚合并发)
+#define PAGE_KERNEL_UC      (PAGE_G | PAGE_NX | PAGE_RW | PAGE_P | CACHE_UC) // 3. 暴力外设 IO (无视 MTRR，六亲不认的强制直达！)
 
 // --- 用户态 (Ring 3) 常用属性 ---
 #define PAGE_USER           (PAGE_NX | PAGE_US | PAGE_RW | PAGE_P | CACHE_WB)    // 用户堆栈/数据
@@ -89,7 +89,6 @@ static inline void *pa_to_va(uint64 pa) {
     return (void *)(pa | DIRECT_MAP_OFFSET);
 }
 
-/*
 // 计算 PML4E 索引
 static inline uint32 get_pml4e_index(uint64 va)
 {
@@ -112,7 +111,7 @@ static inline uint32 get_pde_index(uint64 va)
 static inline uint32 get_pte_index(uint64 va)
 {
     return (va >> PTE_SHIFT) & 0x1FF;
-}*/
+}
 
 int32 vmmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, uint64 page_size);
 int32 unvmmap(uint64 *pml4t, void *va);
