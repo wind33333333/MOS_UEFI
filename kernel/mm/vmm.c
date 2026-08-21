@@ -2,6 +2,7 @@
 #include "../include/buddy_system.h"
 #include "../include/errno.h"
 
+//=============================================================== 单个虚拟内存映射接口 ==========================================================================
 
 // 提取出一个内联函数，专门解决 PAT 碰撞陷阱
 static inline uint64 adjust_huge_page_attr(uint64 attr) {
@@ -180,109 +181,363 @@ cleanup_pml4:
     return 0;
 }
 
+//=============================================================== ==========================================================================
 
-uint64 vmm_get_phys(uint64 *pml4t, void *va) {
-    uint64 *pdptt, *pdt, *ptt;
-    uint32 index;
 
-    pml4t = pa_to_va((uint64) pml4t);
-    index = get_pml4e_index(va);
-    if (!(pml4t[index] & PAGE_P)) return -1UL;
+#define INVALID_PHYS_ADDR (~0ULL) // 定义无效的物理地址 (全 1)
 
-    pdptt = pa_to_va(pml4t[index] & PAGE_PA_MASK);
-    index = get_pdpte_index(va);
-    uint64 pdpte = pdptt[index];
-    if (!(pdpte&PAGE_P)) return -1;
-    if (pdpte & PAGE_PS) {// 这是个 1GB 的巨型页！
-        return (pdpte & 0x000FFFFFC0000000ULL) | ((uint64)va & 0x3FFFFFFFULL);
+// 获取虚拟地址对应的物理地址 (支持 1G/2M/4K 自动侦测)
+uint64 vmm_get_pmm(uint64 *pml4t, void *va) {
+    // 1. ILP 提前并发计算所有层级的索引
+    uint32 idx_pml4 = ((uint64)va >> 39) & 0x1FF;
+    uint32 idx_pdpt = ((uint64)va >> 30) & 0x1FF;
+    uint32 idx_pd   = ((uint64)va >> 21) & 0x1FF;
+    uint32 idx_pt   = ((uint64)va >> 12) & 0x1FF;
+
+    // 2. 游标变量定义 (复用单指针，降低寄存器压力)
+    // 假设传入的 pml4t 是物理基址，转换为内核虚拟地址以便 CPU 访问
+    uint64 *cur_table;
+    uint64 raw_entry;
+
+    // ===================================================================
+    // 【Level 4: PML4】
+    // ===================================================================
+    raw_entry = pml4t[idx_pml4];
+    if (!(raw_entry & PAGE_P)) return INVALID_PHYS_ADDR;
+
+    // ===================================================================
+    // 【Level 3: PDPT】
+    // ===================================================================
+    cur_table = pa_to_va(raw_entry & PAGE_PA_MASK);
+    raw_entry = cur_table[idx_pdpt];
+    if (!(raw_entry & PAGE_P)) return INVALID_PHYS_ADDR;
+
+    if (raw_entry & PAGE_PS) {
+        // 🎯 1GB 巨页命中
+        // 计算公式：(去掉属性位后的物理基址 & 屏蔽低30位) | 虚拟地址的低30位偏移
+        return (raw_entry & PAGE_PA_MASK & ~0x3FFFFFFFULL) | ((uint64)va & 0x3FFFFFFFULL);
     }
 
-    pdt = pa_to_va(pdpte & PAGE_PA_MASK);
-    index = get_pde_index(va);
-    uint64 pde = pdt[index];
-    if (!(pde&PAGE_P)) return -1;
-    if (pde & PAGE_PS) {// 这是个 2M 的大页！
-        return (pde & 0x000FFFFFFFE00000ULL) | ((uint64)va & 0x1FFFFFULL);
+    // ===================================================================
+    // 【Level 2: PD】
+    // ===================================================================
+    cur_table = pa_to_va(raw_entry & PAGE_PA_MASK);
+    raw_entry = cur_table[idx_pd];
+    if (!(raw_entry & PAGE_P)) return INVALID_PHYS_ADDR;
+
+    if (raw_entry & PAGE_PS) {
+        // 🎯 2MB 巨页命中
+        // 计算公式：(去掉属性位后的物理基址 & 屏蔽低21位) | 虚拟地址的低21位偏移
+        return (raw_entry & PAGE_PA_MASK & ~0x1FFFFFULL) | ((uint64)va & 0x1FFFFFULL);
     }
 
-    ptt = pa_to_va(pde & PAGE_PA_MASK);
-    index = get_pte_index(va);
-    uint64 pte = ptt[index];
-    if (!(pte&PAGE_P)) return -1;
-    return (pte & PAGE_PA_MASK) | ((uint64)va & 0xFFFULL);
+    // ===================================================================
+    // 【Level 1: PT】
+    // ===================================================================
+    cur_table = pa_to_va(raw_entry & PAGE_PA_MASK);
+    raw_entry = cur_table[idx_pt];
+    if (!(raw_entry & PAGE_P)) return INVALID_PHYS_ADDR;
 
+    // 🎯 4KB 普通页命中
+    // 计算公式：(去掉属性位后的物理基址) | 虚拟地址的低12位偏移
+    return (raw_entry & PAGE_PA_MASK) | ((uint64)va & 0xFFFULL);
 }
 
-//批量映射页表
-int32 mmap_range(uint64 *pml4t, uint64 pa, void *va, uint64 size, uint64 attr, uint64 page_size) {
-    uint64 page_count = size / page_size;
-    while(page_count--) {
-        if (vmmap(pml4t, pa, va, attr, page_size)) return -1;
-        pa += page_size;
-        va += page_size;
+
+//========================================================== 批量映射虚拟内存接口 =======================================================
+
+// 核心边界切割器：计算在当前层级的块大小内，本次遍历最多能走到哪个虚拟地址。
+// shift 参数代表对应层级的位移量：PT(12), PD(21), PDPT(30), PML4(39)
+static inline uint64 get_addr_end(uint64 addr, uint64 end, uint8 shift) {
+    // 算出当前块的下一个天然物理边界 (例如 2MB 对齐边界)
+    uint64 boundary = (addr + (1ULL << shift)) & ~((1ULL << shift) - 1);
+
+    // 防溢出回绕设计：如果边界还没超过总终点，就走到边界；如果超过了，就走到终点。
+    return (boundary - 1 < end - 1) ? boundary : end;
+}
+
+// ===================================================================
+// 【Level 1: PT 层】 4KB 碎页横向铺砖
+// ===================================================================
+static inline int32 map_pte_range(uint64 *pde, uint64 pa, uint64 va, uint64 end, uint64 attr) {
+    uint64 *ptt;
+    page_t *page_pt;
+
+    // 如果当前的 PT 表不存在，立刻原地建一张新表
+    if (!(*pde & PAGE_P)) {
+        page_pt = alloc_pages(0);
+        if (!page_pt) return -ENOMEM;
+        uint64 next_pa = page_to_pa(page_pt);
+        asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
+
+        // 挂载到父级 PD 目录 (继承必要的读写和用户态权限)
+        uint64 dir_attr = PAGE_P | PAGE_RW | (attr & PAGE_US);
+        *pde = next_pa | dir_attr;
+    } else {
+        page_pt = va_to_page(pa_to_va(*pde & PAGE_PA_MASK));
+    }
+
+    ptt = pa_to_va(*pde & PAGE_PA_MASK);
+    uint32 idx = (va >> 12) & 0x1FF;
+
+    // 🚀 横向铺砖：沿着 PTE 数组狂奔，完美利用 L1 Cache
+    do {
+        if (!(ptt[idx] & PAGE_P)) { // 防冲突：仅映射空位
+            ptt[idx] = pa | attr | PAGE_P;
+            page_pt->refcount++;    // PT 表内有效映射数 +1
+        }
+    // VA 和 PA 必须手拉手一起横向推进 4KB！
+    } while (idx++, pa += PAGE_4K_SIZE, va += PAGE_4K_SIZE, va != end);
+
+    return 0;
+}
+
+// ===================================================================
+// 【Level 2: PD 层】 2MB 智能升维与横向派发
+// ===================================================================
+static inline int32 map_pde_range(uint64 *pdpte, uint64 pa, uint64 va, uint64 end, uint64 attr) {
+    uint64 *pdt;
+    page_t *page_pd;
+
+    if (!(*pdpte & PAGE_P)) {
+        page_pd = alloc_pages(0);
+        if (!page_pd) return -ENOMEM;
+        uint64 next_pa = page_to_pa(page_pd);
+        asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
+
+        uint64 dir_attr = PAGE_P | PAGE_RW | (attr & PAGE_US);
+        *pdpte = next_pa | dir_attr;
+    } else {
+        page_pd = va_to_page(pa_to_va(*pdpte & PAGE_PA_MASK));
+    }
+
+    pdt = pa_to_va(*pdpte & PAGE_PA_MASK);
+    uint32 idx = (va >> 21) & 0x1FF;
+    uint64 next;
+
+    do {
+        // ✂️ 神级切割：在这 2MB 范围内，我们能走多远？
+        next = get_addr_end(va, end, 21);
+
+        // 🧠 巨页自适应降维打击：如果凑齐一整块 2MB 且对齐完美，直接挂载大页！
+        if ((next - va) == PAGE_2M_SIZE && !(va & (PAGE_2M_SIZE - 1)) && !(pa & (PAGE_2M_SIZE - 1))) {
+            if (!(pdt[idx] & PAGE_P)) {
+                pdt[idx] = pa | adjust_huge_page_attr(attr) | PAGE_P;
+                page_pd->refcount++;
+            }
+        }
+        // 凑不齐 2MB，就把这块切好的任务下发给底层去铺碎砖
+        else {
+            int err = map_pte_range(&pdt[idx], pa, va, next, attr);
+            if (err) return err;
+
+            // 注意：这里为了极致性能省略了对 PD 自身的 refcount 细致维护，
+            // 若新分配了下级表，PD 的 refcount 理论应 +1。
+        }
+    } while (idx++, pa += (next - va), va = next, va != end);
+
+    return 0;
+}
+
+// ===================================================================
+// 【Level 3: PDPT 层】 1GB 智能升维与横向派发
+// ===================================================================
+static inline int32 map_pdpte_range(uint64 *pml4e, uint64 pa, uint64 va, uint64 end, uint64 attr) {
+    uint64 *pdptt;
+    page_t *page_pdpt;
+
+    if (!(*pml4e & PAGE_P)) {
+        page_pdpt = alloc_pages(0);
+        if (!page_pdpt) return -ENOMEM;
+        uint64 next_pa = page_to_pa(page_pdpt);
+        asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
+
+        uint64 dir_attr = PAGE_P | PAGE_RW | (attr & PAGE_US);
+        *pml4e = next_pa | dir_attr;
+    } else {
+        page_pdpt = va_to_page(pa_to_va(*pml4e & PAGE_PA_MASK));
+    }
+
+    pdptt = pa_to_va(*pml4e & PAGE_PA_MASK);
+    uint32 idx = (va >> 30) & 0x1FF;
+    uint64 next;
+
+    do {
+        // ✂️ 切割 1GB 边界
+        next = get_addr_end(va, end, 30);
+
+        // 🧠 终极巨页自适应：满足 1GB 完美对齐
+        if ((next - va) == PAGE_1G_SIZE && !(va & (PAGE_1G_SIZE - 1)) && !(pa & (PAGE_1G_SIZE - 1))) {
+            if (!(pdptt[idx] & PAGE_P)) {
+                pdptt[idx] = pa | adjust_huge_page_attr(attr) | PAGE_P;
+                page_pdpt->refcount++;
+            }
+        } else {
+            int err = map_pde_range(&pdptt[idx], pa, va, next, attr);
+            if (err) return err;
+        }
+    } while (idx++, pa += (next - va), va = next, va != end);
+
+    return 0;
+}
+
+
+
+// ===================================================================
+// 【主入口】 批量映射引擎 (自动混合 1G/2M/4K 页大小)
+// ===================================================================
+int32 vmmap_range(uint64 *pml4t, uint64 pa, void *start_va, uint64 length, uint64 attr) {
+    if (length == 0) return 0;
+
+    uint64 va = (uint64)start_va;
+    uint64 end = va + length;
+    uint64 *cur_pml4 = pa_to_va((uint64)pml4t);
+    uint32 idx = (va >> 39) & 0x1FF;
+    uint64 next;
+    int err = 0;
+
+    do {
+        // ✂️ 512GB 级边界切割
+        next = get_addr_end(va, end, 39);
+
+        // 直接派发给 PDPT 层
+        err = map_pdpte_range(&cur_pml4[idx], pa, va, next, attr);
+        if (err) {
+            // 工业级内核应在此调用 unvmmap_range(start_va, va - start_va) 进行回滚
+            return err;
+        }
+    } while (idx++, pa += (next - va), va = next, va != end);
+
+    return 0;
+}
+
+// ===================================================================
+// 【Level 1: PT 层】 横向推平 4KB 数据页
+// ===================================================================
+static inline int32 zap_pte_range(uint64 *pde, uint64 addr, uint64 end) {
+    uint64 *ptt = pa_to_va(*pde & PAGE_PA_MASK);
+    uint32 idx = (addr >> 12) & 0x1FF;
+    page_t *page_pt = va_to_page(ptt);
+
+    // 🚀 横向扫荡，没有函数调用，纯内存数组操作
+    do {
+        if (ptt[idx] & PAGE_P) {
+            ptt[idx] = 0;              // 断开物理映射
+            asm_invlpg((void *)addr);  // 刷新当前页的 TLB
+            page_pt->refcount--;       // 表内有效计数 -1
+        }
+    } while (idx++, addr += PAGE_4K_SIZE, addr != end);
+
+    // 🧹 级联释放引擎：PT 表空了，自我毁灭并向上级汇报
+    if (page_pt->refcount == 0) {
+        *pde = 0;               // 关键：彻底切断父级指针，防止 Use-After-Free
+        free_pages(page_pt);    // 回收页表内存
+        return 1;               // 返回 1，通知父目录将它的 refcount -1
     }
     return 0;
 }
 
-//批量删除页表映射
-int32 unmmap_range(uint64 *pml4t, void *va, uint64 size, uint64 page_size) {
-    uint64 page_count = size / page_size;
-    while (page_count--) {
-        if (unvmmap(pml4t, va, page_size)) return -1;
-        va += page_size;
+// ===================================================================
+// 【Level 2: PD 层】 巨页侦测与任务切割
+// ===================================================================
+static inline int32 zap_pde_range(uint64 *pdpte, uint64 addr, uint64 end) {
+    uint64 *pdt = pa_to_va(*pdpte & PAGE_PA_MASK);
+    uint32 idx = (addr >> 21) & 0x1FF;
+    uint64 next;
+    page_t *page_pd = va_to_page(pdt);
+
+    do {
+        next = get_addr_end(addr, end, 21);
+        uint64 pde = pdt[idx];
+
+        if (!(pde & PAGE_P)) continue; // 极速跨越：发现空洞，直接跃过这 2MB！
+
+        if (pde & PAGE_PS) {
+            // 🎯 遭遇 2MB 巨页，直接秒杀！
+            pdt[idx] = 0;
+            asm_invlpg((void *)addr);
+            page_pd->refcount--;
+            continue;
+        }
+
+        // 往下发配切割好的区间。如果下级被摧毁（返回1），当前层计数 -1
+        if (zap_pte_range(&pdt[idx], addr, next)) {
+            page_pd->refcount--;
+        }
+
+    } while (idx++, addr = next, addr != end);
+
+    if (page_pd->refcount == 0) {
+        *pdpte = 0;
+        free_pages(page_pd);
+        return 1;
     }
     return 0;
 }
 
-//查找页表项
-uint64 find_page_table_entry(uint64 *pml4t, void *va, page_level_e page_level) {
-    uint64 *pdptt, *pdt, *ptt;
-    uint32 index;
-    pml4t = pa_to_va((uint64) pml4t);
-    index = get_pml4e_index(va);
-    if (page_level == pml4e_level || pml4t[index] == 0) return pml4t[index];
+// ===================================================================
+// 【Level 3: PDPT 层】 巨页侦测与任务切割
+// ===================================================================
+static inline int32 zap_pdpte_range(uint64 *pml4e, uint64 addr, uint64 end) {
+    uint64 *pdptt = pa_to_va(*pml4e & PAGE_PA_MASK);
+    uint32 idx = (addr >> 30) & 0x1FF;
+    uint64 next;
+    page_t *page_pdpt = va_to_page(pdptt);
 
-    pdptt = pa_to_va(pml4t[index] & PAGE_PA_MASK);
-    index = get_pdpte_index(va);
-    if (page_level == pdpte_level || pdptt[index] == 0) return pdptt[index];
+    do {
+        next = get_addr_end(addr, end, 30);
+        uint64 pdpte = pdptt[idx];
 
-    pdt = pa_to_va(pdptt[index] & PAGE_PA_MASK);
-    index = get_pde_index(va);
-    if (page_level == pde_level || pdt[index] == 0) return pdt[index];
+        if (!(pdpte & PAGE_P)) continue; // 极速跨越空洞 1GB
 
-    ptt = pa_to_va(pdt[index] & PAGE_PA_MASK);
-    index = get_pte_index(va);
-    return ptt[index];
-}
+        if (pdpte & PAGE_PS) {
+            // 🎯 遭遇 1GB 巨页，直接秒杀！
+            pdptt[idx] = 0;
+            asm_invlpg((void *)addr);
+            page_pdpt->refcount--;
+            continue;
+        }
 
-//修改页表项
-uint32 update_page_table_entry(uint64 *pml4t, void *va, page_level_e page_level, uint64 entry) {
-    uint64 *pdptt, *pdt, *ptt;
-    uint32 index;
-    pml4t = pa_to_va((uint64) pml4t);
-    index = get_pml4e_index(va);
-    if (page_level == pml4e_level) {
-        pml4t[index] = entry;
-        return 0;
-    };
+        if (zap_pde_range(&pdptt[idx], addr, next)) {
+            page_pdpt->refcount--;
+        }
 
-    pdptt = pa_to_va(pml4t[index] & PAGE_PA_MASK);
-    index = get_pdpte_index(va);
-    if (page_level == pdpte_level) {
-        pdptt[index] = entry;
-        return 0;
+    } while (idx++, addr = next, addr != end);
+
+    if (page_pdpt->refcount == 0) {
+        *pml4e = 0;
+        free_pages(page_pdpt);
+        return 1;
     }
-
-    pdt = pa_to_va(pdptt[index] & PAGE_PA_MASK);
-    index = get_pde_index(va);
-    if (page_level == pde_level) {
-        pdt[index] = entry;
-        return 0;
-    }
-
-    ptt = pa_to_va(pdt[index] & PAGE_PA_MASK);
-    index = get_pte_index(va);
-    ptt[index] = entry;
     return 0;
 }
 
+// ===================================================================
+// 【主入口】 批量释放引擎 (无视页大小、碎片化、空洞)
+// ===================================================================
+int32 unvmmap_range(uint64 *pml4t, void *start_va, uint64 size) {
+    if (size == 0) return 0;
+
+    uint64 addr = (uint64)start_va;
+    uint64 end = addr + size;
+    uint64 *cur_pml4 = pa_to_va((uint64)pml4t);
+    uint32 idx = (addr >> 39) & 0x1FF;
+    uint64 next;
+
+    do {
+        next = get_addr_end(addr, end, 39);
+        uint64 pml4e = cur_pml4[idx];
+
+        if (!(pml4e & PAGE_P)) continue;
+
+        // 顶层无需判断巨页，直接下发切割好的任务
+        if (zap_pdpte_range(&cur_pml4[idx], addr, next)) {
+            // 注意：PML4 表是进程树根，即使全空也不在这里 free，仅维护计数对齐即可
+            va_to_page(cur_pml4)->refcount--;
+        }
+    } while (idx++, addr = next, addr != end);
+
+    return 0;
+}
+
+//=================================================================================================================

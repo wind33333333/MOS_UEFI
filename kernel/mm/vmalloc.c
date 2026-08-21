@@ -379,7 +379,7 @@ int32 uniomap(void *ptr,uint64 page_size) {
     if ((page_size != PAGE_4K_SIZE && page_size != PAGE_2M_SIZE && page_size != PAGE_1G_SIZE) || !vmap_area)
         return -1;
     //卸载映射
-    unmmap_range(kpml4t_ptr,ptr,vmap_area->va_end - vmap_area->va_start,page_size);
+    unvmmap_range(kpml4t_ptr,ptr,vmap_area->va_end - vmap_area->va_start,page_size);
     //释放虚拟地址
     free_vmap_area(vmap_area);
 }

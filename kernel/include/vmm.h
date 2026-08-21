@@ -48,9 +48,9 @@ typedef enum {
 
 // 基础缓存模式组合 
 #define CACHE_WB    0                           // 回写 (普通内存)
-#define CACHE_UC    (PAGE_PCD | PAGE_PWT)       // 强不可缓存 (Strong UC)
 #define CACHE_WC    (PAGE_PAT | PAGE_PCD)       // 写合并 (WC)
 #define CACHE_WUC   (PAGE_PCD)                  // 弱不可缓存 (UC-)
+#define CACHE_UC    (PAGE_PCD | PAGE_PWT)       // 强不可缓存 (Strong UC)
 
 // --- 内核态 (Ring 0) 常用属性 ---
 #define PAGE_KERNEL         (PAGE_G | PAGE_NX | PAGE_RW | PAGE_P | CACHE_WB) // 1. 普通内核数据/堆栈
@@ -115,10 +115,9 @@ static inline uint32 get_pte_index(void *va)
 
 int32 vmmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, uint64 page_size);
 int32 unvmmap(uint64 *pml4t, void *va);
-int32 mmap_range(uint64 *pml4t, uint64 pa, void *va, uint64 size, uint64 attr,uint64 page_size);
-int32 unmmap_range(uint64 *pml4t, void *va, uint64 size, uint64 page_size);
-uint64 find_page_table_entry(uint64 *pml4t, void *va, page_level_e page_level);
-uint32 update_page_table_entry(uint64 *pml4t, void *va, page_level_e page_level, uint64 entry);
+int32 vmmap_range(uint64 *pml4t, uint64 pa, void *start_va, uint64 length, uint64 attr);
+int32 unvmmap_range(uint64 *pml4t, void *start_va, uint64 size);
+uint64 vmm_get_pmm(uint64 *pml4t, void *va);
 
 
 // 2. 虚拟地址空间上下文 (Address Space Context)
