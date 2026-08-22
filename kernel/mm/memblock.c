@@ -8,7 +8,7 @@ INIT_DATA efi_runtime_memmap_t efi_runtime_memmap;
 
 INIT_TEXT void init_memblock(void) {
     uint64 phy_mem_size = 0;
-    uint64 kernel_end = _end_stack - KERNEL_OFFSET;
+    uint64 kernel_end = (uint64)_end_stack - KERNEL_OFFSET;
     uint64 kernel_size = _end_stack - _start_text;
     uint32 count = boot_info->mem_map_size / boot_info->mem_descriptor_size;
     for (uint32 i = 0; i < count; i++) {
