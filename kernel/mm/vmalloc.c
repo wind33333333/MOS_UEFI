@@ -2,7 +2,7 @@
 #include "../include/buddy_system.h"
 #include "../include/slub.h"
 #include "../include/printk.h"
-#include "../include/vmm.h"
+
 #include "../init/kernel_page_table.h"
 
 //忙碌树
@@ -327,7 +327,7 @@ void *vmalloc(uint64 size) {
     while (page_count--) {
         page_t *page = alloc_pages(0);
         if (!page) return NULL;
-        vmmap(kpml4t_ptr, page_to_pa(page), (uint64 *) va,PAGE_KERNEL,PAGE_4K_SIZE);
+        vmmap(kpml4t_ptr, va,page_to_pa(page), PAGE_KERNEL,PAGE_4K_SIZE);
         va += PAGE_4K_SIZE;
     }
     return (void*)vmap_area->va_start;
@@ -343,7 +343,7 @@ void vfree(void *ptr) {
     uint64 va = vmap_area->va_start;
     uint64 page_count = vmap_area->va_end - vmap_area->va_start >> PAGE_4K_SHIFT;
     while (page_count--) {
-        unvmmap(kpml4t_ptr, (void *) va);
+        unvmmap(kpml4t_ptr,va);
         va += PAGE_4K_SIZE;
     }
     //释放虚拟地址
@@ -355,32 +355,107 @@ void vfree(void *ptr) {
  * pa:物理起始地址
  * attr:属性
  */
-void *iomap(uint64 pa, uint64 size, uint64 page_size, uint64 attr) {
-    if (size == 0 || (page_size != PAGE_4K_SIZE && page_size != PAGE_2M_SIZE && page_size != PAGE_1G_SIZE))
-        return NULL;
-    //对齐
-    pa = align_down(pa, page_size);
-    size = align_up(size, page_size);
+void *__ioremap(uint64 start_pa, uint64 size, uint64 attr) {
+    if (size == 0) return NULL;
+
+    uint64 offset = start_pa & (PAGE_4K_SIZE - 1);
+    // 物理地址向下对齐到 4KB
+    uint64 aligned_pa = align_down(start_pa,PAGE_4K_SIZE);
+    // 映射的总长度必须包含偏移量，并向上对齐到 4KB (例如 128字节 + 0x48偏移 -> 需 1 页)
+    uint64 aligned_size = align_up(size,PAGE_4K_SIZE);
+
     //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, size, page_size);
+    vmap_area_t *vmap_area = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, aligned_size, PAGE_4K_SIZE);
+    if (!vmap_area) {
+        return NULL; // 🛡️ 防御：虚拟空间耗尽，安全退出
+    }
+
     //映射物理内存
-    mmap_range(kpml4t_ptr,pa,(void*)vmap_area->va_start,size,attr,page_size);
-    return (void *) vmap_area->va_start;
+    int32 err = vmmap_range(kpml4t_ptr,vmap_area->va_start,aligned_pa,aligned_size,attr);
+
+    // 4. 🛡️ 错误回滚：如果铺页表时物理内存耗尽，必须释放刚刚申请的 vmap_area！
+    if (err != 0) {
+        free_vmap_area(vmap_area);
+        return NULL;
+    }
+
+    return (void *)(vmap_area->va_start + offset);
+}
+
+
+/*
+ * 设备虚拟地址释放和卸载映射
+ */
+int32 ioreunmap(void *ptr) {
+    if (!ptr) return -1;
+
+    // 1. 消除传入指针的页内偏移，还原出当初分配的真实 va_start
+    uint64 aligned_va = (uint64)ptr & PAGE_4K_MASK;
+
+    // 2. 通过对齐后的虚拟地址找 vmap_area
+    vmap_area_t *vmap_area = find_vmap_area(aligned_va);
+    if (!vmap_area) {
+        return -1; // 🛡️ 防御：野指针或已被释放
+    }
+
+    uint64 size = vmap_area->va_end - vmap_area->va_start;
+
+    // 3. 呼叫底层的极速卸载引擎 (自动侦测 1G/2M/4K，级联释放死锁防护)
+    unvmmap_range(kpml4t_ptr,aligned_va, size);
+
+    // 4. 将虚拟地址区间交还给大管家
+    free_vmap_area(vmap_area);
+
+    return 0;
+}
+
+//用于普通 RAM，或 ACPI 表所在的物理内存。
+void *memremap(uint64 start_pa,uint64 size) {
+    // 1. 如果在常规直接映射区内，极速返回 (O(1))
+    if (is_in_direct_mapping_zone(pa)) {
+        return (void *)(pa + PAGE_OFFSET);
+    }
+
+    // 2. 🛡️ 架构师安全防线：拦截真正的 IO 寄存器！
+    // 检查这段物理地址是不是已经被其他外设声明为 STRICT_IO (严格外设寄存器)
+    if (is_strict_mmio_device_address(pa)) {
+        // 🚨 致命错误：驱动开发者误用了 memremap 来映射设备寄存器！
+        // 如果这里强行映射为 WB 会导致硬件死机，直接拒绝并打印内核警告！
+        WARN("FATAL: Try to memremap a strict MMIO device address with WB cache!\n");
+        return NULL;
+    }
+
+    // 3. 确信它是诸如 ACPI 等保留内存，回退到 vmalloc 区分配并用 WB 映射
+    return __ioremap(pa, size, PAGE_KERNEL);
 }
 
 /*
- *设备虚拟地址释放和卸载映射
+ * 卸载/释放 memremap 映射的虚拟内存
+ * 完美匹配 memremap 的双轨制分配逻辑 (直接映射区 O(1) vs 动态回退)
  */
-int32 uniomap(void *ptr,uint64 page_size) {
-    //通过虚拟地址找Vmap_area
-    vmap_area_t *vmap_area = find_vmap_area((uint64) ptr);
-    if ((page_size != PAGE_4K_SIZE && page_size != PAGE_2M_SIZE && page_size != PAGE_1G_SIZE) || !vmap_area)
-        return -1;
-    //卸载映射
-    unvmmap_range(kpml4t_ptr,ptr,vmap_area->va_end - vmap_area->va_start,page_size);
-    //释放虚拟地址
-    free_vmap_area(vmap_area);
+int32 unmemremap(void *ptr) {
+    if (!ptr) return -1;
+
+    uint64 va = (uint64)ptr;
+
+    // 1. 🛡️ 智能拦截：检查该虚拟地址是否属于线性直接映射区
+    if (is_in_direct_mapping_zone(va)) {
+        // 🎯 极速路径 (O(1))：
+        // 说明当初 memremap 发现这是合法的 RAM，直接返回了 pa + PAGE_OFFSET。
+        // 因为直接映射区的页表是开机焊死、全局永久存在的，所以我们【什么都不需要做】！
+        // 直接返回成功即可，这极大地节省了 CPU 周期。
+        return 0;
+    }
+
+    // 2. ↩️ 回退路径 (Fallback)：
+    // 如果走到这里，说明这个地址不属于直接映射区（比如它处于 vmalloc 区域）。
+    // 这意味着当初 memremap 遇到的是 ACPI 等保留内存，从而回退调用了 __ioremap。
+    // 因此，我们只需直接调用 unioremap，让它去查找 vmap_area 并执行级联卸载。
+    return ioreunmap(ptr);
 }
+
+
+
 
 //初始化vmalloc
 void INIT_TEXT init_vmalloc(void) {

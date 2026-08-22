@@ -2,6 +2,7 @@
 
 #include "moslib.h"
 #include "rbtree.h"
+#include "../include/vmm.h"
 
 //60TB vmalloc映射区
 #define VMALLOC_START 0xFFFFC00000000000UL
@@ -44,6 +45,27 @@ typedef struct {
 void init_vmalloc(void);
 void *vmalloc(uint64 size);
 void vfree(void *ptr);
-void *iomap (uint64 pa,uint64 size,uint64 page_size,uint64 attr);
-int32 uniomap (void *ptr,uint64 page_size);
+
+//底层虚拟地址分配映射
+void *__ioremap(uint64 start_pa, uint64 size, uint64 attr);
+
+/*
+ * 设备虚拟地址分配和映射 (Uncacheable, 最常用)
+ */
+void *ioremap(uint64 start_pa, uint64 size) {
+    return __ioremap(start_pa, size, PAGE_KERNEL_WUC);
+}
+
+/*
+ * 设备虚拟地址分配和映射 (Write-Combining, 常用于显卡 FrameBuffer)
+ */
+void *ioremap_wc(uint64 start_pa, uint64 size) {
+    return __ioremap(start_pa, size, PAGE_KERNEL_WC);
+}
+
+//卸载映射归还虚拟内存
+int32 ioreunmap(void *ptr);
+
+void *memremap(uint64 start_pa,uint64 size);
+int32 unmemremap(void *ptr);
 

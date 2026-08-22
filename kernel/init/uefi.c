@@ -10,7 +10,7 @@ void efi_runtime_service_map(void) {
         if (efi_runtime_memmap.mem_map[i].Type == EFI_RUNTIME_SERVICES_DATA) {
             efi_runtime_memmap.mem_map[i].VirtualStart = (uint64) pa_to_va(efi_runtime_memmap.mem_map[i].PhysicalStart);
         } else {
-            efi_runtime_memmap.mem_map[i].VirtualStart = (uint64) iomap(efi_runtime_memmap.mem_map[i].PhysicalStart,
+            efi_runtime_memmap.mem_map[i].VirtualStart = (uint64) ioremap(efi_runtime_memmap.mem_map[i].PhysicalStart,
                                                                 efi_runtime_memmap.mem_map[i].NumberOfPages << PAGE_4K_SHIFT,
                                                                 PAGE_4K_SIZE,PAGE_ROOT_RWX_4K);
         }

@@ -394,7 +394,7 @@ INIT_TEXT void video_mem_map(void) {
         page_size = PAGE_4K_SIZE;
         attr = PAGE_ROOT_RW_WC_4K;
     }
-    Pos.FB_addr = iomap(Pos.FB_addr,Pos.FB_length,page_size,attr);
+    Pos.FB_addr = ioremap(Pos.FB_addr,Pos.FB_length,page_size,attr);
     color_printk(GREEN, BLACK, "Voide Memory Physics Address:%#lx -> Virtual Address:%#lx\n",boot_info->frame_buffer_base,Pos.FB_addr);
 }
 

@@ -235,8 +235,8 @@ static inline void spin_unlock_irqrestore(uint32 *lock, uint64 flags) {
 
 
 
-static inline void asm_invlpg(void *vir_addr) {
-    __asm__ __volatile__("invlpg (%0) \n\t" : : "r"(vir_addr) : "memory");
+static inline void asm_invlpg(uint64 va) {
+    __asm__ __volatile__("invlpg (%0) \n\t" : : "r"(va) : "memory");
 }
 
 static inline void asm_lgdt(void *gdt_ptr, uint16 code64_sel, uint16 data64_sel) {

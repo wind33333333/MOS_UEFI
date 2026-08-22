@@ -12,22 +12,22 @@ static inline uint64 adjust_huge_page_attr(uint64 attr) {
 }
 
 // 极致性能版：映射虚拟内存 (仅限新映射 P=0 -> P=1)
-int32 vmmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, uint64 page_size) {
+int32 vmmap(uint64 *pml4t, uint64 va,uint64 pa,  uint64 attr, uint64 page_size) {
     // 🛡️ 架构师防御：在触碰任何物理内存之前，先完成所有参数和对齐校验！(Fail-Fast)
     if (page_size == PAGE_1G_SIZE) {
-        if (((uint64)va & 0x3FFFFFFF) || (pa & 0x3FFFFFFF)) return -EINVAL;
+        if ((va & 0x3FFFFFFF) || (pa & 0x3FFFFFFF)) return -EINVAL;
     } else if (page_size == PAGE_2M_SIZE) {
-        if (((uint64)va & 0x1FFFFF) || (pa & 0x1FFFFF)) return -EINVAL;
+        if ((va & 0x1FFFFF) || (pa & 0x1FFFFF)) return -EINVAL;
     } else if (page_size == PAGE_4K_SIZE) {
-        if (((uint64)va & 0xFFF) || (pa & 0xFFF)) return -EINVAL;
+        if ((va & 0xFFF) || (pa & 0xFFF)) return -EINVAL;
     } else {
         return -ENOTSUP; // 防止传入非法的页大小导致灾难
     }
 
-    uint32 idx_pml4 = ((uint64)va >> 39) & 0x1FF;
-    uint32 idx_pdpt = ((uint64)va >> 30) & 0x1FF;
-    uint32 idx_pd   = ((uint64)va >> 21) & 0x1FF;
-    uint32 idx_pt   = ((uint64)va >> 12) & 0x1FF;
+    uint32 idx_pml4 = (va >> 39) & 0x1FF;
+    uint32 idx_pdpt = (va >> 30) & 0x1FF;
+    uint32 idx_pd   = (va >> 21) & 0x1FF;
+    uint32 idx_pt   = (va >> 12) & 0x1FF;
 
     uint64 *cur_table = pml4t;
     uint64 raw_entry, next_pa;
@@ -109,11 +109,11 @@ int32 vmmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, uint64 page_size) {
 
 
 // 智能级联删除页表映射 (无参数侦测版)
-int32 unvmmap(uint64 *pml4t, void *va) {
-    uint32 idx_pml4 = ((uint64)va >> 39) & 0x1FF;
-    uint32 idx_pdpt = ((uint64)va >> 30) & 0x1FF;
-    uint32 idx_pd   = ((uint64)va >> 21) & 0x1FF;
-    uint32 idx_pt   = ((uint64)va >> 12) & 0x1FF;
+int32 unvmmap(uint64 *pml4t, uint64 va) {
+    uint32 idx_pml4 = (va >> 39) & 0x1FF;
+    uint32 idx_pdpt = (va >> 30) & 0x1FF;
+    uint32 idx_pd   = (va >> 21) & 0x1FF;
+    uint32 idx_pt   = (va >> 12) & 0x1FF;
 
     uint64 *pdptt, *pdt, *ptt;
     uint64 raw_entry;
@@ -264,7 +264,7 @@ static inline uint32 get_table_idx(uint64 va,uint8 shift){
 // ===================================================================
 // 【Level 1: PT 层】 4KB 碎页横向铺砖
 // ===================================================================
-static inline int32 map_pte_range(uint64 *pde, uint64 pa, uint64 va, uint64 end, uint64 attr) {
+static inline int32 map_pte_range(uint64 *pde,uint64 va, uint64 pa,  uint64 end, uint64 attr) {
     uint64 *ptt;
     page_t *page_pt;
 
@@ -300,7 +300,7 @@ static inline int32 map_pte_range(uint64 *pde, uint64 pa, uint64 va, uint64 end,
 // ===================================================================
 // 【Level 2: PD 层】 2MB 智能升维与横向派发
 // ===================================================================
-static inline int32 map_pde_range(uint64 *pdpte, uint64 pa, uint64 va, uint64 end, uint64 attr) {
+static inline int32 map_pde_range(uint64 *pdpte,uint64 va,  uint64 pa, uint64 end, uint64 attr) {
     uint64 *pdt;
     page_t *page_pd;
 
@@ -333,7 +333,7 @@ static inline int32 map_pde_range(uint64 *pdpte, uint64 pa, uint64 va, uint64 en
         }
         // 凑不齐 2MB，就把这块切好的任务下发给底层去铺碎砖
         else {
-            int err = map_pte_range(&pdt[idx], pa, va, next, attr);
+            int err = map_pte_range(&pdt[idx],va, pa,  next, attr);
             if (err) return err;
 
             // 注意：这里为了极致性能省略了对 PD 自身的 refcount 细致维护，
@@ -347,7 +347,7 @@ static inline int32 map_pde_range(uint64 *pdpte, uint64 pa, uint64 va, uint64 en
 // ===================================================================
 // 【Level 3: PDPT 层】 1GB 智能升维与横向派发
 // ===================================================================
-static inline int32 map_pdpte_range(uint64 *pml4e, uint64 pa, uint64 va, uint64 end, uint64 attr) {
+static inline int32 map_pdpte_range(uint64 *pml4e, uint64 va, uint64 pa, uint64 end, uint64 attr) {
     uint64 *pdptt;
     page_t *page_pdpt;
 
@@ -378,7 +378,7 @@ static inline int32 map_pdpte_range(uint64 *pml4e, uint64 pa, uint64 va, uint64 
                 page_pdpt->refcount++;
             }
         } else {
-            int err = map_pde_range(&pdptt[idx], pa, va, next, attr);
+            int err = map_pde_range(&pdptt[idx],va,pa,next, attr);
             if (err) return err;
         }
     } while (idx++, pa += (next - va), va = next, va != end);
@@ -391,11 +391,11 @@ static inline int32 map_pdpte_range(uint64 *pml4e, uint64 pa, uint64 va, uint64 
 // ===================================================================
 // 【主入口】 批量映射引擎 (自动混合 1G/2M/4K 页大小)
 // ===================================================================
-int32 vmmap_range(uint64 *pml4t, uint64 pa, void *start_va, uint64 length, uint64 attr) {
-    if (length == 0) return 0;
+int32 vmmap_range(uint64 *pml4t, uint64 start_va,uint64 pa, uint64 size, uint64 attr){
+    if (size == 0) return 0;
 
-    uint64 va = (uint64)start_va;
-    uint64 end = va + length;
+    uint64 va = start_va;
+    uint64 end = va + size;
     uint64 *cur_pml4 = pa_to_va((uint64)pml4t);
     uint32 idx = get_table_idx(va,PML4E_SHIFT);
     uint64 next;
@@ -406,7 +406,7 @@ int32 vmmap_range(uint64 *pml4t, uint64 pa, void *start_va, uint64 length, uint6
         next = get_addr_end(va, end, PML4E_SHIFT);
 
         // 直接派发给 PDPT 层
-        err = map_pdpte_range(&cur_pml4[idx], pa, va, next, attr);
+        err = map_pdpte_range(&cur_pml4[idx],  va, pa,next, attr);
         if (err) {
             // 工业级内核应在此调用 unvmmap_range(start_va, va - start_va) 进行回滚
             return err;
@@ -415,6 +415,11 @@ int32 vmmap_range(uint64 *pml4t, uint64 pa, void *start_va, uint64 length, uint6
 
     return 0;
 }
+
+//=================================================================================================================
+
+
+//============================================ 批量卸载虚拟内存映射======================================================
 
 // ===================================================================
 // 【Level 1: PT 层】 横向推平 4KB 数据页
@@ -428,7 +433,7 @@ static inline int32 unmap_pte_range(uint64 *pde, uint64 addr, uint64 end) {
     do {
         if (ptt[idx] & PAGE_P) {
             ptt[idx] = 0;              // 断开物理映射
-            asm_invlpg((void *)addr);  // 刷新当前页的 TLB
+            asm_invlpg(addr);  // 刷新当前页的 TLB
             page_pt->refcount--;       // 表内有效计数 -1
         }
     } while (idx++, addr += PAGE_4K_SIZE, addr != end);
@@ -460,7 +465,7 @@ static inline int32 unmap_pde_range(uint64 *pdpte, uint64 addr, uint64 end) {
         if (pde & PAGE_PS) {
             // 🎯 遭遇 2MB 巨页，直接秒杀！
             pdt[idx] = 0;
-            asm_invlpg((void *)addr);
+            asm_invlpg(addr);
             page_pd->refcount--;
             continue;
         }
@@ -498,7 +503,7 @@ static inline int32 unmap_pdpte_range(uint64 *pml4e, uint64 addr, uint64 end) {
         if (pdpte & PAGE_PS) {
             // 🎯 遭遇 1GB 巨页，直接秒杀！
             pdptt[idx] = 0;
-            asm_invlpg((void *)addr);
+            asm_invlpg(addr);
             page_pdpt->refcount--;
             continue;
         }
@@ -520,10 +525,10 @@ static inline int32 unmap_pdpte_range(uint64 *pml4e, uint64 addr, uint64 end) {
 // ===================================================================
 // 【主入口】 批量释放引擎 (无视页大小、碎片化、空洞)
 // ===================================================================
-int32 unvmmap_range(uint64 *pml4t, void *start_va, uint64 size) {
+int32 unvmmap_range(uint64 *pml4t, uint64 start_va, uint64 size) {
     if (size == 0) return 0;
 
-    uint64 addr = (uint64)start_va;
+    uint64 addr = start_va;
     uint64 end = addr + size;
     uint32 idx = get_table_idx(addr,PML4E_SHIFT);
     uint64 next;

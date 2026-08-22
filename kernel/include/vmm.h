@@ -3,14 +3,6 @@
 #include "moslib.h"
 #include "../init/linkage.h"
 
-//页级别
-typedef enum {
-    pml4e_level=4,
-    pdpte_level=3,
-    pde_level=2,
-    pte_level=1
-}page_level_e;
-
 //页表项物理地址掩码
 #define PAGE_PA_MASK    0x7FFFFFFFF000UL
 
@@ -70,13 +62,20 @@ typedef enum {
 #define PDE_SHIFT 21    // PDE 索引的位移量
 #define PTE_SHIFT 12    // PTE 索引的位移量
 
+// 缺页异常硬件错误码解析宏 (来源于 CPU 压入栈的 Error Code)
+#define PF_ERR_PRESENT  (1 << 0)  // 0=页不存在，1=页存在但权限冲突(如写只读页)
+#define PF_ERR_WRITE    (1 << 1)  // 0=因读触发，1=因写触发
+#define PF_ERR_USER     (1 << 2)  // 0=内核态触发，1=用户态进程触发
+#define PF_ERR_INSTR    (1 << 4)  // 1=因取指令触发 (如触发了 NX 位保护)
+
+
 // 对齐函数，确保 addr 按 align 对齐（align 为 2 的幂）
-static inline uint64 align_up(uint64 addr, uint64 align) {
-    return addr + (align - 1) & -align;
+static inline uint64 align_up(uint64 value, uint64 align) {
+    return value + (align - 1) & -align;
 }
 
-static inline uint64 align_down(uint64 addr, uint64 align) {
-    return addr & -align;
+static inline uint64 align_down(uint64 value, uint64 align) {
+    return value & -align;
 }
 
 //虚拟地址转物理地址
@@ -89,94 +88,10 @@ static inline void *pa_to_va(uint64 pa) {
     return (void *)(pa | DIRECT_MAP_OFFSET);
 }
 
-// 计算 PML4E 索引
-static inline uint32 get_pml4e_index(uint64 va)
-{
-    return (va >> PML4E_SHIFT) & 0x1FF;
-}
 
-// 计算 PDPTE 索引
-static inline uint32 get_pdpte_index(uint64 va)
-{
-    return (va >> PDPTE_SHIFT) & 0x1FF;
-}
-
-// 计算 PDE 索引
-static inline uint32 get_pde_index(uint64 va)
-{
-    return (va >> PDE_SHIFT) & 0x1FF;
-}
-
-// 计算 PTE 索引
-static inline uint32 get_pte_index(uint64 va)
-{
-    return (va >> PTE_SHIFT) & 0x1FF;
-}
-
-int32 vmmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr, uint64 page_size);
-int32 unvmmap(uint64 *pml4t, void *va);
-int32 vmmap_range(uint64 *pml4t, uint64 pa, void *start_va, uint64 length, uint64 attr);
-int32 unvmmap_range(uint64 *pml4t, void *start_va, uint64 size);
+int32 vmmap(uint64 *pml4t, uint64 va,uint64 pa,  uint64 attr, uint64 page_size);
+int32 unvmmap(uint64 *pml4t, uint64 va);
+int32 vmmap_range(uint64 *pml4t, uint64 start_va,uint64 start_pa, uint64 size, uint64 attr);
+int32 unvmmap_range(uint64 *pml4t, uint64 start_va, uint64 size);
 uint64 vmm_get_pmm(uint64 *pml4t, void *va);
-
-
-// 2. 虚拟地址空间上下文 (Address Space Context)
-// 代表一个进程的完整内存宇宙
-typedef struct vm_space {
-    uint64 pml4_phys;       // 该空间的顶层页表 (PML4) 的纯物理地址！(准备写给 CR3 寄存器)
-    uint64 *pml4_virt;      // 内核访问 PML4 表的虚拟指针 (位于全局线性映射区)
-    //vm_area *mmap;          // 属于该空间的所有 VMA 链表
-    // spinlock_t lock;       // 保护该空间的自旋锁/读写锁
-} vm_space_t;
-
-/* *
- * vmm_map_page() (最底层的造桥函数)
- * 用途：将虚拟地址 vaddr 映射到物理地址 paddr。
- * 智能翻译：内部必须将软件的 PROT_XXX 转换为 PTE_RW/PTE_US/PTE_NX，
- * 同时将 attr (WB/WC/UC) 翻译为相应的 PTE_PAT/PTE_PCD/PTE_PWT 位组合。
- */
-// int vmm_map_page(vm_space_t *space, uint64_t vaddr, uint64_t paddr,
-//                  uint32_t prot_flags, mem_attr_t attr);
-
-/* *
- * vmm_unmap_page()
- * 用途：拆除映射。
- * 关键：必须执行 `invlpg [vaddr]` 汇编指令来刷新 CPU 的本地 TLB！
- */
-// void vmm_unmap_page(vm_space_t *space, uint64_t vaddr);
-
-/* *
- * vmm_get_phys() (反向侦察兵)
- * 用途：给出一个 vaddr，遍历页表返回它的真实物理地址。
- * 实战：你的 NovaUSB 在设置 DMA / IOMMU 时，急需这个函数来确认 CPU 虚拟地址背后的物理真相。
- */
-// uint64_t vmm_get_phys(vm_space_t *space, uint64_t vaddr);
-
-/* *
- * vmm_map_huge_page_2M()
- * 用途：一次性映射 2MB 的连续物理内存。
- * 动作：在页目录项 (PDE) 层级直接打上 PTE_PS (Page Size) 位，不再往下查次级页表。
- * 优势：节省页表内存，TLB 命中率暴涨 512 倍。
- */
-// int vmm_map_huge_page_2M(vm_space_t *space, uint64_t vaddr, uint64_t paddr,
-//                          uint32_t prot_flags, mem_attr_t attr);
-
-
-// 缺页异常硬件错误码解析宏 (来源于 CPU 压入栈的 Error Code)
-#define PF_ERR_PRESENT  (1 << 0)  // 0=页不存在，1=页存在但权限冲突(如写只读页)
-#define PF_ERR_WRITE    (1 << 1)  // 0=因读触发，1=因写触发
-#define PF_ERR_USER     (1 << 2)  // 0=内核态触发，1=用户态进程触发
-#define PF_ERR_INSTR    (1 << 4)  // 1=因取指令触发 (如触发了 NX 位保护)
-
-/* *
- * vmm_page_fault_handler()
- * 用途：注册进 IDT(中断描述符表)的第 14 号中断处理函数。
- * 核心逻辑：
- * 1. 从 CR2 寄存器读出引发异常的虚拟地址 (Faulting Address)。
- * 2. 遍历当前 space->mmap，看这个地址合不合法。
- * 3. 如果合法但没映射(Demand Paging)：找伙伴系统要一页物理内存，调 vmm_map_page() 填进去，返回继续执行。
- * 4. 如果是写只读页(COW)：拷贝一页物理内存，改写页表权限为 RW。
- * 5. 如果是非法访问：发 SIGSEGV 信号杀掉用户进程 (Segmentation Fault)，或若是内核触发则 Kernel Panic。
- */
-// void vmm_page_fault_handler(registers_t *regs, uint32_t err_code);
 

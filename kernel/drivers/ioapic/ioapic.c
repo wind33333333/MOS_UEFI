@@ -68,7 +68,7 @@ void ioapic_write_rte(struct ioapic_devive_t *dev, uint8 pin, ioapic_rte_t rte) 
 // 禁用指定 IOAPIC 的所有引脚中断
 // -------------------------------------------------------------
 void ioapic_disable_all_interrupts(struct ioapic_devive_t *dev) {
-    ioapic_dev.ioapic_hw_res = iomap(ioapic_dev.phys_addr,4096,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K );
+    ioapic_dev.ioapic_hw_res = ioremap(ioapic_dev.phys_addr,4096,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K );
 
     // 1. 读取版本寄存器 (0x01)
     uint32 ver = ioapic_read(dev, IOAPIC_REG_VER);

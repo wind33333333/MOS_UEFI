@@ -263,7 +263,7 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
     xhci_hcd_t *xhcd = xdev->dev.drv_data;
     xhcd->xdev = xdev;
     xdev->priv_data = xhcd;
-    xdev->bar[0].vaddr = iomap(xdev->bar[0].paddr, xdev->bar[0].size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+    xdev->bar[0].vaddr = ioremap(xdev->bar[0].paddr, xdev->bar[0].size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
 
     /*初始化xhci寄存器*/
     xhcd->cap_reg = xdev->bar[0].vaddr; //xhci能力寄存器基地址

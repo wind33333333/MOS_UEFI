@@ -204,7 +204,7 @@ void init_hpet(void) {
 
     // 1. 填充基地址，并获取 MMU 映射后的虚拟地址
     hpet_dev.phys_base_addr = hpet_table->acpi_generic_adderss.address;
-    hpet_dev.hw_regs = iomap(hpet_dev.phys_base_addr,4096,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K );
+    hpet_dev.hw_regs = ioremap(hpet_dev.phys_base_addr,4096,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K );
 
     // 2. 读取全局能力寄存器并解析
     uint64 cap = hpet_dev.hw_regs->general_cap_id;
