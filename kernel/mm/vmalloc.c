@@ -320,7 +320,7 @@ void *vmalloc(uint64 size) {
     //4k对齐
     size = PAGE_4K_ALIGN(size);
     //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area(VMALLOC_START,VMALLOC_END, size,PAGE_4K_SIZE);
+    vmap_area_t *vmap_area = alloc_vmap_area(VMALLOC_VA_START,VMALLOC_VA_END, size,PAGE_4K_SIZE);
     //分配物理页，映射物理页
     uint64 va = vmap_area->va_start;
     uint64 page_count = size >> PAGE_4K_SHIFT;
@@ -365,7 +365,7 @@ void *__ioremap(uint64 start_pa, uint64 size, uint64 attr) {
     uint64 aligned_size = align_up(size,PAGE_4K_SIZE);
 
     //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area(IO_MAP_START,IO_MAP_END, aligned_size, PAGE_4K_SIZE);
+    vmap_area_t *vmap_area = alloc_vmap_area(IO_MAP_VA_START,IO_MAP_VA_END, aligned_size, PAGE_4K_SIZE);
     if (!vmap_area) {
         return NULL; // 🛡️ 防御：虚拟空间耗尽，安全退出
     }
@@ -464,17 +464,17 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area_augment_callbacks.propagate = vmap_area_augment_propagate;
 
     //60TB vmalloc映射区
-    vmap_area_t *vmap_area = create_vmap_area(VMALLOC_START,VMALLOC_END,VM_ALLOC);
+    vmap_area_t *vmap_area = create_vmap_area(VMALLOC_VA_START,VMALLOC_VA_END,VM_ALLOC);
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
 
     //3070GB IO/UEFI/ACPI/APIC等映射区
-    vmap_area = create_vmap_area(IO_MAP_START,IO_MAP_END,VM_IOREMAP);
+    vmap_area = create_vmap_area(IO_MAP_VA_START,IO_MAP_VA_END,VM_IOREMAP);
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
 
     //初始化动态模块空间 1536MB
-    vmap_area = create_vmap_area(MODULES_START,MODULES_END,VM_MODULES);
+    vmap_area = create_vmap_area(MODULES_VA_START,MODULES_VA_END,VM_MODULES);
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
 

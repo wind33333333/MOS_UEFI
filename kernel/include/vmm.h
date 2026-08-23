@@ -5,28 +5,28 @@
 
 
 //直接映射区起始地址 覆盖64TB物理内存地址空间
-#define DIRECT_MAP_START 0xFFFF800000000000UL
-#define DIRECT_MAP_END   0xFFFF8FFFFFFFFFFFUL
+#define DIRECT_MAP_VA_START 0xFFFF800000000000UL
+#define DIRECT_MAP_VA_END   0xFFFF8FFFFFFFFFFFUL
 
 //60TB vmalloc映射区
-#define VMALLOC_START 0xFFFFC00000000000UL
-#define VMALLOC_END   0xFFFFFBFFFFFFFFFFUL
+#define VMALLOC_VA_START 0xFFFFC00000000000UL
+#define VMALLOC_VA_END   0xFFFFFBFFFFFFFFFFUL
 
 //page稀疏映射区,每个page记录一个4K物理页状态， 0x10000000000 / 40 * 4096 = 64TB ,覆盖64TB物理内存
-#define PAGE_MAP_START 0xFFFFFC0000000000UL
-#define PAGE_MAP_END   0xFFFFFCFFFFFFFFFFUL
+#define PAGE_MAP_VA_START 0xFFFFFC0000000000UL
+#define PAGE_MAP_VA_END   0xFFFFFCFFFFFFFFFFUL
 
 //3070GB IO/UEFI/ACPI/APIC等映射区
-#define IO_MAP_START 0xFFFFFD0000000000UL
-#define IO_MAP_END   0xFFFFFFFF7FFFFFFFUL
+#define IO_MAP_VA_START 0xFFFFFD0000000000UL
+#define IO_MAP_VA_END   0xFFFFFFFF7FFFFFFFUL
 
-//内核起始地址
-#define KERNEL_START 0xFFFFFFFF80000000UL
-#define KERNEL_END   0xFFFFFFFF8FFFFFFFUL
+//内核起始虚拟地址
+#define KERNEL_VA_START 0xFFFFFFFF80000000UL
+#define KERNEL_VA_END   0xFFFFFFFF8FFFFFFFUL
 
 //动态模块空间1536MB
-#define MODULES_START 0xFFFFFFFFA0000000UL
-#define MODULES_END   0xFFFFFFFFFFFFFFFFUL
+#define MODULES_VA_START 0xFFFFFFFFA0000000UL
+#define MODULES_VA_END   0xFFFFFFFFFFFFFFFFUL
 
 
 //页表项物理地址掩码
@@ -106,14 +106,35 @@ static inline uint64 align_down(uint64 value, uint64 align) {
 
 //虚拟地址转物理地址
 static inline uint64 va_to_pa(void *va) {
-    return (uint64)va & ~DIRECT_MAP_START;
+    return (uint64)va & ~DIRECT_MAP_VA_START;
 }
 
 //物理地址转虚拟地址
 static inline void *pa_to_va(uint64 pa) {
-    return (void *)(pa | DIRECT_MAP_START);
+    return (void *)(pa | DIRECT_MAP_VA_START);
 }
 
+// 提取出一个内联函数，专门解决 PAT 碰撞陷阱
+static inline uint64 adjust_huge_page_attr(uint64 attr) {
+    uint32 pat = (attr & PAGE_PAT)<<5;
+    uint64 huge_attr = attr | pat | PAGE_PS;        // 设置到巨页合法的 PAT 位置,强制打上 PAGE_PS (Bit 7)
+    return huge_attr;
+}
+
+// 核心边界切割器：计算在当前层级的块大小内，本次遍历最多能走到哪个虚拟地址。
+// shift 参数代表对应层级的位移量：PT(12), PD(21), PDPT(30), PML4(39)
+static inline uint64 get_addr_end(uint64 addr, uint64 end, uint8 shift) {
+    // 算出当前块的下一个天然物理边界 (例如 2MB 对齐边界)
+    uint64 boundary = (addr + (1ULL << shift)) & ~((1ULL << shift) - 1);
+
+    // 防溢出回绕设计：如果边界还没超过总终点，就走到边界；如果超过了，就走到终点。
+    return (boundary - 1 < end - 1) ? boundary : end;
+}
+
+// 计算页表索引索引
+static inline uint32 get_table_idx(uint64 va,uint8 shift){
+    return (va >> shift) & 0x1FF;
+}
 
 int32 vmmap(uint64 *pml4t, uint64 va,uint64 pa,  uint64 attr, uint64 page_size);
 int32 unvmmap(uint64 *pml4t, uint64 va);

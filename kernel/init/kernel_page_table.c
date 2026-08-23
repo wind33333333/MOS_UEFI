@@ -12,7 +12,7 @@ INIT_TEXT void init_kpage_table(void) {
     //虚拟地址和物理地址512G空间对等映射
     memblock_mmap_range(kpml4t_ptr, 0, (void *) 0, 512 * PAGE_1G_SIZE,PAGE_ROOT_RWX_2M1G,PAGE_1G_SIZE);
     //直接映射区
-    memblock_mmap_range(kpml4t_ptr, 0,(void*)DIRECT_MAP_START,
+    memblock_mmap_range(kpml4t_ptr, 0,(void*)DIRECT_MAP_VA_START,
                         memblock.free.region[memblock.free.count - 1].start_pa + memblock.free.region[
                             memblock.free.count - 1].size,PAGE_ROOT_RW_2M1G,PAGE_1G_SIZE);
     //初始化vmemmap区为2M页表,每个page结构64字节，一个page等于4KB,一个2M页刚好等于128MB物理内存。
@@ -29,13 +29,13 @@ INIT_TEXT void init_kpage_table(void) {
         }
     }
     //.init_text-.init_data 可读写执行
-    memblock_mmap_range(kpml4t_ptr, (uint64)_start_init_text - KERNEL_START, _start_init_text, _start_text - _start_init_text,
+    memblock_mmap_range(kpml4t_ptr, (uint64)_start_init_text - KERNEL_VA_START, _start_init_text, _start_text - _start_init_text,
                         PAGE_ROOT_RWX_4K,PAGE_4K_SIZE);
     //.text可读执行
-    memblock_mmap_range(kpml4t_ptr, (uint64)_start_text - KERNEL_START, _start_text, _start_data - _start_text,
+    memblock_mmap_range(kpml4t_ptr, (uint64)_start_text - KERNEL_VA_START, _start_text, _start_data - _start_text,
                         PAGE_ROOT_RX_4K,PAGE_4K_SIZE);
     //.data-.stack可读写
-    memblock_mmap_range(kpml4t_ptr, (uint64)_start_data - KERNEL_START, _start_data, _end_stack - _start_data, PAGE_ROOT_RW_4K,
+    memblock_mmap_range(kpml4t_ptr, (uint64)_start_data - KERNEL_VA_START, _start_data, _end_stack - _start_data, PAGE_ROOT_RW_4K,
                         PAGE_4K_SIZE);
     //设置正式内核页表
     asm_set_cr3((uint64) kpml4t_ptr);

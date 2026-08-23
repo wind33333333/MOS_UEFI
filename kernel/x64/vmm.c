@@ -4,12 +4,6 @@
 
 //=============================================================== 单个虚拟内存映射接口 ==========================================================================
 
-// 提取出一个内联函数，专门解决 PAT 碰撞陷阱
-static inline uint64 adjust_huge_page_attr(uint64 attr) {
-    uint32 pat = (attr & PAGE_PAT)<<5;
-    uint64 huge_attr = attr | pat | PAGE_PS;        // 设置到巨页合法的 PAT 位置,强制打上 PAGE_PS (Bit 7)
-    return huge_attr;
-}
 
 // 极致性能版：映射虚拟内存 (仅限新映射 P=0 -> P=1)
 int32 vmmap(uint64 *pml4t, uint64 va,uint64 pa,  uint64 attr, uint64 page_size) {
@@ -246,20 +240,6 @@ uint64 vmm_get_pmm(uint64 *pml4t, void *va) {
 
 //========================================================== 批量映射虚拟内存接口 =======================================================
 
-// 核心边界切割器：计算在当前层级的块大小内，本次遍历最多能走到哪个虚拟地址。
-// shift 参数代表对应层级的位移量：PT(12), PD(21), PDPT(30), PML4(39)
-static inline uint64 get_addr_end(uint64 addr, uint64 end, uint8 shift) {
-    // 算出当前块的下一个天然物理边界 (例如 2MB 对齐边界)
-    uint64 boundary = (addr + (1ULL << shift)) & ~((1ULL << shift) - 1);
-
-    // 防溢出回绕设计：如果边界还没超过总终点，就走到边界；如果超过了，就走到终点。
-    return (boundary - 1 < end - 1) ? boundary : end;
-}
-
-// 计算页表索引索引
-static inline uint32 get_table_idx(uint64 va,uint8 shift){
-    return (va >> shift) & 0x1FF;
-}
 
 // ===================================================================
 // 【Level 1: PT 层】 4KB 碎页横向铺砖
