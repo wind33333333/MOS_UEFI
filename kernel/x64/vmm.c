@@ -268,7 +268,7 @@ static inline int32 map_pte_range(uint64 *pde,uint64 va, uint64 pa,  uint64 end,
     // 🚀 横向铺砖：沿着 PTE 数组狂奔，完美利用 L1 Cache
     do {
         if (!(ptt[idx] & PAGE_P)) { // 防冲突：仅映射空位
-            ptt[idx] = pa | attr | PAGE_P;
+            ptt[idx] = pa | attr;
             page_pt->refcount++;    // PT 表内有效映射数 +1
         }
     // VA 和 PA 必须手拉手一起横向推进 4KB！
@@ -307,7 +307,7 @@ static inline int32 map_pde_range(uint64 *pdpte,uint64 va,  uint64 pa, uint64 en
         // 🧠 巨页自适应降维打击：如果凑齐一整块 2MB 且对齐完美，直接挂载大页！
         if ((next - va) == PAGE_2M_SIZE && !(va & (PAGE_2M_SIZE - 1)) && !(pa & (PAGE_2M_SIZE - 1))) {
             if (!(pdt[idx] & PAGE_P)) {
-                pdt[idx] = pa | adjust_huge_page_attr(attr) | PAGE_P;
+                pdt[idx] = pa | adjust_huge_page_attr(attr);
                 page_pd->refcount++;
             }
         }
@@ -354,7 +354,7 @@ static inline int32 map_pdpte_range(uint64 *pml4e, uint64 va, uint64 pa, uint64 
         // 🧠 终极巨页自适应：满足 1GB 完美对齐
         if ((next - va) == PAGE_1G_SIZE && !(va & (PAGE_1G_SIZE - 1)) && !(pa & (PAGE_1G_SIZE - 1))) {
             if (!(pdptt[idx] & PAGE_P)) {
-                pdptt[idx] = pa | adjust_huge_page_attr(attr) | PAGE_P;
+                pdptt[idx] = pa | adjust_huge_page_attr(attr);
                 page_pdpt->refcount++;
             }
         } else {

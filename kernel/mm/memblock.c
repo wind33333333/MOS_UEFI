@@ -231,13 +231,11 @@ INIT_TEXT int32 memblock_free(uint64 ptr, uint64 size) {
 // ===================================================================
 static inline int32 memblock_map_pte_range(uint64 *pde,uint64 va, uint64 pa,  uint64 end, uint64 attr) {
     uint64 *ptt;
-    uint64 table_pa;
 
     // 如果当前的 PT 表不存在，立刻原地建一张新表
     if (!(*pde & PAGE_P)) {
-        table_pa = memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE);
-        if (!table_pa) return -ENOMEM;
-        uint64 next_pa = table_pa;
+        uint64 next_pa = memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE);
+        if (!next_pa) return -ENOMEM;
         asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
 
         // 挂载到父级 PD 目录 (继承必要的读写和用户态权限)
@@ -251,7 +249,7 @@ static inline int32 memblock_map_pte_range(uint64 *pde,uint64 va, uint64 pa,  ui
     // 🚀 横向铺砖：沿着 PTE 数组狂奔，完美利用 L1 Cache
     do {
         if (!(ptt[idx] & PAGE_P)) { // 防冲突：仅映射空位
-            ptt[idx] = pa | attr | PAGE_P;
+            ptt[idx] = pa | attr;
         }
     // VA 和 PA 必须手拉手一起横向推进 4KB！
     } while (idx++, pa += PAGE_4K_SIZE, va += PAGE_4K_SIZE, va != end);
@@ -264,12 +262,10 @@ static inline int32 memblock_map_pte_range(uint64 *pde,uint64 va, uint64 pa,  ui
 // ===================================================================
 static inline int32 memblock_map_pde_range(uint64 *pdpte,uint64 va,  uint64 pa, uint64 end, uint64 attr) {
     uint64 *pdt;
-    uint64 table_pa;
 
     if (!(*pdpte & PAGE_P)) {
-        table_pa = memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE);
-        if (!table_pa) return -ENOMEM;
-        uint64 next_pa = table_pa;
+        uint64 next_pa = memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE);
+        if (!next_pa) return -ENOMEM;
         asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
 
         uint64 dir_attr = PAGE_P | PAGE_RW | (attr & PAGE_US);
@@ -287,7 +283,7 @@ static inline int32 memblock_map_pde_range(uint64 *pdpte,uint64 va,  uint64 pa, 
         // 🧠 巨页自适应降维打击：如果凑齐一整块 2MB 且对齐完美，直接挂载大页！
         if ((next - va) == PAGE_2M_SIZE && !(va & (PAGE_2M_SIZE - 1)) && !(pa & (PAGE_2M_SIZE - 1))) {
             if (!(pdt[idx] & PAGE_P)) {
-                pdt[idx] = pa | adjust_huge_page_attr(attr) | PAGE_P;
+                pdt[idx] = pa | adjust_huge_page_attr(attr);
             }
         }
         // 凑不齐 2MB，就把这块切好的任务下发给底层去铺碎砖
@@ -308,12 +304,10 @@ static inline int32 memblock_map_pde_range(uint64 *pdpte,uint64 va,  uint64 pa, 
 // ===================================================================
 static inline int32 memblock_map_pdpte_range(uint64 *pml4e, uint64 va, uint64 pa, uint64 end, uint64 attr) {
     uint64 *pdptt;
-    uint64 table_pa;
 
     if (!(*pml4e & PAGE_P)) {
-        table_pa = memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE);
-        if (!table_pa) return -ENOMEM;
-        uint64 next_pa = table_pa;
+        uint64 next_pa = memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE);
+        if (!next_pa) return -ENOMEM;
         asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
 
         uint64 dir_attr = PAGE_P | PAGE_RW | (attr & PAGE_US);
@@ -331,7 +325,7 @@ static inline int32 memblock_map_pdpte_range(uint64 *pml4e, uint64 va, uint64 pa
         // 🧠 终极巨页自适应：满足 1GB 完美对齐
         if ((next - va) == PAGE_1G_SIZE && !(va & (PAGE_1G_SIZE - 1)) && !(pa & (PAGE_1G_SIZE - 1))) {
             if (!(pdptt[idx] & PAGE_P)) {
-                pdptt[idx] = pa | adjust_huge_page_attr(attr) | PAGE_P;
+                pdptt[idx] = pa | adjust_huge_page_attr(attr);
             }
         } else {
             int err = memblock_map_pde_range(&pdptt[idx],va,pa,next, attr);
