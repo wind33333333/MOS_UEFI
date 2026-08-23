@@ -375,7 +375,7 @@ INIT_TEXT void init_output(void) {
     Pos.YPosition = 0;
     Pos.XCharSize = 8;
     Pos.YCharSize = 16;
-    Pos.FB_addr = boot_info->frame_buffer_base;
+    Pos.FB_addr = (uint32*)boot_info->frame_buffer_base;
     Pos.FB_length = boot_info->frame_buffer_size;
     Pos.lock = 0;
     clear_screen();
@@ -383,18 +383,7 @@ INIT_TEXT void init_output(void) {
 }
 
 INIT_TEXT void video_mem_map(void) {
-    uint64 page_size,attr;
-    if (boot_info->frame_buffer_size >= PAGE_1G_SIZE) {
-        page_size = PAGE_1G_SIZE;
-        attr = PAGE_ROOT_RW_WC_2M1G;
-    }else if (boot_info->frame_buffer_size >= PAGE_2M_SIZE) {
-        page_size = PAGE_2M_SIZE;
-        attr = PAGE_ROOT_RW_WC_2M1G;
-    }else {
-        page_size = PAGE_4K_SIZE;
-        attr = PAGE_ROOT_RW_WC_4K;
-    }
-    Pos.FB_addr = ioremap(Pos.FB_addr,Pos.FB_length,page_size,attr);
+    Pos.FB_addr = ioremap_wc((uint64)Pos.FB_addr,Pos.FB_length);
     color_printk(GREEN, BLACK, "Voide Memory Physics Address:%#lx -> Virtual Address:%#lx\n",boot_info->frame_buffer_base,Pos.FB_addr);
 }
 

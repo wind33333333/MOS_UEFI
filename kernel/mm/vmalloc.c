@@ -327,7 +327,7 @@ void *vmalloc(uint64 size) {
     while (page_count--) {
         page_t *page = alloc_pages(0);
         if (!page) return NULL;
-        vmmap(kpml4t_ptr, va,page_to_pa(page), PAGE_KERNEL,PAGE_4K_SIZE);
+        vmmap(kpml4t_ptr, va,page_to_pa(page), PAGE_KERNEL_RW,PAGE_4K_SIZE);
         va += PAGE_4K_SIZE;
     }
     return (void*)vmap_area->va_start;
@@ -365,7 +365,7 @@ void *__ioremap(uint64 start_pa, uint64 size, uint64 attr) {
     uint64 aligned_size = align_up(size,PAGE_4K_SIZE);
 
     //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area(VMIOMAP_START,VMIOMAP_END, aligned_size, PAGE_4K_SIZE);
+    vmap_area_t *vmap_area = alloc_vmap_area(IO_MAP_START,IO_MAP_END, aligned_size, PAGE_4K_SIZE);
     if (!vmap_area) {
         return NULL; // 🛡️ 防御：虚拟空间耗尽，安全退出
     }
@@ -426,7 +426,7 @@ void *memremap(uint64 start_pa,uint64 size) {
     }
 
     // 3. 确信它是诸如 ACPI 等保留内存，回退到 vmalloc 区分配并用 WB 映射
-    return __ioremap(pa, size, PAGE_KERNEL);
+    return __ioremap(pa, size, PAGE_KERNEL_RW);
 }
 
 /*
@@ -469,7 +469,7 @@ void INIT_TEXT init_vmalloc(void) {
     insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
 
     //3070GB IO/UEFI/ACPI/APIC等映射区
-    vmap_area = create_vmap_area(VMIOMAP_START,VMIOMAP_END,VM_IOREMAP);
+    vmap_area = create_vmap_area(IO_MAP_START,IO_MAP_END,VM_IOREMAP);
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
 

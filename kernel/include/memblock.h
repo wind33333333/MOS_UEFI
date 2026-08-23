@@ -2,36 +2,34 @@
 
 #include "moslib.h"
 #include "../init/uefi.h"
-#include "vmm.h"
 
 #define MAX_MEMBLOCK 128
 
-typedef struct memblock_region_t {
-    uint64 base;      /* 该区域的起始物理地址 */
-    uint64 size;      /* 该区域的大小 */
-}memblock_region_t;
+typedef struct mem_region_t {
+    uint64 start_pa;      /* 该区域的起始物理地址 */
+    uint64 size;          /* 该区域的大小 */
+}mem_region_t;
 
-typedef struct memblock_type_t {
-    memblock_region_t region[MAX_MEMBLOCK];
+typedef struct mem_arr_t {
+    mem_region_t region[MAX_MEMBLOCK];
     uint32 count;
-}memblock_type_t;
+}mem_arr_t;
 
-typedef struct memblock_t {
-    memblock_type_t memory;         /* 可用内存区域 */
-    memblock_type_t reserved;       /* 保留内存区域 */
-}memblock_t;
+typedef struct memblock_alloc_t {
+    mem_arr_t free;         /* 空闲内存区域 */
+    mem_arr_t used;         /* 已用内存区域 */
+}memblock_alloc_t;
 
 typedef struct {
     EFI_MEMORY_DESCRIPTOR mem_map[10];
     uint32 count;
 }efi_runtime_memmap_t;
 
-extern memblock_t memblock;
-extern memblock_type_t phy_vmemmap;
+extern memblock_alloc_t memblock;
+extern mem_arr_t phy_mem_map;
 extern efi_runtime_memmap_t efi_runtime_memmap;
 
 
-void memblock_add(memblock_type_t *memblock_type, uint64 base, uint64 size);
 int32 memblock_unmmap(uint64 *pml4t, void *va, uint64 page_size);
 int32 memblock_unmmap_range(uint64 *pml4t, void *va, uint64 size, uint64 page_size);
 int32 memblock_mmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr,uint64 page_size);

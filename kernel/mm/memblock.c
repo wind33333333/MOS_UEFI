@@ -2,74 +2,71 @@
 #include "../include/vmm.h"
 #include "../include/printk.h"
 
-INIT_DATA memblock_t memblock;
-INIT_DATA memblock_type_t phy_vmemmap;
-INIT_DATA efi_runtime_memmap_t efi_runtime_memmap;
+INIT_DATA memblock_alloc_t memblock; //临时内存器内存地图，后面buddy system需要用到空闲地图。
+INIT_DATA mem_arr_t page_mem_map; //page页映射区内存地图
+INIT_DATA efi_runtime_memmap_t efi_runtime_memmap; //uefi运行时的数据和代码地图
+mem_arr_t direct_mem_map; //直接映射区内存地图
 
+
+//物理内存区域添加到 memblock 的列表中
+INIT_TEXT void memblock_add(mem_arr_t *memblock_type, uint64 pa_start, uint64 size) {
+    if (memblock_type->count == 0) {
+        memblock_type->region[0].start_pa = pa_start;
+        memblock_type->region[0].size = size;
+        memblock_type->count++;
+    } else if (memblock_type->region[memblock_type->count - 1].start_pa + memblock_type->region[
+                   memblock_type->count - 1].
+               size == pa_start) {
+        memblock_type->region[memblock_type->count - 1].size += size;
+    } else {
+        memblock_type->region[memblock_type->count].start_pa = pa_start;
+        memblock_type->region[memblock_type->count].size = size;
+        memblock_type->count++;
+    }
+}
+
+
+#define MEM_1MB (0x100000ULL) // 1MB 物理地址边界
 INIT_TEXT void init_memblock(void) {
     uint64 phy_mem_size = 0;
-    uint64 kernel_end = (uint64)_end_stack - KERNEL_OFFSET;
-    uint64 kernel_size = _end_stack - _start_text;
     uint32 count = boot_info->mem_map_size / boot_info->mem_descriptor_size;
     for (uint32 i = 0; i < count; i++) {
         EFI_MEMORY_DESCRIPTOR *mem_des = &boot_info->mem_map[i];
+        uint64 pa_start = mem_des->PhysicalStart;
+        uint64 free_pa_start = pa_start;
+        uint64 size = mem_des->NumberOfPages << PAGE_4K_SHIFT;
         if (mem_des->NumberOfPages == 0) continue;
         uint32 type = mem_des->Type;
-        if (type == EFI_LOADER_DATA || type == EFI_LOADER_CODE || type == EFI_BOOT_SERVICES_CODE ||\
-            type == EFI_BOOT_SERVICES_DATA || type == EFI_CONVENTIONAL_MEMORY || type == EFI_ACPI_RECLAIM_MEMORY) {
-            uint64 mem_des_pstart = mem_des->PhysicalStart;
-            uint64 mem_des_size = mem_des->NumberOfPages << PAGE_4K_SHIFT;
-            //如果内存类型是1M内或是lode_data或是acpi则先放入保留区
-            if (mem_des_pstart < 0x100000 || type == EFI_LOADER_DATA || type == EFI_ACPI_RECLAIM_MEMORY) {
-                //在memblock.reserved中找出内核段并剔除，防止后期错误释放
-                uint64 memblock_pend = mem_des_pstart + mem_des_size;
-                if (kernel_end == memblock_pend) {
-                    mem_des_size -= kernel_size;
-                    mem_des->NumberOfPages -= (kernel_size >> PAGE_4K_SHIFT);
+        if (type == EFI_LOADER_DATA ||
+            type == EFI_LOADER_CODE ||
+            type == EFI_BOOT_SERVICES_CODE ||
+            type == EFI_BOOT_SERVICES_DATA ||
+            type == EFI_CONVENTIONAL_MEMORY) {
+            phy_mem_size += size;
+            // 🛡️ 架构级防御：1MB 以下的物理内存强行划入 used (保留区)
+            if (pa_start < MEM_1MB) {
+                // 如果跨越了 1MB 边界，需要截断处理 (高级处理手法)
+                if (pa_start + size > MEM_1MB) {
+                    uint64 reserved_size = MEM_1MB - pa_start;
+                    size = size - reserved_size;
+                    free_pa_start = MEM_1MB;
                 }
-                memblock_add(&memblock.reserved, mem_des_pstart, mem_des_size);
-                //其他可用类型合并放入可用类型保存
-            } else {
-                memblock_add(&memblock.memory, mem_des_pstart, mem_des_size);
             }
-
-            //统计系统总物理内存容量
-            phy_mem_size += mem_des_size;
-
-            //把所可用物理内存放入phy_mem_map，后续vmemmap区初始化需要使用
-            memblock_region_t *phy_vmemmap_block = &phy_vmemmap.region[phy_vmemmap.count];
-            uint64 memblock_gap = mem_des_pstart - (phy_vmemmap_block->base + phy_vmemmap_block->size);
-            if (memblock_gap < 0x8000000) {
-                phy_vmemmap_block->size = mem_des_pstart + mem_des_size - phy_vmemmap_block->base;
-            } else {
-                phy_vmemmap.count++;
-                phy_vmemmap_block = &phy_vmemmap.region[phy_vmemmap.count];
-                phy_vmemmap_block->base = mem_des_pstart;
-                phy_vmemmap_block->size = mem_des_size;
-            }
-        }else if (type==EFI_RUNTIME_SERVICES_DATA || type==EFI_RUNTIME_SERVICES_CODE) {
+            // 1MB 以上的安全区域，放心喂给空闲池
+            memblock_add(&memblock.free, free_pa_start, size);
+            memblock_add(&page_mem_map, pa_start, size);
+            memblock_add(&direct_mem_map, pa_start, size);
+        } else if (type == EFI_ACPI_RECLAIM_MEMORY) {
+            phy_mem_size += size;
+            memblock_add(&direct_mem_map, pa_start, size);
+        } else if (type == EFI_RUNTIME_SERVICES_DATA || type == EFI_RUNTIME_SERVICES_CODE) {
             efi_runtime_memmap.mem_map[efi_runtime_memmap.count] = *mem_des;
             efi_runtime_memmap.count++;
         }
     }
-    color_printk(GREEN, BLACK, "Total Physics Memory:%dMB\n",phy_mem_size/1024/1024);
-}
 
 
-//物理内存区域添加到 memblock 的列表中
-INIT_TEXT void memblock_add(memblock_type_t *memblock_type, uint64 base, uint64 size) {
-    if (memblock_type->count == 0) {
-        memblock_type->region[0].base = base;
-        memblock_type->region[0].size = size;
-        memblock_type->count++;
-    } else if (memblock_type->region[memblock_type->count - 1].base + memblock_type->region[memblock_type->count - 1].
-               size == base) {
-        memblock_type->region[memblock_type->count - 1].size += size;
-    } else {
-        memblock_type->region[memblock_type->count].base = base;
-        memblock_type->region[memblock_type->count].size = size;
-        memblock_type->count++;
-    }
+    color_printk(GREEN, BLACK, "Total Physics Memory:%dMB\n", phy_mem_size / 1024 / 1024);
 }
 
 
@@ -78,36 +75,36 @@ INIT_TEXT uint64 memblock_alloc(uint64 size, uint64 align) {
     if (!size) return 0;
     uint64 align_base, align_size;
     uint32 index = 0;
-    while (index < memblock.memory.count) {
-        align_base = align_up(memblock.memory.region[index].base, align);
-        align_size = align_base - memblock.memory.region[index].base + size;
-        if (align_size <= memblock.memory.region[index].size) break;
+    while (index < memblock.free.count) {
+        align_base = align_up(memblock.free.region[index].start_pa, align);
+        align_size = align_base - memblock.free.region[index].start_pa + size;
+        if (align_size <= memblock.free.region[index].size) break;
         index++;
     }
     //没有合适大小块
-    if (index >= memblock.memory.count) return 0;
+    if (index >= memblock.free.count) return 0;
     //如果长度相等则刚好等于一个块
-    if (size == memblock.memory.region[index].size) {
-        for (uint32 j = index; j < memblock.memory.count; j++) {
-            memblock.memory.region[j] = memblock.memory.region[j + 1];
+    if (size == memblock.free.region[index].size) {
+        for (uint32 j = index; j < memblock.free.count; j++) {
+            memblock.free.region[j] = memblock.free.region[j + 1];
         }
-        memblock.memory.count--;
+        memblock.free.count--;
         //如果对齐后地址等于起始地址则从头切
-    } else if (align_base == memblock.memory.region[index].base) {
-        memblock.memory.region[index].base += size;
-        memblock.memory.region[index].size -= size;
+    } else if (align_base == memblock.free.region[index].start_pa) {
+        memblock.free.region[index].start_pa += size;
+        memblock.free.region[index].size -= size;
         //如果对齐后地址等于结束地址则尾部切
-    } else if (align_size == memblock.memory.region[index].size) {
-        memblock.memory.region[index].size -= size;
+    } else if (align_size == memblock.free.region[index].size) {
+        memblock.free.region[index].size -= size;
         //否则中间切
     } else {
-        for (uint32 j = memblock.memory.count; j > index; j--) {
-            memblock.memory.region[j] = memblock.memory.region[j - 1];
+        for (uint32 j = memblock.free.count; j > index; j--) {
+            memblock.free.region[j] = memblock.free.region[j - 1];
         }
-        memblock.memory.region[index + 1].base += align_size;
-        memblock.memory.region[index + 1].size -= align_size;
-        memblock.memory.region[index].size = align_base - memblock.memory.region[index].base;
-        memblock.memory.count++;
+        memblock.free.region[index + 1].start_pa += align_size;
+        memblock.free.region[index + 1].size -= align_size;
+        memblock.free.region[index].size = align_base - memblock.free.region[index].start_pa;
+        memblock.free.count++;
     }
     return align_base;
 }
@@ -116,34 +113,34 @@ INIT_TEXT uint64 memblock_alloc(uint64 size, uint64 align) {
 INIT_TEXT int32 memblock_free(uint64 ptr, uint64 size) {
     //根据align_base找合适的插入位置
     uint32 index = 0;
-    while (index < memblock.memory.count) {
-        if (ptr <= memblock.memory.region[index].base + memblock.memory.region[index].size) break;
+    while (index < memblock.free.count) {
+        if (ptr <= memblock.free.region[index].start_pa + memblock.free.region[index].size) break;
         index++;
     }
     //释放地址在头部
-    if (ptr + size == memblock.memory.region[index].base) {
-        memblock.memory.region[index].base = ptr;
-        memblock.memory.region[index].size += size;
+    if (ptr + size == memblock.free.region[index].start_pa) {
+        memblock.free.region[index].start_pa = ptr;
+        memblock.free.region[index].size += size;
         //释放的地址在尾部
-    } else if (memblock.memory.region[index].base + memblock.memory.region[index].size == ptr) {
-        memblock.memory.region[index].size += size;
+    } else if (memblock.free.region[index].start_pa + memblock.free.region[index].size == ptr) {
+        memblock.free.region[index].size += size;
         //合并
-        if (memblock.memory.region[index].base + memblock.memory.region[index].size == memblock.memory.region[index + 1]
-            .base) {
-            memblock.memory.region[index].size += memblock.memory.region[index + 1].size;
-            for (uint32 j = index + 1; j < memblock.memory.count; j++) {
-                memblock.memory.region[j] = memblock.memory.region[j + 1];
+        if (memblock.free.region[index].start_pa + memblock.free.region[index].size == memblock.free.region[index + 1]
+            .start_pa) {
+            memblock.free.region[index].size += memblock.free.region[index + 1].size;
+            for (uint32 j = index + 1; j < memblock.free.count; j++) {
+                memblock.free.region[j] = memblock.free.region[j + 1];
             }
-            memblock.memory.count--;
+            memblock.free.count--;
         }
         //释放的地址不在块中
     } else {
-        for (uint32 j = memblock.memory.count; j > index; j--) {
-            memblock.memory.region[j] = memblock.memory.region[j - 1];
+        for (uint32 j = memblock.free.count; j > index; j--) {
+            memblock.free.region[j] = memblock.free.region[j - 1];
         }
-        memblock.memory.region[index].base = ptr;
-        memblock.memory.region[index].size = size;
-        memblock.memory.count++;
+        memblock.free.region[index].start_pa = ptr;
+        memblock.free.region[index].size = size;
+        memblock.free.count++;
     }
     return 0;
 }

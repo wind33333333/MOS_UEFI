@@ -5,8 +5,6 @@
 
 #define MAX_ORDER 10
 
-#define VMEMMAP_START 0xFFFFFC0000000000UL
-
 #define     PG_LOCKED 0      /* 页面锁定 */
 #define     PG_SLUB   1      /* SLUB/SLAB 页面，kmalloc 使用 */
 #define     PG_HEAD   2      /* 复合页面头部 */
@@ -41,12 +39,12 @@ extern buddy_system_t buddy_system;
 
 //page地址转换物理地址
 static inline uint64 page_to_pa(page_t *page) {
-    return (uint64)(page - (page_t*)VMEMMAP_START) << PAGE_4K_SHIFT;
+    return (uint64)(page - (page_t*)PAGE_MAP_START) << PAGE_4K_SHIFT;
 }
 
 //物理地址转换page地址
 static inline page_t* pa_to_page(uint64 pa) {
-    return (page_t*)VMEMMAP_START+(pa >> PAGE_4K_SHIFT);
+    return (page_t*)PAGE_MAP_START+(pa >> PAGE_4K_SHIFT);
 }
 
 //page地址转虚拟地址

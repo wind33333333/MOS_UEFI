@@ -3,6 +3,32 @@
 #include "moslib.h"
 #include "../init/linkage.h"
 
+
+//直接映射区起始地址 覆盖64TB物理内存地址空间
+#define DIRECT_MAP_START 0xFFFF800000000000UL
+#define DIRECT_MAP_END   0xFFFF8FFFFFFFFFFFUL
+
+//60TB vmalloc映射区
+#define VMALLOC_START 0xFFFFC00000000000UL
+#define VMALLOC_END   0xFFFFFBFFFFFFFFFFUL
+
+//page稀疏映射区,每个page记录一个4K物理页状态， 0x10000000000 / 40 * 4096 = 64TB ,覆盖64TB物理内存
+#define PAGE_MAP_START 0xFFFFFC0000000000UL
+#define PAGE_MAP_END   0xFFFFFCFFFFFFFFFFUL
+
+//3070GB IO/UEFI/ACPI/APIC等映射区
+#define IO_MAP_START 0xFFFFFD0000000000UL
+#define IO_MAP_END   0xFFFFFFFF7FFFFFFFUL
+
+//内核起始地址
+#define KERNEL_START 0xFFFFFFFF80000000UL
+#define KERNEL_END   0xFFFFFFFF8FFFFFFFUL
+
+//动态模块空间1536MB
+#define MODULES_START 0xFFFFFFFFA0000000UL
+#define MODULES_END   0xFFFFFFFFFFFFFFFFUL
+
+
 //页表项物理地址掩码
 #define PAGE_PA_MASK    0x7FFFFFFFF000UL
 
@@ -45,7 +71,7 @@
 #define CACHE_UC    (PAGE_PCD | PAGE_PWT)       // 强不可缓存 (Strong UC)
 
 // --- 内核态 (Ring 0) 常用属性 ---
-#define PAGE_KERNEL         (PAGE_G | PAGE_NX | PAGE_RW | PAGE_P | CACHE_WB) // 1. 普通内核数据/堆栈
+#define PAGE_KERNEL_RW         (PAGE_G | PAGE_NX | PAGE_RW | PAGE_P | CACHE_WB) // 1. 普通内核数据/堆栈
 #define PAGE_KERNEL_RX      (PAGE_G | PAGE_RW | PAGE_P | CACHE_WB)           // 内核代码段 (无NX)
 #define PAGE_KERNEL_RO      (PAGE_G | PAGE_NX | PAGE_P | CACHE_WB)           // 内核只读数据
 #define PAGE_KERNEL_WUC     (PAGE_G | PAGE_NX | PAGE_RW | PAGE_P | CACHE_WUC) // 2. 普通外设 IO (顺从 MTRR，安全兜底)
@@ -53,7 +79,7 @@
 #define PAGE_KERNEL_UC      (PAGE_G | PAGE_NX | PAGE_RW | PAGE_P | CACHE_UC) // 3. 暴力外设 IO (无视 MTRR，六亲不认的强制直达！)
 
 // --- 用户态 (Ring 3) 常用属性 ---
-#define PAGE_USER           (PAGE_NX | PAGE_US | PAGE_RW | PAGE_P | CACHE_WB)    // 用户堆栈/数据
+#define PAGE_USER_RW          (PAGE_NX | PAGE_US | PAGE_RW | PAGE_P | CACHE_WB)    // 用户堆栈/数据
 #define PAGE_USER_RX        (PAGE_US | PAGE_P | CACHE_WB)                        // 用户代码段
 #define PAGE_USER_RO        (PAGE_NX | PAGE_US | PAGE_P | CACHE_WB)              // 用户只读数据
 
@@ -80,12 +106,12 @@ static inline uint64 align_down(uint64 value, uint64 align) {
 
 //虚拟地址转物理地址
 static inline uint64 va_to_pa(void *va) {
-    return (uint64)va & ~DIRECT_MAP_OFFSET;
+    return (uint64)va & ~DIRECT_MAP_START;
 }
 
 //物理地址转虚拟地址
 static inline void *pa_to_va(uint64 pa) {
-    return (void *)(pa | DIRECT_MAP_OFFSET);
+    return (void *)(pa | DIRECT_MAP_START);
 }
 
 

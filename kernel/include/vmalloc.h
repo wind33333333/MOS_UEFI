@@ -4,18 +4,6 @@
 #include "rbtree.h"
 #include "../include/vmm.h"
 
-//60TB vmalloc映射区
-#define VMALLOC_START 0xFFFFC00000000000UL
-#define VMALLOC_END   0xFFFFFBFFFFFFFFFFUL
-
-//3070GB IO/UEFI/ACPI/APIC等映射区
-#define VMIOMAP_START 0xFFFFFD0000000000UL
-#define VMIOMAP_END   0xFFFFFFFF7FFFFFFFUL
-
-//动态模块空间1536MB
-#define MODULES_START 0xFFFFFFFFA0000000UL
-#define MODULES_END   0xFFFFFFFFFFFFFFFFUL
-
 /* bits in flags of vmalloc's vm_struct below */
 #define VM_ALLOC		        0x00000002	/* vmalloc() */
 #define VM_MODULES	            0x00000004	/* vmap()ed pages */

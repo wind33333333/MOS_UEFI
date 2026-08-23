@@ -20,7 +20,7 @@ _start:
     orq      $0x3,%rax
     movq     %rax,(%rdi)            //物理地址虚拟地址对等映射
 
-    movq     $DIRECT_MAP_OFFSET,%rsi
+    movq     $DIRECT_MAP_START,%rsi
     shrq     $39,%rsi
     andq     $0x1ff,%rsi
     shlq     $3,%rsi
@@ -28,7 +28,7 @@ _start:
 
     leaq     tmp_pdpt1(%rip),%rax
     orq      $0x3,%rax
-    movq     $KERNEL_OFFSET,%rsi
+    movq     $KERNEL_START,%rsi
     shrq     $39,%rsi
     andq     $0x1ff,%rsi
     shlq     $3,%rsi
@@ -43,7 +43,7 @@ init_tmp_pdptt0:
     loopq    init_tmp_pdptt0
 
     leaq     tmp_pdpt1(%rip),%rdi   //初始化内核映射区pdpt
-    movq     $KERNEL_OFFSET,%rsi
+    movq     $KERNEL_START,%rsi
     shrq     $30,%rsi
     andq     $0x1ff,%rsi
     shlq     $3,%rsi
@@ -61,11 +61,11 @@ init_tmp_pdptt0:
 /************************************************************/
 
     leaq     _end_stack(%rip),%rsp
-    movabs   $KERNEL_OFFSET,%rax
+    movabs   $KERNEL_START,%rax
     orq      %rax,%rsp       //设置bsp核栈
 
     leaq     init_kernel(%rip),%rax
-    movabs   $KERNEL_OFFSET,%rbx
+    movabs   $KERNEL_START,%rbx
     orq      %rbx,%rax
     jmp      *%rax           //切换到0xFFFFFFFF80000000内核空间，进入C语言init_kernel
 
