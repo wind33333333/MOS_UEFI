@@ -30,10 +30,8 @@ extern mem_arr_t phy_mem_map;
 extern efi_runtime_memmap_t efi_runtime_memmap;
 
 
-int32 memblock_unmmap(uint64 *pml4t, void *va, uint64 page_size);
-int32 memblock_unmmap_range(uint64 *pml4t, void *va, uint64 size, uint64 page_size);
-int32 memblock_mmap(uint64 *pml4t, uint64 pa, void *va, uint64 attr,uint64 page_size);
-int32 memblock_mmap_range(uint64 *pml4t, uint64 pa, void *va,uint64 size, uint64 attr,uint64 page_size);
 void init_memblock(void);
 uint64 memblock_alloc(uint64 size, uint64 align);
 int32 memblock_free(uint64 ptr, uint64 size);
+int32 memblock_vmmap_range(uint64 *pml4t, uint64 start_va,uint64 pa, uint64 size, uint64 attr);
+int32 memblock_unvmmap_range(uint64 *pml4t, uint64 start_va, uint64 size);
