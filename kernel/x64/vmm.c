@@ -1,6 +1,7 @@
 #include "../include/vmm.h"
 #include "../include/buddy_system.h"
 #include "../include/errno.h"
+#include "../include/printk.h"
 
 //=============================================================== 单个虚拟内存映射接口 ==========================================================================
 
@@ -241,157 +242,210 @@ uint64 vmm_get_pmm(uint64 *pml4t, void *va) {
 //========================================================== 批量映射虚拟内存接口 =======================================================
 
 
+
+
+
+
 // ===================================================================
 // 【Level 1: PT 层】 4KB 碎页横向铺砖
 // ===================================================================
-static inline int32 map_pte_range(uint64 *pde,uint64 va, uint64 pa,  uint64 end, uint64 attr) {
+static inline int32 map_pte_range(uint64 *pde, uint64 *curr_va, uint64 pa, uint64 end, uint64 attr) {
+    uint64 va = *curr_va;
     uint64 *ptt;
     page_t *page_pt;
+    boolean new_table = FALSE; // 跟踪是否是本轮新建的表
 
-    // 如果当前的 PT 表不存在，立刻原地建一张新表
     if (!(*pde & PAGE_P)) {
         page_pt = alloc_pages(0);
-        if (!page_pt) return -ENOMEM;
+        if (!page_pt) { *curr_va = va; return -ENOMEM; }
         uint64 next_pa = page_to_pa(page_pt);
         asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
-
-        // 挂载到父级 PD 目录 (继承必要的读写和用户态权限)
-        uint64 dir_attr = PAGE_P | PAGE_RW | (attr & PAGE_US);
-        *pde = next_pa | dir_attr;
+        *pde = next_pa | PAGE_P | PAGE_RW | (attr & PAGE_US);
+        new_table = TRUE;
     } else {
         page_pt = va_to_page(pa_to_va(*pde & PAGE_PA_MASK));
     }
 
     ptt = pa_to_va(*pde & PAGE_PA_MASK);
-    uint32 idx = get_table_idx(va,PTE_SHIFT);
+    uint32 idx = get_table_idx(va, PTE_SHIFT);
 
-    // 🚀 横向铺砖：沿着 PTE 数组狂奔，完美利用 L1 Cache
     do {
-        if (!(ptt[idx] & PAGE_P)) { // 防冲突：仅映射空位
-            ptt[idx] = pa | attr;
-            page_pt->refcount++;    // PT 表内有效映射数 +1
+        uint64 pte = ptt[idx];
+        if (pte & PAGE_P) {
+            uint64 old_pa = pte & PAGE_PA_MASK;
+            if (old_pa != pa) {
+                color_printk(RED, BLACK, "PANIC: VA Collision at PT! VA: %#lx\n", va);
+                // 🛡️ 架构师防御：新建了表却寸功未立？当场抹除防泄漏！
+                if (new_table && page_pt->refcount == 0) { free_pages(page_pt); *pde = 0; }
+                *curr_va = va; return -EEXIST;
+            }
+            ptt[idx] = pa | attr | PAGE_P; // 幂等更新
+        } else {
+            ptt[idx] = pa | attr | PAGE_P;
+            page_pt->refcount++;           // 账本 +1
         }
-    // VA 和 PA 必须手拉手一起横向推进 4KB！
-    } while (idx++, pa += PAGE_4K_SIZE, va += PAGE_4K_SIZE, va != end);
+    } while (idx++, pa += PAGE_4K_SIZE, va += PAGE_4K_SIZE, *curr_va = va, va != end);
 
     return 0;
 }
 
 // ===================================================================
-// 【Level 2: PD 层】 2MB 智能升维与横向派发
+// 【Level 2: PD 层】 2MB 智能升维与状态机驱动
 // ===================================================================
-static inline int32 map_pde_range(uint64 *pdpte,uint64 va,  uint64 pa, uint64 end, uint64 attr) {
+static inline int32 map_pde_range(uint64 *pdpte, uint64 *curr_va, uint64 pa, uint64 end, uint64 attr) {
+    uint64 va = *curr_va;
     uint64 *pdt;
     page_t *page_pd;
+    bool new_table = FALSE;
 
     if (!(*pdpte & PAGE_P)) {
         page_pd = alloc_pages(0);
-        if (!page_pd) return -ENOMEM;
+        if (!page_pd) { *curr_va = va; return -ENOMEM; }
         uint64 next_pa = page_to_pa(page_pd);
         asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
-
-        uint64 dir_attr = PAGE_P | PAGE_RW | (attr & PAGE_US);
-        *pdpte = next_pa | dir_attr;
+        *pdpte = next_pa | PAGE_P | PAGE_RW | (attr & PAGE_US);
+        new_table = TRUE;
     } else {
         page_pd = va_to_page(pa_to_va(*pdpte & PAGE_PA_MASK));
     }
 
     pdt = pa_to_va(*pdpte & PAGE_PA_MASK);
-    uint32 idx = get_table_idx(va,PDE_SHIFT);
+    uint32 idx = get_table_idx(va, PDE_SHIFT);
     uint64 next;
 
     do {
-        // ✂️ 神级切割：在这 2MB 范围内，我们能走多远？
         next = get_addr_end(va, end, PDE_SHIFT);
+        uint64 pde = pdt[idx];
 
-        // 🧠 巨页自适应降维打击：如果凑齐一整块 2MB 且对齐完美，直接挂载大页！
-        if ((next - va) == PAGE_2M_SIZE && !(va & (PAGE_2M_SIZE - 1)) && !(pa & (PAGE_2M_SIZE - 1))) {
-            if (!(pdt[idx] & PAGE_P)) {
-                pdt[idx] = pa | adjust_huge_page_attr(attr);
+        bool is_present    = (pde & PAGE_P) != 0;
+        bool is_huge       = (pde & PAGE_PS) != 0;
+        bool is_2m_aligned = ((next - va) == PAGE_2M_SIZE && !(va & (PAGE_2M_SIZE - 1)) && !(pa & (PAGE_2M_SIZE - 1)));
+
+        // 🧠 巨页通道 (DRY 优化合并)
+        if (is_2m_aligned && (!is_present || is_huge)) {
+            if (is_present && (pde & PAGE_PA_MASK) != pa) {
+                color_printk(RED, BLACK, "PANIC: VA Collision at 2M PD! VA: %#lx\n", va);
+                if (new_table && page_pd->refcount == 0) { free_pages(page_pd); *pdpte = 0; }
+                *curr_va = va; return -EEXIST;
+            }
+            pdt[idx] = pa | adjust_huge_page_attr(attr) | PAGE_P | PAGE_PS;
+            if (!is_present) page_pd->refcount++;
+        } 
+        // 🧠 碎页降维通道
+        else {
+            if (is_present && is_huge) {
+                color_printk(RED, BLACK, "PANIC: Map 4K over 2M HugePage at VA: %#lx\n", va);
+                if (new_table && page_pd->refcount == 0) { free_pages(page_pd); *pdpte = 0; }
+                *curr_va = va; return -EEXIST;
+            }
+            
+            // 下发任务，探针深入
+            int err = map_pte_range(&pdt[idx], curr_va, pa, next, attr);
+            
+            // 🚨 强制对齐：只要下层成功建了表(哪怕后来报错了)，父节点的账本必须 +1！
+            if (!is_present && (pdt[idx] & PAGE_P)) {
                 page_pd->refcount++;
             }
+            
+            if (err) {
+                if (new_table && page_pd->refcount == 0) { free_pages(page_pd); *pdpte = 0; }
+                return err; // 向上传递错误，触发顶层回滚
+            }
         }
-        // 凑不齐 2MB，就把这块切好的任务下发给底层去铺碎砖
-        else {
-            int err = map_pte_range(&pdt[idx],va, pa,  next, attr);
-            if (err) return err;
-
-            // 注意：这里为了极致性能省略了对 PD 自身的 refcount 细致维护，
-            // 若新分配了下级表，PD 的 refcount 理论应 +1。
-        }
-    } while (idx++, pa += (next - va), va = next, va != end);
+    } while (idx++, pa += (next - va), va = next, *curr_va = va, va != end);
 
     return 0;
 }
 
 // ===================================================================
-// 【Level 3: PDPT 层】 1GB 智能升维与横向派发
+// 【Level 3: PDPT 层】 1GB 智能升维与状态机驱动
 // ===================================================================
-static inline int32 map_pdpte_range(uint64 *pml4e, uint64 va, uint64 pa, uint64 end, uint64 attr) {
+static inline int32 map_pdpte_range(uint64 *pml4e, uint64 *curr_va, uint64 pa, uint64 end, uint64 attr) {
+    uint64 va = *curr_va;
     uint64 *pdptt;
     page_t *page_pdpt;
+    bool new_table = FALSE;
 
     if (!(*pml4e & PAGE_P)) {
         page_pdpt = alloc_pages(0);
-        if (!page_pdpt) return -ENOMEM;
+        if (!page_pdpt) { *curr_va = va; return -ENOMEM; }
         uint64 next_pa = page_to_pa(page_pdpt);
         asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
-
-        uint64 dir_attr = PAGE_P | PAGE_RW | (attr & PAGE_US);
-        *pml4e = next_pa | dir_attr;
+        *pml4e = next_pa | PAGE_P | PAGE_RW | (attr & PAGE_US);
+        new_table = TRUE;
     } else {
         page_pdpt = va_to_page(pa_to_va(*pml4e & PAGE_PA_MASK));
     }
 
     pdptt = pa_to_va(*pml4e & PAGE_PA_MASK);
-    uint32 idx = get_table_idx(va,PDPTE_SHIFT);
+    uint32 idx = get_table_idx(va, PDPTE_SHIFT);
     uint64 next;
 
     do {
-        // ✂️ 切割 1GB 边界
         next = get_addr_end(va, end, PDPTE_SHIFT);
+        uint64 pdpte = pdptt[idx];
 
-        // 🧠 终极巨页自适应：满足 1GB 完美对齐
-        if ((next - va) == PAGE_1G_SIZE && !(va & (PAGE_1G_SIZE - 1)) && !(pa & (PAGE_1G_SIZE - 1))) {
-            if (!(pdptt[idx] & PAGE_P)) {
-                pdptt[idx] = pa | adjust_huge_page_attr(attr);
+        bool is_present    = (pdpte & PAGE_P) != 0;
+        bool is_huge       = (pdpte & PAGE_PS) != 0;
+        bool is_1g_aligned = ((next - va) == PAGE_1G_SIZE && !(va & (PAGE_1G_SIZE - 1)) && !(pa & (PAGE_1G_SIZE - 1)));
+
+        if (is_1g_aligned && (!is_present || is_huge)) {
+            if (is_present && (pdpte & PAGE_PA_MASK) != pa) {
+                color_printk(RED, BLACK, "PANIC: VA Collision at 1G PDPT! VA: %#lx\n", va);
+                if (new_table && page_pdpt->refcount == 0) { free_pages(page_pdpt); *pml4e = 0; }
+                *curr_va = va; return -EEXIST;
+            }
+            pdptt[idx] = pa | adjust_huge_page_attr(attr) | PAGE_P | PAGE_PS;
+            if (!is_present) page_pdpt->refcount++;
+        } else {
+            if (is_present && is_huge) {
+                color_printk(RED, BLACK, "PANIC: Map 2M/4K over 1G HugePage at VA: %#lx\n", va);
+                if (new_table && page_pdpt->refcount == 0) { free_pages(page_pdpt); *pml4e = 0; }
+                *curr_va = va; return -EEXIST;
+            }
+            
+            int err = map_pde_range(&pdptt[idx], curr_va, pa, next, attr);
+            
+            if (!is_present && (pdptt[idx] & PAGE_P)) {
                 page_pdpt->refcount++;
             }
-        } else {
-            int err = map_pde_range(&pdptt[idx],va,pa,next, attr);
-            if (err) return err;
+            
+            if (err) {
+                if (new_table && page_pdpt->refcount == 0) { free_pages(page_pdpt); *pml4e = 0; }
+                return err;
+            }
         }
-    } while (idx++, pa += (next - va), va = next, va != end);
+    } while (idx++, pa += (next - va), va = next, *curr_va = va, va != end);
 
     return 0;
 }
 
-
-
 // ===================================================================
-// 【主入口】 批量映射引擎 (自动混合 1G/2M/4K 页大小)
+// 【主入口】 批量映射引擎 (自动混合 1G/2M/4K 页大小 + 精准回滚)
 // ===================================================================
-int32 vmmap_range(uint64 *pml4t, uint64 start_va,uint64 pa, uint64 size, uint64 attr){
+int32 vmmap_range(uint64 *pml4t, uint64 start_va, uint64 pa, uint64 size, uint64 attr) {
     if (size == 0) return 0;
 
-    uint64 va = start_va;
-    uint64 end = va + size;
+    uint64 curr_va = start_va; // 🎯 探针初始化
+    uint64 end = start_va + size;
     uint64 *cur_pml4 = pa_to_va((uint64)pml4t);
-    uint32 idx = get_table_idx(va,PML4E_SHIFT);
+    uint32 idx = get_table_idx(curr_va, PML4E_SHIFT);
     uint64 next;
     int err = 0;
 
     do {
-        // ✂️ 512GB 级边界切割
-        next = get_addr_end(va, end, PML4E_SHIFT);
+        next = get_addr_end(curr_va, end, PML4E_SHIFT);
 
-        // 直接派发给 PDPT 层
-        err = map_pdpte_range(&cur_pml4[idx],  va, pa,next, attr);
+        err = map_pdpte_range(&cur_pml4[idx], &curr_va, pa, next, attr);
+        
         if (err) {
-            // 工业级内核应在此调用 unvmmap_range(start_va, va - start_va) 进行回滚
+            // 🚨 精准回滚：利用探针卡住的确切地址，只清理这部分“半成品”
+            if (curr_va > start_va) {
+                unvmmap_range(pml4t, start_va, curr_va - start_va);
+            }
             return err;
         }
-    } while (idx++, pa += (next - va), va = next, va != end);
+    } while (idx++, pa += (next - curr_va), curr_va = next, curr_va != end);
 
     return 0;
 }
@@ -406,33 +460,32 @@ int32 vmmap_range(uint64 *pml4t, uint64 start_va,uint64 pa, uint64 size, uint64 
 // ===================================================================
 static inline int32 unmap_pte_range(uint64 *pde, uint64 addr, uint64 end) {
     uint64 *ptt = pa_to_va(*pde & PAGE_PA_MASK);
-    uint32 idx = get_table_idx(addr,PTE_SHIFT);
+    uint32 idx = get_table_idx(addr, PTE_SHIFT);
     page_t *page_pt = va_to_page(ptt);
 
-    // 🚀 横向扫荡，没有函数调用，纯内存数组操作
     do {
         if (ptt[idx] & PAGE_P) {
-            ptt[idx] = 0;              // 断开物理映射
-            asm_invlpg(addr);  // 刷新当前页的 TLB
-            page_pt->refcount--;       // 表内有效计数 -1
+            ptt[idx] = 0;
+            asm_invlpg(addr);
+            page_pt->refcount--; // 表内有效计数 -1
         }
     } while (idx++, addr += PAGE_4K_SIZE, addr != end);
 
     // 🧹 级联释放引擎：PT 表空了，自我毁灭并向上级汇报
     if (page_pt->refcount == 0) {
-        *pde = 0;               // 关键：彻底切断父级指针，防止 Use-After-Free
+        *pde = 0;               // 关键：彻底切断父级指针
         free_pages(page_pt);    // 回收页表内存
-        return 1;               // 返回 1，通知父目录将它的 refcount -1
+        return 1;               // 向上层发送销毁信号
     }
     return 0;
 }
 
 // ===================================================================
-// 【Level 2: PD 层】 巨页侦测与任务切割
+// 【Level 2: PD 层】 巨页侦测与级联释放
 // ===================================================================
 static inline int32 unmap_pde_range(uint64 *pdpte, uint64 addr, uint64 end) {
     uint64 *pdt = pa_to_va(*pdpte & PAGE_PA_MASK);
-    uint32 idx = get_table_idx(addr,PDE_SHIFT);
+    uint32 idx = get_table_idx(addr, PDE_SHIFT);
     uint64 next;
     page_t *page_pd = va_to_page(pdt);
 
@@ -440,17 +493,22 @@ static inline int32 unmap_pde_range(uint64 *pdpte, uint64 addr, uint64 end) {
         next = get_addr_end(addr, end, PDE_SHIFT);
         uint64 pde = pdt[idx];
 
-        if (!(pde & PAGE_P)) continue; // 极速跨越：发现空洞，直接跃过这 2MB！
+        if (!(pde & PAGE_P)) continue;
 
         if (pde & PAGE_PS) {
-            // 🎯 遭遇 2MB 巨页，直接秒杀！
-            pdt[idx] = 0;
-            asm_invlpg(addr);
-            page_pd->refcount--;
-            continue;
+            // 🎯 遭遇 2MB 巨页，严格检查覆盖范围
+            if ((next - addr) == PAGE_2M_SIZE && !(addr & (PAGE_2M_SIZE - 1))) {
+                pdt[idx] = 0;
+                asm_invlpg(addr);
+                page_pd->refcount--; // 🛡️ 必须执行：账本 -1
+                continue;            // 🛡️ 必须执行：跃过底层操作
+            } else {
+                color_printk(RED, BLACK, "PANIC: Partial unmap of 2MB Huge Page!\n");
+                while(1);
+            }
         }
 
-        // 往下发配切割好的区间。如果下级被摧毁（返回1），当前层计数 -1
+        // 下收到了底层的销毁信号 (1)，自己的账本也减 1
         if (unmap_pte_range(&pdt[idx], addr, next)) {
             page_pd->refcount--;
         }
@@ -466,11 +524,11 @@ static inline int32 unmap_pde_range(uint64 *pdpte, uint64 addr, uint64 end) {
 }
 
 // ===================================================================
-// 【Level 3: PDPT 层】 巨页侦测与任务切割
+// 【Level 3: PDPT 层】 巨页侦测与级联释放
 // ===================================================================
 static inline int32 unmap_pdpte_range(uint64 *pml4e, uint64 addr, uint64 end) {
     uint64 *pdptt = pa_to_va(*pml4e & PAGE_PA_MASK);
-    uint32 idx = get_table_idx(addr,PDPTE_SHIFT);
+    uint32 idx = get_table_idx(addr, PDPTE_SHIFT);
     uint64 next;
     page_t *page_pdpt = va_to_page(pdptt);
 
@@ -478,14 +536,18 @@ static inline int32 unmap_pdpte_range(uint64 *pml4e, uint64 addr, uint64 end) {
         next = get_addr_end(addr, end, PDPTE_SHIFT);
         uint64 pdpte = pdptt[idx];
 
-        if (!(pdpte & PAGE_P)) continue; // 极速跨越空洞 1GB
+        if (!(pdpte & PAGE_P)) continue;
 
         if (pdpte & PAGE_PS) {
-            // 🎯 遭遇 1GB 巨页，直接秒杀！
-            pdptt[idx] = 0;
-            asm_invlpg(addr);
-            page_pdpt->refcount--;
-            continue;
+            if ((next - addr) == PAGE_1G_SIZE && !(addr & (PAGE_1G_SIZE - 1))) {
+                pdptt[idx] = 0;
+                asm_invlpg(addr);
+                page_pdpt->refcount--; // 🛡️ 减少引用
+                continue;              // 🛡️ 跳出循环
+            } else {
+                color_printk(RED, BLACK, "PANIC: Partial unmap of 1GB Huge Page!\n");
+                while(1);
+            }
         }
 
         if (unmap_pde_range(&pdptt[idx], addr, next)) {
@@ -503,30 +565,30 @@ static inline int32 unmap_pdpte_range(uint64 *pml4e, uint64 addr, uint64 end) {
 }
 
 // ===================================================================
-// 【主入口】 批量释放引擎 (无视页大小、碎片化、空洞)
+// 【主入口】 批量释放引擎
 // ===================================================================
 int32 unvmmap_range(uint64 *pml4t, uint64 start_va, uint64 size) {
     if (size == 0) return 0;
 
     uint64 addr = start_va;
     uint64 end = addr + size;
-    uint32 idx = get_table_idx(addr,PML4E_SHIFT);
+    uint32 idx = get_table_idx(addr, PML4E_SHIFT);
     uint64 next;
+    // 安全起见，如果传来的是物理地址，需要统一转虚拟地址
+    uint64 *cur_pml4 = (uint64 *)pa_to_va((uint64)pml4t);
 
     do {
         next = get_addr_end(addr, end, PML4E_SHIFT);
-        uint64 pml4e = pml4t[idx];
+        uint64 pml4e = cur_pml4[idx];
 
         if (!(pml4e & PAGE_P)) continue;
 
-        // 顶层无需判断巨页，直接下发切割好的任务
-        if (unmap_pdpte_range(&pml4t[idx], addr, next)) {
-            // 注意：PML4 表是进程树根，即使全空也不在这里 free，仅维护计数对齐即可
-            va_to_page(pml4t)->refcount--;
+        if (unmap_pdpte_range(&cur_pml4[idx], addr, next)) {
+            // PML4 作为顶层进程树根，即使被清空也由宿主管理释放
+            // 这里只需维护 refcount 的准确性即可（如果有 page_pml4 的话）
         }
     } while (idx++, addr = next, addr != end);
 
     return 0;
 }
-
 //=================================================================================================================

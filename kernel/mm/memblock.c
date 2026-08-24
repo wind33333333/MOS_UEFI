@@ -227,15 +227,19 @@ INIT_TEXT int32 memblock_free(uint64 ptr, uint64 size) {
 
 
 // ===================================================================
-// 【Level 1: PT 层】 4KB 碎页横向铺砖
+// 【Level 1: PT 层】 4KB 碎页横向铺砖 (接收指针探针)
 // ===================================================================
-static inline int32 memblock_map_pte_range(uint64 *pde,uint64 va, uint64 pa,  uint64 end, uint64 attr) {
+static inline int32 memblock_map_pte_range(uint64 *pde, uint64 *curr_va, uint64 pa, uint64 end, uint64 attr) {
+    uint64 va = *curr_va; // 解引用，提取当前的虚拟地址
     uint64 *ptt;
 
     // 如果当前的 PT 表不存在，立刻原地建一张新表
     if (!(*pde & PAGE_P)) {
-        uint64 next_pa = memblock_alloc(PAGE_4K_SIZE,PAGE_4K_SIZE);
-        if (!next_pa) return -ENOMEM;
+        uint64 next_pa = memblock_alloc(PAGE_4K_SIZE, PAGE_4K_SIZE);
+        if (!next_pa) {
+            *curr_va = va; // 🚨 探针写入：记录精准的 OOM 死亡地址
+            return -ENOMEM;
+        }
         asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
 
         // 挂载到父级 PD 目录 (继承必要的读写和用户态权限)
@@ -244,33 +248,43 @@ static inline int32 memblock_map_pte_range(uint64 *pde,uint64 va, uint64 pa,  ui
     }
 
     ptt = pa_to_va(*pde & PAGE_PA_MASK);
-    uint32 idx = get_table_idx(va,PTE_SHIFT);
+    uint32 idx = get_table_idx(va, PTE_SHIFT);
 
     // 🚀 横向铺砖：沿着 PTE 数组狂奔，完美利用 L1 Cache
     do {
-        if (ptt[idx] & PAGE_P) {
-            uint64 old_pa = ptt[idx] & PAGE_PA_MASK;
+        uint64 pte = ptt[idx];
+        if (pte & PAGE_P) {
+            uint64 old_pa = pte & PAGE_PA_MASK;
             if (old_pa != pa) {
                 // 💣 致命逻辑矛盾爆发！
                 color_printk(RED, BLACK, "PANIC: VA Collision! VA: %#lx, Old PA: %#lx, New PA: %#lx\n", va, old_pa, pa);
+                *curr_va = va; // 🚨 探针写入：精准锁定案发现场
                 return -EEXIST;
             }
         }
-        // 🛡️ 走到这里，要么是空位，要么是合法重复映射，直接写入
+
+        // 🛡️ 走到这里，要么是空位，要么是合法的 PA 重复映射，执行兜底写入与权限更新
         ptt[idx] = pa | attr;
 
-    // VA 和 PA 必须手拉手一起横向推进 4KB！
-    } while (idx++, pa += PAGE_4K_SIZE, va += PAGE_4K_SIZE, va != end);
+    // 步进逻辑：推进 idx、pa 和 va，并实时把 va 同步给探针 (*curr_va = va)
+    } while (idx++, pa += PAGE_4K_SIZE, va += PAGE_4K_SIZE, *curr_va = va, va != end);
 
     return 0;
 }
 
-static inline int32 memblock_map_pde_range(uint64 *pdpte, uint64 va, uint64 pa, uint64 end, uint64 attr) {
+// ===================================================================
+// 【Level 2: PD 层】 2MB 智能升维与状态机驱动
+// ===================================================================
+static inline int32 memblock_map_pde_range(uint64 *pdpte, uint64 *curr_va, uint64 pa, uint64 end, uint64 attr) {
+    uint64 va = *curr_va;
     uint64 *pdt;
 
     if (!(*pdpte & PAGE_P)) {
         uint64 next_pa = memblock_alloc(PAGE_4K_SIZE, PAGE_4K_SIZE);
-        if (!next_pa) return -ENOMEM;
+        if (!next_pa) {
+            *curr_va = va;
+            return -ENOMEM;
+        }
         asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
         *pdpte = next_pa | PAGE_P | PAGE_RW | (attr & PAGE_US);
     }
@@ -283,49 +297,58 @@ static inline int32 memblock_map_pde_range(uint64 *pdpte, uint64 va, uint64 pa, 
         next = get_addr_end(va, end, PDE_SHIFT);
         uint64 pde = pdt[idx];
 
-        // 判断当前任务是否满足 2MB 完美对齐
+        // 🎯 提取当前任务的三大核心状态
+        boolean is_present    = (pde & PAGE_P) != 0;
+        boolean is_huge       = (pde & PAGE_PS) != 0;
         boolean is_2m_aligned = ((next - va) == PAGE_2M_SIZE && !(va & (PAGE_2M_SIZE - 1)) && !(pa & (PAGE_2M_SIZE - 1)));
 
-        // 🧠 分流器：我们想建巨页，并且（当前槽位为空 OR 当前槽位已经是巨页）
-        if (is_2m_aligned && (!(pde & PAGE_P) || (pde & PAGE_PS))) {
+        // 🧠 巨页通道：任务完美对齐，且槽位为空或已经是巨页
+        if (is_2m_aligned && (!is_present || is_huge)) {
 
-            if (pde & PAGE_P) {
-                // 槽位已存在巨页，进入幂等校验
-                uint64 old_pa = pde & PAGE_PA_MASK;
-                if (old_pa != pa) {
-                    color_printk(RED, BLACK, "PANIC: VA Collision at 2MB PDE! VA: %#lx, Old PA: %#lx, New PA: %#lx\n", va, old_pa, pa);
-                    return -EEXIST;
-                }
-            }
-            // 挂载巨页 / 更新权限
-            pdt[idx] = pa | adjust_huge_page_attr(attr);
-
-        } else {
-            // 🧠 分流器：要么不对齐只能铺碎砖，要么槽位被 PT 表占了只能降维
-
-            // 🛡️ 防御：如果上层要映射碎页，但发现槽位其实是被 2MB 巨页占死的？
-            // 这意味着 VMA 试图在一个 2MB 巨页的肚子里强行塞一个 4KB 的映射，必须拦截！
-            if ((pde & PAGE_P) && (pde & PAGE_PS)) {
-                color_printk(RED, BLACK, "PANIC: Attempting to map 4KB over an existing 2MB Huge Page at VA: %#lx!\n", va);
+            // 幂等校验：如果是已存在的巨页，物理地址绝对不能冲突
+            if (is_present && (pde & PAGE_PA_MASK) != pa) {
+                color_printk(RED, BLACK, "PANIC: VA Collision at 2MB PDE! VA: %#lx, Old PA: %#lx, New PA: %#lx\n", va, (pde & PAGE_PA_MASK), pa);
+                *curr_va = va; // 🚨 探针写入
                 return -EEXIST;
             }
 
-            // 安全降维：交由 PT 层处理
-            int err = memblock_map_pte_range(&pdt[idx], va, pa, next, attr);
-            if (err) return err;
+            // 挂载全新的 2MB 巨页，或更新现有巨页的权限
+            pdt[idx] = pa | adjust_huge_page_attr(attr);
+
+        }
+        // 🧠 碎页降维通道：凑不齐 2MB，或槽位已经被 PT 表死死占据
+        else {
+
+            // 🛡️ 终极防御：槽位里卡着一个巨页，但上层凑不齐 2MB 想强塞碎页？拦截！
+            if (is_present && is_huge) {
+                color_printk(RED, BLACK, "PANIC: Attempting to map 4KB over existing 2MB Huge Page at VA: %#lx!\n", va);
+                *curr_va = va; // 🚨 探针写入
+                return -EEXIST;
+            }
+
+            // 安全降维：把原装的 curr_va 指针传给底层，让底层在崩溃时直接更新它！
+            int err = memblock_map_pte_range(&pdt[idx], curr_va, pa, next, attr);
+            if (err) return err; // 直接向上传递错误，不需要再写探针（底层已经写好了）
         }
 
-    } while (idx++, pa += (next - va), va = next, va != end);
+    } while (idx++, pa += (next - va), va = next, *curr_va = va, va != end);
 
     return 0;
 }
 
-static inline int32 memblock_map_pdpte_range(uint64 *pml4e, uint64 va, uint64 pa, uint64 end, uint64 attr) {
+// ===================================================================
+// 【Level 3: PDPT 层】 1GB 智能升维与状态机驱动
+// ===================================================================
+static inline int32 memblock_map_pdpte_range(uint64 *pml4e, uint64 *curr_va, uint64 pa, uint64 end, uint64 attr) {
+    uint64 va = *curr_va;
     uint64 *pdptt;
 
     if (!(*pml4e & PAGE_P)) {
         uint64 next_pa = memblock_alloc(PAGE_4K_SIZE, PAGE_4K_SIZE);
-        if (!next_pa) return -ENOMEM;
+        if (!next_pa) {
+            *curr_va = va;
+            return -ENOMEM;
+        }
         asm_mem_set(pa_to_va(next_pa), 0, PAGE_4K_SIZE);
         *pml4e = next_pa | PAGE_P | PAGE_RW | (attr & PAGE_US);
     }
@@ -338,67 +361,75 @@ static inline int32 memblock_map_pdpte_range(uint64 *pml4e, uint64 va, uint64 pa
         next = get_addr_end(va, end, PDPTE_SHIFT);
         uint64 pdpte = pdptt[idx];
 
+        boolean is_present    = (pdpte & PAGE_P) != 0;
+        boolean is_huge       = (pdpte & PAGE_PS) != 0;
         boolean is_1g_aligned = ((next - va) == PAGE_1G_SIZE && !(va & (PAGE_1G_SIZE - 1)) && !(pa & (PAGE_1G_SIZE - 1)));
 
-        if (is_1g_aligned && (!(pdpte & PAGE_P) || (pdpte & PAGE_PS))) {
-
-            if (pdpte & PAGE_P) {
-                uint64 old_pa = pdpte & PAGE_PA_MASK;
-                if (old_pa != pa) {
-                    color_printk(RED, BLACK, "PANIC: VA Collision at 1GB PDPTE! VA: %#lx, Old PA: %#lx, New PA: %#lx\n", va, old_pa, pa);
-                    return -EEXIST;
-                }
-            }
-            pdptt[idx] = pa | adjust_huge_page_attr(attr);
-
-        } else {
-            if ((pdpte & PAGE_P) && (pdpte & PAGE_PS)) {
-                color_printk(RED, BLACK, "PANIC: Attempting to map 2MB/4KB over an existing 1GB Huge Page at VA: %#lx!\n", va);
+        // 🧠 巨页通道 (1GB)
+        if (is_1g_aligned && (!is_present || is_huge)) {
+            if (is_present && (pdpte & PAGE_PA_MASK) != pa) {
+                color_printk(RED, BLACK, "PANIC: VA Collision at 1GB PDPTE! VA: %#lx, Old PA: %#lx, New PA: %#lx\n", va, (pdpte & PAGE_PA_MASK), pa);
+                *curr_va = va;
                 return -EEXIST;
             }
-            int err = memblock_map_pde_range(&pdptt[idx], va, pa, next, attr);
+            pdptt[idx] = pa | adjust_huge_page_attr(attr);
+        }
+        // 🧠 碎页/2M降维通道
+        else {
+            if (is_present && is_huge) {
+                color_printk(RED, BLACK, "PANIC: Attempting to map 2MB/4KB over existing 1GB Huge Page at VA: %#lx!\n", va);
+                *curr_va = va;
+                return -EEXIST;
+            }
+            int err = memblock_map_pde_range(&pdptt[idx], curr_va, pa, next, attr);
             if (err) return err;
         }
 
-    } while (idx++, pa += (next - va), va = next, va != end);
+    } while (idx++, pa += (next - va), va = next, *curr_va = va, va != end);
 
     return 0;
 }
 
-
 // ===================================================================
-// 【主入口】 批量映射引擎 (自动混合 1G/2M/4K 页大小)
+// 【主入口】 批量映射引擎 (原子性操作：带指针探针精确定位与回滚)
 // ===================================================================
-int32 memblock_vmmap_range(uint64 *pml4t, uint64 start_va,uint64 pa, uint64 size, uint64 attr){
+int32 memblock_vmmap_range(uint64 *pml4t, uint64 start_va, uint64 pa, uint64 size, uint64 attr) {
     if (size == 0) return 0;
 
-    uint64 va = start_va;
-    uint64 end = va + size;
+    // ✨ 核心魔法：这就是我们的“指针探针 (Pointer Probe)”
+    uint64 curr_va = start_va;
+
+    uint64 end = start_va + size;
     uint64 *cur_pml4 = pa_to_va((uint64)pml4t);
-    uint32 idx = get_table_idx(va,PML4E_SHIFT);
+    uint32 idx = get_table_idx(curr_va, PML4E_SHIFT);
     uint64 next;
     int err = 0;
 
     do {
         // ✂️ 512GB 级边界切割
-        next = get_addr_end(va, end, PML4E_SHIFT);
+        next = get_addr_end(curr_va, end, PML4E_SHIFT);
 
-        // 直接派发给 PDPT 层
-        err = memblock_map_pdpte_range(&cur_pml4[idx],  va, pa,next, attr);
+        // 将探针地址 (&curr_va) 传递进深渊，让底层汇报战况
+        err = memblock_map_pdpte_range(&cur_pml4[idx], &curr_va, pa, next, attr);
 
-        // 🚨 一旦发生错误，执行核弹级自毁：回滚清理！
+        // 🚨 触发核弹级自毁机制：精准回滚！
         if (err) {
-            // 只有当 va > start_va 时，说明我们之前已经成功映射过一部分了
-            // 必须把之前成功映射的 (va - start_va) 这部分垃圾彻底擦除！
-            if (va > start_va) {
-                // 调用你之前写好的、极度完美的卸载引擎
-                memblock_unvmmap_range(pml4t, start_va, va - start_va);
+            // 此时此刻，curr_va 已经不再是开始的值了。
+            // 它被底层的探针极其精准地钉死在了内存耗尽，或者发生碰撞的那一个字节上！
+            if (curr_va > start_va) {
+                // 扫尾工作：利用完美卸载引擎，把从 start_va 开始，到死掉的 curr_va 之间
+                // 那些半途而废的废弃页表映射，全部清洗干净，做到“片叶不沾身”。
+                memblock_unvmmap_range(pml4t, start_va, curr_va - start_va);
             }
-            return err; // 擦干净屁股后，再向宿主 (VMA) 报告失败
-        }
-    } while (idx++, pa += (next - va), va = next, va != end);
 
-    return 0;
+            // 擦干净屁股后，再优雅地向宿主 (VMA) 报告失败，状态机 100% 保持无暇。
+            return err;
+        }
+
+    // 因为这里用的是逗号表达式，指针本身的值也会随着外层循环同步更新
+    } while (idx++, pa += (next - curr_va), curr_va = next, curr_va != end);
+
+    return 0; // 映射成功！
 }
 
 //=================================================================================================================
@@ -449,6 +480,7 @@ static inline int32 memblock_unmap_pde_range(uint64 *pdpte, uint64 addr, uint64 
             if ((next - addr) == PAGE_2M_SIZE && !(addr & (PAGE_2M_SIZE - 1))) {
                 pdt[idx] = 0;
                 asm_invlpg(addr);
+                continue;
             } else {
                 // 🚨 想要局部卸载巨页？目前不支持巨页拆分，直接死机防御！
                 color_printk(RED, BLACK, "PANIC: Partial unmap of 2MB Huge Page at VA: %#lx!\n", addr);
@@ -488,6 +520,7 @@ static inline int32 memblock_unmap_pdpte_range(uint64 *pml4e, uint64 addr, uint6
             if ((next - addr) == PAGE_1G_SIZE && !(addr & (PAGE_1G_SIZE - 1))) {
                 pdptt[idx] = 0;
                 asm_invlpg(addr);
+                continue;
             } else {
                 color_printk(RED, BLACK, "PANIC: Partial unmap of 1GB Huge Page at VA: %#lx!\n", addr);
                 while(1);
