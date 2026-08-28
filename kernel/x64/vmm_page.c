@@ -180,10 +180,6 @@ static vm_status_t vmm_walk(vm_space_t *space, vaddr_t vaddr, uint8_t target_lev
 /*                          大页拆分引擎 (Huge Page Splitter)                  */
 /* ========================================================================== */
 
-// x86_64 专用硬件控制位枚举
-#define PTE_PAT_4K_BIT    (1ULL << 7)   // 4KB 小页的 PAT 标志位在第 7 位
-#define PTE_PAT_HUGE_BIT  (1ULL << 12)  // 2MB/1GB 大页的 PAT 标志位在第 12 位
-
 /**
  * @brief 将指定虚拟地址所在的大页(2MB/1GB)炸开(Split)，拆分为 512 个下级页(4KB/2MB)
  *
@@ -231,27 +227,17 @@ vm_status_t vm_split_huge_page(vm_space_t *space, vaddr_t vaddr, vm_page_size_t 
     paddr_t base_pa = *entry & 0x000FFFFFFFE00000ULL;
 
     // 提取原大页所有的基础权限位与缓存控制位
-    vm_flags_t child_flags = *entry & (VM_FLAG_PRESENT | VM_FLAG_WRITABLE | VM_FLAG_USER |
-                                       VM_FLAG_PWT | VM_FLAG_PCD | VM_FLAG_GLOBAL | VM_FLAG_NO_EXEC);
+    vm_flags_t child_flags = *entry & (VM_FLAG_PRESENT | VM_FLAG_WRITABLE | VM_FLAG_USER | VM_FLAG_NO_EXEC |
+                                       VM_FLAG_PAT_HUGE | VM_FLAG_PWT | VM_FLAG_PCD | VM_FLAG_HUGE | VM_FLAG_GLOBAL);
 
-    // 探测原大页是否启用了 PAT 属性
-    bool has_pat = (*entry & PTE_PAT_HUGE_BIT) != 0;
-
-    // =========================================================================
-    // 优化 2 & 3：循环不变量外提，提前准备好所有子页表的 Flags
-    // =========================================================================
     if (cur_lvl == 2) {
-        // 【场景 A】：Level 2 (2MB) 拆分为 Level 1 (4KB 叶子页)
-        // 子页不带 HUGE 标志，且 PAT 属性位必须从第 12 位漂移至第 7 位
-        if (has_pat) {
-            child_flags |= PTE_PAT_4K_BIT;
-        }
-    } else if (cur_lvl == 3) {
-        // 【场景 B】：Level 3 (1GB) 拆分为 Level 2 (2MB 大页)
-        // 子页依然是大页（强制 HUGE），且 PAT 依然保留在第 12 位
-        child_flags |= VM_FLAG_HUGE;
-        if (has_pat) {
-            child_flags |= PTE_PAT_HUGE_BIT;
+        // 只要是拆成 4KB，必须无条件抹杀 HUGE 标志！
+        child_flags &= ~VM_FLAG_HUGE;
+
+        // 然后再单独处理 PAT 漂移
+        if (child_flags & VM_FLAG_PAT_HUGE) {
+            child_flags &= ~VM_FLAG_PAT_HUGE;
+            child_flags |= VM_FLAG_PAT_4K;
         }
     }
 
