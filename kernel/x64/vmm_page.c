@@ -12,6 +12,8 @@
 
 #include "vmm_page.h"
 
+#include "moslib.h"
+
 #define PAGE_SIZE_4KB      0x1000ULL              ///< 4 KiB 标准页字节大小
 #define PTE_ADDR_MASK      0x000FFFFFFFFFF000ULL  ///< 提取页表项中物理地址的掩码 (Bits 12..51)
 #define PTE_FLAGS_MASK     0xFFF0000000000FFFULL  ///< 提取硬件与软件属性标志的掩码
@@ -54,27 +56,16 @@ static inline bool vmm_is_canonical(vaddr_t vaddr, uint8_t paging_level) {
         int64_t sign_extended = ((int64_t)vaddr << 7) >> 7;
         return (vaddr_t)sign_extended == vaddr;
     }
-    return false;
+    return FALSE;
 }
 
-/**
- * @brief 通过 CPUID 指令检测 CPU 是否支持 1GiB 巨页
- * @return true 支持 (CPUID.80000001H:EDX[bit 26] == 1)
- */
-static inline bool vmm_cpu_supports_1gb_pages(void) {
-    uint32_t eax, ebx, ecx, edx;
-    __asm__ volatile("cpuid"
-                     : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
-                     : "a"(0x80000001), "c"(0));
-    return (edx & (1 << 26)) != 0;
-}
 
 /**
  * @brief 初始化 TLB 刷新收集器
  */
 static void tlb_batch_init(vm_tlb_batch_t *batch) {
     batch->count = 0;
-    batch->flush_all = false;
+    batch->flush_all = FALSE;
 }
 
 /**
@@ -88,7 +79,7 @@ static void tlb_batch_add(vm_tlb_batch_t *batch, vaddr_t vaddr, size_t size) {
         batch->count++;
     } else {
         // 收集区间过多，标记为全量刷新以降低后续开销
-        batch->flush_all = true;
+        batch->flush_all = TRUE;
     }
 }
 
@@ -202,7 +193,7 @@ vm_status_t vm_split_huge_page(vm_space_t *space, vaddr_t vaddr, vm_page_size_t 
 
     pte_t *entry = NULL;
     // 顺藤摸瓜，拿到当前层级的大页目录项
-    if (vmm_walk(space, vaddr, cur_lvl, false, &entry, NULL) != VM_SUCCESS || !entry) {
+    if (vmm_walk(space, vaddr, cur_lvl, FALSE, &entry, NULL) != VM_SUCCESS || !entry) {
         return VM_ERR_NOT_MAPPED;
     }
 
@@ -296,7 +287,7 @@ vm_status_t vm_map_range(vm_space_t *space, vaddr_t vaddr, paddr_t paddr, size_t
 
         // 贪心算法：在满足对齐和硬件支持的前提下优先使用 1GB 或 2MB 大页
         if (!(flags & VM_FLAG_NO_HUGE)) {
-            if (remaining >= 0x40000000 && !(curr_va & 0x3FFFFFFF) && !(curr_pa & 0x3FFFFFFF) && vmm_cpu_supports_1gb_pages()) {
+            if (remaining >= 0x40000000 && !(curr_va & 0x3FFFFFFF) && !(curr_pa & 0x3FFFFFFF)) {
                 target_level = 3;     // 升级为 1 GiB 巨页
                 step_bytes = 0x40000000;
             } else if (remaining >= 0x200000 && !(curr_va & 0x1FFFFF) && !(curr_pa & 0x1FFFFF)) {
@@ -309,7 +300,7 @@ vm_status_t vm_map_range(vm_space_t *space, vaddr_t vaddr, paddr_t paddr, size_t
         pte_t *entry = NULL;
 
         // 漫游页表树，按需创建中间页表
-        vm_status_t status = vmm_walk(space, curr_va, target_level, true, &entry, &log);
+        vm_status_t status = vmm_walk(space, curr_va, target_level, TRUE, &entry, &log);
         if (status != VM_SUCCESS) {
             goto rollback;
         }
@@ -367,7 +358,7 @@ rollback:
  * @param start     当前层需处理的起始虚拟地址
  * @param end       当前层需处理的结束虚拟地址 (开区间)
  * @param tlb_batch TLB 收集器
- * @return true 表示当前页表已完全变为空表，通知上级父节点释放该条目并回收物理帧
+ * @return TRUE 表示当前页表已完全变为空表，通知上级父节点释放该条目并回收物理帧
  */
 static bool vmm_unmap_tree_range(vm_space_t *space, paddr_t table_pa, uint8_t lvl,
                                  vaddr_t start, vaddr_t end, vm_tlb_batch_t *tlb_batch) {
@@ -420,15 +411,15 @@ static bool vmm_unmap_tree_range(vm_space_t *space, paddr_t table_pa, uint8_t lv
     if (lvl != space->paging_level) { // 绝不释放根页表 (CR3)
         for (size_t i = 0; i < 512; i++) {
             if (table_va[i] & VM_FLAG_PRESENT) {
-                return false; // 仍有条目在使用，不能释放
+                return FALSE; // 仍有条目在使用，不能释放
             }
         }
         // 512 个条目全为 0，归还该页表物理帧给分配器
         space->ops.free_frame(table_pa);
-        return true; // 返回 true 通知父节点将对应条目清零
+        return TRUE; // 返回 TRUE 通知父节点将对应条目清零
     }
 
-    return false;
+    return FALSE;
 }
 
 vm_status_t vm_unmap_range(vm_space_t *space, vaddr_t vaddr, size_t size) {
