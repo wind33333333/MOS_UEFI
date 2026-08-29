@@ -1,6 +1,5 @@
 #include "hpet.h"
 #include "printk.h"
-#include "vmm.h"
 #include "acpi.h"
 #include "vmalloc.h"
 #include "../x64/apic.h"

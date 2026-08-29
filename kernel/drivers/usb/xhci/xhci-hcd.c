@@ -2,7 +2,6 @@
 #include "printk.h"
 #include "pcie.h"
 #include "slub.h"
-#include "vmm.h"
 #include "driver.h"
 #include "vmalloc.h"
 #include "../core/usb-dev.h"

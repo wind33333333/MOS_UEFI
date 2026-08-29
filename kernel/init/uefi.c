@@ -1,5 +1,4 @@
 #include "uefi.h"
-#include "vmm.h"
 #include "linkage.h"
 #include "memblock.h"
 #include "printk.h"

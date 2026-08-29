@@ -1,5 +1,4 @@
 #include "printk.h"
-#include "vmm.h"
 #include "../init/uefi.h"
 #include "vmalloc.h"
 

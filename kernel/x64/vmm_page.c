@@ -529,13 +529,13 @@ static vm_status_e vmm_protect_tree_range(vm_space_t *space, uint64 table_pa, ui
 
             if (lvl == 1) {
                 // 1. 叶子节点 (4KB 标准页)：保留物理地址，更新属性标志
-                table_va[idx] = pa | (new_flags & PTE_FLAGS_MASK) | HW_PAGE_P;
+                table_va[idx] = pa | (new_flags & PTE_WRITE_MASK) | HW_PAGE_P;
                 tlb_batch_add(tlb_batch, cur, step);
             } else if (entry & HW_PAGE_PS) {
                 // 2. 大页节点
                 if (cur == entry_base && sub_end == next_boundary) {
                     // 权限修改范围完整覆盖整个大页：直接就地更新大页条目属性
-                    table_va[idx] = pa | (new_flags & PTE_FLAGS_MASK) | HW_PAGE_P | HW_PAGE_PS;
+                    table_va[idx] = pa | (new_flags & PTE_WRITE_MASK) | HW_PAGE_P | HW_PAGE_PS;
                     tlb_batch_add(tlb_batch, cur, step);
                 } else {
                     // 范围仅涉及大页的一部分：先拆分大页为子页表，再向下递归修改
@@ -613,7 +613,7 @@ vm_status_e vm_query(const vm_space_t *space, uint64 vaddr, uint64 *out_paddr,
         if ((entry & HW_PAGE_PS) || lvl == 1) {
             uint64 offset_mask = (1ULL << (12 + 9 * (lvl - 1))) - 1;
             if (out_paddr) *out_paddr = (entry & PTE_ADDR_MASK) | (vaddr & offset_mask);
-            if (out_flags) *out_flags = (uint64)(entry & PTE_FLAGS_MASK);
+            if (out_flags) *out_flags = (uint64)(entry & PTE_WRITE_MASK);
             if (out_size)  *out_size  = (vm_page_size_e)lvl;
             return VM_SUCCESS;
         }

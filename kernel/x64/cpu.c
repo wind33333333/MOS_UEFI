@@ -6,7 +6,6 @@
 #include "interrupt.h"
 #include "syscall.h"
 #include "printk.h"
-#include "vmm.h"
 #include "vmalloc.h"
 #include "../x64/mtrr.h"
 
@@ -146,8 +145,11 @@ INIT_TEXT void enable_cpu_advanced_features(void){
     //0x5: WP（读操作先访问缓存，写操作扩散到所有处理器）
     //0x6: WB（Write Back，回写）
     //0x7: UC-（Uncacheable，不缓存，弱UC）
+    // 布局: [PAT7=UC] [PAT6=WP] [PAT5=WT] [PAT4=WB] | [PAT3=UC] [PAT2=UC-] [PAT1=WC] [PAT0=WB]
+    // 优势: 将最常用的 WB, WC, UC-, UC 集中在前 4 项，使得 PTE/PDE 的 PAT 标志位永远为 0。
+    // 彻底免疫 4KB 与 2MB/1GB 页表中 PAT 标志位位置不同 (Bit 7 vs Bit 12) 导致的逻辑灾难！
     //endregion
-    asm_wrmsr(IA32_PAT_MSR,0x070504010006);
+    asm_wrmsr(IA32_PAT_MSR, 0x0005040600070106ULL);
 }
 
 INIT_TEXT uint32 apicid_to_cpuid(uint32 apic_id) {

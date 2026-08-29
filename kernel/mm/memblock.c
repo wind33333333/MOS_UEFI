@@ -1,5 +1,4 @@
 #include "../include/memblock.h"
-#include "../include/vmm.h"
 #include "../include/printk.h"
 #include "../include/errno.h"
 

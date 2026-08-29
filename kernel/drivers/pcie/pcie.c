@@ -3,7 +3,6 @@
 #include "printk.h"
 #include "slub.h"
 #include "vmalloc.h"
-#include "vmm.h"
 #include "bus.h"
 #include "errno.h"
 

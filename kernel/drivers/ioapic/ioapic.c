@@ -3,7 +3,6 @@
 #include "../../include/slub.h"
 #include "../../x64/cpu.h"
 #include "../../include/printk.h"
-#include "../../include/vmm.h"
 #include "../include/vmalloc.h"
 
 ioapic_devive_t ioapic_dev;

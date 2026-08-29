@@ -2,7 +2,6 @@
 
 #include "moslib.h"
 #include "rbtree.h"
-#include "../include/vmm.h"
 
 /* ========================================================================== */
 /*                   动态内核虚拟内存空间基址 (在启动时计算)                  */
@@ -31,6 +30,16 @@ extern uint64 g_io_map_base;      // MMIO / ACPI / APIC 等设备映射区
 
 // 初始化函数声明
 void vm_layout_init(boolean is_la57);
+
+//虚拟地址转物理地址
+static inline uint64 va_to_pa(void *va) {
+    return (uint64)va & ~g_direct_map_base;
+}
+
+//物理地址转虚拟地址
+static inline void *pa_to_va(uint64 pa) {
+    return (void *)(pa | g_direct_map_base);
+}
 
 /* bits in flags of vmalloc's vm_struct below */
 #define VM_ALLOC		        0x00000002	/* vmalloc() */

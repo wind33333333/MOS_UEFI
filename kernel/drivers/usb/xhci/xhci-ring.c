@@ -1,6 +1,5 @@
 #include "xhci-hcd.h"
 #include "errno.h"
-#include "vmm.h"
 #include "slub.h"
 #include "../core/usb-dev.h"
 

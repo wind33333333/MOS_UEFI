@@ -1,5 +1,4 @@
 #include "errno.h"
-#include "vmm.h"
 #include "printk.h"
 #include "xhci-hcd.h"
 #include "../core/usb-dev.h"
