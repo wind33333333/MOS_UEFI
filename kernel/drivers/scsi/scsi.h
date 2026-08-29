@@ -184,7 +184,7 @@ typedef struct {
 typedef struct {
     uint32 lun_list_length; // Big Endian: LUN 列表的字节总长 (不包含这4个字节)
     uint32 rsvd;
-    uint64 lun_list[];  //一个数组：uint64_t lun_list[];
+    uint64 lun_list[];  //一个数组：uint64 lun_list[];
 }scsi_report_luns_t;
 #define SCSI_LUN_BUF_LEN 64
 

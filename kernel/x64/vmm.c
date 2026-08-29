@@ -296,7 +296,7 @@ static inline int32 map_pde_range(uint64 *pdpte, uint64 *curr_va, uint64 pa, uin
     uint64 va = *curr_va;
     uint64 *pdt;
     page_t *page_pd;
-    bool new_table = FALSE;
+    boolean new_table = FALSE;
 
     if (!(*pdpte & PAGE_P)) {
         page_pd = alloc_pages(0);
@@ -317,9 +317,9 @@ static inline int32 map_pde_range(uint64 *pdpte, uint64 *curr_va, uint64 pa, uin
         next = get_addr_end(va, end, PDE_SHIFT);
         uint64 pde = pdt[idx];
 
-        bool is_present    = (pde & PAGE_P) != 0;
-        bool is_huge       = (pde & PAGE_PS) != 0;
-        bool is_2m_aligned = ((next - va) == PAGE_2M_SIZE && !(va & (PAGE_2M_SIZE - 1)) && !(pa & (PAGE_2M_SIZE - 1)));
+        boolean is_present    = (pde & PAGE_P) != 0;
+        boolean is_huge       = (pde & PAGE_PS) != 0;
+        boolean is_2m_aligned = ((next - va) == PAGE_2M_SIZE && !(va & (PAGE_2M_SIZE - 1)) && !(pa & (PAGE_2M_SIZE - 1)));
 
         // 🧠 巨页通道 (DRY 优化合并)
         if (is_2m_aligned && (!is_present || is_huge)) {
@@ -364,7 +364,7 @@ static inline int32 map_pdpte_range(uint64 *pml4e, uint64 *curr_va, uint64 pa, u
     uint64 va = *curr_va;
     uint64 *pdptt;
     page_t *page_pdpt;
-    bool new_table = FALSE;
+    boolean new_table = FALSE;
 
     if (!(*pml4e & PAGE_P)) {
         page_pdpt = alloc_pages(0);
@@ -385,9 +385,9 @@ static inline int32 map_pdpte_range(uint64 *pml4e, uint64 *curr_va, uint64 pa, u
         next = get_addr_end(va, end, PDPTE_SHIFT);
         uint64 pdpte = pdptt[idx];
 
-        bool is_present    = (pdpte & PAGE_P) != 0;
-        bool is_huge       = (pdpte & PAGE_PS) != 0;
-        bool is_1g_aligned = ((next - va) == PAGE_1G_SIZE && !(va & (PAGE_1G_SIZE - 1)) && !(pa & (PAGE_1G_SIZE - 1)));
+        boolean is_present    = (pdpte & PAGE_P) != 0;
+        boolean is_huge       = (pdpte & PAGE_PS) != 0;
+        boolean is_1g_aligned = ((next - va) == PAGE_1G_SIZE && !(va & (PAGE_1G_SIZE - 1)) && !(pa & (PAGE_1G_SIZE - 1)));
 
         if (is_1g_aligned && (!is_present || is_huge)) {
             if (is_present && (pdpte & PAGE_PA_MASK) != pa) {

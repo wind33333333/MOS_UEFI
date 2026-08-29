@@ -6,7 +6,7 @@
 
 
 //端点转Dci
-static inline uint8 epaddr_to_epdci(uint8 ep) {
+static inline uint8 euint64o_epdci(uint8 ep) {
     asm volatile(
         "rolb $1,%0"
         :"+q"(ep)

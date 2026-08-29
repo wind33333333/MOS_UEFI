@@ -769,7 +769,7 @@ void usb_event_queue_init(void) {
 /**
  * @brief [生产者] 投递端口事件
  * @note 运行在硬件中断 (ISR) 上下文中，要求极速，不可阻塞！
- * @return boolean TRUE-成功，FALSE-队列溢出满
+ * @return booleanean TRUE-成功，FALSE-队列溢出满
  */
 boolean usb_event_queue_push(usb_event_type_e type, void *parent, uint8 port_num) {
     // 预测下一个写入位置
@@ -799,7 +799,7 @@ boolean usb_event_queue_push(usb_event_type_e type, void *parent, uint8 port_num
  * @brief [消费者] 弹出端口事件
  * @note 运行在主循环底半部，安全、无惧阻塞。
  * @param out_event 弹出的事件拷贝存放处
- * @return boolean TRUE-成功拿到任务，FALSE-队列为空
+ * @return booleanean TRUE-成功拿到任务，FALSE-队列为空
  */
 boolean usb_event_queue_pop(usb_port_event_t *out_event) {
     // 检查队列是否为空

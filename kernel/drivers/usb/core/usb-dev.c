@@ -202,7 +202,7 @@ static inline int32 usb_cfg_alt_streams(usb_if_alt_t *alt, uint8 want_streams_ex
     // =========================================================================
     // 阶段 1：【探底博弈】寻找端点硬件的最短板 (使用哨兵机制)
     // =========================================================================
-    uint8 ep_min_exp = 0xFF; // 🌟 优化 2：用 0xFF 作为哨兵，干掉 boolean 标志位
+    uint8 ep_min_exp = 0xFF; // 🌟 优化 2：用 0xFF 作为哨兵，干掉 booleanean 标志位
 
     for (uint8 i = 0; i < num_ep; i++) {
         uint8 ep_max = alt->eps[i].max_streams_exp;
@@ -439,7 +439,7 @@ static inline void usb_ep_desc_params(usb_ep_t *cur_ep, usb_ep_desc_t *ep_desc) 
     uint8 usb_trans_type = ep_desc->attributes & 3;
 
     // 基础物理映射
-    cur_ep->ep_dci = epaddr_to_epdci(ep_desc->endpoint_address);
+    cur_ep->ep_dci = euint64o_epdci(ep_desc->endpoint_address);
     cur_ep->ep_type = ((ep_desc->endpoint_address & 0x80) >> 5) + usb_trans_type;
     cur_ep->max_packet_size = ep_desc->max_packet_size & 0x07FF;
     cur_ep->mult = (ep_desc->max_packet_size >> 11) & 0x3;

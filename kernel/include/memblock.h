@@ -33,5 +33,3 @@ extern efi_runtime_memmap_t efi_runtime_memmap;
 void init_memblock(void);
 uint64 memblock_alloc(uint64 size, uint64 align);
 int32 memblock_free(uint64 ptr, uint64 size);
-int32 memblock_vmmap_range(uint64 *pml4t, uint64 start_va,uint64 pa, uint64 size, uint64 attr);
-int32 memblock_unvmmap_range(uint64 *pml4t, uint64 start_va, uint64 size);

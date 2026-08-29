@@ -22,8 +22,8 @@
  * @brief 单次漫游分配日志（用于单步操作失败时的即时回滚）
  */
 typedef struct {
-    paddr_t allocated_tables[8]; ///< 记录单次 vmm_walk 过程中新创建的中间页表物理地址
-    size_t  allocated_count;     ///< 新分配的页表数量
+    uint64 allocated_tables[8]; ///< 记录单次 vmm_walk 过程中新创建的中间页表物理地址
+    uint64  allocated_count;     ///< 新分配的页表数量
 } vm_alloc_log_t;
 
 /* ========================================================================== */
@@ -39,7 +39,7 @@ typedef struct {
  *       Level 4 (PML4): Bits 39..47
  *       Level 5 (PML5): Bits 48..56
  */
-static inline size_t vmm_get_index(vaddr_t vaddr, uint8_t level) {
+static inline uint64 vmm_get_index(uint64 vaddr, uint8 level) {
     return (vaddr >> (12 + 9 * (level - 1))) & 0x1FF;
 }
 
@@ -48,13 +48,13 @@ static inline size_t vmm_get_index(vaddr_t vaddr, uint8_t level) {
  * @details 48 位虚拟地址要求 Bits 47..63 必须完全与 Bit 47 相同（符号位扩展）；
  *          57 位虚拟地址要求 Bits 56..63 必须完全与 Bit 56 相同。
  */
-static inline bool vmm_is_canonical(vaddr_t vaddr, uint8_t paging_level) {
+static boolean vmm_is_canonical(uint64 vaddr, uint8 paging_level) {
     if (paging_level == 4) {
-        int64_t sign_extended = ((int64_t)vaddr << 16) >> 16;
-        return (vaddr_t)sign_extended == vaddr;
+        int64 sign_extended = ((int64)vaddr << 16) >> 16;
+        return (uint64)sign_extended == vaddr;
     } else if (paging_level == 5) {
-        int64_t sign_extended = ((int64_t)vaddr << 7) >> 7;
-        return (vaddr_t)sign_extended == vaddr;
+        int64 sign_extended = ((int64)vaddr << 7) >> 7;
+        return (uint64)sign_extended == vaddr;
     }
     return FALSE;
 }
@@ -63,7 +63,7 @@ static inline bool vmm_is_canonical(vaddr_t vaddr, uint8_t paging_level) {
 /**
  * @brief 初始化 TLB 刷新收集器
  */
-static void tlb_batch_init(vm_tlb_batch_t *batch) {
+static inline void tlb_batch_init(vm_tlb_batch_t *batch) {
     batch->count = 0;
     batch->flush_all = FALSE;
 }
@@ -71,7 +71,7 @@ static void tlb_batch_init(vm_tlb_batch_t *batch) {
 /**
  * @brief 向批处理器添加一个需要刷新的虚拟内存区间
  */
-static void tlb_batch_add(vm_tlb_batch_t *batch, vaddr_t vaddr, size_t size) {
+static void tlb_batch_add(vm_tlb_batch_t *batch, uint64 vaddr, uint64 size) {
     if (batch->flush_all) return;
     if (batch->count < VM_TLB_MAX_RANGES) {
         batch->ranges[batch->count].start = vaddr;
@@ -90,13 +90,13 @@ static void tlb_batch_add(vm_tlb_batch_t *batch, vaddr_t vaddr, size_t size) {
 static void tlb_batch_commit(const vm_tlb_batch_t *batch) {
     if (batch->flush_all) {
         // 通过重新加载当前 CR3 寄存器强制刷新非全局页 TLB
-        uint64_t cr3;
+        uint64 cr3;
         __asm__ volatile("mov %%cr3, %0; mov %0, %%cr3" : "=r"(cr3) :: "memory");
         return;
     }
-    for (size_t i = 0; i < batch->count; i++) {
-        vaddr_t cur = batch->ranges[i].start;
-        vaddr_t end = cur + batch->ranges[i].size;
+    for (uint64 i = 0; i < batch->count; i++) {
+        uint64 cur = batch->ranges[i].start;
+        uint64 end = cur + batch->ranges[i].size;
         while (cur < end) {
             __asm__ volatile("invlpg (%0)" :: "r"(cur) : "memory");
             cur += PAGE_SIZE_4KB;
@@ -118,19 +118,19 @@ static void tlb_batch_commit(const vm_tlb_batch_t *batch) {
  * @param alloc_log      分配日志指针（用于记录新创建的中间页表以便回滚）
  * @return vm_status_t   执行状态
  */
-static vm_status_t vmm_walk(vm_space_t *space, vaddr_t vaddr, uint8_t target_level,
-                            bool create_missing, pte_t **out_entry, vm_alloc_log_t *alloc_log) {
+static vm_status_e vmm_walk(vm_space_t *space, uint64 vaddr, uint8 target_level,
+                            boolean create_missing, uint64 **out_entry, vm_alloc_log_t *alloc_log) {
     if (!vmm_is_canonical(vaddr, space->paging_level)) {
         return VM_ERR_CANONICAL;
     }
 
-    paddr_t cur_table_pa = space->cr3_root;
+    uint64 cur_table_pa = space->cr3_root;
 
     // 从顶层根页表逐级向下漫游至 target_level 的上一级
-    for (uint8_t lvl = space->paging_level; lvl > target_level; lvl--) {
-        pte_t *table_va = (pte_t *)space->ops.phys_to_virt(cur_table_pa);
-        size_t idx = vmm_get_index(vaddr, lvl);
-        pte_t entry = table_va[idx];
+    for (uint8 lvl = space->paging_level; lvl > target_level; lvl--) {
+        uint64 *table_va = (uint64 *)space->ops.phys_to_virt(cur_table_pa);
+        uint64 idx = vmm_get_index(vaddr, lvl);
+        uint64 entry = table_va[idx];
 
         if (entry & VM_FLAG_PRESENT) {
             // 中间路径遇到大页标志（说明此处已存在未拆分的大页，无法继续深入）
@@ -145,7 +145,7 @@ static vm_status_t vmm_walk(vm_space_t *space, vaddr_t vaddr, uint8_t target_lev
             }
 
             // 分配新的 4KB 物理页作为下级页表
-            paddr_t new_table_pa = space->ops.alloc_zeroed_frame();
+            uint64 new_table_pa = space->ops.alloc_zeroed_frame();
             if (!new_table_pa) {
                 return VM_ERR_NOMEM;
             }
@@ -162,7 +162,7 @@ static vm_status_t vmm_walk(vm_space_t *space, vaddr_t vaddr, uint8_t target_lev
     }
 
     // 获取目标层级页表的虚拟地址，并返回对应条目的指针
-    pte_t *final_table_va = (pte_t *)space->ops.phys_to_virt(cur_table_pa);
+    uint64 *final_table_va = (uint64 *)space->ops.phys_to_virt(cur_table_pa);
     *out_entry = &final_table_va[vmm_get_index(vaddr, target_level)];
     return VM_SUCCESS;
 }
@@ -179,8 +179,8 @@ static vm_status_t vmm_walk(vm_space_t *space, vaddr_t vaddr, uint8_t target_lev
  * @param from_size 当前大页的层级级别 (2: 2MB PDE, 3: 1GB PDPT)
  * @return vm_status_t 执行状态
  */
-vm_status_t vm_split_huge_page(vm_space_t *space, vaddr_t vaddr, vm_page_size_t from_size) {
-    uint8_t cur_lvl = (uint8_t)from_size;
+vm_status_e vm_split_huge_page(vm_space_t *space, uint64 vaddr, vm_page_size_e from_size) {
+    uint8 cur_lvl = (uint8)from_size;
 
     // 硬件限制：仅支持将 Level 2 (2MB) 拆分为 4KB，或将 Level 3 (1GB) 拆分为 2MB
     if (cur_lvl != 2 && cur_lvl != 3) {
@@ -188,10 +188,10 @@ vm_status_t vm_split_huge_page(vm_space_t *space, vaddr_t vaddr, vm_page_size_t 
     }
 
     // 计算当前大页的总容量大小，并将 vaddr 严格向下对齐至该大页的起始边界
-    size_t huge_size = 1ULL << (12 + 9 * (cur_lvl - 1));
+    uint64 huge_size = 1ULL << (12 + 9 * (cur_lvl - 1));
     vaddr &= ~(huge_size - 1);
 
-    pte_t *entry = NULL;
+    uint64 *entry = NULL;
     // 顺藤摸瓜，拿到当前层级的大页目录项
     if (vmm_walk(space, vaddr, cur_lvl, FALSE, &entry, NULL) != VM_SUCCESS || !entry) {
         return VM_ERR_NOT_MAPPED;
@@ -203,22 +203,22 @@ vm_status_t vm_split_huge_page(vm_space_t *space, vaddr_t vaddr, vm_page_size_t 
     }
 
     // 向 PMM 申请一个全 0 的物理帧，作为下一级子页表
-    paddr_t sub_table_pa = space->ops.alloc_zeroed_frame();
+    uint64 sub_table_pa = space->ops.alloc_zeroed_frame();
     if (!sub_table_pa) {
         return VM_ERR_NOMEM;
     }
 
-    pte_t *sub_table_va = (pte_t *)space->ops.phys_to_virt(sub_table_pa);
+    uint64 *sub_table_va = (uint64 *)space->ops.phys_to_virt(sub_table_pa);
 
     // =========================================================================
     // 优化 1：统一掩码提取物理基址 (避开 PAT 位与保留位陷阱)
     // 2MB 大页有效位 [21:51]，1GB 大页有效位 [30:51]。
     // 根据 Intel 规范，1GB 的 [21:29] 必为 0。因此使用截断低 21 位的掩码可同时兼容两者。
     // =========================================================================
-    paddr_t base_pa = *entry & 0x000FFFFFFFE00000ULL;
+    uint64 base_pa = *entry & 0x000FFFFFFFE00000ULL;
 
     // 提取原大页所有的基础权限位与缓存控制位
-    vm_flags_t child_flags = *entry & (VM_FLAG_PRESENT | VM_FLAG_WRITABLE | VM_FLAG_USER | VM_FLAG_NO_EXEC |
+    vm_flags_e child_flags = *entry & (VM_FLAG_PRESENT | VM_FLAG_WRITABLE | VM_FLAG_USER | VM_FLAG_NO_EXEC |
                                        VM_FLAG_PAT_HUGE | VM_FLAG_PWT | VM_FLAG_PCD | VM_FLAG_HUGE | VM_FLAG_GLOBAL);
 
     if (cur_lvl == 2) {
@@ -233,12 +233,12 @@ vm_status_t vm_split_huge_page(vm_space_t *space, vaddr_t vaddr, vm_page_size_t 
     }
 
     // 计算拆分后，每个下级子页的物理基址步进跨度 (2MB拆为4KB, 1GB拆为2MB)
-    size_t sub_step = 1ULL << (12 + 9 * (cur_lvl - 2));
+    uint64 sub_step = 1ULL << (12 + 9 * (cur_lvl - 2));
 
     // =========================================================================
     // 极致极简循环：没有任何分支判断，利用标量指令并行打满
     // =========================================================================
-    for (size_t i = 0; i < 512; i++) {
+    for (uint64 i = 0; i < 512; i++) {
         sub_table_va[i] = (base_pa + i * sub_step) | child_flags;
     }
 
@@ -249,7 +249,7 @@ vm_status_t vm_split_huge_page(vm_space_t *space, vaddr_t vaddr, vm_page_size_t 
     // 3. 强制 WRITABLE (防 Upgrade 陷阱，将控制权下放)
     // 4. 动态继承 USER (保障 Meltdown 等推测执行安全)
     // =========================================================================
-    vm_flags_t dir_user_flag = *entry & VM_FLAG_USER;
+    vm_flags_e dir_user_flag = *entry & VM_FLAG_USER;
     *entry = sub_table_pa | VM_FLAG_PRESENT | VM_FLAG_WRITABLE | dir_user_flag;
 
     // 局部刷新该虚拟地址的 TLB，丢弃旧的大页缓存
@@ -262,7 +262,7 @@ vm_status_t vm_split_huge_page(vm_space_t *space, vaddr_t vaddr, vm_page_size_t 
 /*                         范围映射与事务回滚                                  */
 /* ========================================================================== */
 
-vm_status_t vm_map_range(vm_space_t *space, vaddr_t vaddr, paddr_t paddr, size_t size, vm_flags_t flags) {
+vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 size, vm_flags_e flags) {
     // 基础参数合法性与 4KB 对齐校验
     if (!size || (vaddr & 0xFFF) || (paddr & 0xFFF) || (size & 0xFFF)) {
         return VM_ERR_INVALID_ARGS;
@@ -276,14 +276,14 @@ vm_status_t vm_map_range(vm_space_t *space, vaddr_t vaddr, paddr_t paddr, size_t
     vm_tlb_batch_t tlb_batch;
     tlb_batch_init(&tlb_batch);
 
-    vaddr_t curr_va = vaddr;
-    paddr_t curr_pa = paddr;
-    size_t mapped_bytes = 0;
+    uint64 curr_va = vaddr;
+    uint64 curr_pa = paddr;
+    uint64 mapped_bytes = 0;
 
     while (mapped_bytes < size) {
-        size_t remaining = size - mapped_bytes;
-        uint8_t target_level = 1;     // 默认使用 4KB (Level 1)
-        size_t step_bytes = 0x1000;
+        uint64 remaining = size - mapped_bytes;
+        uint8 target_level = 1;     // 默认使用 4KB (Level 1)
+        uint64 step_bytes = 0x1000;
 
         // 贪心算法：在满足对齐和硬件支持的前提下优先使用 1GB 或 2MB 大页
         if (!(flags & VM_FLAG_NO_HUGE)) {
@@ -297,10 +297,10 @@ vm_status_t vm_map_range(vm_space_t *space, vaddr_t vaddr, paddr_t paddr, size_t
         }
 
         vm_alloc_log_t log = { .allocated_count = 0 };
-        pte_t *entry = NULL;
+        uint64 *entry = NULL;
 
         // 漫游页表树，按需创建中间页表
-        vm_status_t status = vmm_walk(space, curr_va, target_level, TRUE, &entry, &log);
+        vm_status_e status = vmm_walk(space, curr_va, target_level, TRUE, &entry, &log);
         if (status != VM_SUCCESS) {
             goto rollback;
         }
@@ -308,7 +308,7 @@ vm_status_t vm_map_range(vm_space_t *space, vaddr_t vaddr, paddr_t paddr, size_t
         // 冲突检查：如果目标页已存在且未指定 OVERWRITE 覆写标志
         if ((*entry & VM_FLAG_PRESENT) && !(flags & VM_FLAG_OVERWRITE)) {
             // 立即释放本步新分配的中间页表
-            for (size_t i = 0; i < log.allocated_count; i++) {
+            for (uint64 i = 0; i < log.allocated_count; i++) {
                 space->ops.free_frame(log.allocated_tables[i]);
             }
             status = VM_ERR_ALREADY_MAPPED;
@@ -316,7 +316,7 @@ vm_status_t vm_map_range(vm_space_t *space, vaddr_t vaddr, paddr_t paddr, size_t
         }
 
         // 构造新的页表项
-        pte_t new_entry = (curr_pa & PTE_ADDR_MASK) | (flags & PTE_FLAGS_MASK) | VM_FLAG_PRESENT;
+        uint64 new_entry = (curr_pa & PTE_ADDR_MASK) | (flags & PTE_FLAGS_MASK) | VM_FLAG_PRESENT;
         if (target_level > 1) {
             new_entry |= VM_FLAG_HUGE; // 大页必须置位 PS 标志
         }
@@ -360,19 +360,19 @@ rollback:
  * @param tlb_batch TLB 收集器
  * @return TRUE 表示当前页表已完全变为空表，通知上级父节点释放该条目并回收物理帧
  */
-static bool vmm_unmap_tree_range(vm_space_t *space, paddr_t table_pa, uint8_t lvl,
-                                 vaddr_t start, vaddr_t end, vm_tlb_batch_t *tlb_batch) {
-    pte_t *table_va = (pte_t *)space->ops.phys_to_virt(table_pa);
-    size_t step = 1ULL << (12 + 9 * (lvl - 1)); // 当前层单个条目覆盖的虚拟内存范围
-    vaddr_t cur = start;
+static boolean vmm_unmap_tree_range(vm_space_t *space, uint64 table_pa, uint8 lvl,
+                                 uint64 start, uint64 end, vm_tlb_batch_t *tlb_batch) {
+    uint64 *table_va = (uint64 *)space->ops.phys_to_virt(table_pa);
+    uint64 step = 1ULL << (12 + 9 * (lvl - 1)); // 当前层单个条目覆盖的虚拟内存范围
+    uint64 cur = start;
 
     while (cur < end) {
-        size_t idx = vmm_get_index(cur, lvl);
-        vaddr_t entry_base = cur & ~(step - 1);
-        vaddr_t next_boundary = entry_base + step;
-        vaddr_t sub_end = (end < next_boundary) ? end : next_boundary; // 裁剪出当前条目重叠的区间
+        uint64 idx = vmm_get_index(cur, lvl);
+        uint64 entry_base = cur & ~(step - 1);
+        uint64 next_boundary = entry_base + step;
+        uint64 sub_end = (end < next_boundary) ? end : next_boundary; // 裁剪出当前条目重叠的区间
 
-        pte_t entry = table_va[idx];
+        uint64 entry = table_va[idx];
 
         if (entry & VM_FLAG_PRESENT) {
             if (lvl == 1) {
@@ -387,9 +387,9 @@ static bool vmm_unmap_tree_range(vm_space_t *space, paddr_t table_pa, uint8_t lv
                     tlb_batch_add(tlb_batch, cur, step);
                 } else {
                     // 解映射范围仅覆盖大页的一部分：先拆分大页，再递归解映射局部
-                    if (vm_split_huge_page(space, entry_base, (vm_page_size_t)lvl) == VM_SUCCESS) {
+                    if (vm_split_huge_page(space, entry_base, (vm_page_size_e)lvl) == VM_SUCCESS) {
                         entry = table_va[idx];
-                        paddr_t child_pa = entry & PTE_ADDR_MASK;
+                        uint64 child_pa = entry & PTE_ADDR_MASK;
                         if (vmm_unmap_tree_range(space, child_pa, lvl - 1, cur, sub_end, tlb_batch)) {
                             table_va[idx] = 0;
                         }
@@ -397,7 +397,7 @@ static bool vmm_unmap_tree_range(vm_space_t *space, paddr_t table_pa, uint8_t lv
                 }
             } else {
                 // 3. 中间目录节点：递归向下处理子树
-                paddr_t child_pa = entry & PTE_ADDR_MASK;
+                uint64 child_pa = entry & PTE_ADDR_MASK;
                 if (vmm_unmap_tree_range(space, child_pa, lvl - 1, cur, sub_end, tlb_batch)) {
                     table_va[idx] = 0;
                 }
@@ -409,7 +409,7 @@ static bool vmm_unmap_tree_range(vm_space_t *space, paddr_t table_pa, uint8_t lv
 
     // 4. 自底向上树修剪 (Tree Pruning): 扫描当前页表是否全空
     if (lvl != space->paging_level) { // 绝不释放根页表 (CR3)
-        for (size_t i = 0; i < 512; i++) {
+        for (uint64 i = 0; i < 512; i++) {
             if (table_va[i] & VM_FLAG_PRESENT) {
                 return FALSE; // 仍有条目在使用，不能释放
             }
@@ -422,7 +422,7 @@ static bool vmm_unmap_tree_range(vm_space_t *space, paddr_t table_pa, uint8_t lv
     return FALSE;
 }
 
-vm_status_t vm_unmap_range(vm_space_t *space, vaddr_t vaddr, size_t size) {
+vm_status_e vm_unmap_range(vm_space_t *space, uint64 vaddr, uint64 size) {
     if (!size || (vaddr & 0xFFF) || (size & 0xFFF)) {
         return VM_ERR_INVALID_ARGS;
     }
@@ -449,23 +449,23 @@ vm_status_t vm_unmap_range(vm_space_t *space, vaddr_t vaddr, size_t size) {
 /**
  * @brief 递归区间裁剪权限修改核心函数
  */
-static vm_status_t vmm_protect_tree_range(vm_space_t *space, paddr_t table_pa, uint8_t lvl,
-                                          vaddr_t start, vaddr_t end, vm_flags_t new_flags,
+static vm_status_e vmm_protect_tree_range(vm_space_t *space, uint64 table_pa, uint8 lvl,
+                                          uint64 start, uint64 end, vm_flags_e new_flags,
                                           vm_tlb_batch_t *tlb_batch) {
-    pte_t *table_va = (pte_t *)space->ops.phys_to_virt(table_pa);
-    size_t step = 1ULL << (12 + 9 * (lvl - 1));
-    vaddr_t cur = start;
+    uint64 *table_va = (uint64 *)space->ops.phys_to_virt(table_pa);
+    uint64 step = 1ULL << (12 + 9 * (lvl - 1));
+    uint64 cur = start;
 
     while (cur < end) {
-        size_t idx = vmm_get_index(cur, lvl);
-        vaddr_t entry_base = cur & ~(step - 1);
-        vaddr_t next_boundary = entry_base + step;
-        vaddr_t sub_end = (end < next_boundary) ? end : next_boundary;
+        uint64 idx = vmm_get_index(cur, lvl);
+        uint64 entry_base = cur & ~(step - 1);
+        uint64 next_boundary = entry_base + step;
+        uint64 sub_end = (end < next_boundary) ? end : next_boundary;
 
-        pte_t entry = table_va[idx];
+        uint64 entry = table_va[idx];
 
         if (entry & VM_FLAG_PRESENT) {
-            paddr_t pa = entry & PTE_ADDR_MASK;
+            uint64 pa = entry & PTE_ADDR_MASK;
 
             if (lvl == 1) {
                 // 1. 叶子节点 (4KB 标准页)：保留物理地址，更新属性标志
@@ -479,22 +479,22 @@ static vm_status_t vmm_protect_tree_range(vm_space_t *space, paddr_t table_pa, u
                     tlb_batch_add(tlb_batch, cur, step);
                 } else {
                     // 范围仅涉及大页的一部分：先拆分大页为子页表，再向下递归修改
-                    vm_status_t split_status = vm_split_huge_page(space, entry_base, (vm_page_size_t)lvl);
+                    vm_status_e split_status = vm_split_huge_page(space, entry_base, (vm_page_size_e)lvl);
                     if (split_status != VM_SUCCESS) {
                         return split_status;
                     }
 
                     entry = table_va[idx];
-                    paddr_t child_pa = entry & PTE_ADDR_MASK;
-                    vm_status_t status = vmm_protect_tree_range(space, child_pa, lvl - 1, cur, sub_end, new_flags, tlb_batch);
+                    uint64 child_pa = entry & PTE_ADDR_MASK;
+                    vm_status_e status = vmm_protect_tree_range(space, child_pa, lvl - 1, cur, sub_end, new_flags, tlb_batch);
                     if (status != VM_SUCCESS) {
                         return status;
                     }
                 }
             } else {
                 // 3. 中间目录节点：向下递归处理子树
-                paddr_t child_pa = entry & PTE_ADDR_MASK;
-                vm_status_t status = vmm_protect_tree_range(space, child_pa, lvl - 1, cur, sub_end, new_flags, tlb_batch);
+                uint64 child_pa = entry & PTE_ADDR_MASK;
+                vm_status_e status = vmm_protect_tree_range(space, child_pa, lvl - 1, cur, sub_end, new_flags, tlb_batch);
                 if (status != VM_SUCCESS) {
                     return status;
                 }
@@ -507,7 +507,7 @@ static vm_status_t vmm_protect_tree_range(vm_space_t *space, paddr_t table_pa, u
     return VM_SUCCESS;
 }
 
-vm_status_t vm_protect_range(vm_space_t *space, vaddr_t vaddr, size_t size, vm_flags_t new_flags) {
+vm_status_e vm_protect_range(vm_space_t *space, uint64 vaddr, uint64 size, vm_flags_e new_flags) {
     if (!size || (vaddr & 0xFFF) || (size & 0xFFF)) {
         return VM_ERR_INVALID_ARGS;
     }
@@ -520,7 +520,7 @@ vm_status_t vm_protect_range(vm_space_t *space, vaddr_t vaddr, size_t size, vm_f
     tlb_batch_init(&tlb_batch);
 
     // 单次递归树遍历，自动处理全量大页更新与局部大页拆分修改
-    vm_status_t status = vmm_protect_tree_range(space, space->cr3_root, space->paging_level,
+    vm_status_e status = vmm_protect_tree_range(space, space->cr3_root, space->paging_level,
                                                 vaddr, vaddr + size, new_flags, &tlb_batch);
     tlb_batch_commit(&tlb_batch);
     return status;
@@ -530,19 +530,19 @@ vm_status_t vm_protect_range(vm_space_t *space, vaddr_t vaddr, size_t size, vm_f
 /*                         查询与地址空间生命周期                              */
 /* ========================================================================== */
 
-vm_status_t vm_query(const vm_space_t *space, vaddr_t vaddr, paddr_t *out_paddr,
-                     vm_flags_t *out_flags, vm_page_size_t *out_size) {
+vm_status_e vm_query(const vm_space_t *space, uint64 vaddr, uint64 *out_paddr,
+                     vm_flags_e *out_flags, vm_page_size_e *out_size) {
     if (!vmm_is_canonical(vaddr, space->paging_level)) {
         return VM_ERR_CANONICAL;
     }
 
-    paddr_t cur_table_pa = space->cr3_root;
+    uint64 cur_table_pa = space->cr3_root;
 
     // 自顶向下逐级漫游查询
-    for (uint8_t lvl = space->paging_level; lvl >= 1; lvl--) {
-        pte_t *table_va = (pte_t *)space->ops.phys_to_virt(cur_table_pa);
-        size_t idx = vmm_get_index(vaddr, lvl);
-        pte_t entry = table_va[idx];
+    for (uint8 lvl = space->paging_level; lvl >= 1; lvl--) {
+        uint64 *table_va = (uint64 *)space->ops.phys_to_virt(cur_table_pa);
+        uint64 idx = vmm_get_index(vaddr, lvl);
+        uint64 entry = table_va[idx];
 
         // 遇到未映射项
         if (!(entry & VM_FLAG_PRESENT)) {
@@ -551,10 +551,10 @@ vm_status_t vm_query(const vm_space_t *space, vaddr_t vaddr, paddr_t *out_paddr,
 
         // 遇到叶子节点（大页或到达 Level 1 终点）
         if ((entry & VM_FLAG_HUGE) || lvl == 1) {
-            uint64_t offset_mask = (1ULL << (12 + 9 * (lvl - 1))) - 1;
+            uint64 offset_mask = (1ULL << (12 + 9 * (lvl - 1))) - 1;
             if (out_paddr) *out_paddr = (entry & PTE_ADDR_MASK) | (vaddr & offset_mask);
-            if (out_flags) *out_flags = (vm_flags_t)(entry & PTE_FLAGS_MASK);
-            if (out_size)  *out_size  = (vm_page_size_t)lvl;
+            if (out_flags) *out_flags = (vm_flags_e)(entry & PTE_FLAGS_MASK);
+            if (out_size)  *out_size  = (vm_page_size_e)lvl;
             return VM_SUCCESS;
         }
 
@@ -564,13 +564,13 @@ vm_status_t vm_query(const vm_space_t *space, vaddr_t vaddr, paddr_t *out_paddr,
     return VM_ERR_NOT_MAPPED;
 }
 
-vm_status_t vm_space_init(vm_space_t *space, uint8_t level, vm_allocator_ops_t ops, bool clone_kernel) {
+vm_status_e vm_space_init(vm_space_t *space, uint8 level, vm_allocator_ops_t ops, boolean clone_kernel) {
     if (level != 4 && level != 5) {
         return VM_ERR_INVALID_ARGS;
     }
 
     // 分配并清零顶层根页表
-    paddr_t root_pa = ops.alloc_zeroed_frame();
+    uint64 root_pa = ops.alloc_zeroed_frame();
     if (!root_pa) {
         return VM_ERR_NOMEM;
     }
@@ -582,15 +582,15 @@ vm_status_t vm_space_init(vm_space_t *space, uint8_t level, vm_allocator_ops_t o
 
     if (clone_kernel) {
         // 读取当前活动的 CR3 根页表物理地址
-        uint64_t active_cr3;
+        uint64 active_cr3;
         __asm__ volatile("mov %%cr3, %0" : "=r"(active_cr3));
-        paddr_t active_root_pa = active_cr3 & PTE_ADDR_MASK;
+        uint64 active_root_pa = active_cr3 & PTE_ADDR_MASK;
 
-        pte_t *active_root_va = (pte_t *)ops.phys_to_virt(active_root_pa);
-        pte_t *new_root_va = (pte_t *)ops.phys_to_virt(root_pa);
+        uint64 *active_root_va = (uint64 *)ops.phys_to_virt(active_root_pa);
+        uint64 *new_root_va = (uint64 *)ops.phys_to_virt(root_pa);
 
         // 复制高半核共享条目 (索引 256..511 覆盖高半区虚拟地址空间)
-        for (size_t i = 256; i < 512; i++) {
+        for (uint64 i = 256; i < 512; i++) {
             new_root_va[i] = active_root_va[i];
         }
     }
@@ -598,13 +598,13 @@ vm_status_t vm_space_init(vm_space_t *space, uint8_t level, vm_allocator_ops_t o
     return VM_SUCCESS;
 }
 
-vm_status_t vm_space_destroy(vm_space_t *space) {
+vm_status_e vm_space_destroy(vm_space_t *space) {
     if (!space || !space->cr3_root) {
         return VM_ERR_INVALID_ARGS;
     }
 
     // 计算用户态低半区 (索引 0..255) 覆盖的虚拟地址上限并执行范围解映射
-    vaddr_t user_limit = 1ULL << (12 + 9 * (space->paging_level - 1) + 8);
+    uint64 user_limit = 1ULL << (12 + 9 * (space->paging_level - 1) + 8);
     vm_unmap_range(space, 0, user_limit);
 
     // 释放根页表物理帧
