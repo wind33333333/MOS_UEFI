@@ -290,6 +290,8 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
     uint64 curr_pa = paddr;
     uint64 mapped_bytes = 0;
 
+    vm_status_e status;
+
     while (mapped_bytes < size) {
         uint64 remaining = size - mapped_bytes;
         uint8 target_level = 1;     // 默认使用 Level 1 (4KB 页面)
@@ -320,7 +322,7 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
         uint64 *entry = NULL;
 
         // 向下漫游页表树，按需造桥 (分配中间目录)
-        vm_status_e status = vmm_walk(space, curr_va, target_level, TRUE, &entry, &log);
+        status = vmm_walk(space, curr_va, target_level, TRUE, &entry, &log);
 
         // 【防泄漏补丁 1 - 孤儿页表清理】：若 walk 走到一半物理内存耗尽，必须超度刚才临时造的桥梁
         if (status != VM_SUCCESS) {
