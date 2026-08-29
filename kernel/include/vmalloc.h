@@ -4,6 +4,34 @@
 #include "rbtree.h"
 #include "../include/vmm.h"
 
+/* ========================================================================== */
+/*                   动态内核虚拟内存空间基址 (在启动时计算)                  */
+/* ========================================================================== */
+extern uint64 g_direct_map_base;  // 物理内存全量直接映射区
+extern uint64 g_vmalloc_base;     // 离散虚拟内存动态分配区 (类似 Linux vmalloc)
+extern uint64 g_page_map_base;    // page 结构体数组稀疏映射区 (vmemmap)
+extern uint64 g_io_map_base;      // MMIO / ACPI / APIC 等设备映射区
+
+/* ========================================================================== */
+/*                 静态内核代码与模块区 (雷打不动，必须在最顶端)              */
+/* ========================================================================== */
+// -----------------------------------------------------------------------------
+// 【架构师死穴警告】：无论 4 级还是 5 级页表，代码段绝对不能挪动！
+// 现代 64 位 OS 使用 gcc -mcmodel=kernel 编译，编译器强制假定内核代码、
+// 全局变量全部分布在地址空间最高的 2GB 内，以便使用极速的 32 位相对寻址。
+// -----------------------------------------------------------------------------
+
+// 动态模块空间 (1.5 GB，最高位往下挤一点)
+#define MODULES_VA_START  0xFFFFFFFFA0000000ULL
+#define MODULES_VA_END    0xFFFFFFFFFFFFFFFFULL
+
+// 内核主代码与数据起始虚拟地址 (512 MB，紧贴在模块空间下方)
+#define KERNEL_VA_START   0xFFFFFFFF80000000ULL
+#define KERNEL_VA_END     0xFFFFFFFF9FFFFFFFULL
+
+// 初始化函数声明
+void vm_layout_init(boolean is_la57);
+
 /* bits in flags of vmalloc's vm_struct below */
 #define VM_ALLOC		        0x00000002	/* vmalloc() */
 #define VM_MODULES	            0x00000004	/* vmap()ed pages */
