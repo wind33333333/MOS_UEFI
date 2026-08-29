@@ -12,11 +12,9 @@
 
 #include "vmm_page.h"
 
-#include "moslib.h"
-
 #define PAGE_SIZE_4KB      0x1000ULL              ///< 4 KiB 标准页字节大小
 #define PTE_ADDR_MASK      0x000FFFFFFFFFF000ULL  ///< 提取页表项中物理地址的掩码 (Bits 12..51)
-#define PTE_FLAGS_MASK     0xFFF0000000000FFFULL  ///< 提取硬件与软件属性标志的掩码
+#define PTE_WRITE_MASK  (~(SW_FLAG_OVERWRITE | SW_FLAG_NO_HUGE)) // 掩码逻辑：除了 API 控制符，其他所有的硬件标志和“状态类”软件标志，统统放行！
 
 /**
  * @brief 单次漫游分配日志（用于单步操作失败时的即时回滚）
@@ -132,9 +130,9 @@ static vm_status_e vmm_walk(vm_space_t *space, uint64 vaddr, uint8 target_level,
         uint64 idx = vmm_get_index(vaddr, lvl);
         uint64 entry = table_va[idx];
 
-        if (entry & VM_FLAG_PRESENT) {
+        if (entry & HW_PAGE_P) {
             // 中间路径遇到大页标志（说明此处已存在未拆分的大页，无法继续深入）
-            if (entry & VM_FLAG_HUGE) {
+            if (entry & HW_PAGE_PS) {
                 return VM_ERR_ALREADY_MAPPED;
             }
             cur_table_pa = entry & PTE_ADDR_MASK;
@@ -145,7 +143,7 @@ static vm_status_e vmm_walk(vm_space_t *space, uint64 vaddr, uint8 target_level,
             }
 
             // 分配新的 4KB 物理页作为下级页表
-            uint64 new_table_pa = space->ops.alloc_zeroed_frame();
+            uint64 new_table_pa = space->ops.alloc();
             if (!new_table_pa) {
                 return VM_ERR_NOMEM;
             }
@@ -156,7 +154,7 @@ static vm_status_e vmm_walk(vm_space_t *space, uint64 vaddr, uint8 target_level,
             }
 
             // 中间目录项默认赋予全权限 (Present | Writable | User)，最终权限由末级叶子项收敛控制
-            table_va[idx] = new_table_pa | VM_FLAG_PRESENT | VM_FLAG_WRITABLE | VM_FLAG_USER;
+            table_va[idx] = new_table_pa | HW_PAGE_P | HW_PAGE_RW | HW_PAGE_US;
             cur_table_pa = new_table_pa;
         }
     }
@@ -198,12 +196,12 @@ vm_status_e vm_split_huge_page(vm_space_t *space, uint64 vaddr, vm_page_size_e f
     }
 
     // 防御性校验：必须存在，且必须是真正的大页
-    if (!(*entry & VM_FLAG_PRESENT) || !(*entry & VM_FLAG_HUGE)) {
+    if (!(*entry & HW_PAGE_P) || !(*entry & HW_PAGE_PS)) {
         return VM_ERR_INVALID_ARGS;
     }
 
     // 向 PMM 申请一个全 0 的物理帧，作为下一级子页表
-    uint64 sub_table_pa = space->ops.alloc_zeroed_frame();
+    uint64 sub_table_pa = space->ops.alloc();
     if (!sub_table_pa) {
         return VM_ERR_NOMEM;
     }
@@ -218,17 +216,17 @@ vm_status_e vm_split_huge_page(vm_space_t *space, uint64 vaddr, vm_page_size_e f
     uint64 base_pa = *entry & 0x000FFFFFFFE00000ULL;
 
     // 提取原大页所有的基础权限位与缓存控制位
-    vm_flags_e child_flags = *entry & (VM_FLAG_PRESENT | VM_FLAG_WRITABLE | VM_FLAG_USER | VM_FLAG_NO_EXEC |
-                                       VM_FLAG_PAT_HUGE | VM_FLAG_PWT | VM_FLAG_PCD | VM_FLAG_HUGE | VM_FLAG_GLOBAL);
+    uint64 child_flags = *entry & (HW_PAGE_P | HW_PAGE_G | HW_PAGE_NX | HW_PAGE_RW | HW_PAGE_US |
+                                   HW_PAGE_HUGE_PAT | HW_PAGE_PWT | HW_PAGE_PCD| HW_PAGE_PS );
 
     if (cur_lvl == 2) {
         // 只要是拆成 4KB，必须无条件抹杀 HUGE 标志！
-        child_flags &= ~VM_FLAG_HUGE;
+        child_flags &= ~HW_PAGE_PS;
 
         // 然后再单独处理 PAT 漂移
-        if (child_flags & VM_FLAG_PAT_HUGE) {
-            child_flags &= ~VM_FLAG_PAT_HUGE;
-            child_flags |= VM_FLAG_PAT_4K;
+        if (child_flags & HW_PAGE_HUGE_PAT) {
+            child_flags &= ~HW_PAGE_HUGE_PAT;
+            child_flags |= HW_PAGE_4K_PAT;
         }
     }
 
@@ -249,8 +247,8 @@ vm_status_e vm_split_huge_page(vm_space_t *space, uint64 vaddr, vm_page_size_e f
     // 3. 强制 WRITABLE (防 Upgrade 陷阱，将控制权下放)
     // 4. 动态继承 USER (保障 Meltdown 等推测执行安全)
     // =========================================================================
-    vm_flags_e dir_user_flag = *entry & VM_FLAG_USER;
-    *entry = sub_table_pa | VM_FLAG_PRESENT | VM_FLAG_WRITABLE | dir_user_flag;
+    uint64 dir_user_flag = *entry & HW_PAGE_US;
+    *entry = sub_table_pa | HW_PAGE_P | HW_PAGE_RW | dir_user_flag;
 
     // 局部刷新该虚拟地址的 TLB，丢弃旧的大页缓存
     __asm__ volatile("invlpg (%0)" :: "r"(vaddr) : "memory");
@@ -259,20 +257,32 @@ vm_status_e vm_split_huge_page(vm_space_t *space, uint64 vaddr, vm_page_size_e f
 }
 
 /* ========================================================================== */
-/*                         范围映射与事务回滚                                  */
+/*                         高内聚区间映射与事务回滚引擎                       */
 /* ========================================================================== */
 
-vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 size, vm_flags_e flags) {
-    // 基础参数合法性与 4KB 对齐校验
+/**
+ * @brief 将虚拟地址区间映射到指定的物理地址区间 (支持贪心大页与安全覆写)
+ *
+ * @param space  虚拟地址空间上下文 (包含根页表、PMM 分配回调及锁等)
+ * @param vaddr  起始虚拟地址 (必须 4KB 对齐)
+ * @param paddr  起始物理地址 (必须 4KB 对齐)
+ * @param size   映射总长度 (必须 4KB 对齐)
+ * @param flags  内存属性与修饰符组合 (如 PAGE_USER_DATA_RW | SW_PAGE_OVERWRITE)
+ * @return vm_status_e 执行状态
+ */
+vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 size, uint64 flags) {
+    // 1. 基础参数合法性与 4KB 对齐校验
     if (!size || (vaddr & 0xFFF) || (paddr & 0xFFF) || (size & 0xFFF)) {
         return VM_ERR_INVALID_ARGS;
     }
-    // 虚拟地址区间规范性校验
+
+    // 2. 虚拟地址区间规范性校验 (防止在 x86_64 留下 canonical 漏洞)
     if (!vmm_is_canonical(vaddr, space->paging_level) ||
         !vmm_is_canonical(vaddr + size - 1, space->paging_level)) {
         return VM_ERR_CANONICAL;
     }
 
+    // 初始化 TLB 批量刷新器
     vm_tlb_batch_t tlb_batch;
     tlb_batch_init(&tlb_batch);
 
@@ -282,68 +292,116 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
 
     while (mapped_bytes < size) {
         uint64 remaining = size - mapped_bytes;
-        uint8 target_level = 1;     // 默认使用 4KB (Level 1)
+        uint8 target_level = 1;     // 默认使用 Level 1 (4KB 页面)
         uint64 step_bytes = 0x1000;
+        uint64 new_flags = flags;
 
-        // 贪心算法：在满足对齐和硬件支持的前提下优先使用 1GB 或 2MB 大页
-        if (!(flags & VM_FLAG_NO_HUGE)) {
+        // =====================================================================
+        // 【贪心算法】：在满足对齐、且长度充足时，狂暴升级为大页
+        // =====================================================================
+        if (!(new_flags & SW_FLAG_NO_HUGE)) {
+            // 尝试 1GB 巨页 (Level 3)
             if (remaining >= 0x40000000 && !(curr_va & 0x3FFFFFFF) && !(curr_pa & 0x3FFFFFFF)) {
-                target_level = 3;     // 升级为 1 GiB 巨页
+                target_level = 3;
                 step_bytes = 0x40000000;
-            } else if (remaining >= 0x200000 && !(curr_va & 0x1FFFFF) && !(curr_pa & 0x1FFFFF)) {
-                target_level = 2;     // 升级为 2 MiB 大页
+                // 位运算魔法：将 4KB 的 PAT(Bit 7) 漂移至大页的 PAT(Bit 12)，并强制打上 PS(Bit 7)
+                new_flags |= ((new_flags & HW_PAGE_4K_PAT) << 5) | HW_PAGE_PS;
+            }
+            // 尝试 2MB 大页 (Level 2)
+            else if (remaining >= 0x200000 && !(curr_va & 0x1FFFFF) && !(curr_pa & 0x1FFFFF)) {
+                target_level = 2;
                 step_bytes = 0x200000;
+                new_flags |= ((new_flags & HW_PAGE_4K_PAT) << 5) | HW_PAGE_PS;
             }
         }
 
+        // 记录单步寻址过程中临时分配的中间目录 (用于 OOM 及冲突时的精准回滚)
         vm_alloc_log_t log = { .allocated_count = 0 };
         uint64 *entry = NULL;
 
-        // 漫游页表树，按需创建中间页表
+        // 向下漫游页表树，按需造桥 (分配中间目录)
         vm_status_e status = vmm_walk(space, curr_va, target_level, TRUE, &entry, &log);
+
+        // 【防泄漏补丁 1 - 孤儿页表清理】：若 walk 走到一半物理内存耗尽，必须超度刚才临时造的桥梁
         if (status != VM_SUCCESS) {
-            goto rollback;
-        }
-
-        // 冲突检查：如果目标页已存在且未指定 OVERWRITE 覆写标志
-        if ((*entry & VM_FLAG_PRESENT) && !(flags & VM_FLAG_OVERWRITE)) {
-            // 立即释放本步新分配的中间页表
             for (uint64 i = 0; i < log.allocated_count; i++) {
-                space->ops.free_frame(log.allocated_tables[i]);
+                space->ops.free(log.allocated_tables[i]);
             }
-            status = VM_ERR_ALREADY_MAPPED;
             goto rollback;
         }
 
-        // 构造新的页表项
-        uint64 new_entry = (curr_pa & PTE_ADDR_MASK) | (flags & PTE_FLAGS_MASK) | VM_FLAG_PRESENT;
-        if (target_level > 1) {
-            new_entry |= VM_FLAG_HUGE; // 大页必须置位 PS 标志
+        // =====================================================================
+        // 冲突拦截、目录强拆重建 (Unmap-then-Map) 与旧页安全回收
+        // =====================================================================
+        if (*entry & HW_PAGE_P) {
+
+            // 1. 权限拦截：若用户未授权覆盖 (OVERWRITE)，则清理临时目录，立刻报错撤销
+            if (!(new_flags & SW_FLAG_OVERWRITE)) {
+                for (uint64 i = 0; i < log.allocated_count; i++) {
+                    space->ops.free(log.allocated_tables[i]);
+                }
+                status = VM_ERR_ALREADY_MAPPED;
+                goto rollback;
+            }
+
+            // 2. 【防泄漏补丁 2 - 大页强拆重建】：
+            // 如果我们准备盖大页 (target_level > 1)，却发现脚下是一栋结构复杂的“旧楼”(无 PS 标志的目录)，
+            // 绝不能强行覆盖指针！采用 Unmap-then-Map 策略，将旧楼彻底夷为平地后再盖大页。
+            if (target_level > 1 && !(*entry & HW_PAGE_PS)) {
+                // 动作 A：放弃本次注入，清理刚为了大页漫游而临时分配的桥梁
+                for (uint64 i = 0; i < log.allocated_count; i++) {
+                    space->ops.free(log.allocated_tables[i]);
+                }
+
+                // 动作 B：调用现成的高级解映射接口，利用自修剪算法，递归摧毁这片区域内的所有旧映射及页表
+                // (注: 若架构采用细粒度锁，需确保 vm_unmap_range 内部调用不会产生死锁)
+                vm_unmap_range(space, curr_va, step_bytes);
+
+                // 动作 C：虚拟地址不推进一步，原地 continue 重试。
+                // 下一次回来时，旧楼已空，大页将完美落成！
+                continue;
+            }
+
+            // 3. 【防泄漏补丁 3 - 旧数据页完美回收】：
+            // 能安稳走到这里的，一定是准备被同级覆盖的叶子节点 (4K 盖 4K，或 2M 盖 2M)。
+            // 在填入新物理地址前，提取旧物理地址并通知 PMM 回收，做到真正的 0 数据页泄漏。
+            uint64 old_pa = *entry & PTE_ADDR_MASK;
+            if (space->ops.free && old_pa != 0) {
+                // 注：若未来底层引入了写时复制 (COW)，这里的 free 需变更为 ref_count--
+                space->ops.free(old_pa);
+            }
         }
 
+        // =====================================================================
+        // 执行物理映射注入
+        // =====================================================================
+        uint64 pte_flags = new_flags & PTE_WRITE_MASK;
+        uint64 new_entry = (curr_pa & PTE_ADDR_MASK) | pte_flags;
         *entry = new_entry;
+
+        // 将被修改的地址加入 TLB 待刷新队列
         tlb_batch_add(&tlb_batch, curr_va, step_bytes);
 
-        // 推进步长
+        // 成功映射，游标推进
         curr_va += step_bytes;
         curr_pa += step_bytes;
         mapped_bytes += step_bytes;
-        continue;
+    } // end while
 
-rollback:
-        // =====================================================================
-        // 事务失败：全自动回滚机制
-        // 清除前序步骤已建立的全部映射，并级联回收新建的中间物理页表
-        // =====================================================================
-        if (mapped_bytes > 0) {
-            vm_unmap_range(space, vaddr, mapped_bytes);
-        }
-        return status;
-    }
-
-    // 映射事务成功完成，统一提交 TLB 刷新
+    // 整个范围映射事务成功完成，一次性批量下发 TLB Shootdown
     tlb_batch_commit(&tlb_batch);
     return VM_SUCCESS;
+
+rollback:
+    // =====================================================================
+    // 宏观事务失败：全自动大回滚机制
+    // =====================================================================
+    // 如果本次映射操作中途暴毙（如 OOM），利用 vm_unmap_range 的“自修剪”能力，
+    // 将之前成功映射的前半段范围彻底摧毁，保持内存状态原子性。
+    if (mapped_bytes > 0) {
+        vm_unmap_range(space, vaddr, mapped_bytes);
+    }
+    return status;
 }
 
 /* ========================================================================== */
@@ -374,12 +432,12 @@ static boolean vmm_unmap_tree_range(vm_space_t *space, uint64 table_pa, uint8 lv
 
         uint64 entry = table_va[idx];
 
-        if (entry & VM_FLAG_PRESENT) {
+        if (entry & HW_PAGE_P) {
             if (lvl == 1) {
                 // 1. 标准 4KB 叶子节点：直接清除条目
                 table_va[idx] = 0;
                 tlb_batch_add(tlb_batch, cur, step);
-            } else if (entry & VM_FLAG_HUGE) {
+            } else if (entry & HW_PAGE_PS) {
                 // 2. 大页节点
                 if (cur == entry_base && sub_end == next_boundary) {
                     // 解映射范围完整覆盖整个大页：直接清除大页条目
@@ -410,12 +468,12 @@ static boolean vmm_unmap_tree_range(vm_space_t *space, uint64 table_pa, uint8 lv
     // 4. 自底向上树修剪 (Tree Pruning): 扫描当前页表是否全空
     if (lvl != space->paging_level) { // 绝不释放根页表 (CR3)
         for (uint64 i = 0; i < 512; i++) {
-            if (table_va[i] & VM_FLAG_PRESENT) {
+            if (table_va[i] & HW_PAGE_P) {
                 return FALSE; // 仍有条目在使用，不能释放
             }
         }
         // 512 个条目全为 0，归还该页表物理帧给分配器
-        space->ops.free_frame(table_pa);
+        space->ops.free(table_pa);
         return TRUE; // 返回 TRUE 通知父节点将对应条目清零
     }
 
@@ -450,7 +508,7 @@ vm_status_e vm_unmap_range(vm_space_t *space, uint64 vaddr, uint64 size) {
  * @brief 递归区间裁剪权限修改核心函数
  */
 static vm_status_e vmm_protect_tree_range(vm_space_t *space, uint64 table_pa, uint8 lvl,
-                                          uint64 start, uint64 end, vm_flags_e new_flags,
+                                          uint64 start, uint64 end, uint64 new_flags,
                                           vm_tlb_batch_t *tlb_batch) {
     uint64 *table_va = (uint64 *)space->ops.phys_to_virt(table_pa);
     uint64 step = 1ULL << (12 + 9 * (lvl - 1));
@@ -464,18 +522,18 @@ static vm_status_e vmm_protect_tree_range(vm_space_t *space, uint64 table_pa, ui
 
         uint64 entry = table_va[idx];
 
-        if (entry & VM_FLAG_PRESENT) {
+        if (entry & HW_PAGE_P) {
             uint64 pa = entry & PTE_ADDR_MASK;
 
             if (lvl == 1) {
                 // 1. 叶子节点 (4KB 标准页)：保留物理地址，更新属性标志
-                table_va[idx] = pa | (new_flags & PTE_FLAGS_MASK) | VM_FLAG_PRESENT;
+                table_va[idx] = pa | (new_flags & PTE_FLAGS_MASK) | HW_PAGE_P;
                 tlb_batch_add(tlb_batch, cur, step);
-            } else if (entry & VM_FLAG_HUGE) {
+            } else if (entry & HW_PAGE_PS) {
                 // 2. 大页节点
                 if (cur == entry_base && sub_end == next_boundary) {
                     // 权限修改范围完整覆盖整个大页：直接就地更新大页条目属性
-                    table_va[idx] = pa | (new_flags & PTE_FLAGS_MASK) | VM_FLAG_PRESENT | VM_FLAG_HUGE;
+                    table_va[idx] = pa | (new_flags & PTE_FLAGS_MASK) | HW_PAGE_P | HW_PAGE_PS;
                     tlb_batch_add(tlb_batch, cur, step);
                 } else {
                     // 范围仅涉及大页的一部分：先拆分大页为子页表，再向下递归修改
@@ -507,7 +565,7 @@ static vm_status_e vmm_protect_tree_range(vm_space_t *space, uint64 table_pa, ui
     return VM_SUCCESS;
 }
 
-vm_status_e vm_protect_range(vm_space_t *space, uint64 vaddr, uint64 size, vm_flags_e new_flags) {
+vm_status_e vm_protect_range(vm_space_t *space, uint64 vaddr, uint64 size, uint64 new_flags) {
     if (!size || (vaddr & 0xFFF) || (size & 0xFFF)) {
         return VM_ERR_INVALID_ARGS;
     }
@@ -531,7 +589,7 @@ vm_status_e vm_protect_range(vm_space_t *space, uint64 vaddr, uint64 size, vm_fl
 /* ========================================================================== */
 
 vm_status_e vm_query(const vm_space_t *space, uint64 vaddr, uint64 *out_paddr,
-                     vm_flags_e *out_flags, vm_page_size_e *out_size) {
+                     uint64 *out_flags, vm_page_size_e *out_size) {
     if (!vmm_is_canonical(vaddr, space->paging_level)) {
         return VM_ERR_CANONICAL;
     }
@@ -545,15 +603,15 @@ vm_status_e vm_query(const vm_space_t *space, uint64 vaddr, uint64 *out_paddr,
         uint64 entry = table_va[idx];
 
         // 遇到未映射项
-        if (!(entry & VM_FLAG_PRESENT)) {
+        if (!(entry & HW_PAGE_P)) {
             return VM_ERR_NOT_MAPPED;
         }
 
         // 遇到叶子节点（大页或到达 Level 1 终点）
-        if ((entry & VM_FLAG_HUGE) || lvl == 1) {
+        if ((entry & HW_PAGE_PS) || lvl == 1) {
             uint64 offset_mask = (1ULL << (12 + 9 * (lvl - 1))) - 1;
             if (out_paddr) *out_paddr = (entry & PTE_ADDR_MASK) | (vaddr & offset_mask);
-            if (out_flags) *out_flags = (vm_flags_e)(entry & PTE_FLAGS_MASK);
+            if (out_flags) *out_flags = (uint64)(entry & PTE_FLAGS_MASK);
             if (out_size)  *out_size  = (vm_page_size_e)lvl;
             return VM_SUCCESS;
         }
@@ -570,7 +628,7 @@ vm_status_e vm_space_init(vm_space_t *space, uint8 level, vm_allocator_ops_t ops
     }
 
     // 分配并清零顶层根页表
-    uint64 root_pa = ops.alloc_zeroed_frame();
+    uint64 root_pa = ops.alloc();
     if (!root_pa) {
         return VM_ERR_NOMEM;
     }
@@ -608,7 +666,7 @@ vm_status_e vm_space_destroy(vm_space_t *space) {
     vm_unmap_range(space, 0, user_limit);
 
     // 释放根页表物理帧
-    space->ops.free_frame(space->cr3_root);
+    space->ops.free(space->cr3_root);
     space->cr3_root = 0;
     return VM_SUCCESS;
 }
