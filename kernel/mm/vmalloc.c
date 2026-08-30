@@ -4,90 +4,56 @@
 #include "../include/printk.h"
 #include "../init/kernel_page_table.h"
 
-// 默认赋予 4 级页表 (LA48) 的布局参数，防止早期未初始化时使用
-uint64 g_direct_map_base;
-uint64 g_vmalloc_base;
-uint64 g_page_map_base;
-uint64 g_io_map_base;
+// 默认 4 级页表占位符
+uint64 g_direct_map_start;
+uint64 g_direct_map_end;
+uint64 g_vmalloc_start;
+uint64 g_vmalloc_end;
+uint64 g_page_map_start;
+uint64 g_page_map_end;
+uint64 g_io_map_start;
+uint64 g_io_map_end;
 
-/**
- * @brief 动态初始化内核虚拟内存布局 (榨干极限虚存版)
- * 
- * 根据 CPUID 检测结果，动态调整内核高半核的内存布局。
- * 
- * @param is_la57 是否启用了 5 级页表 (57-bit Linear Address)
- */
 void vm_layout_init(boolean is_la57) {
     if (is_la57) {
         // =====================================================================
-        // 【5 级页表模式 - LA57】 (未来架构：总计 64 PB 内核空间)
-        // 空间范围：0xFF00000000000000 ~ 0xFFFFFFFFFFFFFFFF (64 PB)
-        // 1 PB = 0x0004000000000000 
+        // 【5 级页表模式 - LA57】(单位: PB = 0x0004000000000000ULL)
         // =====================================================================
-        
-        // 1. 直接映射区 (Direct Map)
-        // 起点：0xFF00000000000000 
-        // 分配：32 PB (0x0080000000000000)
-        // 占据整个 5 级内核空间的一半，支持高达 32PB 物理 RAM 直接映射
-        g_direct_map_base = 0xFF00000000000000ULL; 
-        
-        // 2. 离散虚拟映射区 (vmalloc)
-        // 起点：0xFF80000000000000 (0xFF00... + 32PB)
-        // 分配：16 PB (0x0040000000000000)
-        // 满足 BPF 引擎、内核超级缓冲区、巨型离散数据的映射需求
-        g_vmalloc_base = 0xFF80000000000000ULL;
 
-        // 3. Page 结构体映射区 (vmemmap)
-        // 起点：0xFFC0000000000000 (0xFF80... + 16PB)
-        // 分配：1 PB (0x0004000000000000)
-        // 物理内存追踪极限：(64 PB / 4 KB) * 64 Bytes = 1 PB。完美覆盖！
-        g_page_map_base = 0xFFC0000000000000ULL;
+        g_direct_map_start = 0xFF00000000000000ULL;
+        g_direct_map_end  = g_direct_map_start + 0x0080000000000000ULL; // 占用 32 PB
 
-        // 4. 外设 MMIO 与 IO 映射区
-        // 起点：0xFFC4000000000000 (0xFFC0... + 1PB)
-        // 分配：1 PB (0x0004000000000000)
-        // 足够映射上万张算力 GPU 的统一显存 (UVM) 及 CXL 扩展内存节点
-        g_io_map_base = 0xFFC4000000000000ULL;
+        // 【安全隔离】：留出 1 PB (0x0004000000000000) 的 Guard Hole！
+        g_vmalloc_start    = g_direct_map_end + 0x0004000000000000ULL;
+        g_vmalloc_end     = g_vmalloc_start + 0x0040000000000000ULL;    // 占用 16 PB
 
-        // ---------------------------------------------------------------------
-        // 剩余未使用空间说明 (约 14 PB，从 0xFFC8... 到 0xFFFF...)：
-        // 1. 预留 8 PB 用于 KASAN (Kernel Address Sanitizer) 影子内存。
-        // 2. 预留海量 Guard Hole (安全隔离空洞)，防止不同区段的缓冲区溢出。
-        // 3. 最高的 2GB 被静态分配给了内核代码 (KERNEL_VA_START) 和动态模块。
-        // ---------------------------------------------------------------------
+        // 【安全隔离】：留出 1 PB 的 Guard Hole！
+        g_page_map_start   = g_vmalloc_end + 0x0004000000000000ULL;
+        g_page_map_end    = g_page_map_start + 0x0004000000000000ULL;   // 占用 1 PB
+
+        // 【安全隔离】：留出 1 PB 的 Guard Hole！
+        g_io_map_start     = g_page_map_end + 0x0004000000000000ULL;
+        g_io_map_end      = g_io_map_start + 0x0004000000000000ULL;     // 占用 1 PB
 
     } else {
         // =====================================================================
-        // 【4 级页表模式 - LA48】 (主流架构：总计 128 TB 内核空间)
-        // 空间范围：0xFFFF800000000000 ~ 0xFFFFFFFFFFFFFFFF (128 TB)
-        // 1 TB = 0x0000010000000000
+        // 【4 级页表模式 - LA48】(单位: TB = 0x0000010000000000ULL)
         // =====================================================================
-        
-        // 1. 直接映射区 (Direct Map)
-        // 起点：0xFFFF800000000000
-        // 分配：64 TB (0x0000400000000000)
-        // 占据 4 级页表内核空间一半，支持 64TB 物理内存
-        g_direct_map_base = 0xFFFF800000000000ULL;
-        
-        // 2. 离散虚拟映射区 (vmalloc)
-        // 起点：0xFFFFC00000000000 (0xFFFF8000... + 64TB)
-        // 分配：32 TB (0x0000200000000000)
-        g_vmalloc_base = 0xFFFFC00000000000ULL;
 
-        // 3. Page 结构体映射区 (vmemmap)
-        // 起点：0xFFFFE00000000000 (0xFFFFC000... + 32TB)
-        // 分配：1 TB (0x0000010000000000)
-        // 物理内存追踪极限：(64 TB / 4 KB) * 64 Bytes = 1 TB
-        g_page_map_base = 0xFFFFE00000000000ULL;
+        g_direct_map_start = 0xFFFF800000000000ULL;
+        g_direct_map_end  = g_direct_map_start + 0x0000400000000000ULL; // 占用 64 TB
 
-        // 4. 外设 MMIO 与 IO 映射区
-        // 起点：0xFFFFE10000000000 (0xFFFFE000... + 1TB)
-        // 分配：2 TB
-        g_io_map_base = 0xFFFFE10000000000ULL;
+        // 【安全隔离】：留出 1 TB (0x0000010000000000) 的 Guard Hole！
+        g_vmalloc_start    = g_direct_map_end + 0x0000010000000000ULL;
+        g_vmalloc_end     = g_vmalloc_start + 0x0000200000000000ULL;    // 占用 32 TB
 
-        // ---------------------------------------------------------------------
-        // 剩余约 29 TB，用于 KASAN、隔离空洞及顶部的 2GB 内核/模块区。
-        // ---------------------------------------------------------------------
+        // 【安全隔离】：留出 1 TB 的 Guard Hole！
+        g_page_map_start   = g_vmalloc_end + 0x0000010000000000ULL;
+        g_page_map_end    = g_page_map_start + 0x0000010000000000ULL;   // 占用 1 TB
+
+        // 【安全隔离】：留出 1 TB 的 Guard Hole！
+        g_io_map_start     = g_page_map_end + 0x0000010000000000ULL;
+        g_io_map_end      = g_io_map_start + 0x0000020000000000ULL;     // 占用 2 TB
     }
 }
 

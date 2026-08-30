@@ -4,12 +4,16 @@
 #include "rbtree.h"
 
 /* ========================================================================== */
-/*                   动态内核虚拟内存空间基址 (在启动时计算)                  */
+/*                   动态内核虚拟内存空间边界 (在启动时计算)                  */
 /* ========================================================================== */
-extern uint64 g_direct_map_base;  // 物理内存全量直接映射区
-extern uint64 g_vmalloc_base;     // 离散虚拟内存动态分配区 (类似 Linux vmalloc)
-extern uint64 g_page_map_base;    // page 结构体数组稀疏映射区 (vmemmap)
-extern uint64 g_io_map_base;      // MMIO / ACPI / APIC 等设备映射区
+extern uint64 g_direct_map_start;
+extern uint64 g_direct_map_end;
+extern uint64 g_vmalloc_start;
+extern uint64 g_vmalloc_end;
+extern uint64 g_page_map_start;
+extern uint64 g_page_map_end;
+extern uint64 g_io_map_start;
+extern uint64 g_io_map_end;
 
 /* ========================================================================== */
 /*                 静态内核代码与模块区 (雷打不动，必须在最顶端)              */
@@ -33,12 +37,12 @@ void vm_layout_init(boolean is_la57);
 
 //虚拟地址转物理地址
 static inline uint64 va_to_pa(void *va) {
-    return (uint64)va & ~g_direct_map_base;
+    return (uint64)va & ~g_direct_map_start;
 }
 
 //物理地址转虚拟地址
 static inline void *pa_to_va(uint64 pa) {
-    return (void *)(pa | g_direct_map_base);
+    return (void *)(pa | g_direct_map_start);
 }
 
 /* bits in flags of vmalloc's vm_struct below */
