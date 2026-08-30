@@ -1,7 +1,8 @@
 #pragma once
 
 #include "../include/moslib.h"
+#include "../include/vmm_page.h"
 
 void init_kpage_table(void);
 
-extern uint64 *kpml4t_ptr;
+extern vm_space_t kernel_space;

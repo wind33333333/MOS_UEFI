@@ -2,40 +2,47 @@
 #include "buddy_system.h"
 #include "memblock.h"
 #include "printk.h"
+#include "../include/vmalloc.h"
 
-uint64 *kpml4t_ptr; //正式内核页表
+vm_space_t kernel_space;
 
 INIT_TEXT void init_kpage_table(void) {
-    kpml4t_ptr = (uint64*)memblock_alloc(PAGE_4K_SIZE, PAGE_4K_SIZE);
-    asm_mem_set(kpml4t_ptr, 0, PAGE_4K_SIZE);
-    //虚拟地址和物理地址512G空间对等映射
-    memblock_mmap_range(kpml4t_ptr, 0, (void *) 0, 512 * PAGE_1G_SIZE,PAGE_ROOT_RWX_2M1G,PAGE_1G_SIZE);
+    kernel_space.cr3_root = memblock_alloc_4k();
+    uint64 cr4 = asm_get_cr4();
+    kernel_space.paging_level = (cr4 & (1UL<<12)) ? 5 : 4;
+    kernel_space.ops.alloc_4k = memblock_alloc_4k;
+    kernel_space.ops.free_4k = memblock_free_4k;
+    kernel_space.ops.phys_to_virt = pa_to_va;
+    kernel_space.ops.virt_to_phys = va_to_pa;
+
     //直接映射区
-    memblock_mmap_range(kpml4t_ptr, 0,(void*)DIRECT_MAP_VA_START,
-                        memblock.free.region[memblock.free.count - 1].start_pa + memblock.free.region[
-                            memblock.free.count - 1].size,PAGE_ROOT_RW_2M1G,PAGE_1G_SIZE);
-    //初始化vmemmap区为2M页表,每个page结构64字节，一个page等于4KB,一个2M页刚好等于128MB物理内存。
-    for (uint32 i = 0; i <= phy_mem_map.count; i++) {
-        uint64 base = align_down(phy_mem_map.region[i].start_pa, 0x8000000);
-        uint64 size = align_up(phy_mem_map.region[i].size, 0x8000000);
-        uint64 vmemmap_va = (uint64)pa_to_page(base);
-        uint32 count = size >> 27;
-        while (count--) {
-            uint64 pa = memblock_alloc(PAGE_2M_SIZE,PAGE_2M_SIZE);
-            asm_mem_set((void *) pa, 0, PAGE_2M_SIZE);
-            memblock_mmap(kpml4t_ptr, pa, (void*)vmemmap_va,PAGE_ROOT_RW_2M1G, PAGE_2M_SIZE);
-            vmemmap_va += PAGE_2M_SIZE;
-        }
+    for (uint64 i=0;i < direct_mem_map.count;i++) {
+        uint64 start_pa = direct_mem_map.region[i].start_pa;
+        uint64 size = direct_mem_map.region[i].size;
+        vm_map_range(&kernel_space,(uint64)pa_to_va(start_pa),start_pa,size,PAGE_KERNEL_DATA_RW);
     }
-    //.init_text-.init_data 可读写执行
-    memblock_mmap_range(kpml4t_ptr, (uint64)_start_init_text - KERNEL_VA_START, _start_init_text, _start_text - _start_init_text,
-                        PAGE_ROOT_RWX_4K,PAGE_4K_SIZE);
-    //.text可读执行
-    memblock_mmap_range(kpml4t_ptr, (uint64)_start_text - KERNEL_VA_START, _start_text, _start_data - _start_text,
-                        PAGE_ROOT_RX_4K,PAGE_4K_SIZE);
+
+    //初始化page映射区，每个page结构64字节。
+    for (uint64 i=0;i < page_mem_map.count;i++) {
+        uint64 page_va = (uint64)pa_to_page(page_mem_map.region[i].start_pa);
+        uint64 page_size = page_mem_map.region[i].size >> 6;
+        uint64 start_pa = memblock_alloc(page_size,4096);
+        vm_map_range(&kernel_space,page_va,start_pa,page_size,PAGE_KERNEL_DATA_RW);
+        asm_mem_set((void*)page_va,0,page_size);
+    }
+
+    //.init_text
+    vm_map_range(&kernel_space,(uint64)_start_init_text,(uint64)_start_init_text - KERNEL_VA_START,(uint64)_end_init_text - (uint64)_start_init_text,PAGE_KERNEL_CODE);
+
+    //init_data
+    vm_map_range(&kernel_space,(uint64)_start_init_data,(uint64)_start_init_data - KERNEL_VA_START,(uint64)_end_init_data - (uint64)_start_init_data,PAGE_KERNEL_DATA_RW);
+
+    //正式内核 .text可读执行
+    vm_map_range(&kernel_space,(uint64)_start_text,(uint64)_start_text - KERNEL_VA_START,(uint64)_end_text - (uint64)_start_text,PAGE_KERNEL_CODE);
+
     //.data-.stack可读写
-    memblock_mmap_range(kpml4t_ptr, (uint64)_start_data - KERNEL_VA_START, _start_data, _end_stack - _start_data, PAGE_ROOT_RW_4K,
-                        PAGE_4K_SIZE);
+    vm_map_range(&kernel_space,(uint64)_start_data,(uint64)_start_data - KERNEL_VA_START,(uint64)_end_stack - (uint64)_start_data,PAGE_KERNEL_DATA_RW);
+
     //设置正式内核页表
-    asm_set_cr3((uint64) kpml4t_ptr);
+    asm_set_cr3(kernel_space.cr3_root);
 }

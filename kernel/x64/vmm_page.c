@@ -143,7 +143,7 @@ static vm_status_e vmm_walk(vm_space_t *space, uint64 vaddr, uint8 target_level,
             }
 
             // 分配新的 4KB 物理页作为下级页表
-            uint64 new_table_pa = space->ops.alloc();
+            uint64 new_table_pa = space->ops.alloc_4k();
             if (!new_table_pa) {
                 return VM_ERR_NOMEM;
             }
@@ -201,7 +201,7 @@ vm_status_e vm_split_huge_page(vm_space_t *space, uint64 vaddr, vm_page_size_e f
     }
 
     // 向 PMM 申请一个全 0 的物理帧，作为下一级子页表
-    uint64 sub_table_pa = space->ops.alloc();
+    uint64 sub_table_pa = space->ops.alloc_4k();
     if (!sub_table_pa) {
         return VM_ERR_NOMEM;
     }
@@ -326,7 +326,7 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
         // 【防泄漏补丁 1 - 孤儿页表清理】：若 walk 走到一半物理内存耗尽，必须超度刚才临时造的桥梁
         if (status != VM_SUCCESS) {
             for (uint64 i = 0; i < log.allocated_count; i++) {
-                space->ops.free(log.allocated_tables[i]);
+                space->ops.free_4k(log.allocated_tables[i]);
             }
             goto rollback;
         }
@@ -339,7 +339,7 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
             // 1. 权限拦截：若用户未授权覆盖 (OVERWRITE)，则清理临时目录，立刻报错撤销
             if (!(new_flags & SW_FLAG_OVERWRITE)) {
                 for (uint64 i = 0; i < log.allocated_count; i++) {
-                    space->ops.free(log.allocated_tables[i]);
+                    space->ops.free_4k(log.allocated_tables[i]);
                 }
                 status = VM_ERR_ALREADY_MAPPED;
                 goto rollback;
@@ -351,7 +351,7 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
             if (target_level > 1 && !(*entry & HW_PAGE_PS)) {
                 // 动作 A：放弃本次注入，清理刚为了大页漫游而临时分配的桥梁
                 for (uint64 i = 0; i < log.allocated_count; i++) {
-                    space->ops.free(log.allocated_tables[i]);
+                    space->ops.free_4k(log.allocated_tables[i]);
                 }
 
                 // 动作 B：调用现成的高级解映射接口，利用自修剪算法，递归摧毁这片区域内的所有旧映射及页表
@@ -367,9 +367,9 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
             // 能安稳走到这里的，一定是准备被同级覆盖的叶子节点 (4K 盖 4K，或 2M 盖 2M)。
             // 在填入新物理地址前，提取旧物理地址并通知 PMM 回收，做到真正的 0 数据页泄漏。
             uint64 old_pa = *entry & PTE_ADDR_MASK;
-            if (space->ops.free && old_pa != 0) {
+            if (space->ops.free_4k && old_pa != 0) {
                 // 注：若未来底层引入了写时复制 (COW)，这里的 free 需变更为 ref_count--
-                space->ops.free(old_pa);
+                space->ops.free_4k(old_pa);
             }
         }
 
@@ -474,7 +474,7 @@ static boolean vmm_unmap_tree_range(vm_space_t *space, uint64 table_pa, uint8 lv
             }
         }
         // 512 个条目全为 0，归还该页表物理帧给分配器
-        space->ops.free(table_pa);
+        space->ops.free_4k(table_pa);
         return TRUE; // 返回 TRUE 通知父节点将对应条目清零
     }
 
@@ -629,7 +629,7 @@ vm_status_e vm_space_init(vm_space_t *space, uint8 level, vm_allocator_ops_t ops
     }
 
     // 分配并清零顶层根页表
-    uint64 root_pa = ops.alloc();
+    uint64 root_pa = ops.alloc_4k();
     if (!root_pa) {
         return VM_ERR_NOMEM;
     }
@@ -667,7 +667,7 @@ vm_status_e vm_space_destroy(vm_space_t *space) {
     vm_unmap_range(space, 0, user_limit);
 
     // 释放根页表物理帧
-    space->ops.free(space->cr3_root);
+    space->ops.free_4k(space->cr3_root);
     space->cr3_root = 0;
     return VM_SUCCESS;
 }

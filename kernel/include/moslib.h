@@ -860,3 +860,13 @@ uint8 utf16le_to_ascii(uint16 *src, char *dst, uint8 len) {
 static void compiler_barrier() {
     asm volatile("" ::: "memory");
 }
+
+
+// 对齐函数，确保 addr 按 align 对齐（align 为 2 的幂）
+static inline uint64 align_up(uint64 value, uint64 align) {
+    return value + (align - 1) & -align;
+}
+
+static inline uint64 align_down(uint64 value, uint64 align) {
+    return value & -align;
+}

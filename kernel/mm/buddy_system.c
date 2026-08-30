@@ -8,7 +8,7 @@ buddy_system_t buddy_system;
 //初始化伙伴系统
 INIT_TEXT void init_buddy_system(void) {
     //初始化page_table指针
-    buddy_system.page_table = (page_t *) PAGE_MAP_VA_START;
+    buddy_system.page_table = (page_t *)g_page_map_start;
     //初始化空闲链表
     for (uint64 i = 0; i <= MAX_ORDER; i++) {
         list_head_init(&buddy_system.free_area[i].list);
@@ -17,12 +17,15 @@ INIT_TEXT void init_buddy_system(void) {
     //把memblock中的memory内存移交给伙伴系统管理，memblock_alloc内存分配器退出，由伙伴系统接管物理内存管理。
     for (uint32 i = 0; i < memblock.free.count; i++) {
         uint64 pa = memblock.free.region[i].start_pa;
-        uint64 count = memblock.free.region[i].size >> PAGE_4K_SHIFT;
+        uint64 count = memblock.free.region[i].size >> 12;
         while (count--) {
             free_pages(pa_to_page(pa));
-            pa += PAGE_4K_SIZE;
+            pa += 4096;
         }
     }
+
+    kernel_space.ops.alloc_4k = alloc_4k;
+    kernel_space.ops.free_4k = free_4k;
 }
 
 //伙伴系统物理页分配器

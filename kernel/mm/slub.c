@@ -66,7 +66,7 @@ void create_cache(char *cache_name, kmem_cache_t *cache, uint32 object_size) {
     cache->name = cache_name;
     cache->object_size = object_size_align(object_size);
     cache->order_per_slub = object_size_order(cache->object_size);
-    cache->object_per_slub = (PAGE_4K_SIZE << cache->order_per_slub) / cache->object_size;
+    cache->object_per_slub = (4096 << cache->order_per_slub) / cache->object_size;
     cache->slub_count = 0;
     cache->total_using = 0;
     cache->total_free = 0;

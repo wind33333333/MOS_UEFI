@@ -2,6 +2,7 @@
 
 #include "moslib.h"
 #include "rbtree.h"
+#include "../include/vmm_page.h"
 
 /* ========================================================================== */
 /*                   动态内核虚拟内存空间边界 (在启动时计算)                  */
@@ -33,7 +34,7 @@ extern uint64 g_io_map_end;
 #define KERNEL_VA_END     0xFFFFFFFF9FFFFFFFULL
 
 // 初始化函数声明
-void vm_layout_init(boolean is_la57);
+void vm_layout_init(void);
 
 //虚拟地址转物理地址
 static inline uint64 va_to_pa(void *va) {
@@ -42,7 +43,7 @@ static inline uint64 va_to_pa(void *va) {
 
 //物理地址转虚拟地址
 static inline void *pa_to_va(uint64 pa) {
-    return (void *)(pa | g_direct_map_start);
+    return (void *)(pa + g_direct_map_start);
 }
 
 /* bits in flags of vmalloc's vm_struct below */
@@ -75,26 +76,24 @@ void init_vmalloc(void);
 void *vmalloc(uint64 size);
 void vfree(void *ptr);
 
-//底层虚拟地址分配映射
-void *__ioremap(uint64 start_pa, uint64 size, uint64 attr);
+
+void *_ioremap(uint64 start_pa, uint64 size, uint64 flags);//底层虚拟地址分配映射
+int32 ioreunmap(void *ptr);//卸载映射归还虚拟内存
 
 /*
  * 设备虚拟地址分配和映射 (Uncacheable, 最常用)
  */
 void *ioremap(uint64 start_pa, uint64 size) {
-    return __ioremap(start_pa, size, PAGE_KERNEL_WUC);
+    return _ioremap(start_pa, size, PAGE_KERNEL_MMIO_WUC);
 }
 
 /*
  * 设备虚拟地址分配和映射 (Write-Combining, 常用于显卡 FrameBuffer)
  */
 void *ioremap_wc(uint64 start_pa, uint64 size) {
-    return __ioremap(start_pa, size, PAGE_KERNEL_WC);
+    return _ioremap(start_pa, size, PAGE_KERNEL_MMIO_WC);
 }
 
-//卸载映射归还虚拟内存
-int32 ioreunmap(void *ptr);
-
-void *memremap(uint64 start_pa,uint64 size);
-int32 unmemremap(void *ptr);
+void *memremap(uint64 start_pa,uint64 size); //映射普通内存
+int32 unmemremap(void *ptr); //卸载普通内存映射
 

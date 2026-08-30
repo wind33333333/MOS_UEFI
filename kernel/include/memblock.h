@@ -26,10 +26,13 @@ typedef struct {
 }efi_runtime_memmap_t;
 
 extern memblock_alloc_t memblock;
-extern mem_arr_t phy_mem_map;
+extern mem_arr_t page_mem_map;
 extern efi_runtime_memmap_t efi_runtime_memmap;
+extern mem_arr_t direct_mem_map;;
 
 
 void init_memblock(void);
 uint64 memblock_alloc(uint64 size, uint64 align);
 int32 memblock_free(uint64 ptr, uint64 size);
+uint64 memblock_alloc_4k(void);
+void memblock_free_4k(uint64 ptr);

@@ -23,9 +23,8 @@ irqreturn_e apic_isr(cpu_registers_t *regs, void *dev_id) {
     color_printk(RED,BLACK,"%ds ",++m);
 }
 
-
-
 INIT_TEXT void init_kernel(void) {
+    vm_layout_init();       //虚拟内存空间设置
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
     enable_cpu_advanced_features();            //启用cpu开启高级功能
     init_output();                             //初始化输出控制台

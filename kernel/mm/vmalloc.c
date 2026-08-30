@@ -14,8 +14,9 @@ uint64 g_page_map_end;
 uint64 g_io_map_start;
 uint64 g_io_map_end;
 
-void vm_layout_init(boolean is_la57) {
-    if (is_la57) {
+void vm_layout_init(void) {
+    uint64 cr4 = asm_get_cr4();
+    if (cr4 & (1<<12)) {
         // =====================================================================
         // 【5 级页表模式 - LA57】(单位: PB = 0x0004000000000000ULL)
         // =====================================================================
@@ -240,7 +241,7 @@ static inline vmap_area_t *find_vmap_lowest_match(uint64 min_addr, uint64 max_ad
         /* 1. 判断当前区间是否满足：对齐＋大小＋边界 */
         if (align_va_end <= vmap_area->va_end &&\
             vmap_area->va_start >= min_addr &&\
-            vmap_area->va_end <= max_addr) {
+            vmap_area->va_end < max_addr) {
             /* 找到一个可行解，且比之前解的起始更小，则更新最佳解 */
             if (best_va_start > vmap_area->va_start) {
                 best_va_start = vmap_area->va_start;
@@ -373,14 +374,14 @@ void *vmalloc(uint64 size) {
     //4k对齐
     size = PAGE_4K_ALIGN(size);
     //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area(VMALLOC_VA_START,VMALLOC_VA_END, size,PAGE_4K_SIZE);
+    vmap_area_t *vmap_area = alloc_vmap_area( g_vmalloc_start,g_vmalloc_end, size,PAGE_4K_SIZE);
     //分配物理页，映射物理页
     uint64 va = vmap_area->va_start;
     uint64 page_count = size >> PAGE_4K_SHIFT;
     while (page_count--) {
         page_t *page = alloc_pages(0);
         if (!page) return NULL;
-        vmmap(kpml4t_ptr, va,page_to_pa(page), PAGE_KERNEL_RW,PAGE_4K_SIZE);
+        vm_map_range(&kernel_space,va,page_to_pa(page),PAGE_4K_SIZE,PAGE_KERNEL_DATA_RW);
         va += PAGE_4K_SIZE;
     }
     return (void*)vmap_area->va_start;
@@ -396,7 +397,7 @@ void vfree(void *ptr) {
     uint64 va = vmap_area->va_start;
     uint64 page_count = vmap_area->va_end - vmap_area->va_start >> PAGE_4K_SHIFT;
     while (page_count--) {
-        unvmmap(kpml4t_ptr,va);
+        vm_unmap_range(&kernel_space,va,PAGE_4K_SIZE);
         va += PAGE_4K_SIZE;
     }
     //释放虚拟地址
@@ -408,7 +409,7 @@ void vfree(void *ptr) {
  * pa:物理起始地址
  * attr:属性
  */
-void *__ioremap(uint64 start_pa, uint64 size, uint64 attr) {
+void *_ioremap(uint64 start_pa, uint64 size, uint64 flags) {
     if (size == 0) return NULL;
 
     uint64 offset = start_pa & (PAGE_4K_SIZE - 1);
@@ -418,13 +419,13 @@ void *__ioremap(uint64 start_pa, uint64 size, uint64 attr) {
     uint64 aligned_size = align_up(size,PAGE_4K_SIZE);
 
     //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area(IO_MAP_VA_START,IO_MAP_VA_END, aligned_size, PAGE_4K_SIZE);
+    vmap_area_t *vmap_area = alloc_vmap_area(g_io_map_start,g_io_map_end, aligned_size, PAGE_4K_SIZE);
     if (!vmap_area) {
         return NULL; // 🛡️ 防御：虚拟空间耗尽，安全退出
     }
 
     //映射物理内存
-    int32 err = vmmap_range(kpml4t_ptr,vmap_area->va_start,aligned_pa,aligned_size,attr);
+    int32 err = vm_map_range(&kernel_space,vmap_area->va_start,aligned_pa,aligned_size,flags);
 
     // 4. 🛡️ 错误回滚：如果铺页表时物理内存耗尽，必须释放刚刚申请的 vmap_area！
     if (err != 0) {
@@ -454,7 +455,7 @@ int32 ioreunmap(void *ptr) {
     uint64 size = vmap_area->va_end - vmap_area->va_start;
 
     // 3. 呼叫底层的极速卸载引擎 (自动侦测 1G/2M/4K，级联释放死锁防护)
-    unvmmap_range(kpml4t_ptr,aligned_va, size);
+    vm_unmap_range(&kernel_space,aligned_va, size);
 
     // 4. 将虚拟地址区间交还给大管家
     free_vmap_area(vmap_area);
@@ -464,7 +465,8 @@ int32 ioreunmap(void *ptr) {
 
 //用于普通 RAM，或 ACPI 表所在的物理内存。
 void *memremap(uint64 start_pa,uint64 size) {
-    // 1. 如果在常规直接映射区内，极速返回 (O(1))
+    /*// 1. 如果在常规直接映射区内，极速返回 (O(1))
+    if (start_pa <= g_direct_map_start && (start_pa+size) >= g_direct_map_end) {}
     if (is_in_direct_mapping_zone(pa)) {
         return (void *)(pa + PAGE_OFFSET);
     }
@@ -476,10 +478,11 @@ void *memremap(uint64 start_pa,uint64 size) {
         // 如果这里强行映射为 WB 会导致硬件死机，直接拒绝并打印内核警告！
         WARN("FATAL: Try to memremap a strict MMIO device address with WB cache!\n");
         return NULL;
-    }
+    }*/
 
-    // 3. 确信它是诸如 ACPI 等保留内存，回退到 vmalloc 区分配并用 WB 映射
-    return __ioremap(pa, size, PAGE_KERNEL_RW);
+    vmap_area_t *vmap_area = alloc_vmap_area( g_vmalloc_start,g_vmalloc_end, size,PAGE_4K_SIZE);
+    vm_map_range(&kernel_space,vmap_area->va_start,start_pa,size,PAGE_KERNEL_DATA_RW);
+    return (void*)vmap_area->va_start;
 }
 
 /*
@@ -491,6 +494,7 @@ int32 unmemremap(void *ptr) {
 
     uint64 va = (uint64)ptr;
 
+    /*
     // 1. 🛡️ 智能拦截：检查该虚拟地址是否属于线性直接映射区
     if (is_in_direct_mapping_zone(va)) {
         // 🎯 极速路径 (O(1))：
@@ -499,12 +503,38 @@ int32 unmemremap(void *ptr) {
         // 直接返回成功即可，这极大地节省了 CPU 周期。
         return 0;
     }
+    */
 
     // 2. ↩️ 回退路径 (Fallback)：
     // 如果走到这里，说明这个地址不属于直接映射区（比如它处于 vmalloc 区域）。
     // 这意味着当初 memremap 遇到的是 ACPI 等保留内存，从而回退调用了 __ioremap。
     // 因此，我们只需直接调用 unioremap，让它去查找 vmap_area 并执行级联卸载。
-    return ioreunmap(ptr);
+    vmap_area_t *vmap_area = find_vmap_area((uint64) ptr);
+    vm_unmap_range(&kernel_space,vmap_area->va_start,vmap_area->va_end-vmap_area->va_start);
+    //释放虚拟地址
+    free_vmap_area(vmap_area);
+}
+
+
+/*
+ * 动态映射可执行的内核代码/驱动模块
+ * 强制映射到 MODULES 专区，强制赋予只读+可执行权限
+ */
+void *module_remap(uint64 start_pa, uint64 size) {
+    vmap_area_t *vmap_area = alloc_vmap_area( MODULES_VA_START,MODULES_VA_END , size,PAGE_4K_SIZE);
+    vm_map_range(&kernel_space,vmap_area->va_start,start_pa,size,PAGE_KERNEL_CODE);
+    return (void*)vmap_area->va_start;
+}
+
+/* 卸载可执行代码映射 */
+int32 unmodule_remap(void *ptr) {
+    //通过虚拟地址找Vmap_area
+    vmap_area_t *vmap_area = find_vmap_area((uint64) ptr);
+    //卸载虚拟地址和物理页映射，释放物理页
+    vm_unmap_range(&kernel_space,vmap_area->va_start,vmap_area->va_end-vmap_area->va_start);
+    //释放虚拟地址
+    free_vmap_area(vmap_area);
+    return 0;
 }
 
 
@@ -516,13 +546,13 @@ void INIT_TEXT init_vmalloc(void) {
     vmap_area_augment_callbacks.copy = vmap_area_augment_copy;
     vmap_area_augment_callbacks.propagate = vmap_area_augment_propagate;
 
-    //60TB vmalloc映射区
-    vmap_area_t *vmap_area = create_vmap_area(VMALLOC_VA_START,VMALLOC_VA_END,VM_ALLOC);
+    //vmalloc映射区
+    vmap_area_t *vmap_area = create_vmap_area(g_vmalloc_start,g_vmalloc_end,VM_ALLOC);
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
 
-    //3070GB IO/UEFI/ACPI/APIC等映射区
-    vmap_area = create_vmap_area(IO_MAP_VA_START,IO_MAP_VA_END,VM_IOREMAP);
+    //IO/UEFI/ACPI/APIC等映射区
+    vmap_area = create_vmap_area(g_io_map_start,g_io_map_end,VM_IOREMAP);
     list_head_init(&vmap_area->list);
     insert_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
 

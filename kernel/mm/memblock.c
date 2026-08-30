@@ -1,4 +1,6 @@
 #include "../include/memblock.h"
+#include "../include/vmm_page.h"
+#include "vmalloc.h"
 #include "../include/printk.h"
 #include "../include/errno.h"
 
@@ -39,7 +41,7 @@ INIT_TEXT void init_memblock(void) {
         if (mem_des->NumberOfPages == 0) continue;
 
         uint64 pa_start = mem_des->PhysicalStart;
-        uint64 size = mem_des->NumberOfPages << PAGE_4K_SHIFT;
+        uint64 size = mem_des->NumberOfPages << 12;
         uint64 pa_end = pa_start + size;
 
         uint32 type = mem_des->Type;
@@ -221,3 +223,15 @@ INIT_TEXT int32 memblock_free(uint64 ptr, uint64 size) {
     return 0;
 }
 
+
+//分配一个4K页
+uint64 alloc_4k_page(void) {
+    uint64 pa = memblock_alloc(4096,4096);
+    asm_mem_set(pa_to_va(pa),0,4096);
+    return pa;
+}
+
+//释放一个4K页
+void free_4k_page(uint64 ptr) {
+    memblock_free(ptr,4096);
+}
