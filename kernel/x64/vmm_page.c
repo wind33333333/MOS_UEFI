@@ -12,9 +12,7 @@
 
 #include "vmm_page.h"
 
-#define PAGE_SIZE_4KB      0x1000ULL              ///< 4 KiB 标准页字节大小
-#define PTE_ADDR_MASK      0x000FFFFFFFFFF000ULL  ///< 提取页表项中物理地址的掩码 (Bits 12..51)
-#define PTE_WRITE_MASK  (~(SW_FLAG_OVERWRITE | SW_FLAG_NO_HUGE)) // 掩码逻辑：除了 API 控制符，其他所有的硬件标志和“状态类”软件标志，统统放行！
+
 
 /**
  * @brief 单次漫游分配日志（用于单步操作失败时的即时回滚）
@@ -255,15 +253,14 @@ vm_status_e vm_split_huge_page(vm_space_t *space, uint64 vaddr, vm_page_size_e f
 /* ========================================================================== */
 /*                         高内聚区间映射与事务回滚引擎                       */
 /* ========================================================================== */
-
 /**
- * @brief 将虚拟地址区间映射到指定的物理地址区间 (支持贪心大页与安全覆写)
+ * @brief 将虚拟地址区间映射到指定的物理地址区间 (支持弹性大页自动退化与严格安全覆写)
  *
  * @param space  虚拟地址空间上下文 (包含根页表、PMM 分配回调及锁等)
  * @param vaddr  起始虚拟地址 (必须 4KB 对齐)
  * @param paddr  起始物理地址 (必须 4KB 对齐)
  * @param size   映射总长度 (必须 4KB 对齐)
- * @param flags  内存属性与修饰符组合 (如 PAGE_USER_DATA_RW | SW_PAGE_OVERWRITE)
+ * @param flags  内存属性 (如 RW/NX) 与软件修饰符 (如 MAX_4K, OVERWRITE) 组合
  * @return vm_status_e 执行状态
  */
 vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 size, uint64 flags) {
@@ -272,58 +269,77 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
         return VM_ERR_INVALID_ARGS;
     }
 
-    // 2. 虚拟地址区间规范性校验 (防止在 x86_64 留下 canonical 漏洞)
+    // 2. 虚拟地址区间规范性校验 (防止在 x86_64 留下 Canonical 漏洞)
     if (!vmm_is_canonical(vaddr, space->paging_level) ||
         !vmm_is_canonical(vaddr + size - 1, space->paging_level)) {
         return VM_ERR_CANONICAL;
     }
 
-    // 初始化 TLB 批量刷新器
+    // 初始化 TLB 批量刷新器 (减少核间中断 IPI 风暴)
     vm_tlb_batch_t tlb_batch;
     tlb_batch_init(&tlb_batch);
 
     uint64 curr_va = vaddr;
     uint64 curr_pa = paddr;
     uint64 mapped_bytes = 0;
-
     vm_status_e status;
 
+    // 提取本次映射允许的最高页表层级
+    uint8 max_allowed_level = GET_MAX_LEVEL(flags);
+
+    // =====================================================================
+    // 核心映射循环
+    // =====================================================================
     while (mapped_bytes < size) {
         uint64 remaining = size - mapped_bytes;
-        uint8 target_level = 1;     // 默认使用 Level 1 (4KB 页面)
-        uint64 step_bytes = 0x1000;
+        uint8 target_level = 1;     // 默认兜底使用 Level 1 (4KB 页面)
+        uint64 step_bytes = 0x1000; // 默认步进 4KB
         uint64 new_flags = flags;
 
-        // =====================================================================
-        // 【贪心算法】：在满足对齐、且长度充足时，狂暴升级为大页
-        // =====================================================================
-        if (!(new_flags & SW_FLAG_NO_HUGE)) {
-            // 尝试 1GB 巨页 (Level 3)
-            if (remaining >= 0x40000000 && !(curr_va & 0x3FFFFFFF) && !(curr_pa & 0x3FFFFFFF)) {
-                target_level = 3;
-                step_bytes = 0x40000000;
-                // 【PAT 终极优化】：再也不需要 PAT(Bit 7) 到 (Bit 12) 的恶心漂移！
-                // 因为 PWT 和 PCD 的位置永远固定，我们只需轻轻打上大页标志 (PS)！
-                new_flags |= HW_PAGE_PS;
-            }
-            // 尝试 2MB 大页 (Level 2)
-            else if (remaining >= 0x200000 && !(curr_va & 0x1FFFFF) && !(curr_pa & 0x1FFFFF)) {
-                target_level = 2;
-                step_bytes = 0x200000;
-                // 【PAT 终极优化】：再也不需要 PAT(Bit 7) 到 (Bit 12) 的恶心漂移！
-                // 因为 PWT 和 PCD 的位置永远固定，我们只需轻轻打上大页标志 (PS)！
-                new_flags |= HW_PAGE_PS;
-            }
+        // -----------------------------------------------------------------
+        // 【受控贪心算法】：在允许的上限内尝试巨页，条件不满足则自动平滑退化
+        // -----------------------------------------------------------------
+
+        // 尝试 1GB 巨页 (Level 3)
+        if (max_allowed_level >= 3 &&
+            remaining >= 0x40000000 &&
+            !(curr_va & 0x3FFFFFFF) &&
+            !(curr_pa & 0x3FFFFFFF))
+        {
+            target_level = 3;
+            step_bytes = 0x40000000;
+            new_flags |= HW_PAGE_PS; // 打上硬件大页标志
+        }
+        // 如果 1G 条件不满足 (或被上限限制)，尝试 2MB 大页 (Level 2)
+        else if (max_allowed_level >= 2 &&
+                 remaining >= 0x200000 &&
+                 !(curr_va & 0x1FFFFF) &&
+                 !(curr_pa & 0x1FFFFF))
+        {
+            target_level = 2;
+            step_bytes = 0x200000;
+            new_flags |= HW_PAGE_PS; // 打上硬件大页标志
+        }
+        // 若 2M 也不满足，target_level 依然是兜底的 1 (4KB)，完美退化。
+
+        // -----------------------------------------------------------------
+        // 【严格大页模式 (Strict HugeTLB)】拦截
+        // 如果用户指定了严格大页模式，且最终的 target_level 未达到用户的期望，直接报错。
+        // 防止用户需要数据库高性能大页时，内核背着用户退化成散碎的 4K 导致性能雪崩。
+        // -----------------------------------------------------------------
+        if ((flags & SW_FLAG_STRICT_HUGE) && (target_level != max_allowed_level)) {
+            status = VM_ERR_INVALID_ARGS;
+            goto rollback;
         }
 
-        // 记录单步寻址过程中临时分配的中间目录 (用于 OOM 及冲突时的精准回滚)
+        // 记录向下寻址过程中临时分配的中间目录 (用于 OOM 及冲突时的精准回滚)
         vm_alloc_log_t log = { .allocated_count = 0 };
         uint64 *entry = NULL;
 
-        // 向下漫游页表树，按需造桥 (分配中间目录)
+        // 向下漫游页表树，按需造桥 (分配中间目录)，停在 target_level
         status = vmm_walk(space, curr_va, target_level, TRUE, &entry, &log);
 
-        // 【防泄漏补丁 1 - 孤儿页表清理】：若 walk 走到一半物理内存耗尽，必须超度刚才临时造的桥梁
+        // 【防泄漏补丁 1 - 孤儿页表清理】：若 walk 走到一半物理内存耗尽，必须释放刚才临时造的桥梁
         if (status != VM_SUCCESS) {
             for (uint64 i = 0; i < log.allocated_count; i++) {
                 space->ops.free_4k(log.allocated_tables[i]);
@@ -331,12 +347,12 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
             goto rollback;
         }
 
-        // =====================================================================
+        // -----------------------------------------------------------------
         // 冲突拦截、目录强拆重建 (Unmap-then-Map) 与旧页安全回收
-        // =====================================================================
-        if (*entry & HW_PAGE_P) {
+        // -----------------------------------------------------------------
+        if (*entry & HW_PAGE_P) { // 发现当前页表项已经被映射过了！
 
-            // 1. 权限拦截：若用户未授权覆盖 (OVERWRITE)，则清理临时目录，立刻报错撤销
+            // 1. 权限拦截：若调用方未明确授权覆盖 (OVERWRITE)，则清理临时目录，立刻报错撤销
             if (!(new_flags & SW_FLAG_OVERWRITE)) {
                 for (uint64 i = 0; i < log.allocated_count; i++) {
                     space->ops.free_4k(log.allocated_tables[i]);
@@ -345,60 +361,62 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
                 goto rollback;
             }
 
-            // 2. 【防泄漏补丁 2 - 大页强拆重建】：
-            // 如果我们准备盖大页 (target_level > 1)，却发现脚下是一栋结构复杂的“旧楼”(无 PS 标志的目录)，
-            // 绝不能强行覆盖指针！采用 Unmap-then-Map 策略，将旧楼彻底夷为平地后再盖大页。
+            // 2. 【防泄漏补丁 2 - 大页强拆重建 (防止内存孤岛)】：
+            // 如果我们准备盖大页 (target_level > 1)，却发现脚下是一栋结构复杂的“旧楼”(指向下级目录，无 PS 标志)，
+            // 绝不能直接覆盖 entry 指针，否则下级子页表及物理页将永远泄漏！
+            // 必须采用 Unmap-then-Map，将其彻底夷为平地后再盖大页。
             if (target_level > 1 && !(*entry & HW_PAGE_PS)) {
-                // 动作 A：放弃本次注入，清理刚为了大页漫游而临时分配的桥梁
+                // 动作 A：放弃本次注入，清理刚为了大页漫游而临时分配的页表桥梁
                 for (uint64 i = 0; i < log.allocated_count; i++) {
                     space->ops.free_4k(log.allocated_tables[i]);
                 }
 
-                // 动作 B：调用现成的高级解映射接口，利用自修剪算法，递归摧毁这片区域内的所有旧映射及页表
-                // (注: 若架构采用细粒度锁，需确保 vm_unmap_range 内部调用不会产生死锁)
+                // 动作 B：呼叫高级解映射接口，递归摧毁这片区域内的所有旧映射、下级页表及物理数据页
                 vm_unmap_range(space, curr_va, step_bytes);
 
-                // 动作 C：虚拟地址不推进一步，原地 continue 重试。
-                // 下一次回来时，旧楼已空，大页将完美落成！
+                // 动作 C：虚拟地址不推进一步，原地 continue 重试。下一次回来时，大页将完美落成！
                 continue;
             }
 
             // 3. 【防泄漏补丁 3 - 旧数据页完美回收】：
             // 能安稳走到这里的，一定是准备被同级覆盖的叶子节点 (4K 盖 4K，或 2M 盖 2M)。
-            // 在填入新物理地址前，提取旧物理地址并通知 PMM 回收，做到真正的 0 数据页泄漏。
+            // 在填入新物理地址前，提取旧物理地址并通知 PMM 回收，做到真正的零数据页泄漏。
             uint64 old_pa = *entry & PTE_ADDR_MASK;
             if (space->ops.free_4k && old_pa != 0) {
-                // 注：若未来底层引入了写时复制 (COW)，这里的 free 需变更为 ref_count--
+                // 注：若底层引入了写时复制 (COW) 或 Page Cache，这里的 free 需变更为引用计数减一
                 space->ops.free_4k(old_pa);
             }
         }
 
-        // =====================================================================
+        // -----------------------------------------------------------------
         // 执行物理映射注入
-        // =====================================================================
+        // -----------------------------------------------------------------
+        // 抹除软件标志，只保留硬件可识别的写掩码位
         uint64 pte_flags = new_flags & PTE_WRITE_MASK;
-        uint64 new_entry = (curr_pa & PTE_ADDR_MASK) | pte_flags;
-        *entry = new_entry;
 
-        // 将被修改的地址加入 TLB 待刷新队列
+        // 物理地址加上属性，直接注入页表
+        *entry = (curr_pa & PTE_ADDR_MASK) | pte_flags;
+
+        // 将被修改的虚拟地址加入 TLB 待刷新队列
         tlb_batch_add(&tlb_batch, curr_va, step_bytes);
 
-        // 成功映射，游标推进
+        // 成功映射，游标与进度推进
         curr_va += step_bytes;
         curr_pa += step_bytes;
         mapped_bytes += step_bytes;
-    } // end while
+    }
 
-    // 整个范围映射事务成功完成，一次性批量下发 TLB Shootdown
+    // 宏观事务全部成功完成，一次性批量下发 TLB Shootdown，保障多核一致性
     tlb_batch_commit(&tlb_batch);
     return VM_SUCCESS;
 
 rollback:
     // =====================================================================
-    // 宏观事务失败：全自动大回滚机制
+    // 宏观事务失败：全自动大回滚机制 (Atomic Rollback)
     // =====================================================================
-    // 如果本次映射操作中途暴毙（如 OOM），利用 vm_unmap_range 的“自修剪”能力，
-    // 将之前成功映射的前半段范围彻底摧毁，保持内存状态原子性。
+    // 如果本次映射操作中途暴毙（例如映射了 300MB 时突然 OOM），
+    // 立即利用 vm_unmap_range 的“自修剪”能力，将之前成功映射的 300MB 彻底摧毁，
+    // 确保虚拟内存状态绝对的原子性 (要么全成功，要么像没发生过一样)。
     if (mapped_bytes > 0) {
         vm_unmap_range(space, vaddr, mapped_bytes);
     }

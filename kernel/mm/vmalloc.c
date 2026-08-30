@@ -522,7 +522,7 @@ int32 unmemremap(void *ptr) {
  */
 void *module_remap(uint64 start_pa, uint64 size) {
     vmap_area_t *vmap_area = alloc_vmap_area( MODULES_VA_START,MODULES_VA_END , size,PAGE_4K_SIZE);
-    vm_map_range(&kernel_space,vmap_area->va_start,start_pa,size,PAGE_KERNEL_CODE);
+    vm_map_range(&kernel_space,vmap_area->va_start,start_pa,size,PAGE_KERNEL_DATA_RW);
     return (void*)vmap_area->va_start;
 }
 
