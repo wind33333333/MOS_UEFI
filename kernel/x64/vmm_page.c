@@ -220,14 +220,10 @@ vm_status_e vm_split_huge_page(vm_space_t *space, uint64 vaddr, vm_page_size_e f
                                    HW_PAGE_HUGE_PAT | HW_PAGE_PWT | HW_PAGE_PCD| HW_PAGE_PS );
 
     if (cur_lvl == 2) {
-        // 只要是拆成 4KB，必须无条件抹杀 HUGE 标志！
+        // 只要是拆成 4KB，必须无条件抹杀 HUGE (PS) 标志！
         child_flags &= ~HW_PAGE_PS;
 
-        // 然后再单独处理 PAT 漂移
-        if (child_flags & HW_PAGE_HUGE_PAT) {
-            child_flags &= ~HW_PAGE_HUGE_PAT;
-            child_flags |= HW_PAGE_4K_PAT;
-        }
+        // 【大快人心】：以前在这里专门写的处理 PAT 漂移的 4 行 if 逻辑，全部删光！
     }
 
     // 计算拆分后，每个下级子页的物理基址步进跨度 (2MB拆为4KB, 1GB拆为2MB)
@@ -306,14 +302,17 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
             if (remaining >= 0x40000000 && !(curr_va & 0x3FFFFFFF) && !(curr_pa & 0x3FFFFFFF)) {
                 target_level = 3;
                 step_bytes = 0x40000000;
-                // 位运算魔法：将 4KB 的 PAT(Bit 7) 漂移至大页的 PAT(Bit 12)，并强制打上 PS(Bit 7)
-                new_flags |= ((new_flags & HW_PAGE_4K_PAT) << 5) | HW_PAGE_PS;
+                // 【PAT 终极优化】：再也不需要 PAT(Bit 7) 到 (Bit 12) 的恶心漂移！
+                // 因为 PWT 和 PCD 的位置永远固定，我们只需轻轻打上大页标志 (PS)！
+                new_flags |= HW_PAGE_PS;
             }
             // 尝试 2MB 大页 (Level 2)
             else if (remaining >= 0x200000 && !(curr_va & 0x1FFFFF) && !(curr_pa & 0x1FFFFF)) {
                 target_level = 2;
                 step_bytes = 0x200000;
-                new_flags |= ((new_flags & HW_PAGE_4K_PAT) << 5) | HW_PAGE_PS;
+                // 【PAT 终极优化】：再也不需要 PAT(Bit 7) 到 (Bit 12) 的恶心漂移！
+                // 因为 PWT 和 PCD 的位置永远固定，我们只需轻轻打上大页标志 (PS)！
+                new_flags |= HW_PAGE_PS;
             }
         }
 
