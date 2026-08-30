@@ -22,13 +22,42 @@ INIT_TEXT void init_kpage_table(void) {
         vm_map_range(&kernel_space,(uint64)pa_to_va(start_pa),start_pa,size,PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G );
     }
 
-    //初始化page映射区，每个page结构64字节。
-    for (uint64 i=0;i < page_mem_map.count;i++) {
+    // 初始化 page 映射区，每个 page 结构 64 字节
+    for (uint64 i = 0; i < page_mem_map.count; i++) {
         uint64 page_va = (uint64)pa_to_page(page_mem_map.region[i].start_pa);
-        uint64 page_size = page_mem_map.region[i].size >> 6;
-        uint64 start_pa = memblock_alloc(page_size,4096);
-        vm_map_range(&kernel_space,page_va,start_pa,page_size,PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G );
-        asm_mem_set((void*)page_va,0,page_size);
+
+        // 1. 计算所需结构体总大小
+        uint64 raw_page_size = page_mem_map.region[i].size >> 6;
+
+        // 2. 【核心修复 1】向上对齐到 4KB，满足 vm_map_range 的严苛参数要求
+        // 假设 PAGE_4K_ALIGN 宏的作用是 (size + 0xFFF) & ~0xFFF
+        uint64 page_size = PAGE_4K_ALIGN(raw_page_size);
+
+        // 3. 【核心修复 2】动态嗅探最佳物理分配对齐 (Smart Alignment)
+        // 逻辑：只有当我们需要大页，且虚拟地址(VA)已经满足大页对齐时，
+        // 我们才让物理地址(PA)也去对齐大页。否则强求 PA 对齐只是浪费内存。
+        uint64 pa_align = 0x1000; // 兜底 4K 对齐
+
+        if (page_size >= 0x40000000 && !(page_va & 0x3FFFFFFF)) {
+            pa_align = 0x40000000; // VA 是 1G 对齐的，并且尺寸足够，申请 1G 对齐物理页！
+        }
+        else if (page_size >= 0x200000 && !(page_va & 0x1FFFFF)) {
+            pa_align = 0x200000;   // VA 是 2M 对齐的，并且尺寸足够，申请 2M 对齐物理页！
+        }
+
+        // 4. 根据计算出的最佳对齐，向 memblock 索要物理内存
+        uint64 start_pa = memblock_alloc(page_size, pa_align);
+        if (!start_pa) {
+            // 异常处理：内存不足 (Panic)
+            color_printk(RED, BLACK, "FATAL: memblock_alloc failed for page_t array!\n");
+            while(1);
+        }
+
+        // 5. 注入页表，完美利用贪心大页
+        vm_map_range(&kernel_space, page_va, start_pa, page_size, PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G);
+
+        // 6. 清零物理内存
+        asm_mem_set((void*)page_va, 0, page_size);
     }
 
     //.init_text
