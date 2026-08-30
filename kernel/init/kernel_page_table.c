@@ -19,7 +19,7 @@ INIT_TEXT void init_kpage_table(void) {
     for (uint64 i=0;i < direct_mem_map.count;i++) {
         uint64 start_pa = direct_mem_map.region[i].start_pa;
         uint64 size = direct_mem_map.region[i].size;
-        vm_map_range(&kernel_space,(uint64)pa_to_va(start_pa),start_pa,size,PAGE_KERNEL_DATA_RW);
+        vm_map_range(&kernel_space,(uint64)pa_to_va(start_pa),start_pa,size,PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G );
     }
 
     //初始化page映射区，每个page结构64字节。
@@ -27,7 +27,7 @@ INIT_TEXT void init_kpage_table(void) {
         uint64 page_va = (uint64)pa_to_page(page_mem_map.region[i].start_pa);
         uint64 page_size = page_mem_map.region[i].size >> 6;
         uint64 start_pa = memblock_alloc(page_size,4096);
-        vm_map_range(&kernel_space,page_va,start_pa,page_size,PAGE_KERNEL_DATA_RW);
+        vm_map_range(&kernel_space,page_va,start_pa,page_size,PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G );
         asm_mem_set((void*)page_va,0,page_size);
     }
 
