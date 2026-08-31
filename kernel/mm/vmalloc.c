@@ -425,7 +425,7 @@ void *_ioremap(uint64 start_pa, uint64 size, uint64 flags) {
     }
 
     //映射物理内存
-    int32 err = vm_map_range(&kernel_space,vmap_area->va_start,aligned_pa,aligned_size,flags);
+    int32 err = vm_map_range(&kernel_space,vmap_area->va_start,aligned_pa,aligned_size,flags | SW_FLAG_MAX_1G);
 
     // 4. 🛡️ 错误回滚：如果铺页表时物理内存耗尽，必须释放刚刚申请的 vmap_area！
     if (err != 0) {
@@ -481,7 +481,7 @@ void *memremap(uint64 start_pa,uint64 size) {
     }*/
 
     vmap_area_t *vmap_area = alloc_vmap_area( g_vmalloc_start,g_vmalloc_end, size,PAGE_4K_SIZE);
-    vm_map_range(&kernel_space,vmap_area->va_start,start_pa,size,PAGE_KERNEL_DATA_RW);
+    vm_map_range(&kernel_space,vmap_area->va_start,start_pa,size,PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G);
     return (void*)vmap_area->va_start;
 }
 
