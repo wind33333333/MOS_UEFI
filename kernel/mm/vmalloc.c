@@ -412,14 +412,14 @@ void vfree(void *ptr) {
 void *_ioremap(uint64 start_pa, uint64 size, uint64 flags) {
     if (size == 0) return NULL;
 
-    uint64 offset = start_pa & (PAGE_4K_SIZE - 1);
+    uint64 offset = start_pa & PAGE_4K_OFFSET_MASK;
     // 物理地址向下对齐到 4KB
-    uint64 aligned_pa = align_down(start_pa,PAGE_4K_SIZE);
+    uint64 aligned_pa = PAGE_4K_ALIGN_DOWN(start_pa);
     // 映射的总长度必须包含偏移量，并向上对齐到 4KB (例如 128字节 + 0x48偏移 -> 需 1 页)
-    uint64 aligned_size = align_up(size,PAGE_4K_SIZE);
+    uint64 aligned_size = PAGE_4K_ALIGN(size);
 
     //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area(g_io_map_start,g_io_map_end, aligned_size, PAGE_4K_SIZE);
+    vmap_area_t *vmap_area = alloc_vmap_area(g_io_map_start,g_io_map_end, aligned_size, PAGE_1G_SIZE);
     if (!vmap_area) {
         return NULL; // 🛡️ 防御：虚拟空间耗尽，安全退出
     }
@@ -481,7 +481,7 @@ void *memremap(uint64 start_pa,uint64 size) {
     }*/
 
     vmap_area_t *vmap_area = alloc_vmap_area( g_vmalloc_start,g_vmalloc_end, size,PAGE_4K_SIZE);
-    vm_map_range(&kernel_space,vmap_area->va_start,start_pa,size,PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G);
+    vm_map_range(&kernel_space,vmap_area->va_start,start_pa,size,PAGE_KERNEL_DATA_RW);
     return (void*)vmap_area->va_start;
 }
 
@@ -536,6 +536,16 @@ int32 unmodule_remap(void *ptr) {
     free_vmap_area(vmap_area);
     return 0;
 }
+
+
+int32 _set_memory_flags(uint64 vaddr,uint64 size,uint64 flags) {
+    // 强制 4K 对齐处理 (增加代码健壮性，防止传入非对齐的 size 导致拦截)
+    uint64 aligned_vaddr = vaddr & PAGE_4K_MASK;
+    uint64 aligned_size = PAGE_4K_ALIGN(size + (vaddr - aligned_vaddr));
+    vm_protect_range(&kernel_space,aligned_vaddr, aligned_size, flags);
+    return 0;
+}
+
 
 
 

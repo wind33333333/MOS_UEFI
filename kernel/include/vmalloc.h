@@ -97,3 +97,38 @@ void *ioremap_wc(uint64 start_pa, uint64 size) {
 void *memremap(uint64 start_pa,uint64 size); //映射普通内存
 int32 unmemremap(void *ptr); //卸载普通内存映射
 
+void *module_remap(uint64 start_pa, uint64 size);
+int32 unmodule_remap(void *ptr);
+
+int32 _set_memory_flags(uint64 vaddr,uint64 size,uint64 flags);
+/**
+ * 假设你的基础权限宏定义如下：
+ * PAGE_KERNEL_RO      : HW_PAGE_P | HW_PAGE_NX                  (只读，不可执行)
+ * PAGE_KERNEL_DATA_RW : HW_PAGE_P | HW_PAGE_RW | HW_PAGE_NX     (读写，不可执行)
+ * PAGE_KERNEL_CODE    : HW_PAGE_P                               (只读，可执行)
+ */
+
+/**
+ * @brief 将内核内存区间设置为只读 (Read-Only + No-Execute)
+ * @note 常用于保护 .rodata 常量段，或在只读数据加载完毕后锁定权限
+ */
+static inline int32 set_memory_ro(uint64 vaddr, uint64 size) {
+    return _set_memory_flags(vaddr,size, PAGE_KERNEL_DATA_RO);
+}
+
+/**
+ * @brief 将内核内存区间设置为可读写 (Read-Write + No-Execute)
+ * @note 常用于 .data / .bss 段，或在模块准备卸载前恢复权限以便系统安全回收
+ */
+static inline int32 set_memory_rw(uint64 vaddr, uint64 size) {
+    return _set_memory_flags(vaddr,size, PAGE_KERNEL_DATA_RW);
+}
+
+/**
+ * @brief 将内核内存区间设置为只读可执行 (Read-Only + Execute)
+ * @note 常用于锁定 .text 代码段，严格落实 W^X (写与执行互斥) 安全原则
+ */
+static inline int32 set_memory_rx(uint64 vaddr, uint64 size) {
+    return _set_memory_flags(vaddr,size, PAGE_KERNEL_CODE);
+}
+
