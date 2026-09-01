@@ -2,6 +2,7 @@
 #include "errno.h"
 #include "slub.h"
 #include "../core/usb-dev.h"
+#include "../include/vmalloc.h"
 
 
 int32 xhci_submit_ring_enq(xhci_submit_ring_t *ring, xhci_trb_t *trb_push) {

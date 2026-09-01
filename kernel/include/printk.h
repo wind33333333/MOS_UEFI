@@ -1,8 +1,6 @@
 #pragma once
-
 #include <stdarg.h>
-#include "font.h"
-#include "../init/linkage.h"
+
 #include "moslib.h"
 
 

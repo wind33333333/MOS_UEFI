@@ -4,6 +4,7 @@
 #include "pcie.h"
 #include "printk.h"
 #include "slub.h"
+#include "../include/vmalloc.h"
 
 extern device_type_t usb_dev_type;
 extern device_type_t usb_if_type;

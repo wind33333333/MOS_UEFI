@@ -20,7 +20,7 @@ INIT_TEXT void init_buddy_system(void) {
         uint64 count = memblock.free.region[i].size >> 12;
         while (count--) {
             free_pages(pa_to_page(pa));
-            pa += PAGE_SIZELVL_4K;
+            pa += PAGE_4K_SIZE;
         }
     }
 

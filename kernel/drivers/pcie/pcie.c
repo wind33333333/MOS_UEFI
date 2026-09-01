@@ -118,7 +118,7 @@ void pcie_bar_init(pcie_dev_t *pcie_dev) {
         addr &= 0xFFFFFFFFFFFFFFF0UL;
         pcie_dev->bar[i].paddr = addr;
         pcie_dev->bar[i].size = size;
-        pcie_dev->bar[i].vaddr = ioremap(addr,size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+        pcie_dev->bar[i].vaddr = ioremap(addr,size);
         i++;
         bir++;
     }
@@ -496,7 +496,7 @@ pcie_root_complex_t *pcie_rc_create(mcfg_entry_t* mcfg_entry) {
     pcie_rc->start_bus = mcfg_entry->start_bus;
     pcie_rc->end_bus = mcfg_entry->end_bus;
     uint64 ecma_size = (pcie_rc->end_bus - pcie_rc->start_bus + 1)*32*8*4096;
-    pcie_rc->ecam_vir_base = ioremap(pcie_rc->ecam_phy_base,ecma_size,PAGE_4K_SIZE,PAGE_ROOT_RW_UC_4K);
+    pcie_rc->ecam_vir_base = ioremap(pcie_rc->ecam_phy_base,ecma_size);
     pcie_rc->dev.name = "pcie-root";
     pcie_rc->dev.parent = NULL;
     list_head_init(&pcie_rc->dev.child_node);

@@ -1,6 +1,7 @@
 #include "printk.h"
 #include "../init/uefi.h"
 #include "vmalloc.h"
+#include "../include/font.h"
 
 void putchar(unsigned int *fb, int Xsize, int x, int y, unsigned int FRcolor, unsigned int BKcolor,
              unsigned char font) {

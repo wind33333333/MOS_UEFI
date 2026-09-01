@@ -338,6 +338,9 @@ typedef struct {
 
 #pragma pack(pop)
 
+struct scsi_host_t;
+struct scsi_cmnd_t;
+
 // ============================================================================
 // 1. SCSI 主机操作模板 (SCSI Host Template)
 // 本质：驱动的“虚函数表”。

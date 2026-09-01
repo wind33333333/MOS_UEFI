@@ -1,4 +1,6 @@
-#include "linkage.h"
+.equ DIRECT_MAP_VA_START, 0xFFFF800000000000
+.equ KERNEL_VA_START, 0xFFFFFFFF80000000
+
 
 /*************************** 内核初始化代码入口 *******************************/
 .code64
@@ -123,7 +125,7 @@ _start:
     /* 辅助子例程：构造神级折叠 PML5 桥接页表                                */
     /* ==================================================================== */
 .build_pml5_bridge:
-leaq     tmp_pml5t(%rip), %rdi
+    leaq     tmp_pml5t(%rip), %rdi
     leaq     tmp_pml4t(%rip), %rax
     orq      $0x3, %rax                 // 0x3 = PRESENT | RW
 

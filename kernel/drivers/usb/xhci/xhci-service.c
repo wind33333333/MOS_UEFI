@@ -7,6 +7,7 @@
 #include "errno.h"
 #include "slub.h"
 #include "pcie.h"
+#include "../include/vmalloc.h"
 
 
 // 提取大于等于 val 的下一个 2 的幂次 (内核神技)
