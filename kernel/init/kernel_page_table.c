@@ -36,13 +36,13 @@ INIT_TEXT void init_kpage_table(void) {
         // 3. 【核心修复 2】动态嗅探最佳物理分配对齐 (Smart Alignment)
         // 逻辑：只有当我们需要大页，且虚拟地址(VA)已经满足大页对齐时，
         // 我们才让物理地址(PA)也去对齐大页。否则强求 PA 对齐只是浪费内存。
-        uint64 pa_align = 0x1000; // 兜底 4K 对齐
+        uint64 pa_align = PAGE_4K_SIZE; // 兜底 4K 对齐
 
-        if (page_size >= 0x40000000 && !(page_va & 0x3FFFFFFF)) {
-            pa_align = 0x40000000; // VA 是 1G 对齐的，并且尺寸足够，申请 1G 对齐物理页！
+        if (page_size >= PAGE_1G_SIZE && !(page_va & PAGE_1G_OFFSET_MASK)) {
+            pa_align = PAGE_1G_SIZE; // VA 是 1G 对齐的，并且尺寸足够，申请 1G 对齐物理页！
         }
-        else if (page_size >= 0x200000 && !(page_va & 0x1FFFFF)) {
-            pa_align = 0x200000;   // VA 是 2M 对齐的，并且尺寸足够，申请 2M 对齐物理页！
+        else if (page_size >= PAGE_2M_SIZE && !(page_va & PAGE_2M_OFFSET_MASK)) {
+            pa_align = PAGE_2M_SIZE;   // VA 是 2M 对齐的，并且尺寸足够，申请 2M 对齐物理页！
         }
 
         // 4. 根据计算出的最佳对齐，向 memblock 索要物理内存
@@ -53,11 +53,11 @@ INIT_TEXT void init_kpage_table(void) {
             while(1);
         }
 
-        // 5. 注入页表，完美利用贪心大页
-        vm_map_range(&kernel_space, page_va, start_pa, page_size, PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G);
+        // 5. 清零物理内存
+        asm_mem_set(pa_to_va(start_pa), 0, page_size);
 
-        // 6. 清零物理内存
-        asm_mem_set((void*)page_va, 0, page_size);
+        // 6. 注入页表，完美利用贪心大页
+        vm_map_range(&kernel_space, page_va, start_pa, page_size, PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G);
     }
 
     //.init_text
