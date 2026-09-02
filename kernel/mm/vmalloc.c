@@ -24,15 +24,15 @@ void vm_layout_init(void) {
         g_direct_map_start = 0xFF00000000000000ULL;
         g_direct_map_end  = g_direct_map_start + 0x0080000000000000ULL; // 占用 32 PB
 
-        // 【安全隔离】：留出 1 PB (0x0004000000000000) 的 Guard Hole！
+        // 【安全隔离】：留出 1 PB (0x0004000000000000) 的 Guard Hole,0xFF84000000000000ULL！
         g_vmalloc_start    = g_direct_map_end + 0x0004000000000000ULL;
         g_vmalloc_end     = g_vmalloc_start + 0x0040000000000000ULL;    // 占用 16 PB
 
-        // 【安全隔离】：留出 1 PB 的 Guard Hole！
+        // 【安全隔离】：留出 1 PB 的 Guard Hole,0xFFC8000000000000ULL！
         g_page_map_start   = g_vmalloc_end + 0x0004000000000000ULL;
         g_page_map_end    = g_page_map_start + 0x0004000000000000ULL;   // 占用 1 PB
 
-        // 【安全隔离】：留出 1 PB 的 Guard Hole！
+        // 【安全隔离】：留出 1 PB 的 Guard Hole,0xFFD0000000000000ULL！
         g_io_map_start     = g_page_map_end + 0x0004000000000000ULL;
         g_io_map_end      = g_io_map_start + 0x0004000000000000ULL;     // 占用 1 PB
 

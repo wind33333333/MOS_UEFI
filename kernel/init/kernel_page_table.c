@@ -25,6 +25,7 @@ INIT_TEXT void init_kpage_table(void) {
     // 初始化 page 映射区，每个 page 结构 64 字节
     for (uint64 i = 0; i < page_mem_map.count; i++) {
         uint64 page_va = (uint64)pa_to_page(page_mem_map.region[i].start_pa);
+        page_va = PAGE_4K_ALIGN_DOWN(page_va);
 
         // 1. 计算所需结构体总大小
         uint64 raw_page_size = page_mem_map.region[i].size >> 6;
@@ -69,8 +70,14 @@ INIT_TEXT void init_kpage_table(void) {
     //正式内核 .text可读执行
     vm_map_range(&kernel_space,(uint64)_start_text,(uint64)_start_text - KERNEL_VA_START,(uint64)_end_text - (uint64)_start_text,PAGE_KERNEL_CODE);
 
-    //.data-.stack可读写
-    vm_map_range(&kernel_space,(uint64)_start_data,(uint64)_start_data - KERNEL_VA_START,(uint64)_end_stack - (uint64)_start_data,PAGE_KERNEL_DATA_RW);
+    //.data .bss
+    vm_map_range(&kernel_space,(uint64)_start_data,(uint64)_start_data - KERNEL_VA_START,(uint64)_end_bss - (uint64)_start_data,PAGE_KERNEL_DATA_RW);
+
+    //.rodata
+    vm_map_range(&kernel_space,(uint64)_start_rodata,(uint64)_start_rodata - KERNEL_VA_START,(uint64)_end_rodata - (uint64)_start_rodata,PAGE_KERNEL_DATA_RO);
+
+    //.stack
+    vm_map_range(&kernel_space,(uint64)_start_stack,(uint64)_start_stack - KERNEL_VA_START,(uint64)_end_stack - (uint64)_start_stack,PAGE_KERNEL_DATA_RW);
 
     //设置正式内核页表
     asm_set_cr3(kernel_space.cr3_root);

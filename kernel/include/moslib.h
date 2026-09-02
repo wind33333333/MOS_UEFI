@@ -27,6 +27,8 @@ extern char _start_data[];
 extern char _end_data[];
 extern char _start_bss[];
 extern char _end_bss[];
+extern char _start_rodata[];
+extern char _end_rodata[];
 extern char _start_stack[];
 extern char _end_stack[];
 extern char _end[];
