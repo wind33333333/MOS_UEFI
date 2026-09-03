@@ -530,62 +530,115 @@ vm_status_e vm_unmap_range(vm_space_t *space, uint64 vaddr, uint64 size) {
 /*                         范围权限修改与树裁剪                                */
 /* ========================================================================== */
 
+/* ========================================================================== */
+/*                          范围权限修改与树裁剪                                */
+/* ========================================================================== */
+
+// 定义必须从旧页表项中严格保留的硬件属性 (存在位、用户态、全局、缓存策略、访问/脏位、PAT等)
+#define PTE_PRESERVE_MASK (HW_PAGE_P | HW_PAGE_US | HW_PAGE_G | HW_PAGE_PWT | HW_PAGE_PCD | HW_PAGE_A | HW_PAGE_D | HW_PAGE_4K_PAT)
+// 定义允许外部 API 动态修改的权限属性 (读写、不可执行)
+#define PTE_MODIFY_MASK   (HW_PAGE_RW | HW_PAGE_NX)
+
 /**
- * @brief 递归区间裁剪权限修改核心函数
+ * @brief 递归区间裁剪权限修改核心引擎 (极致性能优化版)
+ *
+ * @note 【架构黑科技：Pointer Tagging】
+ *       本函数采用了指针位复用技术。由于物理地址 (table_pa) 必定是 4KB 对齐的，
+ *       其最低 12 位永远为 0。我们将页表层级 (lvl) 塞入这闲置的 12 位中。
+ *       这使得参数总数降为 6 个，完美契合 x86_64 System V ABI 的寄存器传参上限，
+ *       彻底消灭了高频递归带来的第 7 参数入栈/出栈开销！
+ *
+ * @param space             目标虚拟地址空间
+ * @param table_pa_and_lvl  复合参数：高52位为物理地址 (4K对齐)，低12位存放当前页表层级 (lvl)
+ * @param start             当前处理的起始虚拟地址
+ * @param end               当前处理的结束虚拟地址 (不包含)
+ * @param new_flags         新传入的权限标志
+ * @param tlb_batch         TLB 批量刷新跟踪器
+ * @return vm_status_e      执行状态
  */
-static vm_status_e vmm_protect_tree_range(vm_space_t *space, uint64 table_pa, uint8 lvl,
+static vm_status_e vmm_protect_tree_range(vm_space_t *space, uint64 table_pa_and_lvl,
                                           uint64 start, uint64 end, uint64 new_flags,
                                           vm_tlb_batch_t *tlb_batch) {
+    // 【拆包处理】：进门第一步，将复合参数解构
+    uint8 lvl = table_pa_and_lvl & 0xFFF;             // 提取低 12 位作为当前页表层级
+    uint64 table_pa = table_pa_and_lvl & ~0xFFFULL;   // 屏蔽低 12 位，提取纯净的物理基址 (注意加 ULL 后缀)
+
     uint64 *table_va = (uint64 *)space->ops.phys_to_virt(table_pa);
+
+    // 计算当前层级单个页表项覆盖的地址跨度 (Level 1: 4KB, Level 2: 2MB, Level 3: 1GB)
     uint64 step = 1ULL << (12 + 9 * (lvl - 1));
     uint64 cur = start;
 
     while (cur < end) {
         uint64 idx = vmm_get_index(cur, lvl);
+
+        // 计算当前页表项覆盖的虚拟地址基址及边界
         uint64 entry_base = cur & ~(step - 1);
         uint64 next_boundary = entry_base + step;
-        // 【核心修复】：防范 64 位地址空间最后一块区域导致的加法溢出回绕
+
+        // 防范 64 位地址空间最高位 (0xFFFFFFFFFFFFFFFF) 加法溢出导致的回绕死循环
         uint64 sub_end = (next_boundary == 0 || end < next_boundary) ? end : next_boundary;
 
         uint64 entry = table_va[idx];
 
-        if (entry & HW_PAGE_P) {
-            uint64 pa = entry & PTE_ADDR_MASK;
-
-            if (lvl == 1) {
-                // 1. 叶子节点 (4KB 标准页)：保留物理地址，更新属性标志
-                table_va[idx] = pa | (new_flags & PTE_WRITE_MASK);
-                tlb_batch_add(tlb_batch, cur, step);
-            } else if (entry & HW_PAGE_PS) {
-                // 2. 大页节点
-                if (cur == entry_base && sub_end == next_boundary) {
-                    // 权限修改范围完整覆盖整个大页：直接就地更新大页条目属性
-                    table_va[idx] = pa | (new_flags & PTE_WRITE_MASK) | HW_PAGE_PS;
-                    tlb_batch_add(tlb_batch, cur, step);
-                } else {
-                    // 范围仅涉及大页的一部分：先拆分大页为子页表，再向下递归修改
-                    vm_status_e split_status = vm_split_huge_page(space, entry_base, (vm_page_lvl_e)lvl);
-                    if (split_status != VM_SUCCESS) {
-                        return split_status;
-                    }
-
-                    entry = table_va[idx];
-                    uint64 child_pa = entry & PTE_ADDR_MASK;
-                    vm_status_e status = vmm_protect_tree_range(space, child_pa, lvl - 1, cur, sub_end, new_flags, tlb_batch);
-                    if (status != VM_SUCCESS) {
-                        return status;
-                    }
-                }
-            } else {
-                // 3. 中间目录节点：向下递归处理子树
-                uint64 child_pa = entry & PTE_ADDR_MASK;
-                vm_status_e status = vmm_protect_tree_range(space, child_pa, lvl - 1, cur, sub_end, new_flags, tlb_batch);
-                if (status != VM_SUCCESS) {
-                    return status;
-                }
-            }
+        // 严防静默穿透：如果遇到未映射的空洞，立刻拦截报错
+        if (!(entry & HW_PAGE_P)) {
+            return VM_ERR_NOT_MAPPED;
         }
 
+        if (lvl == 1) {
+            // -----------------------------------------------------------
+            // 1. 叶子节点 (4KB 标准页) 处理
+            // -----------------------------------------------------------
+            uint64 pa = entry & PTE_ADDR_MASK;
+
+            // 读-改-写机制：分离保留属性与待修改属性
+            uint64 preserved = entry & PTE_PRESERVE_MASK;
+            uint64 updated   = new_flags & PTE_MODIFY_MASK;
+
+            table_va[idx] = pa | preserved | updated;
+            tlb_batch_add(tlb_batch, cur, step);
+
+        } else if (entry & HW_PAGE_PS) {
+            // -----------------------------------------------------------
+            // 2. 大页节点 (2MB / 1GB) 处理
+            // -----------------------------------------------------------
+            if (cur == entry_base && sub_end == next_boundary) {
+                // 权限修改完整覆盖大页：直接就地更新
+                // 警告：大页 PA 提取必须用 ~(step - 1)，否则会错误吸入 PAT 属性位！
+                uint64 huge_pa = entry & ~(step - 1);
+
+                uint64 preserved = entry & PTE_PRESERVE_MASK;
+                uint64 updated   = new_flags & PTE_MODIFY_MASK;
+
+                table_va[idx] = huge_pa | preserved | updated | HW_PAGE_PS;
+                tlb_batch_add(tlb_batch, cur, step);
+            } else {
+                // 范围仅涉及大页局部：敲碎 (Shattering) 大页，然后向下递归
+                vm_status_e split_status = vm_split_huge_page(space, entry_base, (vm_page_lvl_e)lvl);
+                if (split_status != VM_SUCCESS) return split_status;
+
+                entry = table_va[idx];
+                uint64 child_pa = entry & PTE_ADDR_MASK;
+
+                // 【合并传参】：按位或 ( | ) 将 child_pa 与目标层级合并，向下递归传递
+                vm_status_e status = vmm_protect_tree_range(space, child_pa | (lvl - 1),
+                                                            cur, sub_end, new_flags, tlb_batch);
+                if (status != VM_SUCCESS) return status;
+            }
+        } else {
+            // -----------------------------------------------------------
+            // 3. 中间目录节点 (PML4E, PDPTE, PDE) 处理
+            // -----------------------------------------------------------
+            uint64 child_pa = entry & PTE_ADDR_MASK;
+
+            // 【合并传参】：按位或 ( | ) 将 child_pa 与目标层级合并，向下递归传递
+            vm_status_e status = vmm_protect_tree_range(space, child_pa | (lvl - 1),
+                                                        cur, sub_end, new_flags, tlb_batch);
+            if (status != VM_SUCCESS) return status;
+        }
+
+        // 推进到下一个计算边界
         cur = sub_end;
     }
 
@@ -605,7 +658,7 @@ vm_status_e vm_protect_range(vm_space_t *space, uint64 vaddr, uint64 size, uint6
     tlb_batch_init(&tlb_batch);
 
     // 单次递归树遍历，自动处理全量大页更新与局部大页拆分修改
-    vm_status_e status = vmm_protect_tree_range(space, space->cr3_root, space->paging_level,
+    vm_status_e status = vmm_protect_tree_range(space, space->cr3_root | space->paging_level,
                                                 vaddr, vaddr + size, new_flags, &tlb_batch);
     tlb_batch_commit(&tlb_batch);
     return status;
