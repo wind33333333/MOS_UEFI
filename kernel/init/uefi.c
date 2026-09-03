@@ -8,9 +8,7 @@ void efi_runtime_service_map(void) {
         uint64 size = efi_runtime_memmap.mem_map[i].NumberOfPages << PAGE_4K_SHIFT;
         uint64 efi_va =(uint64) module_remap(efi_runtime_memmap.mem_map[i].PhysicalStart,size);
         efi_runtime_memmap.mem_map[i].VirtualStart = efi_va;
-        if (efi_runtime_memmap.mem_map[i].Type == EFI_RUNTIME_SERVICES_DATA) {
-            set_memory_rw(efi_va,size); //数据段
-        }else {
+        if (efi_runtime_memmap.mem_map[i].Type == EFI_RUNTIME_SERVICES_CODE) {
             set_memory_rx(efi_va,size); //代码段
         }
     }

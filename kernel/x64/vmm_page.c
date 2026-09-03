@@ -544,7 +544,8 @@ static vm_status_e vmm_protect_tree_range(vm_space_t *space, uint64 table_pa, ui
         uint64 idx = vmm_get_index(cur, lvl);
         uint64 entry_base = cur & ~(step - 1);
         uint64 next_boundary = entry_base + step;
-        uint64 sub_end = (end < next_boundary) ? end : next_boundary;
+        // 【核心修复】：防范 64 位地址空间最后一块区域导致的加法溢出回绕
+        uint64 sub_end = (next_boundary == 0 || end < next_boundary) ? end : next_boundary;
 
         uint64 entry = table_va[idx];
 
