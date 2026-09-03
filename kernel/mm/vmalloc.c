@@ -132,33 +132,6 @@ static void vmap_area_augment_propagate(rb_node_t *start_node, rb_node_t *stop_n
     }
 }
 
-/*
- * 二叉查找何时的插入位置
- * root:树根
- * vmap_area:待插入的节点
- * out_parent:返回插入位置节点
- * out_link:返回插入位置的左右子
- */
-static inline uint32 find_vmap_area_insert_pos(rb_root_t *root, vmap_area_t *vmap_area, rb_node_t **out_parent,
-                                               rb_node_t **out_link) {
-    rb_node_t *parent = NULL, **link = &root->rb_node;
-    vmap_area_t *curr_vmap_area;
-    //从红黑树找个合适的位置
-    while (*link) {
-        parent = *link;
-        curr_vmap_area = CONTAINER_OF(parent, vmap_area_t, rb_node);
-        if (vmap_area->va_start < curr_vmap_area->va_start) {
-            link = &parent->left;
-        } else if (vmap_area->va_start > curr_vmap_area->va_start) {
-            link = &parent->right;
-        } else {
-            return 1;
-        }
-    }
-    *out_parent = parent;
-    *out_link = *link;
-    return 0;
-}
 
 /*
  *把一个vmap_area插入红黑树
@@ -168,9 +141,24 @@ static inline uint32 find_vmap_area_insert_pos(rb_root_t *root, vmap_area_t *vma
  */
 static inline uint32 insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area,
                                       rb_augment_callbacks_f *augment_callbacks) {
-    rb_node_t *parent, *link;
-    find_vmap_area_insert_pos(root, vmap_area, &parent, &link);
-    rb_insert(root, &vmap_area->rb_node, parent, &link, augment_callbacks);
+    rb_node_t **link = &root->rb_node;  // 维护待挂载位置的地址
+    rb_node_t *parent = NULL;
+    vmap_area_t *curr;
+
+    // 所有的寻找逻辑都在这一个函数里搞定，干净利落
+    while (*link) {
+        parent = *link;
+        curr = CONTAINER_OF(parent, vmap_area_t, rb_node);
+        if (vmap_area->va_start < curr->va_start)
+            link = &parent->left;
+        else if (vmap_area->va_start > curr->va_start)
+            link = &parent->right;
+        else
+            return 1;
+    }
+
+    // 此时的 link 和 parent 绝对指向正确的内存地址
+    rb_insert(root, &vmap_area->rb_node, parent, link, augment_callbacks);
     return 0;
 }
 
@@ -241,7 +229,7 @@ static inline vmap_area_t *find_vmap_lowest_match(uint64 min_addr, uint64 max_ad
         /* 1. 判断当前区间是否满足：对齐＋大小＋边界 */
         if (align_va_end <= vmap_area->va_end &&\
             vmap_area->va_start >= min_addr &&\
-            vmap_area->va_end < max_addr) {
+            vmap_area->va_end <= max_addr) {
             /* 找到一个可行解，且比之前解的起始更小，则更新最佳解 */
             if (best_va_start > vmap_area->va_start) {
                 best_va_start = vmap_area->va_start;

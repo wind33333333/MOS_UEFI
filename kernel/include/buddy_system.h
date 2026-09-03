@@ -71,7 +71,9 @@ page_t* alloc_pages(uint32 order);
 void free_pages(page_t *page);
 
 static inline uint64 alloc_4k(void) {
-    return page_to_pa(alloc_pages(0));
+    uint64 pa = page_to_pa(alloc_pages(0));
+    asm_mem_set(pa_to_va(pa),0,PAGE_4K_SIZE);
+    return pa;
 }
 
 static inline void free_4k(uint64 pa) {

@@ -114,13 +114,19 @@ static void tlb_batch_commit(const vm_tlb_batch_t *batch) {
  * @param alloc_log      分配日志指针（用于记录新创建的中间页表以便回滚）
  * @return vm_status_t   执行状态
  */
+// 征用第 62 位作为 VMM 内部控制位 (绝不会与物理 PTE 属性冲突)
+#define VMM_WALK_CREATE  (1ULL << 62)
 static vm_status_e vmm_walk(vm_space_t *space, uint64 vaddr, uint8 target_level,
-                            boolean create_missing, uint64 **out_entry, vm_alloc_log_t *alloc_log) {
+                            uint64 flags, uint64 **out_entry, vm_alloc_log_t *alloc_log) {
     if (!vmm_is_canonical(vaddr, space->paging_level)) {
         return VM_ERR_CANONICAL;
     }
 
     uint64 cur_table_pa = space->cr3_root;
+
+    // 提取创建指令
+    boolean create_missing = (flags & VMM_WALK_CREATE) != 0;
+    uint64 us_flag = flags & HW_PAGE_US;
 
     // 从顶层根页表逐级向下漫游至 target_level 的上一级
     for (uint8 lvl = space->paging_level; lvl > target_level; lvl--) {
@@ -152,7 +158,7 @@ static vm_status_e vmm_walk(vm_space_t *space, uint64 vaddr, uint8 target_level,
             }
 
             // 中间目录项默认赋予全权限 (Present | Writable | User)，最终权限由末级叶子项收敛控制
-            table_va[idx] = new_table_pa | HW_PAGE_P | HW_PAGE_RW | HW_PAGE_US;
+            table_va[idx] = new_table_pa | us_flag | HW_PAGE_P | HW_PAGE_RW;
             cur_table_pa = new_table_pa;
         }
     }
@@ -189,7 +195,7 @@ vm_status_e vm_split_huge_page(vm_space_t *space, uint64 vaddr, vm_page_lvl_e fr
 
     uint64 *entry = NULL;
     // 顺藤摸瓜，拿到当前层级的大页目录项
-    if (vmm_walk(space, vaddr, cur_lvl, FALSE, &entry, NULL) != VM_SUCCESS || !entry) {
+    if (vmm_walk(space, vaddr, cur_lvl, 0, &entry, NULL) != VM_SUCCESS || !entry) {
         return VM_ERR_NOT_MAPPED;
     }
 
@@ -337,7 +343,8 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
         uint64 *entry = NULL;
 
         // 向下漫游页表树，按需造桥 (分配中间目录)，停在 target_level
-        status = vmm_walk(space, curr_va, target_level, TRUE, &entry, &log);
+    // 防御性校验：必须存在，且必须是真正的大页
+        status = vmm_walk(space, curr_va, target_level, flags | VMM_WALK_CREATE, &entry, &log);
 
         // 【防泄漏补丁 1 - 孤儿页表清理】：若 walk 走到一半物理内存耗尽，必须释放刚才临时造的桥梁
         if (status != VM_SUCCESS) {

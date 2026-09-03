@@ -383,7 +383,8 @@ INIT_TEXT void init_output(void) {
 }
 
 INIT_TEXT void video_mem_map(void) {
-    Pos.FB_addr = ioremap_wc((uint64)Pos.FB_addr,Pos.FB_length);
+    boot_info = pa_to_va((uint64)boot_info);
+    Pos.FB_addr = ioremap_wc(boot_info->frame_buffer_base,boot_info->frame_buffer_size);
     color_printk(GREEN, BLACK, "Voide Memory Physics Address:%#lx -> Virtual Address:%#lx\n",boot_info->frame_buffer_base,Pos.FB_addr);
 }
 
