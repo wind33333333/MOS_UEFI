@@ -6,6 +6,7 @@
 
 vm_space_t kernel_space;
 
+
 INIT_TEXT void init_kpage_table(void) {
     kernel_space.cr3_root = memblock_alloc_4k();
     uint64 cr4 = asm_get_cr4();
@@ -14,6 +15,8 @@ INIT_TEXT void init_kpage_table(void) {
     kernel_space.ops.free_4k = memblock_free_4k;
     kernel_space.ops.phys_to_virt = pa_to_va;
     kernel_space.ops.virt_to_phys = va_to_pa;
+
+    vm_map_range(&kernel_space,(uint64)0,0,512 * PAGE_1G_SIZE,PAGE_KERNEL_CODE | HW_PAGE_RW | SW_FLAG_MAX_1G );
 
     //直接映射区
     for (uint64 i=0;i < direct_mem_map.count;i++) {

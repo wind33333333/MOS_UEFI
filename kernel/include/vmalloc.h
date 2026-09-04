@@ -124,3 +124,10 @@ static inline int32 set_memory_rx(uint64 vaddr, uint64 size) {
     return _set_memory_flags(vaddr,size, 0);
 }
 
+/**
+ * @brief 将内核内存区间设置为读写可执行 (Read-Only + Execute)
+ */
+static inline int32 set_memory_rwx(uint64 vaddr, uint64 size) {
+    return _set_memory_flags(vaddr,size, HW_PAGE_RW);
+}
+

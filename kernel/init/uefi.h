@@ -584,52 +584,93 @@ EFI_STATUS
   OUT uint64            *RemainingVariableStorageSize,
   OUT uint64            *MaximumVariableSize
   );
+
 ///
-/// EFI Runtime Services Table.
+/// EFI 运行时服务表 (EFI Runtime Services Table)
+/// 注：与 Boot Services (启动服务) 不同，Runtime Services 在操作系统
+/// 完全接管硬件（调用 ExitBootServices）后依然可以被 OS 调用！
 ///
 typedef struct {
   ///
-  /// The table header for the EFI Runtime Services Table.
+  /// 表头信息：包含表签名 ("RTSTVAL")、版本号、头部大小和 CRC32 校验和。
+  /// OS 在调用前通常会校验其合法性。
   ///
   EFI_TABLE_HEADER                  Hdr;
 
-  //
-  // Time Services
-  //
+  // ==========================================================================
+  // 时间服务 (Time Services) —— 也就是操作主板上的 RTC 实时时钟芯片
+  // ==========================================================================
+
+  /// 获取系统当前的硬件时间、日期、时区以及夏令时(DST)状态。
   EFI_GET_TIME                      GetTime;
+
+  /// 设置系统的硬件时间（修改主板电池维持的时钟）。
   EFI_SET_TIME                      SetTime;
+
+  /// 获取当前设定的 RTC 唤醒闹钟时间（定时开机状态）。
   EFI_GET_WAKEUP_TIME               GetWakeupTime;
+
+  /// 设定 RTC 唤醒闹钟，可以在系统关机后到了指定时间自动将电脑唤醒开机。
   EFI_SET_WAKEUP_TIME               SetWakeupTime;
 
-  //
-  // Virtual Memory Services
-  //
+  // ==========================================================================
+  // 虚拟内存服务 (Virtual Memory Services) —— OS 内存接管的核心过渡点！
+  // ==========================================================================
+
+  /// 【核心接口】：告知 UEFI 固件，OS 马上要废弃 1:1 物理映射，全面切换到虚拟地址空间了！
+  /// OS 必须传入一个内存描述符数组，告诉固件：“你以前在物理地址 A 的数据，现在被我映射到
+  /// 了虚拟地址 B”。固件收到后，会把自身内部所有的指针全部进行 Relocate（重定位）修补。
   EFI_SET_VIRTUAL_ADDRESS_MAP       SetVirtualAddressMap;
+
+  /// 仅在 SetVirtualAddressMap 执行期间由固件内部调用，或者由需要重定位指针的 UEFI 组件调用，
+  /// 用于将旧的物理指针转换为新的虚拟指针。OS 自身极少主动调用。
   EFI_CONVERT_POINTER               ConvertPointer;
 
-  //
-  // Variable Services
-  //
+  // ==========================================================================
+  // 环境变量服务 (Variable Services) —— 也就是读写主板 NVRAM 存储
+  // ==========================================================================
+
+  /// 从非易失性存储（NVRAM）中读取指定名称和 GUID 的 UEFI 变量。
+  /// (比如读取 "BootOrder" 获取启动顺序，或读取 Secure Boot 状态)。
   EFI_GET_VARIABLE                  GetVariable;
+
+  /// 用于遍历 NVRAM 中所有的变量。传入当前变量名，它会返回下一个变量名。
   EFI_GET_NEXT_VARIABLE_NAME        GetNextVariableName;
+
+  /// 创建、修改或删除一个 UEFI 环境变量。很多 OS 层的引导修复工具（如 efibootmgr）
+  /// 就是通过调用这个接口把你的 OS 写入主板启动项的。
   EFI_SET_VARIABLE                  SetVariable;
 
-  //
-  // Miscellaneous Services
-  //
+  // ==========================================================================
+  // 杂项服务 (Miscellaneous Services)
+  // ==========================================================================
+
+  /// 获取下一个高位单调递增的计数值，通常用于防重放攻击的密码学操作或生成唯一标识。
   EFI_GET_NEXT_HIGH_MONO_COUNT      GetNextHighMonotonicCount;
+
+  /// 【超高频接口】：控制整个系统重置（关机、重启、休眠等）。
+  /// 在你的 OS 里实现 reboot 或 poweroff 命令时，最标准的底层做法就是调用这个函数。
   EFI_RESET_SYSTEM                  ResetSystem;
 
-  //
-  // UEFI 2.0 Capsule Services
-  //
+  // ==========================================================================
+  // UEFI 2.0 胶囊服务 (Capsule Services) —— 主板 BIOS 刷新专用
+  // ==========================================================================
+
+  /// 向 UEFI 固件传递一个或多个数据“胶囊”。通常用于在 OS 层面下发 BIOS 更新包，
+  /// 系统重启后固件会自动解开胶囊完成主板 BIOS 的无缝升级 (Windows Update 刷 BIOS 就靠它)。
   EFI_UPDATE_CAPSULE                UpdateCapsule;
+
+  /// 查询当前主板固件是否支持某种特定的胶囊更新功能或载荷尺寸。
   EFI_QUERY_CAPSULE_CAPABILITIES    QueryCapsuleCapabilities;
 
-  //
-  // Miscellaneous UEFI 2.0 Service
-  //
+  // ==========================================================================
+  // UEFI 2.0 杂项服务扩展
+  // ==========================================================================
+
+  /// 查询 NVRAM 变量存储区的容量信息。
+  /// (获取最大总存储空间、当前剩余可用空间、以及单个变量允许的最大尺寸)。
   EFI_QUERY_VARIABLE_INFO           QueryVariableInfo;
+
 } EFI_RUNTIME_SERVICES;
 
 
