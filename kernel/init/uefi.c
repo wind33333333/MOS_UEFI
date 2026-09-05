@@ -11,7 +11,7 @@ void efi_runtime_service_init(void) {
     uint64 efi_rts_start_va = UEFI_RTS_VA_START;
     uint64 efi_size = 0;
 
-    uint64 grts_pa = (uint64)boot_info->gRTS;
+    uint64 grts_pa = (uint64)tmp_boot_info->gRTS;
     //用一个局部变量暂存 gRTS 的新虚拟地址，先不要覆盖原变量
     uint64 new_grts_va = 0;
 
@@ -44,16 +44,16 @@ void efi_runtime_service_init(void) {
         vm_map_range(&kernel_space, efi_rts_start_va, efi_pa, efi_size, flags);
 
         // 手动加上主板固件给的真实跨度
-        desc_ptr += boot_info->mem_descriptor_size;
+        desc_ptr += tmp_boot_info->mem_descriptor_size;
     }
 
     // 启用临时虚拟地址 0 映射 (你的神来之笔！)
     uint64 *root_table = pa_to_va(kernel_space.cr3_root);
     root_table[0] = (kernel_space.paging_level == 5) ? tmp_pml5t[0] : tmp_pml4t[0];
 
-    // 此时调用 SVAM，依然使用的是物理层面的 gRTS 指针（因为 boot_info->gRTS 还没被我们改掉）
-    boot_info->gRTS->SetVirtualAddressMap(efi_runtime_memmap.count * boot_info->mem_descriptor_size,
-                                          boot_info->mem_descriptor_size, boot_info->mem_descriptor_version,
+    // 此时调用 SVAM，依然使用的是物理层面的 gRTS 指针（因为 tmp_boot_info->gRTS 还没被我们改掉）
+    tmp_boot_info->gRTS->SetVirtualAddressMap(efi_runtime_memmap.count * tmp_boot_info->mem_descriptor_size,
+                                          tmp_boot_info->mem_descriptor_size, tmp_boot_info->mem_descriptor_version,
                                           (void*)efi_runtime_memmap.mem_map);
 
     // 关闭临时映射
@@ -64,7 +64,7 @@ void efi_runtime_service_init(void) {
 
     // 【修复3-3】：SVAM 安全执行完毕后，操作系统正式将指针切换为高位虚拟地址！
     if (new_grts_va != 0) {
-        boot_info->gRTS = (EFI_RUNTIME_SERVICES *)new_grts_va;
+        tmp_boot_info->gRTS = (EFI_RUNTIME_SERVICES *)new_grts_va;
     } else {
         color_printk(RED, BLACK, "PANIC: gRTS table lost!\n");
         while(1);
@@ -72,7 +72,7 @@ void efi_runtime_service_init(void) {
 
     // 初始化后尝试获取时间信息并打印检测是否映射成功
     EFI_TIME efi_time;
-    boot_info->gRTS->GetTime(&efi_time, NULL);
+    tmp_boot_info->gRTS->GetTime(&efi_time, NULL);
     color_printk(GREEN, BLACK, "UEFI Run Time Service Get Time: %d-%d-%d %d:%d:%d\n",
                  efi_time.Year, efi_time.Month, efi_time.Day,
                  efi_time.Hour, efi_time.Minute, efi_time.Second);

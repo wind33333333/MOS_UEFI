@@ -8,8 +8,8 @@
 .globl _start
 _start:
     cli
-    // 保存 loader 通过 rdi 传递过来的 boot_info 指针到物理平坦地址的内存中
-    movq     %rdi, boot_info(%rip)
+    // 保存 loader 通过 rdi 传递过来的 tmp_boot_info 指针到物理平坦地址的内存中
+    movq     %rdi, tmp_boot_info(%rip)
 
     /* ==================================================================== */
     /* 阶段 1：构建基础的 4 级临时页表 (PML4)                                 */
@@ -229,8 +229,8 @@ tmp_gdt_desc:
     .word tmp_gdt_desc - tmp_gdt - 1
     .quad tmp_gdt                       // 运行时会被动态修补为物理地址
 
-    .globl boot_info
-    boot_info:          .quad   0
+    .globl tmp_boot_info
+    tmp_boot_info:          .quad   0
 
 
 /************************* 正式内核代码区 ****************************/

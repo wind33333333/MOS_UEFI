@@ -34,17 +34,17 @@ INIT_TEXT void memblock_init(void) {
     uint64 kernel_pa_start = (uint64) _start - KERNEL_VA_START;
     uint64 kernel_pa_end = (uint64) _end - KERNEL_VA_START;
 
-    uint32 count = boot_info->mem_map_size / boot_info->mem_descriptor_size;
+    uint32 count = tmp_boot_info->mem_map_size / tmp_boot_info->mem_descriptor_size;
 
     // 用于字节级精准拷贝的源指针
-    uint8 *src_ptr = (uint8 *)boot_info->mem_map;
+    uint8 *src_ptr = (uint8 *)tmp_boot_info->mem_map;
 
     for (uint32 i = 0; i < count; i++) {
         // 强转为结构体以便读取字段
         EFI_MEMORY_DESCRIPTOR *mem_des = (EFI_MEMORY_DESCRIPTOR *)src_ptr;
 
         if (mem_des->NumberOfPages == 0) {
-            src_ptr += boot_info->mem_descriptor_size;
+            src_ptr += tmp_boot_info->mem_descriptor_size;
             continue;
         }
 
@@ -60,11 +60,11 @@ INIT_TEXT void memblock_init(void) {
         if (attr & EFI_MEMORY_RUNTIME) {
             // 计算目标数组的字节级偏移地址
             uint8 *dst_ptr = (uint8 *)efi_runtime_memmap.mem_map +
-                             (efi_runtime_memmap.count * boot_info->mem_descriptor_size);
+                             (efi_runtime_memmap.count * tmp_boot_info->mem_descriptor_size);
 
             // 🌟 核心调整 2：原汁原味拷贝！严格按照主板给的 size (例如 48 字节) 进行内存复制
             // 绝不能用标准的结构体 '=' 赋值，防止 40 字节紧凑排列导致跨度丢失！
-            asm_mem_cpy(src_ptr, dst_ptr,  boot_info->mem_descriptor_size);
+            asm_mem_cpy(src_ptr, dst_ptr,  tmp_boot_info->mem_descriptor_size);
 
             efi_runtime_memmap.count++;
 
@@ -92,7 +92,7 @@ INIT_TEXT void memblock_init(void) {
                     size -= MEM_1MB - pa_start;
                     pa_start = MEM_1MB;
                 } else {
-                    src_ptr += boot_info->mem_descriptor_size;
+                    src_ptr += tmp_boot_info->mem_descriptor_size;
                     continue;
                 }
             }
@@ -124,7 +124,7 @@ INIT_TEXT void memblock_init(void) {
         // 因为它们属于独立领地，不应该进入 direct_mem_map 或 free 内存池。
 
         // 游标推进一步：严格按照主板固件给的跨度移动
-        src_ptr += boot_info->mem_descriptor_size;
+        src_ptr += tmp_boot_info->mem_descriptor_size;
     }
 
     color_printk(GREEN, BLACK, "Total Physics Memory:%dMB\n", phy_mem_size / 1024 / 1024);

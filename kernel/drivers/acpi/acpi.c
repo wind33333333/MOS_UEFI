@@ -9,7 +9,7 @@
  * 返回acpi表的指针
  */
 INIT_TEXT void *acpi_get_table(uint32 table) {
-    rsdp_t *rsdp = pa_to_va((uint64)boot_info->rsdp);
+    rsdp_t *rsdp = pa_to_va((uint64)tmp_boot_info->rsdp);
     xsdt_t *xsdt = pa_to_va((uint64)rsdp->xsdt_address);
     uint32 acpi_count = (xsdt->acpi_header.length - sizeof(acpi_header_t)) / sizeof(uint32 *);
     for (uint32 i = 0; i < acpi_count; i++) {

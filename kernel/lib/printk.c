@@ -368,24 +368,24 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
 char buf[4096];
 
 INIT_TEXT void output_init(void) {
-    Pos.XResolution = boot_info->horizontal_resolution;
-    Pos.YResolution = boot_info->vertical_resolution;
-    Pos.PixelsPerScanLine = boot_info->pixels_per_scan_line;
+    Pos.XResolution = tmp_boot_info->horizontal_resolution;
+    Pos.YResolution = tmp_boot_info->vertical_resolution;
+    Pos.PixelsPerScanLine = tmp_boot_info->pixels_per_scan_line;
     Pos.XPosition = 0;
     Pos.YPosition = 0;
     Pos.XCharSize = 8;
     Pos.YCharSize = 16;
-    Pos.FB_addr = (uint32*)boot_info->frame_buffer_base;
-    Pos.FB_length = boot_info->frame_buffer_size;
+    Pos.FB_addr = (uint32*)tmp_boot_info->frame_buffer_base;
+    Pos.FB_length = tmp_boot_info->frame_buffer_size;
     Pos.lock = 0;
     clear_screen();
     color_printk(GREEN, BLACK, "Video Memory Physics Addr:%#lx Video Size:%#lx Resolution:%d * %d\n",Pos.FB_addr,Pos.FB_length,Pos.XResolution,Pos.YResolution);
 }
 
 INIT_TEXT void video_mem_map(void) {
-    boot_info = pa_to_va((uint64)boot_info);
-    Pos.FB_addr = ioremap_wc(boot_info->frame_buffer_base,boot_info->frame_buffer_size);
-    color_printk(GREEN, BLACK, "Voide Memory Physics Address:%#lx -> Virtual Address:%#lx\n",boot_info->frame_buffer_base,Pos.FB_addr);
+    tmp_boot_info = pa_to_va((uint64)tmp_boot_info);
+    Pos.FB_addr = ioremap_wc(tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size);
+    color_printk(GREEN, BLACK, "Voide Memory Physics Address:%#lx -> Virtual Address:%#lx\n",tmp_boot_info->frame_buffer_base,Pos.FB_addr);
 }
 
 void clear_screen(void) {

@@ -701,14 +701,14 @@ typedef struct{
     /*UEFI RunTimeServices Point*/
     EFI_RUNTIME_SERVICES* gRTS;
 
-} __attribute__((packed)) boot_info_t;
+} __attribute__((packed)) tmp_boot_info_t;
 
 typedef struct {
     EFI_MEMORY_DESCRIPTOR mem_map[10];
     uint32 conut;
 }efi_runtime_mem_t;
 
-extern  boot_info_t* boot_info;
+extern  tmp_boot_info_t* tmp_boot_info;
 //endregion
 
 void efi_runtime_service_init(void);
