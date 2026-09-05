@@ -76,7 +76,7 @@ typedef struct {
 }vmap_area_t;
 
 //初始化vmalloc
-void init_vmalloc(void);
+void vmalloc_init(void);
 void *vmalloc(uint64 size);
 void vfree(void *ptr);
 

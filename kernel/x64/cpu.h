@@ -5,7 +5,7 @@
 
 uint32 apicid_to_cpuid(uint32 apic_id);
 uint32 cpuid_to_apicid(uint32 cpu_id);
-void init_bsp(void);
+void bsp_init(void);
 void enable_cpu_advanced_features(void);
 
 typedef struct {
@@ -21,7 +21,7 @@ typedef struct {
 extern cpu_info_t cpu_info;
 extern uint32 *apic_id_table;
 
-void init_ap(void);
+void ap_init(void);
 void ap_main(void);
 
 typedef struct {

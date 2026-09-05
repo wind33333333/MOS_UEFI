@@ -226,7 +226,7 @@ int32 kfree(void *va) {
 
 
 //初始化slub分配器
-INIT_TEXT void init_slub(void) {
+INIT_TEXT void slub_init(void) {
     //创建kmem_cache对象缓存池
     create_cache(kmem_cache_name, &kmem_cache, sizeof(kmem_cache_t));
 

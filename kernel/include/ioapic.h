@@ -60,7 +60,7 @@ typedef struct ioapic_devive_t {
 }ioapic_devive_t;
 
 
-void init_ioapic(void);
+void ioapic_init(void);
 
 typedef struct{
     uint8 *ioregsel;    //索引寄存器 8位

@@ -107,7 +107,7 @@ void ioapic_disable_all_interrupts(struct ioapic_devive_t *dev) {
 
 
 
-INIT_TEXT void init_ioapic(void) {
+INIT_TEXT void ioapic_init(void) {
     //从madt表中获取关键数据
     madt_t *madt = acpi_get_table('CIPA');
     madt_header_t *madt_entry = (madt_header_t *)&madt->entry;

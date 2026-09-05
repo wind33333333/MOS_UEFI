@@ -3,7 +3,7 @@
 #include "../include/printk.h"
 
 
-INIT_TEXT void init_apic(void) {
+INIT_TEXT void ap_initic(void) {
     uint64 value;
 
     //region IA32_APIC_BASE_MSR (MSR 0x1B)

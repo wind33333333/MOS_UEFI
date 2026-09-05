@@ -164,7 +164,7 @@ INIT_TEXT uint32 cpuid_to_apicid(uint32 cpu_id) {
     return apic_id_table[cpu_id];
 }
 
-INIT_TEXT void init_bsp(void){
+INIT_TEXT void bsp_init(void){
     uint32 apic_id,cpu_id,tmp;
     asm_cpuid_count(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
@@ -174,7 +174,7 @@ INIT_TEXT void init_bsp(void){
     init_gdt();                                //初始化GDT
     init_tss();                                //初始化TSS
     idt_init();                                //初始化IDT
-    init_apic();                               //初始化apic
+    ap_initic();                               //初始化apic
     init_syscall();                            //初始化系统调用
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_hz,cpu_info.maximum_hz,cpu_info.bus_hz,cpu_info.tsc_hz);
@@ -183,7 +183,7 @@ INIT_TEXT void init_bsp(void){
 INIT_DATA uint64 ap_boot_loader_address;
 
 //多核处理器初始化
-INIT_TEXT void init_ap(void) {
+INIT_TEXT void ap_init(void) {
     ap_main_ptr = &ap_main;
     ap_tmp_pml4t_ptr = (uint64*)va_to_pa(&tmp_pml4t);
     apic_id_table_ptr = apic_id_table;
@@ -217,7 +217,7 @@ INIT_TEXT void ap_main(void){
     asm_lgdt(&gdt_ptr,0x8,0x10);
     asm_ltr(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);
     //asm_lidt(&idt_ptr);
-    init_apic();
+    ap_initic();
     init_syscall();
     color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);
     while(1);

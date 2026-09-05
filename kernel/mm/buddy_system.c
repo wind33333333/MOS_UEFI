@@ -6,7 +6,7 @@
 buddy_system_t buddy_system;
 
 //初始化伙伴系统
-INIT_TEXT void init_buddy_system(void) {
+INIT_TEXT void buddy_system_init(void) {
     //初始化page_table指针
     buddy_system.page_table = (page_t *)g_page_map_start;
     //初始化空闲链表

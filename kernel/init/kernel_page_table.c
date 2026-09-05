@@ -6,7 +6,7 @@
 
 vm_space_t kernel_space;
 
-INIT_TEXT void init_kpage_table(void) {
+INIT_TEXT void kpage_table_init(void) {
     kernel_space.cr3_root = memblock_alloc_4k();
     uint64 cr4 = asm_get_cr4();
     kernel_space.paging_level = (cr4 & (1UL<<12)) ? 5 : 4;

@@ -1,7 +1,7 @@
 #pragma once
 #include "../include/moslib.h"
 
-void init_apic(void);
+void ap_initic(void);
 void enable_apic_time (uint64 time,uint32 model,uint32 ivt);
 
 #define IA32_PAT_MSR        0x277        //设置页属性PAT类型

@@ -197,7 +197,7 @@ uint64 hpet_calibrate_apic_hz(hpet_device_t *hpet_dev, uint32 wait_ms) {
 }
 
 
-void init_hpet(void) {
+void hpet_init(void) {
     //hpet初始化
     hpett_t *hpet_table = acpi_get_table('TEPH');
 

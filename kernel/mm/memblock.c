@@ -29,7 +29,7 @@ INIT_TEXT void memblock_add(mem_arr_t *memblock_type, uint64 pa_start, uint64 si
 
 
 #define MEM_1MB (0x100000ULL) // 1MB 物理地址边界
-INIT_TEXT void init_memblock(void) {
+INIT_TEXT void memblock_init(void) {
     uint64 phy_mem_size = 0;
     uint64 kernel_pa_start = (uint64) _start - KERNEL_VA_START;
     uint64 kernel_pa_end = (uint64) _end - KERNEL_VA_START;

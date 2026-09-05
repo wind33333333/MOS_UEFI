@@ -539,7 +539,7 @@ int32 _set_memory_flags(uint64 vaddr,uint64 size,uint64 flags) {
 
 
 //初始化vmalloc
-void INIT_TEXT init_vmalloc(void) {
+void INIT_TEXT vmalloc_init(void) {
     vmap_area_augment_callbacks.rotate = vmap_area_augment_rotate;
     vmap_area_augment_callbacks.copy = vmap_area_augment_copy;
     vmap_area_augment_callbacks.propagate = vmap_area_augment_propagate;

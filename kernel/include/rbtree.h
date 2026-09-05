@@ -81,7 +81,7 @@ static inline void rb_set_parent_and_color(rb_node_t *node, rb_node_t *parent, u
 }
 
 extern rb_augment_callbacks_f empty_augment_callbacks;
-void init_rbtree_empty_augment_callbacks(void);
+void rbtree_empty_augment_callbacks_init(void);
 void rb_erase(rb_root_t *root, rb_node_t *node,rb_augment_callbacks_f *augment_callbacks);
 void rb_insert(rb_root_t *root, rb_node_t *node, rb_node_t *parent, rb_node_t **link, rb_augment_callbacks_f *augment_callbacks);
 

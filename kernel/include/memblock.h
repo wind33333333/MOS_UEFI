@@ -31,7 +31,7 @@ extern efi_runtime_memmap_t efi_runtime_memmap;
 extern mem_arr_t direct_mem_map;;
 
 
-void init_memblock(void);
+void memblock_init(void);
 uint64 memblock_alloc(uint64 size, uint64 align);
 int32 memblock_free(uint64 ptr, uint64 size);
 uint64 memblock_alloc_4k(void);
