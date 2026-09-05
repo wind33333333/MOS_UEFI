@@ -65,6 +65,7 @@ SECTIONS
        . = ALIGN(4096);
        _end_rodata = .;
     }
+
     /* 内核堆栈段 (RW) */
     . = ALIGN(4096);
     .stack :

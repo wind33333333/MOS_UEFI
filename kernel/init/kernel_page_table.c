@@ -8,8 +8,7 @@ vm_space_t kernel_space;
 
 INIT_TEXT void kpage_table_init(void) {
     kernel_space.cr3_root = memblock_alloc_4k();
-    uint64 cr4 = asm_get_cr4();
-    kernel_space.paging_level = (cr4 & (1UL<<12)) ? 5 : 4;
+    kernel_space.paging_level = tmp_paging_level;
     kernel_space.ops.alloc_4k = memblock_alloc_4k;
     kernel_space.ops.free_4k = memblock_free_4k;
     kernel_space.ops.phys_to_virt = pa_to_va;

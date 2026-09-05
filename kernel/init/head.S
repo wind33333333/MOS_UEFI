@@ -79,29 +79,25 @@ _start:
     btl      $16, %ecx                  // 测试 ECX 第 16 位
     jc       .need_trampoline_la57      // 支持！走蹦床强行开启
 
-    // 【后备】：硬件不支持 LA57，老老实实用 4 级分页
-    jmp      .la48_only
-
-
     /* ==================================================================== */
     /* 阶段 3：分支处理逻辑                                                  */
     /* ==================================================================== */
 
+    // 【后备】：硬件不支持 LA57，老老实实用 4 级分页
+    movb     $4, tmp_paging_level(%rip)
+    leaq     tmp_pml4t(%rip), %rax
+    movq     %rax, %cr3                 // 启用 4 级临时页表
+    jmp      .prepare_c_env
+
 .already_in_la57:
-    movb     $1, la57_enabled(%rip)
+    movb     $5, tmp_paging_level(%rip) // 启用5级分页
     call     .build_pml5_bridge         // 构造折叠桥接的 PML5
     leaq     tmp_pml5t(%rip), %rax
     movq     %rax, %cr3                 // 直接刷新 CR3，无需切换 32 位！
     jmp      .prepare_c_env
 
-.la48_only:
-    movb     $0, la57_enabled(%rip)
-    leaq     tmp_pml4t(%rip), %rax
-    movq     %rax, %cr3                 // 启用 4 级临时页表
-    jmp      .prepare_c_env
-
 .need_trampoline_la57:
-    movb     $1, la57_enabled(%rip)
+    movb     $5, tmp_paging_level(%rip)
     call     .build_pml5_bridge         // 构造折叠桥接的 PML5
 
     // 动态修复 GDT 描述符的基址 (解决由于 PIE/PIC 带来的相对寻址偏移)
@@ -187,7 +183,6 @@ trampoline_64:
     movw     %ax, %es
     movw     %ax, %ss
 
-
 /* ==================================================================== */
 /* 阶段 5：环境就绪，飞跃至高半核 C 语言内核主入口                           */
 /* ==================================================================== */
@@ -198,7 +193,7 @@ trampoline_64:
     orq      %rax, %rsp
 
     // 计算内核 C 语言入口的高半核虚拟地址，并实施最终跃迁
-    leaq     init_kernel(%rip), %rax
+    leaq     kernel_init(%rip), %rax
     movabs   $KERNEL_VA_START, %rbx
     orq      %rbx, %rax
     jmp      *%rax                      // 永远跳入 0xFFFFFFFF80000000 空间！
@@ -220,8 +215,8 @@ trampoline_64:
     tmp_pdpt1:  .fill   0x1000, 1, 0    // 专用于 KERNEL 代码映射
 
     // 全局系统状态标记
-    .globl la57_enabled
-    la57_enabled: .byte   0             // 记录系统是否成功启用了 5 级分页
+    .globl tmp_paging_level
+    tmp_paging_level: .byte   0             // 记录系统是否成功启用了 5 级分页
 
     // 蹦床专用的临时全局描述符表 (GDT)
     .balign 16
@@ -233,9 +228,6 @@ tmp_gdt:
 tmp_gdt_desc:
     .word tmp_gdt_desc - tmp_gdt - 1
     .quad tmp_gdt                       // 运行时会被动态修补为物理地址
-
-    .globl kernel_stack_top
-    kernel_stack_top:   .quad   0
 
     .globl boot_info
     boot_info:          .quad   0

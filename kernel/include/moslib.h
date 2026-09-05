@@ -34,6 +34,7 @@ extern char _end_stack[];
 extern char _end[];
 extern uint64 tmp_pml4t[];
 extern uint64 tmp_pml5t[];
+extern uint8 tmp_paging_level;
 
 #define BOCHS_DG()    __asm__ __volatile__ ("xchg %%bx,%%bx \n\t":: :);
 

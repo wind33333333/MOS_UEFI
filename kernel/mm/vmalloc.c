@@ -4,7 +4,6 @@
 #include "../include/printk.h"
 #include "../init/kernel_page_table.h"
 
-// 默认 4 级页表占位符
 uint64 g_direct_map_start;
 uint64 g_direct_map_end;
 uint64 g_vmalloc_start;
@@ -15,8 +14,7 @@ uint64 g_io_map_start;
 uint64 g_io_map_end;
 
 void vm_layout_init(void) {
-    uint64 cr4 = asm_get_cr4();
-    if (cr4 & (1<<12)) {
+    if (tmp_paging_level == 5) {
         // =====================================================================
         // 【5 级页表模式 - LA57】(单位: PB = 0x0004000000000000ULL)
         // =====================================================================
