@@ -35,25 +35,53 @@ INIT_TEXT void init_memblock(void) {
     uint64 kernel_pa_end = (uint64) _end - KERNEL_VA_START;
 
     uint32 count = boot_info->mem_map_size / boot_info->mem_descriptor_size;
+
+    // 用于字节级精准拷贝的源指针
+    uint8 *src_ptr = (uint8 *)boot_info->mem_map;
+
     for (uint32 i = 0; i < count; i++) {
-        EFI_MEMORY_DESCRIPTOR *mem_des = (EFI_MEMORY_DESCRIPTOR *) (
-            (uint8 *) boot_info->mem_map + i * boot_info->mem_descriptor_size);
-        if (mem_des->NumberOfPages == 0) continue;
+        // 强转为结构体以便读取字段
+        EFI_MEMORY_DESCRIPTOR *mem_des = (EFI_MEMORY_DESCRIPTOR *)src_ptr;
+
+        if (mem_des->NumberOfPages == 0) {
+            src_ptr += boot_info->mem_descriptor_size;
+            continue;
+        }
 
         uint64 pa_start = mem_des->PhysicalStart;
-        uint64 size = mem_des->NumberOfPages << 12;
+        uint64 size = mem_des->NumberOfPages << 12; // 等价于 << PAGE_4K_SHIFT
         uint64 pa_end = pa_start + size;
-
         uint32 type = mem_des->Type;
-        // 1. 处理普通可用内存 (核心逻辑：映射 + 截断 + 切割 + 释放)
+
+        // =====================================================================
+        // 🌟 核心调整 1：独立提取 UEFI Runtime 内存 (黄金法则：只看属性！)
+        // =====================================================================
+        if (mem_des->Attribute & EFI_MEMORY_RUNTIME) {
+            // 计算目标数组的字节级偏移地址
+            uint8 *dst_ptr = (uint8 *)efi_runtime_memmap.mem_map +
+                             (efi_runtime_memmap.count * boot_info->mem_descriptor_size);
+
+            // 🌟 核心调整 2：原汁原味拷贝！严格按照主板给的 size (例如 48 字节) 进行内存复制
+            // 绝不能用标准的结构体 '=' 赋值，防止 40 字节紧凑排列导致跨度丢失！
+            asm_mem_cpy(src_ptr, dst_ptr,  boot_info->mem_descriptor_size);
+
+            efi_runtime_memmap.count++;
+
+            // 注意：这里不要写 continue！
+            // 因为像 EFI_ACPI_MEMORY_NVS 这种类型，既需要传给 UEFI，也需要被内核直接映射区(direct_mem_map)访问。
+        }
+
+        // =====================================================================
+        // 2. 处理普通可用内存 (映射 + 截断 + 切割 + 释放)
+        // =====================================================================
         if (type == EFI_LOADER_DATA ||
             type == EFI_LOADER_CODE ||
             type == EFI_BOOT_SERVICES_CODE ||
             type == EFI_BOOT_SERVICES_DATA ||
             type == EFI_CONVENTIONAL_MEMORY) {
-            phy_mem_size += size; // 计算总物理内存
 
-            // 物理地址空间加入直接映射区 & page映射区
+            phy_mem_size += size;
+
             memblock_add(&direct_mem_map, pa_start, size);
             memblock_add(&page_mem_map, pa_start, size);
 
@@ -63,7 +91,8 @@ INIT_TEXT void init_memblock(void) {
                     size -= MEM_1MB - pa_start;
                     pa_start = MEM_1MB;
                 } else {
-                    continue; // 1M以内的全部丢弃
+                    src_ptr += boot_info->mem_descriptor_size;
+                    continue;
                 }
             }
 
@@ -76,20 +105,25 @@ INIT_TEXT void init_memblock(void) {
                     memblock_add(&memblock.free, kernel_pa_end, pa_end - kernel_pa_end);
                 }
             } else {
-                // 完全没有交集，整块存到 free 中
                 memblock_add(&memblock.free, pa_start, size);
             }
+
+        // =====================================================================
+        // 3. 处理 ACPI 内存 (仅映射，不释放)
+        // =====================================================================
         } else if (type == EFI_ACPI_RECLAIM_MEMORY || type == EFI_ACPI_MEMORY_NVS) {
-            phy_mem_size += size; // ACPI 也是真实插在主板上的物理内存，计入总数
+            phy_mem_size += size;
 
-            // 仅仅加入直接映射区，保证内核后续能读到 ACPI 表即可
+            // 仅仅加入直接映射区，保证内核后续能读到 ACPI 表
             memblock_add(&direct_mem_map, pa_start, size);
-
-            // 剥离的好处：到这里直接结束！不参与后面的 page 映射和 free 分配。
-        } else if (type == EFI_RUNTIME_SERVICES_DATA || type == EFI_RUNTIME_SERVICES_CODE) {
-            efi_runtime_memmap.mem_map[efi_runtime_memmap.count] = *mem_des;
-            efi_runtime_memmap.count++;
         }
+
+        // 注意：像 EFI_RUNTIME_SERVICES_CODE/DATA, MMIO 等类型
+        // 它们不会进入上面的 if 和 else if，这非常正确！
+        // 因为它们属于独立领地，不应该进入 direct_mem_map 或 free 内存池。
+
+        // 游标推进一步：严格按照主板固件给的跨度移动
+        src_ptr += boot_info->mem_descriptor_size;
     }
 
     color_printk(GREEN, BLACK, "Total Physics Memory:%dMB\n", phy_mem_size / 1024 / 1024);

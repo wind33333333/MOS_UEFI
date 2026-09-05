@@ -9,25 +9,26 @@ void efi_runtime_service_map(void) {
 
     // 将起点转换为单字节指针，以便进行精准的字节级跨度跳跃
     uint8 *desc_ptr = (uint8 *)efi_runtime_memmap.mem_map;
+    uint64 efi_rts_start_va = UEFI_RTS_VA_START;
+    uint64 efi_size = 0;
 
     for (uint32 i = 0; i < efi_runtime_memmap.count; i++) {
         // 将当前字节指针强转为结构体指针，以便操作具体字段
         EFI_MEMORY_DESCRIPTOR *desc = (EFI_MEMORY_DESCRIPTOR *)desc_ptr;
 
+        efi_rts_start_va += efi_size;
+        desc->VirtualStart = efi_rts_start_va;
+
         uint64 efi_pa = desc->PhysicalStart;
-        uint64 efi_size = desc->NumberOfPages << PAGE_4K_SHIFT;
-        uint64 efi_va = (uint64)module_remap(efi_pa, efi_size);
+        efi_size = desc->NumberOfPages << PAGE_4K_SHIFT;
 
-        // 赋值给当前的描述符
-        desc->VirtualStart = efi_va;
-
-        if (desc->Type == EFI_RUNTIME_SERVICES_CODE) {
-            set_memory_rwx(efi_va, efi_size); // 代码段
-        }
+        uint64 flags = (desc->Type == EFI_RUNTIME_SERVICES_DATA) ? PAGE_KERNEL_DATA_RW : PAGE_KERNEL_CODE;
+        vm_map_range(&kernel_space,efi_rts_start_va,efi_pa,efi_size,flags);
 
         // 【核心修复】：手动加上主板固件给的真实跨度，而不是靠 C 语言的数组隐式推导！
         desc_ptr += boot_info->mem_descriptor_size;
     }
+
 
     boot_info->gRTS->SetVirtualAddressMap(efi_runtime_memmap.count * boot_info->mem_descriptor_size,
                                           boot_info->mem_descriptor_size, boot_info->mem_descriptor_version,

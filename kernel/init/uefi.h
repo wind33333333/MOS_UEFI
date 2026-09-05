@@ -28,6 +28,51 @@ typedef VOID *EFI_HANDLE;
 #define EFI_PERSISTENT_MEMORY             14 // 持久性内存
 #define EFI_MAXMEMORYTYPE                 15  // 内存类型计数上限标志（不是实际类型）
 
+// ============================================================================
+// UEFI 内存属性掩码 (EFI_MEMORY_DESCRIPTOR -> Attribute 字段)
+// 规范来源：UEFI Specification - Section 7.2 Memory Allocation Services
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// 【阵营一：硬件缓存策略】 (Cacheability Attributes)
+// 决定了这块内存支持 CPU 以何种方式进行缓存。
+// 内核在建立页表 (PTE) 时，应根据这些属性设置 PCD, PWT, PAT 等标志位。
+// ----------------------------------------------------------------------------
+#define EFI_MEMORY_UC   0x0000000000000001ULL // 强无缓存 (Uncacheable)：所有读写直接打到总线，禁止乱序，MMIO 必备。
+#define EFI_MEMORY_WC   0x0000000000000002ULL // 合并写 (Write Combining)：不缓存读，但允许 CPU 打包合并写操作，显存必备。
+#define EFI_MEMORY_WT   0x0000000000000004ULL // 直写缓存 (Write Through)：读操作走缓存，写操作同时写进缓存和物理内存。
+#define EFI_MEMORY_WB   0x0000000000000008ULL // 回写缓存 (Write Back)：最高性能，读写都在缓存中完成，满时再写回，普通 RAM 必备。
+#define EFI_MEMORY_UCE  0x0000000000000010ULL // 导出无缓存 (Uncacheable, exported)：支持被外部设备(如 PCIe 设备)窥探的无缓存内存。
+
+// ----------------------------------------------------------------------------
+// 【阵营二：内存保护属性】 (Memory Protection Attributes)
+// 固件向 OS 声明这块内存的硬件安全能力。
+// ----------------------------------------------------------------------------
+#define EFI_MEMORY_WP   0x0000000000001000ULL // 写保护 (Write Protected)：硬件层面支持将其配置为不可写。
+#define EFI_MEMORY_RP   0x0000000000002000ULL // 读保护 (Read Protected)：硬件层面支持将其配置为不可读。
+#define EFI_MEMORY_XP   0x0000000000004000ULL // 执行保护 (Execute Protected)：支持不可执行，对应页表的 NX 位 (No-eXecute)。
+#define EFI_MEMORY_RO   0x0000000000020000ULL // 强制只读 (Read Only)：这块内存物理上就是只读的（比如 ROM 芯片），绝对无法写入。
+
+// ----------------------------------------------------------------------------
+// 【阵营三：物理与特殊硬件属性】 (Physical & Special Attributes)
+// 描述了这块内存在主板上的特殊物理状态。
+// ----------------------------------------------------------------------------
+#define EFI_MEMORY_NV           0x0000000000008000ULL // 非易失性 (Non-Volatile)：断电数据不丢失，如 SPI Flash、NVRAM。
+#define EFI_MEMORY_MORE_RELIABLE 0x0000000000010000ULL // 高可靠性：内存有硬件级别的冗余保护（如内存镜像 RAID），OS 应当把核心数据结构放这里。
+#define EFI_MEMORY_SP           0x0000000000040000ULL // 特定用途 (Specific-Purpose)：表示这块内存只能由特定设备使用，不应作为通用 OS 内存分配。
+#define EFI_MEMORY_CPU_CRYPTO   0x0000000000080000ULL // 密码保护 (Cryptographically Protected)：支持 CPU 级内存加密（如 AMD SME/SEV, Intel TME）。
+
+// ----------------------------------------------------------------------------
+// 【阵营四：生命周期标志】 (Lifecycle Attribute) —— OS 最关键的标志！
+// ----------------------------------------------------------------------------
+#define EFI_MEMORY_RUNTIME      0x8000000000000000ULL // 运行时留存 (Runtime)：OS 必须为它建立虚拟地址映射，并在 ExitBootServices 后保留它，因为 UEFI 的 Runtime Services 还要用它！
+
+// ----------------------------------------------------------------------------
+// 【补充：遗留与架构相关掩码】 (Miscellaneous Masks)
+// ----------------------------------------------------------------------------
+#define EFI_MEMORY_ISA_VALID    0x4000000000000000ULL // 遗留 ISA 有效：表明下面的 ISA_MASK 包含有效的 ISA 地址。
+#define EFI_MEMORY_ISA_MASK     0x0FFFF00000000000ULL // ISA 地址掩码：用于兼容古老的 16 位 ISA 总线设备的内存范围。
+
 #define IN
 #define OUT
 #define EFIAPI __attribute__((ms_abi))

@@ -16,6 +16,10 @@ extern uint64 g_page_map_end;
 extern uint64 g_io_map_start;
 extern uint64 g_io_map_end;
 
+// uefi运行时服务空间2G
+#define UEFI_RTS_VA_START   0xFFFFFFFF00000000ULL
+#define UEFI_RTS_VA_END     0xFFFFFFFFA0000000ULL
+
 /* ========================================================================== */
 /*                 静态内核代码与模块区 (雷打不动，必须在最顶端)              */
 /* ========================================================================== */
@@ -31,7 +35,7 @@ extern uint64 g_io_map_end;
 
 // 内核主代码与数据起始虚拟地址 (512 MB，紧贴在模块空间下方)
 #define KERNEL_VA_START   0xFFFFFFFF80000000ULL
-#define KERNEL_VA_END     0xFFFFFFFF9FFFFFFFULL
+#define KERNEL_VA_END     0xFFFFFFFFA0000000ULL
 
 // 初始化函数声明
 void vm_layout_init(void);
