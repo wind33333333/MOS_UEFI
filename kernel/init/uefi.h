@@ -10,23 +10,6 @@ typedef uint64 EFI_VIRTUAL_ADDRESS;
 typedef uint64 EFI_STATUS;
 typedef VOID *EFI_HANDLE;
 
-/* UEFI 内存类型定义 (UEFI Specification 2.9) */
-#define EFI_RESERVED_MEMORY_TYPE          0  // 预留 - 不可使用
-#define EFI_LOADER_CODE                   1  // 引导加载程序代码
-#define EFI_LOADER_DATA                   2  // 引导加载程序数据
-#define EFI_BOOT_SERVICES_CODE            3  // UEFI 引导服务代码
-#define EFI_BOOT_SERVICES_DATA            4  // UEFI 引导服务数据
-#define EFI_RUNTIME_SERVICES_CODE         5  // UEFI 运行时服务代码
-#define EFI_RUNTIME_SERVICES_DATA         6  // UEFI 运行时服务数据
-#define EFI_CONVENTIONAL_MEMORY           7  // 常规可用内存 (操作系统可用)
-#define EFI_UNUSABLE_MEMORY               8  // 损坏或不可用内存
-#define EFI_ACPI_RECLAIM_MEMORY           9  // ACPI 表内存 (OS启动后可回收)
-#define EFI_ACPI_MEMORY_NVS               10 // ACPI NVS 内存 (操作系统不能使用)
-#define EFI_MEMORY_MAPPED_IO              11 // 内存映射 I/O (MMIO) 区域
-#define EFI_MEMORY_MAPPED_IO_PORT_SPACE   12 // 内存映射 I/O 端口空间
-#define EFI_PAL_CODE                      13 // 处理器抽象层代码
-#define EFI_PERSISTENT_MEMORY             14 // 持久性内存
-#define EFI_MAXMEMORYTYPE                 15  // 内存类型计数上限标志（不是实际类型）
 
 // ============================================================================
 // UEFI 内存属性掩码 (EFI_MEMORY_DESCRIPTOR -> Attribute 字段)
@@ -79,83 +62,62 @@ typedef VOID *EFI_HANDLE;
 #define OPTIONAL
 //#define NULL ((VOID *) 0)
 
-typedef enum {
-  /// Not used.
-  EfiReservedMemoryType,
-  /// The code portions of a loaded application.
-  /// (Note that UEFI OS loaders are UEFI applications.)
-  EfiLoaderCode,
-  /// The data portions of a loaded application and the default data allocation
-  /// type used by an application to allocate pool memory.
-  EfiLoaderData,
-  /// The code portions of a loaded Boot Services Driver.
-  EfiBootServicesCode,
-  /// The data portions of a loaded Boot Serves Driver, and the default data
-  /// allocation type used by a Boot Services Driver to allocate pool memory.
-  EfiBootServicesData,
-  /// The code portions of a loaded Runtime Services Driver.
-  EfiRuntimeServicesCode,
-  /// The data portions of a loaded Runtime Services Driver and the default
-  /// data allocation type used by a Runtime Services Driver to allocate pool memory.
-  EfiRuntimeServicesData,
-  /// Free (unallocated) memory.
-  EfiConventionalMemory,
-  /// Memory in which errors have been detected.
-  EfiUnusableMemory,
-  /// Memory that holds the ACPI tables.
-  EfiACPIReclaimMemory,
-  /// Address space reserved for use by the firmware.
-  EfiACPIMemoryNVS,
-  /// Used by system firmware to request that a memory-mapped IO region
-  /// be mapped by the OS to a virtual address so it can be accessed by EFI runtime services.
-  EfiMemoryMappedIO,
-  /// System memory-mapped IO region that is used to translate memory
-  /// cycles to IO cycles by the processor.
-  EfiMemoryMappedIOPortSpace,
-  /// Address space reserved by the firmware for code that is part of the processor.
-  EfiPalCode,
-  /// A memory region that operates as EfiConventionalMemory,
-  /// however it happens to also support byte-addressable non-volatility.
-  EfiPersistentMemory,
-  EfiMaxMemoryType
+typedef enum:uint32 {
+  /* UEFI 内存类型定义 (UEFI Specification 2.9) */
+ EFI_RESERVED_MEMORY_TYPE         ,  // 预留 - 不可使用
+ EFI_LOADER_CODE                  ,  // 引导加载程序代码
+ EFI_LOADER_DATA                  ,  // 引导加载程序数据
+ EFI_BOOT_SERVICES_CODE           ,  // UEFI 引导服务代码
+ EFI_BOOT_SERVICES_DATA           , // UEFI 引导服务数据
+ EFI_RUNTIME_SERVICES_CODE        ,  // UEFI 运行时服务代码
+ EFI_RUNTIME_SERVICES_DATA        ,  // UEFI 运行时服务数据
+ EFI_CONVENTIONAL_MEMORY          ,  // 常规可用内存 (操作系统可用)
+ EFI_UNUSABLE_MEMORY              ,  // 损坏或不可用内存
+ EFI_ACPI_RECLAIM_MEMORY          ,  // ACPI 表内存 (OS启动后可回收)
+ EFI_ACPI_MEMORY_NVS              , // ACPI NVS 内存 (操作系统不能使用)
+ EFI_MEMORY_MAPPED_IO             , // 内存映射 I/O (MMIO) 区域
+ EFI_MEMORY_MAPPED_IO_PORT_SPACE  , // 内存映射 I/O 端口空间
+ EFI_PAL_CODE                     , // 处理器抽象层代码
+ EFI_PERSISTENT_MEMORY            , // 持久性内存
+ EFI_MAXMEMORYTYPE                ,  // 内存类型计数上限标志（不是实际类型）
 } EFI_MEMORY_TYPE;
 
 typedef struct {
-  uint16    Year;
-  uint8     Month;
-  uint8     Day;
-  uint8     Hour;
-  uint8     Minute;
-  uint8     Second;
-  uint8     Pad1;
-  uint32    Nanosecond;
-  int16     TimeZone;
-  uint8     Daylight;
-  uint8     Pad2;
+  uint16    Year;       // 年份（1900 - 9999）
+  uint8     Month;      // 月份（1 - 12）
+  uint8     Day;        // 日期（1 - 31）
+  uint8     Hour;       // 小时（0 - 23）
+  uint8     Minute;     // 分钟（0 - 59）
+  uint8     Second;     // 秒数（0 - 59）
+  uint8     Pad1;       // 填充字节 1（用于保持内存结构的字节对齐）
+  uint32    Nanosecond; // 纳秒（0 - 999,999,999）
+  int16     TimeZone;   // 时区（以分钟为单位的本地时间与 UTC 的偏移量。范围：-1440 到 1440。特殊值 2047 意味着未指定时区）
+  uint8     Daylight;   // 夏令时/日光节约时间标志位掩码（例如：是否处于夏令时，是否受夏令时调整）
+  uint8     Pad2;       // 填充字节 2（用于保持内存结构的字节对齐）
 } EFI_TIME;
 
 typedef struct {
-  ///
-  /// Provides the reporting resolution of the real-time clock device in
-  /// counts per second. For a normal PC-AT CMOS RTC device, this
-  /// value would be 1 Hz, or 1, to indicate that the device only reports
-  /// the time to the resolution of 1 second.
-  ///
+   /*
+   提供实时时钟 (RTC) 设备的报告分辨率，单位为“次/秒 (Hz)”。
+   对于一台普通的 PC-AT CMOS RTC 设备，这个值通常是 1 Hz（即值为 1），
+   表示该设备只能以 1 秒为最小精度来报告时间。
+   */
   uint32     Resolution;
-  ///
-  /// Provides the timekeeping accuracy of the real-time clock in an
-  /// error rate of 1E-6 parts per million. For a clock with an accuracy
-  /// of 50 parts per million, the value in this field would be
-  /// 50,000,000.
-  ///
+
+
+   /*
+   提供实时时钟的计时精度（误差率），其单位是百万分之一 (ppm) 的百万分之一 (即 1E-6 ppm)。
+   例如：如果一个主板硬件时钟的精度误差是 50 ppm，
+   那么这个字段填入的值将会是 50,000,000（即 50 / 1E-6）。
+   */
   uint32     Accuracy;
-  ///
-  /// A TRUE indicates that a time set operation clears the device's
-  /// time below the Resolution reporting level. A FALSE
-  /// indicates that the state below the Resolution level of the
-  /// device is not cleared when the time is set. Normal PC-AT CMOS
-  /// RTC devices set this value to FALSE.
-  ///
+
+   /*
+   值为 TRUE 表示：当操作系统向硬件写入/设置新时间时，
+   硬件会自动把低于 Resolution（分辨率）级别的剩余时间（比如亚秒/毫秒状态）清零。
+   值为 FALSE 表示：设置新时间时，低于分辨率级别的时间状态不会被清零。
+   普通的 PC-AT CMOS RTC 设备通常会将此值设为 FALSE。
+   */
   boolean    SetsToZero;
 } EFI_TIME_CAPABILITIES;
 
@@ -169,7 +131,7 @@ EFI_STATUS
 
 typedef struct
 {
-    uint32  Type;
+    EFI_MEMORY_TYPE  Type;
     uint32  ReservedA;
     EFI_PHYSICAL_ADDRESS PhysicalStart;
     EFI_VIRTUAL_ADDRESS  VirtualStart;
@@ -178,36 +140,35 @@ typedef struct
     uint64  ReservedB;
 } EFI_MEMORY_DESCRIPTOR;
 
-///
-/// Data structure that precedes all of the standard EFI table types.
-///
+
+/// 置于所有标准 EFI 表类型最前面的公共数据结构（即标准表头）。
 typedef struct {
-  ///
-  /// A 64-bit signature that identifies the type of table that follows.
-  /// Unique signatures have been generated for the EFI System Table,
-  /// the EFI Boot Services Table, and the EFI Runtime Services Table.
-  ///
+
+   /*
+   一个 64 位的签名（魔数），用于标识紧随其后的表的类型。
+   UEFI 规范已经为 EFI 系统表 (System Table)、EFI 启动服务表 (Boot Services Table)
+   以及 EFI 运行时服务表 (Runtime Services Table) 定义了各自唯一的签名。
+   */
   uint64    Signature;
-  ///
-  /// The revision of the EFI Specification to which this table
-  /// conforms. The upper 16 bits of this field contain the major
-  /// revision value, and the lower 16 bits contain the minor revision
-  /// value. The minor revision values are limited to the range of 00..99.
-  ///
+
+   /*
+   该表所遵循的 EFI 规范的版本号。
+   此字段的高 16 位包含主版本号 (Major Revision)，
+   低 16 位包含次版本号 (Minor Revision)。
+   次版本号的取值范围被限制在 00 到 99 之间。
+   */
   uint32    Revision;
-  ///
-  /// The size, in bytes, of the entire table including the EFI_TABLE_HEADER.
-  ///
-  uint32    HeaderSize;
-  ///
-  /// The 32-bit CRC for the entire table. This value is computed by
-  /// setting this field to 0, and computing the 32-bit CRC for HeaderSize bytes.
-  ///
+
+  uint32    HeaderSize;  /// 整个表的大小（以字节为单位），注意：这个大小是包含当前 EFI_TABLE_HEADER 本身在内的。
+
+   /*
+   整个表的 32 位 CRC 校验和。
+   计算此值的规则是：在计算之前，必须先将当前这个 CRC32 字段临时清零（设为 0），
+   然后对长度为 HeaderSize 字节的整张表进行 32 位 CRC 运算，最后将结果填回此字段。
+   */
   uint32    CRC32;
-  ///
-  /// Reserved field that must be set to 0.
-  ///
-  uint32    Reserved;
+
+  uint32    Reserved;  /// 保留字段，必须被设置为 0。
 } EFI_TABLE_HEADER;
 
 

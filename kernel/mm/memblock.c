@@ -51,12 +51,13 @@ INIT_TEXT void init_memblock(void) {
         uint64 pa_start = mem_des->PhysicalStart;
         uint64 size = mem_des->NumberOfPages << 12; // 等价于 << PAGE_4K_SHIFT
         uint64 pa_end = pa_start + size;
-        uint32 type = mem_des->Type;
+        EFI_MEMORY_TYPE type = mem_des->Type;
+        uint64 attr = mem_des->Attribute;
 
         // =====================================================================
         // 🌟 核心调整 1：独立提取 UEFI Runtime 内存 (黄金法则：只看属性！)
         // =====================================================================
-        if (mem_des->Attribute & EFI_MEMORY_RUNTIME) {
+        if (attr & EFI_MEMORY_RUNTIME) {
             // 计算目标数组的字节级偏移地址
             uint8 *dst_ptr = (uint8 *)efi_runtime_memmap.mem_map +
                              (efi_runtime_memmap.count * boot_info->mem_descriptor_size);
