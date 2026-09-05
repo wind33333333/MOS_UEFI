@@ -5,7 +5,7 @@
 
 extern vm_space_t kernel_space;
 
-void efi_runtime_service_map(void) {
+void efi_runtime_service_init(void) {
     // 将起点转换为单字节指针，以便进行精准的字节级跨度跳跃
     uint8 *desc_ptr = (uint8 *)efi_runtime_memmap.mem_map;
     uint64 efi_rts_start_va = UEFI_RTS_VA_START;

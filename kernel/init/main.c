@@ -35,7 +35,7 @@ INIT_TEXT void init_kernel(void) {
     init_rbtree_empty_augment_callbacks();     //初始化红黑树空回调函数
     init_vmalloc();                            //初始化vmalloc
     video_mem_map();                           //映射显存到虚拟地址空间
-    efi_runtime_service_map();                 //映射efi运行时服务到虚拟地址空间
+    efi_runtime_service_init();                 //映射efi运行时服务到虚拟地址空间
     init_ioapic();                             //初始化ioapic
     init_hpet();                               //初始化hpet
     init_bsp();                                //初始化bsp核心

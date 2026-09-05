@@ -138,7 +138,7 @@ typedef struct {
 //region xsdt表
 typedef struct {
     acpi_header_t acpi_header;           // 标准 ACPI 表头
-    acpi_header_t *table_pointers[];     // 指向其他 ACPI 表的 64 位指针数组
+    acpi_header_t* apci_table[];         // 指向其他 ACPI 表的 64 位指针数组
 }  xsdt_t;
 //endregion
 
