@@ -343,7 +343,7 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
         uint64 *entry = NULL;
 
         // 向下漫游页表树，按需造桥 (分配中间目录)，停在 target_level
-    // 防御性校验：必须存在，且必须是真正的大页
+        // 防御性校验：必须存在，且必须是真正的大页
         status = vmm_walk(space, curr_va, target_level, flags | VMM_WALK_CREATE, &entry, &log);
 
         // 【防泄漏补丁 1 - 孤儿页表清理】：若 walk 走到一半物理内存耗尽，必须释放刚才临时造的桥梁

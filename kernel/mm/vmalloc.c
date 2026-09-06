@@ -453,6 +453,7 @@ void vfree(void *ptr) {
     free_vmap_area(vmap_area);
 }
 
+
 // 🌟 终极版：最严谨的大页对齐嗅探算法
 static inline uint64 get_optimal_vmap_align(uint64 pa, uint64 size) {
     uint64 pa_end = pa + size;
@@ -627,6 +628,7 @@ int32 unmodule_remap(void *ptr) {
 
 int32 _set_memory_flags(uint64 vaddr,uint64 size,uint64 flags) {
     // 强制 4K 对齐处理 (增加代码健壮性，防止传入非对齐的 size 导致拦截)
+    if (vaddr == 0 || size == 0 ) return -1;
     uint64 aligned_vaddr = vaddr & PAGE_4K_MASK;
     uint64 aligned_size = PAGE_4K_ALIGN(size + (vaddr - aligned_vaddr));
     vm_protect_range(&kernel_space,aligned_vaddr, aligned_size, flags);

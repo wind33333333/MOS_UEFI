@@ -19,6 +19,7 @@ INIT_TEXT void kpage_table_init(void) {
         uint64 start_pa = direct_mem_map.region[i].start_pa;
         uint64 size = direct_mem_map.region[i].size;
         vm_map_range(&kernel_space,(uint64)pa_to_va(start_pa),start_pa,size,PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G );
+        color_printk(GREEN,BLACK,"%d dircect_mem_map start_pa:%#lx size:%#lx \n",i,start_pa,size);
     }
 
     // 初始化 page 映射区，每个 page 结构 64 字节
@@ -58,6 +59,8 @@ INIT_TEXT void kpage_table_init(void) {
 
         // 6. 注入页表，完美利用贪心大页
         vm_map_range(&kernel_space, page_va, start_pa, page_size, PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G);
+
+        color_printk(GREEN,BLACK,"%d page_mem_map start_pa:%#lx size:%#lx \n",i,start_pa,page_size);
     }
 
     //.init_text
