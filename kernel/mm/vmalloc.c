@@ -390,10 +390,27 @@ void vfree(void *ptr) {
     free_vmap_area(vmap_area);
 }
 
+// 🌟 新增：智能计算最佳的页表对齐边界
+static inline uint64 get_optimal_vmap_align(uint64 pa, uint64 size) {
+    // 1. 如果物理地址是 1GB 对齐的，并且我们要映射的总大小超过 1GB，那 VA 就必须 1GB 对齐！
+    if ((pa & PAGE_1G_OFFSET_MASK) == 0 && size >= PAGE_1G_SIZE) {
+        return PAGE_1G_SIZE;
+    }
+
+    // 2. 如果物理地址是 2MB 对齐的，且总大小超过 2MB，VA 就 2MB 对齐！
+    if ((pa & PAGE_2M_OFFSET_MASK) == 0 && size >= PAGE_2M_SIZE) {
+        return PAGE_2M_SIZE;
+    }
+
+    // 3. 兜底方案：大部分小外设寄存器，或者物理地址不对齐的，统统 4KB 对齐即可。
+    // 这将极大节省虚拟地址空间的碎片！
+    return PAGE_4K_SIZE;
+}
+
 /*
  * 设备虚拟地址分配和映射
- * pa:物理起始地址
- * attr:属性
+ * start_pa: 物理起始地址
+ * flags: 属性
  */
 void *_ioremap(uint64 start_pa, uint64 size, uint64 flags) {
     if (size == 0) return NULL;
@@ -401,19 +418,22 @@ void *_ioremap(uint64 start_pa, uint64 size, uint64 flags) {
     uint64 offset = start_pa & PAGE_4K_OFFSET_MASK;
     // 物理地址向下对齐到 4KB
     uint64 aligned_pa = PAGE_4K_ALIGN_DOWN(start_pa);
-    // 映射的总长度必须包含偏移量，并向上对齐到 4KB (例如 128字节 + 0x48偏移 -> 需 1 页)
-    uint64 aligned_size = PAGE_4K_ALIGN(size);
+    // 映射的总长度必须包含偏移量，并向上对齐到 4KB
+    uint64 aligned_size = PAGE_4K_ALIGN(size + offset); // ⚠️ 注意：这里最好是 size+offset，防止跨页截断
 
-    //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area(g_io_map_start,g_io_map_end, aligned_size, PAGE_1G_SIZE);
+    // 🌟 核心修正：动态计算最聪明的对齐边界
+    uint64 optimal_align = get_optimal_vmap_align(aligned_pa, aligned_size);
+
+    // 分配虚拟地址空间，传入计算好的最佳边界
+    vmap_area_t *vmap_area = alloc_vmap_area(g_io_map_start, g_io_map_end, aligned_size, optimal_align);
     if (!vmap_area) {
         return NULL; // 🛡️ 防御：虚拟空间耗尽，安全退出
     }
 
-    //映射物理内存
-    int32 err = vm_map_range(&kernel_space,vmap_area->va_start,aligned_pa,aligned_size,flags | SW_FLAG_MAX_1G);
+    // 映射物理内存 (此时如果 optimal_align 算出来是 2M，底层的 vm_map_range 就能完美挂载 2M 大页)
+    int32 err = vm_map_range(&kernel_space, vmap_area->va_start, aligned_pa, aligned_size, flags | SW_FLAG_MAX_1G);
 
-    // 4. 🛡️ 错误回滚：如果铺页表时物理内存耗尽，必须释放刚刚申请的 vmap_area！
+    // 🛡️ 错误回滚
     if (err != 0) {
         free_vmap_area(vmap_area);
         return NULL;
