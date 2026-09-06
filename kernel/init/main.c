@@ -34,6 +34,9 @@ INIT_TEXT void kernel_init(void) {
     slub_init();                               //初始化slub内存分配器
     rbtree_empty_augment_callbacks_init();     //初始化红黑树空回调函数
     vmalloc_init();                            //初始化vmalloc
+
+    //ioremap(0x1000,0x80200000);
+
     video_mem_map();                           //映射显存到虚拟地址空间
     efi_runtime_service_init();                //映射efi运行时服务到虚拟地址空间
     ioapic_init();                             //初始化ioapic

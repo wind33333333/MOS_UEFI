@@ -216,31 +216,64 @@ static inline uint64 get_va_start(rb_node_t *node) {
     return (CONTAINER_OF(node, vmap_area_t, rb_node))->va_start;
 }
 
-/*低地址优先搜索最佳适应空闲vmap_area*/
-static inline vmap_area_t *find_vmap_lowest_match(uint64 min_addr, uint64 max_addr, uint64 size, uint64 align) {
+
+/**
+ * 🌟 核心黑科技：带偏移量的虚拟地址对齐算法 (Page Coloring Match)
+ *
+ * @param addr         当前空闲块的起始地址
+ * @param align        强制的对齐边界 (如 PAGE_2M_SIZE)
+ * @param align_offset 我们期望的物理偏移量 (如 1MB)
+ * @return 满足 (VA - align_offset) % align == 0 且 >= addr 的最小虚拟地址
+ */
+static inline uint64 get_align_offset_va(uint64 addr, uint64 align, uint64 align_offset) {
+    // 防御：确保 offset 不会超过 align 边界
+    align_offset &= (align - 1);
+
+    // 神级公式：先将游标“后退” offset，做标准的向上对齐，然后再把 offset“加回来”。
+    // 利用无符号整数的二进制补码特性，即使 addr < align_offset 也能完美计算！
+    return align_up(addr - align_offset, align) + align_offset;
+}
+
+/*
+ * 低地址优先搜索最佳适应空闲vmap_area (🌟 升级版：支持智能偏移同余)
+ */
+static inline vmap_area_t *find_vmap_lowest_match(uint64 min_addr, uint64 max_addr, uint64 size, uint64 align, uint64 align_offset) {
     rb_node_t *node = free_vmap_area_root.rb_node;
     vmap_area_t *vmap_area, *best_vmap_area = NULL;
-    uint64 align_va_end, best_va_start = 0xFFFFFFFFFFFFFFFFUL;
+
+    // 记录目前找到的最优虚拟地址 (带偏移计算后)
+    uint64 best_va_start = 0xFFFFFFFFFFFFFFFFUL;
+    uint64 candidate_va, align_va_end;
+
     while (node) {
         vmap_area = CONTAINER_OF(node, vmap_area_t, rb_node);
-        align_va_end = align_up(vmap_area->va_start, align) + size;
-        /* 1. 判断当前区间是否满足：对齐＋大小＋边界 */
-        if (align_va_end <= vmap_area->va_end &&\
-            vmap_area->va_start >= min_addr &&\
-            vmap_area->va_end <= max_addr) {
-            /* 找到一个可行解，且比之前解的起始更小，则更新最佳解 */
-            if (best_va_start > vmap_area->va_start) {
-                best_va_start = vmap_area->va_start;
-                best_vmap_area = vmap_area; //保存当前适配的vmap_area
+
+        // 1. 基于当前节点起始地址(或 min_addr)，算出带偏移量的真实起始地址
+        uint64 search_start = (vmap_area->va_start > min_addr) ? vmap_area->va_start : min_addr;
+        candidate_va = get_align_offset_va(search_start, align, align_offset);
+        align_va_end = candidate_va + size;
+
+        /* 2. 判断当前区间是否满足：对齐同余 ＋ 容量够大 ＋ 未超边界 */
+        if (align_va_end <= vmap_area->va_end &&
+            candidate_va >= min_addr &&
+            align_va_end <= max_addr) {
+
+            /* 找到一个可行解，且算出来的候选 VA 比之前记录的更靠低地址，则更新最佳解 */
+            if (best_va_start > candidate_va) {
+                best_va_start = candidate_va;
+                best_vmap_area = vmap_area; // 保存当前提供场地的 vmap_area 节点
             }
-        }
-        /* 2. 根据左子树的最大容量和左子树起始地址，决定是否进入左子树 */
+            }
+
+        /* 3. 根据左子树的最大容量和左子树起始地址，决定是否进入左子树 */
         if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) >= min_addr) {
-            node = node->left; //往左找
-            /* 3. 如果当前节点区间已经超出了 max_addr或best_va_start，右子树更大则无需搜索 */
+            node = node->left; // 往左找
+
+            /* 4. 如果当前节点区间的纯起点已经超出了 max_addr 或目前的 best_va_start，则右侧必然更大，无需搜索 */
         } else if (vmap_area->va_start > max_addr || vmap_area->va_start >= best_va_start) {
             break;
-            /* 4. 否则尝试右子树 */
+
+            /* 5. 否则尝试右子树 */
         } else {
             node = node->right;
         }
@@ -249,58 +282,88 @@ static inline vmap_area_t *find_vmap_lowest_match(uint64 min_addr, uint64 max_ad
 }
 
 /*
- * 尝试把vmap_area分割到合适大小
+ * 尝试把vmap_area分割到合适大小 (支持智能偏移同余)
+ * @param vmap_area:    被选中的空闲内存块节点
+ * @param size:         需要分配的内存大小
+ * @param align:        要求的最大页对齐边界 (2M/1G等)
+ * @param align_offset: 必须满足的物理偏移余数 (实现大页同频共振的关键)
  */
-static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area, uint64 size, uint64 align) {
+static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area, uint64 size, uint64 align, uint64 align_offset) {
     vmap_area_t *new_vmap_area;
-    uint64 align_va_start = align_up(vmap_area->va_start, align);
-    if (vmap_area->va_end - vmap_area->va_start == size) {
-        //情况1:占用整个
+
+    // 🌟 核心替换：使用带偏移量的智能对齐算法，算出精准的切割起点
+    uint64 align_va_start = get_align_offset_va(vmap_area->va_start, align, align_offset);
+    uint64 align_va_end = align_va_start + size;
+
+    // 情况1：完美匹配 (极其苛刻：起始地址完全吻合，且大小正好用完)
+    // ⚠️ 修复了原代码的隐患：原代码仅判断 size 相等，若因对齐导致起点后移，会引发灾难性内存重叠。
+    if (align_va_start == vmap_area->va_start && align_va_end == vmap_area->va_end) {
         erase_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
         new_vmap_area = vmap_area;
-    } else if (align_va_start == vmap_area->va_start) {
-        //情况2：从头切割
-        new_vmap_area = create_vmap_area(align_va_start, align_va_start + size, vmap_area->flags);
-        vmap_area->va_start += size;
-        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
+    }
+    // 情况2：从头切割 (分配区在左，剩余空闲区在右)
+    else if (align_va_start == vmap_area->va_start) {
+        new_vmap_area = create_vmap_area(align_va_start, align_va_end, vmap_area->flags);
+
+        // 原空闲节点向右收缩
+        vmap_area->va_start = align_va_end;
+        vmap_area_augment_propagate(&vmap_area->rb_node, NULL);
+
+        // 维护全局链表
         list_add_tail(&vmap_area->list, &new_vmap_area->list);
-    } else if (align_va_start + size == vmap_area->va_end) {
-        //情况3：从尾切割
-        new_vmap_area = create_vmap_area(align_va_start, align_va_start + size, vmap_area->flags);
-        vmap_area->va_end -= size;
-        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
-        list_add_head(&vmap_area->list, &new_vmap_area->list);
-    } else {
-        //情况4：从中间切割
-        new_vmap_area = create_vmap_area(align_va_start + size, vmap_area->va_end, vmap_area->flags);
+    }
+    // 情况3：从尾切割 (剩余空闲区在左，分配区在右)
+    else if (align_va_end == vmap_area->va_end) {
+        new_vmap_area = create_vmap_area(align_va_start, align_va_end, vmap_area->flags);
+
+        // 原空闲节点向左收缩
         vmap_area->va_end = align_va_start;
-        vmap_area_augment_propagate(&vmap_area->rb_node,NULL);
-        insert_vmap_area(&free_vmap_area_root, new_vmap_area, &vmap_area_augment_callbacks);
-        list_add_head(&vmap_area->list, &new_vmap_area->list);
-        new_vmap_area = create_vmap_area(align_va_start, align_va_start + size, vmap_area->flags);
+        vmap_area_augment_propagate(&vmap_area->rb_node, NULL);
+
+        // 维护全局链表
         list_add_head(&vmap_area->list, &new_vmap_area->list);
     }
+    // 情况4：从中间切割 (一分为三：左边空闲，中间分配，右边空闲)
+    else {
+        // 1. 创建右侧的剩余空闲块，并直接放回空闲树
+        vmap_area_t *right_free_area = create_vmap_area(align_va_end, vmap_area->va_end, vmap_area->flags);
+        insert_vmap_area(&free_vmap_area_root, right_free_area, &vmap_area_augment_callbacks);
+
+        // 2. 原节点收缩为左侧的剩余空闲块
+        vmap_area->va_end = align_va_start;
+        vmap_area_augment_propagate(&vmap_area->rb_node, NULL);
+
+        // 3. 创建中间被分配出去的目标块
+        new_vmap_area = create_vmap_area(align_va_start, align_va_end, vmap_area->flags);
+
+        // 4. 维护链表顺序 (原本: vmap_area -> ... 变成: 左空闲 -> 中分配 -> 右空闲 -> ...)
+        list_add_head(&vmap_area->list, &new_vmap_area->list);
+        list_add_head(&new_vmap_area->list, &right_free_area->list);
+    }
+
     return new_vmap_area;
 }
 
 /*
- * 分配一个vmap_area
- * size:需要分配的大小4K对齐
- * va_start:分配的起始地址
- * va_end:结束地址
+ * 分配一个vmap_area (🌟 升级版：增加 align_offset 约束参数)
+ * size: 需要分配的大小 (已 4K 对齐)
+ * align: 期待的最大页对齐边界 (2M/1G)
+ * align_offset: 必须满足的物理偏移余数
  */
-static vmap_area_t *alloc_vmap_area(uint64 va_start, uint64 va_end, uint64 size, uint64 align) {
-    //空闲树找可用的节点
-    vmap_area_t *vmap_area = find_vmap_lowest_match(va_start, va_end, size, align);
-    if (!vmap_area)return NULL;
-    //尝试分割Vmap_area
-    vmap_area = split_vmap_area(vmap_area, size, align);
-    //把vmap_area插入忙碌树，设置状态
+static vmap_area_t *alloc_vmap_area(uint64 va_start, uint64 va_end, uint64 size, uint64 align, uint64 align_offset) {
+    // 空闲树找可用的节点，下达“同余偏移”霸王条款
+    vmap_area_t *vmap_area = find_vmap_lowest_match(va_start, va_end, size, align, align_offset);
+    if (!vmap_area) return NULL;
+
+    // ⚠️ 架构师注意：你的 split_vmap_area 内部也必须同步修改！
+    // 它的内部应该使用 `candidate_va = get_align_offset_va(..., align, align_offset)` 来决定从哪里切割。
+    vmap_area = split_vmap_area(vmap_area, size, align, align_offset);
+
+    // 把vmap_area插入忙碌树，设置状态
     set_used(vmap_area);
     insert_vmap_area(&used_vmap_area_root, vmap_area, &empty_augment_callbacks);
     return vmap_area;
 }
-
 /*
  * 尝试合并左右空闲vmap_area
  */
@@ -360,7 +423,7 @@ void *vmalloc(uint64 size) {
     //4k对齐
     size = PAGE_4K_ALIGN(size);
     //分配虚拟地址空间
-    vmap_area_t *vmap_area = alloc_vmap_area( g_vmalloc_start,g_vmalloc_end, size,PAGE_4K_SIZE);
+    vmap_area_t *vmap_area = alloc_vmap_area( g_vmalloc_start,g_vmalloc_end, size,PAGE_4K_SIZE,0);
     //分配物理页，映射物理页
     uint64 va = vmap_area->va_start;
     uint64 page_count = size >> PAGE_4K_SHIFT;
@@ -390,25 +453,30 @@ void vfree(void *ptr) {
     free_vmap_area(vmap_area);
 }
 
-// 🌟 新增：智能计算最佳的页表对齐边界
+// 🌟 终极版：最严谨的大页对齐嗅探算法
 static inline uint64 get_optimal_vmap_align(uint64 pa, uint64 size) {
-    // 1. 如果物理地址是 1GB 对齐的，并且我们要映射的总大小超过 1GB，那 VA 就必须 1GB 对齐！
-    if ((pa & PAGE_1G_OFFSET_MASK) == 0 && size >= PAGE_1G_SIZE) {
+    uint64 pa_end = pa + size;
+
+    // 1. 判断物理区间内是否包含至少一个完整的 1GB 块？
+    // 公式：终点 - 起点向上对齐到1G的第一个坐标 >= 1GB
+    uint64 first_1g_bound = PAGE_1G_ALIGN(pa);
+    if (pa_end > first_1g_bound && (pa_end - first_1g_bound) >= PAGE_1G_SIZE) {
         return PAGE_1G_SIZE;
     }
 
-    // 2. 如果物理地址是 2MB 对齐的，且总大小超过 2MB，VA 就 2MB 对齐！
-    if ((pa & PAGE_2M_OFFSET_MASK) == 0 && size >= PAGE_2M_SIZE) {
+    // 2. 判断物理区间内是否包含至少一个完整的 2MB 块？
+    uint64 first_2m_bound = PAGE_2M_ALIGN(pa);
+    if (pa_end > first_2m_bound && (pa_end - first_2m_bound) >= PAGE_2M_SIZE) {
         return PAGE_2M_SIZE;
     }
 
-    // 3. 兜底方案：大部分小外设寄存器，或者物理地址不对齐的，统统 4KB 对齐即可。
-    // 这将极大节省虚拟地址空间的碎片！
+    // 3. 兜底：如果区间跨度连一个完整的 2MB 块都包不住 (比如 pa=0x1000, size=3MB)，
+    // 那就老老实实 4KB 对齐，绝不浪费 VMA 虚拟地址空间！
     return PAGE_4K_SIZE;
 }
 
 /*
- * 设备虚拟地址分配和映射
+ * 设备虚拟地址分配和映射 (🌟 大页同余极速版)
  * start_pa: 物理起始地址
  * flags: 属性
  */
@@ -419,19 +487,31 @@ void *_ioremap(uint64 start_pa, uint64 size, uint64 flags) {
     // 物理地址向下对齐到 4KB
     uint64 aligned_pa = PAGE_4K_ALIGN_DOWN(start_pa);
     // 映射的总长度必须包含偏移量，并向上对齐到 4KB
-    uint64 aligned_size = PAGE_4K_ALIGN(size + offset); // ⚠️ 注意：这里最好是 size+offset，防止跨页截断
+    uint64 aligned_size = PAGE_4K_ALIGN(size + offset);
 
-    // 🌟 核心修正：动态计算最聪明的对齐边界
-    uint64 optimal_align = get_optimal_vmap_align(aligned_pa, aligned_size);
+    // ==========================================================
+    // 🌟 决胜局：同余着色匹配计算
+    // ==========================================================
+    // 1. 仅根据尺寸 (Size)，霸气决定我们追求的最大页表级别！
+    uint64 optimal_align = get_optimal_vmap_align(aligned_pa,aligned_size);
 
-    // 分配虚拟地址空间，传入计算好的最佳边界
-    vmap_area_t *vmap_area = alloc_vmap_area(g_io_map_start, g_io_map_end, aligned_size, optimal_align);
+    // 2. 精准抽出当前物理地址在这个巨大网格中的“余数偏移量”
+    uint64 align_offset = aligned_pa & (optimal_align - 1);
+
+    // ==========================================================
+
+    // 分配虚拟地址空间，同时把 optimal_align 和 align_offset 一并拍给分配器
+    vmap_area_t *vmap_area = alloc_vmap_area(g_io_map_start, g_io_map_end, aligned_size, optimal_align, align_offset);
     if (!vmap_area) {
         return NULL; // 🛡️ 防御：虚拟空间耗尽，安全退出
     }
 
-    // 映射物理内存 (此时如果 optimal_align 算出来是 2M，底层的 vm_map_range 就能完美挂载 2M 大页)
-    int32 err = vm_map_range(&kernel_space, vmap_area->va_start, aligned_pa, aligned_size, flags | SW_FLAG_MAX_1G);
+    // 映射物理内存
+    // 🎉 奇迹发生时刻：vm_map_range 向下铺设页表时，只要遇到了 (PA % 2M == 0) 的节点，
+    // 因为前面的同余算法保障，此时的 VA 也必定满足 (VA % 2M == 0)。
+    // 硬件条件完美契合，PDE 大页顺利挂载！
+    int32 err = vm_map_range(&kernel_space, vmap_area->va_start, aligned_pa,
+                             aligned_size, flags | SW_FLAG_MAX_1G);
 
     // 🛡️ 错误回滚
     if (err != 0) {
@@ -439,6 +519,7 @@ void *_ioremap(uint64 start_pa, uint64 size, uint64 flags) {
         return NULL;
     }
 
+    // 返回精确到字节的虚拟映射地址给驱动程序
     return (void *)(vmap_area->va_start + offset);
 }
 
@@ -486,7 +567,7 @@ void *memremap(uint64 start_pa,uint64 size) {
         return NULL;
     }*/
 
-    vmap_area_t *vmap_area = alloc_vmap_area( g_vmalloc_start,g_vmalloc_end, size,PAGE_4K_SIZE);
+    vmap_area_t *vmap_area = alloc_vmap_area( g_vmalloc_start,g_vmalloc_end, size,PAGE_4K_SIZE,0);
     vm_map_range(&kernel_space,vmap_area->va_start,start_pa,size,PAGE_KERNEL_DATA_RW);
     return (void*)vmap_area->va_start;
 }
@@ -527,7 +608,7 @@ int32 unmemremap(void *ptr) {
  * 强制映射到 MODULES 专区，强制赋予只读+可执行权限
  */
 void *module_remap(uint64 start_pa, uint64 size) {
-    vmap_area_t *vmap_area = alloc_vmap_area( MODULES_VA_START,MODULES_VA_END , size,PAGE_4K_SIZE);
+    vmap_area_t *vmap_area = alloc_vmap_area( MODULES_VA_START,MODULES_VA_END , size,PAGE_4K_SIZE,0);
     vm_map_range(&kernel_space,vmap_area->va_start,start_pa,size,PAGE_KERNEL_DATA_RW);
     return (void*)vmap_area->va_start;
 }
