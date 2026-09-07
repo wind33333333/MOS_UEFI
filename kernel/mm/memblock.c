@@ -9,6 +9,7 @@ INIT_DATA mem_arr_t page_mem_map; //page页映射区内存地图
 INIT_DATA efi_runtime_memmap_t efi_runtime_memmap; //uefi运行时的数据和代码地图
 mem_arr_t direct_mem_map; //直接映射区内存地图
 
+extern vm_space_t kernel_space;
 
 //物理内存区域添加到 memblock 的列表中
 INIT_TEXT void memblock_add(mem_arr_t *memblock_type, uint64 pa_start, uint64 size) {
@@ -126,6 +127,14 @@ INIT_TEXT void memblock_init(void) {
         // 游标推进一步：严格按照主板固件给的跨度移动
         src_ptr += tmp_boot_info->mem_descriptor_size;
     }
+
+    //把临时物理内存管理绑定到虚拟内存回调接口
+    kernel_space.ops.alloc_pages = alloc_pages;
+    kernel_space.ops.free_pages = free_pages;
+    kernel_space.ops.page_to_phys = page_to_pa;
+    kernel_space.ops.phys_to_page = pa_to_page;
+    kernel_space.ops.phys_to_virt = pa_to_va;
+    kernel_space.ops.virt_to_phys = va_to_pa;
 
     color_printk(GREEN, BLACK, "Total Physics Memory:%dMB\n", phy_mem_size / 1024 / 1024);
 }
@@ -258,15 +267,3 @@ INIT_TEXT int32 memblock_free(uint64 ptr, uint64 size) {
     return 0;
 }
 
-
-//分配一个4K页
-uint64 memblock_alloc_4k(void) {
-    uint64 pa = memblock_alloc(4096,4096);
-    asm_mem_set(pa_to_va(pa),0,4096);
-    return pa;
-}
-
-//释放一个4K页
-void memblock_free_4k(uint64 ptr) {
-    memblock_free(ptr,4096);
-}

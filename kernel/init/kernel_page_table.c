@@ -9,10 +9,6 @@ vm_space_t kernel_space;
 INIT_TEXT void kpage_table_init(void) {
     kernel_space.cr3_root = memblock_alloc_4k();
     kernel_space.paging_level = tmp_paging_level;
-    kernel_space.ops.alloc_4k = memblock_alloc_4k;
-    kernel_space.ops.free_4k = memblock_free_4k;
-    kernel_space.ops.phys_to_virt = pa_to_va;
-    kernel_space.ops.virt_to_phys = va_to_pa;
 
     //直接映射区
     for (uint64 i=0;i < direct_mem_map.count;i++) {

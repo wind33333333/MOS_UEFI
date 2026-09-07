@@ -34,4 +34,3 @@ extern mem_arr_t direct_mem_map;;
 void memblock_init(void);
 uint64 memblock_alloc(uint64 size, uint64 align);
 int32 memblock_free(uint64 ptr, uint64 size);
-
