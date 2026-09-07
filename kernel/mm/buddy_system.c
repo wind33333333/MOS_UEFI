@@ -24,8 +24,13 @@ INIT_TEXT void buddy_system_init(void) {
         }
     }
 
-    kernel_space.ops.alloc_4k = alloc_4k;
-    kernel_space.ops.free_4k = free_4k;
+    //把伙伴系统绑定到虚拟内存回调接口
+    kernel_space.ops.alloc_pages = alloc_pages;
+    kernel_space.ops.free_pages = free_pages;
+    kernel_space.ops.page_to_phys = page_to_pa;
+    kernel_space.ops.phys_to_page = pa_to_page;
+    kernel_space.ops.phys_to_virt = pa_to_va;
+    kernel_space.ops.virt_to_phys = va_to_pa;
 }
 
 //伙伴系统物理页分配器
