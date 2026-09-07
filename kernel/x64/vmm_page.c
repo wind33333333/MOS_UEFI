@@ -69,7 +69,7 @@ static void tlb_batch_add(vm_tlb_batch_t *batch, uint64 vaddr, uint64 size, uint
     uint64 cost = size / page_size;
     if (cost == 0) cost = 1;
 
-    batch->is_global |= is_global;
+    batch->is_global = is_global;
     batch->total_invlpg_cost += cost;
 
     if (batch->total_invlpg_cost > TLB_COST_THRESHOLD) {

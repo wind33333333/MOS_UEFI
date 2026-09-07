@@ -7,7 +7,7 @@
 vm_space_t kernel_space;
 
 INIT_TEXT void kpage_table_init(void) {
-    kernel_space.cr3_root = memblock_alloc_4k();
+    kernel_space.cr3_root = memblock_alloc(4096,PAGE_4K_SIZE);
     kernel_space.paging_level = tmp_paging_level;
 
     //直接映射区

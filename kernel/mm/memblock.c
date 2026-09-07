@@ -11,6 +11,7 @@ mem_arr_t direct_mem_map; //直接映射区内存地图
 
 extern vm_space_t kernel_space;
 
+
 //物理内存区域添加到 memblock 的列表中
 INIT_TEXT void memblock_add(mem_arr_t *memblock_type, uint64 pa_start, uint64 size) {
     if (memblock_type->count == 0) {
@@ -21,122 +22,11 @@ INIT_TEXT void memblock_add(mem_arr_t *memblock_type, uint64 pa_start, uint64 si
                    memblock_type->count - 1].
                size == pa_start) {
         memblock_type->region[memblock_type->count - 1].size += size;
-    } else {
-        memblock_type->region[memblock_type->count].start_pa = pa_start;
-        memblock_type->region[memblock_type->count].size = size;
-        memblock_type->count++;
-    }
-}
-
-
-#define MEM_1MB (0x100000ULL) // 1MB 物理地址边界
-INIT_TEXT void memblock_init(void) {
-    uint64 phy_mem_size = 0;
-    uint64 kernel_pa_start = (uint64) _start - KERNEL_VA_START;
-    uint64 kernel_pa_end = (uint64) _end - KERNEL_VA_START;
-
-    uint32 count = tmp_boot_info->mem_map_size / tmp_boot_info->mem_descriptor_size;
-
-    // 用于字节级精准拷贝的源指针
-    uint8 *src_ptr = (uint8 *)tmp_boot_info->mem_map;
-
-    for (uint32 i = 0; i < count; i++) {
-        // 强转为结构体以便读取字段
-        EFI_MEMORY_DESCRIPTOR *mem_des = (EFI_MEMORY_DESCRIPTOR *)src_ptr;
-
-        if (mem_des->NumberOfPages == 0) {
-            src_ptr += tmp_boot_info->mem_descriptor_size;
-            continue;
-        }
-
-        uint64 pa_start = mem_des->PhysicalStart;
-        uint64 size = mem_des->NumberOfPages << 12; // 等价于 << PAGE_4K_SHIFT
-        uint64 pa_end = pa_start + size;
-        EFI_MEMORY_TYPE type = mem_des->Type;
-        uint64 attr = mem_des->Attribute;
-
-        // =====================================================================
-        // 🌟 核心调整 1：独立提取 UEFI Runtime 内存 (黄金法则：只看属性！)
-        // =====================================================================
-        if (attr & EFI_MEMORY_RUNTIME) {
-            // 计算目标数组的字节级偏移地址
-            uint8 *dst_ptr = (uint8 *)efi_runtime_memmap.mem_map +
-                             (efi_runtime_memmap.count * tmp_boot_info->mem_descriptor_size);
-
-            // 🌟 核心调整 2：原汁原味拷贝！严格按照主板给的 size (例如 48 字节) 进行内存复制
-            // 绝不能用标准的结构体 '=' 赋值，防止 40 字节紧凑排列导致跨度丢失！
-            asm_mem_cpy(src_ptr, dst_ptr,  tmp_boot_info->mem_descriptor_size);
-
-            efi_runtime_memmap.count++;
-
-            // 注意：这里不要写 continue！
-            // 因为像 EFI_ACPI_MEMORY_NVS 这种类型，既需要传给 UEFI，也需要被内核直接映射区(direct_mem_map)访问。
-        }
-
-        // =====================================================================
-        // 2. 处理普通可用内存 (映射 + 截断 + 切割 + 释放)
-        // =====================================================================
-        if (type == EFI_LOADER_DATA ||
-            type == EFI_LOADER_CODE ||
-            type == EFI_BOOT_SERVICES_CODE ||
-            type == EFI_BOOT_SERVICES_DATA ||
-            type == EFI_CONVENTIONAL_MEMORY) {
-
-            phy_mem_size += size;
-
-            memblock_add(&direct_mem_map, pa_start, size);
-            memblock_add(&page_mem_map, pa_start, size);
-
-            // 🛡️ 1MB 截断处理逻辑
-            if (pa_start < MEM_1MB) {
-                if (pa_end > MEM_1MB) {
-                    size -= MEM_1MB - pa_start;
-                    pa_start = MEM_1MB;
-                } else {
-                    src_ptr += tmp_boot_info->mem_descriptor_size;
-                    continue;
-                }
-            }
-
-            // 🔪 把内核切出来
-            if (pa_start < kernel_pa_end && pa_end > kernel_pa_start) {
-                if (pa_start < kernel_pa_start) {
-                    memblock_add(&memblock.free, pa_start, kernel_pa_start - pa_start);
-                }
-                if (pa_end > kernel_pa_end) {
-                    memblock_add(&memblock.free, kernel_pa_end, pa_end - kernel_pa_end);
-                }
-            } else {
-                memblock_add(&memblock.free, pa_start, size);
-            }
-
-        // =====================================================================
-        // 3. 处理 ACPI 内存 (仅映射，不释放)
-        // =====================================================================
-        } else if (type == EFI_ACPI_RECLAIM_MEMORY || type == EFI_ACPI_MEMORY_NVS) {
-            phy_mem_size += size;
-
-            // 仅仅加入直接映射区，保证内核后续能读到 ACPI 表
-            memblock_add(&direct_mem_map, pa_start, size);
-        }
-
-        // 注意：像 EFI_RUNTIME_SERVICES_CODE/DATA, MMIO 等类型
-        // 它们不会进入上面的 if 和 else if，这非常正确！
-        // 因为它们属于独立领地，不应该进入 direct_mem_map 或 free 内存池。
-
-        // 游标推进一步：严格按照主板固件给的跨度移动
-        src_ptr += tmp_boot_info->mem_descriptor_size;
-    }
-
-    //把临时物理内存管理绑定到虚拟内存回调接口
-    kernel_space.ops.alloc_pages = alloc_pages;
-    kernel_space.ops.free_pages = free_pages;
-    kernel_space.ops.page_to_phys = page_to_pa;
-    kernel_space.ops.phys_to_page = pa_to_page;
-    kernel_space.ops.phys_to_virt = pa_to_va;
-    kernel_space.ops.virt_to_phys = va_to_pa;
-
-    color_printk(GREEN, BLACK, "Total Physics Memory:%dMB\n", phy_mem_size / 1024 / 1024);
+               } else {
+                   memblock_type->region[memblock_type->count].start_pa = pa_start;
+                   memblock_type->region[memblock_type->count].size = size;
+                   memblock_type->count++;
+               }
 }
 
 
@@ -266,4 +156,172 @@ INIT_TEXT int32 memblock_free(uint64 ptr, uint64 size) {
 
     return 0;
 }
+
+
+/* ========================================================================== */
+/*                      Memblock 适配器核心实现                               */
+/* ========================================================================== */
+
+/**
+ * @brief 伪装分配：将 memblock 的线性分配转换为对象指针
+ */
+static page_t* memblock_alloc_pages(uint8 order) {
+    // 1. 将 order 翻译为 memblock 听得懂的字节 size
+    uint64 size = PAGE_4K_SIZE << order;
+
+    // 2. 伙伴系统天然保证自然对齐，为满足 VMM 铺设大页的要求，强制 align = size
+    uint64 paddr = memblock_alloc(size, size);
+    if (!paddr) return NULL;
+
+    // 🌟 【核心黑魔法：指针欺骗】：
+    // VMM 把 page_t 当作不透明句柄 (Opaque Handle) 处理，绝不会主动去解引用它。
+    // 因此，我们直接把 64 位的物理地址强行伪装成 page_t* 指针交差！
+    return (page_t*)paddr;
+}
+
+/**
+ * @brief 伪装释放：拦截对象回收请求并翻译给 memblock
+ */
+static void memblock_free_pages(page_t *page) {
+    if (!page) return;
+
+    // 扒下伪装，还原出真实的物理地址
+    uint64 paddr = (uint64)page;
+
+    // 🌟 【架构级推演：为什么这里写死 4KB 是绝对安全的？】
+    // Memblock 的释放需要 size 参数，但我们手头没有真实的 page_t 元数据去提取 order。
+    // 但是！在系统早期自举阶段，VMM 调用 `alloc_pages` / `free_pages`
+    // 100% 都是为了分配或销毁“中间页表目录”(PML4/PDPT/PD/PT)。
+    // 而页表节点永远是 4KB (order = 0)！
+    // 至于 2MB/1GB 大页映射的物理数据，VMM 不会负责分配，也绝不会在此阶段去释放它们。
+    // 因此，早期适配器在这里直接写死 PAGE_4K_SIZE，逻辑上天衣无缝！
+    memblock_free(paddr, PAGE_4K_SIZE);
+}
+
+/**
+ * @brief 对象降维：将句柄打回原形
+ */
+static uint64 memblock_page_to_pa(const page_t *page) {
+    // VMM 需要物理地址来写 PTE，我们直接把指针强转回 64 位整数原样奉还
+    return (uint64)page;
+}
+
+/**
+ * @brief 裸地址升维：将物理地址重新包装为句柄
+ */
+static page_t* memblock_pa_to_page(uint64 paddr) {
+    return (page_t*)paddr;
+}
+
+
+#define MEM_1MB (0x100000ULL) // 1MB 物理地址边界
+INIT_TEXT void memblock_init(void) {
+    uint64 phy_mem_size = 0;
+    uint64 kernel_pa_start = (uint64) _start - KERNEL_VA_START;
+    uint64 kernel_pa_end = (uint64) _end - KERNEL_VA_START;
+
+    uint32 count = tmp_boot_info->mem_map_size / tmp_boot_info->mem_descriptor_size;
+
+    // 用于字节级精准拷贝的源指针
+    uint8 *src_ptr = (uint8 *)tmp_boot_info->mem_map;
+
+    for (uint32 i = 0; i < count; i++) {
+        // 强转为结构体以便读取字段
+        EFI_MEMORY_DESCRIPTOR *mem_des = (EFI_MEMORY_DESCRIPTOR *)src_ptr;
+
+        if (mem_des->NumberOfPages == 0) {
+            src_ptr += tmp_boot_info->mem_descriptor_size;
+            continue;
+        }
+
+        uint64 pa_start = mem_des->PhysicalStart;
+        uint64 size = mem_des->NumberOfPages << 12; // 等价于 << PAGE_4K_SHIFT
+        uint64 pa_end = pa_start + size;
+        EFI_MEMORY_TYPE type = mem_des->Type;
+        uint64 attr = mem_des->Attribute;
+
+        // =====================================================================
+        // 🌟 核心调整 1：独立提取 UEFI Runtime 内存 (黄金法则：只看属性！)
+        // =====================================================================
+        if (attr & EFI_MEMORY_RUNTIME) {
+            // 计算目标数组的字节级偏移地址
+            uint8 *dst_ptr = (uint8 *)efi_runtime_memmap.mem_map +
+                             (efi_runtime_memmap.count * tmp_boot_info->mem_descriptor_size);
+
+            // 🌟 核心调整 2：原汁原味拷贝！严格按照主板给的 size (例如 48 字节) 进行内存复制
+            // 绝不能用标准的结构体 '=' 赋值，防止 40 字节紧凑排列导致跨度丢失！
+            asm_mem_cpy(src_ptr, dst_ptr,  tmp_boot_info->mem_descriptor_size);
+
+            efi_runtime_memmap.count++;
+
+            // 注意：这里不要写 continue！
+            // 因为像 EFI_ACPI_MEMORY_NVS 这种类型，既需要传给 UEFI，也需要被内核直接映射区(direct_mem_map)访问。
+        }
+
+        // =====================================================================
+        // 2. 处理普通可用内存 (映射 + 截断 + 切割 + 释放)
+        // =====================================================================
+        if (type == EFI_LOADER_DATA ||
+            type == EFI_LOADER_CODE ||
+            type == EFI_BOOT_SERVICES_CODE ||
+            type == EFI_BOOT_SERVICES_DATA ||
+            type == EFI_CONVENTIONAL_MEMORY) {
+
+            phy_mem_size += size;
+
+            memblock_add(&direct_mem_map, pa_start, size);
+            memblock_add(&page_mem_map, pa_start, size);
+
+            // 🛡️ 1MB 截断处理逻辑
+            if (pa_start < MEM_1MB) {
+                if (pa_end > MEM_1MB) {
+                    size -= MEM_1MB - pa_start;
+                    pa_start = MEM_1MB;
+                } else {
+                    src_ptr += tmp_boot_info->mem_descriptor_size;
+                    continue;
+                }
+            }
+
+            // 🔪 把内核切出来
+            if (pa_start < kernel_pa_end && pa_end > kernel_pa_start) {
+                if (pa_start < kernel_pa_start) {
+                    memblock_add(&memblock.free, pa_start, kernel_pa_start - pa_start);
+                }
+                if (pa_end > kernel_pa_end) {
+                    memblock_add(&memblock.free, kernel_pa_end, pa_end - kernel_pa_end);
+                }
+            } else {
+                memblock_add(&memblock.free, pa_start, size);
+            }
+
+        // =====================================================================
+        // 3. 处理 ACPI 内存 (仅映射，不释放)
+        // =====================================================================
+        } else if (type == EFI_ACPI_RECLAIM_MEMORY || type == EFI_ACPI_MEMORY_NVS) {
+            phy_mem_size += size;
+
+            // 仅仅加入直接映射区，保证内核后续能读到 ACPI 表
+            memblock_add(&direct_mem_map, pa_start, size);
+        }
+
+        // 注意：像 EFI_RUNTIME_SERVICES_CODE/DATA, MMIO 等类型
+        // 它们不会进入上面的 if 和 else if，这非常正确！
+        // 因为它们属于独立领地，不应该进入 direct_mem_map 或 free 内存池。
+
+        // 游标推进一步：严格按照主板固件给的跨度移动
+        src_ptr += tmp_boot_info->mem_descriptor_size;
+    }
+
+    //把临时物理内存管理绑定到虚拟内存回调接口
+    kernel_space.ops.alloc_pages = memblock_alloc_pages;
+    kernel_space.ops.free_pages = memblock_free_pages;
+    kernel_space.ops.page_to_phys = memblock_page_to_pa;
+    kernel_space.ops.phys_to_page = memblock_pa_to_page;
+    kernel_space.ops.phys_to_virt = pa_to_va;
+    kernel_space.ops.virt_to_phys = va_to_pa;
+
+    color_printk(GREEN, BLACK, "Total Physics Memory:%dMB\n", phy_mem_size / 1024 / 1024);
+}
+
 

@@ -2,6 +2,7 @@
 
 #include "moslib.h"
 #include "../init/uefi.h"
+#include "../include/vmm_page.h"
 
 #define MAX_MEMBLOCK 128
 
@@ -34,3 +35,4 @@ extern mem_arr_t direct_mem_map;;
 void memblock_init(void);
 uint64 memblock_alloc(uint64 size, uint64 align);
 int32 memblock_free(uint64 ptr, uint64 size);
+
