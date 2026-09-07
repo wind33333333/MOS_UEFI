@@ -446,7 +446,7 @@ void vfree(void *ptr) {
     uint64 va = vmap_area->va_start;
     uint64 page_count = vmap_area->va_end - vmap_area->va_start >> PAGE_4K_SHIFT;
     while (page_count--) {
-        vm_unmap_range(&kernel_space,va,PAGE_4K_SIZE);
+        vm_unmap_range(&kernel_space,va,PAGE_4K_SIZE,UNMAP_FLAG_FREE_PHYS);
         va += PAGE_4K_SIZE;
     }
     //释放虚拟地址
@@ -543,7 +543,7 @@ int32 ioreunmap(void *ptr) {
     uint64 size = vmap_area->va_end - vmap_area->va_start;
 
     // 3. 呼叫底层的极速卸载引擎 (自动侦测 1G/2M/4K，级联释放死锁防护)
-    vm_unmap_range(&kernel_space,aligned_va, size);
+    vm_unmap_range(&kernel_space,aligned_va, size,UNMAP_FLAG_NONE);
 
     // 4. 将虚拟地址区间交还给大管家
     free_vmap_area(vmap_area);
@@ -598,7 +598,7 @@ int32 unmemremap(void *ptr) {
     // 这意味着当初 memremap 遇到的是 ACPI 等保留内存，从而回退调用了 __ioremap。
     // 因此，我们只需直接调用 unioremap，让它去查找 vmap_area 并执行级联卸载。
     vmap_area_t *vmap_area = find_vmap_area((uint64) ptr);
-    vm_unmap_range(&kernel_space,vmap_area->va_start,vmap_area->va_end-vmap_area->va_start);
+    vm_unmap_range(&kernel_space,vmap_area->va_start,vmap_area->va_end-vmap_area->va_start,UNMAP_FLAG_NONE);
     //释放虚拟地址
     free_vmap_area(vmap_area);
 }
@@ -619,7 +619,7 @@ int32 unmodule_remap(void *ptr) {
     //通过虚拟地址找Vmap_area
     vmap_area_t *vmap_area = find_vmap_area((uint64) ptr);
     //卸载虚拟地址和物理页映射，释放物理页
-    vm_unmap_range(&kernel_space,vmap_area->va_start,vmap_area->va_end-vmap_area->va_start);
+    vm_unmap_range(&kernel_space,vmap_area->va_start,vmap_area->va_end-vmap_area->va_start,UNMAP_FLAG_FREE_PHYS);
     //释放虚拟地址
     free_vmap_area(vmap_area);
     return 0;
