@@ -6,6 +6,138 @@
 
 vm_space_t kernel_space;
 
+// 定义最大合并区域和最大切片计划的数量
+#define MAX_PAGEMAP_REGIONS 32
+typedef struct {
+    uint64 va_start;
+    uint64 va_end;
+} merged_page_map_t;
+
+#define MAX_PAGEMAP_CHUNKS  128
+//映射执行计划表结构体
+typedef struct {
+    uint64 va_start;
+    uint64 size;
+    uint64 pa_align;
+    uint64 map_flags;
+} vmemmap_chunk_t;
+
+INIT_TEXT static inline void init_vmemmap() {
+    // -------------------------------------------------------------------------
+    // 初始化 page_t 映射区 (Vmemmap) - 【顶级三段式流水线架构】
+    // -------------------------------------------------------------------------
+
+    // 阶段一与阶段二的本地沙盘数据结构
+    merged_page_map_t merged_page_map[MAX_PAGEMAP_REGIONS];
+    uint64 merged_count = 0;
+
+    vmemmap_chunk_t chunk_plan[MAX_PAGEMAP_CHUNKS];
+    uint64 chunk_count = 0;
+
+    // =========================================================================
+    // 阶段一：纯数学推演，扫描、2M 对齐并合并区间 (无物理副作用)
+    // =========================================================================
+    for (uint64 i = 0; i < page_mem_map.count; i++) {
+        uint64 p_start = page_mem_map.region[i].start_pa;
+        uint64 p_end   = p_start + page_mem_map.region[i].size;
+
+        uint64 va_start = (uint64)pa_to_page(p_start);
+        uint64 va_end   = (uint64)pa_to_page(p_end);
+
+        va_start = PAGE_2M_ALIGN_DOWN(va_start);
+        va_end   = PAGE_2M_ALIGN(va_end);
+
+        if (merged_count == 0) {
+            merged_page_map[merged_count].va_start = va_start;
+            merged_page_map[merged_count].va_end   = va_end;
+            merged_count++;
+        } else {
+            uint64 last = merged_count - 1;
+            if (va_start <= merged_page_map[last].va_end) {
+                if (va_end > merged_page_map[last].va_end) {
+                    merged_page_map[last].va_end = va_end;
+                }
+            } else {
+                if (merged_count >= MAX_PAGEMAP_REGIONS) {
+                    color_printk(RED, BLACK, "FATAL: Vmemmap regions exceeded MAX_VMEMMAP_REGIONS!\n");
+                    while(1);
+                }
+                merged_page_map[merged_count].va_start = va_start;
+                merged_page_map[merged_count].va_end   = va_end;
+                merged_count++;
+            }
+        }
+    }
+
+    // =========================================================================
+    // 阶段二：制定执行计划 (Execution Plan)，滑动切割 1G/2M 块 (无物理副作用)
+    // =========================================================================
+    for (uint64 i = 0; i < merged_count; i++) {
+        uint64 va_curr = merged_page_map[i].va_start;
+        uint64 va_end  = merged_page_map[i].va_end;
+
+        while (va_curr < va_end) {
+            if (chunk_count >= MAX_PAGEMAP_CHUNKS) {
+                color_printk(RED, BLACK, "FATAL: Vmemmap chunks exceeded MAX_VMEMMAP_CHUNKS!\n");
+                while(1); // 🌟 防御性前置：如果越界，在触碰物理内存前直接死机，绝不污染系统！
+            }
+
+            uint64 remaining = va_end - va_curr;
+            vmemmap_chunk_t *chunk = &chunk_plan[chunk_count];
+            chunk->va_start = va_curr;
+
+            // 智能嗅探：1GB 黄金躯干 vs 2MB 零碎头尾
+            if ((va_curr & PAGE_1G_OFFSET_MASK) == 0 && remaining >= PAGE_1G_SIZE) {
+                chunk->size      = remaining & PAGE_1G_MASK; // 提取完整的 1GB 倍数
+                chunk->pa_align  = PAGE_1G_SIZE;
+                chunk->map_flags = PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G;
+            } else {
+                uint64 next_1g_boundary = (va_curr + PAGE_1G_SIZE) & PAGE_1G_MASK;
+                uint64 size_to_boundary = next_1g_boundary - va_curr;
+
+                chunk->size      = (size_to_boundary < remaining) ? size_to_boundary : remaining;
+                chunk->pa_align  = PAGE_2M_SIZE;
+                chunk->map_flags = PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_2M;
+            }
+
+            va_curr += chunk->size;
+            chunk_count++;
+        }
+    }
+
+    // 🌟 内核装X时刻：在物理分配前，清晰地打印出整个内存规划蓝图
+    color_printk(BLUE, BLACK, "--- Vmemmap Execution Plan Generated (%d Chunks) ---\n", chunk_count);
+    for (uint64 i = 0; i < chunk_count; i++) {
+        color_printk(BLUE, BLACK, "[Plan %2d] VA: %#018lx, Size: %4ld MB, Align: %s\n",
+                     i, chunk_plan[i].va_start, chunk_plan[i].size >> 20,
+                     chunk_plan[i].pa_align == PAGE_1G_SIZE ? "1GB" : "2MB");
+    }
+
+    // =========================================================================
+    // 阶段三：物理执行 (Physical Execution)，集中分配与映射
+    // =========================================================================
+    for (uint64 i = 0; i < chunk_count; i++) {
+        vmemmap_chunk_t *chunk = &chunk_plan[i];
+
+        // 1. 无脑向 memblock 索要完全符合计划的物理内存
+        uint64 pa = memblock_alloc(chunk->size, chunk->pa_align);
+        if (!pa) {
+            // 虽然有了计划，但如果物理内存真的不够了，依然要拦截
+            color_printk(RED, BLACK, "FATAL: memblock_alloc failed for chunk %d! Size: %#lx\n", i, chunk->size);
+            while(1);
+        }
+
+        // 2. 清洗幽灵数据
+        asm_mem_set(pa_to_va(pa), 0, chunk->size);
+
+        // 3. 呼叫底层的 VMM 引擎！此时参数已是完美的形态
+        vm_map_range(&kernel_space, chunk->va_start, pa, chunk->size, chunk->map_flags);
+
+        color_printk(GREEN, BLACK, "[Vmemmap] Mapped: VA:%#lx -> PA:%#lx\n", chunk->va_start, pa);
+    }
+}
+
+
 INIT_TEXT void kpage_table_init(void) {
     kernel_space.cr3_root = memblock_alloc(4096,PAGE_4K_SIZE);
     kernel_space.paging_level = tmp_paging_level;
@@ -18,46 +150,8 @@ INIT_TEXT void kpage_table_init(void) {
         color_printk(GREEN,BLACK,"%d dircect_mem_map start_pa:%#lx size:%#lx \n",i,start_pa,size);
     }
 
-    // 初始化 page 映射区，每个 page 结构 64 字节
-    for (uint64 i = 0; i < page_mem_map.count; i++) {
-        uint64 page_va = (uint64)pa_to_page(page_mem_map.region[i].start_pa);
-        page_va = PAGE_4K_ALIGN_DOWN(page_va);
-
-        // 1. 计算所需结构体总大小
-        uint64 raw_page_size = page_mem_map.region[i].size >> 6;
-
-        // 2. 【核心修复 1】向上对齐到 4KB，满足 vm_map_range 的严苛参数要求
-        // 假设 PAGE_4K_ALIGN 宏的作用是 (size + 0xFFF) & ~0xFFF
-        uint64 page_size = PAGE_4K_ALIGN(raw_page_size);
-
-        // 3. 【核心修复 2】动态嗅探最佳物理分配对齐 (Smart Alignment)
-        // 逻辑：只有当我们需要大页，且虚拟地址(VA)已经满足大页对齐时，
-        // 我们才让物理地址(PA)也去对齐大页。否则强求 PA 对齐只是浪费内存。
-        uint64 pa_align = PAGE_4K_SIZE; // 兜底 4K 对齐
-
-        if (page_size >= PAGE_1G_SIZE && !(page_va & PAGE_1G_OFFSET_MASK)) {
-            pa_align = PAGE_1G_SIZE; // VA 是 1G 对齐的，并且尺寸足够，申请 1G 对齐物理页！
-        }
-        else if (page_size >= PAGE_2M_SIZE && !(page_va & PAGE_2M_OFFSET_MASK)) {
-            pa_align = PAGE_2M_SIZE;   // VA 是 2M 对齐的，并且尺寸足够，申请 2M 对齐物理页！
-        }
-
-        // 4. 根据计算出的最佳对齐，向 memblock 索要物理内存
-        uint64 start_pa = memblock_alloc(page_size, pa_align);
-        if (!start_pa) {
-            // 异常处理：内存不足 (Panic)
-            color_printk(RED, BLACK, "FATAL: memblock_alloc failed for page_t array!\n");
-            while(1);
-        }
-
-        // 5. 清零物理内存
-        asm_mem_set(pa_to_va(start_pa), 0, page_size);
-
-        // 6. 注入页表，完美利用贪心大页
-        vm_map_range(&kernel_space, page_va, start_pa, page_size, PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G);
-
-        color_printk(GREEN,BLACK,"%d page_mem_map start_pa:%#lx size:%#lx \n",i,start_pa,page_size);
-    }
+    //page映射区
+    init_vmemmap();
 
     //.init_text
     vm_map_range(&kernel_space,(uint64)_start_init_text,(uint64)_start_init_text - KERNEL_VA_START,(uint64)_end_init_text - (uint64)_start_init_text,PAGE_KERNEL_CODE);
@@ -77,6 +171,9 @@ INIT_TEXT void kpage_table_init(void) {
     //.stack
     vm_map_range(&kernel_space,(uint64)_start_stack,(uint64)_start_stack - KERNEL_VA_START,(uint64)_end_stack - (uint64)_start_stack,PAGE_KERNEL_DATA_RW);
 
-    //设置正式内核页表
+    //设置正式内核页表,并刷新tlb
     asm_set_cr3(kernel_space.cr3_root);
+    uint64 cr4 = asm_get_cr4();
+    asm_set_cr4(cr4 & ~(1ULL << 7)); // 翻转 CR4.PGE 刷新全局页
+    asm_set_cr4(cr4);
 }
