@@ -10,7 +10,7 @@
  * 5. TLB 延迟批处理：收集修改地址段，在顶层操作完成时统一执行精准刷新或 CR3 重载。
  */
 
-#include "vmm_page.h"
+#include "vmm.h"
 
 /* ========================================================================== */
 /*                         内部基础辅助函数                                    */
@@ -570,8 +570,7 @@ vm_status_e vm_space_init(vm_space_t *space, uint8 level, const vm_allocator_ops
     for (int i = 0; i < 512; i++) new_root_va[i] = 0;
 
     if (clone_kernel) {
-        uint64 active_cr3;
-        __asm__ volatile("mov %%cr3, %0" : "=r"(active_cr3));
+        uint64 active_cr3 = asm_get_cr3();
         uint64 *active_root_va = (uint64 *)space->ops.phys_to_virt(active_cr3 & PTE_ADDR_MASK);
 
         // 初始化时拷贝共享的内核高地址空间映射

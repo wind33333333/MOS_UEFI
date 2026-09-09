@@ -2,7 +2,7 @@
 
 #include "moslib.h"
 #include "../init/uefi.h"
-#include "../include/vmm_page.h"
+#include "../include/vmm.h"
 
 #define MAX_MEMBLOCK 128
 

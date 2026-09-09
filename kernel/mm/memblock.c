@@ -1,5 +1,5 @@
 #include "../include/memblock.h"
-#include "../include/vmm_page.h"
+#include "../include/vmm.h"
 #include "vmalloc.h"
 #include "../include/printk.h"
 #include "../include/errno.h"

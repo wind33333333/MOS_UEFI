@@ -2,7 +2,7 @@
 
 #include "moslib.h"
 #include "rbtree.h"
-#include "../include/vmm_page.h"
+#include "../include/vmm.h"
 
 /* ========================================================================== */
 /*                   动态内核虚拟内存空间边界 (在启动时计算)                  */
