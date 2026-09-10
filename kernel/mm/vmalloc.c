@@ -156,7 +156,7 @@ static inline void erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area, rb_a
 }
 
 /**
- * @brief 实例化一个新的 VMA 描述符
+ * @brief 实例化 VMA 描述符 (修复未初始化悬空指针)
  */
 static vmap_area_t *create_vmap_area(uint64 va_start, uint64 va_end, uint64 flags) {
     vmap_area_t *vmap = kmalloc(sizeof(vmap_area_t));
@@ -164,6 +164,12 @@ static vmap_area_t *create_vmap_area(uint64 va_start, uint64 va_end, uint64 flag
     vmap->va_end = va_end;
     vmap->flags = flags;
     vmap->subtree_max_size = 0;
+
+    // 强制赋予初始安全值，杜绝野指针
+    vmap->list.next = NULL;
+    vmap->list.prev = NULL;
+    list_head_init(&vmap->list);
+
     return vmap;
 }
 
@@ -200,106 +206,103 @@ static inline uint64 get_align_offset_va(uint64 addr, uint64 align, uint64 align
 }
 
 /**
- * @brief 最佳适应搜索算法：在红黑树中寻找同时满足“尺寸”与“同余约束”的最优空闲块
- * @param min_addr     搜索范围下界
- * @param max_addr     搜索范围上界
- * @param size         需要分配的容量
- * @param align        强求的页对齐边界 (2M/1G等)
- * @param align_offset 必须满足的偏移余数
+ * @brief 最佳适应搜索算法 (修复“大容量诱骗陷阱”)
  */
 static inline vmap_area_t *find_vmap_lowest_match(uint64 min_addr, uint64 max_addr,
                                                   uint64 size, uint64 align, uint64 align_offset) {
     rb_node_t *node = free_vmap_area_root.rb_node;
     vmap_area_t *vmap_area, *best_vmap_area = NULL;
-    uint64 best_va_start = 0xFFFFFFFFFFFFFFFFUL; // 记录目前找到的最靠前的虚拟地址
+    uint64 best_va_start = 0xFFFFFFFFFFFFFFFFUL;
 
     while (node) {
         vmap_area = CONTAINER_OF(node, vmap_area_t, rb_node);
 
-        // 1. 基准点选择：节点起址与约束下界取大者
         uint64 search_start = (vmap_area->va_start > min_addr) ? vmap_area->va_start : min_addr;
-
-        // 2. 利用同余算法，算出在本区块中能满足物理约束的第一个“落脚点”
         uint64 candidate_va = get_align_offset_va(search_start, align, align_offset);
         uint64 align_va_end = candidate_va + size;
 
-        // 3. 验证此候选区间是否安全地被包裹在本块内，且不越界
+        // 1. 记录最佳候选项
         if (candidate_va >= min_addr && align_va_end <= max_addr && align_va_end <= vmap_area->va_end) {
-            // 如果它比之前找到的可用空间更靠低地址，取代之
             if (best_va_start > candidate_va) {
                 best_va_start = candidate_va;
                 best_vmap_area = vmap_area;
             }
         }
 
-        // 4. 利用增强红黑树的特性进行极速剪枝搜寻
-        // 优先去左子树找（左边地址更低），前提是左子树的最大容量够塞下我们的 size
-        if (get_subtree_max_size(node->left) >= size && get_va_start(node->left) <= max_addr) {
+        // 2. 🌟 决定下一步往哪搜 (彻底修复大容量诱惑陷阱)
+        // 只有当左子树存在、容量足够，并且【左子树的区间可能落在 min_addr 之后】时，才去左子树！
+        // 因为红黑树按 va_start 排序，左子树的所有节点 va_start 必定 < 当前 vmap_area->va_start。
+        // 如果当前的 va_start <= min_addr，说明左侧的所有节点必定也 < min_addr，去了也是白去！
+        if (vmap_area->va_start > min_addr && get_subtree_max_size(node->left) >= size) {
             node = node->left;
-        }
-        // 左边行不通，且右边起步地址已经比当前取得的最优解还靠后了，果断放弃后续搜索
-        else if (vmap_area->va_start >= best_va_start) {
-            break;
-        }
-        // 只能去右子树碰碰运气
-        else {
+        } else {
+            // 左边没戏，且当前已经找到了一个合法解，说明这个解已经是最低地址了，直接斩断搜索！
+            if (best_va_start != 0xFFFFFFFFFFFFFFFFUL) {
+                break;
+            }
+            // 否则只能去右子树碰碰运气
             node = node->right;
         }
     }
-    return best_vmap_area; // 返回能提供最佳物理/虚拟同余映射的供应商
+    return best_vmap_area;
 }
 
 /**
- * @brief 区块切割手术刀：在选定的巨大空闲块中，精准切除我们需要的分配区
+ * @brief 区块切割手术刀 (追加底层双向链表的 NULL 安全编织)
  */
 static inline vmap_area_t *split_vmap_area(vmap_area_t *vmap_area, uint64 size, uint64 align, uint64 align_offset) {
-    // 重新算出精准的切割起止点
     uint64 align_va_start = get_align_offset_va(vmap_area->va_start, align, align_offset);
     uint64 align_va_end = align_va_start + size;
 
-    // 场景 1: 完美匹配 (尺寸与同余基点严丝合缝)
     if (align_va_start == vmap_area->va_start && align_va_end == vmap_area->va_end) {
         erase_vmap_area(&free_vmap_area_root, vmap_area, &vmap_area_augment_callbacks);
         return vmap_area;
     }
-    // 场景 2: 齐头并进 (切割前端，剩余的在尾部)
     else if (align_va_start == vmap_area->va_start) {
         vmap_area_t *new_vmap = create_vmap_area(align_va_start, align_va_end, vmap_area->flags);
-
-        // 挤压原空闲块向后退，并自底向上更新树增强容量
         vmap_area->va_start = align_va_end;
         vmap_area_augment_propagate(&vmap_area->rb_node, NULL);
 
-        // 维护 O(1) 前后遍历的双向链表
-        list_add_tail(&vmap_area->list, &new_vmap->list);
+        // 安全编织 (防止 vmap_area 是孤立节点)
+        new_vmap->list.prev = vmap_area->list.prev;
+        new_vmap->list.next = &vmap_area->list;
+        if (vmap_area->list.prev && vmap_area->list.prev != &vmap_area->list) {
+            vmap_area->list.prev->next = &new_vmap->list;
+        }
+        vmap_area->list.prev = &new_vmap->list;
         return new_vmap;
     }
-    // 场景 3: 断尾求生 (切割后端，剩余的在头部)
     else if (align_va_end == vmap_area->va_end) {
         vmap_area_t *new_vmap = create_vmap_area(align_va_start, align_va_end, vmap_area->flags);
-
         vmap_area->va_end = align_va_start;
         vmap_area_augment_propagate(&vmap_area->rb_node, NULL);
 
-        list_add_head(&vmap_area->list, &new_vmap->list);
+        new_vmap->list.next = vmap_area->list.next;
+        new_vmap->list.prev = &vmap_area->list;
+        if (vmap_area->list.next && vmap_area->list.next != &vmap_area->list) {
+            vmap_area->list.next->prev = &new_vmap->list;
+        }
+        vmap_area->list.next = &new_vmap->list;
         return new_vmap;
     }
-    // 场景 4: 拦腰斩断 (一分为三，左右两边都是剩余空闲区，中间被挖走)
     else {
-        // 先剥离出右侧多余的空闲区并挂回系统
         vmap_area_t *right_free = create_vmap_area(align_va_end, vmap_area->va_end, vmap_area->flags);
         insert_vmap_area(&free_vmap_area_root, right_free, &vmap_area_augment_callbacks);
 
-        // 原节点收缩为左侧多余空闲区
         vmap_area->va_end = align_va_start;
         vmap_area_augment_propagate(&vmap_area->rb_node, NULL);
 
-        // 创建我们要拿走的中间块
         vmap_area_t *new_vmap = create_vmap_area(align_va_start, align_va_end, vmap_area->flags);
 
-        // 维护链表顺序：[原左块] -> [新挖出块] -> [新右块]
-        list_add_head(&vmap_area->list, &new_vmap->list);
-        list_add_head(&new_vmap->list, &right_free->list);
+        right_free->list.next = vmap_area->list.next;
+        right_free->list.prev = &new_vmap->list;
+        if (vmap_area->list.next && vmap_area->list.next != &vmap_area->list) {
+            vmap_area->list.next->prev = &right_free->list;
+        }
+
+        new_vmap->list.next = &right_free->list;
+        new_vmap->list.prev = &vmap_area->list;
+        vmap_area->list.next = &new_vmap->list;
         return new_vmap;
     }
 }
@@ -335,26 +338,36 @@ static vmap_area_t *alloc_vmap_area(uint64 va_start, uint64 va_end, uint64 size,
 static inline void merge_free_vmap_area(vmap_area_t *vmap) {
     vmap_area_t *tmp;
 
-    // 1. 尝试向左吞噬
+    // =========================================================
+    // 1. 尝试向左吞噬 (与前面的空闲块合并)
+    // =========================================================
     tmp = CONTAINER_OF(vmap->list.prev, vmap_area_t, list);
-    // 判断条件：非自身，确属树节点，且地址严丝合缝
-    if (tmp != vmap && tmp->rb_node.parent_color && vmap->va_start == tmp->va_end) {
+
+    // 核心安全防线：
+    // a) tmp != vmap: 防止当系统只有一个 VMA 时，自己把自己吞噬
+    // b) tmp->flags == 0: 【绝对真理】只有 flags 为 0 的块才是纯正的空闲块！
+    // c) 虚拟地址严丝合缝
+    if (tmp != vmap && tmp->flags == 0 && vmap->va_start == tmp->va_end) {
         vmap->va_start = tmp->va_start;
         list_del(&tmp->list);
+        // 从空闲树中抹除被吞并的左侧节点
         erase_vmap_area(&free_vmap_area_root, tmp, &vmap_area_augment_callbacks);
-        kfree(tmp); // 释放描述符本身内存
+        kfree(tmp); // 回收 VMA 描述符本身的内存
     }
 
-    // 2. 尝试向右吞噬
+    // =========================================================
+    // 2. 尝试向右吞噬 (与后面的空闲块合并)
+    // =========================================================
     tmp = CONTAINER_OF(vmap->list.next, vmap_area_t, list);
-    if (tmp != vmap && tmp->rb_node.parent_color && vmap->va_end == tmp->va_start) {
+
+    if (tmp != vmap && tmp->flags == 0 && vmap->va_end == tmp->va_start) {
         vmap->va_end = tmp->va_end;
         list_del(&tmp->list);
+        // 从空闲树中抹除被吞并的右侧节点
         erase_vmap_area(&free_vmap_area_root, tmp, &vmap_area_augment_callbacks);
         kfree(tmp);
     }
 }
-
 /**
  * @brief 将使用完毕的虚拟区间归还大自然
  */

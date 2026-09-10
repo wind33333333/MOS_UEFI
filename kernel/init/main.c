@@ -15,9 +15,6 @@
 #include "../x64/apic.h"
 
 
-
-
-
 static uint64 m = 0;
 
 uint64 apic_hz;
