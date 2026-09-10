@@ -51,6 +51,12 @@ INIT_TEXT void vm_layout_init(void) {
         g_io_map_start     = g_page_map_end + 0x0000010000000000ULL;     // Guard Hole: 1 TB
         g_io_map_end       = g_io_map_start + 0x0000020000000000ULL;     // MMIO 占用 2 TB
     }
+    color_printk(GREEN,BLACK,"Direct Map Start Addr:%#lx  End Addr:%#lx \n",g_direct_map_start,g_direct_map_end);
+    color_printk(GREEN,BLACK,"Vmalloc Start Addr:%#lx  End Addr:%#lx \n",g_vmalloc_start,g_vmalloc_end);
+    color_printk(GREEN,BLACK,"Page Map Start Addr:%#lx  End Addr:%#lx \n",g_page_map_start,g_page_map_end);
+    color_printk(GREEN,BLACK,"IO Map Start Addr:%#lx  End Addr:%#lx \n",g_io_map_start,g_io_map_end);
+    color_printk(GREEN,BLACK,"Kernel Start Addr:%#lx  End Addr:%#lx \n",KERNEL_VA_START,KERNEL_VA_END);
+    color_printk(GREEN,BLACK,"Modules Start Addr:%#lx  End Addr:%#lx \n",MODULES_VA_START,MODULES_VA_END);
 }
 
 // =========================================================================
