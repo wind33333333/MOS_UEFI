@@ -378,7 +378,11 @@ INIT_TEXT void output_init(void) {
     Pos.FB_addr = (uint32*)tmp_boot_info->frame_buffer_base;
     Pos.FB_length = tmp_boot_info->frame_buffer_size;
     Pos.lock = 0;
-    clear_screen();
+
+    for (uint64 i = 0; i < (Pos.PixelsPerScanLine * Pos.YResolution); i++) {
+        Pos.FB_addr[i] = BLACK;
+    }
+
     color_printk(GREEN, BLACK, "Video Memory Physics Addr:%#lx Video Size:%#lx Resolution:%d * %d\n",Pos.FB_addr,Pos.FB_length,Pos.XResolution,Pos.YResolution);
 }
 
@@ -388,10 +392,3 @@ INIT_TEXT void video_mem_map(void) {
     color_printk(GREEN, BLACK, "Voide Memory Physics Address:%#lx -> Virtual Address:%#lx\n",tmp_boot_info->frame_buffer_base,Pos.FB_addr);
 }
 
-void clear_screen(void) {
-    for (uint64 i = 0; i < (Pos.PixelsPerScanLine * Pos.YResolution); i++) {
-        *((uint32 *) Pos.FB_addr + i) = BLACK;
-    }
-    Pos.XPosition = 0;
-    Pos.YPosition = 0;
-}

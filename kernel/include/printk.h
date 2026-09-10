@@ -6,7 +6,6 @@
 
 void output_init(void);
 void video_mem_map(void);
-void clear_screen(void);
 extern char buf[4096];
 
 
