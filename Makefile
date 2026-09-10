@@ -1,22 +1,29 @@
 BUILD:=./build
 KERNEL:=./kernel
 
-CFLAGS:= -m64 					# 64 位的程序
-#CFLAGS+= -masm=intel			 #intel汇编编码
-CFLAGS+= -fno-pic				#禁用要位置无关的代码
-CFLAGS+= -fno-pie				#禁用要位置无关的可执行程序
-#CFLAFS+= -fpie 				 #启用位置无关的可执行程序
-#CFLAFS+= -mcmodel=kernel		#内核内存模型
-CFLAGS+= -mcmodel=large 		#大内存模型
-CFLAGS += -O0
-#CFLAGS += -O3                   # 使用 -O3 优化选项
-#CFLAGS+= -mavx2				 #开启avx256指令集优化
-CFLAGS+= -fno-stack-protector	#不需要栈保护
-CFLAGS+= -mstackrealign			#堆栈自动对齐16字节
-CFLAGS+= -g						#开启调试符号
-CFLAGS+= -fno-builtin			# 不需要 gcc 内置函数
-CFLAGS+= -nostdlib				# 不需要标准库
-#CFLAGS+= -nostdinc				 # 不需要标准头文件
+# --- 架构与内存模型 ---
+CFLAGS := -m64
+CFLAGS += -mcmodel=kernel         # 推荐使用 kernel 内存模型，而不是 large
+CFLAGS += -mno-red-zone           # 【极其重要】禁止使用红区，防止中断破坏栈帧
+CFLAGS += -mstackrealign          # 确保栈16字节对齐
+
+# --- 裸机环境隔离 ---
+CFLAGS += -nostdlib               # 不链接标准库
+CFLAGS += -fno-builtin            # 不使用内建函数
+CFLAGS += -ffreestanding          # 声明独立环境（非宿主环境）
+CFLAGS += -fno-pic -fno-pie       # 禁用位置无关代码
+
+# --- 安全机制（内核需自行掌控） ---
+CFLAGS += -fno-stack-protector    # 禁用栈保护（后期内核实现相应功能后再开启）
+
+# --- 禁用浮点/向量指令（防止污染内核态） ---
+CFLAGS += -mno-mmx -mno-sse -mno-sse2
+
+# --- 调试、优化与警告 ---
+CFLAGS += -Og                     # 开发阶段禁用优化，稳定后可改为 -O2
+CFLAGS += -g                      # 生成调试符号 (配合 GDB)
+CFLAGS += -Wall -Wextra           # 开启所有常见警告，防患于未然
+
 CFLAGS:=$(strip ${CFLAGS})
 
 
