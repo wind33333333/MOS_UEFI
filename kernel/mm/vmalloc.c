@@ -21,7 +21,7 @@ uint64 g_io_map_end;
  * @note  根据 CPU 是否开启 5 级分页 (LA57)，动态划分高半核地址空间。
  *        各个核心区域之间强制插入 Guard Hole (警戒空洞)，彻底阻断跨区越界访问。
  */
-void vm_layout_init(void) {
+INIT_TEXT void vm_layout_init(void) {
     if (tmp_paging_level == 5) {
         // 【5 级页表模式 - LA57】(理论上限 128 PB，单位: PB)
         g_direct_map_start = 0xFF00000000000000ULL;
