@@ -165,7 +165,7 @@ INIT_TEXT int32 memblock_free(uint64 ptr, uint64 size) {
 /**
  * @brief 伪装分配：将 memblock 的线性分配转换为对象指针
  */
-static page_t* memblock_alloc_pages(uint8 order) {
+static page_t* memblock_alloc_pages(uint32 order) {
     // 1. 将 order 翻译为 memblock 听得懂的字节 size
     uint64 size = PAGE_4K_SIZE << order;
 
@@ -201,7 +201,7 @@ static void memblock_free_pages(page_t *page) {
 /**
  * @brief 对象降维：将句柄打回原形
  */
-static uint64 memblock_page_to_pa(const page_t *page) {
+static uint64 memblock_page_to_pa(page_t *page) {
     // VMM 需要物理地址来写 PTE，我们直接把指针强转回 64 位整数原样奉还
     return (uint64)page;
 }
