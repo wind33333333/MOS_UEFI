@@ -428,7 +428,7 @@ static inline void asm_wbinvd () {
  */
 static inline void asm_cpuid_count(uint32 leaf, uint32 subleaf,
                                uint32 *eax, uint32 *ebx,
-                               uint32 *ecx, uint32 *edx) 
+                               uint32 *ecx, uint32 *edx)
 {
     // GCC/Clang 内联汇编魔法
     // "=a", "=b", "=c", "=d" 分别强制编译器将结果输出到 eax, ebx, ecx, edx 寄存器
@@ -446,7 +446,7 @@ static inline void asm_cpuid_count(uint32 leaf, uint32 subleaf,
  */
 static inline void asm_cpuid(uint32 leaf,
                          uint32 *eax, uint32 *ebx,
-                         uint32 *ecx, uint32 *edx) 
+                         uint32 *ecx, uint32 *edx)
 {
     // 直接复用底层函数，强制 subleaf (ECX) 为 0
     asm_cpuid_count(leaf, 0, eax, ebx, ecx, edx);
@@ -482,7 +482,7 @@ static inline uint32 asm_cpuid_edx(uint32 leaf) {
 }
 
 
-static inline void *asm_mem_cpy(void *From, void *To, long Num) {
+static inline void *asm_mem_cpy(void *From, void *To, uint64 Num) {
     int d0, d1, d2;
     __asm__ __volatile__    (    "cld	\n\t"
                                  "rep	\n\t"
@@ -504,7 +504,7 @@ static inline void *asm_mem_cpy(void *From, void *To, long Num) {
     return To;
 }
 
-static inline int asm_mem_cmp(void *FirstPart, void *SecondPart, long Count) {
+static inline int asm_mem_cmp(void *FirstPart, void *SecondPart, uint64 Count) {
     register int __res;
 
     __asm__ __volatile__    (    "cld	\n\t"        //clean direct
@@ -522,7 +522,7 @@ static inline int asm_mem_cmp(void *FirstPart, void *SecondPart, long Count) {
     return __res;
 }
 
-static inline void *asm_mem_set(void *Address, uint8 C, long Count) {
+static inline void *asm_mem_set(void *Address, uint8 C, uint64 Count) {
     int d0, d1;
     uint64 tmp = C * 0x0101010101010101UL;
     __asm__ __volatile__    (    "cld	\n\t"

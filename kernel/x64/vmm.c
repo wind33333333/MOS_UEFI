@@ -203,7 +203,7 @@ static vm_status_e vmm_walk(vm_space_t *space, uint64 vaddr, uint64 flags, vm_wa
             uint64 *new_table_va = (uint64 *)space->ops.phys_to_virt(new_table_pa);
 
             // 强制抹除可能残留的脏内存数据
-            for (int i = 0; i < 512; i++) new_table_va[i] = 0;
+            asm_mem_set(new_table_va,0,PAGE_4K_SIZE);
 
             // 存入操作日志以便支持高级回滚策略
             if (state->count < 5) {
@@ -567,16 +567,14 @@ vm_status_e vm_space_init(vm_space_t *space, uint8 level, const vm_allocator_ops
     space->paging_level = level;
 
     uint64 *new_root_va = (uint64 *)space->ops.phys_to_virt(root_pa);
-    for (int i = 0; i < 512; i++) new_root_va[i] = 0;
+    asm_mem_set(new_root_va,0,PAGE_4K_SIZE);
 
     if (clone_kernel) {
         uint64 active_cr3 = asm_get_cr3();
         uint64 *active_root_va = (uint64 *)space->ops.phys_to_virt(active_cr3 & PTE_ADDR_MASK);
 
         // 初始化时拷贝共享的内核高地址空间映射
-        for (uint64 i = 256; i < 512; i++) {
-            new_root_va[i] = active_root_va[i];
-        }
+        asm_mem_cpy(active_root_va+256,new_root_va+256,256);
     }
     return VM_SUCCESS;
 }
