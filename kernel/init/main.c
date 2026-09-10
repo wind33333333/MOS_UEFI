@@ -26,20 +26,20 @@ irqreturn_e apic_isr(cpu_registers_t *regs, void *dev_id) {
 
 INIT_TEXT void kernel_init(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
-    vm_layout_init();                          //虚拟内存空间设置
-    enable_cpu_advanced_features();            //启用cpu开启高级功能
-    output_init();                             //初始化输出控制台
-    memblock_init();                           //初始化启动内存分配器
-    kpage_table_init();                        //初始化正式内核页表
-    buddy_system_init();                       //初始化伙伴系统
-    slub_init();                               //初始化slub内存分配器
-    rbtree_empty_augment_callbacks_init();     //初始化红黑树空回调函数
-    vmalloc_init();                            //初始化vmalloc
-    video_mem_map();                           //映射显存到虚拟地址空间
-    efi_runtime_service_init();                //映射efi运行时服务到虚拟地址空间
-    ioapic_init();                             //初始化ioapic
-    hpet_init();                               //初始化hpet
-    bsp_init();                                //初始化bsp核心
+    vm_layout_init();                                           //虚拟内存空间设置
+    enable_cpu_advanced_features();                             //启用cpu开启高级功能
+    output_init();                                              //初始化输出控制台
+    memblock_init();                                            //初始化启动内存分配器
+    kpage_table_init();                                         //初始化正式内核页表
+    buddy_system_init();                                        //初始化伙伴系统
+    slub_init();                                                //初始化slub内存分配器
+    rbtree_empty_augment_callbacks_init();                      //初始化红黑树空回调函数
+    vmalloc_init();                                             //初始化vmalloc
+    video_mem_map();                                            //映射显存到虚拟地址空间
+    efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
+    ioapic_init();                                              //初始化ioapic
+    hpet_init();                                                //初始化hpet
+    bsp_init();                                                 //初始化bsp核心
 
 
     // =================================================================
