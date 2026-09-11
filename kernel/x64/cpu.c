@@ -174,7 +174,7 @@ INIT_TEXT void bsp_init(void){
     init_gdt();                                //初始化GDT
     init_tss();                                //初始化TSS
     idt_init();                                //初始化IDT
-    ap_initic();                               //初始化apic
+    apic_init();                               //初始化apic
     init_syscall();                            //初始化系统调用
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_hz,cpu_info.maximum_hz,cpu_info.bus_hz,cpu_info.tsc_hz);
@@ -217,7 +217,7 @@ INIT_TEXT void ap_main(void){
     asm_lgdt(&gdt_ptr,0x8,0x10);
     asm_ltr(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);
     //asm_lidt(&idt_ptr);
-    ap_initic();
+    apic_init();
     init_syscall();
     color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);
     while(1);

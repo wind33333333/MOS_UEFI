@@ -165,7 +165,7 @@ INIT_TEXT int32 memblock_free(uint64 ptr, uint64 size) {
 /**
  * @brief 伪装分配：将 memblock 的线性分配转换为对象指针
  */
-static page_t* memblock_alloc_pages(uint32 order) {
+INIT_TEXT static page_t* memblock_alloc_pages(uint32 order) {
     // 1. 将 order 翻译为 memblock 听得懂的字节 size
     uint64 size = PAGE_4K_SIZE << order;
 
@@ -182,7 +182,7 @@ static page_t* memblock_alloc_pages(uint32 order) {
 /**
  * @brief 伪装释放：拦截对象回收请求并翻译给 memblock
  */
-static void memblock_free_pages(page_t *page) {
+INIT_TEXT static void memblock_free_pages(page_t *page) {
     if (!page) return;
 
     // 扒下伪装，还原出真实的物理地址

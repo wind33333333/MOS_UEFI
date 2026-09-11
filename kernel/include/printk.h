@@ -29,7 +29,7 @@ extern char buf[4096];
 #define INDIGO	0x0000ffff		//靛
 #define PURPLE	0x008000ff		//紫
 
-extern uint8 font_ascii[256][16];
+extern const uint8 font_ascii[256][16];
 
 struct position
 {

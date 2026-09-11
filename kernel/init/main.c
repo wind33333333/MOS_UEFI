@@ -27,6 +27,7 @@ irqreturn_e apic_isr(cpu_registers_t *regs, void *dev_id) {
 INIT_TEXT void kernel_init(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
     output_init();                                              //初始化输出控制台
+
     vm_layout_init();                                           //虚拟内存空间设置
     enable_cpu_advanced_features();                             //启用cpu开启高级功能
     memblock_init();                                            //初始化启动内存分配器
