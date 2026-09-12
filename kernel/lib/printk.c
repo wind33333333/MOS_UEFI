@@ -1,5 +1,6 @@
 #include "printk.h"
 #include "../init/uefi.h"
+#include "slub.h"
 #include "vmalloc.h"
 #include "../include/font.h"
 

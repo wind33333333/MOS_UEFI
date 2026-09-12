@@ -1,8 +1,9 @@
 #include "kernel_page_table.h"
-#include "buddy_system.h"
+#include "slub.h"
 #include "memblock.h"
 #include "printk.h"
-#include "../include/vmalloc.h"
+#include "../include/vmm.h"
+#include "buddy_system.h"
 
 vm_space_t kernel_space;
 
@@ -118,19 +119,19 @@ INIT_TEXT void kpage_table_init(void) {
     page_map_init();
 
     //.init_text
-    vm_map_range(&kernel_space,(uint64)_start_init_text,(uint64)_start_init_text - KERNEL_VA_START,(uint64)_end_init_text - (uint64)_start_init_text,PAGE_KERNEL_CODE);
+    vm_map_range(&kernel_space,(uint64)_start_init_text,(uint64)_start_init_text - vm_layout.kernel_start,(uint64)_end_init_text - (uint64)_start_init_text,PAGE_KERNEL_CODE);
 
     //init_data
-    vm_map_range(&kernel_space,(uint64)_start_init_data,(uint64)_start_init_data - KERNEL_VA_START,(uint64)_end_init_data - (uint64)_start_init_data,PAGE_KERNEL_DATA_RW);
+    vm_map_range(&kernel_space,(uint64)_start_init_data,(uint64)_start_init_data - vm_layout.kernel_start,(uint64)_end_init_data - (uint64)_start_init_data,PAGE_KERNEL_DATA_RW);
 
     //正式内核 .text可读执行
-    vm_map_range(&kernel_space,(uint64)_start_text,(uint64)_start_text - KERNEL_VA_START,(uint64)_end_text - (uint64)_start_text,PAGE_KERNEL_CODE);
+    vm_map_range(&kernel_space,(uint64)_start_text,(uint64)_start_text - vm_layout.kernel_start,(uint64)_end_text - (uint64)_start_text,PAGE_KERNEL_CODE);
 
     //.rodata
-    vm_map_range(&kernel_space,(uint64)_start_rodata,(uint64)_start_rodata - KERNEL_VA_START,(uint64)_end_rodata - (uint64)_start_rodata,PAGE_KERNEL_DATA_RO);
+    vm_map_range(&kernel_space,(uint64)_start_rodata,(uint64)_start_rodata - vm_layout.kernel_start,(uint64)_end_rodata - (uint64)_start_rodata,PAGE_KERNEL_DATA_RO);
 
     //.data .bss
-    vm_map_range(&kernel_space,(uint64)_start_data,(uint64)_start_data - KERNEL_VA_START,(uint64)_end_bss - (uint64)_start_data,PAGE_KERNEL_DATA_RW);
+    vm_map_range(&kernel_space,(uint64)_start_data,(uint64)_start_data - vm_layout.kernel_start,(uint64)_end_bss - (uint64)_start_data,PAGE_KERNEL_DATA_RW);
 
     //设置正式内核页表,并刷新tlb
     asm_set_cr3(kernel_space.cr3_root);

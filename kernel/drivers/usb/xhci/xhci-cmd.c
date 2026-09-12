@@ -2,7 +2,7 @@
 #include "printk.h"
 #include "xhci-hcd.h"
 #include "../core/usb-dev.h"
-#include "../include/vmalloc.h"
+#include "../include/slub.h"
 // =========================================================================
 // 🚀 xHCI 控制器全局命令发射器
 // =========================================================================

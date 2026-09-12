@@ -5,6 +5,7 @@
 #include "syscall.h"
 #include "printk.h"
 #include "vmalloc.h"
+#include "slub.h"
 #include "../x64/mtrr.h"
 
 cpu_info_t cpu_info;

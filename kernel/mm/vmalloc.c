@@ -3,89 +3,42 @@
 #include "../include/slub.h"
 #include "../include/printk.h"
 #include "../init/kernel_page_table.h"
-
-vm_layout_t vm_layout;
-
-// UEFI 运行时服务专属虚拟地址空间 (2GB 预留)
-#define UEFI_RTS_VA_START   0xFFFFFFFF00000000ULL
-#define UEFI_RTS_VA_END     0xFFFFFFFFA0000000ULL
+#include "rbtree.h"
 
 /* ========================================================================== */
-/*                 静态内核代码与模块区 (必须固定在顶部 2GB)                  */
+/*                         VMA 虚拟内存区域属性标志位                         */
 /* ========================================================================== */
-// -----------------------------------------------------------------------------
-// 【架构师警告】：无论 4 级还是 5 级页表，内核代码段绝对不能挪动！
-// 操作系统编译时通常采用 gcc -mcmodel=kernel，编译器会强制假定内核代码、
-// 全局变量全部分布在虚拟地址空间最高的 2GB 内，以便使用极速的 32 位相对寻址。
-// -----------------------------------------------------------------------------
-
-// 动态内核模块 (KO) 加载空间 (1.5 GB，紧贴最高 2GB 往下排布)
-#define MODULES_VA_START  0xFFFFFFFFA0000000ULL
-#define MODULES_VA_END    0xFFFFFFFFFFFFFFFFULL
-
-// 内核主代码 (Text) 与数据区起始虚拟地址 (512 MB，紧贴在模块空间下方)
-#define KERNEL_VA_START   0xFFFFFFFF80000000ULL
-#define KERNEL_VA_END     0xFFFFFFFFA0000000ULL
+#define VM_ALLOC            0x00000002 ///< 由 vmalloc() 分配的常规虚拟内存
+#define VM_MODULES          0x00000004 ///< 由 module_remap() 分配的内核模块执行区
+#define VM_IOREMAP          0x00000006 ///< 由 ioremap() 映射的外设寄存器区
 
 /**
- * @brief 初始化全局虚拟内存布局
- * @note  根据 CPU 是否开启 5 级分页 (LA57)，动态划分高半核地址空间。
- *        各个核心区域之间强制插入 Guard Hole (警戒空洞)，彻底阻断跨区越界访问。
+ * @brief 离散虚拟内存管理核心描述符 (Virtual Memory Area)
+ * @note  用于描述一段连续的虚拟地址空间。通过红黑树进行管理。
  */
-INIT_TEXT void vm_layout_init(void) {
-    if (tmp_paging_level == 5) {
-        // 【5 级页表模式 - LA57】(理论上限 128 PB，单位: PB)
-        vm_layout.direct_map_start = 0xFF00000000000000ULL;
-        vm_layout.direct_map_end   = vm_layout.direct_map_start + 0x0080000000000000ULL; // 占用 32 PB
+typedef struct {
+    uint64           va_start;         // 虚拟地址起点
+    uint64           va_end;           // 虚拟地址终点（不包含，即 [va_start, va_end)）
+    rb_node_t        rb_node;          // 挂载到忙碌/空闲红黑树的节点
+    list_head_t      list;             // 按照虚拟地址从低到高严格排序的双向链表
 
-        // 【安全隔离】：留出 1 PB 的 Guard Hole！越过直接映射区后不可立即接盘。
-        vm_layout.vmalloc_start    = vm_layout.direct_map_end + 0x0004000000000000ULL;
-        vm_layout.vmalloc_end      = vm_layout.vmalloc_start + 0x0040000000000000ULL;    // vmalloc 占用 16 PB
+    union {
+        // 🌟 增强红黑树 (Augmented RB-Tree) 的核心字段：
+        // 记录以当前节点为根的子树中，最大的空闲块容量。
+        // 分配时，通过判断子树的最大容量，可以 O(\log N) 极速剪枝，跳过空间不足的分支。
+        uint64 subtree_max_size;
+    };
 
-        vm_layout.page_map_start   = vm_layout.vmalloc_end + 0x0004000000000000ULL;      // Guard Hole: 1 PB
-        vm_layout.page_map_end     = vm_layout.page_map_start + 0x0004000000000000ULL;   // vmemmap 占用 1 PB
-
-        vm_layout.io_map_start     = vm_layout.page_map_end + 0x0004000000000000ULL;     // Guard Hole: 1 PB
-        vm_layout.io_map_end       = vm_layout.io_map_start + 0x0004000000000000ULL;     // MMIO 占用 1 PB
-    } else {
-        // 【4 级页表模式 - LA48】(理论上限 128 TB，单位: TB)
-        vm_layout.direct_map_start = 0xFFFF800000000000ULL;
-        vm_layout.direct_map_end   = vm_layout.direct_map_start + 0x0000400000000000ULL; // 占用 64 TB
-
-        // 【安全隔离】：留出 1 TB 的 Guard Hole！
-        vm_layout.vmalloc_start    = vm_layout.direct_map_end + 0x0000010000000000ULL;
-        vm_layout.vmalloc_end      = vm_layout.vmalloc_start + 0x0000200000000000ULL;    // vmalloc 占用 32 TB
-
-        vm_layout.page_map_start   = vm_layout.vmalloc_end + 0x0000010000000000ULL;      // Guard Hole: 1 TB
-        vm_layout.page_map_end     = vm_layout.page_map_start + 0x0000010000000000ULL;   // vmemmap 占用 1 TB
-
-        vm_layout.io_map_start     = vm_layout.page_map_end + 0x0000010000000000ULL;     // Guard Hole: 1 TB
-        vm_layout.io_map_end       = vm_layout.io_map_start + 0x0000020000000000ULL;     // MMIO 占用 2 TB
-    }
-
-    vm_layout.efi_rts_start = UEFI_RTS_VA_START;
-    vm_layout.efi_rts_end = UEFI_RTS_VA_END;
-    vm_layout.module_start = MODULES_VA_START;
-    vm_layout.module_end = MODULES_VA_END;
-    vm_layout.kernel_start = KERNEL_VA_START;
-    vm_layout.kernel_end = KERNEL_VA_END;
-
-    color_printk(GREEN,BLACK,"Direct Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.direct_map_start,vm_layout.direct_map_end);
-    color_printk(GREEN,BLACK,"Vmalloc Start Addr:%#lx  End Addr:%#lx \n",vm_layout.vmalloc_start,vm_layout.vmalloc_end);
-    color_printk(GREEN,BLACK,"Page Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.page_map_start,vm_layout.page_map_end);
-    color_printk(GREEN,BLACK,"IO Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.io_map_start,vm_layout.io_map_end);
-    color_printk(GREEN,BLACK,"UEFI RTS Start Addr:%#lx  End Addr:%#lx \n",vm_layout.efi_rts_start,vm_layout.efi_rts_end);
-    color_printk(GREEN,BLACK,"Modules Start Addr:%#lx  End Addr:%#lx \n",vm_layout.module_start,vm_layout.module_end);
-    color_printk(GREEN,BLACK,"Kernel Start Addr:%#lx  End Addr:%#lx \n",vm_layout.kernel_start,vm_layout.kernel_end);
-}
+    uint64           flags;            // 描述符属性 (如 VM_ALLOC, VM_IOREMAP)
+} vmap_area_t;
 
 // =========================================================================
 // 核心管理器：忙碌/空闲红黑树双轨制
 // =========================================================================
 
-rb_root_t used_vmap_area_root; // 记录已经被分配出去的虚拟内存块 (用于查找释放)
-rb_root_t free_vmap_area_root; // 记录目前可用的虚拟内存空闲块 (用于搜索分配)
-rb_augment_callbacks_f vmap_area_augment_callbacks; // 增强红黑树的回调操作集
+static rb_root_t used_vmap_area_root; // 记录已经被分配出去的虚拟内存块 (用于查找释放)
+static rb_root_t free_vmap_area_root; // 记录目前可用的虚拟内存空闲块 (用于搜索分配)
+static rb_augment_callbacks_f vmap_area_augment_callbacks; // 增强红黑树的回调操作集
 
 /**
  * @brief 重新计算并维护当前节点及其子树中的最大空闲块容量 (subtree_max_size)
@@ -438,7 +391,7 @@ void *vmalloc(uint64 size) {
     size = PAGE_4K_ALIGN(size); // 保证基础对齐
 
     // 从 vmalloc 专属管辖区申请虚拟地址区间
-    vmap_area_t *vmap = alloc_vmap_area(g_vmalloc_start, g_vmalloc_end, size, PAGE_4K_SIZE, 0, VM_ALLOC);
+    vmap_area_t *vmap = alloc_vmap_area(vm_layout.vmalloc_start, vm_layout.vmalloc_end, size, PAGE_4K_SIZE, 0, VM_ALLOC);
     if (!vmap) return NULL;
 
     uint64 va = vmap->va_start;
@@ -509,7 +462,7 @@ void *_ioremap(uint64 start_pa, uint64 size, uint64 flags) {
     uint64 align_offset = aligned_pa & (optimal_align - 1);
 
     // 3. 在 MMIO 专属管辖区，寻找同余共振的虚拟区间
-    vmap_area_t *vmap = alloc_vmap_area(g_io_map_start, g_io_map_end, aligned_size, optimal_align, align_offset, VM_IOREMAP);
+    vmap_area_t *vmap = alloc_vmap_area(vm_layout.io_map_start, vm_layout.io_map_end, aligned_size, optimal_align, align_offset, VM_IOREMAP);
     if (!vmap) return NULL;
 
     // 4. 将指令下达给 VMM 引擎
@@ -563,7 +516,7 @@ int32 ioreunmap(void *ptr) {
  */
 void *memremap(uint64 start_pa, uint64 size) {
     uint64 aligned_size = PAGE_4K_ALIGN(size);
-    vmap_area_t *vmap = alloc_vmap_area(g_vmalloc_start, g_vmalloc_end, aligned_size, PAGE_4K_SIZE, 0, VM_IOREMAP);
+    vmap_area_t *vmap = alloc_vmap_area(vm_layout.vmalloc_start, vm_layout.vmalloc_end, aligned_size, PAGE_4K_SIZE, 0, VM_IOREMAP);
     if (!vmap) return NULL;
 
     // 赋予数据段常用的读写与 Write-Back 缓存属性
@@ -584,7 +537,7 @@ int32 unmemremap(void *ptr) {
 void *module_remap(uint64 start_pa, uint64 size) {
     uint64 aligned_size = PAGE_4K_ALIGN(size);
     // 严格限制在最高位 1.5GB 的 Module 专区
-    vmap_area_t *vmap = alloc_vmap_area(MODULES_VA_START, MODULES_VA_END, aligned_size, PAGE_4K_SIZE, 0, VM_MODULES);
+    vmap_area_t *vmap = alloc_vmap_area(vm_layout.module_start, vm_layout.module_end, aligned_size, PAGE_4K_SIZE, 0, VM_MODULES);
     vm_map_range(&kernel_space, vmap->va_start, start_pa, aligned_size, PAGE_KERNEL_DATA_RW);
     return (void*)vmap->va_start;
 }
@@ -633,17 +586,19 @@ void INIT_TEXT vmalloc_init(void) {
     // 创世纪：将三大顶级动态空间作为原始完整的“巨无霸”空闲块，注入资源池
 
     // 1. 初始化 vmalloc 区 (32TB / 16PB)
-    vmap = create_vmap_area(g_vmalloc_start, g_vmalloc_end, 0);
+    vmap = create_vmap_area(vm_layout.vmalloc_start, vm_layout.vmalloc_end, 0);
     list_head_init(&vmap->list);
     insert_vmap_area(&free_vmap_area_root, vmap, &vmap_area_augment_callbacks);
 
     // 2. 初始化 IO 外设映射区 (2TB / 1PB)
-    vmap = create_vmap_area(g_io_map_start, g_io_map_end, 0);
+    vmap = create_vmap_area(vm_layout.io_map_start, vm_layout.io_map_end, 0);
     list_head_init(&vmap->list);
     insert_vmap_area(&free_vmap_area_root, vmap, &vmap_area_augment_callbacks);
 
     // 3. 初始化 Module 代码区 (1.5GB)
-    vmap = create_vmap_area(MODULES_VA_START, MODULES_VA_END, 0);
+    vmap = create_vmap_area(vm_layout.module_start, vm_layout.module_end, 0);
     list_head_init(&vmap->list);
     insert_vmap_area(&free_vmap_area_root, vmap, &vmap_area_augment_callbacks);
 }
+
+

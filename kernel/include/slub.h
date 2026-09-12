@@ -1,6 +1,7 @@
 #pragma once
 
 #include "moslib.h"
+#include "vmm.h"
 
 // -----------------------------------------------------------------------------
 // SLUB 分配器配置参数
@@ -45,3 +46,7 @@ int32 kfree(void *va);
 static inline void* kzalloc_dma(uint64 size) {
     return kzalloc(align_up(size, 64));
 }
+
+// 极速物理/虚拟地址转换引擎 (⚠️ 仅适用于 Direct Map 线性直接映射区域)
+static inline uint64 va_to_pa(void *va) { return (uint64)va & ~vm_layout.direct_map_start; }
+static inline void *pa_to_va(uint64 pa) { return (void *)(pa + vm_layout.direct_map_start); }

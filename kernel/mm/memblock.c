@@ -1,8 +1,9 @@
 #include "../include/memblock.h"
 #include "../include/vmm.h"
-#include "vmalloc.h"
 #include "../include/printk.h"
 #include "../include/errno.h"
+#include "slub.h"
+
 
 INIT_DATA memblock_alloc_t memblock; //临时内存器内存地图，后面buddy system需要用到空闲地图。
 INIT_DATA mem_arr_t page_mem_map; //page页映射区内存地图
@@ -217,8 +218,8 @@ static page_t* memblock_pa_to_page(uint64 paddr) {
 #define MEM_1MB (0x100000ULL) // 1MB 物理地址边界
 INIT_TEXT void memblock_init(void) {
     uint64 phy_mem_size = 0;
-    uint64 kernel_pa_start = (uint64) _start - KERNEL_VA_START;
-    uint64 kernel_pa_end = (uint64) _end - KERNEL_VA_START;
+    uint64 kernel_pa_start = (uint64) _start - vm_layout.kernel_start;
+    uint64 kernel_pa_end = (uint64) _end - vm_layout.kernel_start;
 
     uint32 count = tmp_boot_info->mem_map_size / tmp_boot_info->mem_descriptor_size;
 

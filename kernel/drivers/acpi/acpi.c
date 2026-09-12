@@ -1,6 +1,6 @@
 #include "acpi.h"
 
-#include "vmalloc.h"
+#include "slub.h"
 #include "../../init/uefi.h"
 
 /*

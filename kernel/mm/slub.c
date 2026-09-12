@@ -1,6 +1,16 @@
 #include "../include/slub.h"
 #include "../include/buddy_system.h"
 
+// page_t 对象地址 转换为 可被内核直接读写的虚拟地址 (走高半核 HHDM 映射)
+static inline void *page_to_va(page_t *page) {
+    return pa_to_va(page_to_pa(page));
+}
+
+// 虚拟地址 转换为 page_t 对象地址
+static inline page_t *va_to_page(void *va) {
+    return pa_to_page(va_to_pa(va));
+}
+
 // =========================================================================
 // 全局缓存池定义
 // =========================================================================

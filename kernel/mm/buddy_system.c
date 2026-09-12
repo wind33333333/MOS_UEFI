@@ -2,6 +2,7 @@
 #include "../init/kernel_page_table.h"
 #include "../include/memblock.h"
 #include "../include/printk.h"
+#include "slub.h"
 
 buddy_system_t buddy_system;
 
@@ -10,7 +11,7 @@ buddy_system_t buddy_system;
 // =========================================================================
 INIT_TEXT void buddy_system_init(void) {
     // 1. 定位 page_map 的虚拟基址
-    buddy_system.page_table = (page_t *)g_page_map_start;
+    buddy_system.page_table = (page_t *)vm_layout.page_map_start;
 
     // 2. 初始化各阶空闲链表
     for (uint64 i = 0; i <= MAX_ORDER; i++) {

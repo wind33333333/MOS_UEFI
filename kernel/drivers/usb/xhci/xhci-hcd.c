@@ -3,12 +3,12 @@
 #include "pcie.h"
 #include "slub.h"
 #include "driver.h"
-#include "vmalloc.h"
 #include "../core/usb-dev.h"
 #include "errno.h"
 #include "../hub/usb-hub.h"
 #include "xhci-service.h"
 #include "xhci-hcd.h"
+#include "vmalloc.h"
 
 //xhci设备操作命令
 //=====================================================================================

@@ -1,7 +1,6 @@
 #pragma once
 #include "moslib.h"
-#include "slub.h"
-#include "../include/vmalloc.h"
+#include "../include/vmm.h"
 
 // 伙伴系统支持的最大阶数 (例如 10 阶对应 4KB * 2^10 = 4MB 的连续大块)
 #define MAX_ORDER 10
@@ -13,6 +12,8 @@
 #define PG_SLUB     1      /* 页面已交由 SLUB/SLAB 分配器管理，kmalloc 专用 */
 #define PG_HEAD     2      /* 复合页面 (Compound Page) 的首节点 */
 #define PG_BUDDY    3      /* 页面当前处于闲置状态，归属伙伴系统空闲链表 */
+
+typedef struct kmem_cache_t kmem_cache_t;
 
 /**
  * @brief 核心物理页描述符 (Page Descriptor)
@@ -56,23 +57,15 @@ extern buddy_system_t buddy_system;
 
 // page_t 对象地址 转换为 真实物理裸地址
 static inline uint64 page_to_pa(page_t *page) {
-    return (uint64)(page - (page_t*)g_page_map_start) << 12;
+    return (uint64)(page - (page_t*)vm_layout.page_map_start) << 12;
 }
 
 // 真实物理裸地址 转换为 page_t 对象地址
 static inline page_t* pa_to_page(uint64 pa) {
-    return (page_t*)g_page_map_start + (pa >> 12);
+    return (page_t*)vm_layout.page_map_start + (pa >> 12);
 }
 
-// page_t 对象地址 转换为 可被内核直接读写的虚拟地址 (走高半核 HHDM 映射)
-static inline void *page_to_va(page_t *page) {
-    return pa_to_va(page_to_pa(page));
-}
 
-// 虚拟地址 转换为 page_t 对象地址
-static inline page_t *va_to_page(void *va) {
-    return pa_to_page(va_to_pa(va));
-}
 
 // 获取复合大页的头部 page_t (如果传入的是尾部子节点，自动寻根)
 static inline page_t *compound_head(page_t *page) {
