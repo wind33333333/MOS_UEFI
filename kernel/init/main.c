@@ -29,7 +29,7 @@ INIT_TEXT void kernel_init(void) {
     output_init();                                              //初始化输出控制台
     tmp_idt_init();                                             //初始化临时中断描述符表
     cpu_feature_init();                                         //cpu 特性初始化
-    vm_layout_init();                                           //虚拟内存空间设置
+    vm_layout_init();                                           //虚拟内存空间初始化
     memblock_init();                                            //初始化启动内存分配器
     kpage_table_init();                                         //初始化正式内核页表
     buddy_system_init();                                        //初始化伙伴系统
