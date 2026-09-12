@@ -49,7 +49,6 @@ typedef struct buddy_system_t {
 } buddy_system_t;
 
 extern buddy_system_t buddy_system;
-extern uint64 g_page_map_start; // 必须声明这个全局变量，以供宏计算使用
 
 // -----------------------------------------------------------------------------
 // 高频内联寻址转换引擎
