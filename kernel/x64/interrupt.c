@@ -251,7 +251,8 @@ void do_virtualization_exception(cpu_registers_t *regs) {
 /*******************************************************************************************************************************/
 
 //定义 IDT
-static idt_gate_t idt[IDT_ENTRIES] __attribute__((aligned(16)));
+#define IDT_ENTRIES 256
+__attribute__((aligned(4096))) idt_gate_t idt[IDT_ENTRIES];
 
 // 异常不会动态卸载，直接静态写死极其安全
 static exception_handler_t exception_table[32] = {
@@ -540,11 +541,12 @@ void idt_init(void) {
     }
 
     // 装载 IDTR
-    idtr_t idtr = {
-        .limit = sizeof(idt) - 1,
-        .base = idt,
-    };
+    idtr_t idtr;
+    idtr.limit = sizeof(idt) - 1;
+    idtr.base = idt;
     asm_lidt(&idtr);
+
+    color_printk(GREEN, BLACK, "limit:%#x base:%lx \n",idtr.limit,idtr.base);
 
     // 打开 CPU 全局中断标志
     asm_sti();

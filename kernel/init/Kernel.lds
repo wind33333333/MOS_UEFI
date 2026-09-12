@@ -35,27 +35,7 @@ SECTIONS
        _end_text = .;
     }
 
-    /* 正式内核读写数据段 (RW) */
-    . = ALIGN(4096);
-    .data :
-    {
-        _start_data = .;
-        *(.data)
-        *(.data.*)
-        _end_data = .;
-    }
-
-    /* 全局未初始化变量段 (RW) */
-    .bss :
-    {
-       _start_bss = .;
-       *(.bss)
-       *(COMMON)         /* 包含弱符号未初始化变量 */
-       . = ALIGN(4096);
-       _end_bss = .;
-    }
-
-    /* 只读数据段 (RO) —— 作为物理隔离墙！ */
+    /* 只读数据段 (RO) */
     . = ALIGN(4096);
     .rodata :
     {
@@ -66,15 +46,26 @@ SECTIONS
        _end_rodata = .;
     }
 
-    /* 内核堆栈段 (RW) */
+    /* 读写数据段 (RW) */
     . = ALIGN(4096);
-    .stack :
+    .data :
     {
-        _start_stack = .;
-        . = . + 0x4000;  /* 为 BSP 主核堆栈预留 16K 空间 */
-        *(.stack)
-        _end_stack = .;
+        _start_data = .;
+        *(.data)
+        *(.data.*)
+        _end_data = .;
     }
+
+    /* 未初始化变量段 (RW) */
+    .bss :
+    {
+       _start_bss = .;
+       *(.bss)
+       *(COMMON)         /* 包含弱符号未初始化变量 */
+       . = ALIGN(4096);
+       _end_bss = .;
+    }
+
 
     /*
      * 预留全局偏移表 (GOT) 空间，按需开启

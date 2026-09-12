@@ -35,7 +35,6 @@ void virtualization_exception();
 
 #pragma pack(push,1)
 
-#define IDT_ENTRIES 256
 
 // 门类型宏定义
 #define IDT_GATE_INTERRUPT 0x8E // P=1, DPL=0, Type=E (硬件中断，自动关 IF)

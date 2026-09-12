@@ -20,7 +20,7 @@ CFLAGS += -fno-stack-protector    # 禁用栈保护（后期内核实现相应�
 CFLAGS += -mno-mmx -mno-sse -mno-sse2
 
 # --- 调试、优化与警告 ---
-CFLAGS += -Og                     # 开发阶段禁用优化，稳定后可改为 -O2
+CFLAGS += -O0                     # 开发阶段禁用优化，稳定后可改为 -O2
 CFLAGS += -g                      # 生成调试符号 (配合 GDB)
 CFLAGS += -Wall -Wextra           # 开启所有常见警告，防患于未然
 

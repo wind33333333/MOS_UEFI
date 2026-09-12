@@ -1,8 +1,6 @@
 #include "cpu.h"
 #include "apic.h"
-#include "gdt.h"
 #include "../drivers/hpet/hpet.h"
-#include "tss.h"
 #include "interrupt.h"
 #include "syscall.h"
 #include "printk.h"
@@ -29,7 +27,7 @@ INIT_TEXT void get_cpu_info(void) {
     cpu_info.tsc_hz = hpet_calibrate_tsc_hz(&hpet_dev,10);
 }
 
-INIT_TEXT void enable_cpu_advanced_features(void){
+INIT_TEXT void cpu_feature_init(void){
     uint32 eax,ebx,ecx,edx;
     uint64 tmp,value;
 
@@ -164,15 +162,42 @@ INIT_TEXT uint32 cpuid_to_apicid(uint32 cpu_id) {
     return apic_id_table[cpu_id];
 }
 
+/**
+ * @brief 将 TSS 挂载到 GDT 中 (极限化简版)
+ * @param tss_desc_ptr 指向 GDT 中 tss_desc[2] 数组的首地址
+ * @param base         TSS 结构体的 64 位虚拟首地址
+ *
+ * @note 64位 TSS 固定大小 104 字节，Limit 强制硬编码为 0x67
+ *       Type 强制硬编码为 0x89 (Available 64-bit TSS)
+ */
+static inline void set_tss_descriptor(uint64 *tss_desc_ptr, uint64 base) {
+    /*
+     * 低 8 字节 (Low 64-bit) 极限位运算组合：
+     * [0:15]   = 0x0067 (Limit 15:0)
+     * [16:39]  = Base 23:0 (巧妙地用 base & 0xFFFFFF 一次性填入)
+     * [40:47]  = 0x89 (Type & Attr)
+     * [48:55]  = 0x00 (Limit 19:16 + Flags 全为 0)
+     * [56:63]  = Base 31:24
+     */
+    tss_desc_ptr[0] = (sizeof(tss_t)-1)
+                    | ((base & 0xFFFFFFULL) << 16)
+                    | (0x89ULL << 40)
+                    | (((base >> 24) & 0xFFULL) << 56);
+
+    /* 高 8 字节 (High 64-bit)：直接就是 Base 的高 32 位 */
+    tss_desc_ptr[1] = base >> 32;
+}
+
+
+
 INIT_TEXT void bsp_init(void){
     uint32 apic_id,cpu_id,tmp;
     asm_cpuid_count(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
 
+
     bsp_backup_mtrr_state();
     get_cpu_info();                            //获取cpu信息
-    init_gdt();                                //初始化GDT
-    init_tss();                                //初始化TSS
     idt_init();                                //初始化IDT
     apic_init();                               //初始化apic
     init_syscall();                            //初始化系统调用
@@ -212,10 +237,10 @@ INIT_TEXT void ap_main(void){
     uint32 apic_id,cpu_id,tmp;
     asm_cpuid_count(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);        //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);
-    enable_cpu_advanced_features();
+    cpu_feature_init();
     //asm_set_cr3(kpml4t_ptr);
-    asm_lgdt(&gdt_ptr,0x8,0x10);
-    asm_ltr(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);
+    //asm_lgdt(&bsp_gdt_ptr,0x8,0x10);
+    //asm_ltr(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);
     //asm_lidt(&idt_ptr);
     apic_init();
     init_syscall();

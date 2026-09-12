@@ -126,14 +126,11 @@ INIT_TEXT void kpage_table_init(void) {
     //正式内核 .text可读执行
     vm_map_range(&kernel_space,(uint64)_start_text,(uint64)_start_text - KERNEL_VA_START,(uint64)_end_text - (uint64)_start_text,PAGE_KERNEL_CODE);
 
-    //.data .bss
-    vm_map_range(&kernel_space,(uint64)_start_data,(uint64)_start_data - KERNEL_VA_START,(uint64)_end_bss - (uint64)_start_data,PAGE_KERNEL_DATA_RW);
-
     //.rodata
     vm_map_range(&kernel_space,(uint64)_start_rodata,(uint64)_start_rodata - KERNEL_VA_START,(uint64)_end_rodata - (uint64)_start_rodata,PAGE_KERNEL_DATA_RO);
 
-    //.stack
-    vm_map_range(&kernel_space,(uint64)_start_stack,(uint64)_start_stack - KERNEL_VA_START,(uint64)_end_stack - (uint64)_start_stack,PAGE_KERNEL_DATA_RW);
+    //.data .bss
+    vm_map_range(&kernel_space,(uint64)_start_data,(uint64)_start_data - KERNEL_VA_START,(uint64)_end_bss - (uint64)_start_data,PAGE_KERNEL_DATA_RW);
 
     //设置正式内核页表,并刷新tlb
     asm_set_cr3(kernel_space.cr3_root);
