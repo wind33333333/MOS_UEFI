@@ -338,7 +338,7 @@ isr_common_stub:
 # 👑 3. 架构师黑科技：中断处理函数指针表
 # 将刚才生成的 256 个标号地址打包成一个数组，C 语言直接遍历即可！
 # ========================================================
-.section    .data, "wa"
+.section    .init_data, "wa"
 .global isr_stub_table
 isr_stub_table:
     .quad isr0

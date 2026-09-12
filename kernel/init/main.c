@@ -27,11 +27,7 @@ irqreturn_e apic_isr(cpu_registers_t *regs, void *dev_id) {
 INIT_TEXT void kernel_init(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
     output_init();                                              //初始化输出控制台
-    idt_init();                                                 //初始化中断描述符表
-
-    uint8 i = 5;
-    i = 1/0;
-
+    tmp_idt_init();                                             //初始化临时中断描述符表
     cpu_feature_init();                                         //cpu 特性初始化
     vm_layout_init();                                           //虚拟内存空间设置
     memblock_init();                                            //初始化启动内存分配器

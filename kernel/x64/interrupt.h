@@ -36,28 +36,6 @@ void virtualization_exception();
 #pragma pack(push,1)
 
 
-// 门类型宏定义
-#define IDT_GATE_INTERRUPT 0x8E // P=1, DPL=0, Type=E (硬件中断，自动关 IF)
-#define IDT_GATE_TRAP      0x8F // P=1, DPL=0, Type=F (异常陷阱，不关 IF)
-#define IDT_GATE_USER      0xEE // P=1, DPL=3, Type=E (系统调用等，允许 Ring3 触发)
-
-// 1. x64 中断门描述符 (16 字节，严格对齐)
-typedef struct {
-    uint16 offset_low;
-    uint16 segment_selector;
-    uint8  ist;
-    uint8  attributes;
-    uint16 offset_mid;
-    uint32 offset_high;
-    uint32 reserved;
-} idt_gate_t;
-
-// IDTR 寄存器结构
-typedef struct idtr_t{
-    uint16 limit;
-    void   *base;
-}idtr_t;
-
 // 2. 汇编层压入的 CPU 现场上下文 (严格匹配 push 顺序)
 typedef struct {
     // 我们的 common_stub 手动 push 的通用寄存器
@@ -106,17 +84,10 @@ typedef struct {
 } irq_desc_t;
 
 
-static inline void asm_lidt(idtr_t *idt_ptr) {
-    __asm__ __volatile__(
-            "lidt %0 \n\t"  // 加载 IDT 描述符地址
-            :
-            : "m"(*idt_ptr)    // 输入：IDT 描述符的地址
-            : "memory"        // 防止编译器重排序内存操作
-            );
-}
+
 
 // 对外暴露的 API
-void idt_init(void);
+void tmp_idt_init(void);
 int32 alloc_contiguous_irq(uint8 count);
 void free_contiguous_irq(uint8 base_vector, uint8 count);
 int32 alloc_irq(void);

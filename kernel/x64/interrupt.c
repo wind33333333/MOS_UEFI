@@ -250,9 +250,6 @@ void do_virtualization_exception(cpu_registers_t *regs) {
 
 /*******************************************************************************************************************************/
 
-//定义 IDT
-#define IDT_ENTRIES 256
-__attribute__((aligned(4096))) idt_gate_t idt[IDT_ENTRIES];
 
 // 异常不会动态卸载，直接静态写死极其安全
 static exception_handler_t exception_table[32] = {
@@ -282,11 +279,7 @@ static exception_handler_t exception_table[32] = {
 
 
 //MSI/MSI-X 专属 O(1) 独占路由表 (静态分配，快如闪电)
-static irq_desc_t irq_table[IDT_ENTRIES] = {0};
-
-// 引入汇编里暴露的地址表 (极其优雅，免去了写 256 行 extern)
-extern uint64 isr_stub_table[];
-
+static irq_desc_t irq_table[256] = {0};
 
 /**
  * @brief 👑 C 语言大管家 (所有中断的终极交汇点)
@@ -344,7 +337,7 @@ void c_interrupt_dispatcher(cpu_registers_t *regs) {
  * @param name     驱动标识名
  */
 int32 register_isr(int32 vector, irq_handler_f handler, void *dev_id, const char *name) {
-    if (vector < 32 || vector >= IDT_ENTRIES) return -EINVAL;
+    if (vector < 32 || vector >= 256) return -EINVAL;
 
     // ★ 防火墙 1：不准在没买过的地皮上盖房！
     if (irq_table[vector].state == IRQ_STATE_FREE) {
@@ -374,7 +367,7 @@ int32 register_isr(int32 vector, irq_handler_f handler, void *dev_id, const char
  */
 int32 unregister_isr(int32 vector) {
     // 1. 基础物理边界防御
-    if (vector < 32 || vector >= IDT_ENTRIES) return -EINVAL;
+    if (vector < 32 || vector >= 256) return -EINVAL;
 
     // ★ 防火墙 1：防误杀！如果是一块连地皮都没买过的空地，直接报错
     if (irq_table[vector].state == IRQ_STATE_FREE) {
@@ -413,7 +406,7 @@ int32 alloc_contiguous_irq(uint8 count) {
     if ((count & (count - 1)) != 0) return -EINVAL;
 
     // 从 32 开始找，直到 255 - count
-    for (int32 i = 32; i <= IDT_ENTRIES - count; i++) {
+    for (int32 i = 32; i <= 256 - count; i++) {
         
         // ★ 核心物理铁律：基准向量必须向 count 对齐！
         // 如果 count = 4，基准向量必须是 40, 44, 48...
@@ -450,7 +443,7 @@ int32 alloc_contiguous_irq(uint8 count) {
  */
 void free_contiguous_irq(uint8 base_vector, uint8 count) {
     // 1. 基础物理边界检查
-    if (base_vector < 32 || (uint16)base_vector + count > IDT_ENTRIES) {
+    if (base_vector < 32 || (uint16)base_vector + count > 256) {
         color_printk(RED, BLACK, "IRQ: Attempt to free invalid vector range [%d, %d)\n",
                      base_vector, base_vector + count);
         return;
@@ -482,7 +475,7 @@ void free_contiguous_irq(uint8 base_vector, uint8 count) {
  */
 int32 alloc_irq(void) {
     // 32开始找
-    for (uint8 i = 32; i < IDT_ENTRIES; i++) {
+    for (uint8 i = 32; i < 256; i++) {
         if (irq_table[i].state == IRQ_STATE_FREE) {
             irq_table[i].state = IRQ_STATE_ALLOCATED; // 👑 先占坑，宣示主权
             return i;
@@ -504,50 +497,7 @@ void free_irq(int32 vector) {
 }
 
 
-/**
- * @brief 内部函数：组装 16 字节的 IDT 描述符
- */
-static void idt_set_descriptor(uint8 vector, uint64 isr_addr, uint8 attributes, uint8 ist) {
-    idt_gate_t *desc = &idt[vector];
-
-    desc->offset_low       = isr_addr & 0xFFFF;
-    desc->segment_selector = 0x08; // 你的内核代码段选择子 (根据你的 GDT 调整)
-    desc->ist              = ist & 0x07;
-    desc->attributes       = attributes;
-    desc->offset_mid       = (isr_addr >> 16) & 0xFFFF;
-    desc->offset_high      = (isr_addr >> 32) & 0xFFFFFFFF;
-    desc->reserved         = 0; // 必须为 0
-}
 
 
-/**
- * @brief 初始化 IDT (在内核早期初始化时调用)
- */
-void idt_init(void) {
-    asm_mem_set(idt, 0, sizeof(idt));
 
-    // 循环挂载 256 个中断门
-    for (int i = 0; i < IDT_ENTRIES; i++) {
-        // 默认全部设为硬件中断门 (关中断执行)
-        uint8 attr = IDT_GATE_INTERRUPT;
 
-        // 特例：如果是供用户态引发的异常/系统调用，可以改属性
-        if (i == 3 || i == 4) {
-            attr = IDT_GATE_USER;
-        }
-
-        // IST 默认不使用(0)。后续你可以为 #DF(8) 专门指派独立的 IST
-        idt_set_descriptor(i, isr_stub_table[i], attr, 1);
-    }
-
-    // 装载 IDTR
-    idtr_t idtr;
-    idtr.limit = sizeof(idt) - 1;
-    idtr.base = idt;
-    asm_lidt(&idtr);
-
-    // 打开 CPU 全局中断标志
-    asm_sti();
-
-    color_printk(GREEN, BLACK, "IDT Initialized with 256 vectors.\n");
-}

@@ -148,6 +148,41 @@ INIT_TEXT void cpu_feature_init(void){
     // 彻底免疫 4KB 与 2MB/1GB 页表中 PAT 标志位位置不同 (Bit 7 vs Bit 12) 导致的逻辑灾难！
     //endregion
     asm_wrmsr(IA32_PAT_MSR, 0x0005040600070106ULL);
+
+    // =================================================================================
+    // 👑 架构师核心调试输出：CPU 特性使能状态摘要 (带 SMP 核心编号)
+    // =================================================================================
+
+    // 重新读取最终状态，确保打印的是硬件真正接受的值
+    uint64 final_cr0  = asm_get_cr0();
+    uint64 final_cr4  = asm_get_cr4();
+    uint64 final_efer = asm_rdmsr(IA32_EFER_MSR);
+    uint64 final_xcr0 = asm_xgetbv(0);
+
+    // 获取当前 CPU 的 Local APIC ID 作为核心编号
+    uint32 cpu_id = (uint32)asm_rdmsr(APIC_ID_MSR);
+
+    // 1. 打印基础控制寄存器 (高半核多核排错神器)
+    color_printk(GREEN, BLACK, "[CPU %d] Features Initialized Successfully!\n", cpu_id);
+    color_printk(GREEN, BLACK, "[CPU %d] [Regs] CR0: %#018lx | CR4: %#018lx\n", cpu_id, final_cr0, final_cr4);
+    color_printk(GREEN, BLACK, "[CPU %d] [Regs] EFER:%#018lx | XCR0:%#018lx\n", cpu_id, final_efer, final_xcr0);
+
+    // 2. 打印关键安全防御机制状态 (SMEP / SMAP / UMIP / WP)
+    color_printk(GREEN, BLACK, "[CPU %d] [Sec ] WP:%s | SMEP:%s | SMAP:%s | UMIP:%s\n", cpu_id,
+                 (final_cr0 & (1 << 16)) ? "ON " : "OFF",
+                 (final_cr4 & (1 << 20)) ? "ON " : "OFF",
+                 (final_cr4 & (1 << 21)) ? "ON " : "OFF",
+                 (final_cr4 & (1 << 11)) ? "ON " : "OFF");
+
+    // 3. 打印高级指令集与硬件加速特性
+    color_printk(GREEN, BLACK, "[CPU %d] [SIMD] Engine: %s | PCID: %s\n", cpu_id,
+                 (final_xcr0 & 0xE0) == 0xE0 ? "AVX-512 (ZMM)" :
+                 (final_xcr0 & 0x06) == 0x06 ? "AVX-256 (YMM)" : "SSE (XMM)",
+                 (final_cr4 & (1 << 17)) ? "Supported" : "Disabled");
+
+    // 4. 打印 PAT 定制内存布局与 APIC 状态
+    color_printk(GREEN, BLACK, "[CPU %d] [Mem ] PAT Custom Layout Loaded. X2APIC Enabled.\n", cpu_id);
+
 }
 
 INIT_TEXT uint32 apicid_to_cpuid(uint32 apic_id) {
@@ -162,33 +197,6 @@ INIT_TEXT uint32 cpuid_to_apicid(uint32 cpu_id) {
     return apic_id_table[cpu_id];
 }
 
-/**
- * @brief 将 TSS 挂载到 GDT 中 (极限化简版)
- * @param tss_desc_ptr 指向 GDT 中 tss_desc[2] 数组的首地址
- * @param base         TSS 结构体的 64 位虚拟首地址
- *
- * @note 64位 TSS 固定大小 104 字节，Limit 强制硬编码为 0x67
- *       Type 强制硬编码为 0x89 (Available 64-bit TSS)
- */
-static inline void set_tss_descriptor(uint64 *tss_desc_ptr, uint64 base) {
-    /*
-     * 低 8 字节 (Low 64-bit) 极限位运算组合：
-     * [0:15]   = 0x0067 (Limit 15:0)
-     * [16:39]  = Base 23:0 (巧妙地用 base & 0xFFFFFF 一次性填入)
-     * [40:47]  = 0x89 (Type & Attr)
-     * [48:55]  = 0x00 (Limit 19:16 + Flags 全为 0)
-     * [56:63]  = Base 31:24
-     */
-    tss_desc_ptr[0] = (sizeof(tss_t)-1)
-                    | ((base & 0xFFFFFFULL) << 16)
-                    | (0x89ULL << 40)
-                    | (((base >> 24) & 0xFFULL) << 56);
-
-    /* 高 8 字节 (High 64-bit)：直接就是 Base 的高 32 位 */
-    tss_desc_ptr[1] = base >> 32;
-}
-
-
 
 INIT_TEXT void bsp_init(void){
     uint32 apic_id,cpu_id,tmp;
@@ -198,7 +206,7 @@ INIT_TEXT void bsp_init(void){
 
     bsp_backup_mtrr_state();
     get_cpu_info();                            //获取cpu信息
-    idt_init();                                //初始化IDT
+    tmp_idt_init();                                //初始化IDT
     apic_init();                               //初始化apic
     init_syscall();                            //初始化系统调用
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
