@@ -32,6 +32,10 @@ INIT_TEXT void kernel_init(void) {
     vm_layout_init();                                           //虚拟内存空间初始化
     memblock_init();                                            //初始化启动内存分配器
     kpage_table_init();                                         //初始化正式内核页表
+
+    uint64 *i = (uint64*)0x123;
+    *i = 1;
+
     buddy_system_init();                                        //初始化伙伴系统
     slub_init();                                                //初始化slub内存分配器
     rbtree_empty_augment_callbacks_init();                      //初始化红黑树空回调函数

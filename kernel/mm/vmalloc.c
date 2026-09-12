@@ -2,8 +2,9 @@
 #include "../include/buddy_system.h"
 #include "../include/slub.h"
 #include "../include/printk.h"
-#include "../init/kernel_page_table.h"
 #include "rbtree.h"
+
+extern vm_space_t kernel_space;
 
 /* ========================================================================== */
 /*                         VMA 虚拟内存区域属性标志位                         */

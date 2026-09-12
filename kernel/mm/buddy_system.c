@@ -1,10 +1,11 @@
 #include "../include/buddy_system.h"
-#include "../init/kernel_page_table.h"
 #include "../include/memblock.h"
 #include "../include/printk.h"
 #include "slub.h"
 
 buddy_system_t buddy_system;
+
+extern vm_space_t kernel_space;
 
 // =========================================================================
 // 伙伴系统初始化 (极致降维 O(1) 加速版)
@@ -59,6 +60,7 @@ INIT_TEXT void buddy_system_init(void) {
     kernel_space.ops.phys_to_page = pa_to_page;
     kernel_space.ops.phys_to_virt = pa_to_va;
     kernel_space.ops.virt_to_phys = va_to_pa;
+
 }
 
 // =========================================================================

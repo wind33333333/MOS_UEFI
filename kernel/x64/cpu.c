@@ -11,23 +11,6 @@
 cpu_info_t cpu_info;
 uint32 *apic_id_table; //apic_id_table
 
-INIT_TEXT void get_cpu_info(void) {
-    uint32 eax,ebx,ecx,edx;
-    // 获取CPU厂商
-    asm_cpuid_count(0,0,(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[0],(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[4]);
-
-    // 获取CPU型号
-    asm_cpuid_count(0x80000002,0,(uint32*)&cpu_info.model_name[0],(uint32*)&cpu_info.model_name[4],(uint32*)&cpu_info.model_name[8],(uint32*)&cpu_info.model_name[12]);
-    asm_cpuid_count(0x80000003,0,(uint32*)&cpu_info.model_name[16],(uint32*)&cpu_info.model_name[20],(uint32*)&cpu_info.model_name[24],(uint32*)&cpu_info.model_name[28]);
-    asm_cpuid_count(0x80000004,0,(uint32*)&cpu_info.model_name[32],(uint32*)&cpu_info.model_name[36],(uint32*)&cpu_info.model_name[40],(uint32*)&cpu_info.model_name[44]);
-
-    // 获取CPU频率
-    asm_cpuid_count(0x16,0,&cpu_info.fundamental_hz,&cpu_info.maximum_hz,&cpu_info.bus_hz,&edx);
-
-    // 直接通过hpet校准 CPU TSC频率
-    cpu_info.tsc_hz = hpet_calibrate_tsc_hz(&hpet_dev,10);
-}
-
 INIT_TEXT void cpu_feature_init(void){
     uint32 eax,ebx,ecx,edx;
     uint64 tmp,value;
@@ -186,6 +169,23 @@ INIT_TEXT void cpu_feature_init(void){
 
 }
 
+INIT_TEXT void get_cpu_info(void) {
+    uint32 eax,ebx,ecx,edx;
+    // 获取CPU厂商
+    asm_cpuid_count(0,0,(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[0],(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[4]);
+
+    // 获取CPU型号
+    asm_cpuid_count(0x80000002,0,(uint32*)&cpu_info.model_name[0],(uint32*)&cpu_info.model_name[4],(uint32*)&cpu_info.model_name[8],(uint32*)&cpu_info.model_name[12]);
+    asm_cpuid_count(0x80000003,0,(uint32*)&cpu_info.model_name[16],(uint32*)&cpu_info.model_name[20],(uint32*)&cpu_info.model_name[24],(uint32*)&cpu_info.model_name[28]);
+    asm_cpuid_count(0x80000004,0,(uint32*)&cpu_info.model_name[32],(uint32*)&cpu_info.model_name[36],(uint32*)&cpu_info.model_name[40],(uint32*)&cpu_info.model_name[44]);
+
+    // 获取CPU频率
+    asm_cpuid_count(0x16,0,&cpu_info.fundamental_hz,&cpu_info.maximum_hz,&cpu_info.bus_hz,&edx);
+
+    // 直接通过hpet校准 CPU TSC频率
+    cpu_info.tsc_hz = hpet_calibrate_tsc_hz(&hpet_dev,10);
+}
+
 INIT_TEXT uint32 apicid_to_cpuid(uint32 apic_id) {
     for (uint32 i = 0; i < cpu_info.logical_processors_number; i++) {
         if (apic_id == apic_id_table[i])
@@ -197,7 +197,6 @@ INIT_TEXT uint32 apicid_to_cpuid(uint32 apic_id) {
 INIT_TEXT uint32 cpuid_to_apicid(uint32 cpu_id) {
     return apic_id_table[cpu_id];
 }
-
 
 INIT_TEXT void bsp_init(void){
     uint32 apic_id,cpu_id,tmp;

@@ -5,4 +5,3 @@
 
 void kpage_table_init(void);
 
-extern vm_space_t kernel_space;
