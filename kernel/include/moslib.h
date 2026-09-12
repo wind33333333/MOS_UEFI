@@ -661,38 +661,37 @@ static inline int asm_strlen(char *String) {
     return __res;
 }
 
-static inline void asm_io_in8(uint16 port, uint8 *value) {
-    __asm__ __volatile__(
-            "inb %%dx,%%al \n\t"
-            :"=a"(*value)
-            :"d"(port)
-            :"memory");
+/** 从指定端口读取一个字节 */
+static inline uint8 asm_io_in8(uint16 port) {
+    uint8 value;
+    __asm__ volatile("inb %1, %0"
+                     : "=a"(value)
+                     : "Nd"(port));
+    return value;
 }
 
+/** 向指定端口写入一个字节 */
 static inline void asm_io_out8(uint16 port, uint8 value) {
-    __asm__ __volatile__(
-            "outb %%al,%%dx \n\t"
-            :
-            :"a"(value), "d"(port)
-            :"memory");
+    __asm__ volatile("outb %0, %1"
+                     :
+                     : "a"(value), "Nd"(port));
 }
 
-static inline void asm_io_in32(uint16 port, uint32 *value) {
-    __asm__ __volatile__(
-            "inl %%dx,%%eax \n\t"
-            :"=a"(*value)
-            :"d"(port)
-            :"memory");
+/** 从指定端口读取一个双字（32位） */
+static inline uint32 asm_io_in32(uint16 port) {
+    uint32 value;
+    __asm__ volatile("inl %1, %0"
+                     : "=a"(value)
+                     : "Nd"(port));
+    return value;
 }
 
+/** 向指定端口写入一个双字（32位） */
 static inline void asm_io_out32(uint16 port, uint32 value) {
-    __asm__ __volatile__(
-            "outl %%eax,%%dx \n\t"
-            :
-            :"a"(value), "d"(port)
-            :"memory");
+    __asm__ volatile("outl %0, %1"
+                     :
+                     : "a"(value), "Nd"(port));
 }
-
 
 
 /*

@@ -20,8 +20,21 @@ void do_debug(cpu_registers_t *regs) {
 
 
 void do_nmi(cpu_registers_t *regs) {
-    color_printk(RED, BLACK, "do_nmi(2),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n", regs->err_code, regs->rsp,regs->rip);
-    while (1);
+    // 1. 读取 0x61 端口，检查是不是最致命的硬件故障
+    uint8 port_61 = asm_io_in8(0x61);
+
+    if (port_61 & 0x80) {
+        color_printk(RED, BLACK, "FATAL: Memory Parity Error!\n");
+        while(1); // 致命故障，直接挂起
+    }
+    if (port_61 & 0x40) {
+        color_printk(RED, BLACK, "FATAL: Bus Error!\n");
+        while(1); // 致命故障，直接挂起
+    }
+
+    // 2. 如果不是致命故障，大概率是 QEMU 或某些没屏蔽的定时器触发的
+    // 直接忽略，让它返回，保持系统继续活下去！
+    color_printk(YELLOW, BLACK, "Warning: Spurious NMI received. Ignoring.\n");
 }
 
 

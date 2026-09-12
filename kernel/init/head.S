@@ -19,7 +19,7 @@ _start:
 
     // 1. 动态修补 GDT 描述符基址并加载
     leaq     tmp_gdt(%rip), %rax
-    leaq     tmp_gdt_desc(%rip), %rcx
+    leaq     tmp_gdt_ptr(%rip), %rcx
     movq     %rax, 2(%rcx)              // 消除 PIE(位置无关代码)带来的偏移，填入真实物理地址
     lgdt     (%rcx)                     // 第一时间接管全局描述符表！
 
@@ -217,11 +217,19 @@ trampoline_64:
 /* ==================================================================== */
 .prepare_c_env:
 
+    // 1. 更新 GDT 描述符基址并加载
+    leaq     tmp_gdt(%rip), %rax
+    movabs   $KERNEL_VA_START, %rbx
+    orq      %rbx, %rax
+    leaq     tmp_gdt_ptr(%rip), %rcx
+    movq     %rax, 2(%rcx)              // 消除 PIE(位置无关代码)带来的偏移，填入gdt虚拟地址
+    lgdt     (%rcx)                     // 第一时间接管全局描述符表！
+
     /*
      * 动态修补临时 64 位 TSS 描述符并加载。
      * 此时 GDTR 稳稳指向 tmp_gdt，TSS 描述符位于偏移 0x20 处 (第 5 个槽位)
      */
-
+     
     // 1. 获取 tmp_tss 最终的高半核虚拟首地址到 %rax
     leaq     tmp_tss(%rip), %rax
     movabs   $KERNEL_VA_START, %rbx
@@ -299,7 +307,7 @@ tmp_tss:
     .quad 0                             // 0x0C: rsp1 (废弃)
     .quad 0                             // 0x14: rsp2 (废弃)
     .quad 0                             // 0x1C: reserved1
-    .quad 0, 0, 0, 0, 0, 0, 0           // 0x24: ist1 ~ ist7 (早期无需初始化)
+    .quad tmp_bsp_stack_top, 0, 0, 0, 0, 0, 0           // 0x24: ist1 ~ ist7 (早期无需初始化)
     .quad 0                             // 0x5C: reserved2
     .word 0                             // 0x64: reserved3
     .word 0x0068                        // 0x66: iomap_base (104, 彻底拦截 Ring3 的 I/O 操作)
@@ -326,8 +334,8 @@ tmp_gdt:
     .long 0x00000000                    // Base  63:32 [运行时补丁区]
     .long 0x00000000                    // Reserved (TSS 高8字节的后32位强制保留为0)
 
-tmp_gdt_desc:
-    .word tmp_gdt_desc - tmp_gdt - 1    // 汇编器自动计算出包含 TSS 后的真实 GDT Size！
+tmp_gdt_ptr:
+    .word tmp_gdt_ptr - tmp_gdt - 1     // 汇编器自动计算出包含 TSS 后的真实 GDT Size！
     .quad tmp_gdt                       // 运行时会被动态修补为真实物理基址
 
 
