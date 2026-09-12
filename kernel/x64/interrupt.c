@@ -546,8 +546,6 @@ void idt_init(void) {
     idtr.base = idt;
     asm_lidt(&idtr);
 
-    color_printk(GREEN, BLACK, "limit:%#x base:%lx \n",idtr.limit,idtr.base);
-
     // 打开 CPU 全局中断标志
     asm_sti();
 
