@@ -387,8 +387,14 @@ INIT_TEXT void output_init(void) {
     color_printk(GREEN, BLACK, "Video Memory Physics Addr:%#lx Video Size:%#lx Resolution:%d * %d\n",Pos.FB_addr,Pos.FB_length,Pos.XResolution,Pos.YResolution);
 }
 
-INIT_TEXT void video_mem_map(void) {
+extern vm_space_t kernel_space;
+INIT_TEXT void tmp_video_mem_map(void) {
     tmp_boot_info = pa_to_va((uint64)tmp_boot_info);
+    vm_map_range(&kernel_space,tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size,PAGE_KERNEL_MMIO_WC | SW_FLAG_MAX_1G);
+}
+
+INIT_TEXT void video_mem_map(void) {
+    vm_unmap_range(&kernel_space,tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size,UNMAP_FLAG_NONE);
     Pos.FB_addr = ioremap_wc(tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size);
     color_printk(GREEN, BLACK, "Voide Memory Physics Address:%#lx -> Virtual Address:%#lx\n",tmp_boot_info->frame_buffer_base,Pos.FB_addr);
 }

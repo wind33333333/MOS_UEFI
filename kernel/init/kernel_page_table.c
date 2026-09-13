@@ -108,6 +108,9 @@ INIT_TEXT void kpage_table_init(void) {
     kernel_space.cr3_root = memblock_alloc(4096,PAGE_4K_SIZE);
     kernel_space.paging_level = tmp_paging_level;
 
+    //临时显存对等映射
+    tmp_video_mem_map();
+
     //直接映射区
     for (uint64 i=0;i < direct_mem_map.count;i++) {
         uint64 start_pa = direct_mem_map.region[i].start_pa;
