@@ -368,6 +368,7 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
 //全局变量buf
 char buf[4096];
 
+
 INIT_TEXT void output_init(void) {
     Pos.XResolution = tmp_boot_info->horizontal_resolution;
     Pos.YResolution = tmp_boot_info->vertical_resolution;
