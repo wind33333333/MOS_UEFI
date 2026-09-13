@@ -194,7 +194,7 @@ void do_page_fault(cpu_registers_t *regs) {
     uint64 *p = NULL;
     uint64 cr2 = 0;
 
-    __asm__ __volatile__("movq	%%cr2,	%0":"=r"(cr2)::"memory");
+    cr2 = asm_get_cr2();
 
     color_printk(RED, BLACK, "do_page_fault(14),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);

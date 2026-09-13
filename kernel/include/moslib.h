@@ -279,8 +279,8 @@ static inline uint64 asm_rdtscp(void) {
 static inline uint64 asm_get_cr0(void) {
     uint64 cr0;
     __asm__ __volatile__(
-            "movq   %%cr0,%%rax \n\t"
-            :"=a"(cr0)
+            "movq   %%cr0,%0 \n\t"
+            :"=r"(cr0)
             :
             : "memory"
             );
@@ -296,11 +296,23 @@ static inline void asm_set_cr0(uint64 value) {
             );
 }
 
+
+static inline uint64 asm_get_cr2(void) {
+    uint64 cr2;
+    __asm__ __volatile__(
+            "movq   %%cr2,%0    \n\t"
+            : "=r"(cr2)         // 输出：将 CR3 的值存入 value
+            :                   // 无输入
+            : "memory"          // 通知编译器：此操作可能影响内存
+            );
+    return cr2;
+}
+
 static inline uint64 asm_get_cr3(void) {
     uint64 cr3;
     __asm__ __volatile__(
-            "movq   %%cr3,%%rax \n\t"
-            : "=a"(cr3)         // 输出：将 CR3 的值存入 value
+            "movq   %%cr3,%0 \n\t"
+            : "=r"(cr3)         // 输出：将 CR3 的值存入 value
             :                   // 无输入
             : "memory"          // 通知编译器：此操作可能影响内存
             );
@@ -319,8 +331,8 @@ static inline void asm_set_cr3(uint64 value) {
 static inline uint64 asm_get_cr4(void) {
     uint64 cr4;
     __asm__ __volatile__(
-            "movq   %%cr4,%%rax \n\t"
-            : "=a"(cr4)         // 输出：将 CR3 的值存入 value
+            "movq   %%cr4,%0 \n\t"
+            : "=r"(cr4)         // 输出：将 CR3 的值存入 value
             :                   // 无输入
             : "memory"          // 通知编译器：此操作可能影响内存
             );
