@@ -322,7 +322,7 @@ INIT_TEXT void memblock_init(void) {
     kernel_space.ops.phys_to_virt = pa_to_va;
     kernel_space.ops.virt_to_phys = va_to_pa;
 
-    color_printk(GREEN, BLACK, "Total Physics Memory:%dMB\n", phy_mem_size / 1024 / 1024);
+    PR_INFO("Total Physics Memory:%dMB\n", phy_mem_size / 1024 / 1024);
 }
 
 

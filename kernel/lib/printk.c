@@ -400,21 +400,6 @@ int32 color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, 
     return i;
 }
 
-int32 pr_info() {
-}
-
-int32 pr_ok() {
-
-}
-
-int32 pr_warn() {
-
-}
-
-int32 pr_error() {
-
-}
-
 
 INIT_TEXT void output_init(void) {
     Pos.XResolution = tmp_boot_info->horizontal_resolution;
@@ -432,7 +417,8 @@ INIT_TEXT void output_init(void) {
         Pos.FB_addr[i] = BLACK;
     }
 
-    color_printk(GREEN, BLACK, "Video Memory Physics Addr:%#lx Video Size:%#lx Resolution:%d * %d\n",Pos.FB_addr,Pos.FB_length,Pos.XResolution,Pos.YResolution);
+    PR_OK("Out Put init Success!\n");
+
 }
 
 extern vm_space_t kernel_space;
@@ -444,6 +430,6 @@ INIT_TEXT void tmp_video_mem_map(void) {
 INIT_TEXT void video_mem_map(void) {
     vm_unmap_range(&kernel_space,tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size,UNMAP_FLAG_NONE);
     Pos.FB_addr = ioremap_wc(tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size);
-    color_printk(GREEN, BLACK, "Voide Memory Physics Address:%#lx -> Virtual Address:%#lx\n",tmp_boot_info->frame_buffer_base,Pos.FB_addr);
+    PR_INFO("Voide Memory Physics Address:%#lx -> Virtual Address:%#lx  Video Size:%#lx Resolution:%d * %d\n",tmp_boot_info->frame_buffer_base,Pos.FB_addr,Pos.FB_length,Pos.XResolution,Pos.YResolution);
 }
 

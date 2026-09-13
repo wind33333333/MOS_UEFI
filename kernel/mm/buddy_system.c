@@ -61,6 +61,7 @@ INIT_TEXT void buddy_system_init(void) {
     kernel_space.ops.phys_to_virt = pa_to_va;
     kernel_space.ops.virt_to_phys = va_to_pa;
 
+    PR_OK("Buddy System Memory success.\n");
 }
 
 // =========================================================================

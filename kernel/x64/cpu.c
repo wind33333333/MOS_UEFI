@@ -147,25 +147,25 @@ INIT_TEXT void cpu_feature_init(void){
     uint32 cpu_id = (uint32)asm_rdmsr(APIC_ID_MSR);
 
     // 1. 打印基础控制寄存器 (高半核多核排错神器)
-    color_printk(GREEN, BLACK, "[CPU %d] Features Initialized Successfully!\n", cpu_id);
-    color_printk(GREEN, BLACK, "[CPU %d] [Regs] CR0: %#018lx | CR4: %#018lx\n", cpu_id, final_cr0, final_cr4);
-    color_printk(GREEN, BLACK, "[CPU %d] [Regs] EFER:%#018lx | XCR0:%#018lx\n", cpu_id, final_efer, final_xcr0);
+    PR_OK("CPU%d Features Initialized Success!\n", cpu_id);
+    PR_INFO("CPU%d CR0: %#lx | CR4: %#lx\n", cpu_id, final_cr0, final_cr4);
+    PR_INFO("CPU%d EFER:%#lx | XCR0:%#lx\n", cpu_id, final_efer, final_xcr0);
 
     // 2. 打印关键安全防御机制状态 (SMEP / SMAP / UMIP / WP)
-    color_printk(GREEN, BLACK, "[CPU %d] [Sec ] WP:%s | SMEP:%s | SMAP:%s | UMIP:%s\n", cpu_id,
+    PR_INFO("CPU%d [Sec ] WP:%s | SMEP:%s | SMAP:%s | UMIP:%s\n", cpu_id,
                  (final_cr0 & (1 << 16)) ? "ON " : "OFF",
                  (final_cr4 & (1 << 20)) ? "ON " : "OFF",
                  (final_cr4 & (1 << 21)) ? "ON " : "OFF",
                  (final_cr4 & (1 << 11)) ? "ON " : "OFF");
 
     // 3. 打印高级指令集与硬件加速特性
-    color_printk(GREEN, BLACK, "[CPU %d] [SIMD] Engine: %s | PCID: %s\n", cpu_id,
+    PR_INFO("CPU%d [SIMD] Engine: %s | PCID: %s\n", cpu_id,
                  (final_xcr0 & 0xE0) == 0xE0 ? "AVX-512 (ZMM)" :
                  (final_xcr0 & 0x06) == 0x06 ? "AVX-256 (YMM)" : "SSE (XMM)",
                  (final_cr4 & (1 << 17)) ? "Supported" : "Disabled");
 
     // 4. 打印 PAT 定制内存布局与 APIC 状态
-    color_printk(GREEN, BLACK, "[CPU %d] [Mem ] PAT Custom Layout Loaded. X2APIC Enabled.\n", cpu_id);
+   PR_INFO("CPU%d [Mem ] PAT Custom Layout Loaded. X2APIC Enabled.\n", cpu_id);
 
 }
 

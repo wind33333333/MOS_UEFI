@@ -26,9 +26,11 @@ void efi_runtime_service_init(void) {
         efi_size = desc->NumberOfPages << PAGE_4K_SHIFT;
 
         uint64 flags;
+        char *str = "Data";
         // 完整的 if-else 链，保证 flags 绝对不会是随机野值！
         if (desc->Type == EFI_RUNTIME_SERVICES_CODE) {
             flags = PAGE_KERNEL_CODE;
+            str = "Code";
         } else if (desc->Type == EFI_MEMORY_MAPPED_IO || desc->Type == EFI_MEMORY_MAPPED_IO_PORT_SPACE) {
             flags = PAGE_KERNEL_MMIO_WUC;
         } else {
@@ -43,6 +45,8 @@ void efi_runtime_service_init(void) {
         }
 
         vm_map_range(&kernel_space, efi_rts_start_va, efi_pa, efi_size, flags);
+
+        PR_INFO("Uefi Run Time Service %s Map Pa:%#lx -> Va:%#lx Size:%lx\n",str,efi_rts_start_va,efi_pa,efi_size);
 
         // 手动加上主板固件给的真实跨度
         desc_ptr += tmp_boot_info->mem_descriptor_size;
@@ -60,21 +64,22 @@ void efi_runtime_service_init(void) {
     // 关闭临时映射
     root_table[0] = 0;
 
-    // 直接重新加载一遍 CR3 寄存器即可清空全局 TLB
-    asm_set_cr3(kernel_space.cr3_root);
+    uint64 cr4 = asm_get_cr4();
+    asm_set_cr4(cr4 & ~(1ULL << 7)); // 翻转 CR4.PGE 刷新全局页
+    asm_set_cr4(cr4);
 
     // 【修复3-3】：SVAM 安全执行完毕后，操作系统正式将指针切换为高位虚拟地址！
     if (new_grts_va != 0) {
         tmp_boot_info->gRTS = (EFI_RUNTIME_SERVICES *)new_grts_va;
     } else {
-        color_printk(RED, BLACK, "PANIC: gRTS table lost!\n");
+        PR_ERROR("gRTS table lost!\n");
         while(1);
     }
 
     // 初始化后尝试获取时间信息并打印检测是否映射成功
     EFI_TIME efi_time;
     tmp_boot_info->gRTS->GetTime(&efi_time, NULL);
-    color_printk(GREEN, BLACK, "UEFI Run Time Service Get Time: %d-%d-%d %d:%d:%d\n",
+    PR_OK("UEFI Run Time Service Get Time: %d-%d-%d %d:%d:%d\n",
                  efi_time.Year, efi_time.Month, efi_time.Day,
                  efi_time.Hour, efi_time.Minute, efi_time.Second);
 }

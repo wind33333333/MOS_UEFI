@@ -49,7 +49,7 @@ INIT_TEXT static inline void page_map_init() {
                 }
             } else {
                 if (merged_count >= MAX_PAGEMAP_REGIONS) {
-                    color_printk(RED, BLACK, "FATAL: Vmemmap regions exceeded MAX_PAGEMAP_REGIONS!\n");
+                    PR_ERROR("Page map regions exceeded MAX_PAGEMAP_REGIONS!\n");
                     while(1);
                 }
                 merged_page_map[merged_count].va_start = va_start;
@@ -87,7 +87,7 @@ INIT_TEXT static inline void page_map_init() {
             // 物理分配器查找如此小且规整的连续块易如反掌，彻底消灭物理内存碎片化导致的宕机！
             uint64 pa = memblock_alloc(step_size, step_size);
             if (!pa) {
-                color_printk(RED, BLACK, "FATAL: memblock_alloc failed! Step Size: %#lx\n", step_size);
+                PR_ERROR("memblock_alloc failed! Step Size: %#lx\n", step_size);
                 while(1);
             }
 
@@ -105,40 +105,65 @@ INIT_TEXT static inline void page_map_init() {
 
 
 INIT_TEXT void kpage_table_init(void) {
-    kernel_space.cr3_root = memblock_alloc(4096,PAGE_4K_SIZE);
+    kernel_space.cr3_root = memblock_alloc(4096, PAGE_4K_SIZE);
     kernel_space.paging_level = tmp_paging_level;
 
-    //临时显存对等映射
+    // 临时显存对等映射
     tmp_video_mem_map();
 
     //直接映射区
+
     for (uint64 i=0;i < direct_mem_map.count;i++) {
         uint64 start_pa = direct_mem_map.region[i].start_pa;
         uint64 size = direct_mem_map.region[i].size;
         vm_map_range(&kernel_space,(uint64)pa_to_va(start_pa),start_pa,size,PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G );
+
     }
 
-    //page映射区
+    // page映射区
     page_map_init();
 
-    //.init_text
-    vm_map_range(&kernel_space,(uint64)_start_init_text,(uint64)_start_init_text - vm_layout.kernel_start,(uint64)_end_init_text - (uint64)_start_init_text,PAGE_KERNEL_CODE);
+    // .init_text
+    uint64 init_text_va = (uint64)_start_init_text;
+    uint64 init_text_pa = init_text_va - vm_layout.kernel_start;
+    uint64 init_text_sz = (uint64)_end_init_text - init_text_va;
+    PR_INFO("  -> .init_text : VA %#lx -> PA %#lx, Size: %#lx\n", init_text_va, init_text_pa, init_text_sz);
+    vm_map_range(&kernel_space, init_text_va, init_text_pa, init_text_sz, PAGE_KERNEL_CODE);
 
-    //init_data
-    vm_map_range(&kernel_space,(uint64)_start_init_data,(uint64)_start_init_data - vm_layout.kernel_start,(uint64)_end_init_data - (uint64)_start_init_data,PAGE_KERNEL_DATA_RW);
+    // .init_data
+    uint64 init_data_va = (uint64)_start_init_data;
+    uint64 init_data_pa = init_data_va - vm_layout.kernel_start;
+    uint64 init_data_sz = (uint64)_end_init_data - init_data_va;
+    PR_INFO("  -> .init_data : VA %#lx -> PA %#lx, Size: 0x%lx\n", init_data_va, init_data_pa, init_data_sz);
+    vm_map_range(&kernel_space, init_data_va, init_data_pa, init_data_sz, PAGE_KERNEL_DATA_RW);
 
-    //正式内核 .text可读执行
-    vm_map_range(&kernel_space,(uint64)_start_text,(uint64)_start_text - vm_layout.kernel_start,(uint64)_end_text - (uint64)_start_text,PAGE_KERNEL_CODE);
+    // 正式内核 .text可读执行
+    uint64 text_va = (uint64)_start_text;
+    uint64 text_pa = text_va - vm_layout.kernel_start;
+    uint64 text_sz = (uint64)_end_text - text_va;
+    PR_INFO("  -> .text      : VA %#lx -> PA %#lx, Size: 0x%lx\n", text_va, text_pa, text_sz);
+    vm_map_range(&kernel_space, text_va, text_pa, text_sz, PAGE_KERNEL_CODE);
 
-    //.rodata
-    vm_map_range(&kernel_space,(uint64)_start_rodata,(uint64)_start_rodata - vm_layout.kernel_start,(uint64)_end_rodata - (uint64)_start_rodata,PAGE_KERNEL_DATA_RO);
+    // .rodata
+    uint64 rodata_va = (uint64)_start_rodata;
+    uint64 rodata_pa = rodata_va - vm_layout.kernel_start;
+    uint64 rodata_sz = (uint64)_end_rodata - rodata_va;
+    PR_INFO("  -> .rodata    : VA %#lx -> PA %#lx, Size: 0x%lx\n", rodata_va, rodata_pa, rodata_sz);
+    vm_map_range(&kernel_space, rodata_va, rodata_pa, rodata_sz, PAGE_KERNEL_DATA_RO);
 
-    //.data .bss
-    vm_map_range(&kernel_space,(uint64)_start_data,(uint64)_start_data - vm_layout.kernel_start,(uint64)_end_bss - (uint64)_start_data,PAGE_KERNEL_DATA_RW);
+    // .data .bss
+    uint64 data_va = (uint64)_start_data;
+    uint64 data_pa = data_va - vm_layout.kernel_start;
+    uint64 data_sz = (uint64)_end_bss - data_va;
+    PR_INFO("  -> .data/.bss : VA %#lx -> PA %#lx, Size: 0x%lx\n", data_va, data_pa, data_sz);
+    vm_map_range(&kernel_space, data_va, data_pa, data_sz, PAGE_KERNEL_DATA_RW);
 
-    //设置正式内核页表,并刷新tlb
     asm_set_cr3(kernel_space.cr3_root);
     uint64 cr4 = asm_get_cr4();
     asm_set_cr4(cr4 & ~(1ULL << 7)); // 翻转 CR4.PGE 刷新全局页
     asm_set_cr4(cr4);
+
+    // 设置正式内核页表,并刷新tlb
+    PR_OK("Kernel page table switch successful, %d level paging enabled,CR3:%lx \n",kernel_space.paging_level, kernel_space.cr3_root);
+
 }

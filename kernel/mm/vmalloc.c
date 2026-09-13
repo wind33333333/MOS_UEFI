@@ -600,6 +600,8 @@ void INIT_TEXT vmalloc_init(void) {
     vmap = create_vmap_area(vm_layout.module_start, vm_layout.module_end, 0);
     list_head_init(&vmap->list);
     insert_vmap_area(&free_vmap_area_root, vmap, &vmap_area_augment_callbacks);
+
+    PR_OK("Vmalloc Memory System Success.\n");
 }
 
 

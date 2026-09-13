@@ -661,16 +661,16 @@ INIT_TEXT void vm_layout_init(void) {
 
     vm_layout.efi_rts_start = UEFI_RTS_VA_START;
     vm_layout.efi_rts_end = UEFI_RTS_VA_END;
-    vm_layout.module_start = MODULES_VA_START;
-    vm_layout.module_end = MODULES_VA_END;
     vm_layout.kernel_start = KERNEL_VA_START;
     vm_layout.kernel_end = KERNEL_VA_END;
+    vm_layout.module_start = MODULES_VA_START;
+    vm_layout.module_end = MODULES_VA_END;
 
-    color_printk(GREEN,BLACK,"Direct Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.direct_map_start,vm_layout.direct_map_end);
-    color_printk(GREEN,BLACK,"Vmalloc Start Addr:%#lx  End Addr:%#lx \n",vm_layout.vmalloc_start,vm_layout.vmalloc_end);
-    color_printk(GREEN,BLACK,"Page Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.page_map_start,vm_layout.page_map_end);
-    color_printk(GREEN,BLACK,"IO Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.io_map_start,vm_layout.io_map_end);
-    color_printk(GREEN,BLACK,"UEFI RTS Start Addr:%#lx  End Addr:%#lx \n",vm_layout.efi_rts_start,vm_layout.efi_rts_end);
-    color_printk(GREEN,BLACK,"Modules Start Addr:%#lx  End Addr:%#lx \n",vm_layout.module_start,vm_layout.module_end);
-    color_printk(GREEN,BLACK,"Kernel Start Addr:%#lx  End Addr:%#lx \n",vm_layout.kernel_start,vm_layout.kernel_end);
+    PR_INFO("Direct Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.direct_map_start,vm_layout.direct_map_end);
+    PR_INFO("Vmalloc Start Addr:%#lx  End Addr:%#lx \n",vm_layout.vmalloc_start,vm_layout.vmalloc_end);
+    PR_INFO("Page Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.page_map_start,vm_layout.page_map_end);
+    PR_INFO("IO Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.io_map_start,vm_layout.io_map_end);
+    PR_INFO("UEFI RTS Start Addr:%#lx  End Addr:%#lx \n",vm_layout.efi_rts_start,vm_layout.efi_rts_end);
+    PR_INFO("Kernel Start Addr:%#lx  End Addr:%#lx \n",vm_layout.kernel_start,vm_layout.kernel_end);
+    PR_INFO("Modules Start Addr:%#lx  End Addr:%#lx \n",vm_layout.module_start,vm_layout.module_end);
 }

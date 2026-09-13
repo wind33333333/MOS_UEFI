@@ -1,4 +1,6 @@
 #include "../include/slub.h"
+
+#include "printk.h"
 #include "../include/buddy_system.h"
 
 // page_t 对象地址 转换为 可被内核直接读写的虚拟地址 (走高半核 HHDM 映射)
@@ -299,6 +301,7 @@ INIT_TEXT void slub_init(void) {
         create_cache(kmalloc_name[i], kmalloc_cache[i], object_size);
         object_size <<= 1;
     }
+    PR_OK("Slub Memory System Success.\n");
 }
 
 // =========================================================================
