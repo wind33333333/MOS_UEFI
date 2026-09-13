@@ -280,8 +280,23 @@ trampoline_64:
     // 页表必须严格 4KB 对齐
     .balign 4096
 
+    .fill 0x1000, 1, 0
+    tmp_df_stack_top:       // 给 #DF 用 (IST1)
+
+    .fill 0x1000, 1, 0
+    tmp_nmi_stack_top:      // 给 #NMI 用 (IST2)
+
+    .fill 0x1000, 1, 0
+    tmp_mc_stack_top:       // 给 #MC 用 (IST3)
+
+    .fill 0x1000, 1, 0
+    tmp_db_stack_top:       // 给 #DB 用 (IST4)
+
+    .fill 0x1000, 1, 0      // tss rsp0栈
+    tmp_rsp0_stack_top:
+
     // 为 BSP 核心预留的 16KB 临时安全堆栈
-    tmp_bsp_stack:  .fill   0x4000, 1, 0
+    .fill   0x4000, 1, 0
     tmp_bsp_stack_top:
 
     .globl  tmp_pml5t
@@ -299,15 +314,17 @@ trampoline_64:
     .balign 64                          // Cache Line 对齐，防止 SMP 伪共享
 tmp_tss:
     .long 0                             // 0x00: reserved0
-    /*
-     * 链接器在链接阶段会自动赋予 tmp_bsp_stack_top 其处于
-     * 0xFFFFFFFF80000000 空间的虚拟地址，直接作为内核 Ring 0 的救命堆栈！
-     */
-    .quad tmp_bsp_stack_top             // 0x04: rsp0 (Ring 0 内核栈)
+    .quad tmp_rsp0_stack_top            // 0x04: rsp0 (Ring 0 内核栈)
     .quad 0                             // 0x0C: rsp1 (废弃)
     .quad 0                             // 0x14: rsp2 (废弃)
     .quad 0                             // 0x1C: reserved1
-    .quad tmp_bsp_stack_top, 0, 0, 0, 0, 0, 0           // 0x24: ist1 ~ ist7 (早期无需初始化)
+    .quad tmp_df_stack_top              // 0x24: ist1
+    .quad tmp_nmi_stack_top             // 0x2C: ist2
+    .quad tmp_mc_stack_top              // 0x34: ist3
+    .quad tmp_db_stack_top              // 0x3C: ist4
+    .quad 0                             // 0x44: ist5
+    .quad 0                             // 0x4C: ist6
+    .quad 0                             // 0x54: ist7
     .quad 0                             // 0x5C: reserved2
     .word 0                             // 0x64: reserved3
     .word 0x0068                        // 0x66: iomap_base (104, 彻底拦截 Ring3 的 I/O 操作)
