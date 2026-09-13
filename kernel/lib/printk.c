@@ -3,6 +3,42 @@
 #include "slub.h"
 #include "vmalloc.h"
 #include "../include/font.h"
+#include <stdarg.h>
+
+
+#define ZEROPAD	1		/* pad with zero */
+#define SIGN	2		/* unsigned/signed long */
+#define PLUS	4		/* show plus */
+#define SPACE	8		/* space if plus */
+#define LEFT	16		/* left justified */
+#define SPECIAL	32		/* 0x */
+#define SMALL	64		/* use 'abcdef' instead of 'ABCDEF' */
+
+#define is_digit(c)	((c) >= '0' && (c) <= '9')
+
+struct position {
+    uint32 XResolution;
+    uint32 YResolution;
+    uint32 PixelsPerScanLine;
+
+    uint32 XPosition;
+    uint32 YPosition;
+
+    uint32 XCharSize;
+    uint32 YCharSize;
+
+    uint32* FB_addr;
+    uint64 FB_length;
+    uint32 lock;
+}Pos;
+
+//全局变量buf
+char buf[4096];
+
+#define do_div(n,base) ({ \
+int __res; \
+__asm__("divq %%rcx":"=a" (n),"=d" (__res):"0" (n),"1" (0),"c" (base)); \
+__res; })
 
 void putchar(unsigned int *fb, int Xsize, int x, int y, unsigned int FRcolor, unsigned int BKcolor,
              unsigned char font) {
@@ -365,8 +401,7 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
 }
 
 
-//全局变量buf
-char buf[4096];
+
 
 
 INIT_TEXT void output_init(void) {

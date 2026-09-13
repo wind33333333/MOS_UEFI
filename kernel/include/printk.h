@@ -1,24 +1,5 @@
 #pragma once
-#include <stdarg.h>
-
 #include "moslib.h"
-
-
-void output_init(void);
-void tmp_video_mem_map(void);
-void video_mem_map(void);
-extern char buf[4096];
-
-
-#define ZEROPAD	1		/* pad with zero */
-#define SIGN	2		/* unsigned/signed long */
-#define PLUS	4		/* show plus */
-#define SPACE	8		/* space if plus */
-#define LEFT	16		/* left justified */
-#define SPECIAL	32		/* 0x */
-#define SMALL	64		/* use 'abcdef' instead of 'ABCDEF' */
-
-#define is_digit(c)	((c) >= '0' && (c) <= '9')
 
 #define WHITE 	0x00ffffff		//白
 #define BLACK 	0x00000000		//黑
@@ -30,38 +11,15 @@ extern char buf[4096];
 #define INDIGO	0x0000ffff		//靛
 #define PURPLE	0x008000ff		//紫
 
-extern const uint8 font_ascii[256][16];
 
-struct position
-{
-	uint32 XResolution;
-	uint32 YResolution;
-    uint32 PixelsPerScanLine;
-
-	uint32 XPosition;
-	uint32 YPosition;
-
-	uint32 XCharSize;
-	uint32 YCharSize;
-
-	uint32* FB_addr;
-	uint64 FB_length;
-    uint32 lock;
-}Pos;
-
-void putchar(unsigned int * fb,int Xsize,int x,int y,unsigned int FRcolor,unsigned int BKcolor,unsigned char font);
-
-int skip_atoi(const char **s);
-
-#define do_div(n,base) ({ \
-int __res; \
-__asm__("divq %%rcx":"=a" (n),"=d" (__res):"0" (n),"1" (0),"c" (base)); \
-__res; })
-
-static char * number(char * str, long num, int base, int size, int precision ,int type);
-
-int vsprintf(char * buf,const char *fmt, va_list args);
-
+void output_init(void);
+void tmp_video_mem_map(void);
+void video_mem_map(void);
 int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...);
+
+
+
+
+
 
 
