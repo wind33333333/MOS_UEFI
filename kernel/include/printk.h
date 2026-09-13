@@ -8,7 +8,7 @@
 #define BLACK 	0x00000000		//黑
 #define ORANGE	0x00ff8000		//橙
 #define YELLOW	0x00ffff00		//黄
-#define CYAN	0x0000ffff		//靛
+#define CYAN	0x0000ffff		//青
 #define PURPLE	0x008000ff		//紫
 
 
