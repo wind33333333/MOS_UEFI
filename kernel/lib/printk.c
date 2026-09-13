@@ -32,8 +32,6 @@ struct position {
     uint32 lock;
 }Pos;
 
-//全局变量buf
-char buf[4096];
 
 #define do_div(n,base) ({ \
 int __res; \
@@ -339,7 +337,9 @@ static void console_scroll_up(unsigned int BKcolor) {
     Pos.YPosition = max_lines - 1;
 }
 
-int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ...) {
+//全局变量buf
+char buf[4096];
+int32 color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ...) {
     spin_lock(&Pos.lock);
     int i = 0;
     int count = 0;
@@ -400,8 +400,20 @@ int color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
     return i;
 }
 
+int32 pr_info() {
+}
 
+int32 pr_ok() {
 
+}
+
+int32 pr_warn() {
+
+}
+
+int32 pr_error() {
+
+}
 
 
 INIT_TEXT void output_init(void) {
