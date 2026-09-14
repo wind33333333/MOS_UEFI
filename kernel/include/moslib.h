@@ -236,41 +236,6 @@ static inline void spin_unlock_irqrestore(uint32 *lock, uint64 flags) {
 
 
 
-
-static inline void asm_invlpg(uint64 va) {
-    __asm__ __volatile__("invlpg (%0) \n\t" : : "r"(va) : "memory");
-}
-
-
-/**
- * @brief 执行 INVPCID 刷新 TLB
- * @param type 刷新类型 (0:单页, 1:单进程, 2:全部含全局页, 3:全部不含全局页)
- * @param pcid 目标 PCID (0 ~ 4095)
- * @param va   需要刷新的虚拟地址 (仅 Type 0 生效)
- */
-static inline void asm_invpcid(uint64 type, uint64 pcid, uint64 va) {
-    // 构造描述符，强制 16 字节对齐
-    struct {
-        uint64 pcid_resv;
-        uint64 addr;
-    } __attribute__((aligned(16))) desc = {
-        .pcid_resv = pcid & 0xFFF, // 确保高 52 位为 0
-        .addr = va
-    };
-
-    // 内联汇编：
-    // %0 对应内存变量 desc ("m")
-    // %1 对应寄存器变量 type ("r")
-    __asm__ __volatile__ (
-        "invpcid %0, %1"
-        :
-        : "m" (desc), "r" (type)
-        : "memory" // 加上 memory 屏障，防止编译器重排指令
-    );
-}
-
-
-
 /**
  * @brief 高精度起跑线读表 (Start)
  */
