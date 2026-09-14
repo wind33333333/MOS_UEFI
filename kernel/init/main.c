@@ -38,6 +38,7 @@ INIT_TEXT void kernel_init(void) {
     vmalloc_init();                                             //初始化vmalloc
     video_mem_map();                                            //映射显存到虚拟地址空间
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
+    while(1);
     ioapic_init();                                              //初始化ioapic
     hpet_init();                                                //初始化hpet
     bsp_init();                                                 //初始化bsp核心
