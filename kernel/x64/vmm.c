@@ -276,6 +276,7 @@ vm_status_e vm_split_huge_page(vm_space_t *space, uint64 vaddr, vm_page_lvl_e fr
     return VM_SUCCESS;
 }
 
+
 /* ========================================================================== */
 /*                          高内聚区间映射与事务回滚引擎                      */
 /* ========================================================================== */
@@ -308,12 +309,12 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
             target_level = PAGE_LVL_2M; step_bytes = PAGE_2M_SIZE; new_flags |= HW_PAGE_PS;
         }
 
-        if ((flags & SW_FLAG_STRICT_HUGE) && (target_level != max_allowed_level)) {
+        if ((new_flags & SW_FLAG_STRICT_HUGE) && (target_level != max_allowed_level)) {
             status = VM_ERR_INVALID_ARGS; goto rollback;
         }
 
         vm_walk_state_t state = {0};
-        uint64 walk_flags = flags | VMM_WALK_CREATE | ((uint64)target_level << VMM_WALK_LVL_SHIFT);
+        uint64 walk_flags = new_flags | VMM_WALK_CREATE | ((uint64)target_level << VMM_WALK_LVL_SHIFT);
 
         status = vmm_walk(space, curr_va, walk_flags, &state);
         if (status != VM_SUCCESS) goto rollback;
@@ -340,14 +341,15 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
             }
 
             uint64 old_pa = *entry & PTE_ADDR_MASK;
-            if ((flags & SW_FLAG_FREE_OLD_PHYS) && space->ops.free_pages && old_pa != 0) {
+            if ((new_flags & SW_FLAG_FREE_OLD_PHYS) && old_pa != 0) {
                 space->ops.free_pages(space->ops.phys_to_page(old_pa));
             }
+
+            tlb_batch_add(&tlb_batch, curr_va, step_bytes, step_bytes, (new_flags & HW_PAGE_G) ? TRUE : FALSE);
         }
 
         uint64 pte_flags = new_flags & PTE_WRITE_MASK;
         *entry = (curr_pa & PTE_ADDR_MASK) | pte_flags;
-        tlb_batch_add(&tlb_batch, curr_va, step_bytes, step_bytes, (pte_flags & HW_PAGE_G) ? TRUE : FALSE);
 
         curr_va += step_bytes;
         curr_pa += step_bytes;
@@ -362,6 +364,8 @@ rollback:
     if (mapped_bytes > 0) vm_unmap_range(space, vaddr, mapped_bytes, UNMAP_FLAG_NONE);
     return status;
 }
+
+
 
 /* ========================================================================== */
 /*                          范围解映射与自动修剪                              */

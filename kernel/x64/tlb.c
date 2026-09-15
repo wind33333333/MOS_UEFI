@@ -48,6 +48,36 @@ static inline void tlb_flush_page(uint64 va) {
 }
 
 /**
+ * @brief 【API 3】批量范围刷新 (智能路由)
+ * @param start_va 起始虚拟地址
+ * @param size     刷新的总大小 (字节)
+ * @note  如果页数较少，走循环单页刷新；如果范围极大，直接炸掉整个进程 TLB，效率更高。
+ */
+static inline void tlb_flush_range(uint64 start_va, uint64 size) {
+    uint64 page_count = size / PAGE_4K_SIZE; // 假设最小粒度 4K
+
+    if (page_count <= TLB_BATCH_FLUSH_MAX_PAGES) {
+        // 范围很小：逐页狙击 (Sniper Mode)
+        for (uint64 i = 0; i < page_count; i++) {
+            asm_invlpg(start_va + i * PAGE_4K_SIZE);
+        }
+    } else {
+        // 范围巨大：直接清空当前进程的所有非全局页 (Nuke Mode)
+        tlb_flush_local_all();
+    }
+}
+
+/**
+ * @brief 【API 4】清空当前进程的所有普通页 (保留全局页)
+ * @note  常用于进程发生严重缺页、或者整体销毁重建等场景
+ */
+static inline void tlb_flush_local_all(void) {
+    // 技巧：重载当前的 CR3，硬件会自动清空当前 PCID 的所有普通缓存
+    // 这里没有用 INVPCID，因为 mov cr3 本质上就是当前上下文的 Type 1，效率极高
+    __hw_flush_cr3();
+}
+
+/**
  * @brief 【API 2】刷新指定 PCID 进程的单个普通页
  * @param pcid 目标进程的 PCID
  * @param va   虚拟地址
@@ -63,37 +93,6 @@ static inline void tlb_flush_page_by_pcid(uint16 pcid, uint64 va) {
         asm_invlpg(va);
     }
 }
-
-/**
- * @brief 【API 4】清空当前进程的所有普通页 (保留全局页)
- * @note  常用于进程发生严重缺页、或者整体销毁重建等场景
- */
-static inline void tlb_flush_local_all(void) {
-    // 技巧：重载当前的 CR3，硬件会自动清空当前 PCID 的所有普通缓存
-    // 这里没有用 INVPCID，因为 mov cr3 本质上就是当前上下文的 Type 1，效率极高
-    __hw_flush_cr3();
-}
-
-/**
- * @brief 【API 3】批量范围刷新 (智能路由)
- * @param start_va 起始虚拟地址
- * @param size     刷新的总大小 (字节)
- * @note  如果页数较少，走循环单页刷新；如果范围极大，直接炸掉整个进程 TLB，效率更高。
- */
-static inline void tlb_flush_range(uint64 start_va, uint64 size) {
-    uint64 page_count = size / PAGE_4K_SIZE; // 假设最小粒度 4K
-    
-    if (page_count <= TLB_BATCH_FLUSH_MAX_PAGES) {
-        // 范围很小：逐页狙击 (Sniper Mode)
-        for (uint64 i = 0; i < page_count; i++) {
-            asm_invlpg(start_va + i * PAGE_4K_SIZE);
-        }
-    } else {
-        // 范围巨大：直接清空当前进程的所有非全局页 (Nuke Mode)
-        tlb_flush_local_all(); 
-    }
-}
-
 
 /**
  * @brief 【API 5】清空指定 PCID 的所有普通页 (保留全局页)
