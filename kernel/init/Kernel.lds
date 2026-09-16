@@ -5,7 +5,6 @@ SECTIONS
 {
     /* 内核初始化代码段 */
     . = 0xFFFFFFFF80000000 + 0x100000;
-    . = ALIGN(4096);
     .init_text :
     {
        _start_init_text = .;
@@ -15,17 +14,25 @@ SECTIONS
     }
 
     /* 内核初始化数据段 */
-    . = ALIGN(4096);
     .init_data :
     {
        _start_init_data = .;
        *(.init_data)
+
+       /* 💡 将修补引擎的“档案表”塞进 INIT 数据区 */
+       . = ALIGN(8);
+       __alt_instructions = .;
+       *(.altinstructions)
+       __alt_instructions_end = .;
+
+       /* 💡 将修补引擎的“捐献器官”也塞进 INIT 数据区 */
+       *(.altinstr_replacement)
+
        . = ALIGN(4096);
        _end_init_data = .;
     }
 
     /* 正式内核代码段 (RX) */
-    . = ALIGN(4096);
     .text :
     {
        _start_text = .;
@@ -36,7 +43,6 @@ SECTIONS
     }
 
     /* 只读数据段 (RO) */
-    . = ALIGN(4096);
     .rodata :
     {
        _start_rodata = .;
@@ -47,7 +53,6 @@ SECTIONS
     }
 
     /* 读写数据段 (RW) */
-    . = ALIGN(4096);
     .data :
     {
         _start_data = .;
@@ -85,7 +90,6 @@ SECTIONS
     }
     */
 
-    . = ALIGN(4096);
     _end = .;
 
     /* 【核心优化 2】黑洞丢弃区

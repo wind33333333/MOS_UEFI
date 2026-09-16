@@ -1,9 +1,5 @@
 #include "tlb.h"
 
-//刷新单个虚拟地址TLB含全局页
-static inline void asm_invlpg(uint64 va) {
-    __asm__ __volatile__("invlpg (%0) \n\t" : : "r"(va) : "memory");
-}
 
 /**
  * @brief 执行 INVPCID 刷新 TLB
@@ -11,6 +7,10 @@ static inline void asm_invlpg(uint64 va) {
  * @param pcid 目标 PCID (0 ~ 4095)
  * @param va   需要刷新的虚拟地址 (仅 Type 0 生效)
  */
+#define INVPCID_TYPE_INDIV_ADDR          0  // Type 0: 单页
+#define INVPCID_TYPE_SINGLE_CTXT         1  // Type 1: 单一 PCID
+#define INVPCID_TYPE_ALL_INCL_GLOBAL     2  // Type 2: 包含全局页的所有 TLB
+#define INVPCID_TYPE_ALL_NON_GLOBAL      3  // Type 3: 不含全局页的所有 TLB
 static inline void asm_invpcid(uint64 type, uint64 pcid, uint64 va) {
     // 构造描述符，强制 16 字节对齐
     struct {
@@ -30,6 +30,45 @@ static inline void asm_invpcid(uint64 type, uint64 pcid, uint64 va) {
         : "m" (invpcid_desc), "r" (type)
         : "memory" // 加上 memory 屏障，防止编译器重排指令
     );
+}
+
+// 1. 单页刷新 (Type 0)
+static inline void invpcid_flush_one(uint64 pcid, uint64 addr) {
+    asm_invpcid(INVPCID_TYPE_INDIV_ADDR, pcid, addr);
+}
+
+// 2. 灭门单一 PCID (Type 1)
+static inline void invpcid_flush_single_context(uint64 pcid) {
+    asm_invpcid(INVPCID_TYPE_SINGLE_CTXT, pcid, 0);
+}
+
+// 3. 毁天灭地，刷新所有页含全局页 (Type 2)
+static inline void invpcid_flush_all(void) {
+    asm_invpcid(INVPCID_TYPE_ALL_INCL_GLOBAL, 0, 0);
+}
+
+// 4. 洗空所有普通页，保留全局页 (Type 3)
+static inline void invpcid_flush_all_nonglobals(void) {
+    asm_invpcid(INVPCID_TYPE_ALL_NON_GLOBAL, 0, 0);
+}
+
+//刷新单个虚拟地址TLB含全局页
+static inline void asm_invlpg(uint64 va) {
+    __asm__ __volatile__("invlpg (%0) \n\t" : : "r"(va) : "memory");
+}
+
+
+// 1.传统通过cr3寄存器刷新所有非全局页
+static inline void cr3_flush_nonglobals_all() {
+    uint64 cr3 = asm_get_cr3();
+    asm_set_cr3(cr3);
+}
+
+// 2.传统方式通过cr4刷新包括全局页
+static inline void cr4_flush_all(void) {
+    uint64 cr4 = asm_get_cr4();
+    asm_set_cr4(cr4 & ~(1<<7));
+    asm_set_cr4(cr4);
 }
 
 
