@@ -130,6 +130,13 @@ INIT_TEXT void kpage_table_init(void) {
     PR_INFO("  -> .init_text : VA %#lx -> PA %#lx, Size: %#lx\n", init_text_va, init_text_pa, init_text_sz);
     vm_map_range(&kernel_space, init_text_va, init_text_pa, init_text_sz, PAGE_KERNEL_CODE);
 
+    // .init_rodata
+    uint64 init_rodata_va = (uint64)_start_init_rodata;
+    uint64 init_rodata_pa = init_rodata_va - vm_layout.kernel_start;
+    uint64 init_rodata_sz = (uint64)_end_init_rodata - init_rodata_va;
+    PR_INFO("  -> .init_rodata : VA %#lx -> PA %#lx, Size: 0x%lx\n", init_rodata_va, init_rodata_pa, init_rodata_sz);
+    vm_map_range(&kernel_space, init_rodata_va, init_rodata_pa, init_rodata_sz, PAGE_KERNEL_DATA_RW);
+
     // .init_data
     uint64 init_data_va = (uint64)_start_init_data;
     uint64 init_data_pa = init_data_va - vm_layout.kernel_start;

@@ -13,6 +13,15 @@ SECTIONS
        _end_init_text = .;
     }
 
+    /* 内核初始化只读数据段 (R) */
+    .init_rodata : {
+        _start_init_rodata = .;
+        *(.init_rodata)
+        *(.init_rodata.*)
+        . = ALIGN(4096);
+        _end_init_rodata = .;
+    }
+
     /* 内核初始化数据段 */
     .init_data :
     {

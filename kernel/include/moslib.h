@@ -1,8 +1,8 @@
 #pragma once
 
 #define INIT_TEXT __attribute__((__section__(".init_text")))
+#define INIT_RODATA __attribute__((__section__(".init_rodata")))
 #define INIT_DATA __attribute__((__section__(".init_data")))
-#define STACK_SECTION __attribute__((__section__(".stack")))
 
 typedef unsigned char uint8;
 typedef uint8 boolean;
@@ -19,6 +19,8 @@ typedef long long int64;
 extern char _start[];
 extern char _start_init_text[];
 extern char _end_init_text[];
+extern char _start_init_rodata[];
+extern char _end_init_rodata[];
 extern char _start_init_data[];
 extern char _end_init_data[];
 extern char _start_text[];
