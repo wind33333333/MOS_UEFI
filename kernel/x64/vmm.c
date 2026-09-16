@@ -11,6 +11,7 @@
  */
 
 #include "vmm.h"
+#include "tlb.h"
 #include "printk.h"
 
 /* ========================================================================== */
@@ -42,7 +43,9 @@ static boolean vmm_is_canonical(uint64 vaddr, uint8 paging_level) {
 /*                         TLB 批处理引擎实现                                  */
 /* ========================================================================== */
 
-#define VM_TLB_MAX_RANGES 16
+// 智能刷新阈值：超过 32 页 (128KB)，直接清空整个 PCID 比逐页刷更快
+#define TLB_SMART_FLUSH_THRESHOLD 32
+// 绝对代价阈值：如果操作跨度太大，为了防止占用过多 CPU 时间，强制全刷
 #define TLB_COST_THRESHOLD 64
 
 typedef struct {
@@ -50,13 +53,17 @@ typedef struct {
         uint64 start;
         uint64 size;
         uint64 stride;
-    } ranges[VM_TLB_MAX_RANGES];
+    } ranges[TLB_SMART_FLUSH_THRESHOLD];
     uint64 count;
     uint64 total_invlpg_cost;
     boolean flush_all;
     boolean is_global;
 } vm_tlb_batch_t;
 
+
+/**
+ * @brief TLB 批处理控制块初始化
+ */
 static inline void tlb_batch_init(vm_tlb_batch_t *batch) {
     batch->count = 0;
     batch->total_invlpg_cost = 0;
@@ -64,21 +71,33 @@ static inline void tlb_batch_init(vm_tlb_batch_t *batch) {
     batch->is_global = FALSE;
 }
 
+/**
+ * @brief 向批处理引擎中添加一条作废记录
+ * @param batch     批处理控制块
+ * @param vaddr     目标虚拟地址
+ * @param size      作废的内存区间大小
+ * @param page_size 页粒度 (4K, 2M, 1G)，用于计算真实步长
+ * @param is_global 是否包含内核全局映射页 (HW_PAGE_G)
+ */
 static void tlb_batch_add(vm_tlb_batch_t *batch, uint64 vaddr, uint64 size, uint64 page_size, boolean is_global) {
+    // 如果已经被标记为“焦土全刷”模式，直接返回，不再浪费时间记录碎片
     if (batch->flush_all) return;
 
+    // 计算当前区间需要执行单页刷新的物理次数 (代价评估)
     uint64 cost = size / page_size;
     if (cost == 0) cost = 1;
 
-    batch->is_global = is_global;
+    // 🌟 核心修复 1：累加全局污染标志 (使用按位或，防止状态被后续的普通页覆盖)
+    batch->is_global |= is_global;
     batch->total_invlpg_cost += cost;
 
+    // 如果累积的总刷新次数超过了绝对阈值，立刻切换为“全刷”模式
     if (batch->total_invlpg_cost > TLB_COST_THRESHOLD) {
         batch->flush_all = TRUE;
         return;
     }
 
-    // 智能合并：地址连续且步长相同，拉长区间即可
+    // 🌟 智能合并 (大页友好)：如果地址连续，且步长(页大小)完全一致，只需拉长上一个区间的 size
     if (batch->count > 0) {
         uint64 last_idx = batch->count - 1;
         if (batch->ranges[last_idx].start + batch->ranges[last_idx].size == vaddr &&
@@ -88,39 +107,109 @@ static void tlb_batch_add(vm_tlb_batch_t *batch, uint64 vaddr, uint64 size, uint
         }
     }
 
-    if (batch->count < VM_TLB_MAX_RANGES) {
+    // 申请新的槽位记录
+    if (batch->count < TLB_SMART_FLUSH_THRESHOLD) {
         batch->ranges[batch->count].start = vaddr;
         batch->ranges[batch->count].size = size;
         batch->ranges[batch->count].stride = page_size;
         batch->count++;
     } else {
+        // 槽位已满，被迫退化为全刷模式
         batch->flush_all = TRUE;
     }
 }
 
-static void tlb_batch_commit(const vm_tlb_batch_t *batch) {
-    if (batch->flush_all) {
-        if (batch->is_global) {
-            uint64 cr4 = asm_get_cr4();
-            asm_set_cr4(cr4 & ~(1ULL << 7)); // 翻转 CR4.PGE 刷新全局页
-            asm_set_cr4(cr4);
-        } else {
-            uint64 cr3 = asm_get_cr3();
-            asm_set_cr3(cr3);
-        }
+
+/* ========================================================================== */
+/*                         VMM 高级接口实现 (屏蔽底层指令)                      */
+/* ========================================================================== */
+
+/**
+ * @brief 智能区间刷新 (自动决策: 狙击 vs 灭门)
+ */
+void vmm_tlb_flush_range(vm_space_t *space, uint64 start_va, uint64 size) {
+    if (size == 0) return;
+
+    // 软件状态级优化：如果进程 PCID 为 0，说明它从未被调度过，CPU 根本没有它的缓存！直接返回！
+    if (space->pcid == 0) return;
+
+    uint64 page_count = (size + PAGE_4K_SIZE - 1) / PAGE_4K_SIZE;
+
+    // 策略 A：区间过大，直接切换到“单进程灭门模式”
+    if (page_count > TLB_SMART_FLUSH_THRESHOLD) {
+        tlb_flush_pcid_all(space->pcid); // 底层 ALT 宏自动处理新老硬件兼容
         return;
     }
 
-    for (uint64 i = 0; i < batch->count; i++) {
-        uint64 cur = batch->ranges[i].start;
-        uint64 end = cur + batch->ranges[i].size;
-        uint64 stride = batch->ranges[i].stride;
-        while (cur < end) {
-            asm_invlpg(cur);
-            cur += stride;
-        }
+    // 策略 B：区间较小，进入“逐页精准狙击模式”
+    for (uint64 i = 0; i < page_count; i++) {
+        uint64 va = start_va + i * PAGE_4K_SIZE;
+        // 🌟 核心清理：不再判断 pcid != 0，直接调底层！老硬件会自动退化为 invlpg！
+        tlb_flush_pcid_page(space->pcid, va);
     }
 }
+
+/**
+ * @brief 整个地址空间无差别销毁 (用于进程退出或 exec)
+ */
+static inline void vmm_tlb_flush_space(vm_space_t *space) {
+    // 软件状态防御：未分配/未运行的进程，无需刷新物理硬件
+    if (space->pcid == 0) return;
+
+    // 硬件降级全权交给底层的 ALT_INSTR 自动解决
+    tlb_flush_pcid_all(space->pcid);
+}
+
+void vmm_tlb_batch_commit(vm_space_t *space, vm_tlb_batch_t *batch) {
+    if (batch->count == 0 && !batch->flush_all) return;
+
+    // 🌟 策略 1：灭门模式 (Nuke Mode)
+    // 只有当积累的修改量极大，或者空间槽位已满时，才启动面杀伤
+    if (batch->flush_all) {
+        if (batch->is_global) {
+            // 只有当【大面积】修改内核全局空间时 (极其罕见，如海量 vmalloc)，才核平全系统
+            tlb_flush_all();
+        } else {
+            // 用户态空间的大规模修改，只灭门单一进程
+            vmm_tlb_flush_space(space);
+        }
+        goto clear_batch;
+    }
+
+    // 🌟 软件状态防御：进程如果没分配过 PCID (没运行过)
+    // - 若修改的是普通页：CPU 里根本没它的缓存，直接跳过！
+    // - 若修改的是全局页：全局页是所有进程共享的，必须往下走，强行狙击！
+    if (space->pcid == 0 && !batch->is_global) {
+        goto clear_batch;
+    }
+
+    // 🌟 策略 2：精准狙击模式 (Sniper Mode)
+    // 包含【少量普通页】或【少量全局页】
+    uint64 pcid = space->pcid;
+    for (uint64 i = 0; i < batch->count; i++) {
+        uint64 start  = batch->ranges[i].start;
+        uint64 size   = batch->ranges[i].size;
+        uint64 stride = batch->ranges[i].stride;
+        uint64 count  = size / stride;
+
+        for (uint64 j = 0; j < count; j++) {
+            uint64 va = start + j * stride;
+
+            // 🌟 硬件级真理修正：
+            // 1. 如果修改了全局页，INVPCID Type 0 是无效的！必须退化使用 INVLPG！
+            // 2. 如果进程从未运行过 (pcid == 0)，对于全局页也必须强刷 INVLPG。
+            if (batch->is_global || pcid == 0) {
+                tlb_flush_page(va); // 纯正的 INVLPG，无视 PCID 精准爆破全局页
+            } else {
+                tlb_flush_pcid_page(pcid, va); // INVPCID Type 0，狙击普通进程页
+            }
+        }
+    }
+
+    clear_batch:
+        tlb_batch_init(batch);
+}
+
 
 /* ========================================================================== */
 /*                         内部宏与核心状态机声明                               */
@@ -272,7 +361,7 @@ vm_status_e vm_split_huge_page(vm_space_t *space, uint64 vaddr, vm_page_lvl_e fr
     uint64 dir_user_flag = *entry & HW_PAGE_US;
     *entry = sub_table_pa | HW_PAGE_P | HW_PAGE_RW | dir_user_flag;
 
-    asm_invlpg(vaddr); // 清除 TLB 旧大页缓存
+    tlb_flush_page(vaddr); // 清除 TLB 旧大页缓存
     return VM_SUCCESS;
 }
 
@@ -356,7 +445,7 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
         mapped_bytes += step_bytes;
     }
 
-    tlb_batch_commit(&tlb_batch);
+    vmm_tlb_batch_commit(space,&tlb_batch);
     return VM_SUCCESS;
 
 rollback:
@@ -454,7 +543,7 @@ vm_status_e vm_unmap_range(vm_space_t *space, uint64 vaddr, uint64 size, uint32 
 
     vmm_unmap_tree_range(&ctx, space->cr3_root, space->paging_level, vaddr, vaddr + size);
 
-    tlb_batch_commit(&tlb_batch);
+    vmm_tlb_batch_commit(space,&tlb_batch);
     return VM_SUCCESS;
 }
 
@@ -526,7 +615,7 @@ vm_status_e vm_protect_range(vm_space_t *space, uint64 vaddr, uint64 size, uint6
     };
 
     vm_status_e status = vmm_protect_tree_range(&ctx, space->cr3_root, space->paging_level, vaddr, vaddr + size);
-    tlb_batch_commit(&tlb_batch);
+    vmm_tlb_batch_commit(space,&tlb_batch);
     return status;
 }
 

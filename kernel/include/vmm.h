@@ -226,6 +226,7 @@ typedef struct {
 typedef struct vm_space {
     uint64             cr3_root;     ///< 顶层根页表 (PML4 / PML5) 的物理地址
     uint8              paging_level; ///< 分页模式规格: 4 (48位) 或 5 (57位)
+    uint16             pcid;
     vm_allocator_ops_t ops;          ///< 当前空间绑定的底层物理操作回调集
     void*              lock;         ///< 并发保护锁 (预留 SMP 扩展)
 } vm_space_t;
