@@ -25,7 +25,7 @@ irqreturn_e apic_isr(cpu_registers_t *regs, void *dev_id) {
     color_printk(RED,BLACK,"%ds ",++m);
 }
 
-INIT_TEXT void kernel_init(void) {
+void kernel_init(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
     output_init();                                              //初始化输出控制台
     tmp_idt_init();                                             //初始化临时中断描述符表

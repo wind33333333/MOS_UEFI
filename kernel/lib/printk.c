@@ -1,7 +1,5 @@
 #include "printk.h"
 #include "../init/uefi.h"
-#include "slub.h"
-#include "vmalloc.h"
 #include "../include/font.h"
 #include <stdarg.h>
 
@@ -16,21 +14,7 @@
 
 #define is_digit(c)	((c) >= '0' && (c) <= '9')
 
-struct position {
-    uint32 XResolution;
-    uint32 YResolution;
-    uint32 PixelsPerScanLine;
-
-    uint32 XPosition;
-    uint32 YPosition;
-
-    uint32 XCharSize;
-    uint32 YCharSize;
-
-    uint32* FB_addr;
-    uint64 FB_length;
-    uint32 lock;
-}Pos;
+position_t Pos;
 
 
 #define do_div(n,base) ({ \
@@ -401,35 +385,4 @@ int32 color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, 
 }
 
 
-INIT_TEXT void output_init(void) {
-    Pos.XResolution = tmp_boot_info->horizontal_resolution;
-    Pos.YResolution = tmp_boot_info->vertical_resolution;
-    Pos.PixelsPerScanLine = tmp_boot_info->pixels_per_scan_line;
-    Pos.XPosition = 0;
-    Pos.YPosition = 0;
-    Pos.XCharSize = 8;
-    Pos.YCharSize = 16;
-    Pos.FB_addr = (uint32*)tmp_boot_info->frame_buffer_base;
-    Pos.FB_length = tmp_boot_info->frame_buffer_size;
-    Pos.lock = 0;
-
-    for (uint64 i = 0; i < (Pos.PixelsPerScanLine * Pos.YResolution); i++) {
-        Pos.FB_addr[i] = BLACK;
-    }
-
-    PR_OK("Out Put init Success!\n");
-
-}
-
-extern vm_space_t kernel_space;
-INIT_TEXT void tmp_video_mem_map(void) {
-    tmp_boot_info = pa_to_va((uint64)tmp_boot_info);
-    vm_map_range(&kernel_space,tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size,PAGE_KERNEL_MMIO_WC | SW_FLAG_MAX_1G);
-}
-
-INIT_TEXT void video_mem_map(void) {
-    vm_unmap_range(&kernel_space,tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size,UNMAP_FLAG_NONE);
-    Pos.FB_addr = ioremap_wc(tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size);
-    PR_INFO("Voide Memory Physics Address:%#lx -> Virtual Address:%#lx  Video Size:%#lx Resolution:%d * %d\n",tmp_boot_info->frame_buffer_base,Pos.FB_addr,Pos.FB_length,Pos.XResolution,Pos.YResolution);
-}
 

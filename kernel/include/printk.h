@@ -11,6 +11,22 @@
 #define CYAN	0x0000ffff		//青
 #define PURPLE	0x008000ff		//紫
 
+typedef struct position_t {
+    uint32 XResolution;
+    uint32 YResolution;
+    uint32 PixelsPerScanLine;
+
+    uint32 XPosition;
+    uint32 YPosition;
+
+    uint32 XCharSize;
+    uint32 YCharSize;
+
+    uint32* FB_addr;
+    uint64 FB_length;
+    uint32 lock;
+}position_t;
+
 
 void output_init(void);
 void tmp_video_mem_map(void);

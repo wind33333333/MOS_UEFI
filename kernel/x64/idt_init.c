@@ -1,4 +1,4 @@
-#include "idt.h"
+#include "idt_init.h"
 #include "printk.h"
 
 // 门类型宏定义
