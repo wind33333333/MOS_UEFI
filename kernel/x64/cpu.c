@@ -1,4 +1,6 @@
 #include "cpu.h"
+
+#include "alternative.h"
 #include "apic.h"
 #include "../drivers/hpet/hpet.h"
 #include "interrupt.h"
@@ -11,7 +13,8 @@
 cpu_info_t cpu_info;
 uint32 *apic_id_table; //apic_id_table
 
-INIT_TEXT void cpu_feature_init(void){
+INIT_TEXT uint64 cpu_feature_init(void) {
+    uint64 cpu_features_mask = 0;
     uint32 eax,ebx,ecx,edx;
     uint64 tmp,value;
 
@@ -49,7 +52,7 @@ INIT_TEXT void cpu_feature_init(void){
     //PKE（bit 22）描述：启用内存保护密钥功能。该功能允许程序在不修改页表的情况下控制内存的访问权限。用途：提供更灵活的内存保护机制，用于区分不同的内存访问权限。
     //endregion
     tmp=0;
-    asm_cpuid_count(0x7,0,&eax,&ebx,&ecx,&edx);
+    asm_cpuid(0x7,&eax,&ebx,&ecx,&edx);
     if(ecx & 4)
         tmp |= 0x800;       //bit11 UMIP
 
@@ -62,7 +65,7 @@ INIT_TEXT void cpu_feature_init(void){
     if(ebx & 0x100000)
         tmp |= 0x200000;    //bit21 SMAP
 
-    asm_cpuid_count(0x1,0,&eax,&ebx,&ecx,&edx);
+    asm_cpuid(0x1,&eax,&ebx,&ecx,&edx);
     if(ecx & 0x20)
         tmp |= 0x2000;      //bit13 VMXE
 
@@ -83,11 +86,15 @@ INIT_TEXT void cpu_feature_init(void){
     //BNDCSR（bit 6）：描述：控制 MPX 的 BNDCSR 状态的保存与恢复。BNDCSR 用于管理 MPX 的边界检查寄存器。用途：启用该位后，处理器会保存和恢复 MPX 边界检查的控制状态。
     //PKRU（bit 8）：描述：控制 PKRU 状态的保存与恢复。PKRU（Protection Keys for Userspace）是内存保护的一种机制。用途：启用该位后，处理器会保存和恢复与 PKRU 相关的状态.
     //endregion
-    asm_cpuid_count(0x7,0x0,&eax,&ebx,&ecx,&edx);
+    asm_cpuid(0x7,&eax,&ebx,&ecx,&edx);
     tmp=(ebx & 0x10000) ? 0xE7 : 0x7;   //AVX512=0xE7 AVX256=0x7
     value = asm_xgetbv(0);
     value |= tmp;
     asm_xsetbv(0,value);
+
+    //启用invpcid指令
+    asm_cpuid(0x7,&eax,&ebx,&ecx,&edx);
+    if (ebx & (1<<10)) cpu_features_mask |=  X86_FEATURE_INVPCID;
 
     //region IA32_EFER_MSR 寄存器（MSR 0xC0000080)
     //SCE（bit 0） 1:启用 SYSCALL 和 SYSRET 指令。
@@ -159,13 +166,16 @@ INIT_TEXT void cpu_feature_init(void){
                  (final_cr4 & (1 << 11)) ? "ON " : "OFF");
 
     // 3. 打印高级指令集与硬件加速特性
-    PR_INFO("CPU%d [SIMD] Engine: %s | PCID: %s\n", cpu_id,
+    PR_INFO("CPU%d [SIMD] Engine: %s | PCID: %s | INVPCID: %s\n", cpu_id,
                  (final_xcr0 & 0xE0) == 0xE0 ? "AVX-512 (ZMM)" :
                  (final_xcr0 & 0x06) == 0x06 ? "AVX-256 (YMM)" : "SSE (XMM)",
-                 (final_cr4 & (1 << 17)) ? "Supported" : "Disabled");
+                 (final_cr4 & (1 << 17)) ? "Supported" : "Disabled",
+                 (cpu_features_mask & X86_FEATURE_INVPCID) ? "YES" : "NO");
 
     // 4. 打印 PAT 定制内存布局与 APIC 状态
    PR_INFO("CPU%d [Mem ] PAT Custom Layout Loaded. X2APIC Enabled.\n", cpu_id);
+
+    return cpu_features_mask;
 
 }
 

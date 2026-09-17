@@ -13,6 +13,7 @@
 #include "../include/bus.h"
 #include "../x64/interrupt.h"
 #include "../x64/apic.h"
+#include "alternative.h"
 
 
 static uint64 m = 0;
@@ -28,7 +29,8 @@ INIT_TEXT void kernel_init(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
     output_init();                                              //初始化输出控制台
     tmp_idt_init();                                             //初始化临时中断描述符表
-    cpu_feature_init();                                         //cpu 特性初始化
+    uint64 cpu_featuer_mask = cpu_feature_init();               //cpu 特性初始化
+    apply_alternatives(cpu_featuer_mask);                       //动态修复指令
     vm_layout_init();                                           //虚拟内存空间初始化
     memblock_init();                                            //初始化启动内存分配器
     kpage_table_init();                                         //初始化正式内核页表

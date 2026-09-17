@@ -3,6 +3,7 @@
 #include "printk.h"
 #include "vmm.h"
 #include "slub.h"
+#include "../x64/tlb.h"
 
 extern vm_space_t kernel_space;
 
@@ -64,9 +65,7 @@ void efi_runtime_service_init(void) {
     // 关闭临时映射
     root_table[0] = 0;
 
-    uint64 cr4 = asm_get_cr4();
-    asm_set_cr4(cr4 & ~(1ULL << 7)); // 翻转 CR4.PGE 刷新全局页
-    asm_set_cr4(cr4);
+    tlb_flush_all();
 
     // 【修复3-3】：SVAM 安全执行完毕后，操作系统正式将指针切换为高位虚拟地址！
     if (new_grts_va != 0) {

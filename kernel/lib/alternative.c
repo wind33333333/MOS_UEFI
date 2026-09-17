@@ -4,11 +4,12 @@
 extern struct alt_instr __alt_instructions[];
 extern struct alt_instr __alt_instructions_end[];
 
+
 /**
  * @brief  系统级动态二进制修补执行函数
  * @param  cpu_features_mask 当前 CPU 探测到的所有特性位图
  */
-void apply_alternatives(uint64 cpu_features_mask) {
+INIT_TEXT void apply_alternatives(uint64 cpu_features_mask) {
     // 1. 关闭内存写保护 (WP位)
     uint64 cr0 = asm_get_cr0();
     asm_set_cr0(cr0 & ~(1ULL << 16));
@@ -22,8 +23,8 @@ void apply_alternatives(uint64 cpu_features_mask) {
         }
 
         // 定位真实物理地址
-        uint8 *old_ptr = (uint8 *)alt + alt->instr_offset;
-        uint8 *new_ptr = (uint8 *)alt + alt->repl_offset;
+        uint8 *old_ptr = (uint8 *)&alt->instr_offset + alt->instr_offset;
+        uint8 *new_ptr = (uint8 *)&alt->repl_offset  + alt->repl_offset;
 
         // 覆盖手术
         for (int i = 0; i < alt->replacementlen; i++) {

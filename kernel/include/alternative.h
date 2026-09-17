@@ -29,27 +29,29 @@ struct alt_instr {
  * @note  巧妙使用 661f / 661b 这种 GNU 局部标签，
  *        保证这个宏在同一个 C 文件里被调用 1000 次也不会发生标签名冲突！
  */
-#define ALT_INSTR(oldinstr, newinstr, feature)                  \
-    "661:\n\t"                                                  \
-    oldinstr "\n\t"                                             \
-    "662:\n\t"                                                  \
-    /* 防踩踏魔法：如果新指令比老指令长，编译时自动垫 NOP */      \
-    ".if (664f - 663f) > (662b - 661b)\n\t"                     \
-    ".fill (664f - 663f) - (662b - 661b), 1, 0x90\n\t"          \
-    ".endif\n\t"                                                \
-    "6621:\n\t"                                                 \
-    ".pushsection .altinstr_replacement, \"ax\"\n\t"            \
-    "663:\n\t"                                                  \
-    newinstr "\n\t"                                             \
-    "664:\n\t"                                                  \
-    ".popsection\n\t"                                           \
-    ".pushsection .altinstructions, \"a\"\n\t"                  \
-    ".long 661b - .\n\t"                                        \
-    ".long 663b - .\n\t"                                        \
-    ".word " #feature "\n\t" /* 将宏参数转为字符串文本 */         \
-    ".byte 6621b - 661b\n\t"                                    \
-    ".byte 664b - 663b\n\t"                                     \
-    ".popsection\n\t"
+// 🌟 1. 添加这两个神奇的字符串化宏 (直接抄自 Linux 源码)
+#define __stringify_1(x...) #x
+#define __stringify(x...)   __stringify_1(x)
 
+#define ALT_INSTR(oldinstr, newinstr, feature)                  \
+"661:\n\t"                                                  \
+oldinstr "\n\t"                                             \
+"662:\n\t"                                                  \
+".skip -(((664f - 663f) - (662b - 661b)) > 0) * "           \
+"((664f - 663f) - (662b - 661b)), 0x90\n\t"          \
+"6621:\n\t"                                                 \
+".pushsection .altinstr_replacement, \"ax\"\n\t"            \
+"663:\n\t"                                                  \
+newinstr "\n\t"                                             \
+"664:\n\t"                                                  \
+".popsection\n\t"                                           \
+".pushsection .altinstructions, \"a\"\n\t"                  \
+".long 661b - .\n\t"                                        \
+".long 663b - .\n\t"                                        \
+/* 👇 核心修复：用 __stringify 替代 #feature */                 \
+".word " __stringify(feature) "\n\t"                        \
+".byte 6621b - 661b\n\t"                                    \
+".byte 664b - 663b\n\t"                                     \
+".popsection\n\t"
 
 void apply_alternatives(uint64 cpu_features_mask);

@@ -4,6 +4,7 @@
 #include "printk.h"
 #include "../include/vmm.h"
 #include "buddy_system.h"
+#include "../x64/tlb.h"
 
 vm_space_t kernel_space;
 
@@ -166,9 +167,7 @@ INIT_TEXT void kpage_table_init(void) {
     vm_map_range(&kernel_space, data_va, data_pa, data_sz, PAGE_KERNEL_DATA_RW);
 
     asm_set_cr3(kernel_space.cr3_root);
-    uint64 cr4 = asm_get_cr4();
-    asm_set_cr4(cr4 & ~(1ULL << 7)); // 翻转 CR4.PGE 刷新全局页
-    asm_set_cr4(cr4);
+    tlb_flush_all();
 
     // 设置正式内核页表,并刷新tlb
     PR_OK("Kernel page table switch successful, %d level paging enabled,CR3:%lx \n",kernel_space.paging_level, kernel_space.cr3_root);
