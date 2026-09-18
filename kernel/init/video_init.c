@@ -1,7 +1,8 @@
+#include "video_init.h"
 #include "printk.h"
 #include "slub.h"
 #include "vmalloc.h"
-#include "../init/uefi.h"
+#include "uefi_rts_init.h"
 
 extern position_t Pos;
 

@@ -6,14 +6,14 @@
 #include "../x64/cpu.h"
 #include "../drivers/hpet/hpet.h"
 #include "kernel_page_table.h"
-#include "../include/memblock.h"
+#include "../include/memblock_init.h"
 #include "../include/vmalloc.h"
-#include "../include/rbtree.h"
-#include "uefi.h"
+#include "uefi_rts_init.h"
 #include "../include/bus.h"
 #include "../x64/interrupt.h"
 #include "../x64/apic.h"
-#include "alternative.h"
+#include "alternative_init.h"
+#include "video_init.h"
 
 
 static uint64 m = 0;
@@ -36,7 +36,6 @@ void kernel_init(void) {
     kpage_table_init();                                         //初始化正式内核页表
     buddy_system_init();                                        //初始化伙伴系统
     slub_init();                                                //初始化slub内存分配器
-    rbtree_empty_augment_callbacks_init();                      //初始化红黑树空回调函数
     vmalloc_init();                                             //初始化vmalloc
     video_mem_map();                                            //映射显存到虚拟地址空间
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间

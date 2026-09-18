@@ -1,5 +1,5 @@
-#include "uefi.h"
-#include "memblock.h"
+#include "uefi_rts_init.h"
+#include "memblock_init.h"
 #include "printk.h"
 #include "vmm.h"
 #include "slub.h"

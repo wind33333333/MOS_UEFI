@@ -27,12 +27,7 @@ typedef struct position_t {
     uint32 lock;
 }position_t;
 
-
-void output_init(void);
-void tmp_video_mem_map(void);
-void video_mem_map(void);
 int32 color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...);
-
 
 #define PR_INFO(fmt, ...)   color_printk(CYAN,   BLACK, "[ INFO ] " fmt, ##__VA_ARGS__)
 #define PR_OK(fmt, ...)     color_printk(GREEN,  BLACK, "[  OK  ] " fmt, ##__VA_ARGS__)

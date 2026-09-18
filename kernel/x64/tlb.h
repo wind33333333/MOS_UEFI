@@ -1,6 +1,6 @@
 #pragma once
 #include "moslib.h"
-#include "alternative.h"
+#include "alternative_init.h"
 
 // 刷新类型枚举
 #define INVPCID_TYPE_INDIV_ADDR          0  // Type 0: 单页

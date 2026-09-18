@@ -327,18 +327,12 @@ void rb_erase(rb_root_t *root, rb_node_t *node, rb_augment_callbacks_f *augment_
     }
 }
 
-/* ========================================================================== */
-/*                             空回调防护机制                                 */
-/* ========================================================================== */
-
 static void empty_augment_rotate(rb_node_t *old_node, rb_node_t *new_node) {}
 static void empty_augment_copy(rb_node_t *old_node, rb_node_t *new_node) {}
 static void empty_augment_propagate(rb_node_t *start_node, rb_node_t *stop_node) {}
 
-rb_augment_callbacks_f empty_augment_callbacks;
-
-void INIT_TEXT rbtree_empty_augment_callbacks_init(void) {
-    empty_augment_callbacks.rotate    = empty_augment_rotate;
-    empty_augment_callbacks.copy      = empty_augment_copy;
-    empty_augment_callbacks.propagate = empty_augment_propagate;
-}
+rb_augment_callbacks_f empty_augment_callbacks = {
+    .rotate = empty_augment_rotate,
+    .copy = empty_augment_copy,
+    .propagate = empty_augment_propagate
+};

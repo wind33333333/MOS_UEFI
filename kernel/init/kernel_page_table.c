@@ -1,6 +1,6 @@
 #include "kernel_page_table.h"
 #include "slub.h"
-#include "memblock.h"
+#include "memblock_init.h"
 #include "printk.h"
 #include "../include/vmm.h"
 #include "buddy_system.h"

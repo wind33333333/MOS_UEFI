@@ -1,7 +1,7 @@
 #include "acpi.h"
 
 #include "slub.h"
-#include "../../init/uefi.h"
+#include "../../init/uefi_rts_init.h"
 
 /*
  * 查找acpi表

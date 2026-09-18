@@ -6,21 +6,6 @@
 #define IDT_TRAP_DESC      0x8F // P=1, DPL=0, Type=F (异常陷阱，不关 IF)
 #define IDT_USER_DESC      0xEE // P=1, DPL=3, Type=E (系统调用等，允许 Ring3 触发)
 
-// 1. x64 中断门描述符 (16 字节，严格对齐)
-typedef struct {
-    uint16 offset_low;
-    uint16 segment_selector;
-    uint8  ist;
-    uint8  attributes;
-    uint16 offset_mid;
-    uint32 offset_high;
-    uint32 reserved;
-}__attribute__((packed)) idt_desc_t;
-
-#define IDT_ENTRIES 256
-typedef struct {
-    idt_desc_t desc[IDT_ENTRIES];
-}__attribute__((packed))idt_t;
 
 // IDTR 寄存器结构
 typedef struct idt_ptr_t{
@@ -28,9 +13,7 @@ typedef struct idt_ptr_t{
     idt_t  *base;
 }__attribute__((packed))idt_ptr_t;
 
-
-//全局中断描述符表
-__attribute__((aligned(4096))) idt_t idt;
+extern idt_t idt;
 
 // 引入汇编里暴露的地址表 (极其优雅，免去了写 256 行 extern)
 extern uint64 isr_stub_table[];

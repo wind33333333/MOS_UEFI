@@ -1,20 +1,20 @@
-#include "../include/memblock.h"
+#include "../include/memblock_init.h"
 #include "../include/vmm.h"
 #include "../include/printk.h"
 #include "../include/errno.h"
 #include "slub.h"
 
 
-INIT_DATA memblock_alloc_t memblock; //临时内存器内存地图，后面buddy system需要用到空闲地图。
-INIT_DATA mem_arr_t page_mem_map; //page页映射区内存地图
-INIT_DATA efi_runtime_memmap_t efi_runtime_memmap; //uefi运行时的数据和代码地图
+memblock_alloc_t memblock; //临时内存器内存地图，后面buddy system需要用到空闲地图。
+mem_arr_t page_mem_map; //page页映射区内存地图
+efi_runtime_memmap_t efi_runtime_memmap; //uefi运行时的数据和代码地图
 mem_arr_t direct_mem_map; //直接映射区内存地图
 
 extern vm_space_t kernel_space;
 
 
 //物理内存区域添加到 memblock 的列表中
-INIT_TEXT void memblock_add(mem_arr_t *memblock_type, uint64 pa_start, uint64 size) {
+void memblock_add(mem_arr_t *memblock_type, uint64 pa_start, uint64 size) {
     if (memblock_type->count == 0) {
         memblock_type->region[0].start_pa = pa_start;
         memblock_type->region[0].size = size;
@@ -31,7 +31,7 @@ INIT_TEXT void memblock_add(mem_arr_t *memblock_type, uint64 pa_start, uint64 si
 }
 
 
-INIT_TEXT uint64 memblock_alloc(uint64 size, uint64 align) {
+uint64 memblock_alloc(uint64 size, uint64 align) {
     if (!size) return EINVAL;
     uint64 align_base, align_size;
     uint32 index = 0;
@@ -93,7 +93,7 @@ INIT_TEXT uint64 memblock_alloc(uint64 size, uint64 align) {
     return align_base;
 }
 
-INIT_TEXT int32 memblock_free(uint64 ptr, uint64 size) {
+int32 memblock_free(uint64 ptr, uint64 size) {
     if (!size) return EINVAL;
 
     uint32 insert_idx = 0;
@@ -166,7 +166,7 @@ INIT_TEXT int32 memblock_free(uint64 ptr, uint64 size) {
 /**
  * @brief 伪装分配：将 memblock 的线性分配转换为对象指针
  */
-INIT_TEXT static page_t* memblock_alloc_pages(uint32 order) {
+static page_t* memblock_alloc_pages(uint32 order) {
     // 1. 将 order 翻译为 memblock 听得懂的字节 size
     uint64 size = PAGE_4K_SIZE << order;
 
@@ -183,7 +183,7 @@ INIT_TEXT static page_t* memblock_alloc_pages(uint32 order) {
 /**
  * @brief 伪装释放：拦截对象回收请求并翻译给 memblock
  */
-INIT_TEXT static void memblock_free_pages(page_t *page) {
+static void memblock_free_pages(page_t *page) {
     if (!page) return;
 
     // 扒下伪装，还原出真实的物理地址
@@ -216,7 +216,7 @@ static page_t* memblock_pa_to_page(uint64 paddr) {
 
 
 #define MEM_1MB (0x100000ULL) // 1MB 物理地址边界
-INIT_TEXT void memblock_init(void) {
+void memblock_init(void) {
     uint64 phy_mem_size = 0;
     uint64 kernel_pa_start = (uint64) _start - vm_layout.kernel_start;
     uint64 kernel_pa_end = (uint64) _end - vm_layout.kernel_start;
