@@ -1,7 +1,7 @@
 #include "../include/slub.h"
-
+#include "../include/pmm.h"
 #include "printk.h"
-#include "../include/buddy_system.h"
+
 
 // page_t 对象地址 转换为 可被内核直接读写的虚拟地址 (走高半核 HHDM 映射)
 static inline void *page_to_va(page_t *page) {

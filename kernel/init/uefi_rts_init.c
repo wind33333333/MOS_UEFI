@@ -3,7 +3,7 @@
 #include "printk.h"
 #include "vmm.h"
 #include "slub.h"
-#include "../x64/tlb.h"
+#include "../mm/tlb.h"
 
 extern vm_space_t kernel_space;
 

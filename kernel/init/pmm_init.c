@@ -1,4 +1,5 @@
-#include "buddy_system.h"
+#include "pmm.h"
+#include "pmm_init.h"
 #include "memblock_init.h"
 #include "slub.h"
 #include "printk.h"

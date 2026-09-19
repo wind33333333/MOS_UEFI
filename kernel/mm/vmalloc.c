@@ -1,5 +1,5 @@
 #include "../include/vmalloc.h"
-#include "../include/buddy_system.h"
+#include "../include/pmm.h"
 #include "../include/slub.h"
 #include "../include/printk.h"
 

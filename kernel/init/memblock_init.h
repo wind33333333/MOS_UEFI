@@ -1,7 +1,7 @@
 #pragma once
 
-#include "moslib.h"
-#include "../init/uefi_rts_init.h"
+#include "../include/moslib.h"
+#include "uefi_rts_init.h"
 
 #define MAX_MEMBLOCK 128
 

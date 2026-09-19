@@ -1,6 +1,5 @@
-#include "../include/buddy_system.h"
-#include "../include/memblock_init.h"
-#include "../include/printk.h"
+#include "../include/pmm.h"
+#include "../init/memblock_init.h"
 #include "slub.h"
 
 buddy_system_t buddy_system;

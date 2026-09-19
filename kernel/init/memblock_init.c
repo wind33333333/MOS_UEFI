@@ -1,4 +1,4 @@
-#include "../include/memblock_init.h"
+#include "memblock_init.h"
 #include "../include/vmm.h"
 #include "../include/printk.h"
 #include "../include/errno.h"

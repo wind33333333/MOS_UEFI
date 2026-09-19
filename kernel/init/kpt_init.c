@@ -3,8 +3,8 @@
 #include "memblock_init.h"
 #include "printk.h"
 #include "../include/vmm.h"
-#include "buddy_system.h"
-#include "../x64/tlb.h"
+#include "pmm.h"
+#include "../mm/tlb.h"
 #include "video_init.h"
 
 vm_space_t kernel_space;
