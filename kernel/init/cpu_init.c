@@ -10,6 +10,16 @@
 #include "alternative_init.h"
 #include "../x64/cpu.h"
 
+extern uint8 _apboot_start[];
+extern uint8 _apboot_end[];
+
+extern uint64 ap_rsp_ptr;
+extern void *ap_main_ptr;
+extern uint64* ap_tmp_pml4t_ptr;
+extern uint32 *apic_id_table_ptr;
+extern uint64 ap_boot_loader_address;
+
+
 uint64 cpu_feature_init(void) {
     uint64 cpu_features_mask = 0;
     uint32 eax,ebx,ecx,edx;
