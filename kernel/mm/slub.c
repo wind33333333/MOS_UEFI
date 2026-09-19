@@ -3,16 +3,6 @@
 #include "printk.h"
 
 
-// page_t 对象地址 转换为 可被内核直接读写的虚拟地址 (走高半核 HHDM 映射)
-static inline void *page_to_va(page_t *page) {
-    return pa_to_va(page_to_pa(page));
-}
-
-// 虚拟地址 转换为 page_t 对象地址
-static inline page_t *va_to_page(void *va) {
-    return pa_to_page(va_to_pa(va));
-}
-
 // =========================================================================
 // 全局缓存池定义
 // =========================================================================
@@ -29,11 +19,22 @@ char *kmalloc_name[KMALLOC_CACHE_SIZE] = {
     "kmalloc-32k",  "kmalloc-64k",  "kmalloc-128k", "kmalloc-256k",
     "kmalloc-512k", "kmalloc-1m"
 };
+
 kmem_cache_t *kmalloc_cache[KMALLOC_CACHE_SIZE];
 
 // =========================================================================
 // 内部核心辅助算法
 // =========================================================================
+
+// page_t 对象地址 转换为 可被内核直接读写的虚拟地址 (走高半核 HHDM 映射)
+static inline void *page_to_va(page_t *page) {
+    return pa_to_va(page_to_pa(page));
+}
+
+// 虚拟地址 转换为 page_t 对象地址
+static inline page_t *va_to_page(void *va) {
+    return pa_to_page(va_to_pa(va));
+}
 
 /**
  * @brief 强悍的 2 的幂次方向上对齐算法 (Round Up to Power of 2)

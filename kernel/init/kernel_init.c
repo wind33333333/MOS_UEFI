@@ -1,5 +1,6 @@
 #include "../include/moslib.h"
 #include "memblock_init.h"
+#include "vmm_init.h"
 #include "pmm_init.h"
 #include "slub_init.h"
 #include "cpu_init.h"
