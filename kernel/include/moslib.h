@@ -23,6 +23,8 @@ extern char _start_init_rodata[];
 extern char _end_init_rodata[];
 extern char _start_init_data[];
 extern char _end_init_data[];
+extern char _start_init_bss[];
+extern char _end_init_bss[];
 extern char _start_text[];
 extern char _end_text[];
 extern char _start_rodata[];

@@ -1,4 +1,9 @@
 #include "buddy_system.h"
+#include "memblock_init.h"
+#include "slub.h"
+#include "printk.h"
+
+extern vm_space_t kernel_space;
 
 // =========================================================================
 // 伙伴系统初始化 (极致降维 O(1) 加速版)

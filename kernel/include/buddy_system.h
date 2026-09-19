@@ -74,6 +74,5 @@ static inline page_t *compound_head(page_t *page) {
     return page;
 }
 
-void buddy_system_init(void);
 page_t* alloc_pages(uint32 order);
 void free_pages(page_t *page);

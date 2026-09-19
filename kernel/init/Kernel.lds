@@ -24,7 +24,8 @@ SECTIONS
     }
 
     /* 2. 内核初始化只读数据段 (破解 GCC 字符串池的核心) */
-    .init_rodata : {
+    .init_rodata :
+     {
        _start_init_rodata = .;
        *(.init_rodata)
        *(.init_rodata.*)
@@ -54,7 +55,6 @@ SECTIONS
        /* 修补引擎的“捐献器官”也塞进 INIT 数据区 */
        *(.altinstr_replacement)
 
-       . = ALIGN(4096);
        _end_init_data = .;
     }
 

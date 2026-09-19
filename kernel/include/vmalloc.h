@@ -1,13 +1,31 @@
 #pragma once
-
+#include "rbtree.h"
 #include "moslib.h"
 #include "../include/vmm.h"
+
+/**
+ * @brief 离散虚拟内存管理核心描述符 (Virtual Memory Area)
+ * @note  用于描述一段连续的虚拟地址空间。通过红黑树进行管理。
+ */
+typedef struct {
+    uint64           va_start;         // 虚拟地址起点
+    uint64           va_end;           // 虚拟地址终点（不包含，即 [va_start, va_end)）
+    rb_node_t        rb_node;          // 挂载到忙碌/空闲红黑树的节点
+    list_head_t      list;             // 按照虚拟地址从低到高严格排序的双向链表
+
+    union {
+        // 🌟 增强红黑树 (Augmented RB-Tree) 的核心字段：
+        // 记录以当前节点为根的子树中，最大的空闲块容量。
+        // 分配时，通过判断子树的最大容量，可以 O(\log N) 极速剪枝，跳过空间不足的分支。
+        uint64 subtree_max_size;
+    };
+
+    uint64           flags;            // 描述符属性 (如 VM_ALLOC, VM_IOREMAP)
+} vmap_area_t;
 
 // =========================================================================
 // 核心 API 声明
 // =========================================================================
-
-void vmalloc_init(void);
 void *vmalloc(uint64 size);
 void vfree(void *ptr);
 

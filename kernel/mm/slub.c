@@ -97,7 +97,7 @@ static inline void free_list_init(void *start_ptr, uint32 obj_size, uint32 count
 /**
  * @brief 格式化并挂载一个新的缓存池控制块
  */
-static void create_cache(char *cache_name, kmem_cache_t *cache, uint32 object_size) {
+void create_cache(char *cache_name, kmem_cache_t *cache, uint32 object_size) {
     cache->name            = cache_name;
     cache->object_size     = object_size_align(object_size);
     cache->order_per_slub  = object_size_order(cache->object_size);

@@ -28,8 +28,6 @@ typedef struct kmem_cache_t {
 // 全局 API 声明
 // -----------------------------------------------------------------------------
 
-void slub_init(void);
-
 kmem_cache_t* kmem_cache_create(char *cache_name, uint32 object_size);
 int32 kmem_cache_destroy(kmem_cache_t *kmem_cache);
 

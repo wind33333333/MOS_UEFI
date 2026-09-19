@@ -11,6 +11,8 @@ typedef struct {
     uint32 tsc_hz;
 }cpu_info_t;
 
+extern cpu_info_t cpu_info;
+extern uint32 *apic_id_table;
 
 uint32 apicid_to_cpuid(uint32 apic_id);
 uint32 cpuid_to_apicid(uint32 cpu_id);

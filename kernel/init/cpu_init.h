@@ -1,16 +1,12 @@
 #pragma once
 
 #include "moslib.h"
-#include "cpu.h"
-
 
 typedef struct {
     uint64 rsp;
     uint16 tr;
 }__attribute__((packed)) apboot_data_t;
 
-extern cpu_info_t cpu_info;
-extern uint32 *apic_id_table;
 
 extern uint8 _apboot_start[];
 extern uint8 _apboot_end[];

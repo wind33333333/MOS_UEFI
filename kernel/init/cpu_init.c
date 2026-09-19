@@ -8,6 +8,7 @@
 #include "slub.h"
 #include "../x64/mtrr.h"
 #include "alternative_init.h"
+#include "../x64/cpu.h"
 
 uint64 cpu_feature_init(void) {
     uint64 cpu_features_mask = 0;

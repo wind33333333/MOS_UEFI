@@ -1,4 +1,5 @@
-#include "vmm.h"
+#include "vmm_init.h"
+#include "printk.h"
 
 // UEFI 运行时服务专属虚拟地址空间 (2GB 预留)
 #define UEFI_RTS_VA_START   0xFFFFFFFF00000000ULL

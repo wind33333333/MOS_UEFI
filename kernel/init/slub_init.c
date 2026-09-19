@@ -1,10 +1,17 @@
 #include "slub.h"
+#include "printk.h"
+
+void create_cache(char *cache_name, kmem_cache_t *cache, uint32 object_size);
+extern char kmem_cache_name[];
+extern kmem_cache_t kmem_cache;
+extern kmem_cache_t *kmalloc_cache[];
+extern char *kmalloc_name[];
 
 // =========================================================================
 // SLUB 系统总控初始化
 // =========================================================================
 
-INIT_TEXT void slub_init(void) {
+void slub_init(void) {
     // 1. 突破自举限制：先手工格式化用于存放 kmem_cache_t 控制块本身的根级池
     create_cache(kmem_cache_name, &kmem_cache, sizeof(kmem_cache_t));
 

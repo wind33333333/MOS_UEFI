@@ -1,10 +1,11 @@
-#include "kernel_page_table.h"
+#include "kpt_init.h"
 #include "slub.h"
 #include "memblock_init.h"
 #include "printk.h"
 #include "../include/vmm.h"
 #include "buddy_system.h"
 #include "../x64/tlb.h"
+#include "video_init.h"
 
 vm_space_t kernel_space;
 
@@ -16,7 +17,7 @@ typedef struct {
     uint64 va_end;
 } merged_page_map_t;
 
-INIT_TEXT static inline void page_map_init() {
+static inline void page_map_init() {
     // -------------------------------------------------------------------------
     // 初始化 page_t 映射区 (Vmemmap) - 【扫描合并 + 步进式流式映射架构】
     // -------------------------------------------------------------------------
@@ -105,7 +106,7 @@ INIT_TEXT static inline void page_map_init() {
 }
 
 
-INIT_TEXT void kpage_table_init(void) {
+void kpage_table_init(void) {
     kernel_space.cr3_root = memblock_alloc(4096, PAGE_4K_SIZE);
     kernel_space.paging_level = tmp_paging_level;
 
@@ -128,42 +129,42 @@ INIT_TEXT void kpage_table_init(void) {
     uint64 init_text_va = (uint64)_start_init_text;
     uint64 init_text_pa = init_text_va - vm_layout.kernel_start;
     uint64 init_text_sz = (uint64)_end_init_text - init_text_va;
-    PR_INFO("  -> .init_text : VA %#lx -> PA %#lx, Size: %#lx\n", init_text_va, init_text_pa, init_text_sz);
+    PR_INFO("  -> .init_text    : VA %#lx -> PA %#lx, Size: %#lx\n", init_text_va, init_text_pa, init_text_sz);
     vm_map_range(&kernel_space, init_text_va, init_text_pa, init_text_sz, PAGE_KERNEL_CODE);
 
     // .init_rodata
     uint64 init_rodata_va = (uint64)_start_init_rodata;
     uint64 init_rodata_pa = init_rodata_va - vm_layout.kernel_start;
     uint64 init_rodata_sz = (uint64)_end_init_rodata - init_rodata_va;
-    PR_INFO("  -> .init_rodata : VA %#lx -> PA %#lx, Size: 0x%lx\n", init_rodata_va, init_rodata_pa, init_rodata_sz);
+    PR_INFO("  -> .init_rodata  : VA %#lx -> PA %#lx, Size: 0x%lx\n", init_rodata_va, init_rodata_pa, init_rodata_sz);
     vm_map_range(&kernel_space, init_rodata_va, init_rodata_pa, init_rodata_sz, PAGE_KERNEL_DATA_RW);
 
     // .init_data
     uint64 init_data_va = (uint64)_start_init_data;
     uint64 init_data_pa = init_data_va - vm_layout.kernel_start;
-    uint64 init_data_sz = (uint64)_end_init_data - init_data_va;
-    PR_INFO("  -> .init_data : VA %#lx -> PA %#lx, Size: 0x%lx\n", init_data_va, init_data_pa, init_data_sz);
+    uint64 init_data_sz = (uint64)_end_init_bss - init_data_va;
+    PR_INFO("  -> .init_data/bss: VA %#lx -> PA %#lx, Size: 0x%lx\n", init_data_va, init_data_pa, init_data_sz);
     vm_map_range(&kernel_space, init_data_va, init_data_pa, init_data_sz, PAGE_KERNEL_DATA_RW);
 
     // 正式内核 .text可读执行
     uint64 text_va = (uint64)_start_text;
     uint64 text_pa = text_va - vm_layout.kernel_start;
     uint64 text_sz = (uint64)_end_text - text_va;
-    PR_INFO("  -> .text      : VA %#lx -> PA %#lx, Size: 0x%lx\n", text_va, text_pa, text_sz);
+    PR_INFO("  -> .text         : VA %#lx -> PA %#lx, Size: 0x%lx\n", text_va, text_pa, text_sz);
     vm_map_range(&kernel_space, text_va, text_pa, text_sz, PAGE_KERNEL_CODE);
 
     // .rodata
     uint64 rodata_va = (uint64)_start_rodata;
     uint64 rodata_pa = rodata_va - vm_layout.kernel_start;
     uint64 rodata_sz = (uint64)_end_rodata - rodata_va;
-    PR_INFO("  -> .rodata    : VA %#lx -> PA %#lx, Size: 0x%lx\n", rodata_va, rodata_pa, rodata_sz);
+    PR_INFO("  -> .rodata       : VA %#lx -> PA %#lx, Size: 0x%lx\n", rodata_va, rodata_pa, rodata_sz);
     vm_map_range(&kernel_space, rodata_va, rodata_pa, rodata_sz, PAGE_KERNEL_DATA_RO);
 
     // .data .bss
     uint64 data_va = (uint64)_start_data;
     uint64 data_pa = data_va - vm_layout.kernel_start;
     uint64 data_sz = (uint64)_end_bss - data_va;
-    PR_INFO("  -> .data/.bss : VA %#lx -> PA %#lx, Size: 0x%lx\n", data_va, data_pa, data_sz);
+    PR_INFO("  -> .data/bss     : VA %#lx -> PA %#lx, Size: 0x%lx\n", data_va, data_pa, data_sz);
     vm_map_range(&kernel_space, data_va, data_pa, data_sz, PAGE_KERNEL_DATA_RW);
 
     asm_set_cr3(kernel_space.cr3_root);

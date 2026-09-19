@@ -2,7 +2,7 @@
 #include "../include/buddy_system.h"
 #include "../include/slub.h"
 #include "../include/printk.h"
-#include "rbtree.h"
+
 
 extern vm_space_t kernel_space;
 
@@ -13,33 +13,14 @@ extern vm_space_t kernel_space;
 #define VM_MODULES          0x00000004 ///< 由 module_remap() 分配的内核模块执行区
 #define VM_IOREMAP          0x00000006 ///< 由 ioremap() 映射的外设寄存器区
 
-/**
- * @brief 离散虚拟内存管理核心描述符 (Virtual Memory Area)
- * @note  用于描述一段连续的虚拟地址空间。通过红黑树进行管理。
- */
-typedef struct {
-    uint64           va_start;         // 虚拟地址起点
-    uint64           va_end;           // 虚拟地址终点（不包含，即 [va_start, va_end)）
-    rb_node_t        rb_node;          // 挂载到忙碌/空闲红黑树的节点
-    list_head_t      list;             // 按照虚拟地址从低到高严格排序的双向链表
-
-    union {
-        // 🌟 增强红黑树 (Augmented RB-Tree) 的核心字段：
-        // 记录以当前节点为根的子树中，最大的空闲块容量。
-        // 分配时，通过判断子树的最大容量，可以 O(\log N) 极速剪枝，跳过空间不足的分支。
-        uint64 subtree_max_size;
-    };
-
-    uint64           flags;            // 描述符属性 (如 VM_ALLOC, VM_IOREMAP)
-} vmap_area_t;
 
 // =========================================================================
 // 核心管理器：忙碌/空闲红黑树双轨制
 // =========================================================================
 
-static rb_root_t used_vmap_area_root; // 记录已经被分配出去的虚拟内存块 (用于查找释放)
-static rb_root_t free_vmap_area_root; // 记录目前可用的虚拟内存空闲块 (用于搜索分配)
-static rb_augment_callbacks_f vmap_area_augment_callbacks; // 增强红黑树的回调操作集
+rb_root_t used_vmap_area_root; // 记录已经被分配出去的虚拟内存块 (用于查找释放)
+rb_root_t free_vmap_area_root; // 记录目前可用的虚拟内存空闲块 (用于搜索分配)
+
 
 /**
  * @brief 重新计算并维护当前节点及其子树中的最大空闲块容量 (subtree_max_size)
@@ -101,6 +82,12 @@ static void vmap_area_augment_propagate(rb_node_t *start_node, rb_node_t *stop_n
     }
 }
 
+rb_augment_callbacks_f vmap_area_augment_callbacks = {
+    .rotate = vmap_area_augment_rotate,
+    .copy = vmap_area_augment_copy,
+    .propagate = vmap_area_augment_propagate
+}; // 增强红黑树的回调操作集
+
 // =========================================================================
 // 树节点调度基础操作
 // =========================================================================
@@ -108,7 +95,7 @@ static void vmap_area_augment_propagate(rb_node_t *start_node, rb_node_t *stop_n
 /**
  * @brief 将一个 VMA 区块插入指定的红黑树中 (按虚拟基址 va_start 排序)
  */
-static inline void insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area, rb_augment_callbacks_f *augment) {
+void insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area, rb_augment_callbacks_f *augment) {
     rb_node_t **link = &root->rb_node;
     rb_node_t *parent = NULL;
 
@@ -138,7 +125,7 @@ static inline void erase_vmap_area(rb_root_t *root, vmap_area_t *vmap_area, rb_a
 /**
  * @brief 实例化 VMA 描述符 (修复未初始化悬空指针)
  */
-static vmap_area_t *create_vmap_area(uint64 va_start, uint64 va_end, uint64 flags) {
+vmap_area_t *create_vmap_area(uint64 va_start, uint64 va_end, uint64 flags) {
     vmap_area_t *vmap = kmalloc(sizeof(vmap_area_t));
     vmap->va_start = va_start;
     vmap->va_end = va_end;
@@ -572,6 +559,7 @@ int32 _set_memory_flags(uint64 vaddr, uint64 size, uint64 flags) {
     vm_protect_range(&kernel_space, aligned_vaddr, aligned_size, flags);
     return 0;
 }
+
 
 
 
