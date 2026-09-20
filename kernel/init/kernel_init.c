@@ -25,7 +25,6 @@ void kernel_init(void) {
     vm_layout_init();                                           //虚拟内存空间初始化
     memblock_init();                                            //初始化启动内存分配器
     kpage_table_init();                                         //初始化正式内核页表
-    acpi_init();                                                //acpi表初始化
     buddy_system_init();                                        //初始化伙伴系统
     slub_init();                                                //初始化slub内存分配器
     vmalloc_init();                                             //初始化vmalloc
