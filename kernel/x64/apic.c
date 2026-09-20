@@ -1,13 +1,109 @@
 #include "apic.h"
 #include "cpu.h"
+#include "memblock_init.h"
 #include "../init/acpi_init.h"
 #include "slub.h"
 #include "../include/printk.h"
+#include "ioapic.h"
 
+// 定义为一个动态指针，而不是固定数组！
+cpu_core_t *cpu_cores = NULL;
+uint32 active_cpu_count = 0;
 
-
+ioapic_devive_t ioapic_dev;
 
 void apic_init(void) {
+    madt_t *madt = acpi_get_table(ACPI_SIG_APIC, 0);
+    if (!madt) {
+        PR_ERROR("No MADT!\n");
+        while (1);
+    }
+
+    madt_header_t *madt_start = (madt_header_t *)&madt->entry;
+    uint64 madt_end = (uint64) madt + madt->acpi_header.length;
+
+    // =========================================================
+    // 第一遍扫描：纯计数 (Count)
+    // =========================================================
+    uint32 core_count = 0;
+    while ((uint64) madt_start < madt_end) {
+        //X2APIC ID
+        if (madt_start->type == 9) {
+            x2apic_entry_t *x2apic_entry = (x2apic_entry_t *) madt_start;
+            if (x2apic_entry->flags & 1) {
+                core_count++;
+            }
+        }
+        madt_start = (madt_header_t *) ((uint64) madt_start + madt_start->length);
+    }
+
+    if (core_count == 0) { PR_ERROR("No active CPU found!\n"); }
+
+    // =========================================================
+    // 动态内存分配：按需切肉 (Allocate)
+    // =========================================================
+    uint64 core_size = PAGE_4K_ALIGN(core_count * sizeof(cpu_core_t));
+    cpu_cores = pa_to_va(memblock_alloc(core_size,PAGE_4K_SIZE));
+    asm_mem_set(cpu_cores,0,core_size);
+
+    // =========================================================
+    // 第二遍扫描：提取数据并填充 (Populate)
+    // =========================================================
+    madt_start = (madt_header_t *)&madt->entry;
+    uint32 core_idx = 0;
+    while ((uint64) madt_start < madt_end) {
+        switch (madt_start->type) {
+            case 1: //ioapic
+                ioapic_entry_t *ioapic_entry = (ioapic_entry_t *) madt_start;
+                ioapic_dev.phys_addr = ioapic_entry->ioapic_address;
+                break;
+            case 2: //中断重定向
+                interrupt_source_override_entry_t *iso_entry = (interrupt_source_override_entry_t *) madt_start;
+                color_printk(GREEN, BLACK, "IRQ#%d -> GSI#%d\n", iso_entry->irq_source,
+                             iso_entry->global_system_interrupt);
+                break;
+            case 3: //不可屏蔽中断
+                nmi_source_entry_t *nmi_source_entry = (nmi_source_entry_t *) madt_start;
+                color_printk(GREEN,BLACK, "non-maskable interrupt:%d\n", nmi_source_entry->global_interrupt);
+                break;
+            case 4: //apic nmi引脚
+                apic_nmi_entry_t *apic_nmi_entry = (apic_nmi_entry_t *) madt_start;
+                //color_printk(GREEN, BLACK, "APIC NMI ApicID:%#lX LINT:%d\n", apic_nmi_entry->apic_id,apic_nmi_entry->lint);
+                break;
+            case 5: //64位local apic地址
+                apic_address_override_entry_t *apic_addr_override_entry = (apic_address_override_entry_t *)
+                        madt_start;
+                color_printk(GREEN,BLACK, "64-bit local apic address:%#lX\n",
+                             apic_addr_override_entry->apic_address);
+                break;
+            case 9: //X2APIC ID
+                x2apic_entry_t *x2apic_entry = (x2apic_entry_t *) madt_start;
+                if (x2apic_entry->flags & 1) {
+                    cpu_cores[core_idx].apic_id = x2apic_entry->x2apic_id;
+                    cpu_cores[core_idx].acpi_proc_id = x2apic_entry->processor_id;
+                    core_idx++;
+                }
+                break;
+            case 10: //X2APIC不可屏蔽中断
+                x2apic_nmi_entry_t *x2apic_nmi_entry = (x2apic_nmi_entry_t *) madt_start;
+                color_printk(RED,BLACK, "X2APIC NMI X2ApicID:%#lX LINT:%d\n", x2apic_nmi_entry->x2apic_id,
+                             x2apic_nmi_entry->lint);
+                break;
+            case 13: //多处理器唤醒
+                multiprocessor_wakeup_entry_t *mult_proc_wakeup_entry = (multiprocessor_wakeup_entry_t *)
+                        madt_start;
+                color_printk(RED,BLACK, "Multiprocessor Wakeup Address:%#lX\n",
+                             mult_proc_wakeup_entry->mailbox_address);
+                break;
+        }
+        madt_start = (madt_header_t *) ((uint64) madt_start + madt_start->length);
+    }
+
+    PR_OK("APIC Init done! Dynamically allocated CPU structures.\n");
+}
+
+
+void apic_init_1(void) {
     uint64 value;
 
     //region IA32_APIC_BASE_MSR (MSR 0x1B)

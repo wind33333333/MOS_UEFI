@@ -17,7 +17,7 @@ void *acpi_get_table(uint32 signature, uint32 index) {
     for (uint32 i = 0; i < acpi_count; i++) {
         uint64 table_phys = (uint64)xsdt->apci_table[i];
         if (table_phys == 0) continue; // 防御性跳过空槽位
-        acpi_header_t *acpi_table = (acpi_header_t *)pa_to_va(table_phys);
+        acpi_header_t *acpi_table = pa_to_va(table_phys);
         if (acpi_table->signature == signature) {
             if (match_count == index) {
                 return acpi_table;
