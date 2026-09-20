@@ -1,4 +1,7 @@
-#include "gdt.h"
+#include "gdt_tss.h"
+
+#include "slub.h"
+#include "vmalloc.h"
 
 typedef struct {
     uint64 null_desc;          // 0x00: Reserve / Null Descriptor
@@ -46,17 +49,17 @@ typedef struct{
 
 typedef struct {
     uint32   reserved0;
-    uint64   rsp0;
-    uint64   rsp1;
-    uint64   rsp2;
+    uint64    rsp0;
+    uint64    rsp1;
+    uint64    rsp2;
     uint64   reserved1;
-    uint64   ist1;
-    uint64   ist2;
-    uint64   ist3;
-    uint64   ist4;
-    uint64   ist5;
-    uint64   ist6;
-    uint64   ist7;
+    uint64    ist1;
+    uint64    ist2;
+    uint64    ist3;
+    uint64    ist4;
+    uint64    ist5;
+    uint64    ist6;
+    uint64    ist7;
     uint64   reserved2;
     uint16   reserved3;
     uint16   iomap_base;
@@ -100,7 +103,7 @@ static inline void asm_ltr(uint16 tss_sel) {
  * @note 64位 TSS 固定大小 104 字节，Limit 强制硬编码为 0x67
  *       Type 强制硬编码为 0x89 (Available 64-bit TSS)
  */
-static inline void tss_set_descriptor(uint64 *tss_desc_ptr, uint64 base) {
+static inline void set_tss_desc(uint64 *tss_desc_ptr, tss_t *tss) {
     /*
      * 低 8 字节 (Low 64-bit) 极限位运算组合：
      * [0:15]   = 0x0067 (Limit 15:0)
@@ -110,10 +113,31 @@ static inline void tss_set_descriptor(uint64 *tss_desc_ptr, uint64 base) {
      * [56:63]  = Base 31:24
      */
     tss_desc_ptr[0] = (sizeof(tss_t)-1)
-                    | ((base & 0xFFFFFFULL) << 16)
+                    | ((((uint64)tss) & 0xFFFFFFULL) << 16)
                     | (0x89ULL << 40)
-                    | (((base >> 24) & 0xFFULL) << 56);
+                    | ((((uint64)tss >> 24) & 0xFFULL) << 56);
 
     /* 高 8 字节 (High 64-bit)：直接就是 Base 的高 32 位 */
-    tss_desc_ptr[1] = base >> 32;
+    tss_desc_ptr[1] = (uint64)tss >> 32;
+}
+
+
+void gdt_tss_init() {
+    gdt_t *gdt = kzalloc(sizeof(gdt_t));
+    gdt->kernel_code64_desc = KERNEL_CODE64_DESC;
+    gdt->kernel_data_desc = KERNEL_DATA_DESC;
+    gdt->user_code32_desc = USER_CODE32_DESC;
+    gdt->user_data_desc = USER_DATA_DESC;
+    gdt->user_code64_desc = USER_CODE64_DESC;
+
+    tss_t *tss = kzalloc(sizeof(tss_t));
+    set_tss_desc(gdt->tss_desc,tss);
+    tss->rsp0 = (uint64)vmalloc(4*4096) + 4*4096;       // 内核栈
+    tss->ist1 = (uint64)vmalloc(2*4096) + 2*4096;       // 8: Double Fault (#DF) 双重故障
+    tss->ist2 = (uint64)vmalloc(2*4096) + 2*4096;       // 2: NMI 不可屏蔽中断
+    tss->ist3 = (uint64)vmalloc(2*4096) + 2*4096;       // 18: Machine Check (#MC) 机器检查
+    tss->ist4 = (uint64)vmalloc(2*4096) + 2*4096;       // 1: Debug (#DB) 调试异常
+
+    asm_lgdt(gdt,8,16);
+    asm_ltr(48);
 }

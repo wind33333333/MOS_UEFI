@@ -1,5 +1,5 @@
 #pragma once
-#include "moslib.h"
+#include "../include/moslib.h"
 
 #pragma pack(push,1)
 
@@ -138,7 +138,7 @@ typedef struct {
 //region xsdt表
 typedef struct {
     acpi_header_t acpi_header;           // 标准 ACPI 表头
-    acpi_header_t* apci_table[];         // 指向其他 ACPI 表的 64 位指针数组
+    acpi_header_t *apci_table[];         // 指向其他 ACPI 表的 64 位指针数组
 }  xsdt_t;
 //endregion
 
@@ -294,4 +294,43 @@ typedef struct {
 //endregion
 #pragma pack(pop)
 
-void *acpi_get_table(uint32 table);
+
+// 🌟 魔法宏：将 4 个字符在编译期转化为 1 个小端序的 32 位无符号整数
+#define ACPI_MAKE_SIG(a, b, c, d) \
+    (((uint32)(a) << 0) | ((uint32)(b) << 8) | ((uint32)(c) << 16) | ((uint32)(d) << 24))
+
+// =========================================================================
+// 1. 核心与电源管理表 (Core & Power Management)
+// =========================================================================
+#define ACPI_SIG_FACP  ACPI_MAKE_SIG('F', 'A', 'C', 'P') // FADT：固件ACPI控制表 (电源管理核心)
+#define ACPI_SIG_FACS  ACPI_MAKE_SIG('F', 'A', 'C', 'S') // FACS：固件ACPI控制结构 (睡眠唤醒)
+#define ACPI_SIG_DSDT  ACPI_MAKE_SIG('D', 'S', 'D', 'T') // DSDT：主系统描述表 (AML字节码大本营)
+#define ACPI_SIG_SSDT  ACPI_MAKE_SIG('S', 'S', 'D', 'T') // SSDT：辅助系统描述表 (动态设备, 通常有多个)
+
+// =========================================================================
+// 2. 多核与中断子系统 (Multicore & Interrupts)
+// =========================================================================
+#define ACPI_SIG_APIC  ACPI_MAKE_SIG('A', 'P', 'I', 'C') // MADT：多核APIC解析表 (极其重要)
+
+// =========================================================================
+// 3. 基础外设与总线 (Peripherals & Bus)
+// =========================================================================
+#define ACPI_SIG_HPET  ACPI_MAKE_SIG('H', 'P', 'E', 'T') // HPET：高精度事件定时器 (极其重要)
+#define ACPI_SIG_MCFG  ACPI_MAKE_SIG('M', 'C', 'F', 'G') // MCFG：PCIe 配置空间基地址 (极其重要)
+#define ACPI_SIG_SPCR  ACPI_MAKE_SIG('S', 'P', 'C', 'R') // SPCR：串口重定向表 (无显卡服务器调试必备)
+#define ACPI_SIG_WAET  ACPI_MAKE_SIG('W', 'A', 'E', 'T') // WAET：Windows 动作优化表 (RTC/定时器相关)
+
+// =========================================================================
+// 4. 服务器与高级架构拓扑 (NUMA / Server)
+// =========================================================================
+#define ACPI_SIG_SRAT  ACPI_MAKE_SIG('S', 'R', 'A', 'T') // SRAT：系统资源亲和性表 (NUMA 节点划分)
+#define ACPI_SIG_SLIT  ACPI_MAKE_SIG('S', 'L', 'I', 'T') // SLIT：系统局部距离信息表 (NUMA 节点延迟)
+
+// =========================================================================
+// 5. 杂项与新特性硬件 (Misc)
+// =========================================================================
+#define ACPI_SIG_BGRT  ACPI_MAKE_SIG('B', 'G', 'R', 'T') // BGRT：启动图形资源表 (主板开机Logo的内存地址)
+#define ACPI_SIG_TPM2  ACPI_MAKE_SIG('T', 'P', 'M', '2') // TPM2：可信平台模块 2.0 表
+#define ACPI_SIG_ECDT  ACPI_MAKE_SIG('E', 'C', 'D', 'T') // ECDT：嵌入式控制器表 (笔记本电池、风扇控制)
+
+void* acpi_get_table(uint32 signature, uint32 index);

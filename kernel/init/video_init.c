@@ -2,7 +2,7 @@
 #include "printk.h"
 #include "slub.h"
 #include "vmalloc.h"
-#include "uefi_rts_init.h"
+#include "uefi_init.h"
 
 extern position_t Pos;
 

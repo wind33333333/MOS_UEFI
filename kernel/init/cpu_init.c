@@ -8,6 +8,7 @@
 #include "slub.h"
 #include "../x64/mtrr.h"
 #include "alternative_init.h"
+#include "../x64/gdt_tss.h"
 #include "../x64/cpu.h"
 
 extern uint8 _apboot_start[];
@@ -204,16 +205,18 @@ void get_cpu_info(void) {
 }
 
 void bsp_init(void){
+
+
     uint32 apic_id,cpu_id,tmp;
     asm_cpuid_count(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
     cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
 
 
     bsp_backup_mtrr_state();
+    gdt_tss_init();                            //初始化gdb和tss
     get_cpu_info();                            //获取cpu信息
-    tmp_idt_init();                                //初始化IDT
     apic_init();                               //初始化apic
-    init_syscall();                            //初始化系统调用
+    //init_syscall();                            //初始化系统调用
     color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
     color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_hz,cpu_info.maximum_hz,cpu_info.bus_hz,cpu_info.tsc_hz);
 }

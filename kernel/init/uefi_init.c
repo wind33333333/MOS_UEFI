@@ -1,4 +1,4 @@
-#include "uefi_rts_init.h"
+#include "uefi_init.h"
 #include "memblock_init.h"
 #include "printk.h"
 #include "vmm.h"

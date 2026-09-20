@@ -1,5 +1,5 @@
 #include "pcie.h"
-#include "acpi.h"
+#include "../../init/acpi_init.h"
 #include "printk.h"
 #include "slub.h"
 #include "vmalloc.h"
@@ -507,7 +507,7 @@ pcie_root_complex_t *pcie_rc_create(mcfg_entry_t* mcfg_entry) {
 //pcie总线初始化
 INIT_TEXT void pcie_bus_init(void) {
     //查找mcfg表
-    mcfg_t *mcfg = acpi_get_table('GFCM');
+    mcfg_t *mcfg = acpi_get_table('GFCM',0);
     uint32 ecma_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
                             mcfg_entry_t);
     //创建pcie根复合体

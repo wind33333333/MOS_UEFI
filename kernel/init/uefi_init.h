@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../include/moslib.h"
-#include "../include/acpi.h"
+#include "acpi_init.h"
 
 typedef void VOID;
 typedef uint64 UINTN;

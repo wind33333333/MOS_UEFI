@@ -1,6 +1,6 @@
 #include "hpet.h"
 #include "printk.h"
-#include "acpi.h"
+#include "../../init/acpi_init.h"
 #include "vmalloc.h"
 #include "../x64/apic.h"
 
@@ -199,7 +199,7 @@ uint64 hpet_calibrate_apic_hz(hpet_device_t *hpet_dev, uint32 wait_ms) {
 
 void hpet_init(void) {
     //hpet初始化
-    hpett_t *hpet_table = acpi_get_table('TEPH');
+    hpett_t *hpet_table = acpi_get_table('TEPH',0);
 
     // 1. 填充基地址，并获取 MMU 映射后的虚拟地址
     hpet_dev.phys_base_addr = hpet_table->acpi_generic_adderss.address;

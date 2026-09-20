@@ -6,7 +6,8 @@
 #include "cpu_init.h"
 #include "kpt_init.h"
 #include "vmalloc_init.h"
-#include "uefi_rts_init.h"
+#include "acpi_init.h"
+#include "uefi_init.h"
 #include "alternative_init.h"
 #include "video_init.h"
 #include "../include/bus.h"
@@ -24,15 +25,17 @@ void kernel_init(void) {
     vm_layout_init();                                           //虚拟内存空间初始化
     memblock_init();                                            //初始化启动内存分配器
     kpage_table_init();                                         //初始化正式内核页表
+    acpi_init();                                                //acpi表初始化
     buddy_system_init();                                        //初始化伙伴系统
     slub_init();                                                //初始化slub内存分配器
     vmalloc_init();                                             //初始化vmalloc
     video_mem_map();                                            //映射显存到虚拟地址空间
+    bsp_init();                                                 //初始化bsp核心
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
     while(1);
     ioapic_init();                                              //初始化ioapic
     hpet_init();                                                //初始化hpet
-    bsp_init();                                                 //初始化bsp核心
+
 
     while (1);
 

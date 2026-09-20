@@ -1,5 +1,5 @@
 #include "printk.h"
-#include "../init/uefi_rts_init.h"
+#include "../init/uefi_init.h"
 #include "../include/font.h"
 #include <stdarg.h>
 

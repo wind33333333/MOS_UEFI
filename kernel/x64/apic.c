@@ -1,9 +1,13 @@
 #include "apic.h"
 #include "cpu.h"
+#include "../init/acpi_init.h"
+#include "slub.h"
 #include "../include/printk.h"
 
 
-INIT_TEXT void apic_init(void) {
+
+
+void apic_init(void) {
     uint64 value;
 
     //region IA32_APIC_BASE_MSR (MSR 0x1B)
