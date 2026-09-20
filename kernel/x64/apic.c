@@ -23,19 +23,26 @@ void apic_init(void) {
     uint64 madt_end = (uint64) madt + madt->acpi_header.length;
 
     // =========================================================
-    // 第一遍扫描：纯计数 (Count)
+    // 第一遍扫描：纯计数 (Count) - 【修复：引入兼容性兜底】
     // =========================================================
-    uint32 core_count = 0;
+    uint32 xapic_count = 0;   // Type 0 的数量
+    uint32 x2apic_count = 0;  // Type 9 的数量
+
     while ((uint64) madt_start < madt_end) {
-        //X2APIC ID
-        if (madt_start->type == 9) {
-            x2apic_entry_t *x2apic_entry = (x2apic_entry_t *) madt_start;
-            if (x2apic_entry->flags & 1) {
-                core_count++;
-            }
+        if (madt_start->type == 0) {
+            apic_entry_t *apic = (apic_entry_t *) madt_start;
+            if (apic->flags & 1) xapic_count++;
+        }
+        else if (madt_start->type == 9) {
+            x2apic_entry_t *x2apic = (x2apic_entry_t *) madt_start;
+            if (x2apic->flags & 1) x2apic_count++;
         }
         madt_start = (madt_header_t *) ((uint64) madt_start + madt_start->length);
     }
+
+    // 🌟 核心决策：如果存在 x2APIC，就用 x2APIC 的数量，否则回退到传统 xAPIC
+    uint32 core_count = (x2apic_count > 0) ? x2apic_count : xapic_count;
+    boolean use_x2apic   = (x2apic_count > 0);
 
     if (core_count == 0) { PR_ERROR("No active CPU found!\n"); }
 
@@ -53,6 +60,16 @@ void apic_init(void) {
     uint32 core_idx = 0;
     while ((uint64) madt_start < madt_end) {
         switch (madt_start->type) {
+            case 0: // 🌟 补全：传统的 Local APIC (Type 0)
+                if (!use_x2apic) { // 只有在系统没有 x2APIC 时才使用 Type 0
+                    apic_entry_t *lapic = (apic_entry_t *) madt_start;
+                    if (lapic->flags & 1) {
+                        cpu_cores[core_idx].apic_id = lapic->apic_id;
+                        cpu_cores[core_idx].acpi_proc_id = lapic->processor_id;
+                        core_idx++;
+                    }
+                }
+                break;
             case 1: //ioapic
                 ioapic_entry_t *ioapic_entry = (ioapic_entry_t *) madt_start;
                 ioapic_dev.phys_addr = ioapic_entry->ioapic_address;
@@ -77,11 +94,13 @@ void apic_init(void) {
                              apic_addr_override_entry->apic_address);
                 break;
             case 9: //X2APIC ID
-                x2apic_entry_t *x2apic_entry = (x2apic_entry_t *) madt_start;
-                if (x2apic_entry->flags & 1) {
-                    cpu_cores[core_idx].apic_id = x2apic_entry->x2apic_id;
-                    cpu_cores[core_idx].acpi_proc_id = x2apic_entry->processor_id;
-                    core_idx++;
+                if (use_x2apic) { // 如果系统支持 x2APIC，独占解析权！
+                    x2apic_entry_t *x2apic_entry = (x2apic_entry_t *) madt_start;
+                    if (x2apic_entry->flags & 1) {
+                        cpu_cores[core_idx].apic_id = x2apic_entry->x2apic_id;
+                        cpu_cores[core_idx].acpi_proc_id = x2apic_entry->processor_id;
+                        core_idx++;
+                    }
                 }
                 break;
             case 10: //X2APIC不可屏蔽中断
