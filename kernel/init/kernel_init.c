@@ -6,7 +6,6 @@
 #include "cpu_init.h"
 #include "kpt_init.h"
 #include "vmalloc_init.h"
-#include "acpi_init.h"
 #include "uefi_init.h"
 #include "alternative_init.h"
 #include "video_init.h"
