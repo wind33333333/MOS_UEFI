@@ -1,7 +1,7 @@
 #include "interrupt.h"
 #include "printk.h"
 #include "moslib.h"
-#include "apic.h"
+#include "../init/apic_init.h"
 #include "errno.h"
 
 /*********************************************************** 系统异常处理函数 *****************************************************************************/

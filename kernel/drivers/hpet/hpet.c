@@ -2,7 +2,7 @@
 #include "printk.h"
 #include "../../init/acpi_init.h"
 #include "vmalloc.h"
-#include "../x64/apic.h"
+#include "../../init/apic_init.h"
 
 // 假设这是全局的 HPET 设备对象
 hpet_device_t hpet_dev;
