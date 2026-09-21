@@ -5,7 +5,8 @@
 #include "../../include/printk.h"
 #include "../include/vmalloc.h"
 
-ioapic_devive_t ioapic_dev;
+ioapic_devive_t *ioapic_dev = NULL;
+uint32 ioapic_count = 0;
 
 
 // 基础读写原语

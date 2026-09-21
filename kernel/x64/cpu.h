@@ -28,6 +28,7 @@ typedef struct cpu_core {
     uint32  acpi_proc_id;     // ACPI 逻辑 ID (从 MADT 读出)
     uint32  numa_node;        // 所属 NUMA 物理节点 (由 SRAT 表解析得出)
     boolean is_bsp;           // 是否为主核心 (Bootstrap Processor)
+    uint8   lint_nmi;
 
     // -------------------------------------------------------------
     // [2] 运行时状态区 (Runtime Status)
