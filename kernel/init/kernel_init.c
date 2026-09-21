@@ -35,16 +35,8 @@ void kernel_init(void) {
     while(1);
     ioapic_init();                                              //初始化ioapic
     hpet_init();                                                //初始化hpet
-
-
-    while (1);
-
     bus_init();                                //总线初始化
     ap_init();                                 //初始化ap核
 
-    //ENABLE_HPET_TIMES(*hpetRegisters.tim0_conf,*hpetRegisters.tim0_comp,0x3000000,HPET_PERIODIC,0);
-    //enable_apic_time(0xF000,APIC_TSC_DEADLINE,0x20);
-
-    //STI();
     while (1);
 }
