@@ -170,11 +170,15 @@ void apic_init(void) {
                 color_printk(RED,BLACK, "X2APIC NMI X2ApicID:%#lX LINT:%d\n", x2apic_nmi_entry->x2apic_id,
                              x2apic_nmi_entry->lint);
                 break;
-            case 13: //多处理器唤醒
+            case 16: //多处理器唤醒
                 multiprocessor_wakeup_entry_t *mult_proc_wakeup_entry = (multiprocessor_wakeup_entry_t *)
                         madt_start;
                 multiprocessor_wakeup_mailbox = mult_proc_wakeup_entry->mailbox_address;
                 color_printk(RED, BLACK, "Modern MP Wakeup Mailbox enabled: %#lX\n", multiprocessor_wakeup_mailbox);
+                break;
+            default:
+                // 建议保留一行调试日志，方便以后排查奇葩主板
+                PR_WARN("Ignored unknown MADT Type: %d, length: %d\n", madt_start->type, madt_start->length);
                 break;
         }
         madt_start = (madt_header_t *) ((uint64) madt_start + madt_start->length);
