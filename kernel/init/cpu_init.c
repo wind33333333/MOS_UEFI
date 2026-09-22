@@ -289,7 +289,6 @@ void bsp_init(void){
 
     uint32 apic_id,cpu_id,tmp;
     asm_cpuid_count(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
-    cpu_id = apicid_to_cpuid(apic_id);         //获取cpu_id
 
 
     bsp_backup_mtrr_state();

@@ -70,6 +70,35 @@
 #define APIC_TSC_DEADLINE 0x40000   //TSC截止期限模式
 
 
+// =====================================================================
+// x86_64 FS/GS Base Model-Specific Registers (MSRs)
+// =====================================================================
+
+/*
+ * MSR_FS_BASE: FS 段的 64 位基地址
+ * [用途]：通常指向当前用户态线程的 TLS (Thread-Local Storage)。
+ * [注意]：用户态程序在开启 FSGSBASE 特性后，用 wrfsbase 指令修改的就是这个值；
+ *        内核进行线程切换时，也需要读写这个寄存器。
+ */
+#define FS_BASE_MSR             0xC0000100
+
+/*
+ * MSR_GS_BASE: 当前【激活状态】的 GS 段 64 位基地址
+ * [用途]：正在起作用的 GS 基址。
+ *        - 在 Ring 3 (用户态) 时：它通常为 0，或者指向用户态特定结构。
+ *        - 在 Ring 0 (内核态) 时：它指向当前 CPU 的 cpu_core_t。
+ */
+#define GS_BASE_MSR             0xC0000101
+
+/*
+ * MSR_KERNEL_GS_BASE: 隐藏的、备用的 GS 基地址保险箱
+ * [用途]：专门为 swapgs 指令设计的“影子寄存器”。
+ * [机制]：执行 swapgs 汇编指令时，CPU 硬件会自动且瞬间将 MSR_GS_BASE 的值
+ *        与 MSR_KERNEL_GS_BASE 的值进行互换。
+ */
+#define KERNEL_GS_BASE_MSR      0xC0000102
+
+
 //中断结束发送EOI
 static inline void apic_send_eoi(void) {
     __asm__ __volatile__(
@@ -110,6 +139,33 @@ static inline void apic_send_eoi(void) {
         ::"m"(TIME):"%rax","%rcx","%rdx"); \
         } while(0)
 
+static inline uint64 asm_rdgsbase(void) {
+    uint64 gsbase;
+    __asm__ __volatile__(
+        "rdgsbase %0  \n\t"
+        :"=r"(gsbase)
+        :
+        :"cc");
+    return gsbase;
+}
+
+static inline void asm_wrgsbase(void* gsbase) {
+    __asm__ __volatile__(
+        "wrgsbase %0  \n\t"
+        :
+        :"r"(gsbase)
+        :"cc");
+}
+
+static inline void asm_swapgs() {
+    __asm__ __volatile__(
+        "swapgs  \n\t"
+        :
+        :
+        :"memory");
+}
+
+
 
 // 前置声明任务/线程控制块 (你的调度器定义)
 struct thread_t;
@@ -136,7 +192,6 @@ typedef struct cpu_core {
     uint32  apic_id;          // 真实的物理 APIC ID (用于发送 IPI 中断唤醒/TLB 刷新)
     uint32  acpi_proc_id;     // ACPI 逻辑 ID (从 MADT 读出)
     uint32  numa_node;        // 所属 NUMA 物理节点 (由 SRAT 表解析得出)
-    boolean is_bsp;           // 是否为主核心 (Bootstrap Processor)
     uint8   lint_nmi;
 
     // -------------------------------------------------------------
@@ -178,16 +233,13 @@ typedef struct cpu_core {
 typedef struct {
     char8 manufacturer_name[13];
     char8 model_name[49];
-    uint32 logical_processors_number;
     uint32 fundamental_hz;
     uint32 maximum_hz;
     uint32 bus_hz;
     uint32 tsc_hz;
 }cpu_info_t;
 
-extern cpu_info_t cpu_info;
-extern uint32 *apic_id_table;
+extern cpu_info_t *cpu_info;
 
-uint32 apicid_to_cpuid(uint32 apic_id);
-uint32 cpuid_to_apicid(uint32 cpu_id);
+
 
