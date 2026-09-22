@@ -7,9 +7,6 @@
 #define APIC_TSC_DEADLINE 0x40000   //TSC截止期限模式
 
 
-
-
-
 //中断结束发送EOI
 static inline void apic_send_eoi(void) {
     __asm__ __volatile__(
@@ -49,6 +46,7 @@ static inline void apic_send_eoi(void) {
         "wrmsr                            \n\t" \
         ::"m"(TIME):"%rax","%rcx","%rdx"); \
         } while(0)
+
 
 static inline uint64 asm_rdgsbase(void) {
     uint64 gsbase;
