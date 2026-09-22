@@ -76,8 +76,6 @@ static inline void asm_lgdt(const gdt_t *gdt_ptr, uint16 code64_sel, uint16 data
             "movw        %2, %%ss            \n\t"  // 设置堆栈段选择器
             "movw        %2, %%ds            \n\t"  // 设置数据段选择器
             "movw        %2, %%es            \n\t"  // 设置额外段选择器
-            "movw        %2, %%gs            \n\t"  // 设置全局段选择器
-            "movw        %2, %%fs            \n\t"  // 设置额外段选择器
             :
             : "m"(*gdt_ptr), "r"(code64_sel), "r"(data64_sel)
             : "memory", "%rax"

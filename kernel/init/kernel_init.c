@@ -10,6 +10,7 @@
 #include "alternative_init.h"
 #include "video_init.h"
 #include "apic_init.h"
+#include "../x64/cpu.h"
 #include "../include/bus.h"
 #include "../x64/interrupt.h"
 #include "../include/ioapic.h"
@@ -26,6 +27,7 @@ void kernel_init(void) {
     memblock_init();                                            //初始化启动内存分配器
     kpage_table_init();                                         //初始化正式内核页表
     apic_init();                                                //apic初始化
+
     buddy_system_init();                                        //初始化伙伴系统
     slub_init();                                                //初始化slub内存分配器
     vmalloc_init();                                             //初始化vmalloc

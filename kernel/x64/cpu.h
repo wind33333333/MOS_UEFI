@@ -135,8 +135,12 @@ typedef struct cpu_core {
     uint64  timer_ticks;      // 属于该 CPU 的 Local APIC Timer 滴答数
 
 } __attribute__((aligned(64))) cpu_core_t;
-// 🌟 架构师细节：__attribute__((aligned(64))) 极其重要！
-// 保证这个结构体按 CPU Cache Line (64字节) 对齐，防止极其致命的“伪共享 (False Sharing)”性能暴跌！
+
+// =======================================================
+// 💡 架构师魔法宏：定义一个永远指向当前 CPU 的“魔术指针”
+// =======================================================
+// 这里把 0 强制转换为一个基于 GS 的指针。因为 GS_BASE 已经指向了结构体首地址，所以偏移量为 0！
+#define THIS_CPU ((cpu_core_t __seg_gs *)0)
 
 
 typedef struct {
@@ -147,6 +151,9 @@ typedef struct {
     uint32 bus_hz;
     uint32 tsc_hz;
 }cpu_info_t;
+
+
+
 
 
 extern cpu_core_t *cpu_cores;
