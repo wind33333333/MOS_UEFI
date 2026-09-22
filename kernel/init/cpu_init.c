@@ -10,6 +10,7 @@
 #include "alternative_init.h"
 #include "../x64/gdt_tss.h"
 #include "../x64/cpu.h"
+#include "../x64/msr.h"
 
 extern uint8 _apboot_start[];
 extern uint8 _apboot_end[];
@@ -23,15 +24,15 @@ extern uint64 ap_boot_loader_address;
 void apic_init_1(void) {
     uint64 value;
 
-    //region IA32_APIC_BASE_MSR (MSR 0x1B)
+    //region APIC_BASE_MSR (MSR 0x1B)
     //X2APIC（bit 10）：作用：如果该位被设置为 1，处理器启用 X2APIC 模式。
     //EN（bit 11）：作用：控制是否启用本地 APIC。设置为 1 时启用本地 APIC；设置为 0 时禁用。
     //BSP（bit 9）：作用：标记该处理器是否是系统的启动处理器（BSP）。系统启动时，BSP 是首先执行初始化代码的 CPU，其它处理器是 AP（Application Processors，应用处理器）。
     //APIC Base Address（bit 12-31）：作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
     //endregion
-    value=asm_rdmsr(IA32_APIC_BASE_MSR);
+    value=asm_rdmsr(APIC_BASE_MSR);
     value |= 0xC00;
-    asm_wrmsr(IA32_APIC_BASE_MSR,value);
+    asm_wrmsr(APIC_BASE_MSR,value);
 
 
     // ==========================================================
@@ -90,7 +91,7 @@ void enable_apic_time (uint64 time,uint32 model,uint32 ivt){
     if(model == APIC_TSC_DEADLINE){
         uint64 cur_tsc= asm_rdtsc();
         uint64 timestamp=cur_tsc + time;
-        asm_wrmsr(IA32_TSC_DEADLINE,timestamp);
+        asm_wrmsr(APIC_TSC_DEADLINE,timestamp);
     } else {
         //分频配置寄存器 bit0 bit1 bit3 0:2 1:4 2:8 3:16 8:32 9:64 0xA:128 0xB:1
         asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, 0xB);
@@ -106,15 +107,15 @@ uint64 cpu_feature_init(void) {
     uint32 eax,ebx,ecx,edx;
     uint64 tmp,value;
 
-    //region IA32_APIC_BASE_MSR (MSR 0x1B)
+    //region APIC_BASE_MSR (MSR 0x1B)
     //X2APIC（bit 10）：作用：如果该位被设置为 1，处理器启用 X2APIC 模式。X2APIC 是 APIC 的扩展版本，提供了更多的功能，例如更大的中断目标地址空间。
     //EN（bit 11）：作用：控制是否启用本地 APIC。设置为 1 时启用本地 APIC；设置为 0 时禁用。
     //BSP（bit 9）：作用：标记该处理器是否是系统的启动处理器（BSP）。系统启动时，BSP 是首先执行初始化代码的 CPU，其它处理器是 AP（Application Processors，应用处理器）。
     //APIC Base Address（bit 12-31）：作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
     ////endregion
-    value=asm_rdmsr(IA32_APIC_BASE_MSR);
+    value=asm_rdmsr(APIC_BASE_MSR);
     value |= 0xC00;                        //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
-    asm_wrmsr(IA32_APIC_BASE_MSR,value);
+    asm_wrmsr(APIC_BASE_MSR,value);
 
     //region CR4 寄存器
     //VME（bit 0） 描述：启用虚拟 8086 模式的扩展功能，允许在虚拟 8086 模式中支持虚拟中断。用途：用于实现虚拟机监控或虚拟 8086 环境中的精细中断控制。
@@ -184,14 +185,14 @@ uint64 cpu_feature_init(void) {
     asm_cpuid(0x7,&eax,&ebx,&ecx,&edx);
     if (ebx & (1<<10)) cpu_features_mask |=  X86_FEATURE_INVPCID;
 
-    //region IA32_EFER_MSR 寄存器（MSR 0xC0000080)
+    //region EFER_MSR 寄存器（MSR 0xC0000080)
     //SCE（bit 0） 1:启用 SYSCALL 和 SYSRET 指令。
     //LME（bit 8） 1:启用 64 位长模式。当该位被设置为 1 时，处理器允许进入 64 位模式。在启用长模式时，CR0.PG（分页启用位）和 CR4.PAE（物理地址扩展启用位）也必须设置。
     //NXE（bit 11）1:sfdsfs启用 NX（No-eXecute） 位功能。NX 位用于控制某些内存页面的执行权限。如果该位被设置为 1，操作系统可以使用分页机制将特定的内存页面标记为不可执行，以防止执行非代码数据，如栈或堆内存，防止某些缓冲区溢出攻击。
     //endregion
-    value=asm_rdmsr(IA32_EFER_MSR);
+    value=asm_rdmsr(EFER_MSR);
     value |= 0x801;
-    asm_wrmsr(IA32_EFER_MSR,value);
+    asm_wrmsr(EFER_MSR,value);
 
     //region CR0寄存器
     //PE（位 0）：1：启用保护模式，使得 CPU 能使用分段和分页机制。0：CPU 处于实模式，仅支持基础的内存访问。
@@ -211,8 +212,8 @@ uint64 cpu_feature_init(void) {
     value |= 0x10002;
     asm_set_cr0(value);
 
-    //region IA32_PAT_MSR(0x277) 内存缓存模式配置寄存器
-    //IA32_PAT是一个64位寄存器，其中包含8个8位的字段，每个字段定义一种缓存类型。格式如下：
+    //region PAT_MSR(0x277) 内存缓存模式配置寄存器
+    //PAT是一个64位寄存器，其中包含8个8位的字段，每个字段定义一种缓存类型。格式如下：
     //PAT7[bit56-bit63] PAT6[bit48-bit55] PAT5[bit40-bit47]	PAT4[bit32-bit39]
     //PAT3[bit24-bit31]	PAT2[bit16-bit23] PAT1[bit8-bit15] PAT0[bit0-bit7]
     //每个字段的值定义以下缓存策略：
@@ -226,7 +227,7 @@ uint64 cpu_feature_init(void) {
     // 优势: 将最常用的 WB, WC, UC-, UC 集中在前 4 项，使得 PTE/PDE 的 PAT 标志位永远为 0。
     // 彻底免疫 4KB 与 2MB/1GB 页表中 PAT 标志位位置不同 (Bit 7 vs Bit 12) 导致的逻辑灾难！
     //endregion
-    asm_wrmsr(IA32_PAT_MSR, 0x0005040600070106ULL);
+    asm_wrmsr(PAT_MSR, 0x0005040600070106ULL);
 
     // =================================================================================
     // 👑 架构师核心调试输出：CPU 特性使能状态摘要 (带 SMP 核心编号)
@@ -235,7 +236,7 @@ uint64 cpu_feature_init(void) {
     // 重新读取最终状态，确保打印的是硬件真正接受的值
     uint64 final_cr0  = asm_get_cr0();
     uint64 final_cr4  = asm_get_cr4();
-    uint64 final_efer = asm_rdmsr(IA32_EFER_MSR);
+    uint64 final_efer = asm_rdmsr(EFER_MSR);
     uint64 final_xcr0 = asm_xgetbv(0);
 
     // 获取当前 CPU 的 Local APIC ID 作为核心编号
@@ -267,21 +268,28 @@ uint64 cpu_feature_init(void) {
 
 }
 
-void get_cpu_info(void) {
+void get_cpu_info(uint32 log_id) {
+
+    cpu_info_t *cur_cpu_info = &cpu_info[log_id];
+
     uint32 eax,ebx,ecx,edx;
     // 获取CPU厂商
-    asm_cpuid_count(0,0,(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[0],(uint32*)&cpu_info.manufacturer_name[8],(uint32*)&cpu_info.manufacturer_name[4]);
+    asm_cpuid_count(0,0,(uint32*)&cur_cpu_info->manufacturer_name[8],(uint32*)&cur_cpu_info->manufacturer_name[0],(uint32*)&cur_cpu_info->manufacturer_name[8],(uint32*)&cur_cpu_info->manufacturer_name[4]);
 
     // 获取CPU型号
-    asm_cpuid_count(0x80000002,0,(uint32*)&cpu_info.model_name[0],(uint32*)&cpu_info.model_name[4],(uint32*)&cpu_info.model_name[8],(uint32*)&cpu_info.model_name[12]);
-    asm_cpuid_count(0x80000003,0,(uint32*)&cpu_info.model_name[16],(uint32*)&cpu_info.model_name[20],(uint32*)&cpu_info.model_name[24],(uint32*)&cpu_info.model_name[28]);
-    asm_cpuid_count(0x80000004,0,(uint32*)&cpu_info.model_name[32],(uint32*)&cpu_info.model_name[36],(uint32*)&cpu_info.model_name[40],(uint32*)&cpu_info.model_name[44]);
+    asm_cpuid_count(0x80000002,0,(uint32*)&cur_cpu_info->model_name[0],(uint32*)&cur_cpu_info->model_name[4],(uint32*)&cur_cpu_info->model_name[8],(uint32*)&cur_cpu_info->model_name[12]);
+    asm_cpuid_count(0x80000003,0,(uint32*)&cur_cpu_info->model_name[16],(uint32*)&cur_cpu_info->model_name[20],(uint32*)&cur_cpu_info->model_name[24],(uint32*)&cur_cpu_info->model_name[28]);
+    asm_cpuid_count(0x80000004,0,(uint32*)&cur_cpu_info->model_name[32],(uint32*)&cur_cpu_info->model_name[36],(uint32*)&cur_cpu_info->model_name[40],(uint32*)&cur_cpu_info->model_name[44]);
 
     // 获取CPU频率
-    asm_cpuid_count(0x16,0,&cpu_info.fundamental_hz,&cpu_info.maximum_hz,&cpu_info.bus_hz,&edx);
+    asm_cpuid_count(0x16,0,&cur_cpu_info->fundamental_hz,&cur_cpu_info->maximum_hz,&cur_cpu_info->bus_hz,&edx);
 
     // 直接通过hpet校准 CPU TSC频率
-    cpu_info.tsc_hz = hpet_calibrate_tsc_hz(&hpet_dev,10);
+    cur_cpu_info->tsc_hz = hpet_calibrate_tsc_hz(&hpet_dev,10);
+}
+
+static inline void set_gs_base(uint32 log_id) {
+    asm_wrgsbase(&cpu_cores[log_id]);
 }
 
 void bsp_init(void){
@@ -290,14 +298,13 @@ void bsp_init(void){
     uint32 apic_id,cpu_id,tmp;
     asm_cpuid_count(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
 
-
+    set_gs_base(0);
     bsp_backup_mtrr_state();
     gdt_tss_init();                            //初始化gdb和tss
-    get_cpu_info();                            //获取cpu信息
+    get_cpu_info(0);                            //获取cpu信息
     apic_init();                               //初始化apic
     //init_syscall();                            //初始化系统调用
-    color_printk(GREEN, BLACK, "CPU Manufacturer: %s  Model: %s\n",cpu_info.manufacturer_name, cpu_info.model_name);
-    color_printk(GREEN, BLACK, "CPU Cores: %d  FundamentalFrequency: %ldMhz  MaximumFrequency: %ldMhz  BusFrequency: %ldMhz  TSCFrequency: %ldhz\n",cpu_info.logical_processors_number,cpu_info.fundamental_hz,cpu_info.maximum_hz,cpu_info.bus_hz,cpu_info.tsc_hz);
+   
 }
 
 uint64 ap_boot_loader_address;
@@ -306,8 +313,8 @@ uint64 ap_boot_loader_address;
 void ap_init(void) {
     ap_main_ptr = &ap_main;
     ap_tmp_pml4t_ptr = (uint64*)va_to_pa(&tmp_pml4t);
-    apic_id_table_ptr = apic_id_table;
-    ap_rsp_ptr = (uint64)vmalloc((cpu_info.logical_processors_number-1)*4);            //每个ap核分配16K栈
+    //apic_id_table_ptr = apic_id_table;
+    //ap_rsp_ptr = (uint64)vmalloc((cpu_info.logical_processors_number-1)*4);            //每个ap核分配16K栈
     asm_mem_cpy(_apboot_start, (void*)ap_boot_loader_address,_apboot_end-_apboot_start);                 //把ap核初始化代码复制到过去
 
     uint32 counter;
@@ -331,7 +338,7 @@ void ap_init(void) {
 void ap_main(void){
     uint32 apic_id,cpu_id,tmp;
     asm_cpuid_count(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);        //获取apic_ia
-    cpu_id = apicid_to_cpuid(apic_id);
+    //cpu_id = apicid_to_cpuid(apic_id);
     cpu_feature_init();
     //asm_set_cr3(kpml4t_ptr);
     //asm_lgdt(&bsp_gdt_ptr,0x8,0x10);

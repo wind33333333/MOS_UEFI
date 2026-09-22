@@ -3,6 +3,8 @@
 #include "../../init/acpi_init.h"
 #include "vmalloc.h"
 #include "../../init/apic_init.h"
+#include "../x64/msr.h"
+#include "../x64/cpu.h"
 
 // 假设这是全局的 HPET 设备对象
 hpet_device_t hpet_dev;

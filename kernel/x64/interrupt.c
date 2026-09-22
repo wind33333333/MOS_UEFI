@@ -1,4 +1,6 @@
 #include "interrupt.h"
+
+#include "cpu.h"
 #include "printk.h"
 #include "moslib.h"
 #include "../init/apic_init.h"

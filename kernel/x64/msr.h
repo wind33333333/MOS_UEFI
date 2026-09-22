@@ -96,6 +96,60 @@
 #define APIC_SELF_IPI_MSR                 0x83F  // 自发送IPI寄存器
 
 
+/* =====================================================================
+ * 2. 能力与全局控制寄存器 (Capability & Def Type)
+ * ===================================================================== */
+// MTRR 能力寄存器 (只读)
+// [7:0] VCNT: 支持多少对可变范围寄存器 (通常是 8 或 10)
+// [8] FIX: 是否支持固定范围 MTRR
+// [10] WC: 是否支持 WC 属性
+#define MTRRcap_MSR             0x000000FE
+
+// MTRR 默认类型与全局使能寄存器
+// [7:0] 默认属性 (如果地址没命中任何MTRR规则，就用这个，通常是 UC)
+// [10] FE: 开启固定范围 MTRR
+// [11] E: 开启全局 MTRR
+#define MTRRdefType_MSR         0x000002FF
+
+/* =====================================================================
+ * 3. 可变范围 MTRR 寄存器 (Variable-Range MTRRs)
+ * 这是系统内存布局的核心，通常有 8 对 (Base + Mask)
+ * ===================================================================== */
+// 基址寄存器起点
+#define MTRRphysBase_BASE_MSR   0x00000200
+// 掩码寄存器起点
+#define MTRRphysMask_BASE_MSR   0x00000201
+
+// 辅助宏：获取第 n 对 MTRR 的 MSR 地址 (n = 0 ~ 7)
+// Base 寄存器存：物理起始地址 + 属性
+#define MTRRphysBase_MSR(n)     (MTRRphysBase_BASE_MSR + 2 * (n))
+// Mask 寄存器存：物理地址掩码 + Valid(有效位)
+#define MTRRphysMask_MSR(n)     (MTRRphysMask_BASE_MSR + 2 * (n))
+
+/* =====================================================================
+ * 4. 固定范围 MTRR 寄存器 (Fixed-Range MTRRs)
+ * 专门用于精细控制最初的 1MB 物理内存 (0x00000 ~ 0xFFFFF)
+ * 主要为了兼容古老的 VGA 显存段和 BIOS ROM 段
+ * 现代 OS 中通常只需读一遍审计，绝不修改。
+ * ===================================================================== */
+// 掌管 0x00000 ~ 0x7FFFF (共 512KB)，分为 8 个 64KB 的块
+#define MTRRfix64K_00000_MSR    0x00000250
+
+// 掌管 0x80000 ~ 0xBFFFF (共 256KB)，分为 2 个寄存器，每个掌管 8 个 16KB 的块
+#define MTRRfix16K_80000_MSR    0x00000258
+#define MTRRfix16K_A0000_MSR    0x00000259 // A0000 是经典 VGA 显存段起始
+
+// 掌管 0xC0000 ~ 0xFFFFF (共 256KB)，分为 8 个寄存器，每个掌管 8 个 4KB 的块
+#define MTRRfix4K_C0000_MSR     0x00000268
+#define MTRRfix4K_C8000_MSR     0x00000269
+#define MTRRfix4K_D0000_MSR     0x0000026A
+#define MTRRfix4K_D8000_MSR     0x0000026B
+#define MTRRfix4K_E0000_MSR     0x0000026C
+#define MTRRfix4K_E8000_MSR     0x0000026D
+#define MTRRfix4K_F0000_MSR     0x0000026E // BIOS ROM 段
+#define MTRRfix4K_F8000_MSR     0x0000026F // BIOS ROM 段
+
+
 static inline uint64 asm_rdmsr(uint32 msr) {
  uint32 low, high;
  __asm__ __volatile__(

@@ -5,6 +5,7 @@
 #include "slub.h"
 #include "../include/printk.h"
 #include "ioapic.h"
+#include "../x64/msr.h"
 
 extern cpu_core_t *cpu_cores;
 extern uint32 active_cpu_count;

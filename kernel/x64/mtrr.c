@@ -1,4 +1,6 @@
 #include "mtrr.h"
+#include "msr.h"
+
 
 mtrr_state_t g_bsp_mtrr_state;
 
@@ -9,18 +11,18 @@ void bsp_backup_mtrr_state(void) {
     uint64 cap;
 
     // 1. 读取 MTRR 能力寄存器
-    cap = asm_rdmsr(MSR_MTRRcap);
+    cap = asm_rdmsr(MTRRcap_MSR);
 
     // 解析 VCNT (底部的 8 个 bit，表示可变 MTRR 的对数)
     g_bsp_mtrr_state.vcnt = cap & 0xFF;
 
-    // 2. 备份全局默认类型与使能状态 (MSR_MTRRdefType)
-    g_bsp_mtrr_state.def_type = asm_rdmsr(MSR_MTRRdefType);
+    // 2. 备份全局默认类型与使能状态 (MTRRdefType)
+    g_bsp_mtrr_state.def_type = asm_rdmsr(MTRRdefType_MSR);
 
     // 3. 循环备份所有的可变范围 MTRR (Variable-Range MTRRs)
     for (uint32 i = 0; i < g_bsp_mtrr_state.vcnt; i++) {
-        g_bsp_mtrr_state.var[i].base = asm_rdmsr(MSR_MTRRphysBase(i));
-        g_bsp_mtrr_state.var[i].mask = asm_rdmsr(MSR_MTRRphysMask(i));
+        g_bsp_mtrr_state.var[i].base = asm_rdmsr(MTRRphysBase_MSR(i));
+        g_bsp_mtrr_state.var[i].mask = asm_rdmsr(MTRRphysMask_MSR(i));
     }
 
     // 4. 备份固定范围 MTRR (Fixed-Range MTRRs)
@@ -29,15 +31,15 @@ void bsp_backup_mtrr_state(void) {
     if ((cap & (1ULL << 8)) && (g_bsp_mtrr_state.def_type & (1ULL << 10))) {
 
         // 备份掌管 0~512KB 的 1 个寄存器
-        g_bsp_mtrr_state.fixed[0] = asm_rdmsr(MSR_MTRRfix64K_00000);
+        g_bsp_mtrr_state.fixed[0] = asm_rdmsr(MTRRfix64K_00000_MSR);
 
         // 备份掌管 512KB~768KB 的 2 个寄存器
-        g_bsp_mtrr_state.fixed[1] = asm_rdmsr(MSR_MTRRfix16K_80000);
-        g_bsp_mtrr_state.fixed[2] = asm_rdmsr(MSR_MTRRfix16K_A0000);
+        g_bsp_mtrr_state.fixed[1] = asm_rdmsr(MTRRfix16K_80000_MSR);
+        g_bsp_mtrr_state.fixed[2] = asm_rdmsr(MTRRfix16K_A0000_MSR);
 
         // 备份掌管 768KB~1MB 的 8 个寄存器
         for (int i = 0; i < 8; i++) {
-            g_bsp_mtrr_state.fixed[3 + i] = asm_rdmsr(MSR_MTRRfix4K_C0000 + i);
+            g_bsp_mtrr_state.fixed[3 + i] = asm_rdmsr(MTRRfix4K_C0000_MSR + i);
         }
     } else {
         // 如果未开启固定 MTRR，为安全起见将备份区清零
@@ -78,28 +80,28 @@ void restore_mtrr_state(void) {
     // =========================================================
 
     // 4. 挂起 MTRR 引擎
-    // (清除 MSR_MTRRdefType 的 ENABLE 位 Bit 11，Intel 规定写 MTRR 前必须先关闭检查)
-    asm_wrmsr(MSR_MTRRdefType, g_bsp_mtrr_state.def_type & ~MTRR_DEF_TYPE_ENABLE);
+    // (清除 MTRRdefType 的 ENABLE 位 Bit 11，Intel 规定写 MTRR 前必须先关闭检查)
+    asm_wrmsr(MTRRdefType_MSR, g_bsp_mtrr_state.def_type & ~MTRR_DEF_TYPE_ENABLE);
 
     // 5. 恢复固定范围 MTRR (Fixed-Range MTRRs)
     if (g_bsp_mtrr_state.def_type & MTRR_DEF_TYPE_FIX_EN) {
-        asm_wrmsr(MSR_MTRRfix64K_00000, g_bsp_mtrr_state.fixed[0]);
-        asm_wrmsr(MSR_MTRRfix16K_80000, g_bsp_mtrr_state.fixed[1]);
-        asm_wrmsr(MSR_MTRRfix16K_A0000, g_bsp_mtrr_state.fixed[2]);
+        asm_wrmsr(MTRRfix64K_00000_MSR, g_bsp_mtrr_state.fixed[0]);
+        asm_wrmsr(MTRRfix16K_80000_MSR, g_bsp_mtrr_state.fixed[1]);
+        asm_wrmsr(MTRRfix16K_A0000_MSR, g_bsp_mtrr_state.fixed[2]);
         for (int i = 0; i < 8; i++) {
-            asm_wrmsr(MSR_MTRRfix4K_C0000 + i, g_bsp_mtrr_state.fixed[3 + i]);
+            asm_wrmsr(MTRRfix4K_C0000_MSR + i, g_bsp_mtrr_state.fixed[3 + i]);
         }
     }
 
     // 6. 恢复所有的可变范围 MTRR (Variable-Range MTRRs)
     // 注意：这里用的是全局结构体里保存的实际条数 vcnt
     for (uint32 i = 0; i < g_bsp_mtrr_state.vcnt; i++) {
-        asm_wrmsr(MSR_MTRRphysBase(i), g_bsp_mtrr_state.var[i].base);
-        asm_wrmsr(MSR_MTRRphysMask(i), g_bsp_mtrr_state.var[i].mask);
+        asm_wrmsr(MTRRphysBase_MSR(i), g_bsp_mtrr_state.var[i].base);
+        asm_wrmsr(MTRRphysMask_MSR(i), g_bsp_mtrr_state.var[i].mask);
     }
 
     // 7. 正式重启 MTRR 引擎！(写入原始带有 ENABLE 位的 def_type)
-    asm_wrmsr(MSR_MTRRdefType, g_bsp_mtrr_state.def_type);
+    asm_wrmsr(MTRRdefType_MSR, g_bsp_mtrr_state.def_type);
 
 
     // =========================================================

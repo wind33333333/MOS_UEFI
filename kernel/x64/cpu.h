@@ -148,6 +148,8 @@ typedef struct {
     uint32 tsc_hz;
 }cpu_info_t;
 
+
+extern cpu_core_t *cpu_cores;
 extern cpu_info_t *cpu_info;
 
 
