@@ -1,5 +1,6 @@
 #include "gdt_tss.h"
 
+#include "cpu.h"
 #include "slub.h"
 #include "vmalloc.h"
 
@@ -47,23 +48,6 @@ typedef struct{
 #define USER_CODE32_DESC    (TYPE_CODE | DPL_3 | S | P | LIMIT_4G | DB | G)
 #define USER_DATA_DESC      (TYPE_DATA | DPL_3 | S | P | LIMIT_4G | DB | G) // 32位和64位通用！
 
-typedef struct {
-    uint32   reserved0;
-    uint64    rsp0;
-    uint64    rsp1;
-    uint64    rsp2;
-    uint64   reserved1;
-    uint64    ist1;
-    uint64    ist2;
-    uint64    ist3;
-    uint64    ist4;
-    uint64    ist5;
-    uint64    ist6;
-    uint64    ist7;
-    uint64   reserved2;
-    uint16   reserved3;
-    uint16   iomap_base;
-} __attribute__((packed)) tss_t;
 
 static inline void asm_lgdt(const gdt_t *gdt_ptr, uint16 code64_sel, uint16 data64_sel) {
     __asm__ __volatile__(
@@ -120,7 +104,7 @@ static inline void set_tss_desc(uint64 *tss_desc_ptr, tss_t *tss) {
 }
 
 
-void gdt_tss_init() {
+void gdt_tss_init(uint32 logical_id) {
     gdt_t *gdt = kzalloc(sizeof(gdt_t));
     gdt->kernel_code64_desc = KERNEL_CODE64_DESC;
     gdt->kernel_data_desc = KERNEL_DATA_DESC;
@@ -129,12 +113,13 @@ void gdt_tss_init() {
     gdt->user_code64_desc = USER_CODE64_DESC;
 
     tss_t *tss = kzalloc(sizeof(tss_t));
+    cpu_cores[logical_id].tss = tss;
     set_tss_desc(gdt->tss_desc,tss);
-    tss->rsp0 = (uint64)vmalloc(4*4096) + 4*4096;       // 内核栈
-    tss->ist1 = (uint64)vmalloc(2*4096) + 2*4096;       // 8: Double Fault (#DF) 双重故障
-    tss->ist2 = (uint64)vmalloc(2*4096) + 2*4096;       // 2: NMI 不可屏蔽中断
-    tss->ist3 = (uint64)vmalloc(2*4096) + 2*4096;       // 18: Machine Check (#MC) 机器检查
-    tss->ist4 = (uint64)vmalloc(2*4096) + 2*4096;       // 1: Debug (#DB) 调试异常
+    tss->rsp0 = (uint64)vmalloc(4*4096) + 4*4096;       // 内核栈 16K
+    tss->ist1 = (uint64)vmalloc(2*4096) + 2*4096;       // 8: Double Fault (#DF) 双重故障 8K
+    tss->ist2 = (uint64)vmalloc(2*4096) + 2*4096;       // 2: NMI 不可屏蔽中断 8K
+    tss->ist3 = (uint64)vmalloc(2*4096) + 2*4096;       // 18: Machine Check (#MC) 机器检查 8K
+    tss->ist4 = (uint64)vmalloc(2*4096) + 2*4096;       // 1: Debug (#DB) 调试异常 8K
 
     asm_lgdt(gdt,8,16);
     asm_ltr(48);

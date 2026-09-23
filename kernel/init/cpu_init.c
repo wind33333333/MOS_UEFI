@@ -268,9 +268,9 @@ uint64 cpu_feature_init(void) {
 
 }
 
-void get_cpu_info(uint32 log_id) {
+void get_cpu_info(uint32 logical_id) {
 
-    cpu_info_t *cur_cpu_info = &cpu_info[log_id];
+    cpu_info_t *cur_cpu_info = &cpu_info[logical_id];
 
     uint32 eax,ebx,ecx,edx;
     // 获取CPU厂商
@@ -288,24 +288,19 @@ void get_cpu_info(uint32 log_id) {
     cur_cpu_info->tsc_hz = hpet_calibrate_tsc_hz(&hpet_dev,10);
 }
 
-static inline void set_gs_base(uint32 log_id) {
-    asm_wrgsbase(&cpu_cores[log_id]);
-}
-
 void bsp_init(void){
-
-
-    uint32 apic_id,cpu_id,tmp;
-    asm_cpuid_count(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);    //获取apic_ia
-
-    set_gs_base(0);
-    bsp_backup_mtrr_state();
-    gdt_tss_init();                            //初始化gdb和tss
-    get_cpu_info(0);                            //获取cpu信息
-    apic_init();                               //初始化apic
-    //init_syscall();                            //初始化系统调用
+    bsp_backup_mtrr_state();                   //备份mtrr
+    get_cpu_info(0);                  //获取cpu信息
+    //init_syscall();                          //初始化系统调用
    
 }
+
+void cpu_resources_init(void) {
+    for (uint32 i=0;i < active_cpu_count;i++) {
+        gdt_tss_init(i);
+    }
+}
+
 
 uint64 ap_boot_loader_address;
 

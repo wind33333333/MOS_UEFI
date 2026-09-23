@@ -1,5 +1,6 @@
 #pragma once
 #include "moslib.h"
+#include "gdt_tss.h"
 
 
 #define APIC_ONESHOT 0              //一次性定时模式
@@ -75,12 +76,6 @@ static inline void asm_swapgs() {
 }
 
 
-
-// 前置声明任务/线程控制块 (你的调度器定义)
-struct thread_t;
-// 前置声明 x86_64 的任务状态段 (用于存放 rsp0 和 IST)
-struct tss64_t;
-
 // 定义 CPU 的生命周期状态
 typedef enum {
     CPU_STATE_OFFLINE = 0, // 尚未唤醒或已下线
@@ -111,15 +106,15 @@ typedef struct cpu_core {
     // -------------------------------------------------------------
     // [3] 调度器上下文 (Scheduler Context)
     // -------------------------------------------------------------
-    struct thread_t *current_thread; // 当前正在该 CPU 上运行的线程/进程
-    struct thread_t *idle_thread;    // 该 CPU 专属的空闲线程 (没有任务时执行 hlt)
+    //struct thread_t *current_thread; // 当前正在该 CPU 上运行的线程/进程
+    //struct thread_t *idle_thread;    // 该 CPU 专属的空闲线程 (没有任务时执行 hlt)
     // void *run_queue;              // 进阶：该 CPU 专属的就绪任务队列 (无锁调度核心)
 
     // -------------------------------------------------------------
     // [4] x86_64 底层硬件区 (Architecture Specific)
     // -------------------------------------------------------------
     // 💡 呼应我们之前的讨论：栈和 TSS！
-    struct tss64_t *tss;      // 该 CPU 专属的 TSS (里面存放着这个核心的 rsp0, IST 1~4)
+    tss_t *tss;               // 该 CPU 专属的 TSS (里面存放着这个核心的 rsp0, IST 1~4)
     uint64  gdt_base;         // 该 CPU 专属的 GDT 基地址 (多核系统每个核要有独立的 GDT)
 
     // -------------------------------------------------------------
@@ -155,7 +150,7 @@ typedef struct {
 
 
 
-
+uint32 active_cpu_count;
 extern cpu_core_t *cpu_cores;
 extern cpu_info_t *cpu_info;
 

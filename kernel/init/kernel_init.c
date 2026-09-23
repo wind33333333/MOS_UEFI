@@ -27,11 +27,12 @@ void kernel_init(void) {
     memblock_init();                                            //初始化启动内存分配器
     kpage_table_init();                                         //初始化正式内核页表
     apic_init();                                                //apic初始化
-
+    set_gs_base(0);                                    //设置bsp核gs基地址
     buddy_system_init();                                        //初始化伙伴系统
     slub_init();                                                //初始化slub内存分配器
     vmalloc_init();                                             //初始化vmalloc
     video_mem_map();                                            //映射显存到虚拟地址空间
+    cpu_resources_init();                                       //给所有cpu核心初始化资源
     bsp_init();                                                 //初始化bsp核心
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
     while(1);
