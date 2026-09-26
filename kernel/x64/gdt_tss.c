@@ -1,5 +1,4 @@
 #include "gdt_tss.h"
-
 #include "cpu.h"
 #include "slub.h"
 #include "vmalloc.h"

@@ -1,6 +1,8 @@
 #pragma once
 #include "moslib.h"
 
+#define AMD_PSTATE_DEF_0_MSR  0xC0010064
+
 // =====================================================================
 // x86_64 FS/GS Base Model-Specific Registers (MSRs)
 // =====================================================================

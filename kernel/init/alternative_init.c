@@ -4,12 +4,13 @@
 extern struct alt_instr __alt_instructions[];
 extern struct alt_instr __alt_instructions_end[];
 
+extern uint64 cpu_featuer_mask;
 
 /**
  * @brief  系统级动态二进制修补执行函数
  * @param  cpu_features_mask 当前 CPU 探测到的所有特性位图
  */
-void apply_alternatives(uint64 cpu_features_mask) {
+void apply_alternatives() {
     // 1. 关闭内存写保护 (WP位)
     uint64 cr0 = asm_get_cr0();
     asm_set_cr0(cr0 & ~(1ULL << 16));
@@ -18,7 +19,7 @@ void apply_alternatives(uint64 cpu_features_mask) {
     for (struct alt_instr *alt = __alt_instructions; alt < __alt_instructions_end; alt++) {
 
         // 验证：CPU 是否具有触发此修补的特性？
-        if ((cpu_features_mask & alt->cpuid_feature) == 0) {
+        if ((cpu_featuer_mask & alt->cpuid_feature) == 0) {
             continue; // 保持默认老指令，跳过
         }
 

@@ -10,6 +10,7 @@
 #include "alternative_init.h"
 #include "video_init.h"
 #include "apic_init.h"
+#include "mtrr.h"
 #include "../x64/cpu.h"
 #include "../include/bus.h"
 #include "../x64/interrupt.h"
@@ -21,20 +22,18 @@ void kernel_init(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
     output_init();                                              //初始化输出控制台
     tmp_idt_init();                                             //初始化临时中断描述符表
-    uint64 cpu_featuer_mask = cpu_feature_init();               //cpu 特性初始化
-    apply_alternatives(cpu_featuer_mask);                       //动态修复指令
     vm_layout_init();                                           //虚拟内存空间初始化
     memblock_init();                                            //初始化启动内存分配器
     kpage_table_init();                                         //初始化正式内核页表
     apic_init();                                                //apic初始化
-    set_gs_base(0);                                    //设置bsp核gs基地址
     buddy_system_init();                                        //初始化伙伴系统
     slub_init();                                                //初始化slub内存分配器
     vmalloc_init();                                             //初始化vmalloc
     video_mem_map();                                            //映射显存到虚拟地址空间
     cpu_resources_init();                                       //给所有cpu核心初始化资源
-    //bsp_backup_mtrr_state();                                    //备份mtrr
-    bsp_init();                                                 //初始化bsp核心
+    bsp_backup_mtrr_state();                                    //备份mtrr
+    cpu_init();                                                 //初始化核心
+    apply_alternatives();                                       //动态修复指令
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
     while(1);
     ioapic_init();                                              //初始化ioapic

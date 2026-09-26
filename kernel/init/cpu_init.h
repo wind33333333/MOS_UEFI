@@ -19,8 +19,6 @@ static inline uint32 get_logical_id_by_apic(uint32 apic_id) {
 }
 
 void cpu_resources_init(void);
-
 void ap_init(void);
 void ap_main(void);
-void bsp_init(void);
-uint64 cpu_feature_init(void);
+void cpu_init(void);

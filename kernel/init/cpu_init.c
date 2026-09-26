@@ -21,6 +21,8 @@ extern uint64* ap_tmp_pml4t_ptr;
 extern uint32 *apic_id_table_ptr;
 extern uint64 ap_boot_loader_address;
 
+uint64 cpu_featuer_mask =0;
+
 void apic_init_1(void) {
     uint64 value;
 
@@ -102,8 +104,7 @@ void enable_apic_time (uint64 time,uint32 model,uint32 ivt){
 }
 
 
-uint64 cpu_feature_init(void) {
-    uint64 cpu_features_mask = 0;
+static inline void cpu_feature_init(void) {
     uint32 eax,ebx,ecx,edx;
     uint64 tmp,value;
 
@@ -183,7 +184,7 @@ uint64 cpu_feature_init(void) {
 
     //启用invpcid指令
     asm_cpuid(0x7,&eax,&ebx,&ecx,&edx);
-    if (ebx & (1<<10)) cpu_features_mask |=  X86_FEATURE_INVPCID;
+    if (ebx & (1<<10)) cpu_featuer_mask |=  X86_FEATURE_INVPCID;
 
     //region EFER_MSR 寄存器（MSR 0xC0000080)
     //SCE（bit 0） 1:启用 SYSCALL 和 SYSRET 指令。
@@ -259,47 +260,185 @@ uint64 cpu_feature_init(void) {
                  (final_xcr0 & 0xE0) == 0xE0 ? "AVX-512 (ZMM)" :
                  (final_xcr0 & 0x06) == 0x06 ? "AVX-256 (YMM)" : "SSE (XMM)",
                  (final_cr4 & (1 << 17)) ? "Supported" : "Disabled",
-                 (cpu_features_mask & X86_FEATURE_INVPCID) ? "YES" : "NO");
+                 (cpu_featuer_mask & X86_FEATURE_INVPCID) ? "YES" : "NO");
 
     // 4. 打印 PAT 定制内存布局与 APIC 状态
    PR_INFO("CPU%d [Mem ] PAT Custom Layout Loaded. X2APIC Enabled.\n", cpu_id);
 
-    return cpu_features_mask;
-
 }
 
-void get_cpu_info(uint32 logical_id) {
 
-    cpu_core_t *cpu_core = &cpu_cores[logical_id];
 
-    uint32 eax,ebx,ecx,edx;
-    // 获取CPU厂商
-    asm_cpuid_count(0,0,(uint32*)&cpu_cores->manufacturer_name[8],(uint32*)&cpu_core->manufacturer_name[0],(uint32*)&cpu_core->manufacturer_name[8],(uint32*)&cpu_core->manufacturer_name[4]);
+#define MSR_AMD_PSTATE_DEF_0  0xC0010064
 
-    // 获取CPU型号
-    asm_cpuid_count(0x80000002,0,(uint32*)&cpu_core->model_name[0],(uint32*)&cpu_core->model_name[4],(uint32*)&cpu_core->model_name[8],(uint32*)&cpu_core->model_name[12]);
-    asm_cpuid_count(0x80000003,0,(uint32*)&cpu_core->model_name[16],(uint32*)&cpu_core->model_name[20],(uint32*)&cpu_core->model_name[24],(uint32*)&cpu_core->model_name[28]);
-    asm_cpuid_count(0x80000004,0,(uint32*)&cpu_core->model_name[32],(uint32*)&cpu_core->model_name[36],(uint32*)&cpu_core->model_name[40],(uint32*)&cpu_core->model_name[44]);
+// =========================================================================
+// 1. AMD Zen 专属：读取 P-State 0 MSR 计算精确到 1 Hz 的标称主频
+// =========================================================================
+static inline uint64 amd_get_pstate0_hz(void) {
+    uint32 eax, ebx, ecx, edx;
+    asm_cpuid(0x01, &eax, &ebx, &ecx, &edx);
 
-    // 获取CPU频率
-    asm_cpuid_count(0x16,0,&cpu_core->fundamental_mhz,&cpu_core->maximum_mhz,&cpu_core->bus_mhz,&edx);
+    // 若运行在虚拟机下 (ECX Bit 31 为 1)，跳过物理电源 MSR 读取，防止触发 #GP 异常
+    if (ecx & (1U << 31)) {
+        return 0;
+    }
 
-    // 直接通过hpet校准 CPU TSC频率
-    cpu_core->tsc_hz = hpet_calibrate_tsc_hz(&hpet_dev,10);
+    // 解析 CPU Family 家族号
+    uint32 base_family = (eax >> 8) & 0x0F;
+    uint32 ext_family  = (eax >> 20) & 0xFF;
+    uint32 family      = (base_family == 0x0F) ? (base_family + ext_family) : base_family;
+
+    if (family == 0x17 || family == 0x19) {
+        // Zen 1/2 (0x17) 与 Zen 3/4 (0x19): 先乘 200,000,000ULL 再除，消除整数截断误差
+        uint64 msr_val = asm_rdmsr(MSR_AMD_PSTATE_DEF_0);
+        if (msr_val & (1ULL << 63)) { // Bit 63: PstateEn 有效位
+            uint64 fid    = msr_val & 0xFF;
+            uint64 dfs_id = (msr_val >> 8) & 0x3F;
+            if (fid != 0 && dfs_id != 0) {
+                return (fid * 200000000ULL) / dfs_id;
+            }
+        }
+    } else if (family == 0x1A) {
+        // Zen 5 (0x1A): 取消分频器，步进固定为 5 MHz (5,000,000 Hz)
+        uint64 msr_val = asm_rdmsr(MSR_AMD_PSTATE_DEF_0);
+        if (msr_val & (1ULL << 63)) {
+            uint64 fid = msr_val & 0xFFF;
+            return fid * 5000000ULL;
+        }
+    }
+
+    return 0;
 }
 
-void bsp_init(void){
+// =========================================================================
+// 2. 全平台自适应 TSC 频率探测 (四级优先级流水线)
+// =========================================================================
+static inline uint64 detect_tsc_hz(uint32 max_basic_leaf, uint32 fundamental_mhz, uint64 amd_pstate0_hz) {
+    uint32 eax, ebx, ecx, edx;
+
+    // [第 1 级] Intel 原生晶振比例叶 CPUID(0x15) —— 0 毫秒、精确到 1 Hz
+    if (max_basic_leaf >= 0x15) {
+        asm_cpuid(0x15, &eax, &ebx, &ecx, &edx);
+        if (eax != 0 && ebx != 0) {
+            if (ecx != 0) {
+                return ((uint64)ecx * (uint64)ebx) / (uint64)eax;
+            }
+            // Skylake 等第 6~9 代酷睿 ecx 返回 0 时，用 0x16 的基础频率结合比例推算
+            if (fundamental_mhz != 0) {
+                return (uint64)fundamental_mhz * 1000000ULL;
+            }
+        }
+    }
+
+    // [第 2 级] QEMU / KVM / VMware 虚拟机专属时间叶 CPUID(0x40000010) —— 0 毫秒
+    asm_cpuid(0x01, &eax, &ebx, &ecx, &edx);
+    if (ecx & (1U << 31)) { // Hypervisor Present Bit
+        uint32 max_hv_leaf = 0;
+        asm_cpuid(0x40000000, &max_hv_leaf, &ebx, &ecx, &edx);
+        if (max_hv_leaf >= 0x40000010) {
+            asm_cpuid(0x40000010, &eax, &ebx, &ecx, &edx);
+            if (eax != 0) {
+                return (uint64)eax * 1000ULL; // EAX 返回单位为 kHz，转换为 Hz
+            }
+        }
+    }
+
+    // [第 3 级] HPET 硬件定时器实测 10ms —— 修正真机主板 BCLK 展频偏差 (如 99.8MHz)
+    uint64 hpet_tsc = hpet_calibrate_tsc_hz(&hpet_dev, 10);
+    if (hpet_tsc != 0) {
+        return hpet_tsc;
+    }
+
+    // [第 4 级] 无 HPET 硬件时的终极兜底：使用 AMD P-State 0 精确频率或基础频率
+    if (amd_pstate0_hz != 0) {
+        return amd_pstate0_hz;
+    }
+    return (uint64)fundamental_mhz * 1000000ULL;
+}
+
+// =========================================================================
+// 3. 采集并填充当前核心的硬件档案 (BSP 与 AP 通用)
+// =========================================================================
+static inline void get_cpu_info(void) {
+    uint32 max_basic_leaf = 0, max_ext_leaf = 0;
+    uint32 ebx, ecx, edx;
+
+    // 通过逻辑 ID 获取当前核心在常规平坦地址空间 (Address Space 0) 的真实虚拟地址指针
+    // 彻底避免对 __seg_gs 指针取地址导致 Clangd 报错与空指针缺页崩溃 (#PF)
+    cpu_core_t *core = &cpu_cores[THIS_CPU->logical_id];
+
+    // ---------------------------------------------------------------------
+    // [步骤 1] 获取 CPU 厂商名称 & 最大基础叶子节点号 (max_basic_leaf)
+    // ---------------------------------------------------------------------
+    asm_cpuid(0, &max_basic_leaf,
+                 (uint32 *)&core->manufacturer_name[0],  // EBX: 前 4 字节
+                 (uint32 *)&core->manufacturer_name[8],  // ECX: 后 4 字节
+                 (uint32 *)&core->manufacturer_name[4]); // EDX: 中 4 字节
+    core->manufacturer_name[12] = '\0';
+
+    // ---------------------------------------------------------------------
+    // [步骤 2] 获取 CPU 型号字符串 (0x80000002 ~ 0x80000004)
+    // ---------------------------------------------------------------------
+    asm_cpuid(0x80000000, &max_ext_leaf, &ebx, &ecx, &edx);
+    if (max_ext_leaf >= 0x80000004) {
+        asm_cpuid(0x80000002, (uint32 *)&core->model_name[0],  (uint32 *)&core->model_name[4],
+                              (uint32 *)&core->model_name[8],  (uint32 *)&core->model_name[12]);
+        asm_cpuid(0x80000003, (uint32 *)&core->model_name[16], (uint32 *)&core->model_name[20],
+                              (uint32 *)&core->model_name[24], (uint32 *)&core->model_name[28]);
+        asm_cpuid(0x80000004, (uint32 *)&core->model_name[32], (uint32 *)&core->model_name[36],
+                              (uint32 *)&core->model_name[40], (uint32 *)&core->model_name[44]);
+        core->model_name[48] = '\0';
+    } else {
+        core->model_name[0] = '\0';
+    }
+
+    // ---------------------------------------------------------------------
+    // [步骤 3] 获取处理器基础频率、最大频率与总线外频 (兼容 Intel 与 AMD)
+    // ---------------------------------------------------------------------
+    uint64 amd_pstate0_hz = 0;
+
+    if (max_basic_leaf >= 0x16) {
+        // Intel 路径：直接读取 0x16 频率信息叶 (单位: MHz)
+        asm_cpuid(0x16, &core->fundamental_mhz, &core->maximum_mhz, &core->bus_mhz, &edx);
+    } else {
+        core->fundamental_mhz = 0;
+        core->maximum_mhz     = 0;
+        core->bus_mhz         = 0;
+    }
+
+    // AMD 路径（或 Intel 0x16 返回 0 的情况）：尝试通过 P-State 0 MSR 补齐频率信息
+    if (core->fundamental_mhz == 0 && core->manufacturer_name[0] == 'A') {
+        amd_pstate0_hz        = amd_get_pstate0_hz();
+        core->fundamental_mhz = (uint32)(amd_pstate0_hz / 1000000ULL);
+        core->maximum_mhz     = core->fundamental_mhz;
+        core->bus_mhz         = (core->fundamental_mhz != 0) ? 100 : 0;
+    }
+
+    // ---------------------------------------------------------------------
+    // [步骤 4] 确定恒定 TSC 频率 (BSP 执行探测校准，AP 直接零延时同步)
+    // ---------------------------------------------------------------------
+    if (core->logical_id == 0) {
+        core->tsc_hz = detect_tsc_hz(max_basic_leaf, core->fundamental_mhz, amd_pstate0_hz);
+    } else {
+        core->tsc_hz = cpu_cores[0].tsc_hz;
+    }
+}
+
+
+
+
+void cpu_init(void){
     uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
     uint32 logical_id = get_logical_id_by_apic(apic_id);
-
+    cpu_feature_init();                                      //cpu 特性初始化
+    set_gs_base(logical_id);                                 //设置bsp核gs基地址
     gdt_ptr_t gdt_ptr;
     gdt_ptr.limit = sizeof(gdt_t) - 1;
-    gdt_ptr.base = cpu_cores[logical_id].gdt_base;
-
-    asm_lgdt(&gdt_ptr,8,16);
-    asm_ltr(48);
-    get_cpu_info(logical_id);                  //获取cpu信息
-    //init_syscall();                          //初始化系统调用
+    gdt_ptr.base = THIS_CPU->gdt_base;
+    asm_lgdt(&gdt_ptr,8,16);            //加载正式gdt
+    asm_ltr(48);                                      //加载tr
+    get_cpu_info();                                         //获取cpu信息
+    //init_syscall();                                       //初始化系统调用
    
 }
 

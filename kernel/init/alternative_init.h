@@ -54,4 +54,4 @@ newinstr "\n\t"                                             \
 ".byte 664b - 663b\n\t"                                     \
 ".popsection\n\t"
 
-void apply_alternatives(uint64 cpu_features_mask);
+void apply_alternatives(void);
