@@ -5,5 +5,3 @@
 cpu_core_t *cpu_cores = NULL;
 uint32 active_cpu_count = 0;
 
-cpu_info_t *cpu_info = NULL;
-

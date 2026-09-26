@@ -1,7 +1,7 @@
 #pragma once
 #include "moslib.h"
-#include "msr.h"
-#include "cpu.h"
+#include "../x64/msr.h"
+#include "../x64/cpu.h"
 
 static inline void set_gs_base(uint32 logical_id) {
     asm_wrmsr(KERNEL_GS_BASE_MSR,0);

@@ -9,8 +9,8 @@
 #include "../x64/mtrr.h"
 #include "alternative_init.h"
 #include "../x64/gdt_tss.h"
-#include "../x64/cpu.h"
-#include "../x64/msr.h"
+
+
 
 extern uint8 _apboot_start[];
 extern uint8 _apboot_end[];
@@ -270,25 +270,31 @@ uint64 cpu_feature_init(void) {
 
 void get_cpu_info(uint32 logical_id) {
 
-    cpu_info_t *cur_cpu_info = &cpu_info[logical_id];
+    cpu_core_t *cpu_core = &cpu_cores[logical_id];
 
     uint32 eax,ebx,ecx,edx;
     // 获取CPU厂商
-    asm_cpuid_count(0,0,(uint32*)&cur_cpu_info->manufacturer_name[8],(uint32*)&cur_cpu_info->manufacturer_name[0],(uint32*)&cur_cpu_info->manufacturer_name[8],(uint32*)&cur_cpu_info->manufacturer_name[4]);
+    asm_cpuid_count(0,0,(uint32*)&cpu_cores->manufacturer_name[8],(uint32*)&cpu_core->manufacturer_name[0],(uint32*)&cpu_core->manufacturer_name[8],(uint32*)&cpu_core->manufacturer_name[4]);
 
     // 获取CPU型号
-    asm_cpuid_count(0x80000002,0,(uint32*)&cur_cpu_info->model_name[0],(uint32*)&cur_cpu_info->model_name[4],(uint32*)&cur_cpu_info->model_name[8],(uint32*)&cur_cpu_info->model_name[12]);
-    asm_cpuid_count(0x80000003,0,(uint32*)&cur_cpu_info->model_name[16],(uint32*)&cur_cpu_info->model_name[20],(uint32*)&cur_cpu_info->model_name[24],(uint32*)&cur_cpu_info->model_name[28]);
-    asm_cpuid_count(0x80000004,0,(uint32*)&cur_cpu_info->model_name[32],(uint32*)&cur_cpu_info->model_name[36],(uint32*)&cur_cpu_info->model_name[40],(uint32*)&cur_cpu_info->model_name[44]);
+    asm_cpuid_count(0x80000002,0,(uint32*)&cpu_core->model_name[0],(uint32*)&cpu_core->model_name[4],(uint32*)&cpu_core->model_name[8],(uint32*)&cpu_core->model_name[12]);
+    asm_cpuid_count(0x80000003,0,(uint32*)&cpu_core->model_name[16],(uint32*)&cpu_core->model_name[20],(uint32*)&cpu_core->model_name[24],(uint32*)&cpu_core->model_name[28]);
+    asm_cpuid_count(0x80000004,0,(uint32*)&cpu_core->model_name[32],(uint32*)&cpu_core->model_name[36],(uint32*)&cpu_core->model_name[40],(uint32*)&cpu_core->model_name[44]);
 
     // 获取CPU频率
-    asm_cpuid_count(0x16,0,&cur_cpu_info->fundamental_hz,&cur_cpu_info->maximum_hz,&cur_cpu_info->bus_hz,&edx);
+    asm_cpuid_count(0x16,0,&cpu_core->fundamental_mhz,&cpu_core->maximum_mhz,&cpu_core->bus_mhz,&edx);
 
     // 直接通过hpet校准 CPU TSC频率
-    cur_cpu_info->tsc_hz = hpet_calibrate_tsc_hz(&hpet_dev,10);
+    cpu_core->tsc_hz = hpet_calibrate_tsc_hz(&hpet_dev,10);
 }
 
 void bsp_init(void){
+    gdt_ptr_t gdt_ptr;
+    gdt_ptr.limit = sizeof(gdt_t) - 1;
+    gdt_ptr.base = cpu_cores[0].gdt_base;
+
+    asm_lgdt(&gdt_ptr,8,16);
+    asm_ltr(48);
     bsp_backup_mtrr_state();                   //备份mtrr
     get_cpu_info(0);                  //获取cpu信息
     //init_syscall();                          //初始化系统调用

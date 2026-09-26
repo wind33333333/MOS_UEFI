@@ -86,48 +86,51 @@ typedef enum {
 } cpu_state_t;
 
 // =================================================================
-// 👑 核心数据结构：每 CPU 控制块 (Per-CPU Control Block)
+// 👑 核心数据结构：每 CPU 控制块 (单结构体·内部冷热隔离版)
 // =================================================================
 typedef struct cpu_core {
-    // -------------------------------------------------------------
-    // [1] 身份与拓扑区 (Hardware Identity & Topology)
-    // -------------------------------------------------------------
-    uint32  logical_id;       // 内核分配的逻辑编号 (0, 1, 2... 用于数组索引)
-    uint32  apic_id;          // 真实的物理 APIC ID (用于发送 IPI 中断唤醒/TLB 刷新)
-    uint32  acpi_proc_id;     // ACPI 逻辑 ID (从 MADT 读出)
-    uint32  numa_node;        // 所属 NUMA 物理节点 (由 SRAT 表解析得出)
-    uint8   lint_nmi;
+    // =============================================================
+    // 🔥 第一层：极热调度区 (Hot Zone - 严格控制在第一个 64B 缓存行内)
+    // =============================================================
+    uint32          logical_id;           // [0x00] 内核逻辑编号 (0 永远是 BSP)
+    uint32          apic_id;              // [0x04] 物理 APIC ID (发 IPI 高频使用)
+    cpu_state_t     state;                // [0x08] 核心运行状态 (假设 enum 为 4 字节)
+    uint32          numa_node;            // [0x0C] 所属 NUMA 节点 (内存分配高频使用)
 
-    // -------------------------------------------------------------
-    // [2] 运行时状态区 (Runtime Status)
-    // -------------------------------------------------------------
-    cpu_state_t state;        // 当前核心的运行状态
+    // 💡 预留给 syscall 汇编入口的极速切栈跳板
+    uint64          current_kernel_stack; // [0x10] 当前线程内核栈顶 (与 tss->rsp0 同步)
+    uint64          user_rsp_scratch;     // [0x18] syscall 发生时暂存用户态 RSP 的草稿箱
 
-    // -------------------------------------------------------------
-    // [3] 调度器上下文 (Scheduler Context)
-    // -------------------------------------------------------------
-    //struct thread_t *current_thread; // 当前正在该 CPU 上运行的线程/进程
-    //struct thread_t *idle_thread;    // 该 CPU 专属的空闲线程 (没有任务时执行 hlt)
-    // void *run_queue;              // 进阶：该 CPU 专属的就绪任务队列 (无锁调度核心)
+    struct thread_t *current_thread;      // [0x20] 当前正在运行的线程
+    struct thread_t *idle_thread;         // [0x28] 专属空闲线程
+    tss_t           *tss;                 // [0x30] 专属 TSS 指针 (中断切栈高频修改)
+    void            *kmem_cache_cpu;      // [0x38] SLUB 无锁内存池指针
+    // -------- 👆 以上刚好 64 字节 (0x00 ~ 0x3F)，完美填满第 1 个 Cache Line！ --------
 
-    // -------------------------------------------------------------
-    // [4] x86_64 底层硬件区 (Architecture Specific)
-    // -------------------------------------------------------------
-    // 💡 呼应我们之前的讨论：栈和 TSS！
-    tss_t *tss;               // 该 CPU 专属的 TSS (里面存放着这个核心的 rsp0, IST 1~4)
-    uint64  gdt_base;         // 该 CPU 专属的 GDT 基地址 (多核系统每个核要有独立的 GDT)
+    // =============================================================
+    // 🌡️ 第二层：温数据/高频统计区 (Warm Zone - 第 2 个 64B 缓存行)
+    // =============================================================
+    uint64          timer_ticks;          // Local APIC Timer 滴答数
+    uint64          interrupt_count;      // 处理的总中断次数
+    uint64          context_switches;     // 上下文切换次数
+    // void         *run_queue;           // 未来可放这里：就绪队列指针
 
-    // -------------------------------------------------------------
-    // [5] 本地内存池 (SLUB 关联)
-    // -------------------------------------------------------------
-    void    *kmem_cache_cpu;  // SLUB 分配器为该 CPU 准备的【无锁内存池】指针
+    // =============================================================
+    // 🧊 第三层：冰封档案区 (Cold Zone - 强制推到新的 64B 缓存行边界)
+    // 开机初始化或查系统信息时才用，平时绝不占用 L1 Cache！
+    // =============================================================
+    gdt_t           *gdt_base __attribute__((aligned(64))); // 强制对齐隔离！
+    uint32          acpi_proc_id;         // 从顶部挪下来的冷数据：ACPI 处理器 ID
+    uint8           lint_nmi;             // 从顶部挪下来的冷数据：NMI 引脚号
 
-    // -------------------------------------------------------------
-    // [6] 统计与性能监控 (Stats & Profiling)
-    // -------------------------------------------------------------
-    uint64  interrupt_count;  // 该 CPU 处理的总中断次数
-    uint64  context_switches; // 该 CPU 发生的上下文切换次数
-    uint64  timer_ticks;      // 属于该 CPU 的 Local APIC Timer 滴答数
+    char8           manufacturer_name[13];// 例如 "GenuineIntel\0" (13B)
+    char8           model_name[49];       // 处理器具体型号字符串 (49B)
+
+    // ✅ 修复溢出：TSC 用 64 位存精确 Hz，其余用 32 位存 MHz（完美契合 CPUID 0x16）
+    uint64          tsc_hz;               // 精确到 Hz，支持超过 4.29GHz 的高频核心
+    uint32          fundamental_mhz;      // 基础频率 (MHz)
+    uint32          maximum_mhz;          // 最大睿频 (MHz)
+    uint32          bus_mhz;              // 总线/外频 (MHz)
 
 } __attribute__((aligned(64))) cpu_core_t;
 
@@ -137,22 +140,8 @@ typedef struct cpu_core {
 // 这里把 0 强制转换为一个基于 GS 的指针。因为 GS_BASE 已经指向了结构体首地址，所以偏移量为 0！
 #define THIS_CPU ((cpu_core_t __seg_gs *)0)
 
-
-typedef struct {
-    char8 manufacturer_name[13];
-    char8 model_name[49];
-    uint32 fundamental_hz;
-    uint32 maximum_hz;
-    uint32 bus_hz;
-    uint32 tsc_hz;
-}cpu_info_t;
-
-
-
-
-uint32 active_cpu_count;
+extern uint32 active_cpu_count;
 extern cpu_core_t *cpu_cores;
-extern cpu_info_t *cpu_info;
 
 
 

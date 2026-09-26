@@ -195,4 +195,3 @@ void apic_init(void) {
 
     PR_OK("APIC Init done! Dynamically allocated CPU structures.\n");
 }
-
