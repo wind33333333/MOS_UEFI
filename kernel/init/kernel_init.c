@@ -10,7 +10,7 @@
 #include "alternative_init.h"
 #include "video_init.h"
 #include "apic_init.h"
-#include "mtrr.h"
+#include "../x64/mtrr.h"
 #include "../x64/cpu.h"
 #include "../include/bus.h"
 #include "../x64/interrupt.h"

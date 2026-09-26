@@ -114,9 +114,9 @@ static inline void cpu_feature_init(void) {
     //BSP（bit 9）：作用：标记该处理器是否是系统的启动处理器（BSP）。系统启动时，BSP 是首先执行初始化代码的 CPU，其它处理器是 AP（Application Processors，应用处理器）。
     //APIC Base Address（bit 12-31）：作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
     ////endregion
-    value=asm_rdmsr(APIC_BASE_MSR);
-    value |= 0xC00;                        //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
-    asm_wrmsr(APIC_BASE_MSR,value);
+    // value=asm_rdmsr(APIC_BASE_MSR);
+    // value |= 0xC00;                        //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
+    // asm_wrmsr(APIC_BASE_MSR,value);
 
     //region CR4 寄存器
     //VME（bit 0） 描述：启用虚拟 8086 模式的扩展功能，允许在虚拟 8086 模式中支持虚拟中断。用途：用于实现虚拟机监控或虚拟 8086 环境中的精细中断控制。
@@ -269,68 +269,59 @@ static inline void cpu_feature_init(void) {
 
 
 
-#define MSR_AMD_PSTATE_DEF_0  0xC0010064
-
 // =========================================================================
-// 1. AMD Zen 专属：读取 P-State 0 MSR 计算精确到 1 Hz 的标称主频
+// 1. AMD 版的 "CPUID 0x16"：仅用于读取 P-State 0 填充基础主频 (单位: MHz)
 // =========================================================================
-static inline uint64 amd_get_pstate0_hz(void) {
+static inline uint32 amd_get_pstate0_mhz(void) {
     uint32 eax, ebx, ecx, edx;
     asm_cpuid(0x01, &eax, &ebx, &ecx, &edx);
 
-    // 若运行在虚拟机下 (ECX Bit 31 为 1)，跳过物理电源 MSR 读取，防止触发 #GP 异常
+    // 虚拟机环境下跳过物理电源 MSR 读取
     if (ecx & (1U << 31)) {
         return 0;
     }
 
-    // 解析 CPU Family 家族号
     uint32 base_family = (eax >> 8) & 0x0F;
     uint32 ext_family  = (eax >> 20) & 0xFF;
     uint32 family      = (base_family == 0x0F) ? (base_family + ext_family) : base_family;
 
     if (family == 0x17 || family == 0x19) {
-        // Zen 1/2 (0x17) 与 Zen 3/4 (0x19): 先乘 200,000,000ULL 再除，消除整数截断误差
-        uint64 msr_val = asm_rdmsr(MSR_AMD_PSTATE_DEF_0);
-        if (msr_val & (1ULL << 63)) { // Bit 63: PstateEn 有效位
-            uint64 fid    = msr_val & 0xFF;
-            uint64 dfs_id = (msr_val >> 8) & 0x3F;
+        // Zen 1 ~ Zen 4
+        uint64 msr_val = asm_rdmsr(AMD_PSTATE_DEF_0_MSR);
+        if (msr_val & (1ULL << 63)) {
+            uint32 fid    = (uint32)(msr_val & 0xFF);
+            uint32 dfs_id = (uint32)((msr_val >> 8) & 0x3F);
             if (fid != 0 && dfs_id != 0) {
-                return (fid * 200000000ULL) / dfs_id;
+                return (fid * 200) / dfs_id;
             }
         }
     } else if (family == 0x1A) {
-        // Zen 5 (0x1A): 取消分频器，步进固定为 5 MHz (5,000,000 Hz)
-        uint64 msr_val = asm_rdmsr(MSR_AMD_PSTATE_DEF_0);
+        // Zen 5
+        uint64 msr_val = asm_rdmsr(AMD_PSTATE_DEF_0_MSR);
         if (msr_val & (1ULL << 63)) {
-            uint64 fid = msr_val & 0xFFF;
-            return fid * 5000000ULL;
+            return (uint32)(msr_val & 0xFFF) * 5;
         }
     }
-
     return 0;
 }
 
 // =========================================================================
-// 2. 全平台自适应 TSC 频率探测 (四级优先级流水线)
+// 全平台 TSC 频率探测 (极致纯净版：仅需传入 max_basic_leaf)
 // =========================================================================
-static inline uint64 detect_tsc_hz(uint32 max_basic_leaf, uint32 fundamental_mhz, uint64 amd_pstate0_hz) {
+static inline uint64 detect_tsc_hz(uint32 max_basic_leaf) {
     uint32 eax, ebx, ecx, edx;
 
-    // [第 1 级] Intel 原生晶振比例叶 CPUID(0x15) —— 0 毫秒、精确到 1 Hz
+    // [第 1 级] Intel 原生晶振比例叶 CPUID(0x15)
+    // 严格要求 eax(分母)、ebx(分子)、ecx(晶振Hz) 全部非 0 才采信！
+    // 若遇到第 6~9 代酷睿 ecx == 0 的残缺情况，绝不用 0x16 凑合，直接向下滑落走虚拟机叶或 HPET！
     if (max_basic_leaf >= 0x15) {
         asm_cpuid(0x15, &eax, &ebx, &ecx, &edx);
-        if (eax != 0 && ebx != 0) {
-            if (ecx != 0) {
-                return ((uint64)ecx * (uint64)ebx) / (uint64)eax;
-            }
-            // Skylake 等第 6~9 代酷睿 ecx 返回 0 时，用 0x16 的基础频率结合比例推算
-            if (fundamental_mhz != 0) {
-                return (uint64)fundamental_mhz * 1000000ULL;
-            }
+        if (eax != 0 && ebx != 0 && ecx != 0) {
+            return ((uint64)ecx * (uint64)ebx) / (uint64)eax;
         }
     }
 
-    // [第 2 级] QEMU / KVM / VMware 虚拟机专属时间叶 CPUID(0x40000010) —— 0 毫秒
+    // [第 2 级] QEMU / KVM / VMware 虚拟机专属时间叶 CPUID(0x40000010)
     asm_cpuid(0x01, &eax, &ebx, &ecx, &edx);
     if (ecx & (1U << 31)) { // Hypervisor Present Bit
         uint32 max_hv_leaf = 0;
@@ -338,22 +329,13 @@ static inline uint64 detect_tsc_hz(uint32 max_basic_leaf, uint32 fundamental_mhz
         if (max_hv_leaf >= 0x40000010) {
             asm_cpuid(0x40000010, &eax, &ebx, &ecx, &edx);
             if (eax != 0) {
-                return (uint64)eax * 1000ULL; // EAX 返回单位为 kHz，转换为 Hz
+                return (uint64)eax * 1000ULL; // kHz -> Hz
             }
         }
     }
 
-    // [第 3 级] HPET 硬件定时器实测 10ms —— 修正真机主板 BCLK 展频偏差 (如 99.8MHz)
-    uint64 hpet_tsc = hpet_calibrate_tsc_hz(&hpet_dev, 10);
-    if (hpet_tsc != 0) {
-        return hpet_tsc;
-    }
-
-    // [第 4 级] 无 HPET 硬件时的终极兜底：使用 AMD P-State 0 精确频率或基础频率
-    if (amd_pstate0_hz != 0) {
-        return amd_pstate0_hz;
-    }
-    return (uint64)fundamental_mhz * 1000000ULL;
+    // [第 3 级] 硬件 HPET 定时器 10ms 实测 (覆盖 AMD 全系真机 + Intel 6~9 代酷睿)
+    return hpet_calibrate_tsc_hz(&hpet_dev, 10);
 }
 
 // =========================================================================
@@ -363,22 +345,16 @@ static inline void get_cpu_info(void) {
     uint32 max_basic_leaf = 0, max_ext_leaf = 0;
     uint32 ebx, ecx, edx;
 
-    // 通过逻辑 ID 获取当前核心在常规平坦地址空间 (Address Space 0) 的真实虚拟地址指针
-    // 彻底避免对 __seg_gs 指针取地址导致 Clangd 报错与空指针缺页崩溃 (#PF)
     cpu_core_t *core = &cpu_cores[THIS_CPU->logical_id];
 
-    // ---------------------------------------------------------------------
-    // [步骤 1] 获取 CPU 厂商名称 & 最大基础叶子节点号 (max_basic_leaf)
-    // ---------------------------------------------------------------------
+    // 1. 获取厂商名称 & max_basic_leaf
     asm_cpuid(0, &max_basic_leaf,
-                 (uint32 *)&core->manufacturer_name[0],  // EBX: 前 4 字节
-                 (uint32 *)&core->manufacturer_name[8],  // ECX: 后 4 字节
-                 (uint32 *)&core->manufacturer_name[4]); // EDX: 中 4 字节
+                 (uint32 *)&core->manufacturer_name[0],
+                 (uint32 *)&core->manufacturer_name[8],
+                 (uint32 *)&core->manufacturer_name[4]);
     core->manufacturer_name[12] = '\0';
 
-    // ---------------------------------------------------------------------
-    // [步骤 2] 获取 CPU 型号字符串 (0x80000002 ~ 0x80000004)
-    // ---------------------------------------------------------------------
+    // 2. 获取 CPU 型号字符串
     asm_cpuid(0x80000000, &max_ext_leaf, &ebx, &ecx, &edx);
     if (max_ext_leaf >= 0x80000004) {
         asm_cpuid(0x80000002, (uint32 *)&core->model_name[0],  (uint32 *)&core->model_name[4],
@@ -392,13 +368,8 @@ static inline void get_cpu_info(void) {
         core->model_name[0] = '\0';
     }
 
-    // ---------------------------------------------------------------------
-    // [步骤 3] 获取处理器基础频率、最大频率与总线外频 (兼容 Intel 与 AMD)
-    // ---------------------------------------------------------------------
-    uint64 amd_pstate0_hz = 0;
-
+    // 3. 获取处理器标称频率 (Intel 走 0x16，AMD 走 P-State 0 MSR)
     if (max_basic_leaf >= 0x16) {
-        // Intel 路径：直接读取 0x16 频率信息叶 (单位: MHz)
         asm_cpuid(0x16, &core->fundamental_mhz, &core->maximum_mhz, &core->bus_mhz, &edx);
     } else {
         core->fundamental_mhz = 0;
@@ -406,24 +377,19 @@ static inline void get_cpu_info(void) {
         core->bus_mhz         = 0;
     }
 
-    // AMD 路径（或 Intel 0x16 返回 0 的情况）：尝试通过 P-State 0 MSR 补齐频率信息
     if (core->fundamental_mhz == 0 && core->manufacturer_name[0] == 'A') {
-        amd_pstate0_hz        = amd_get_pstate0_hz();
-        core->fundamental_mhz = (uint32)(amd_pstate0_hz / 1000000ULL);
+        core->fundamental_mhz = amd_get_pstate0_mhz();
         core->maximum_mhz     = core->fundamental_mhz;
         core->bus_mhz         = (core->fundamental_mhz != 0) ? 100 : 0;
     }
 
-    // ---------------------------------------------------------------------
-    // [步骤 4] 确定恒定 TSC 频率 (BSP 执行探测校准，AP 直接零延时同步)
-    // ---------------------------------------------------------------------
+    // 4. 确定 TSC 频率 (BSP 探测校准，AP 直接复制)
     if (core->logical_id == 0) {
-        core->tsc_hz = detect_tsc_hz(max_basic_leaf, core->fundamental_mhz, amd_pstate0_hz);
+        core->tsc_hz = detect_tsc_hz(max_basic_leaf);
     } else {
         core->tsc_hz = cpu_cores[0].tsc_hz;
     }
 }
-
 
 
 
