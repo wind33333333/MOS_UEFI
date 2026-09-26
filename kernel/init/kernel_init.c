@@ -22,7 +22,7 @@ void kernel_init(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
     output_init();                                              //初始化输出控制台
     tmp_idt_init();                                             //初始化临时中断描述符表
-    cpu_enable_feature();                                         //cpu启用高级特性
+    cpu_enable_feature();                                       //cpu启用高级特性
     apply_alternatives();                                       //动态修复指令
     vm_layout_init();                                           //虚拟内存空间初始化
     memblock_init();                                            //初始化启动内存分配器
@@ -35,20 +35,13 @@ void kernel_init(void) {
     bsp_backup_mtrr_state();                                    //备份mtrr
     cpu_alloc_resources();                                      //给所有cpu分配资源
     cpu_load_resource();                                        //加载cpu资源
+    THIS_CPU->tsc_hz = detect_tsc_hz(max_basic_leaf) ;          //探测tsc频率
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
     while(1);
-
-    // 4. 确定 TSC 频率 (BSP 探测校准，AP 直接复制)
-    // if (core->logical_id == 0) {
-    //     core->tsc_hz = detect_tsc_hz(max_basic_leaf);
-    // } else {
-    //     core->tsc_hz = cpu_cores[0].tsc_hz;
-    // }
-
     ioapic_init();                                              //初始化ioapic
     hpet_init();                                                //初始化hpet
-    bus_init();                                //总线初始化
-    ap_init();                                 //初始化ap核
+    bus_init();                                                 //总线初始化
+    ap_init();                                                  //初始化ap核
 
     while (1);
 }
