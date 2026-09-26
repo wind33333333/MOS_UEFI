@@ -306,35 +306,20 @@ static inline uint32 amd_get_pstate0_mhz(void) {
 }
 
 // =========================================================================
-// 全平台 TSC 频率探测 (极致纯净版：仅需传入 max_basic_leaf)
+// 终极精简版 TSC 频率探测：Intel 0x15 直读 -> 全平台 HPET 硬件实测
 // =========================================================================
 static inline uint64 detect_tsc_hz(uint32 max_basic_leaf) {
-    uint32 eax, ebx, ecx, edx;
-
-    // [第 1 级] Intel 原生晶振比例叶 CPUID(0x15)
-    // 严格要求 eax(分母)、ebx(分子)、ecx(晶振Hz) 全部非 0 才采信！
-    // 若遇到第 6~9 代酷睿 ecx == 0 的残缺情况，绝不用 0x16 凑合，直接向下滑落走虚拟机叶或 HPET！
+    // [通道 1] 现代 Intel 真机 (或开启 CPU 直通的虚拟机)：CPUID(0x15) 0ms 精确计算
     if (max_basic_leaf >= 0x15) {
+        uint32 eax, ebx, ecx, edx;
         asm_cpuid(0x15, &eax, &ebx, &ecx, &edx);
         if (eax != 0 && ebx != 0 && ecx != 0) {
             return ((uint64)ecx * (uint64)ebx) / (uint64)eax;
         }
     }
 
-    // [第 2 级] QEMU / KVM / VMware 虚拟机专属时间叶 CPUID(0x40000010)
-    asm_cpuid(0x01, &eax, &ebx, &ecx, &edx);
-    if (ecx & (1U << 31)) { // Hypervisor Present Bit
-        uint32 max_hv_leaf = 0;
-        asm_cpuid(0x40000000, &max_hv_leaf, &ebx, &ecx, &edx);
-        if (max_hv_leaf >= 0x40000010) {
-            asm_cpuid(0x40000010, &eax, &ebx, &ecx, &edx);
-            if (eax != 0) {
-                return (uint64)eax * 1000ULL; // kHz -> Hz
-            }
-        }
-    }
-
-    // [第 3 级] 硬件 HPET 定时器 10ms 实测 (覆盖 AMD 全系真机 + Intel 6~9 代酷睿)
+    // [通道 2] QEMU / VMware / VirtualBox 虚拟机 + AMD 全系真机 + 老旧 Intel：
+    // 100% 默认支持 HPET，无需配置任何冷门虚拟机参数，直接实测 10ms！
     return hpet_calibrate_tsc_hz(&hpet_dev, 10);
 }
 
@@ -389,6 +374,9 @@ static inline void get_cpu_info(void) {
     } else {
         core->tsc_hz = cpu_cores[0].tsc_hz;
     }
+
+    PR_INFO("TSC_HZ:%ld \n",core->tsc_hz);
+
 }
 
 
@@ -405,6 +393,7 @@ void cpu_init(void){
     asm_ltr(48);                                      //加载tr
     get_cpu_info();                                         //获取cpu信息
     //init_syscall();                                       //初始化系统调用
+    while(1);
    
 }
 

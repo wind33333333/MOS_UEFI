@@ -6,6 +6,7 @@
 #include "pmm.h"
 #include "../mm/tlb.h"
 #include "video_init.h"
+#include "../x64/msr.h"
 
 vm_space_t kernel_space;
 
@@ -166,6 +167,10 @@ void kpage_table_init(void) {
     uint64 data_sz = (uint64)_end_bss - data_va;
     PR_INFO("  -> .data/bss     : VA %#lx -> PA %#lx, Size: 0x%lx\n", data_va, data_pa, data_sz);
     vm_map_range(&kernel_space, data_va, data_pa, data_sz, PAGE_KERNEL_DATA_RW);
+
+    uint64 value=asm_rdmsr(EFER_MSR);
+    value |= 0x801;
+    asm_wrmsr(EFER_MSR,value);
 
     asm_set_cr3(kernel_space.cr3_root);
     tlb_flush_all();

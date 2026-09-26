@@ -90,6 +90,8 @@ uint64 memblock_alloc(uint64 size, uint64 align) {
 
         memblock.free.count++;
     }
+
+    asm_mem_set(pa_to_va(align_base), 0, align_size); // 必须清零！
     return align_base;
 }
 
