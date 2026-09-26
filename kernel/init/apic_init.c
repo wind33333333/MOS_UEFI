@@ -65,6 +65,7 @@ void apic_init(void) {
     uint64 cpu_core_size = active_cpu_count * sizeof(cpu_core_t);
     uint64 ioapic_dev_size = ioapic_count * sizeof(ioapic_devive_t);
     uint64 irq_override_size = irq_override_count * sizeof(irq_override_t);
+
     uint64 total_size = PAGE_4K_ALIGN(cpu_core_size+ioapic_dev_size +irq_override_size);
     cpu_cores = pa_to_va(memblock_alloc(total_size,PAGE_4K_SIZE));
     asm_mem_set(cpu_cores,0,total_size);
@@ -74,7 +75,7 @@ void apic_init(void) {
     }
 
     if (irq_override_count > 0) {
-        irq_override = (irq_override_t*)((uint64)cpu_cores+cpu_core_size+ioapic_dev_size);
+        irq_override = (irq_override_t*)((uint64)ioapic_dev+ioapic_dev_size);
     }
 
     // 💡 必须让 BSP 永远霸占 logical_id = 0 的宝座！
@@ -92,16 +93,16 @@ void apic_init(void) {
         switch (madt_start->type) {
             case 0: // 🌟 补全：传统的 Local APIC (Type 0)
                 if (count_x2apic == 0) { // 只有在系统没有 x2APIC 时才使用 Type 0
-                    apic_entry_t *lapic = (apic_entry_t *) madt_start;
-                    if (lapic->flags & 1) {
+                    apic_entry_t *lapic_entry = (apic_entry_t *) madt_start;
+                    if (lapic_entry->flags & 1) {
                         uint32 logical_id;
-                        if (lapic->apic_id == bsp_apic_id) {
+                        if (lapic_entry->apic_id == bsp_apic_id) {
                             logical_id = 0;
                         }else {
                             logical_id = ap_idx++;
                         }
-                        cpu_cores[logical_id].apic_id = lapic->apic_id;
-                        cpu_cores[logical_id].acpi_proc_id = lapic->processor_id;
+                        cpu_cores[logical_id].apic_id = lapic_entry->apic_id;
+                        cpu_cores[logical_id].acpi_proc_id = lapic_entry->processor_id;
                         cpu_cores[logical_id].logical_id = logical_id;
                     }
                 }
