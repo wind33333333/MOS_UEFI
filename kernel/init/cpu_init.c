@@ -289,14 +289,16 @@ void get_cpu_info(uint32 logical_id) {
 }
 
 void bsp_init(void){
+    uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
+    uint32 logical_id = get_logical_id_by_apic(apic_id);
+
     gdt_ptr_t gdt_ptr;
     gdt_ptr.limit = sizeof(gdt_t) - 1;
-    gdt_ptr.base = cpu_cores[0].gdt_base;
+    gdt_ptr.base = cpu_cores[logical_id].gdt_base;
 
     asm_lgdt(&gdt_ptr,8,16);
     asm_ltr(48);
-    bsp_backup_mtrr_state();                   //备份mtrr
-    get_cpu_info(0);                  //获取cpu信息
+    get_cpu_info(logical_id);                  //获取cpu信息
     //init_syscall();                          //初始化系统调用
    
 }

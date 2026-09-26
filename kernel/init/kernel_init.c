@@ -33,6 +33,7 @@ void kernel_init(void) {
     vmalloc_init();                                             //初始化vmalloc
     video_mem_map();                                            //映射显存到虚拟地址空间
     cpu_resources_init();                                       //给所有cpu核心初始化资源
+    //bsp_backup_mtrr_state();                                    //备份mtrr
     bsp_init();                                                 //初始化bsp核心
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
     while(1);
