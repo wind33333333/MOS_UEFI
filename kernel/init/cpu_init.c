@@ -104,7 +104,7 @@ void enable_apic_time (uint64 time,uint32 model,uint32 ivt){
 }
 
 
-static inline void cpu_feature_init(void) {
+void cpu_enable_feature(void) {
     uint32 eax,ebx,ecx,edx;
     uint64 tmp,value;
 
@@ -114,9 +114,9 @@ static inline void cpu_feature_init(void) {
     //BSP（bit 9）：作用：标记该处理器是否是系统的启动处理器（BSP）。系统启动时，BSP 是首先执行初始化代码的 CPU，其它处理器是 AP（Application Processors，应用处理器）。
     //APIC Base Address（bit 12-31）：作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
     ////endregion
-    // value=asm_rdmsr(APIC_BASE_MSR);
-    // value |= 0xC00;                        //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
-    // asm_wrmsr(APIC_BASE_MSR,value);
+    value=asm_rdmsr(APIC_BASE_MSR);
+    value |= 0xC00;                        //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
+    asm_wrmsr(APIC_BASE_MSR,value);
 
     //region CR4 寄存器
     //VME（bit 0） 描述：启用虚拟 8086 模式的扩展功能，允许在虚拟 8086 模式中支持虚拟中断。用途：用于实现虚拟机监控或虚拟 8086 环境中的精细中断控制。
@@ -368,23 +368,16 @@ static inline void get_cpu_info(void) {
         core->bus_mhz         = (core->fundamental_mhz != 0) ? 100 : 0;
     }
 
-    // 4. 确定 TSC 频率 (BSP 探测校准，AP 直接复制)
-    if (core->logical_id == 0) {
-        core->tsc_hz = detect_tsc_hz(max_basic_leaf);
-    } else {
-        core->tsc_hz = cpu_cores[0].tsc_hz;
-    }
-
-    PR_INFO("TSC_HZ:%ld \n",core->tsc_hz);
+    // 4.TSC 频率
+    core->tsc_hz = cpu_cores[0].tsc_hz;
 
 }
 
 
 
-void cpu_init(void){
+void cpu_load_resource(void){
     uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
     uint32 logical_id = get_logical_id_by_apic(apic_id);
-    cpu_feature_init();                                      //cpu 特性初始化
     set_gs_base(logical_id);                                 //设置bsp核gs基地址
     gdt_ptr_t gdt_ptr;
     gdt_ptr.limit = sizeof(gdt_t) - 1;
@@ -397,7 +390,7 @@ void cpu_init(void){
    
 }
 
-void cpu_resources_init(void) {
+void cpu_alloc_resources(void) {
     for (uint32 i=0;i < active_cpu_count;i++) {
         gdt_tss_init(i);
     }
@@ -436,7 +429,7 @@ void ap_main(void){
     uint32 apic_id,cpu_id,tmp;
     asm_cpuid_count(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);        //获取apic_ia
     //cpu_id = apicid_to_cpuid(apic_id);
-    cpu_feature_init();
+    cpu_enable_feature();
     //asm_set_cr3(kpml4t_ptr);
     //asm_lgdt(&bsp_gdt_ptr,0x8,0x10);
     //asm_ltr(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);
