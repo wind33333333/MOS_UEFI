@@ -266,12 +266,13 @@ static inline boolean cpu_has_tsc_deadline(void) {
     return (ecx & CPUID_FEAT_ECX_TSC_DEADLINE) != 0;
 }
 
-// -------------------------------------------------------------------------
-// 4. 第二阶段初始化：初始化硬件“闹钟” (BSP 算一次参数，所有核心各自挂起中断)
-// -------------------------------------------------------------------------
-void apic_timer_init() {
+//初始化tsc始终和定时器
+void apic_cock_timer_init() {
+    //全局tsc时钟
     uint64 tsc_hz = detect_tsc_hz();
     g_tsc_clock.tsc_hz = tsc_hz;
+
+    //全局apic定时器，tsc-deadline或oneshot模式
     g_apic_timer.tsc_step_per_tick = tsc_hz / 1000;
     g_apic_timer.has_tsc_deadline = cpu_has_tsc_deadline();
     if (!g_apic_timer.has_tsc_deadline) {
