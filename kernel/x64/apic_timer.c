@@ -1,22 +1,44 @@
 #include "apic_timer.h"
 
-// =========================================================================
-// 3. 全局只读定点数常数 (由 0号核 BSP 在开机时一次性算出，全核共享只读)
-// =========================================================================
-boolean g_has_tsc_deadline  = FALSE;
-uint64  g_apic_hz           = 0;
-uint8   g_apic_div_cfg      = 0x03;
 
-// [转换组 A] TSC -> 纳秒 (用于 get_uptime_ns)
-uint64  g_tsc_to_ns_mult    = 0;
-uint32  g_tsc_to_ns_shift   = 0;
+tsc_clock_t       g_tsc_clock;
+apic_timer_cfg_t  g_apic_timer;
 
-// [转换组 B] 纳秒 -> TSC (用于 sleep_ns / sleep_us 计算目标唤醒 TSC)
-uint64  g_ns_to_tsc_mult    = 0;
-uint32  g_ns_to_tsc_shift   = 0;
-uint64  g_ns_to_tsc_mask    = 0;
+// -------------------------------------------------------------------------
+// 1. 时钟 API (只依赖 g_tsc_clock，开机极早期即可调用)
+// -------------------------------------------------------------------------
+uint64 get_uptime_ns(void) {
+    uint64 tsc = asm_rdtscp();
+    return (uint64)(((__uint128_t)tsc * g_tsc_clock.tsc_to_ns_mult) >> g_tsc_clock.tsc_to_ns_shift);
+}
 
-// [转换组 C] TSC -> APIC Ticks (用于 AMD / 虚拟机 One-Shot 闹钟装填)
-uint64  g_tsc_to_apic_mult  = 0;
-uint32  g_tsc_to_apic_shift = 0;
-uint64  g_tsc_to_apic_mask  = 0;
+uint64 ns_to_tsc_delta(uint64 delay_ns) {
+    return (uint64)(((__uint128_t)delay_ns * g_tsc_clock.ns_to_tsc_mult + g_tsc_clock.ns_to_tsc_mask)
+                    >> g_tsc_clock.ns_to_tsc_shift);
+}
+
+// -------------------------------------------------------------------------
+// 2. 定时器 API (只依赖 g_lapic_timer，供中断与调度器调用)
+// -------------------------------------------------------------------------
+void apic_timer_set_deadline_tsc(uint64 now_tsc, uint64 target_tsc) {
+    if (g_lapic_timer.has_tsc_deadline) {
+        asm_wrmsr(MSR_IA32_TSC_DEADLINE, target_tsc);
+        return;
+    }
+
+    if (target_tsc <= now_tsc) {
+        asm_wrmsr(APIC_INITIAL_COUNT_MSR, 1);
+        return;
+    }
+
+    uint64 delta_tsc  = target_tsc - now_tsc;
+    uint64 apic_ticks = (uint64)(((__uint128_t)delta_tsc * g_lapic_timer.tsc_to_apic_mult
+                                  + g_lapic_timer.tsc_to_apic_mask) >> g_lapic_timer.tsc_to_apic_shift);
+
+    if (apic_ticks > 0xFFFFFFFFULL) {
+        apic_ticks = 0xFFFFFFFFULL;
+    }
+
+    asm_wrmsr(APIC_INITIAL_COUNT_MSR, (uint32)apic_ticks);
+}
+

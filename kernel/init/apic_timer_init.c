@@ -2,6 +2,8 @@
 #include "cpu.h"
 #include "msr.h"
 #include "hpet.h"
+#include "apic_timer.h"
+#include "interrupt.h"
 
 #define MAX_NMI_SMI_RETRIES  16
 
@@ -84,21 +86,20 @@ uint64 hpet_calibrate_tsc_hz(uint32 wait_ms) {
 // =========================================================================
 // 终极精简版 TSC 频率探测：Intel 0x15 直读 -> 全平台 HPET 硬件实测
 // =========================================================================
-void detect_tsc_hz() {
+uint64 detect_tsc_hz() {
     // [通道 1] 现代 Intel 真机 (或开启 CPU 直通的虚拟机)：CPUID(0x15) 0ms 精确计算
     uint32 eax,ebx, ecx, edx;
     asm_cpuid(0, &eax,&ebx,&ecx,&edx);
     if (eax >= 0x15) {
         asm_cpuid(0x15, &eax, &ebx, &ecx, &edx);
         if (eax != 0 && ebx != 0 && ecx != 0) {
-            THIS_CPU->tsc_hz = ((uint64)ecx * (uint64)ebx) / (uint64)eax;
-            return;
+            return ((uint64)ecx * (uint64)ebx) / (uint64)eax;
         }
     }
 
     // [通道 2] QEMU / VMware / VirtualBox 虚拟机 + AMD 全系真机 + 老旧 Intel：
     // 100% 默认支持 HPET，无需配置任何冷门虚拟机参数，直接实测 10ms！
-    THIS_CPU->tsc_hz = hpet_calibrate_tsc_hz(10);
+    return hpet_calibrate_tsc_hz(10);
 }
 
 
@@ -237,97 +238,57 @@ static inline void calc_mult_shift(
 
 
 
-// =========================================================================
-// 4. 运行期极速热路径 API (100% 纯乘法 + 右移，零除法指令！)
-// =========================================================================
+// -------------------------------------------------------------------------
+// 3. 第一阶段初始化：开机极早期初始化全局“表盘” (仅在 BSP 调用 1 次)
+// -------------------------------------------------------------------------
+void tsc_clock_init_global(hpet_device_t *hpet_dev, uint32 max_basic_leaf) {
+    uint64 tsc_hz = detect_tsc_hz(hpet_dev, max_basic_leaf);
+    g_tsc_clock.tsc_hz = tsc_hz;
 
-// [热路径 1] 获取系统开机以来的纳秒时间 (耗时 ~1 纳秒，永不溢出)
-static inline uint64 get_uptime_ns(void) {
-    uint64 tsc = asm_rdtscp();
-    return (uint64)(((__uint128_t)tsc * g_tsc_to_ns_mult) >> g_tsc_to_ns_shift);
+    // 预计算 TSC <-> 纳秒 双向定点数常数
+    calc_mult_shift(tsc_hz, 1000000000ULL, &g_tsc_clock.tsc_to_ns_mult, &g_tsc_clock.tsc_to_ns_shift, FALSE);
+    calc_mult_shift(1000000000ULL, tsc_hz, &g_tsc_clock.ns_to_tsc_mult, &g_tsc_clock.ns_to_tsc_shift, TRUE);
+    g_tsc_clock.ns_to_tsc_mask = (1ULL << g_tsc_clock.ns_to_tsc_shift) - 1;
 }
 
-// [热路径 2] 将纳秒延时换算为 TSC 增量 (向上取整，保证睡眠绝不早退)
-static inline uint64 ns_to_tsc_delta(uint64 delay_ns) {
-    return (uint64)(((__uint128_t)delay_ns * g_ns_to_tsc_mult + g_ns_to_tsc_mask) >> g_ns_to_tsc_shift);
-}
-
-// [热路径 3] 设定下一次中断的绝对 TSC 时间点 (零除法双擎版)
-static inline void apic_timer_set_deadline_tsc(uint64 target_tsc) {
-    // 通道 A：Intel 真机 / KVM 直接写硬件 0x6E0
-    if (g_has_tsc_deadline) {
-        asm_wrmsr(TSC_DEADLINE_MSR, target_tsc);
-        return;
-    }
-
-    // 通道 B：AMD 真机 / 默认虚拟机，使用定点数极速换算 32 位 One-Shot 倒数值
-    uint64 now_tsc = asm_rdtscp();
-    if (target_tsc <= now_tsc) {
-        asm_wrmsr(APIC_INITIAL_COUNT_MSR, 1);
-        return;
-    }
-
-    uint64 delta_tsc = target_tsc - now_tsc;
-
-    // 🌟 核心加速：1 条 mulq 乘法 + 1 条加法 + 1 条 shrdq 右移，取代慢速 128 位除法！
-    // 由于加了 mask 向上取整，当 delta_tsc >= 1 时，算出的 apic_ticks 天然 >= 1！
-    uint64 apic_ticks = (uint64)(((__uint128_t)delta_tsc * g_tsc_to_apic_mult + g_tsc_to_apic_mask)
-                                 >> g_tsc_to_apic_shift);
-
-    // 32 位计数器上限饱和截断
-    if (apic_ticks > 0xFFFFFFFFULL) {
-        apic_ticks = 0xFFFFFFFFULL;
-    }
-
-    asm_wrmsr(APIC_INITIAL_COUNT_MSR, (uint32)apic_ticks);
-}
-
-// =========================================================================
-// 5. 初始化入口：在 BSP 上一次性预计算所有定点数常数
-// =========================================================================
-void apic_timer_init_per_cpu(void) {
+// -------------------------------------------------------------------------
+// 4. 第二阶段初始化：初始化硬件“闹钟” (BSP 算一次参数，所有核心各自挂起中断)
+// -------------------------------------------------------------------------
+void apic_timer_init_per_cpu(uint32 max_basic_leaf) {
     cpu_core_t *core = &cpu_cores[THIS_CPU->logical_id];
-
     if (core->logical_id == 0) {
-        uint64 tsc_hz = core->tsc_hz;
+        uint64 tsc_hz = detect_tsc_hz();
+        g_tsc_clock.tsc_hz = tsc_hz;
+        g_apic_timer.tsc_step_per_tick = tsc_hz / 1000;
+        g_apic_timer.has_tsc_deadline  = cpu_has_tsc_deadline();
 
-        // 1. 预计算 TSC <-> 纳秒 (10^9 Hz) 的双向定点数参数
-        calc_mult_shift(tsc_hz, 1000000000ULL, &g_tsc_to_ns_mult, &g_tsc_to_ns_shift, FALSE);
-        calc_mult_shift(1000000000ULL, tsc_hz, &g_ns_to_tsc_mult, &g_ns_to_tsc_shift, TRUE);
-        g_ns_to_tsc_mask = (1ULL << g_ns_to_tsc_shift) - 1;
-
-        // 2. 检测 TSC-Deadline；若不支持则校准 APIC 并预计算 TSC -> APIC 定点数参数
-        g_has_tsc_deadline = core->has_tsc_deadline;
-        if (!g_has_tsc_deadline) {
-            uint64 raw_bus_hz = tsc_calibrate_apic_hz(tsc_hz, 5);
-
-            // 自适应分频：将 APIC 计数频率锚定在 <= 10MHz 黄金区间
+        if (!g_apic_timer.has_tsc_deadline) {
+            uint64 raw_bus_hz = detect_apic_bus_hz(max_basic_leaf, tsc_hz);
             static const uint8 k_div_table[8] = {0x0B, 0x00, 0x01, 0x02, 0x03, 0x08, 0x09, 0x0A};
-            uint32 div_shift = 0;
-            while (div_shift < 7 && (raw_bus_hz >> div_shift) > 10000000ULL) {
-                div_shift++;
+            uint32 shift = 0;
+            while (shift < 7 && (raw_bus_hz >> shift) > 10000000ULL) {
+                shift++;
             }
-            g_apic_hz      = raw_bus_hz >> div_shift;
-            g_apic_div_cfg = k_div_table[div_shift];
+            g_apic_timer.apic_hz      = raw_bus_hz >> shift;
+            g_apic_timer.apic_div_cfg = k_div_table[shift];
 
-            // 预计算 TSC -> APIC Ticks 定点数参数 (开启向上取整 round_up = TRUE)
-            calc_mult_shift(tsc_hz, g_apic_hz, &g_tsc_to_apic_mult, &g_tsc_to_apic_shift, TRUE);
-            g_tsc_to_apic_mask = (1ULL << g_tsc_to_apic_shift) - 1;
+            calc_mult_shift(tsc_hz, g_apic_timer.apic_hz,
+                            &g_apic_timer.tsc_to_apic_mult, &g_apic_timer.tsc_to_apic_shift, TRUE);
+            g_apic_timer.tsc_to_apic_mask = (1ULL << g_apic_timer.tsc_to_apic_shift) - 1;
         }
     }
 
-    core->tsc_step_per_tick = core->tsc_hz / 1000;
-
-    // 配置当前核心的 APIC 硬件寄存器
-    if (g_has_tsc_deadline) {
-        asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_TSC_DEADLINE  | alloc_irq());
+    // 配置当前核心的 APIC 定时器硬件寄存器
+    if (g_apic_timer.has_tsc_deadline) {
+        asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_TIMER_MODE_DEADLINE | IRQ_VECTOR_TIMER);
         asm_mfence();
     } else {
-        asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, g_apic_div_cfg);
-        asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_ONESHOT | alloc_irq());
+        asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, g_apic_timer.apic_div_cfg);
+        asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_TIMER_MODE_ONESHOT | IRQ_VECTOR_TIMER);
     }
 
-    // 装填第 1 次闹钟
-    core->next_tsc_deadline = asm_rdtscp() + core->tsc_step_per_tick;
-    apic_timer_set_deadline_tsc(core->next_tsc_deadline);
+    // 启动当前核心的第 1 个定时中断
+    uint64 now = asm_rdtscp();
+    core->next_tsc_deadline = now + g_apic_timer.tsc_step_per_tick;
+    lapic_timer_set_deadline_tsc(now, core->next_tsc_deadline);
 }

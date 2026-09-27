@@ -12,7 +12,7 @@
 #include "apic_init.h"
 #include "printk.h"
 #include "../x64/mtrr.h"
-#include "../x64/cpu.h"
+#include "../init/apic_timer_init.h"
 #include "../include/bus.h"
 #include "../x64/interrupt.h"
 #include "../include/ioapic.h"
@@ -40,8 +40,7 @@ void kernel_init(void) {
     cpu_load_resource();                                        //加载cpu资源
     ioapic_init();                                              //初始化ioapic
     hpet_init();                                                //初始化hpet
-    detect_tsc_hz() ;                                           //探测tsc频率
-    lapic_timer_init_per_cpu();
+    apic_timer_init();
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
     while(1);
 

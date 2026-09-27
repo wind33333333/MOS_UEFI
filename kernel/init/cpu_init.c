@@ -352,9 +352,6 @@ static inline void get_cpu_info(void) {
         core->bus_mhz         = (core->fundamental_mhz != 0) ? 100 : 0;
     }
 
-    // 4.TSC 频率
-    core->tsc_hz = cpu_cores[0].tsc_hz;
-
 }
 
 

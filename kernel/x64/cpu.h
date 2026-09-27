@@ -99,6 +99,8 @@ typedef struct cpu_core {
     cpu_state_t     state;                // [0x08] 核心运行状态 (假设 enum 为 4 字节)
     uint32          numa_node;            // [0x0C] 所属 NUMA 节点 (内存分配高频使用)
 
+    uint64          next_tsc_deadline;
+
     // 💡 预留给 syscall 汇编入口的极速切栈跳板
     uint64          current_kernel_stack; // [0x10] 当前线程内核栈顶 (与 tss->rsp0 同步)
     uint64          user_rsp_scratch;     // [0x18] syscall 发生时暂存用户态 RSP 的草稿箱
@@ -128,15 +130,9 @@ typedef struct cpu_core {
     char8           manufacturer_name[13];// 例如 "GenuineIntel\0" (13B)
     char8           model_name[49];       // 处理器具体型号字符串 (49B)
 
-    // ✅ 修复溢出：TSC 用 64 位存精确 Hz，其余用 32 位存 MHz（完美契合 CPUID 0x16）
-    uint64          tsc_hz;               // 精确到 Hz，支持超过 4.29GHz 的高频核心
     uint32          fundamental_mhz;      // 基础频率 (MHz)
     uint32          maximum_mhz;          // 最大睿频 (MHz)
     uint32          bus_mhz;              // 总线/外频 (MHz)
-
-    boolean         has_tsc_deadline;
-    uint64          tsc_step_per_tick;
-    uint64          next_tsc_deadline;
 
 } __attribute__((aligned(64))) cpu_core_t;
 
