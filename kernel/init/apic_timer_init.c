@@ -1,9 +1,9 @@
 #include "apic_timer_init.h"
-#include "cpu.h"
-#include "msr.h"
-#include "hpet.h"
-#include "apic_timer.h"
-#include "interrupt.h"
+#include "../x64/cpu.h"
+#include "../x64/msr.h"
+#include "../drivers/hpet/hpet.h"
+#include "../x64/apic_timer.h"
+#include "../x64/interrupt.h"
 
 #define MAX_NMI_SMI_RETRIES  16
 
@@ -136,8 +136,10 @@ static inline uint64 apic_read_ref_clean(
 // 3. [核心 API] 以已校准的 tsc_hz 为黄金标尺，单次极速测算 APIC 原始总线频率
 //    推荐参数：wait_ms = 5 (仅耗时 5 毫秒，零 HPET 访问)
 // =========================================================================
-uint64 tsc_calibrate_apic_hz(uint64 tsc_hz, uint32 wait_ms) {
+uint64 tsc_calibrate_apic_hz() {
     // 计算粗略等待窗口对应的 TSC 增量
+    uint64 tsc_hz = g_tsc_clock.tsc_hz;
+    uint32 wait_ms = 5;
     uint64 target_tsc_delta = (tsc_hz / 1000ULL) * wait_ms;
 
     uint64 apic_start, apic_end;
@@ -251,10 +253,28 @@ void tsc_clock_init_global(hpet_device_t *hpet_dev, uint32 max_basic_leaf) {
     g_tsc_clock.ns_to_tsc_mask = (1ULL << g_tsc_clock.ns_to_tsc_shift) - 1;
 }
 
+// CPUID(0x01).ECX 特性位定义
+#define CPUID_FEAT_ECX_X2APIC        (1U << 21) // Bit 21: 支持 x2APIC (MSR 0x800~0x83F)
+#define CPUID_FEAT_ECX_TSC_DEADLINE  (1U << 24) // Bit 24: 支持 APIC TSC-Deadline 模式 (MSR 0x6E0)
+#define CPUID_FEAT_ECX_HYPERVISOR    (1U << 31) // Bit 31: 当前运行在虚拟机 (Hypervisor) 中
+
+// =========================================================================
+// 检测当前 CPU 是否支持硬件级 Local APIC TSC-Deadline 模式
+// =========================================================================
+static inline boolean cpu_has_tsc_deadline(void) {
+    uint32 eax, ebx, ecx, edx;
+
+    // 查询基础功能叶 0x01
+    asm_cpuid(0x01, &eax, &ebx, &ecx, &edx);
+
+    // 检查 ECX 的第 24 位 (0x01000000)
+    return (ecx & CPUID_FEAT_ECX_TSC_DEADLINE) != 0;
+}
+
 // -------------------------------------------------------------------------
 // 4. 第二阶段初始化：初始化硬件“闹钟” (BSP 算一次参数，所有核心各自挂起中断)
 // -------------------------------------------------------------------------
-void apic_timer_init_per_cpu(uint32 max_basic_leaf) {
+void apic_timer_init() {
     cpu_core_t *core = &cpu_cores[THIS_CPU->logical_id];
     if (core->logical_id == 0) {
         uint64 tsc_hz = detect_tsc_hz();
@@ -263,7 +283,7 @@ void apic_timer_init_per_cpu(uint32 max_basic_leaf) {
         g_apic_timer.has_tsc_deadline  = cpu_has_tsc_deadline();
 
         if (!g_apic_timer.has_tsc_deadline) {
-            uint64 raw_bus_hz = detect_apic_bus_hz(max_basic_leaf, tsc_hz);
+            uint64 raw_bus_hz = tsc_calibrate_apic_hz();
             static const uint8 k_div_table[8] = {0x0B, 0x00, 0x01, 0x02, 0x03, 0x08, 0x09, 0x0A};
             uint32 shift = 0;
             while (shift < 7 && (raw_bus_hz >> shift) > 10000000ULL) {
@@ -279,16 +299,17 @@ void apic_timer_init_per_cpu(uint32 max_basic_leaf) {
     }
 
     // 配置当前核心的 APIC 定时器硬件寄存器
+    uint8 irq = alloc_irq();
     if (g_apic_timer.has_tsc_deadline) {
-        asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_TIMER_MODE_DEADLINE | IRQ_VECTOR_TIMER);
+        asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_TSC_DEADLINE | irq);
         asm_mfence();
     } else {
         asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, g_apic_timer.apic_div_cfg);
-        asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_TIMER_MODE_ONESHOT | IRQ_VECTOR_TIMER);
+        asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_ONESHOT | irq);
     }
 
     // 启动当前核心的第 1 个定时中断
     uint64 now = asm_rdtscp();
     core->next_tsc_deadline = now + g_apic_timer.tsc_step_per_tick;
-    lapic_timer_set_deadline_tsc(now, core->next_tsc_deadline);
+    apic_timer_set_deadline_tsc(now, core->next_tsc_deadline);
 }

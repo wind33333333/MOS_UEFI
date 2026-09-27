@@ -1,5 +1,7 @@
 #include "apic_timer.h"
 
+#include "msr.h"
+
 
 tsc_clock_t       g_tsc_clock;
 apic_timer_cfg_t  g_apic_timer;
@@ -21,8 +23,8 @@ uint64 ns_to_tsc_delta(uint64 delay_ns) {
 // 2. 定时器 API (只依赖 g_lapic_timer，供中断与调度器调用)
 // -------------------------------------------------------------------------
 void apic_timer_set_deadline_tsc(uint64 now_tsc, uint64 target_tsc) {
-    if (g_lapic_timer.has_tsc_deadline) {
-        asm_wrmsr(MSR_IA32_TSC_DEADLINE, target_tsc);
+    if (g_apic_timer.has_tsc_deadline) {
+        asm_wrmsr(TSC_DEADLINE_MSR, target_tsc);
         return;
     }
 
@@ -32,8 +34,8 @@ void apic_timer_set_deadline_tsc(uint64 now_tsc, uint64 target_tsc) {
     }
 
     uint64 delta_tsc  = target_tsc - now_tsc;
-    uint64 apic_ticks = (uint64)(((__uint128_t)delta_tsc * g_lapic_timer.tsc_to_apic_mult
-                                  + g_lapic_timer.tsc_to_apic_mask) >> g_lapic_timer.tsc_to_apic_shift);
+    uint64 apic_ticks = (uint64)(((__uint128_t)delta_tsc * g_apic_timer.tsc_to_apic_mult
+                                  + g_apic_timer.tsc_to_apic_mask) >> g_apic_timer.tsc_to_apic_shift);
 
     if (apic_ticks > 0xFFFFFFFFULL) {
         apic_ticks = 0xFFFFFFFFULL;
