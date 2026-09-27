@@ -3,9 +3,11 @@
 #include "gdt_tss.h"
 
 
-#define APIC_ONESHOT 0              //一次性定时模式
-#define APIC_PERIODIC  0x20000      //周期性定时模式
-#define APIC_TSC_DEADLINE 0x40000   //TSC截止期限模式
+#define APIC_ONESHOT        (0 << 17)              //一次性定时模式
+#define APIC_PERIODIC       (1 << 17)              //周期性定时模式
+#define APIC_TSC_DEADLINE   (2 << 17)              //TSC截止期限模式
+
+#define APIC_DIV_BY_1             0x0B
 
 
 //中断结束发送EOI
@@ -131,6 +133,10 @@ typedef struct cpu_core {
     uint32          fundamental_mhz;      // 基础频率 (MHz)
     uint32          maximum_mhz;          // 最大睿频 (MHz)
     uint32          bus_mhz;              // 总线/外频 (MHz)
+
+    boolean         has_tsc_deadline;
+    uint64          tsc_step_per_tick;
+    uint64          next_tsc_deadline;
 
 } __attribute__((aligned(64))) cpu_core_t;
 
