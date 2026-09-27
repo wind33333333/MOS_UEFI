@@ -7,16 +7,6 @@
 #define IDT_USER_DESC      0xEE // P=1, DPL=3, Type=E (系统调用等，允许 Ring3 触发)
 
 
-// IDTR 寄存器结构
-typedef struct idt_ptr_t{
-    uint16 limit;
-    idt_t  *base;
-}__attribute__((packed))idt_ptr_t;
-
-extern idt_t idt;
-
-// 引入汇编里暴露的地址表 (极其优雅，免去了写 256 行 extern)
-extern uint64 isr_stub_table[];
 
 /**
  * @brief 内部函数：组装 16 字节的 IDT 描述符
@@ -35,22 +25,6 @@ static inline void idt_set_descriptor(uint8 vector , uint8 attributes, uint8 ist
     desc->reserved         = 0; // 必须为 0
 }
 
-
-
-// 假设你之前定义的 IDTR 结构体名叫 idtr_t
-static inline void asm_lidt(const idt_ptr_t *idt_ptr) {
-    __asm__ __volatile__(
-        "lidt %0 \n\t"
-        :
-        /*
-         * 【架构师修复】：必须加 * 解引用！
-         * 这样 GCC 就会生成正确的内存寻址，例如: lidt (%rdi)
-         * 而不是把你指针变量在栈上的地址喂给 CPU。
-         */
-        : "m"(*idt_ptr)
-        : "memory"      // 内存屏障，非常正确！
-    );
-}
 
 
 /**

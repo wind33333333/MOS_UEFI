@@ -8,6 +8,8 @@
 #include "slub.h"
 #include "../x64/mtrr.h"
 #include "alternative_init.h"
+#include "idt_init.h"
+#include "../x64/apic_timer.h"
 #include "../x64/gdt_tss.h"
 
 
@@ -81,26 +83,6 @@ void apic_init_1(void) {
 
     //错误LVT寄存器 bit0-7中断号，bit16屏蔽标志 0未屏蔽 1屏蔽
     asm_wrmsr(APIC_LVT_ERROR_MSR,0x10026);
-}
-
-void enable_apic_time (uint64 time,uint32 model,uint32 ivt){
-
-    uint32 model_ivt = model | ivt;
-    //定时器LVT寄存器 bit0-7中断向量号,bit16屏蔽标志 0未屏蔽 1屏蔽,bit17 18 00/一次计数 01/周期计数 10/TSC-Deadline
-    asm_wrmsr(APIC_LVT_TIMER_MSR,model_ivt);
-
-
-    if(model == APIC_TSC_DEADLINE){
-        uint64 cur_tsc= asm_rdtsc();
-        uint64 timestamp=cur_tsc + time;
-        asm_wrmsr(APIC_TSC_DEADLINE,timestamp);
-    } else {
-        //分频配置寄存器 bit0 bit1 bit3 0:2 1:4 2:8 3:16 8:32 9:64 0xA:128 0xB:1
-        asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, 0xB);
-        //初始计数寄存器
-        asm_wrmsr(APIC_INITIAL_COUNT_MSR, time);
-    }
-
 }
 
 
@@ -365,6 +347,14 @@ void cpu_load_resource(void){
     gdt_ptr.base = THIS_CPU->gdt_base;
     asm_lgdt(&gdt_ptr,8,16);            //加载正式gdt
     asm_ltr(48);                                      //加载tr
+
+    // 装载 IDTR
+    idt_ptr_t idtr;
+    idtr.limit = sizeof(idt) - 1;
+    idtr.base = &idt;
+    asm_lidt(&idtr);
+
+    apic_timer_enable();
     get_cpu_info();                                         //获取cpu信息
     //init_syscall();                                       //初始化系统调用
 }

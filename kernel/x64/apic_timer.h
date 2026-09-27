@@ -37,5 +37,6 @@ typedef struct {
 
 extern apic_timer_cfg_t g_apic_timer;
 
+void apic_timer_enable(void);
 void apic_timer_set_deadline_tsc(uint64 now_tsc, uint64 target_tsc);
 uint64 get_uptime_ns(void);

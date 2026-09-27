@@ -1,5 +1,7 @@
 #include "apic_timer.h"
 
+#include "cpu.h"
+#include "interrupt.h"
 #include "msr.h"
 
 
@@ -44,3 +46,20 @@ void apic_timer_set_deadline_tsc(uint64 now_tsc, uint64 target_tsc) {
     asm_wrmsr(APIC_INITIAL_COUNT_MSR, (uint32)apic_ticks);
 }
 
+void apic_timer_enable(void) {
+    // 配置当前核心的 APIC 定时器硬件寄存器
+    uint8 irq = alloc_irq();
+    if (g_apic_timer.has_tsc_deadline) {
+        asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_TSC_DEADLINE | irq);
+        asm_mfence();
+    } else {
+        asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, g_apic_timer.apic_div_cfg);
+        asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_ONESHOT | irq);
+    }
+
+    // 启动当前核心的第 1 个定时中断
+    cpu_core_t *core = &cpu_cores[THIS_CPU->logical_id];
+    uint64 now = asm_rdtscp();
+    core->next_tsc_deadline = now + g_apic_timer.tsc_step_per_tick;
+    apic_timer_set_deadline_tsc(now, core->next_tsc_deadline);
+}
