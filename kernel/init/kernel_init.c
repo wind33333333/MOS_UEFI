@@ -30,7 +30,7 @@ void kernel_init(void) {
     vm_layout_init();                                           //虚拟内存空间初始化
     memblock_init();                                            //初始化启动内存分配器
     kpage_table_init();                                         //初始化正式内核页表
-    apic_init();                                                //apic初始化
+    apic_table_init();                                          //apic表初始化
     buddy_system_init();                                        //初始化伙伴系统
     slub_init();                                                //初始化slub内存分配器
     vmalloc_init();                                             //初始化vmalloc
@@ -39,7 +39,7 @@ void kernel_init(void) {
     hpet_init();                                                //hpet初始化
     bsp_backup_mtrr_state();                                    //备份mtrr
     cpu_alloc_resources();                                      //给所有cpu分配资源
-    apic_timer_init();
+    apic_timer_init();                                          //apic时钟定时器初始化
     cpu_load_resource();                                        //加载cpu资源
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
     while(1);

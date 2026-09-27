@@ -30,7 +30,7 @@ uint64 global_lapic_base = 0;
 uint64 multiprocessor_wakeup_mailbox = 0;
 
 
-void apic_init(void) {
+void apic_table_init(void) {
     madt_t *madt = acpi_get_table(ACPI_SIG_APIC, 0);
     if (!madt) {
         PR_ERROR("No MADT!\n");

@@ -403,7 +403,7 @@ void ap_main(void){
     //asm_lgdt(&bsp_gdt_ptr,0x8,0x10);
     //asm_ltr(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);
     //asm_lidt(&idt_ptr);
-    apic_init();
+    apic_table_init();
     init_syscall();
     color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);
     while(1);
