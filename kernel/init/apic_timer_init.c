@@ -1,0 +1,333 @@
+#include "apic_timer_init.h"
+#include "cpu.h"
+#include "msr.h"
+#include "hpet.h"
+
+#define MAX_NMI_SMI_RETRIES  16
+
+// =========================================================================
+// 内部辅助函数：单次无边缘等待的干净采样 (Linux tsc_read_refs 思想增强版)
+// 作用：直接读取 HPET 与 TSC，仅利用 (tsc2 - tsc1) 拦截 NMI/SMI/VM-Exit
+// =========================================================================
+static inline uint64 hpet_read_ref_clean(
+    volatile uint64 *hpet_counter,
+    uint64 max_allowed_span,
+    uint64 *out_hpet)
+{
+    uint64 tsc1, tsc2, hpet_val;
+
+    for (int retry = 0; retry < MAX_NMI_SMI_RETRIES; retry++) {
+        // 无需等待 HPET 翻转边缘！直接用序列化指令包夹一次 MMIO 读取
+        tsc1     = asm_rdtscp();
+        hpet_val = *hpet_counter;
+        tsc2     = asm_rdtscp();
+
+        // 🌟 唯一保留双包夹的理由：验证本次读取期间没有发生 NMI / SMI / VM-Exit！
+        // 只要包夹宽度正常，首尾两次读取的 MMIO 延迟就会在最终相减时自动 100% 抵消！
+        if ((tsc2 - tsc1) <= max_allowed_span) {
+            *out_hpet = hpet_val;
+            return tsc2; // 无需算中点，直接返回 tsc2，与终点线的 tsc2 共模抵消！
+        }
+    }
+
+    // 极端兜底
+    *out_hpet = hpet_val;
+    return tsc2;
+}
+
+// =========================================================================
+// 终极精简版：单次 10ms 极速 TSC 频率校准器
+// =========================================================================
+uint64 hpet_calibrate_tsc_hz(uint32 wait_ms) {
+    uint64 target_hpet_delta = (hpet_dev.frequency_hz * wait_ms) / 1000;
+    volatile uint64 *hpet_counter = &hpet_dev.hw_regs->main_counter;
+
+    uint64 hpet_start, hpet_end;
+    uint64 tsc_start, tsc_end;
+
+    uint64 flags;
+    local_irq_save(&flags);
+
+    // 1. 微秒级总线预热 + 探测当前机器单次 MMIO 读取的最小基线开销 (min_span)
+    uint64 min_span = 0xFFFFFFFFFFFFFFFFULL;
+    for (int i = 0; i < 4; i++) {
+        uint64 t1 = asm_rdtscp();
+        (void)*hpet_counter;
+        uint64 t2 = asm_rdtscp();
+        if ((t2 - t1) < min_span) {
+            min_span = t2 - t1;
+        }
+    }
+    uint64 max_allowed_span = (min_span << 1) + 1000;
+
+    // 2. 起跑线直接采样 (无边缘等待，耗时仅 ~1us)
+    tsc_start = hpet_read_ref_clean(hpet_counter, max_allowed_span, &hpet_start);
+
+    // 3. 等待 10ms 窗口
+    uint64 hpet_target = hpet_start + target_hpet_delta;
+    while (*hpet_counter < hpet_target) {
+        asm_pause();
+    }
+
+    // 4. 终点线直接采样 (无边缘等待，MMIO 延迟与起跑线自动抵消)
+    tsc_end = hpet_read_ref_clean(hpet_counter, max_allowed_span, &hpet_end);
+
+    local_irq_restore(flags);
+
+    // 5. 128 位防溢出比例换算
+    uint64 delta_tsc  = tsc_end - tsc_start;
+    uint64 delta_hpet = hpet_end - hpet_start;
+
+    return asm_mul_div64(delta_tsc, hpet_dev.frequency_hz, delta_hpet);
+}
+
+// =========================================================================
+// 终极精简版 TSC 频率探测：Intel 0x15 直读 -> 全平台 HPET 硬件实测
+// =========================================================================
+void detect_tsc_hz() {
+    // [通道 1] 现代 Intel 真机 (或开启 CPU 直通的虚拟机)：CPUID(0x15) 0ms 精确计算
+    uint32 eax,ebx, ecx, edx;
+    asm_cpuid(0, &eax,&ebx,&ecx,&edx);
+    if (eax >= 0x15) {
+        asm_cpuid(0x15, &eax, &ebx, &ecx, &edx);
+        if (eax != 0 && ebx != 0 && ecx != 0) {
+            THIS_CPU->tsc_hz = ((uint64)ecx * (uint64)ebx) / (uint64)eax;
+            return;
+        }
+    }
+
+    // [通道 2] QEMU / VMware / VirtualBox 虚拟机 + AMD 全系真机 + 老旧 Intel：
+    // 100% 默认支持 HPET，无需配置任何冷门虚拟机参数，直接实测 10ms！
+    THIS_CPU->tsc_hz = hpet_calibrate_tsc_hz(10);
+}
+
+
+
+#define APIC_LVT_MASKED           (1U << 16)
+// =========================================================================
+// 2. 内部辅助函数：捕获一次无 NMI / SMI / VM-Exit 污染的 APIC 与 TSC 同步快照
+// =========================================================================
+static inline uint64 apic_read_ref_clean(
+    uint64 max_allowed_span,
+    uint64 *out_apic_ccr)
+{
+    uint64 tsc1, tsc2, apic_val;
+
+    for (int retry = 0; retry < MAX_NMI_SMI_RETRIES; retry++) {
+        tsc1     = asm_rdtscp();
+        apic_val = asm_rdmsr(APIC_CURRENT_COUNT_MSR); // 读取 32 位当前倒数值 (0x839)
+        tsc2     = asm_rdtscp();
+
+        // 🌟 当场验毒：检查读取 MSR 的瞬间是否遭遇了 NMI / SMI 或宿主机调度抢占
+        // 只要包夹宽度在正常基线阈值内，首尾两次 rdmsr 的固定延迟会在相减时 100% 共模抵消！
+        if ((tsc2 - tsc1) <= max_allowed_span) {
+            *out_apic_ccr = apic_val;
+            return tsc2; // 直接返回下边界 tsc2，无需计算中点
+        }
+    }
+
+    // 极端兜底：保证内核在任何极端虚拟化负载下绝不死锁
+    *out_apic_ccr = apic_val;
+    return tsc2;
+}
+
+// =========================================================================
+// 3. [核心 API] 以已校准的 tsc_hz 为黄金标尺，单次极速测算 APIC 原始总线频率
+//    推荐参数：wait_ms = 5 (仅耗时 5 毫秒，零 HPET 访问)
+// =========================================================================
+uint64 tsc_calibrate_apic_hz(uint64 tsc_hz, uint32 wait_ms) {
+    // 计算粗略等待窗口对应的 TSC 增量
+    uint64 target_tsc_delta = (tsc_hz / 1000ULL) * wait_ms;
+
+    uint64 apic_start, apic_end;
+    uint64 tsc_start, tsc_end;
+
+    uint64 flags;
+    local_irq_save(&flags);
+
+    // =====================================================================
+    // 步骤 1：启动 APIC 定时器 (屏蔽中断 + 1分频最高精度 + 0xFFFFFFFF 满格起步)
+    // =====================================================================
+    asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_LVT_MASKED | APIC_ONESHOT);
+    asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, APIC_DIV_BY_1);
+    asm_wrmsr(APIC_INITIAL_COUNT_MSR, 0xFFFFFFFFULL);
+
+    // =====================================================================
+    // 步骤 2：微秒级预热 + 探测当前环境读一次 APIC MSR 的最小基线开销 (min_span)
+    //        (物理真机通常仅 ~40 周期；虚拟机 MSR Trap 通常为 ~2000 周期)
+    // =====================================================================
+    uint64 min_span = 0xFFFFFFFFFFFFFFFFULL;
+    for (int i = 0; i < 4; i++) {
+        uint64 t1 = asm_rdtscp();
+        asm_rdmsr(APIC_CURRENT_COUNT_MSR);
+        uint64 t2 = asm_rdtscp();
+        if ((t2 - t1) < min_span) {
+            min_span = t2 - t1;
+        }
+    }
+    uint64 max_allowed_span = (min_span << 1) + 1000;
+
+    // =====================================================================
+    // 步骤 3：起跑线直接采样 (耗时小于 1 微秒，自带抗 NMI/SMI 过滤)
+    // =====================================================================
+    tsc_start = apic_read_ref_clean(max_allowed_span, &apic_start);
+
+    // =====================================================================
+    // 步骤 4：纯核内单次等待 (仅轮询 TSC，零外部总线流量)
+    // =====================================================================
+    uint64 tsc_target = tsc_start + target_tsc_delta;
+    while (asm_rdtscp() < tsc_target) {
+        asm_pause();
+    }
+
+    // =====================================================================
+    // 步骤 5：终点线直接采样 (哪怕因重试超过 5ms，实测分母也会自动同步补偿)
+    // =====================================================================
+    tsc_end = apic_read_ref_clean(max_allowed_span, &apic_end);
+
+    // 校准完毕，顺手写 0 停掉 APIC 计数器，保持硬件状态干净
+    asm_wrmsr(APIC_INITIAL_COUNT_MSR, 0);
+
+    local_irq_restore(flags);
+
+    // =====================================================================
+    // 步骤 6：按实测分母 delta_tsc 精确结算
+    //        注意：APIC 是向下递减计数器，所以差值是 (apic_start - apic_end)！
+    // =====================================================================
+    uint64 delta_apic = apic_start - apic_end;
+    uint64 delta_tsc  = tsc_end - tsc_start;
+
+    // 公式：APIC_Hz = (delta_apic * tsc_hz) / delta_tsc
+    return asm_mul_div64(delta_apic, tsc_hz, delta_tsc);
+}
+
+// =========================================================================
+// 2. 通用定点数参数计算器 (仅在开机时调用，自动寻找精度最高的 mult 和 shift)
+// =========================================================================
+static inline void calc_mult_shift(
+    uint64  from_hz,
+    uint64  to_hz,
+    uint64 *out_mult,
+    uint32 *out_shift,
+    boolean round_up)
+{
+    uint32 shift = 62;
+    uint64 mult  = 0;
+
+    // 从高到低搜索最大的 shift，使 mult 恰好落入 32 位上限 (<= 0xFFFFFFFF)
+    while (shift > 0) {
+        // 防溢出检查：确保 (to_hz << shift) 的高 64 位严格小于除数 from_hz
+        if ((to_hz >> (64 - shift)) < from_hz) {
+            if (round_up) {
+                mult = asm_mul_div64_ceil(to_hz, 1ULL << shift, from_hz);
+            } else {
+                mult = asm_mul_div64(to_hz, 1ULL << shift, from_hz);
+            }
+
+            if (mult <= 0xFFFFFFFFULL && mult > 0) {
+                break;
+            }
+        }
+        shift--;
+    }
+
+    *out_mult  = mult;
+    *out_shift = shift;
+}
+
+
+
+// =========================================================================
+// 4. 运行期极速热路径 API (100% 纯乘法 + 右移，零除法指令！)
+// =========================================================================
+
+// [热路径 1] 获取系统开机以来的纳秒时间 (耗时 ~1 纳秒，永不溢出)
+static inline uint64 get_uptime_ns(void) {
+    uint64 tsc = asm_rdtscp();
+    return (uint64)(((__uint128_t)tsc * g_tsc_to_ns_mult) >> g_tsc_to_ns_shift);
+}
+
+// [热路径 2] 将纳秒延时换算为 TSC 增量 (向上取整，保证睡眠绝不早退)
+static inline uint64 ns_to_tsc_delta(uint64 delay_ns) {
+    return (uint64)(((__uint128_t)delay_ns * g_ns_to_tsc_mult + g_ns_to_tsc_mask) >> g_ns_to_tsc_shift);
+}
+
+// [热路径 3] 设定下一次中断的绝对 TSC 时间点 (零除法双擎版)
+static inline void apic_timer_set_deadline_tsc(uint64 target_tsc) {
+    // 通道 A：Intel 真机 / KVM 直接写硬件 0x6E0
+    if (g_has_tsc_deadline) {
+        asm_wrmsr(TSC_DEADLINE_MSR, target_tsc);
+        return;
+    }
+
+    // 通道 B：AMD 真机 / 默认虚拟机，使用定点数极速换算 32 位 One-Shot 倒数值
+    uint64 now_tsc = asm_rdtscp();
+    if (target_tsc <= now_tsc) {
+        asm_wrmsr(APIC_INITIAL_COUNT_MSR, 1);
+        return;
+    }
+
+    uint64 delta_tsc = target_tsc - now_tsc;
+
+    // 🌟 核心加速：1 条 mulq 乘法 + 1 条加法 + 1 条 shrdq 右移，取代慢速 128 位除法！
+    // 由于加了 mask 向上取整，当 delta_tsc >= 1 时，算出的 apic_ticks 天然 >= 1！
+    uint64 apic_ticks = (uint64)(((__uint128_t)delta_tsc * g_tsc_to_apic_mult + g_tsc_to_apic_mask)
+                                 >> g_tsc_to_apic_shift);
+
+    // 32 位计数器上限饱和截断
+    if (apic_ticks > 0xFFFFFFFFULL) {
+        apic_ticks = 0xFFFFFFFFULL;
+    }
+
+    asm_wrmsr(APIC_INITIAL_COUNT_MSR, (uint32)apic_ticks);
+}
+
+// =========================================================================
+// 5. 初始化入口：在 BSP 上一次性预计算所有定点数常数
+// =========================================================================
+void apic_timer_init_per_cpu(void) {
+    cpu_core_t *core = &cpu_cores[THIS_CPU->logical_id];
+
+    if (core->logical_id == 0) {
+        uint64 tsc_hz = core->tsc_hz;
+
+        // 1. 预计算 TSC <-> 纳秒 (10^9 Hz) 的双向定点数参数
+        calc_mult_shift(tsc_hz, 1000000000ULL, &g_tsc_to_ns_mult, &g_tsc_to_ns_shift, FALSE);
+        calc_mult_shift(1000000000ULL, tsc_hz, &g_ns_to_tsc_mult, &g_ns_to_tsc_shift, TRUE);
+        g_ns_to_tsc_mask = (1ULL << g_ns_to_tsc_shift) - 1;
+
+        // 2. 检测 TSC-Deadline；若不支持则校准 APIC 并预计算 TSC -> APIC 定点数参数
+        g_has_tsc_deadline = core->has_tsc_deadline;
+        if (!g_has_tsc_deadline) {
+            uint64 raw_bus_hz = tsc_calibrate_apic_hz(tsc_hz, 5);
+
+            // 自适应分频：将 APIC 计数频率锚定在 <= 10MHz 黄金区间
+            static const uint8 k_div_table[8] = {0x0B, 0x00, 0x01, 0x02, 0x03, 0x08, 0x09, 0x0A};
+            uint32 div_shift = 0;
+            while (div_shift < 7 && (raw_bus_hz >> div_shift) > 10000000ULL) {
+                div_shift++;
+            }
+            g_apic_hz      = raw_bus_hz >> div_shift;
+            g_apic_div_cfg = k_div_table[div_shift];
+
+            // 预计算 TSC -> APIC Ticks 定点数参数 (开启向上取整 round_up = TRUE)
+            calc_mult_shift(tsc_hz, g_apic_hz, &g_tsc_to_apic_mult, &g_tsc_to_apic_shift, TRUE);
+            g_tsc_to_apic_mask = (1ULL << g_tsc_to_apic_shift) - 1;
+        }
+    }
+
+    core->tsc_step_per_tick = core->tsc_hz / 1000;
+
+    // 配置当前核心的 APIC 硬件寄存器
+    if (g_has_tsc_deadline) {
+        asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_TSC_DEADLINE  | alloc_irq());
+        asm_mfence();
+    } else {
+        asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, g_apic_div_cfg);
+        asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_ONESHOT | alloc_irq());
+    }
+
+    // 装填第 1 次闹钟
+    core->next_tsc_deadline = asm_rdtscp() + core->tsc_step_per_tick;
+    apic_timer_set_deadline_tsc(core->next_tsc_deadline);
+}

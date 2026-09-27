@@ -117,5 +117,3 @@ typedef struct {
 extern hpet_device_t hpet_dev;
 
 void hpet_init(void);
-uint64 hpet_calibrate_tsc_hz(hpet_device_t *hpet_dev, uint32 wait_ms);
-uint64 hpet_calibrate_apic_hz(hpet_device_t *hpet_dev, uint32 wait_ms);
