@@ -18,6 +18,7 @@ static inline uint32 get_logical_id_by_apic(uint32 apic_id) {
     return 0xFFFFFFFF; // 未找到（无效或被禁用的核心）
 }
 
+void detect_tsc_hz();
 void cpu_enable_feature(void);
 void cpu_alloc_resources(void);
 void cpu_load_resource(void);

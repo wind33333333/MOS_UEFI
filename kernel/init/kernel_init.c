@@ -10,6 +10,7 @@
 #include "alternative_init.h"
 #include "video_init.h"
 #include "apic_init.h"
+#include "printk.h"
 #include "../x64/mtrr.h"
 #include "../x64/cpu.h"
 #include "../include/bus.h"
@@ -35,11 +36,12 @@ void kernel_init(void) {
     bsp_backup_mtrr_state();                                    //备份mtrr
     cpu_alloc_resources();                                      //给所有cpu分配资源
     cpu_load_resource();                                        //加载cpu资源
-    THIS_CPU->tsc_hz = detect_tsc_hz(max_basic_leaf) ;          //探测tsc频率
-    efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
-    while(1);
     ioapic_init();                                              //初始化ioapic
     hpet_init();                                                //初始化hpet
+    detect_tsc_hz() ;                                           //探测tsc频率
+    efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
+    while(1);
+
     bus_init();                                                 //总线初始化
     ap_init();                                                  //初始化ap核
 

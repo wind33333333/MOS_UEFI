@@ -308,19 +308,21 @@ static inline uint32 amd_get_pstate0_mhz(void) {
 // =========================================================================
 // 终极精简版 TSC 频率探测：Intel 0x15 直读 -> 全平台 HPET 硬件实测
 // =========================================================================
-static inline uint64 detect_tsc_hz(uint32 max_basic_leaf) {
+void detect_tsc_hz() {
     // [通道 1] 现代 Intel 真机 (或开启 CPU 直通的虚拟机)：CPUID(0x15) 0ms 精确计算
-    if (max_basic_leaf >= 0x15) {
-        uint32 eax, ebx, ecx, edx;
+    uint32 eax,ebx, ecx, edx;
+    asm_cpuid(0, &eax,&ebx,&ecx,&edx);
+    if (eax >= 0x15) {
         asm_cpuid(0x15, &eax, &ebx, &ecx, &edx);
         if (eax != 0 && ebx != 0 && ecx != 0) {
-            return ((uint64)ecx * (uint64)ebx) / (uint64)eax;
+            THIS_CPU->tsc_hz = ((uint64)ecx * (uint64)ebx) / (uint64)eax;
+            return;
         }
     }
 
     // [通道 2] QEMU / VMware / VirtualBox 虚拟机 + AMD 全系真机 + 老旧 Intel：
     // 100% 默认支持 HPET，无需配置任何冷门虚拟机参数，直接实测 10ms！
-    return hpet_calibrate_tsc_hz(&hpet_dev, 10);
+    THIS_CPU->tsc_hz = hpet_calibrate_tsc_hz(&hpet_dev, 10);
 }
 
 // =========================================================================
@@ -386,8 +388,6 @@ void cpu_load_resource(void){
     asm_ltr(48);                                      //加载tr
     get_cpu_info();                                         //获取cpu信息
     //init_syscall();                                       //初始化系统调用
-    while(1);
-   
 }
 
 void cpu_alloc_resources(void) {

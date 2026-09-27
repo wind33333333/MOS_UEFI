@@ -437,6 +437,39 @@ static inline uint32 asm_cpuid_edx(uint32 leaf) {
 }
 
 
+// =========================================================================
+// 1. 向下取整版：计算 (a * b) / c
+//    硬件原生执行 64x64->128位乘法 与 128/64->64位除法，零 libgcc 依赖！
+// =========================================================================
+static inline uint64 asm_mul_div64(uint64 a, uint64 b, uint64 c) {
+    uint64 quotient, rem;
+    __asm__ volatile (
+        "mulq %[b]\n\t"          // RDX:RAX = RAX(a) * b (128位无损乘积)
+        "divq %[c]\n\t"          // RAX = RDX:RAX / c (商), RDX = 余数
+        : "=a"(quotient), "=&d"(rem)
+        : "a"(a), [b]"r"(b), [c]"r"(c)
+        : "cc"
+    );
+    return quotient;
+}
+
+// =========================================================================
+// 2. 向上取整版：计算 ceil((a * b) / c)
+//    直接利用 divq 顺手算出的 RDX 余数判断进位，专供 APIC One-Shot 装填防早产！
+// =========================================================================
+static inline uint64 asm_mul_div64_ceil(uint64 a, uint64 b, uint64 c) {
+    uint64 quotient, rem;
+    __asm__ volatile (
+        "mulq %[b]\n\t"
+        "divq %[c]\n\t"
+        : "=a"(quotient), "=&d"(rem)
+        : "a"(a), [b]"r"(b), [c]"r"(c)
+        : "cc"
+    );
+    // 如果余数 rem 不为 0，商自动 +1 向上取整，比 C 语言写 (a*b + c - 1)/c 更精简且绝不溢出！
+    return (rem != 0) ? (quotient + 1) : quotient;
+}
+
 static inline void *asm_mem_cpy(void *From, void *To, uint64 Num) {
     int d0, d1, d2;
     __asm__ __volatile__    (    "cld	\n\t"

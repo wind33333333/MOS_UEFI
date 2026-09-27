@@ -81,9 +81,6 @@ void ioapic_disable_all_interrupts(struct ioapic_devive_t *dev) {
     // 顺手把正确的数量存入我们的设备结构体中
     dev->max_intr_entries = max_entries;
 
-    color_printk(GREEN, BLACK, "IOAPIC Disabling all %d pa:%#lx va:%#lx \n",max_entries, ioapic_dev->phys_addr,ioapic_dev->ioapic_hw_res);
-
-
     // 3. 遍历每一个引脚，下达“封口令”
     for (uint8 i = 0; i < max_entries; i++) {
         ioapic_rte_t rte;
@@ -104,11 +101,12 @@ void ioapic_disable_all_interrupts(struct ioapic_devive_t *dev) {
         ioapic_write_rte(dev, i, rte);
     }
 
+    PR_INFO("IOAPIC Disabling all %d pa:%#lx va:%#lx \n",max_entries, ioapic_dev->phys_addr,ioapic_dev->ioapic_hw_res);
 }
 
 
 
-INIT_TEXT void ioapic_init(void) {
+void ioapic_init(void) {
 
     //禁用8259A
     asm_io_out8(0x21,0xff);     //禁用主8259A
@@ -126,6 +124,9 @@ INIT_TEXT void ioapic_init(void) {
     asm_io_out8(0x42,0);
     asm_io_out8(0x42,0);        //禁用8054计时器2
 
-    //ioapic_disable_all_interrupts(&ioapic_dev);
+    //仅用系统所有ioapic
+    for (uint32 i = 0; i < ioapic_count; i++) {
+        ioapic_disable_all_interrupts(&ioapic_dev[i]);
+    }
 
 }

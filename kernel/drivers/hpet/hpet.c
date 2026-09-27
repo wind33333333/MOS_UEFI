@@ -10,94 +10,82 @@
 hpet_device_t hpet_dev;
 
 
-// 定义 1 秒等于 10^15 飞秒
-#define FEMTOSECONDS_PER_SECOND 1000000000000000ULL
+#define MAX_NMI_SMI_RETRIES  16
 
+// =========================================================================
+// 内部辅助函数：单次无边缘等待的干净采样 (Linux tsc_read_refs 思想增强版)
+// 作用：直接读取 HPET 与 TSC，仅利用 (tsc2 - tsc1) 拦截 NMI/SMI/VM-Exit
+// =========================================================================
+static inline uint64 hpet_read_ref_clean(
+    volatile uint64 *hpet_counter,
+    uint64 max_allowed_span,
+    uint64 *out_hpet)
+{
+    uint64 tsc1, tsc2, hpet_val;
 
-static inline  uint64 probe_tsc_hpet_hz_once(hpet_device_t *hpet_dev, uint32 wait_ms) {
+    for (int retry = 0; retry < MAX_NMI_SMI_RETRIES; retry++) {
+        // 无需等待 HPET 翻转边缘！直接用序列化指令包夹一次 MMIO 读取
+        tsc1     = asm_rdtscp();
+        hpet_val = *hpet_counter;
+        tsc2     = asm_rdtscp();
+
+        // 🌟 唯一保留双包夹的理由：验证本次读取期间没有发生 NMI / SMI / VM-Exit！
+        // 只要包夹宽度正常，首尾两次读取的 MMIO 延迟就会在最终相减时自动 100% 抵消！
+        if ((tsc2 - tsc1) <= max_allowed_span) {
+            *out_hpet = hpet_val;
+            return tsc2; // 无需算中点，直接返回 tsc2，与终点线的 tsc2 共模抵消！
+        }
+    }
+
+    // 极端兜底
+    *out_hpet = hpet_val;
+    return tsc2;
+}
+
+// =========================================================================
+// 终极精简版：单次 10ms 极速 TSC 频率校准器
+// =========================================================================
+uint64 hpet_calibrate_tsc_hz(hpet_device_t *hpet_dev, uint32 wait_ms) {
     uint64 target_hpet_delta = (hpet_dev->frequency_hz * wait_ms) / 1000;
     volatile uint64 *hpet_counter = &hpet_dev->hw_regs->main_counter;
 
-    uint64 initial_hpet, hpet_start, hpet_current, hpet_end;
-    uint64 tsc1_s, tsc2_s, tsc1_e, tsc2_e;
+    uint64 hpet_start, hpet_end;
+    uint64 tsc_start, tsc_end;
 
     uint64 flags;
     local_irq_save(&flags);
 
-    // =================================================================
-    // 1. 起跑线：纯粹采样
-    // =================================================================
-    initial_hpet = *hpet_counter;
-    do {
-        tsc1_s = asm_rdtsc();
-        hpet_start = *hpet_counter;
-        tsc2_s = asm_rdtscp();
-    } while (hpet_start == initial_hpet);
+    // 1. 微秒级总线预热 + 探测当前机器单次 MMIO 读取的最小基线开销 (min_span)
+    uint64 min_span = 0xFFFFFFFFFFFFFFFFULL;
+    for (int i = 0; i < 4; i++) {
+        uint64 t1 = asm_rdtscp();
+        (void)*hpet_counter;
+        uint64 t2 = asm_rdtscp();
+        if ((t2 - t1) < min_span) {
+            min_span = t2 - t1;
+        }
+    }
+    uint64 max_allowed_span = (min_span << 1) + 1000;
 
-    // =================================================================
-    // 2. 粗略等待 (直接进入，无任何 ALU 算术指令干扰)
-    // =================================================================
+    // 2. 起跑线直接采样 (无边缘等待，耗时仅 ~1us)
+    tsc_start = hpet_read_ref_clean(hpet_counter, max_allowed_span, &hpet_start);
+
+    // 3. 等待 10ms 窗口
     uint64 hpet_target = hpet_start + target_hpet_delta;
     while (*hpet_counter < hpet_target) {
         asm_pause();
     }
 
-    // =================================================================
-    // 3. 终点线：纯粹采样
-    // =================================================================
-    hpet_current = *hpet_counter;
-    do {
-        tsc1_e = asm_rdtsc();
-        hpet_end = *hpet_counter;
-        tsc2_e = asm_rdtscp();
-    } while (hpet_end == hpet_current);
+    // 4. 终点线直接采样 (无边缘等待，MMIO 延迟与起跑线自动抵消)
+    tsc_end = hpet_read_ref_clean(hpet_counter, max_allowed_span, &hpet_end);
 
-    // 恢复中断
     local_irq_restore(flags);
 
-    // =================================================================
-    // 4. 统一延后计算 (将所有非时间敏感的算术指令推迟到关键路径之外)
-    // =================================================================
-    uint64 tsc_start_mid = tsc1_s + ((tsc2_s - tsc1_s) >> 1);
-    uint64 tsc_end_mid   = tsc1_e + ((tsc2_e - tsc1_e) >> 1);
-
-    uint64 delta_tsc  = tsc_end_mid - tsc_start_mid;
+    // 5. 128 位防溢出比例换算
+    uint64 delta_tsc  = tsc_end - tsc_start;
     uint64 delta_hpet = hpet_end - hpet_start;
 
-    return (delta_tsc * hpet_dev->frequency_hz) / delta_hpet;
-}
-
-// =================================================================
-// [NovaUSB 核心时钟 API]
-// 极其精准的 TSC 频率校准器 (带硬件异常中值滤波)
-// =================================================================
-#define TSC_CALIBRATION_SAMPLES 5
-uint64 hpet_calibrate_tsc_hz(hpet_device_t *hpet_dev, uint32 wait_ms) {
-    uint64 samples[TSC_CALIBRATION_SAMPLES];
-
-    // 1. 采集样本 (包含预热过程)
-    // 第一次循环天然充当了 I-Cache 和分支预测器的“预热 (Warm-up)”
-    for (int i = 0; i < TSC_CALIBRATION_SAMPLES; i++) {
-        samples[i] = probe_tsc_hpet_hz_once(hpet_dev, wait_ms);
-    }
-
-    // 2. 冒泡排序 (数据量极小，冒泡最简单且无额外开销)
-    // 将测算出的频率从小到大排列
-    for (int i = 0; i < TSC_CALIBRATION_SAMPLES - 1; i++) {
-        for (int j = 0; j < TSC_CALIBRATION_SAMPLES - 1 - i; j++) {
-            if (samples[j] > samples[j + 1]) {
-                uint64 temp = samples[j];
-                samples[j] = samples[j + 1];
-                samples[j + 1] = temp;
-            }
-        }
-    }
-
-    // 3. 取绝对中位数！
-    // 如果有 5 个样本，取 index 为 2 的值 (即第 3 个)
-    // 它绝对免疫偶尔偏小的缓存延迟，也绝对免疫偶尔偏大的 SMI 尖峰！
-    uint64 perfect_hz = samples[TSC_CALIBRATION_SAMPLES / 2];
-    return perfect_hz;
+    return asm_mul_div64(delta_tsc, hpet_dev->frequency_hz, delta_hpet);
 }
 
 
@@ -198,10 +186,12 @@ uint64 hpet_calibrate_apic_hz(hpet_device_t *hpet_dev, uint32 wait_ms) {
     return perfect_apic_hz;
 }
 
+// 定义 1 秒等于 10^15 飞秒
+#define FEMTOSECONDS_PER_SECOND 1000000000000000ULL
 
 void hpet_init(void) {
     //hpet初始化
-    hpett_t *hpet_table = acpi_get_table('TEPH',0);
+    hpett_t *hpet_table = acpi_get_table(ACPI_SIG_HPET,0);
 
     // 1. 填充基地址，并获取 MMU 映射后的虚拟地址
     hpet_dev.phys_base_addr = hpet_table->acpi_generic_adderss.address;
@@ -226,7 +216,6 @@ void hpet_init(void) {
         hpet_dev.hpet_timers[i].allowed_irq_bitmap = (timer_cap >> 32) & 0xFFFFFFFF;
     }
 
-    color_printk(YELLOW, BLACK, "HPET Clock Frequency: %dHz  TimerNum:%d PA:%#lx VA:%#lx \n",hpet_dev.frequency_hz,hpet_dev.num_timers,hpet_dev.phys_base_addr,hpet_dev.hw_regs);
 
     // 4. 停止 HPET，清零主计数器，然后启动！
     hpet_dev.hw_regs->general_config = 0;  // 暂停
@@ -234,5 +223,6 @@ void hpet_init(void) {
     hpet_dev.hw_regs->general_config = 1;   // 启动 (ENABLE_CNF)
     hpet_dev.is_running = TRUE;
 
+    PR_INFO("HPET Clock Frequency: %dHz  TimerNum:%d PA:%#lx VA:%#lx \n",hpet_dev.frequency_hz,hpet_dev.num_timers,hpet_dev.phys_base_addr,hpet_dev.hw_regs);
 
 }

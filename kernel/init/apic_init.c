@@ -44,7 +44,6 @@ void apic_init(void) {
     // 第一遍扫描：纯计数 (Count) - 【全面统计 3 大巨头】
     // =========================================================
     uint32 count_xapic = 0, count_x2apic = 0;
-    uint32 ioapic_count = 0, irq_override_count = 0;
 
     while ((uint64) madt_start < madt_end) {
         switch (madt_start->type) {
