@@ -463,7 +463,7 @@ uint64 tsc_calibrate_apic_hz(uint64 tsc_hz, uint32 wait_ms) {
     uint64 min_span = 0xFFFFFFFFFFFFFFFFULL;
     for (int i = 0; i < 4; i++) {
         uint64 t1 = asm_rdtscp();
-        (void)asm_rdmsr(APIC_CURRENT_COUNT_MSR);
+        asm_rdmsr(APIC_CURRENT_COUNT_MSR);
         uint64 t2 = asm_rdtscp();
         if ((t2 - t1) < min_span) {
             min_span = t2 - t1;
