@@ -1,4 +1,4 @@
-#include "apic_timer.h"
+#include "apic_time.h"
 
 #include "cpu.h"
 #include "interrupt.h"
@@ -60,6 +60,6 @@ void apic_timer_enable(void) {
     // 启动当前核心的第 1 个定时中断
     cpu_core_t *core = &cpu_cores[THIS_CPU->logical_id];
     uint64 now = asm_rdtscp();
-    core->next_tsc_deadline = now + g_apic_timer.tsc_step_per_tick;
-    apic_timer_set_deadline_tsc(now, core->next_tsc_deadline);
+    core->next_deadline_ns = now + g_apic_timer.tsc_step_per_tick;
+    apic_timer_set_deadline_tsc(now, core->next_deadline_ns);
 }

@@ -99,7 +99,7 @@ typedef struct cpu_core {
     cpu_state_t     state;                // [0x08] 核心运行状态 (假设 enum 为 4 字节)
     uint32          numa_node;            // [0x0C] 所属 NUMA 节点 (内存分配高频使用)
 
-    uint64          next_tsc_deadline;
+    uint64          next_deadline_ns;
 
     // 💡 预留给 syscall 汇编入口的极速切栈跳板
     uint64          current_kernel_stack; // [0x10] 当前线程内核栈顶 (与 tss->rsp0 同步)

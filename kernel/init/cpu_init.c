@@ -9,7 +9,7 @@
 #include "../x64/mtrr.h"
 #include "alternative_init.h"
 #include "idt_init.h"
-#include "../x64/apic_timer.h"
+#include "../x64/apic_time.h"
 #include "../x64/gdt_tss.h"
 
 

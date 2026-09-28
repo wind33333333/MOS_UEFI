@@ -2,7 +2,7 @@
 #include "../x64/cpu.h"
 #include "../x64/msr.h"
 #include "../drivers/hpet/hpet.h"
-#include "../x64/apic_timer.h"
+#include "../x64/apic_time.h"
 #include "../x64/interrupt.h"
 
 #define MAX_NMI_SMI_RETRIES  16
