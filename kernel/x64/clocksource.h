@@ -7,7 +7,7 @@
 #define MAX_CLOCKSOURCES        8
 
 // =========================================================================
-// 1. 抽象时钟源驱动接口 (每个硬件时钟实现一个此结构体)
+// 1. 抽象时钟源驱动接口 (静态只读属性全部集中在此处)
 // =========================================================================
 typedef struct clocksource {
     const char *name;           // 设备名："tsc", "hpet", "acpi_pm"
@@ -17,24 +17,20 @@ typedef struct clocksource {
 
     uint64      mult;           // 预计算的 ticks -> ns 乘法系数
     uint32      shift;          // 预计算的 ticks -> ns 右移位数
-    boolean     is_tsc;         // 是否为原生 TSC (用于开启内联极速通道)
+    boolean     is_tsc;         // 是否为原生 TSC (开启内联 rdtscp 快速通道)
 
-    uint64    (*read)(struct clocksource *cs); // 读取硬件当前计数值
-    void       *priv;           // 驱动私有指针 (如指向 hpet_device_t 或 IO 端口)
+    uint64    (*read)(struct clocksource *cs);
+    void       *priv;
 } clocksource_t;
 
+
 // =========================================================================
-// 2. 全局活动时间锚点 (独占 1 条 64B 缓存行，热路径直接访问，无需二次解引用)
+// 2. 瘦身后的全局活动时间锚点 (仅 32 字节，零冗余字段！)
 // =========================================================================
 typedef struct {
-    volatile uint32 seq;            // 顺序锁：偶数为稳定态，奇数为正在切换/更新锚点
-    boolean         is_tsc_fast;    // TRUE 时直接内联执行 rdtscp，跳过函数指针调用
-
-    uint64          base_ns;        // 锚点时刻已累积的单调纳秒数
-    uint64          cycle_last;     // 锚点时刻硬件计数器的读数快照
-    uint64          mask;           // 当前时钟源位宽掩码
-    uint64          mult;           // 当前时钟源 mult
-    uint32          shift;          // 当前时钟源 shift
-
-    clocksource_t  *active_cs;      // 指向当前激活的时钟源驱动
+    volatile uint32 seq;        // [4B] 顺序锁：偶数为稳定态，奇数为正在切换/更新锚点
+    // [4B 编译器自动对齐填充]
+    uint64          base_ns;    // [8B] 锚点时刻已累积的单调纳秒数
+    uint64          cycle_last; // [8B] 锚点时刻硬件计数器的读数快照
+    clocksource_t  *active_cs;  // [8B] 指向当前激活的时钟源驱动
 } __attribute__((aligned(64))) timekeeper_t;

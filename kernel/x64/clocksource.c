@@ -1,52 +1,45 @@
-#include "colocksource.h"
+#include "clocksource.h"
 
 static timekeeper_t   g_timekeeper;
 static clocksource_t *g_cs_registry[MAX_CLOCKSOURCES];
 static uint32         g_cs_count = 0;
 
-// 内部辅助：读取指定时钟源的计数值 (TSC 走内联，其他走回调)
+// 内部辅助：读取指定时钟源的当前计数值
 static inline uint64 cs_read_cycles(clocksource_t *cs) {
-    return cs->is_tsc ? asm_rdtscp() : cs->read(cs);
+    return __builtin_expect(cs->is_tsc, 1) ? asm_rdtscp() : cs->read(cs);
 }
 
 // =========================================================================
-// 3. [极速热路径] 获取系统单调运行时间 (纳秒) —— 支持任意时钟源与无损热切换！
+// 3. 获取系统单调运行时间 (纳秒) —— 直接通过局部快照 cs 访问静态属性
 // =========================================================================
 static inline uint64 get_uptime_ns(void) {
     uint32 seq;
-    uint64 base, last, mask, mult, now_cycles;
-    uint32 shift;
+    uint64 base, last, now_cycles;
+    clocksource_t *cs;
 
-    // 顺序锁无锁读取：正常情况下循环只执行 1 次，耗时 ~2 纳秒
     do {
         seq = g_timekeeper.seq;
-        asm_lfence(); // 读屏障，确保 seq 在数据之前读取
+        asm_lfence();
 
-        base  = g_timekeeper.base_ns;
-        last  = g_timekeeper.cycle_last;
-        mask  = g_timekeeper.mask;
-        mult  = g_timekeeper.mult;
-        shift = g_timekeeper.shift;
+        // 在顺序锁保护下，一次性拍下锚点三要素的同步快照
+        base = g_timekeeper.base_ns;
+        last = g_timekeeper.cycle_last;
+        cs   = g_timekeeper.active_cs;
 
-        if (__builtin_expect(g_timekeeper.is_tsc_fast, 1)) {
-            now_cycles = asm_rdtscp();
-        } else {
-            clocksource_t *cs = g_timekeeper.active_cs;
-            now_cycles = cs->read(cs);
-        }
+        now_cycles = cs_read_cycles(cs);
 
         asm_lfence();
     } while (__builtin_expect((seq & 1U) || (g_timekeeper.seq != seq), 0));
 
-    // 核心锚点公式：只转换距上次锚点的增量 delta_cycles，天然支持 24/32 位掩码回绕！
-    uint64 delta_cycles = (now_cycles - last) & mask;
-    uint64 delta_ns     = (uint64)(((__uint128_t)delta_cycles * mult) >> shift);
+    // 循环退出后，cs 指针已确保与 base、last 严格对应，直接解引用 cs 的只读常数即可！
+    uint64 delta_cycles = (now_cycles - last) & cs->mask;
+    uint64 delta_ns     = (uint64)(((__uint128_t)delta_cycles * cs->mult) >> cs->shift);
 
     return base + delta_ns;
 }
 
 // =========================================================================
-// 4. [核心机制] 运行时动态切换时钟源 (零时间跳变、不断流)
+// 4. 运行时动态切换时钟源 (临界区精简至仅需修改 3 个字段！)
 // =========================================================================
 boolean clocksource_switch(clocksource_t *new_cs) {
     if (new_cs == NULL || new_cs == g_timekeeper.active_cs) {
@@ -56,29 +49,26 @@ boolean clocksource_switch(clocksource_t *new_cs) {
     uint64 flags;
     local_irq_save(&flags);
 
-    // 1. 若已有旧时钟源在跑，先用旧时钟源精确结算到当前这一纳秒的累积时间！
+    // 1. 用旧时钟源结算到当前时刻的累积纳秒数
     uint64 current_ns = 0;
-    if (g_timekeeper.active_cs != NULL) {
-        uint64 old_now   = cs_read_cycles(g_timekeeper.active_cs);
-        uint64 old_delta = (old_now - g_timekeeper.cycle_last) & g_timekeeper.mask;
+    clocksource_t *old_cs = g_timekeeper.active_cs;
+    if (old_cs != NULL) {
+        uint64 old_now   = cs_read_cycles(old_cs);
+        uint64 old_delta = (old_now - g_timekeeper.cycle_last) & old_cs->mask;
         current_ns = g_timekeeper.base_ns +
-                     (uint64)(((__uint128_t)old_delta * g_timekeeper.mult) >> g_timekeeper.shift);
+                     (uint64)(((__uint128_t)old_delta * old_cs->mult) >> old_cs->shift);
     }
 
-    // 2. 立即采样新时钟源的当前硬件起点快照
+    // 2. 采样新时钟源的起点计数值
     uint64 new_cycle_start = cs_read_cycles(new_cs);
 
-    // 3. 开启顺序锁写事务 (seq 变奇数 -> 原子替换锚点参数 -> seq 变偶数)
+    // 3. 顺序锁保护下，仅需更新 3 个核心锚点字段！
     g_timekeeper.seq++;
     asm_mfence();
 
-    g_timekeeper.base_ns     = current_ns;      // 继承旧时钟累积的纳秒数
-    g_timekeeper.cycle_last  = new_cycle_start; // 锚定新时钟的当前刻度
-    g_timekeeper.mask        = new_cs->mask;
-    g_timekeeper.mult        = new_cs->mult;
-    g_timekeeper.shift       = new_cs->shift;
-    g_timekeeper.is_tsc_fast = new_cs->is_tsc;
-    g_timekeeper.active_cs   = new_cs;
+    g_timekeeper.base_ns    = current_ns;
+    g_timekeeper.cycle_last = new_cycle_start;
+    g_timekeeper.active_cs  = new_cs;
 
     asm_mfence();
     g_timekeeper.seq++;
