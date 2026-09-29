@@ -1,5 +1,7 @@
 // ========================= [ time_core.c ] =========================
 #include "time_core.h"
+
+#include "printk.h"
 #include "../x64/cpu.h"
 
 typedef struct {
@@ -45,13 +47,11 @@ boolean clocksource_switch(clocksource_t *new_cs) {
 
     // 3. 顺序锁保护下，仅需更新 3 个核心锚点字段！
     g_timekeeper.seq++;
-    asm_mfence();
 
     g_timekeeper.base_ns    = current_ns;
     g_timekeeper.cycle_last = new_cycle_start;
     g_timekeeper.active_cs  = new_cs;
 
-    asm_mfence();
     g_timekeeper.seq++;
 
     local_irq_restore(flags);
@@ -193,16 +193,10 @@ static uint64 get_uptime_ns(void) {
 
     do {
         seq = g_timekeeper.seq;
-        asm_lfence();
-
-        // 在顺序锁保护下，一次性拍下锚点三要素的同步快照
         base = g_timekeeper.base_ns;
         last = g_timekeeper.cycle_last;
         cs   = g_timekeeper.active_cs;
-
         now_cycles = cs_read_cycles(cs);
-
-        asm_lfence();
     } while (__builtin_expect((seq & 1U) || (g_timekeeper.seq != seq), 0));
 
     // 循环退出后，cs 指针已确保与 base、last 严格对应，直接解引用 cs 的只读常数即可！
