@@ -186,7 +186,7 @@ void clockevent_register(clockevent_t *ce) {
 // =========================================================================
 // 3. 获取系统单调运行时间 (纳秒) —— 直接通过局部快照 cs 访问静态属性
 // =========================================================================
-static inline uint64 get_uptime_ns(void) {
+static uint64 get_uptime_ns(void) {
     uint32 seq;
     uint64 base, last, now_cycles;
     clocksource_t *cs;
@@ -210,6 +210,33 @@ static inline uint64 get_uptime_ns(void) {
     uint64 delta_ns     = (uint64)(((__uint128_t)delta_cycles * cs->mult) >> cs->shift);
 
     return base + delta_ns;
+}
+
+// 核心层通知闹钟：请你在这个绝对纳秒时刻叫醒我！
+void reprogram_clockevent(void) {
+    uint64 now_ns = get_uptime_ns();
+    uint64 target_ns = THIS_CPU->next_deadline_ns;
+
+    // 算出还需要等待的 纳秒(ns) 差值
+    uint64 delay_ns = (target_ns > now_ns) ? (target_ns - now_ns) : 1000ULL;
+
+    // 交给当前激活的定时器驱动
+    clockevent_t *ce = THIS_CPU->active_ce;
+    ce->set_next_delay_ns(ce, delay_ns);
+}
+
+void sleep_ns(uint64 delay_ns) {
+    // 1. 获取现在的绝对纳秒数
+    uint64 now_ns = get_uptime_ns();
+
+    // 2. 加上你要睡的纳秒数，得到闹钟响起的“绝对纳秒目标点”
+    uint64 target_deadline_ns = now_ns + delay_ns;
+
+    // 3. 把这个纳秒目标点登记到当前 CPU 核心的账本里
+    THIS_CPU->next_deadline_ns = target_deadline_ns;
+
+    // 4. 通知底层硬件定时器去装填闹钟...
+    reprogram_clockevent();
 }
 
 // =========================================================================

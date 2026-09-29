@@ -114,6 +114,50 @@ uint64 tsc_cs_read(clocksource_t *cs) {
     asm_rdtscp();
 }
 
+uint8 g_apic_oneshot_div_cfg;
+
+// =========================================================================
+// 1. 初始化当前 CPU 核心的 APIC 定时器硬件
+//    (BSP 和 所有 AP 核心在绑定闹钟时，都会由子系统自动回调此函数)
+// =========================================================================
+static void apic_oneshot_init_hw(clockevent_t *ce) {
+
+    // 1. 写入 BSP 预计算好的全局最优分频配置
+    asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, g_apic_oneshot_div_cfg);
+
+    // 2. 设定 LVT 为 One-Shot 模式，解除屏蔽，并映射到 IRQ_VECTOR_TIMER
+    uint8 irq = alloc_irq();
+    asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_ONESHOT | irq);
+
+}
+
+// =========================================================================
+// 2. 关停当前 CPU 核心的 APIC 定时器硬件
+//    (在系统关机、或热切换到其他定时器驱动时被子系统回调)
+// =========================================================================
+static void apic_oneshot_stop_hw(clockevent_t *ce) {
+    // 1. 将初始倒数值清零，硬件会当场中止当前的倒数倒计时
+    asm_wrmsr(APIC_INITIAL_COUNT_MSR, 0);
+
+    // 2. 重新屏蔽 LVT 定时器中断，防止产生幽灵中断
+    asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_LVT_MASKED);
+}
+
+static void apic_oneshot_set_next(clockevent_t *ce, uint64 delay_ns) {
+
+    // 🌟 核心逆向换算：把通用的纳秒，折算成 APIC Timer 自己的原始 Tick 数！
+    // 比如 delay_ns = 5,000,000 (5毫秒)
+    // 经过 APIC 自己专属的 mult 和 shift 换算，变成了 31,250 个 APIC Tick
+    uint64 apic_ticks = (uint64)(((__uint128_t)delay_ns * ce->ns_to_dev_mult
+                                  + ce->ns_to_dev_mask) >> ce->ns_to_dev_shift);
+
+    if (apic_ticks == 0) apic_ticks = 1;
+    if (apic_ticks > 0xFFFFFFFFULL) apic_ticks = 0xFFFFFFFFULL;
+
+    // 最后把这 31,250 个原始 Tick 写入 APIC 硬件计数器！
+    asm_wrmsr(APIC_INITIAL_COUNT_MSR, (uint32)apic_ticks);
+}
+
 clocksource_t tsc_cs;
 clockevent_t tsc_deadline_ce;
 clockevent_t apic_oneshot_ce;
@@ -137,10 +181,16 @@ void apic_time_init() {
     while (shift < 7 && (apic_hz >> shift) > 10000000ULL) {
         shift++;
     }
+    g_apic_oneshot_div_cfg = k_div_table[shift];
     apic_oneshot_ce.freq_hz = apic_hz >> shift;
     apic_oneshot_ce.name = "apic-oneshot";
     apic_oneshot_ce.rating = 350;
+    apic_oneshot_ce.init_hw = apic_oneshot_init_hw;
+    apic_oneshot_ce.stop_hw = apic_oneshot_stop_hw;
+    apic_oneshot_ce.set_next_delay_ns = apic_oneshot_set_next;
+    apic_oneshot_ce.priv = NULL;
     clockevent_register(&apic_oneshot_ce);
+
 
     //tsc-deadline定时器注册
     if (cpu_has_tsc_deadline()) {
