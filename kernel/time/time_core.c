@@ -1,6 +1,6 @@
 // ========================= [ time_core.c ] =========================
 #include "time_core.h"
-
+#include "../x64/interrupt.h"
 #include "printk.h"
 #include "../x64/cpu.h"
 
@@ -17,6 +17,8 @@ static uint32         g_cs_count = 0;
 
 static clockevent_t  *g_ce_list[8];
 static uint32         g_ce_count = 0;
+
+uint8 g_sys_timer_vector = 0; // 全局统一定时器中断号
 
 
 // 内部辅助：读取指定时钟源的当前计数值
@@ -269,4 +271,12 @@ void clockevent_init_per_cpu(void) {
     }
     THIS_CPU->next_deadline_ns = get_uptime_ns() + 1000000ULL;
     clockevent_switch_this_cpu(best);
+}
+
+void time_core_init(void) {
+    // 1. 子系统统一申请，终生不释放
+    g_sys_timer_vector = alloc_irq();
+
+    // 2. 注册统一的中断处理入口
+    register_isr(g_sys_timer_vector, NULL,NULL,"sys-timer-irq");
 }

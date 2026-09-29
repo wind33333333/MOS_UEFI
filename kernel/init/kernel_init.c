@@ -36,6 +36,7 @@ void kernel_init(void) {
     vmalloc_init();                                             //初始化vmalloc
     video_mem_map();                                            //映射显存到虚拟地址空间
     ioapic_init();                                              //初始化ioapic
+    time_core_init();
     hpet_init();                                                //hpet初始化
     bsp_backup_mtrr_state();                                    //备份mtrr
     cpu_alloc_resources();                                      //给所有cpu分配资源

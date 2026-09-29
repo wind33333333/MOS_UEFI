@@ -49,3 +49,5 @@ void    clockevent_init_per_cpu(void);
 // 🌟 核心子系统提供的通用抗 NMI/SMI 测频服务：
 // 后启动的驱动 (如 TSC、APIC) 只需传入自己的计数器读取函数，子系统自动用当前 active_cs 为其测出频率！
 uint64  timekeeping_measure_freq_hz(uint64 (*target_read)(void), boolean is_down_counter, uint32 wait_ms);
+
+void time_core_init(void);

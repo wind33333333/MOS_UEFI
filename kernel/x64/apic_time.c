@@ -11,6 +11,8 @@ clockevent_t apic_oneshot_ce;
 
 apic_timer_ctx_t apic_timer_ctx;
 
+uint8 g_sys_timer_vector;
+
 uint64 tsc_cs_read(clocksource_t *cs) {
     asm_rdtscp();
 }
@@ -22,7 +24,7 @@ uint64 tsc_cs_read(clocksource_t *cs) {
 void apic_oneshot_init_hw(clockevent_t *ce) {
 
     // 1. 写入 BSP 预计算好的全局最优分频配置
-    asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, g_apic_oneshot_div_cfg);
+    asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, g_sys_timer_vector);
 
     // 2. 设定 LVT 为 One-Shot 模式，解除屏蔽，并映射到 IRQ_VECTOR_TIMER
     uint8 irq = alloc_irq();
@@ -70,7 +72,7 @@ void tsc_deadline_init_hw(clockevent_t *ce) {
     // 它【不需要】配置 APIC_DIVIDE_CONFIG_MSR (分频器被硬件无视)
     // 它【不需要】配置 APIC_INITIAL_COUNT_MSR (倒数器被硬件无视)
     // 只需要把 LVT 设为 DEADLINE 模式，并放行 0x20 向量中断即可！
-    asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_TSC_DEADLINE | IRQ_VECTOR_TIMER);
+    asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_TSC_DEADLINE | g_sys_timer_vector);
 
 }
 
