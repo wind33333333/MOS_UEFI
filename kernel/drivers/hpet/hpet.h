@@ -91,8 +91,8 @@ typedef struct {
     // === 核心时间属性 (只读缓存) ===
     uint32        period_fs;      // 时钟周期 (飞秒)
     uint64        frequency_hz;   // 🌟 算好的物理频率 (如 19200000 Hz)
-    boolean            supports_64bit; // 主计数器是否原生 64 位
-    boolean            legacy_routing; // 是否支持替换 PIT/RTC (Legacy Route)
+    boolean       supports_64bit; // 主计数器是否原生 64 位
+    boolean       legacy_routing; // 是否支持替换 PIT/RTC (Legacy Route)
 
     // === 运行状态 ===
     boolean            is_running;     // ENABLE_CNF 是否已置位

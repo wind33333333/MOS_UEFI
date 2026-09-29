@@ -56,7 +56,7 @@ void hpet_init(void) {
     hpet_cs.name = "hpet";
     hpet_cs.rating = 250;
     hpet_cs.freq_hz = hpet_dev.frequency_hz;
-    hpet_cs.mask = CS_MASK_64BIT;
+    hpet_cs.mask = hpet_dev.supports_64bit ? CS_MASK_64BIT : CS_MASK_32BIT;
     hpet_cs.is_tsc =FALSE;
     hpet_cs.read = hpet_cs_read;
     hpet_cs.priv = &hpet_dev;
