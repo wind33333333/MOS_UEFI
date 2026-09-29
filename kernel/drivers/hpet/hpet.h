@@ -1,25 +1,7 @@
 #pragma once
 
 #include "../../include/moslib.h"
-
-
-#define ENABLE_HPET_TIMES(TIMS_CONF,TIMS_COMP,TIME,MODEL,IRQ) \
-        do {   \
-           (TIMS_CONF) = (((IRQ) << 9) | (1UL << 6) | ((MODEL) << 3) | (1UL << 2)); \
-           MFENCE();                           \
-           (TIMS_COMP) = (TIME);                                                  \
-           MFENCE();                                 \
-         }while(0)
-
-#define DISABLE_HPET_TIMES(TIMS_CONF) \
-        do {                 \
-           (TIMS_CONF) = 0;           \
-           MFENCE();\
-        }while(0)
-
-#define HPET_ONESHOT 0
-#define HPET_PERIODIC 1
-
+#include "../time/time_core.h"
 
 // ---------------------------------------------------------
 // 1. HPET 定时器通道硬件寄存器 (Timer N)
@@ -67,7 +49,20 @@ typedef struct {
     // 硬件能力缓存 (从 config_cap 读出)
     boolean     supports_64bit;        // 是否支持 64 位比较器
     boolean     supports_periodic;     // 是否支持周期性触发模式
-    uint32 allowed_irq_bitmap;    // 允许被路由到的 IOAPIC IRQ 引脚位图
+    uint32      allowed_irq_bitmap;    // 允许被路由到的 IOAPIC IRQ 引脚位图
+
+    // === 🌟 新增：通道级别的细粒度锁与硬件缓存 ===
+    uint32     lock;              // 仅保护本通道寄存器的自旋锁
+    uint64     programmed_ns;     // 硬件当前装填的绝对纳秒目标 (防重复写总线)
+
+    // === 软件业务状态 (按用途复用内存) ===
+    union {
+        // 当通道用作 SMP 广播闹钟时：
+        uint64 bc_cpu_mask;
+
+        // 当通道用作声卡高精度同步时：
+        void *audio_pcm_stream;
+    };
 
     // 软件运行状态
     boolean     is_enabled;       // 当前是否正在运行
@@ -89,23 +84,16 @@ typedef struct {
     hpet_hw_regs_t *hw_regs;        // 经过 MMU 映射后的虚拟地址指针
 
     // === 核心时间属性 (只读缓存) ===
-    uint32        period_fs;      // 时钟周期 (飞秒)
-    uint64        frequency_hz;   // 🌟 算好的物理频率 (如 19200000 Hz)
+    uint64        freq_hz;   // 算好的物理频率 (如 19200000 Hz)
     boolean       supports_64bit; // 主计数器是否原生 64 位
     boolean       legacy_routing; // 是否支持替换 PIT/RTC (Legacy Route)
-
-    // === 运行状态 ===
-    boolean            is_running;     // ENABLE_CNF 是否已置位
 
     // === 子节点管理 ===
     uint8         num_timers;     // 拥有的有效定时器数量 (如 3)
     hpet_timer_t  hpet_timers[32];   // 独立的通道上下文数组
 
     // === 内核同步 ===
-    // spinlock_t   lock;           // 保护硬件寄存器并发写入的自旋锁
+    uint32   lock;           // 保护硬件寄存器并发写入的自旋锁
 } hpet_device_t;
-
-
-extern hpet_device_t hpet_dev;
 
 void hpet_init(void);
