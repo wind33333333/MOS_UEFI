@@ -12,7 +12,7 @@
 #include "apic_init.h"
 #include "printk.h"
 #include "../x64/mtrr.h"
-#include "../init/apic_time_init.h"
+#include "../x64/apic_time.h"
 #include "../include/bus.h"
 #include "../x64/interrupt.h"
 #include "../include/ioapic.h"
