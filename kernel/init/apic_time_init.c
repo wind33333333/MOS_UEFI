@@ -110,7 +110,7 @@ void apic_time_init() {
     apic_oneshot_ce.init_hw = apic_oneshot_init_hw;
     apic_oneshot_ce.stop_hw = apic_oneshot_stop_hw;
     apic_oneshot_ce.set_next_delay_ns = apic_oneshot_set_next;
-    apic_oneshot_ce.priv = NULL;
+    apic_oneshot_ce.priv = &apic_timer_ctx;
     clockevent_register(&apic_oneshot_ce);
 
     //tsc-deadline定时器注册
@@ -121,7 +121,7 @@ void apic_time_init() {
         tsc_deadline_ce.init_hw = tsc_deadline_init_hw;
         tsc_deadline_ce.stop_hw = tsc_deadline_stop_hw;
         tsc_deadline_ce.set_next_delay_ns = tsc_deadline_set_next_delay_ns;
-        tsc_deadline_ce.priv = NULL;
+        tsc_deadline_ce.priv = &apic_timer_ctx;
         clockevent_register(&tsc_deadline_ce);
     }
 }

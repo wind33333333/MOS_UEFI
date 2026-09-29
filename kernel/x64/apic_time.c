@@ -23,12 +23,12 @@ uint64 tsc_cs_read(clocksource_t *cs) {
 // =========================================================================
 void apic_oneshot_init_hw(clockevent_t *ce) {
 
+    apic_timer_ctx_t *ctx = (apic_timer_ctx_t *)ce->priv;
     // 1. 写入 BSP 预计算好的全局最优分频配置
-    asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, g_sys_timer_vector);
+    asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, ctx->div_cfg);
 
     // 2. 设定 LVT 为 One-Shot 模式，解除屏蔽，并映射到 IRQ_VECTOR_TIMER
-    uint8 irq = alloc_irq();
-    asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_ONESHOT | irq);
+    asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_ONESHOT | g_sys_timer_vector);
 
 }
 
