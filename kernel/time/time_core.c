@@ -61,12 +61,7 @@ boolean clocksource_switch(clocksource_t *new_cs) {
 // =========================================================================
 // 通用定点数参数计算器 (仅在开机时调用，自动寻找精度最高的 mult 和 shift)
 // =========================================================================
-static inline void calc_mult_shift(
-    uint64 from_hz,
-    uint64 to_hz,
-    uint64 *out_mult,
-    uint32 *out_shift,
-    boolean round_up) {
+static void calc_mult_shift(uint64 from_hz,uint64 to_hz,uint64 *out_mult,uint32 *out_shift,boolean round_up) {
     uint32 shift = 62;
     uint64 mult = 0;
 

@@ -6,9 +6,9 @@
 #include "../x64/interrupt.h"
 
 // =========================================================================
-// 终极精简版 TSC 频率探测：Intel 0x15 直读 -> 全平台 HPET 硬件实测
+// 终极精简版 TSC 频率探测：Intel 0x15 直读 -> timekeeping测算
 // =========================================================================
-uint64 detect_tsc_hz() {
+static uint64 detect_tsc_hz() {
     // [通道 1] 现代 Intel 真机 (或开启 CPU 直通的虚拟机)：CPUID(0x15) 0ms 精确计算
     uint32 eax, ebx, ecx, edx;
     asm_cpuid(0, &eax, &ebx, &ecx, &edx);
@@ -29,13 +29,11 @@ static uint64 apic_count_read() {
     asm_rdmsr(APIC_CURRENT_COUNT_MSR );
 }
 
-
 #define APIC_LVT_MASKED           (1U << 16)
 // =========================================================================
-// 3. [核心 API] 以已校准的 tsc_hz 为黄金标尺，单次极速测算 APIC 原始总线频率
-//    推荐参数：wait_ms = 5 (仅耗时 5 毫秒，零 HPET 访问)
+// apic频率探测：Intel 0x15 直读 -> timekeeping测算
 // =========================================================================
-uint64 detect_apic_hz() {
+static uint64 detect_apic_hz() {
     // [通道 1] 现代 Intel 真机 (或开启 CPU 直通的虚拟机)：CPUID(0x15) 0ms 精确计算
     uint32 eax, ebx, ecx, edx;
     asm_cpuid(0, &eax, &ebx, &ecx, &edx);
@@ -55,48 +53,14 @@ uint64 detect_apic_hz() {
     return timekeeping_measure_freq_hz(apic_count_read,TRUE,10);
 }
 
-// =========================================================================
-// 2. 通用定点数参数计算器 (仅在开机时调用，自动寻找精度最高的 mult 和 shift)
-// =========================================================================
-static inline void calc_mult_shift(
-    uint64 from_hz,
-    uint64 to_hz,
-    uint64 *out_mult,
-    uint32 *out_shift,
-    boolean round_up) {
-    uint32 shift = 62;
-    uint64 mult = 0;
-
-    // 从高到低搜索最大的 shift，使 mult 恰好落入 32 位上限 (<= 0xFFFFFFFF)
-    while (shift > 0) {
-        // 防溢出检查：确保 (to_hz << shift) 的高 64 位严格小于除数 from_hz
-        if ((to_hz >> (64 - shift)) < from_hz) {
-            if (round_up) {
-                mult = asm_mul_div64_ceil(to_hz, 1ULL << shift, from_hz);
-            } else {
-                mult = asm_mul_div64(to_hz, 1ULL << shift, from_hz);
-            }
-
-            if (mult <= 0xFFFFFFFFULL && mult > 0) {
-                break;
-            }
-        }
-        shift--;
-    }
-
-    *out_mult = mult;
-    *out_shift = shift;
-}
-
-
-// CPUID(0x01).ECX 特性位定义
-#define CPUID_FEAT_ECX_X2APIC        (1U << 21) // Bit 21: 支持 x2APIC (MSR 0x800~0x83F)
-#define CPUID_FEAT_ECX_TSC_DEADLINE  (1U << 24) // Bit 24: 支持 APIC TSC-Deadline 模式 (MSR 0x6E0)
-#define CPUID_FEAT_ECX_HYPERVISOR    (1U << 31) // Bit 31: 当前运行在虚拟机 (Hypervisor) 中
 
 // =========================================================================
 // 检测当前 CPU 是否支持硬件级 Local APIC TSC-Deadline 模式
 // =========================================================================
+// CPUID(0x01).ECX 特性位定义
+#define CPUID_FEAT_ECX_X2APIC        (1U << 21) // Bit 21: 支持 x2APIC (MSR 0x800~0x83F)
+#define CPUID_FEAT_ECX_TSC_DEADLINE  (1U << 24) // Bit 24: 支持 APIC TSC-Deadline 模式 (MSR 0x6E0)
+#define CPUID_FEAT_ECX_HYPERVISOR    (1U << 31) // Bit 31: 当前运行在虚拟机 (Hypervisor) 中
 static inline boolean cpu_has_tsc_deadline(void) {
     uint32 eax, ebx, ecx, edx;
 
@@ -107,10 +71,7 @@ static inline boolean cpu_has_tsc_deadline(void) {
     return (ecx & CPUID_FEAT_ECX_TSC_DEADLINE) != 0;
 }
 
-
-
-
-uint64 tsc_cs_read(clocksource_t *cs) {
+static uint64 tsc_cs_read(clocksource_t *cs) {
     asm_rdtscp();
 }
 
