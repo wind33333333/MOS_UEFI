@@ -1,16 +1,22 @@
 #include "hpet.h"
 #include "printk.h"
+#include "slub.h"
 #include "../../init/acpi_init.h"
 #include "vmalloc.h"
-#include "../../init/apic_init.h"
-#include "../x64/msr.h"
-#include "../x64/cpu.h"
+#include "../time/time_core.h"
 
 // 假设这是全局的 HPET 设备对象
 hpet_device_t hpet_dev;
 
+clocksource_t hpet_cs;
+
 // 定义 1 秒等于 10^15 飞秒
 #define FEMTOSECONDS_PER_SECOND 1000000000000000ULL
+
+static uint64 hpet_cs_read(clocksource_t *cs) {
+    hpet_device_t *dev = cs->priv;
+    return dev->hw_regs->main_counter;
+}
 
 void hpet_init(void) {
     //hpet初始化
@@ -42,9 +48,19 @@ void hpet_init(void) {
 
     // 4. 停止 HPET，清零主计数器，然后启动！
     hpet_dev.hw_regs->general_config = 0;  // 暂停
-    hpet_dev.hw_regs->main_counter = 0;         // 归零
+    hpet_dev.hw_regs->main_counter = 0;    // 归零
     hpet_dev.hw_regs->general_config = 1;   // 启动 (ENABLE_CNF)
     hpet_dev.is_running = TRUE;
+
+    //5.注册时钟
+    hpet_cs.name = "hpet";
+    hpet_cs.rating = 250;
+    hpet_cs.freq_hz = hpet_dev.frequency_hz;
+    hpet_cs.mask = CS_MASK_64BIT;
+    hpet_cs.is_tsc =FALSE;
+    hpet_cs.read = hpet_cs_read;
+    hpet_cs.priv = &hpet_dev;
+    clocksource_register(&hpet_cs);
 
     PR_INFO("HPET Clock Frequency: %dHz  TimerNum:%d PA:%#lx VA:%#lx \n",hpet_dev.frequency_hz,hpet_dev.num_timers,hpet_dev.phys_base_addr,hpet_dev.hw_regs);
 

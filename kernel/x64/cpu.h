@@ -1,6 +1,7 @@
 #pragma once
 #include "moslib.h"
 #include "gdt_tss.h"
+#include "../time/time_core.h"
 
 
 #define APIC_ONESHOT        (0 << 17)              //一次性定时模式
@@ -98,7 +99,7 @@ typedef struct cpu_core {
     uint32          apic_id;              // [0x04] 物理 APIC ID (发 IPI 高频使用)
     cpu_state_t     state;                // [0x08] 核心运行状态 (假设 enum 为 4 字节)
     uint32          numa_node;            // [0x0C] 所属 NUMA 节点 (内存分配高频使用)
-
+    clockevent_t    *active_ce;
     uint64          next_deadline_ns;
 
     // 💡 预留给 syscall 汇编入口的极速切栈跳板

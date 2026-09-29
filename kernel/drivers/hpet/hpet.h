@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../../include/moslib.h"
-#include "../x64/times.h"
 
 
 #define ENABLE_HPET_TIMES(TIMS_CONF,TIMS_COMP,TIME,MODEL,IRQ) \
@@ -63,7 +62,7 @@ typedef struct {
 // ---------------------------------------------------------
 typedef struct {
     uint8  id;                    // 通道编号 (0 ~ 31)
-    boolean     is_present;            // 硬件是否真实存在该通道
+    boolean     is_present;       // 硬件是否真实存在该通道
 
     // 硬件能力缓存 (从 config_cap 读出)
     boolean     supports_64bit;        // 是否支持 64 位比较器
@@ -71,11 +70,8 @@ typedef struct {
     uint32 allowed_irq_bitmap;    // 允许被路由到的 IOAPIC IRQ 引脚位图
 
     // 软件运行状态
-    boolean     is_enabled;            // 当前是否正在运行
+    boolean     is_enabled;       // 当前是否正在运行
     uint8  assigned_irq;          // 当前分配的 IRQ 号
-
-    // 每个通道都是一个独立的闹钟，它们各自向相应的 CPU 核心报到！
-    timer_t timer;
 
     // 回调钩子 (当该通道触发中断时，执行此函数)
     void     (*isr_callback)(void *ctx);
@@ -104,10 +100,6 @@ typedef struct {
     // === 子节点管理 ===
     uint8         num_timers;     // 拥有的有效定时器数量 (如 3)
     hpet_timer_t  hpet_timers[32];   // 独立的通道上下文数组
-
-    // === 🌟 全局时钟源抽象 ===
-    // 时钟源(看表)是全局的，整个 HPET 作为一个表
-    clock_t       clock;
 
     // === 内核同步 ===
     // spinlock_t   lock;           // 保护硬件寄存器并发写入的自旋锁

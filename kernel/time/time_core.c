@@ -1,6 +1,6 @@
 // ========================= [ time_core.c ] =========================
 #include "time_core.h"
-#include "cpu.h"
+#include "../x64/cpu.h"
 
 typedef struct {
     volatile uint32 seq;
@@ -19,7 +19,7 @@ static uint32         g_ce_count = 0;
 
 // 内部辅助：读取指定时钟源的当前计数值
 static inline uint64 cs_read_cycles(clocksource_t *cs) {
-    return __builtin_expect(cs->is_tsc, 1) ? asm_rdtscp() : cs->read(cs);
+    return (cs->is_tsc == TRUE) ? asm_rdtscp() : cs->read(cs);
 }
 
 boolean clocksource_switch(clocksource_t *new_cs) {
@@ -212,6 +212,36 @@ static inline uint64 get_uptime_ns(void) {
     return base + delta_ns;
 }
 
+// =========================================================================
+// 3. 运行时动态切换当前 CPU 核心的硬件定时器 (不断档交接闹钟！)
+// =========================================================================
+boolean clockevent_switch_this_cpu(clockevent_t *new_ce) {
+    cpu_core_t *core = &cpu_cores[THIS_CPU->logical_id];
+    if (new_ce == NULL || new_ce == core->active_ce) {
+        return FALSE;
+    }
+
+    uint64 flags;
+    local_irq_save(&flags);
+
+    // 1. 先关停旧定时器的硬件计数器与中断掩码，防止切完后产生幽灵中断
+    if (core->active_ce != NULL) {
+        core->active_ce->stop_hw(core->active_ce);
+    }
+
+    // 2. 切换指针并初始化新定时器的硬件寄存器
+    core->active_ce = new_ce;
+    new_ce->init_hw(new_ce);
+
+    // 3. 🌟 立即将当前核心正在等待的 next_deadline_ns 重新装填进新定时器！
+    //    哪怕在睡眠中途切换定时器，任务依然会在原定的纳秒时刻准时醒来！
+    uint64 now_ns = get_uptime_ns();
+    uint64 delay_ns = (core->next_deadline_ns > now_ns) ? (core->next_deadline_ns - now_ns) : 1000ULL;
+    new_ce->set_next_delay_ns(new_ce, delay_ns);
+
+    local_irq_restore(flags);
+    return TRUE;
+}
 
 // 每个 CPU 核心从已注册的定时器池中自动绑定评分最高的一个
 void clockevent_init_per_cpu(void) {

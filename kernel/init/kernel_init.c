@@ -12,7 +12,7 @@
 #include "apic_init.h"
 #include "printk.h"
 #include "../x64/mtrr.h"
-#include "../init/apic_timer_init.h"
+#include "../init/apic_time_init.h"
 #include "../include/bus.h"
 #include "../x64/interrupt.h"
 #include "../include/ioapic.h"
@@ -39,7 +39,7 @@ void kernel_init(void) {
     hpet_init();                                                //hpet初始化
     bsp_backup_mtrr_state();                                    //备份mtrr
     cpu_alloc_resources();                                      //给所有cpu分配资源
-    apic_timer_init();                                          //apic时钟定时器初始化
+    apic_time_init();                                           //apic时钟定时器初始化
     cpu_load_resource();                                        //加载cpu资源
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
     while(1);
