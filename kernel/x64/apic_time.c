@@ -60,7 +60,7 @@ void apic_oneshot_set_next(clockevent_t *ce, uint64 delay_ns) {
 // =========================================================================
 // 1. 初始化当前 CPU 核心的 TSC-Deadline 硬件
 // =========================================================================
-static void tsc_deadline_init_hw(clockevent_t *ce) {
+void tsc_deadline_init_hw(clockevent_t *ce) {
     // 清理可能残留的历史记录，防止刚开启就收到幽灵中断
     asm_wrmsr(TSC_DEADLINE_MSR, 0);
 
@@ -75,7 +75,7 @@ static void tsc_deadline_init_hw(clockevent_t *ce) {
 // =========================================================================
 // 2. 关停当前 CPU 核心的 TSC-Deadline 定时器硬件
 // =========================================================================
-static void tsc_deadline_stop_hw(clockevent_t *ce) {
+void tsc_deadline_stop_hw(clockevent_t *ce) {
     // 1. 根据 Intel SDM 手册，向 MSR 0x6E0 写入 0 即可立刻解除 (Disarm) 定时器
     asm_wrmsr(TSC_DEADLINE_MSR, 0);
 
@@ -86,7 +86,7 @@ static void tsc_deadline_stop_hw(clockevent_t *ce) {
 // =========================================================================
 // 3. 设置下一次唤醒时间 (最极简、最安全的定闹钟逻辑)
 // =========================================================================
-static void tsc_deadline_set_next_delay_ns(clockevent_t *ce, uint64 delay_ns) {
+void tsc_deadline_set_next_delay_ns(clockevent_t *ce, uint64 delay_ns) {
     // 1. 将通用的纳秒 (ns) 换算成 TSC 的 Tick 周期数
     //    由于 TSC-Deadline 的频率就是 CPU TSC 的频率，所以直接用预计算好的多项式转换
     uint64 delay_tsc = (uint64)(((__uint128_t)delay_ns * ce->ns_to_dev_mult

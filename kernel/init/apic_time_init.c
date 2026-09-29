@@ -11,6 +11,10 @@ uint64 tsc_cs_read(clocksource_t *cs);
 void apic_oneshot_init_hw(clockevent_t *ce);
 void apic_oneshot_stop_hw(clockevent_t *ce);
 void apic_oneshot_set_next(clockevent_t *ce, uint64 delay_ns);
+void tsc_deadline_init_hw(clockevent_t *ce);
+void tsc_deadline_stop_hw(clockevent_t *ce);
+void tsc_deadline_set_next_delay_ns(clockevent_t *ce, uint64 delay_ns);
+
 
 // =========================================================================
 // 终极精简版 TSC 频率探测：Intel 0x15 直读 -> timekeeping测算
@@ -118,9 +122,10 @@ void apic_time_init() {
         tsc_deadline_ce.freq_hz = tsc_cs.freq_hz;
         tsc_deadline_ce.name = "tsc-deadline";
         tsc_deadline_ce.rating = 400;
-        tsc_deadline_ce.init_hw = NULL;
-        tsc_deadline_ce.stop_hw = NULL;
-        tsc_deadline_ce.set_next_delay_ns = NULL;
+        tsc_deadline_ce.init_hw = tsc_deadline_init_hw;
+        tsc_deadline_ce.stop_hw = tsc_deadline_stop_hw;
+        tsc_deadline_ce.set_next_delay_ns = tsc_deadline_set_next_delay_ns;
+        tsc_deadline_ce.priv = NULL;
         clockevent_register(&tsc_deadline_ce);
     }
 }
