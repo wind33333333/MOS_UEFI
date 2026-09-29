@@ -24,6 +24,12 @@ uint64 detect_tsc_hz() {
 }
 
 
+//读取当前apic计数数值
+static uint64 apic_count_read() {
+    asm_rdmsr(APIC_CURRENT_COUNT_MSR );
+}
+
+
 #define APIC_LVT_MASKED           (1U << 16)
 // =========================================================================
 // 3. [核心 API] 以已校准的 tsc_hz 为黄金标尺，单次极速测算 APIC 原始总线频率
@@ -46,7 +52,7 @@ uint64 detect_apic_hz() {
     asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_LVT_MASKED | APIC_ONESHOT);
     asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, APIC_DIV_BY_1);
     asm_wrmsr(APIC_INITIAL_COUNT_MSR, 0xFFFFFFFFULL);
-    return clocksource_calibrate_hz(asm_rdtscp,TRUE,10);
+    return clocksource_calibrate_hz(apic_count_read,TRUE,10);
 }
 
 // =========================================================================
@@ -102,6 +108,10 @@ static inline boolean cpu_has_tsc_deadline(void) {
 }
 
 clocksource_t tsc_cs;
+clockevent_t tsc_deadline_ce;
+clockevent_t apic_oneshot_ce;
+
+
 
 uint64 tsc_cs_read(clocksource_t *cs) {
     asm_rdtscp();
@@ -119,11 +129,8 @@ void apic_time_init() {
     tsc_cs.priv = NULL;
     clocksource_register(&tsc_cs);
 
-    uint64 tsc_hz = detect_tsc_hz();
-    g_tsc_clock.tsc_hz = tsc_hz;
 
     //全局apic定时器，tsc-deadline或oneshot模式
-    g_apic_timer.tsc_step_per_tick = tsc_hz / 1000;
     g_apic_timer.has_tsc_deadline = cpu_has_tsc_deadline();
     if (!g_apic_timer.has_tsc_deadline) {
         uint64 raw_bus_hz = detect_apic_hz();
@@ -132,12 +139,10 @@ void apic_time_init() {
         while (shift < 7 && (raw_bus_hz >> shift) > 10000000ULL) {
             shift++;
         }
-        g_apic_timer.apic_hz = raw_bus_hz >> shift;
-        g_apic_timer.apic_div_cfg = k_div_table[shift];
 
-        calc_mult_shift(tsc_hz, g_apic_timer.apic_hz,
-                        &g_apic_timer.tsc_to_apic_mult, &g_apic_timer.tsc_to_apic_shift, TRUE);
-        g_apic_timer.tsc_to_apic_mask = (1ULL << g_apic_timer.tsc_to_apic_shift) - 1;
+        apic_oneshot_ce.freq_hz = raw_bus_hz >> shift;
+        apic_oneshot_ce.name = "apic-oneshot";
+        apic_oneshot_ce.rating = 350;
     }
 }
 
