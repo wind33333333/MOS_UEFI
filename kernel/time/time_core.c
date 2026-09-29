@@ -112,7 +112,7 @@ uint64 clocksource_get_active_freq(void) {
 // 🌟 子系统通用标尺服务：利用当前已激活的 active_cs，为任何未知频率的硬件测算频率
 //    自带微秒级基线预热 + 单次等待 + NMI/SMI 包夹验毒 + 实测分母结算
 // =========================================================================
-uint64 clocksource_calibrate_hz(uint64 (*target_read)(void), boolean is_down_counter, uint32 wait_ms) {
+uint64 timekeeping_measure_freq_hz(uint64 (*target_read)(void), boolean is_down_counter, uint32 wait_ms) {
     clocksource_t *ref_cs = g_timekeeper.active_cs;
     if (ref_cs == NULL || ref_cs->freq_hz == 0) {
         return 0; // 尚未有任何基准时钟源注册

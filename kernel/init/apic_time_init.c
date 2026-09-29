@@ -20,7 +20,7 @@ uint64 detect_tsc_hz() {
     }
 
     // [通道 2] QEMU / VMware / VirtualBox 虚拟机 + AMD 全系真机 + 老旧 Intel：
-    return clocksource_calibrate_hz(asm_rdtscp,FALSE,10);
+    return timekeeping_measure_freq_hz(asm_rdtscp,FALSE,10);
 }
 
 
@@ -47,12 +47,12 @@ uint64 detect_apic_hz() {
     }
 
     // =====================================================================
-    // 步骤 1：启动 APIC 定时器 (屏蔽中断 + 1分频最高精度 + 0xFFFFFFFF 满格起步)
+    // 方式2：用当前时钟校准apic
     // =====================================================================
     asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_LVT_MASKED | APIC_ONESHOT);
     asm_wrmsr(APIC_DIVIDE_CONFIG_MSR, APIC_DIV_BY_1);
     asm_wrmsr(APIC_INITIAL_COUNT_MSR, 0xFFFFFFFFULL);
-    return clocksource_calibrate_hz(apic_count_read,TRUE,10);
+    return timekeeping_measure_freq_hz(apic_count_read,TRUE,10);
 }
 
 // =========================================================================
@@ -107,9 +107,6 @@ static inline boolean cpu_has_tsc_deadline(void) {
     return (ecx & CPUID_FEAT_ECX_TSC_DEADLINE) != 0;
 }
 
-clocksource_t tsc_cs;
-clockevent_t tsc_deadline_ce;
-clockevent_t apic_oneshot_ce;
 
 
 
@@ -117,9 +114,13 @@ uint64 tsc_cs_read(clocksource_t *cs) {
     asm_rdtscp();
 }
 
+clocksource_t tsc_cs;
+clockevent_t tsc_deadline_ce;
+clockevent_t apic_oneshot_ce;
+
 //初始化tsc始终和定时器
 void apic_time_init() {
-    //全局tsc时钟
+    //tsc时钟注册
     tsc_cs.freq_hz = detect_tsc_hz();
     tsc_cs.name = "tsc";
     tsc_cs.rating = 400;
@@ -129,20 +130,24 @@ void apic_time_init() {
     tsc_cs.priv = NULL;
     clocksource_register(&tsc_cs);
 
+    //apic定时器注册
+    uint64 apic_hz = detect_apic_hz();
+    static const uint8 k_div_table[8] = {0x0B, 0x00, 0x01, 0x02, 0x03, 0x08, 0x09, 0x0A};
+    uint32 shift = 0;
+    while (shift < 7 && (apic_hz >> shift) > 10000000ULL) {
+        shift++;
+    }
+    apic_oneshot_ce.freq_hz = apic_hz >> shift;
+    apic_oneshot_ce.name = "apic-oneshot";
+    apic_oneshot_ce.rating = 350;
+    clockevent_register(&apic_oneshot_ce);
 
-    //全局apic定时器，tsc-deadline或oneshot模式
-    g_apic_timer.has_tsc_deadline = cpu_has_tsc_deadline();
-    if (!g_apic_timer.has_tsc_deadline) {
-        uint64 raw_bus_hz = detect_apic_hz();
-        static const uint8 k_div_table[8] = {0x0B, 0x00, 0x01, 0x02, 0x03, 0x08, 0x09, 0x0A};
-        uint32 shift = 0;
-        while (shift < 7 && (raw_bus_hz >> shift) > 10000000ULL) {
-            shift++;
-        }
-
-        apic_oneshot_ce.freq_hz = raw_bus_hz >> shift;
-        apic_oneshot_ce.name = "apic-oneshot";
-        apic_oneshot_ce.rating = 350;
+    //tsc-deadline定时器注册
+    if (cpu_has_tsc_deadline()) {
+        tsc_deadline_ce.freq_hz = tsc_cs.freq_hz;
+        tsc_deadline_ce.name = "tsc-deadline";
+        tsc_deadline_ce.rating = 400;
+        clockevent_register(&tsc_deadline_ce);
     }
 }
 
