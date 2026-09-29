@@ -7,6 +7,7 @@
 extern clocksource_t tsc_cs;
 extern clockevent_t tsc_deadline_ce;
 extern clockevent_t apic_oneshot_ce;
+extern apic_timer_ctx_t apic_timer_ctx;
 uint64 tsc_cs_read(clocksource_t *cs);
 void apic_oneshot_init_hw(clockevent_t *ce);
 void apic_oneshot_stop_hw(clockevent_t *ce);
@@ -83,11 +84,6 @@ static inline boolean cpu_has_tsc_deadline(void) {
     return (ecx & CPUID_FEAT_ECX_TSC_DEADLINE) != 0;
 }
 
-
-uint8 g_apic_oneshot_div_cfg;
-
-
-
 //初始化tsc始终和定时器
 void apic_time_init() {
     //tsc时钟注册
@@ -107,7 +103,7 @@ void apic_time_init() {
     while (shift < 7 && (apic_hz >> shift) > 10000000ULL) {
         shift++;
     }
-    g_apic_oneshot_div_cfg = k_div_table[shift];
+    apic_timer_ctx.div_cfg = k_div_table[shift];
     apic_oneshot_ce.freq_hz = apic_hz >> shift;
     apic_oneshot_ce.name = "apic-oneshot";
     apic_oneshot_ce.rating = 350;

@@ -9,6 +9,8 @@ clocksource_t tsc_cs;
 clockevent_t tsc_deadline_ce;
 clockevent_t apic_oneshot_ce;
 
+apic_timer_ctx_t apic_timer_ctx;
+
 uint64 tsc_cs_read(clocksource_t *cs) {
     asm_rdtscp();
 }
