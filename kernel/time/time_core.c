@@ -45,7 +45,7 @@ uint64 get_uptime_ns(void) {
 // =========================================================================
 //泛化的绝对时间逆推引擎
 // =========================================================================
-boolean time_core_try_abs_ns_to_cycles(uint64 target_ns, uint32 required_cs_id, uint64 *out_target_cycles) {
+boolean time_core_try_abs_ns_to_cycles(uint64 target_ns, clocksource_id_e required_cs_id, uint64 *out_target_cycles) {
     uint32 seq;
     uint64 base_ns, last_cycles;
     clocksource_t *cs;
@@ -70,9 +70,10 @@ boolean time_core_try_abs_ns_to_cycles(uint64 target_ns, uint32 required_cs_id, 
 
     uint64 delta_ns = target_ns - base_ns;
 
-    // 逆向公式：这里用的 cs->shift 和 cs->mult
-    // 会自动适配当前激活的是 TSC 的参数，还是 HPET 的参数！
-    uint64 delta_cycles = (uint64)(((__uint128_t)delta_ns << cs->shift) / cs->mult);
+    // 🌟 奇迹发生：全乘法+移位操作！
+    // 64 位 delta_ns 乘以 64 位 mult 会产生 128 位结果，编译器自动用一对 rdx:rax 寄存器完成，
+    // 没有任何外部函数调用，速度比之前快几十倍！
+    uint64 delta_cycles = (uint64)(((__uint128_t)delta_ns * cs->ns_to_cycles_mult) >> cs->ns_to_cycles_shift);
 
     *out_target_cycles = last_cycles + delta_cycles;
     return TRUE;
@@ -143,13 +144,21 @@ static boolean clocksource_switch(clocksource_t *new_cs) {
 
 // 驱动调用此函数主动注册时钟源
 void clocksource_register(clocksource_t *cs) {
-    // 子系统统一为其预计算定点数 mult 和 shift
+    // 1. 顺向推导参数 (Cycles -> ns)
+    // 语义：设备以 freq_hz 震荡，换算到 1,000,000,000 Hz 的纳秒域
     calc_mult_shift(cs->freq_hz, 1000000000ULL, &cs->mult, &cs->shift, FALSE);
+
+    // 2. 🌟 逆向推导参数 (ns -> Cycles) 🌟
+    // 语义：输入以 1,000,000,000 Hz (纳秒) 震荡，换算回 freq_hz 的设备硬件域
+    // 直接复用底层定点数生成引擎，不仅彻底消灭了 128 位除法报错，还能自动计算出最合适的 shift 精度！
+    calc_mult_shift(1000000000ULL, cs->freq_hz, &cs->ns_to_cycles_mult, &cs->ns_to_cycles_shift, FALSE);
+
+    // 3. 加入全局硬件清单
     g_cs_list[g_cs_count++] = cs;
 
-    PR_OK("%s Clock freq:%ldhz register success.\n",cs->name,cs->freq_hz);
+    PR_OK("%s Clock freq:%ldhz register success.\n", cs->name, cs->freq_hz);
 
-    // 若当前无时钟源，或新注册的驱动评分更高，自动无缝热切换！
+    // 4. 架构级无缝热切换：新硬件比旧硬件好，立刻顶替
     if (g_timekeeper.active_cs == NULL || cs->rating > g_timekeeper.active_cs->rating) {
         clocksource_switch(cs);
     }
@@ -181,14 +190,18 @@ boolean clockevent_switch(clockevent_t *new_ce) {
     core->active_ce = new_ce;
     new_ce->init_hw(new_ce);
 
-    // 3. 🌟 立即将当前核心正在等待的 next_deadline_ns 重新装填进新定时器！
-    //    哪怕在睡眠中途切换定时器，任务依然会在原定的纳秒时刻准时醒来！
-    uint64 now_ns = get_uptime_ns();
-    uint64 delay_ns = (core->next_deadline_ns > now_ns) ? (core->next_deadline_ns - now_ns) : 1000ULL;
-    new_ce->set_next_event(new_ce, delay_ns);
+    // 3. 🌟 绝对时间架构的终极体现：只传目标和快照！
+    // 哪怕在睡眠中途切换定时器，任务依然会在原定的纳秒时刻准时醒来！
+    uint64 target_ns = core->next_deadline_ns; // 直接拿绝对目标
+    uint64 now_ns = get_uptime_ns();           // 拍下快照
+
+    // 直接下发！
+    // 如果 new_ce 是 TSC-Deadline，它会玩纯数学魔法，无视 now_ns。
+    // 如果 new_ce 是 APIC，它会丢弃 now_ns，强制 double fetch 算相对差值。
+    new_ce->set_next_event(new_ce, target_ns, now_ns);
 
     local_irq_restore(flags);
-    PR_INFO("Coer:%d Switch Timer:%s\n",core->logical_id,new_ce->name);
+    PR_INFO("Core:%d Switch Timer:%s\n", core->logical_id, new_ce->name);
     return TRUE;
 }
 
@@ -204,7 +217,7 @@ void clockevent_register(clockevent_t *ce) {
 static inline void reprogram_clockevent(uint64 now_ns) {
     uint64 target_ns = THIS_CPU->next_deadline_ns;
     // 🌟 上层把 now_ns 传给底层驱动，底层就不用自己去读了
-    THIS_CPU->active_ce->set_next_event_ns(THIS_CPU->active_ce, target_ns, now_ns);
+    THIS_CPU->active_ce->set_next_event(THIS_CPU->active_ce, target_ns, now_ns);
 }
 
 void sleep_ns(uint64 delay_ns) {

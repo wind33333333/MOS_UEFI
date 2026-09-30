@@ -5,15 +5,31 @@
 #define CS_MASK_32BIT  0x00000000FFFFFFFFULL
 #define CS_MASK_24BIT  0x0000000000FFFFFFULL
 
+typedef enum {
+    CLOCKSOURCE_ID_UNKNOWN = 0, // 未知或未初始化的时钟源
+
+    // x86 架构专属硬件
+    CLOCKSOURCE_ID_TSC     = 1, // CPU 内置时间戳计数器 (最高精度)
+    CLOCKSOURCE_ID_HPET    = 2, // 高精度事件定时器 (主板南桥)
+    CLOCKSOURCE_ID_ACPI_PM = 3, // ACPI 电源管理定时器 (备用降级选项)
+    CLOCKSOURCE_ID_PIT     = 4, // 古老的 8254 可编程中断定时器 (最底线保底)
+
+    // 面向未来跨架构扩展预留 (如移植到 ARM)
+    CLOCKSOURCE_ID_ARM_ARCH = 10, // ARM Generic Timer
+} clocksource_id_e;
+
 // 1. 抽象时钟源接口 (表盘驱动各自实例化)
 typedef struct clocksource_t {
     const char *name;
+    clocksource_id_e id;
     uint32      rating;
     uint64      freq_hz;
     uint64      mask;
 
     uint64      mult;
     uint32      shift;
+    uint64      ns_to_cycles_mult;
+    uint32      ns_to_cycles_shift;
     boolean     is_tsc;
 
     uint64    (*read)(struct clocksource_t *cs);
@@ -32,7 +48,7 @@ typedef struct clockevent_t {
 
     void      (*init_hw)(struct clockevent_t *ce);
     void      (*stop_hw)(struct clockevent_t *ce);
-    void      (*set_next_event_ns)(struct clockevent_t *ce, uint64 target_ns, uint64 now_ns);
+    void      (*set_next_event)(struct clockevent_t *ce, uint64 target_ns, uint64 now_ns);
     void       *priv;
 } clockevent_t;
 
@@ -60,7 +76,7 @@ uint64  timekeeping_measure_freq_hz(uint64 (*target_read)(void), boolean is_down
 
 uint64 get_uptime_ns(void);
 
-boolean time_core_try_abs_ns_to_cycles(uint64 target_ns, uint32 required_cs_id, uint64 *out_target_cycles);
+boolean time_core_try_abs_ns_to_cycles(uint64 target_ns, clocksource_id_e required_cs_id, uint64 *out_target_cycles);
 
 //时间系统初始化
 void time_core_init(void);

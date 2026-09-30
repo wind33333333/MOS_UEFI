@@ -1,9 +1,9 @@
-#include "../init/acpi_init.h"
-#include "moslib.h"
+#include "acpi_init.h"
+#include "../include/moslib.h"
 #include "../drivers/hpet/hpet.h"
-#include "printk.h"
-#include "../init/apic_init.h"
-#include "vmalloc.h"
+#include "../include/printk.h"
+#include "apic_init.h"
+#include "../include/vmalloc.h"
 
 extern clockevent_t hpet_ce0;
 extern clocksource_t hpet_cs;
@@ -11,7 +11,7 @@ extern hpet_device_t hpet_dev;
 uint64 hpet_cs_read(clocksource_t *cs);
 void hpet_ce_init_hw(clockevent_t *ce);
 void hpet_ce_stop_hw(clockevent_t *ce);
-void hpet_ce_set_next_event_ns(clockevent_t *ce, uint64 delay_ns);
+void hpet_ce_set_next_event(clockevent_t *ce,uint64 target_ns, uint64 now_ns);
 
 void hpet_init(void) {
     //hpet初始化
@@ -48,6 +48,7 @@ void hpet_init(void) {
 
     //5.注册hpet时钟
     hpet_cs.name = "hpet";
+    hpet_cs.id = CLOCKSOURCE_ID_HPET;
     hpet_cs.rating = 250;
     hpet_cs.freq_hz = hpet_dev.freq_hz;
     hpet_cs.mask = hpet_dev.supports_64bit ? CS_MASK_64BIT : CS_MASK_32BIT;
@@ -62,7 +63,7 @@ void hpet_init(void) {
     hpet_ce0.freq_hz = hpet_dev.freq_hz;
     hpet_ce0.init_hw = hpet_ce_init_hw;
     hpet_ce0.stop_hw = hpet_ce_stop_hw;
-    hpet_ce0.set_next_event = hpet_ce_set_next_event_ns;
+    hpet_ce0.set_next_event = hpet_ce_set_next_event;
     hpet_ce0.priv = &hpet_dev;
     clockevent_register(&hpet_ce0);
 }
