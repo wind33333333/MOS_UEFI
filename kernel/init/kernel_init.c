@@ -44,7 +44,6 @@ void kernel_init(void) {
     apic_time_init();                                           //apic时钟定时器初始化
     cpu_load_resource();                                        //加载cpu资源
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
-    sleep_ns(1000000000);
     while(1);
 
     bus_init();                                                 //总线初始化

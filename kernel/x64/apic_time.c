@@ -50,39 +50,43 @@ void apic_oneshot_stop_hw(clockevent_t *ce) {
 // =========================================================================
 void apic_oneshot_set_next(clockevent_t *ce, uint64 target_ns, uint64 now_ns) {
     // 1. 🌟 核心防御：无视旧快照，强制二次读取 (Double Fetch)！
-    // 既然我是相对倒数硬件，我就必须用最新鲜的时间来算差值。
-    // 这次读取紧贴着下方的 asm_wrmsr，把被 NMI 偷袭的物理窗口压缩到了几纳秒。
     uint64 fresh_now_ns = get_uptime_ns();
-
     uint64 delay_ns;
 
     // 2. 截止时间校验与补偿
     if (__builtin_expect(target_ns > fresh_now_ns, 1)) {
-        // 正常情况：目标时间还在未来，算出被极度压缩、最新鲜的相对差值
         delay_ns = target_ns - fresh_now_ns;
     } else {
-        // 💥 异常情况：刚才的二次读取发现，因为各种中断耽误，现在已经【迟到】了！
-        // 此时绝不能发生下溢出产生天文数字。直接给一个极小的补偿延时（如 1000 纳秒），
-        // 让硬件在接下来的极短时间内立刻“补一枪”中断，将任务拉起。
-        delay_ns = 1000ULL;
+        delay_ns = 1000ULL; // 迟到补偿
     }
 
-    // 3. 将通用的纳秒差值 (delay_ns) 换算为 APIC 定时器专属的硬件倒数 Tick 刻度
-    uint64 ticks = (uint64)(((__uint128_t)delay_ns * ce->ns_to_dev_mult
-                             + ce->ns_to_dev_mask) >> ce->ns_to_dev_shift);
+    // 3. 算出 64 位的理论刻度 (注意：这里极有可能会超过 32 位的物理极限)
+    uint64 ticks_64 = (uint64)(((__uint128_t)delay_ns * ce->ns_to_dev_mult
+                                + ce->ns_to_dev_mask) >> ce->ns_to_dev_shift);
 
-    // 4. 🌟 硬件语义防坑保底
-    // 根据 Intel SDM，向 APIC_INITIAL_COUNT 写入 0 的物理语义是【停表(Disarm)】！
-    // 如果算出来的 ticks 是 0，不但不会立刻触发中断，反而会把闹钟彻底关掉，
-    // 导致这颗 CPU 核心当场永久死锁。所以底线必须是 1。
-    if (__builtin_expect(ticks == 0, 0)) {
-        ticks = 1;
+    uint32 final_ticks;
+
+    // 4. 🌟 终极硬件怪癖防御矩阵 (防溢出 + 防死锁)
+    if (ticks_64 > 0xFFFFFFFFULL) {
+        // 💥 防溢出拦截 (Clamping)
+        // 目标太远，超出了 APIC 的 32 位物理极限！
+        // 把发条上到最满 (4.29 秒)，让硬件先睡到极限。
+        // 中断触发后，外层的 timer_interrupt_handler 发现还没到目标时间，会继续接力重装！
+        final_ticks = 0xFFFFFFFF;
+    } else if (__builtin_expect(ticks_64 == 0, 0)) {
+        // 💥 防死锁拦截 (Disarm Protection)
+        // 根据 Intel SDM，向 APIC_INITIAL_COUNT 写入 0 的物理语义是【停表】！
+        // 绝对不能写入 0，底线必须是 1，否则 CPU 永久丢失这个闹钟。
+        final_ticks = 1;
+    } else {
+        // 正常范围，安全强转为 32 位
+        final_ticks = (uint32)ticks_64;
     }
 
     // 5. 轰入倒数寄存器，开始相对倒计时
-    asm_wrmsr(APIC_INITIAL_COUNT_MSR, ticks);
+    // 即使是 x2APIC 的 MSR，APIC_INITIAL_COUNT 在架构上也只认低 32 位
+    asm_wrmsr(APIC_INITIAL_COUNT_MSR, final_ticks);
 }
-
 
 // =========================================================================
 // 1. 初始化当前 CPU 核心的 TSC-Deadline 硬件
