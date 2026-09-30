@@ -1,4 +1,6 @@
 #include "hpet.h"
+
+#include "../x64/interrupt.h"
 #include "printk.h"
 #include "../x64/cpu.h"
 
@@ -149,4 +151,27 @@ void hpet_ce_set_next_event(clockevent_t *ce, uint64 target_ns, uint64 now_ns) {
 uint64 hpet_cs_read(clocksource_t *cs) {
     hpet_device_t *dev = cs->priv;
     return dev->hw_regs->main_counter;
+}
+
+// =========================================================================
+// HPET 硬件中断处理函数 (ISR)
+// =========================================================================
+int32 hpet_interrupt_handler(cpu_registers_t *regs,void *dev_id) {
+    hpet_device_t *dev = dev_id;
+    hpet_timer_t *timer = &dev->hpet_timers[0];
+
+    // 1. 清除硬件的中断挂起标志位 (ACK IRQ)
+    // ...
+
+    spin_lock(&timer->lock);
+
+    // 🌟 写入时机三：闹钟已经响了，历史使命完成！
+    // 必须立刻将影子缓存重置为“无穷大”，给下一个新闹钟让路！
+    timer->programmed_ns = 0xFFFFFFFFFFFFFFFFULL;
+
+    spin_unlock(&timer->lock);
+
+    // 2. 通知操作系统的 time_core 去处理唤醒任务并设置下一个新闹钟
+    // 此时 time_core 会再次调用 hpet_ce_set_next_event。
+    // 因为 programmed_ns 已经是无穷大了，新闹钟绝对能成功写入 MMIO！
 }

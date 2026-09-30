@@ -78,5 +78,7 @@ uint64 get_uptime_ns(void);
 
 boolean time_ns_to_cycles(uint64 target_ns, clocksource_id_e required_cs_id, uint64 *out_target_cycles);
 
+void sleep_ns(uint64 delay_ns);
+
 //时间系统初始化
 void time_core_init(void);
