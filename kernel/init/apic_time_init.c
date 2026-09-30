@@ -1,3 +1,4 @@
+#include "printk.h"
 #include "../x64/cpu.h"
 #include "../x64/msr.h"
 #include "../x64/apic_time.h"
@@ -112,6 +113,7 @@ void apic_time_init() {
     apic_oneshot_ce.set_next_delay_ns = apic_oneshot_set_next;
     apic_oneshot_ce.priv = &apic_timer_ctx;
     clockevent_register(&apic_oneshot_ce);
+
 
     //tsc-deadline定时器注册
     if (cpu_has_tsc_deadline()) {

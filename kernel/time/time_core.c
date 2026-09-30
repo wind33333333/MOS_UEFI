@@ -57,6 +57,7 @@ boolean clocksource_switch(clocksource_t *new_cs) {
     g_timekeeper.seq++;
 
     local_irq_restore(flags);
+    PR_INFO("System Switch Clock:%s\n",new_cs->name);
     return TRUE;
 }
 
@@ -88,12 +89,22 @@ static void calc_mult_shift(uint64 from_hz,uint64 to_hz,uint64 *out_mult,uint32 
     *out_shift = shift;
 }
 
+// 驱动调用此函数主动注册定时器
+void clockevent_register(clockevent_t *ce) {
+    calc_mult_shift(1000000000ULL, ce->freq_hz,
+                    &ce->ns_to_dev_mult, &ce->ns_to_dev_shift, TRUE);
+    ce->ns_to_dev_mask = (1ULL << ce->ns_to_dev_shift) - 1;
+    g_ce_list[g_ce_count++] = ce;
+    PR_OK("%s Timer freq:%ldhz register success.\n",ce->name,ce->freq_hz);
+}
 
 // 驱动调用此函数主动注册时钟源
 void clocksource_register(clocksource_t *cs) {
     // 子系统统一为其预计算定点数 mult 和 shift
     calc_mult_shift(cs->freq_hz, 1000000000ULL, &cs->mult, &cs->shift, FALSE);
     g_cs_list[g_cs_count++] = cs;
+
+    PR_OK("%s Clock freq:%ldhz register success.\n",cs->name,cs->freq_hz);
 
     // 若当前无时钟源，或新注册的驱动评分更高，自动无缝热切换！
     if (g_timekeeper.active_cs == NULL || cs->rating > g_timekeeper.active_cs->rating) {
@@ -172,13 +183,6 @@ uint64 timekeeping_measure_freq_hz(uint64 (*target_read)(void), boolean is_down_
     return asm_mul_div64(delta_tgt, ref_cs->freq_hz, delta_ref);
 }
 
-// 驱动调用此函数主动注册定时器
-void clockevent_register(clockevent_t *ce) {
-    calc_mult_shift(1000000000ULL, ce->freq_hz,
-                    &ce->ns_to_dev_mult, &ce->ns_to_dev_shift, TRUE);
-    ce->ns_to_dev_mask = (1ULL << ce->ns_to_dev_shift) - 1;
-    g_ce_list[g_ce_count++] = ce;
-}
 
 // =========================================================================
 // 3. 获取系统单调运行时间 (纳秒) —— 直接通过局部快照 cs 访问静态属性
@@ -258,6 +262,7 @@ boolean clockevent_switch_this_cpu(clockevent_t *new_ce) {
     new_ce->set_next_delay_ns(new_ce, delay_ns);
 
     local_irq_restore(flags);
+    PR_INFO("Coer:%d Switch Timer:%s\n",core->logical_id,new_ce->name);
     return TRUE;
 }
 

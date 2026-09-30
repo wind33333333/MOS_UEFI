@@ -39,7 +39,7 @@ void hpet_init(void) {
         hpet_dev.hpet_timers[i].supports_64bit = (timer_cap & (1 << 5)) != 0;
         hpet_dev.hpet_timers[i].allowed_irq_bitmap = (timer_cap >> 32) & 0xFFFFFFFF;
     }
-    PR_INFO("HPET Frequency: %dHz  TimerNum:%d PA:%#lx VA:%#lx \n",hpet_dev.freq_hz,hpet_dev.num_timers,hpet_dev.phys_base_addr,hpet_dev.hw_regs);
+    PR_OK("HPET TimerNum:%d PA:%#lx VA:%#lx \n",hpet_dev.num_timers,hpet_dev.phys_base_addr,hpet_dev.hw_regs);
 
     // 4. 停止 HPET，清零主计数器，然后启动！
     hpet_dev.hw_regs->general_config = 0;  // 暂停
@@ -55,8 +55,6 @@ void hpet_init(void) {
     hpet_cs.read = hpet_cs_read;
     hpet_cs.priv = &hpet_dev;
     clocksource_register(&hpet_cs);
-    PR_INFO("HPET Clock register success\n");
-
 
     //6.注册hpet定时器
     hpet_ce0.name = "hpet0";
@@ -67,5 +65,4 @@ void hpet_init(void) {
     hpet_ce0.set_next_delay_ns = hpet_ce_set_next_delay_ns;
     hpet_ce0.priv = &hpet_dev;
     clockevent_register(&hpet_ce0);
-    PR_INFO("HPET0 Timer register success\n");
 }
