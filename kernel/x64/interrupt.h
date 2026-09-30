@@ -60,14 +60,11 @@ typedef struct {
 typedef void (*exception_handler_t)(cpu_registers_t *regs);
 
 // 3. 独占式 (MSI/MSI-X) 中断路由表数据结构
-typedef enum:int8 {
-    IRQ_NONE        = 0, // 硬件没数据，虚假唤醒
-    IRQ_HANDLED     = 1, // 已成功处理
-    IRQ_WAKE_THREAD = 2  // 留给未来的底半部唤醒标志
-} irqreturn_e;
-
+#define IRQ_NONE        0 // 硬件没数据，虚假唤醒
+#define IRQ_HANDLED     1 // 已成功处理
+#define IRQ_WAKE_THREAD 2  // 留给未来的底半部唤醒标志
 //cpu中断函数签名
-typedef irqreturn_e (*irq_handler_f)(cpu_registers_t *regs, void *dev_id);
+typedef int32 (*irq_handler_f)(cpu_registers_t *regs, void *dev_id);
 
 // 定义中断向量的 3 种核心生命周期状态
 typedef enum:int8 {

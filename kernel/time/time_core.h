@@ -42,8 +42,7 @@ boolean clocksource_switch_by_name(const char *name);
 uint64  clocksource_get_active_freq(void);
 
 void    clockevent_register(clockevent_t *ce);
-boolean clockevent_switch_this_cpu(clockevent_t *new_ce);
-boolean clockevent_switch_this_cpu_by_name(const char *name);
+boolean clockevent_switch_by_name(const char *name);
 void    clockevent_init_per_cpu(void);
 
 // 🌟 核心子系统提供的通用抗 NMI/SMI 测频服务：

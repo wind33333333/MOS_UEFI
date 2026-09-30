@@ -322,7 +322,7 @@ static inline void xhci_process_single_event(xhci_hcd_t *xhcd, xhci_trb_t *trb) 
 
 
 //xhci中断服务函数
-irqreturn_e xhci_isr(cpu_registers_t *regs,void *dev_id) {
+int32 xhci_isr(cpu_registers_t *regs,void *dev_id) {
     pcie_dev_t *xdev = dev_id;
     xhci_hcd_t *xhcd = xdev->priv_data;
 

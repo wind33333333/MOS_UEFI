@@ -237,7 +237,7 @@ void sleep_ns(uint64 delay_ns) {
 // =========================================================================
 // 3. 运行时动态切换当前 CPU 核心的硬件定时器 (不断档交接闹钟！)
 // =========================================================================
-boolean clockevent_switch_this_cpu(clockevent_t *new_ce) {
+boolean clockevent_switch(clockevent_t *new_ce) {
     cpu_core_t *core = &cpu_cores[THIS_CPU->logical_id];
     if (new_ce == NULL || new_ce == core->active_ce) {
         return FALSE;
@@ -275,13 +275,20 @@ void clockevent_init_per_cpu(void) {
         }
     }
     THIS_CPU->next_deadline_ns = get_uptime_ns() + 1000000ULL;
-    clockevent_switch_this_cpu(best);
+    clockevent_switch(best);
 }
+
+uint64 s=0;
+int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
+    sleep_ns(1000000000UL);
+    color_printk(ORANGE,BLACK,"%lds ",s++);
+}
+
 
 void time_core_init(void) {
     // 1. 子系统统一申请，终生不释放
     g_sys_timer_vector = alloc_irq();
 
     // 2. 注册统一的中断处理入口
-    register_isr(g_sys_timer_vector, NULL,NULL,"sys-timer-irq");
+    register_isr(g_sys_timer_vector, timer_irq_handler,NULL,"sys-timer-irq");
 }

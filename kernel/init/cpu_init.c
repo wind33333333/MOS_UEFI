@@ -354,6 +354,7 @@ void cpu_load_resource(void){
     idtr.base = &idt;
     asm_lidt(&idtr);
 
+    //设置核心定时器
     clockevent_init_per_cpu();
 
     get_cpu_info();                                         //获取cpu信息
