@@ -11,7 +11,7 @@ extern hpet_device_t hpet_dev;
 uint64 hpet_cs_read(clocksource_t *cs);
 void hpet_ce_init_hw(clockevent_t *ce);
 void hpet_ce_stop_hw(clockevent_t *ce);
-void hpet_ce_set_next_delay_ns(clockevent_t *ce, uint64 delay_ns);
+void hpet_ce_set_next_event_ns(clockevent_t *ce, uint64 delay_ns);
 
 void hpet_init(void) {
     //hpet初始化
@@ -62,7 +62,7 @@ void hpet_init(void) {
     hpet_ce0.freq_hz = hpet_dev.freq_hz;
     hpet_ce0.init_hw = hpet_ce_init_hw;
     hpet_ce0.stop_hw = hpet_ce_stop_hw;
-    hpet_ce0.set_next_delay_ns = hpet_ce_set_next_delay_ns;
+    hpet_ce0.set_next_event = hpet_ce_set_next_event_ns;
     hpet_ce0.priv = &hpet_dev;
     clockevent_register(&hpet_ce0);
 }

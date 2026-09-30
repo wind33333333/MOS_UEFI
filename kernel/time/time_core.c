@@ -4,14 +4,7 @@
 #include "printk.h"
 #include "../x64/cpu.h"
 
-typedef struct {
-    volatile uint32 seq;
-    uint64          base_ns;
-    uint64          cycle_last;
-    clocksource_t  *active_cs;
-}timekeeper_t;
-
-static timekeeper_t   g_timekeeper;
+timekeeper_t   g_timekeeper;
 static clocksource_t *g_cs_list[8];
 static uint32         g_cs_count = 0;
 
@@ -29,7 +22,7 @@ static inline uint64 cs_read_cycles(clocksource_t *cs) {
 // =========================================================================
 // 获取系统单调运行时间 (纳秒) —— 直接通过局部快照 cs 访问静态属性
 // =========================================================================
-static uint64 get_uptime_ns(void) {
+uint64 get_uptime_ns(void) {
     uint32 seq;
     uint64 base, last, now_cycles;
     clocksource_t *cs;
@@ -47,6 +40,42 @@ static uint64 get_uptime_ns(void) {
     uint64 delta_ns     = (uint64)(((__uint128_t)delta_cycles * cs->mult) >> cs->shift);
 
     return base + delta_ns;
+}
+
+// =========================================================================
+// time_core.c : 泛化的绝对时间逆推引擎
+// =========================================================================
+boolean time_core_try_abs_ns_to_cycles(uint64 target_ns, uint32 required_cs_id, uint64 *out_target_cycles) {
+    uint32 seq;
+    uint64 base_ns, last_cycles;
+    clocksource_t *cs;
+
+    do {
+        seq = g_timekeeper.seq;
+        base_ns = g_timekeeper.base_ns;
+        last_cycles = g_timekeeper.cycle_last;
+        cs = g_timekeeper.active_cs;
+    } while (__builtin_expect((seq & 1U) || (g_timekeeper.seq != seq), 0));
+
+    // 🌟 异构系统拦截：如果全局时钟源不是你这个驱动期望的硬件，拒绝转换！
+    if (cs->id != required_cs_id) {
+        return FALSE;
+    }
+
+    // --- 同构系统纯数学魔法 ---
+    if (__builtin_expect(target_ns <= base_ns, 0)) {
+        *out_target_cycles = last_cycles;
+        return TRUE;
+    }
+
+    uint64 delta_ns = target_ns - base_ns;
+
+    // 逆向公式：这里用的 cs->shift 和 cs->mult
+    // 会自动适配当前激活的是 TSC 的参数，还是 HPET 的参数！
+    uint64 delta_cycles = (uint64)(((__uint128_t)delta_ns << cs->shift) / cs->mult);
+
+    *out_target_cycles = last_cycles + delta_cycles;
+    return TRUE;
 }
 
 // =========================================================================
@@ -156,7 +185,7 @@ boolean clockevent_switch(clockevent_t *new_ce) {
     //    哪怕在睡眠中途切换定时器，任务依然会在原定的纳秒时刻准时醒来！
     uint64 now_ns = get_uptime_ns();
     uint64 delay_ns = (core->next_deadline_ns > now_ns) ? (core->next_deadline_ns - now_ns) : 1000ULL;
-    new_ce->set_next_delay_ns(new_ce, delay_ns);
+    new_ce->set_next_event(new_ce, delay_ns);
 
     local_irq_restore(flags);
     PR_INFO("Coer:%d Switch Timer:%s\n",core->logical_id,new_ce->name);
@@ -172,31 +201,16 @@ void clockevent_register(clockevent_t *ce) {
     PR_OK("%s Timer freq:%ldhz register success.\n",ce->name,ce->freq_hz);
 }
 
-// 核心层通知闹钟：请你在这个绝对纳秒时刻叫醒我！
-static inline  void reprogram_clockevent(void) {
-    uint64 now_ns = get_uptime_ns();
+static inline void reprogram_clockevent(uint64 now_ns) {
     uint64 target_ns = THIS_CPU->next_deadline_ns;
-
-    // 算出还需要等待的 纳秒(ns) 差值
-    uint64 delay_ns = (target_ns > now_ns) ? (target_ns - now_ns) : 1000ULL;
-
-    // 交给当前激活的定时器驱动
-    clockevent_t *ce = THIS_CPU->active_ce;
-    ce->set_next_delay_ns(ce, delay_ns);
+    // 🌟 上层把 now_ns 传给底层驱动，底层就不用自己去读了
+    THIS_CPU->active_ce->set_next_event_ns(THIS_CPU->active_ce, target_ns, now_ns);
 }
 
 void sleep_ns(uint64 delay_ns) {
-    // 1. 获取现在的绝对纳秒数
     uint64 now_ns = get_uptime_ns();
-
-    // 2. 加上你要睡的纳秒数，得到闹钟响起的“绝对纳秒目标点”
-    uint64 target_deadline_ns = now_ns + delay_ns;
-
-    // 3. 把这个纳秒目标点登记到当前 CPU 核心的账本里
-    THIS_CPU->next_deadline_ns = target_deadline_ns;
-
-    // 4. 通知底层硬件定时器去装填闹钟...
-    reprogram_clockevent();
+    THIS_CPU->next_deadline_ns = now_ns + delay_ns;
+    reprogram_clockevent(now_ns);
 }
 
 

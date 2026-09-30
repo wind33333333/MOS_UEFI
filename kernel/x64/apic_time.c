@@ -45,19 +45,42 @@ void apic_oneshot_stop_hw(clockevent_t *ce) {
     asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_LVT_MASKED);
 }
 
-void apic_oneshot_set_next(clockevent_t *ce, uint64 delay_ns) {
+// =========================================================================
+// APIC One-Shot 驱动底层实现 (相对时间硬件的终极抗抖动形态)
+// =========================================================================
+void apic_oneshot_set_next(clockevent_t *ce, uint64 target_ns, uint64 now_ns) {
+    // 1. 🌟 核心防御：无视旧快照，强制二次读取 (Double Fetch)！
+    // 既然我是相对倒数硬件，我就必须用最新鲜的时间来算差值。
+    // 这次读取紧贴着下方的 asm_wrmsr，把被 NMI 偷袭的物理窗口压缩到了几纳秒。
+    uint64 fresh_now_ns = get_uptime_ns();
 
-    // 🌟 核心逆向换算：把通用的纳秒，折算成 APIC Timer 自己的原始 Tick 数！
-    // 比如 delay_ns = 5,000,000 (5毫秒)
-    // 经过 APIC 自己专属的 mult 和 shift 换算，变成了 31,250 个 APIC Tick
-    uint64 apic_ticks = (uint64)(((__uint128_t)delay_ns * ce->ns_to_dev_mult
-                                  + ce->ns_to_dev_mask) >> ce->ns_to_dev_shift);
+    uint64 delay_ns;
 
-    if (apic_ticks == 0) apic_ticks = 1;
-    if (apic_ticks > 0xFFFFFFFFULL) apic_ticks = 0xFFFFFFFFULL;
+    // 2. 截止时间校验与补偿
+    if (__builtin_expect(target_ns > fresh_now_ns, 1)) {
+        // 正常情况：目标时间还在未来，算出被极度压缩、最新鲜的相对差值
+        delay_ns = target_ns - fresh_now_ns;
+    } else {
+        // 💥 异常情况：刚才的二次读取发现，因为各种中断耽误，现在已经【迟到】了！
+        // 此时绝不能发生下溢出产生天文数字。直接给一个极小的补偿延时（如 1000 纳秒），
+        // 让硬件在接下来的极短时间内立刻“补一枪”中断，将任务拉起。
+        delay_ns = 1000ULL;
+    }
 
-    // 最后把这 31,250 个原始 Tick 写入 APIC 硬件计数器！
-    asm_wrmsr(APIC_INITIAL_COUNT_MSR, (uint32)apic_ticks);
+    // 3. 将通用的纳秒差值 (delay_ns) 换算为 APIC 定时器专属的硬件倒数 Tick 刻度
+    uint64 ticks = (uint64)(((__uint128_t)delay_ns * ce->ns_to_dev_mult
+                             + ce->ns_to_dev_mask) >> ce->ns_to_dev_shift);
+
+    // 4. 🌟 硬件语义防坑保底
+    // 根据 Intel SDM，向 APIC_INITIAL_COUNT 写入 0 的物理语义是【停表(Disarm)】！
+    // 如果算出来的 ticks 是 0，不但不会立刻触发中断，反而会把闹钟彻底关掉，
+    // 导致这颗 CPU 核心当场永久死锁。所以底线必须是 1。
+    if (__builtin_expect(ticks == 0, 0)) {
+        ticks = 1;
+    }
+
+    // 5. 轰入倒数寄存器，开始相对倒计时
+    asm_wrmsr(APIC_INITIAL_COUNT_MSR, ticks);
 }
 
 
@@ -87,28 +110,30 @@ void tsc_deadline_stop_hw(clockevent_t *ce) {
     asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_LVT_MASKED);
 }
 
-// =========================================================================
-// 3. 设置下一次唤醒时间 (最极简、最安全的定闹钟逻辑)
-// =========================================================================
-void tsc_deadline_set_next_delay_ns(clockevent_t *ce, uint64 delay_ns) {
-    // 1. 将通用的纳秒 (ns) 换算成 TSC 的 Tick 周期数
-    //    由于 TSC-Deadline 的频率就是 CPU TSC 的频率，所以直接用预计算好的多项式转换
-    uint64 delay_tsc = (uint64)(((__uint128_t)delay_ns * ce->ns_to_dev_mult
-                                 + ce->ns_to_dev_mask) >> ce->ns_to_dev_shift);
+static void tsc_deadline_set_next(clockevent_t *ce, uint64 target_ns, uint64 now_ns) {
+    uint64 target_tsc;
 
-    // 至少等待 1 个时钟周期，防止 0 引起硬件停表 (0 的语义是 Disarm)
-    if (delay_tsc == 0) {
-        delay_tsc = 1;
+    // 1. 尝试使用极致性能的纯数学逆推 (前提: Clocksource 也是 TSC)
+    if (time_core_try_abs_ns_to_cycles(target_ns, &target_tsc)) {
+        // 完美推导成功，一击入魂！没有任何 NMI 缝隙！
+        asm_wrmsr(TSC_DEADLINE_MSR, target_tsc);
+        return;
     }
 
-    // 2. 🌟 绝对时间装填：当前 TSC 快照 + 等待的 TSC ticks
-    uint64 now_tsc = asm_rdtscp();
-    uint64 target_tsc = now_tsc + delay_tsc;
+    // 2. 🌟 降级妥协 (Fallback)
+    // 走到这里说明系统正在用 HPET/PIT 等作为时钟源。
+    // 我们必须老老实实算差值，并读取当前的硬件 TSC 快照。
 
-    // 3. 写入目标寄存器
-    // 【硬件兜底神技】：如果你算完 target_tsc 后，进程被耽误了 1 微秒，
-    // 导致当前真实的 TSC 已经超过了 target_tsc，再执行下面这行 wrmsr 会发生什么？
-    // 答案是：硬件检测到 (current_tsc >= target_tsc)，会【立刻产生中断】，绝不死锁！
+    // 算出还要等多久 (纳秒)
+    uint64 delay_ns = (target_ns > now_ns) ? (target_ns - now_ns) : 1000ULL;
+
+    // 这里的 ns_to_dev_mult 属于 clockevent_t，是开机时专为 TSC 频率校准的
+    uint64 delay_tsc = (uint64)(((__uint128_t)delay_ns * ce->ns_to_dev_mult
+                                 + ce->ns_to_dev_mask) >> ce->ns_to_dev_shift);
+    if (delay_tsc == 0) delay_tsc = 1;
+
+    // 被迫在写入前读取一次当前 TSC (这里会存在微小的 NMI 缝隙)
+    target_tsc = asm_rdtscp() + delay_tsc;
+
     asm_wrmsr(TSC_DEADLINE_MSR, target_tsc);
 }
-

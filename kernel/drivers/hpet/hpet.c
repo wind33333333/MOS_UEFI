@@ -69,7 +69,7 @@ void hpet_ce_stop_hw(clockevent_t *ce) {
 // =========================================================================
 // 3. 设置下一次唤醒时间 (含无锁快筛与硬件防死锁回读)
 // =========================================================================
-void hpet_ce_set_next_delay_ns(clockevent_t *ce, uint64 delay_ns) {
+void hpet_ce_set_next_event_ns(clockevent_t *ce, uint64 delay_ns) {
     hpet_device_t *dev = (hpet_device_t *)ce->priv;
     hpet_timer_t *timer = &dev->hpet_timers[0];
 
