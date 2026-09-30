@@ -110,7 +110,7 @@ void tsc_deadline_stop_hw(clockevent_t *ce) {
     asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_LVT_MASKED);
 }
 
-static void tsc_deadline_set_next(clockevent_t *ce, uint64 target_ns, uint64 now_ns) {
+void tsc_deadline_set_next(clockevent_t *ce, uint64 target_ns, uint64 now_ns) {
     uint64 target_tsc;
 
     // 1. 尝试使用极致性能的纯数学逆推 (前提: Clocksource 也是 TSC)
