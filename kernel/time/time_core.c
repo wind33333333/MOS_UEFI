@@ -26,7 +26,58 @@ static inline uint64 cs_read_cycles(clocksource_t *cs) {
     return (cs->is_tsc == TRUE) ? asm_rdtscp() : cs->read(cs);
 }
 
-boolean clocksource_switch(clocksource_t *new_cs) {
+// =========================================================================
+// 获取系统单调运行时间 (纳秒) —— 直接通过局部快照 cs 访问静态属性
+// =========================================================================
+static uint64 get_uptime_ns(void) {
+    uint32 seq;
+    uint64 base, last, now_cycles;
+    clocksource_t *cs;
+
+    do {
+        seq = g_timekeeper.seq;
+        base = g_timekeeper.base_ns;
+        last = g_timekeeper.cycle_last;
+        cs   = g_timekeeper.active_cs;
+        now_cycles = cs_read_cycles(cs);
+    } while (__builtin_expect((seq & 1U) || (g_timekeeper.seq != seq), 0));
+
+    // 循环退出后，cs 指针已确保与 base、last 严格对应，直接解引用 cs 的只读常数即可！
+    uint64 delta_cycles = (now_cycles - last) & cs->mask;
+    uint64 delta_ns     = (uint64)(((__uint128_t)delta_cycles * cs->mult) >> cs->shift);
+
+    return base + delta_ns;
+}
+
+// =========================================================================
+// 通用定点数参数计算器 (仅在开机时调用，自动寻找精度最高的 mult 和 shift)
+// =========================================================================
+static void calc_mult_shift(uint64 from_hz,uint64 to_hz,uint64 *out_mult,uint32 *out_shift,boolean round_up) {
+    uint32 shift = 62;
+    uint64 mult = 0;
+
+    // 从高到低搜索最大的 shift，使 mult 恰好落入 32 位上限 (<= 0xFFFFFFFF)
+    while (shift > 0) {
+        // 防溢出检查：确保 (to_hz << shift) 的高 64 位严格小于除数 from_hz
+        if ((to_hz >> (64 - shift)) < from_hz) {
+            if (round_up) {
+                mult = asm_mul_div64_ceil(to_hz, 1ULL << shift, from_hz);
+            } else {
+                mult = asm_mul_div64(to_hz, 1ULL << shift, from_hz);
+            }
+
+            if (mult <= 0xFFFFFFFFULL && mult > 0) {
+                break;
+            }
+        }
+        shift--;
+    }
+
+    *out_mult = mult;
+    *out_shift = shift;
+}
+
+static boolean clocksource_switch(clocksource_t *new_cs) {
     if (new_cs == NULL || new_cs == g_timekeeper.active_cs) {
         return FALSE;
     }
@@ -61,43 +112,6 @@ boolean clocksource_switch(clocksource_t *new_cs) {
     return TRUE;
 }
 
-// =========================================================================
-// 通用定点数参数计算器 (仅在开机时调用，自动寻找精度最高的 mult 和 shift)
-// =========================================================================
-static void calc_mult_shift(uint64 from_hz,uint64 to_hz,uint64 *out_mult,uint32 *out_shift,boolean round_up) {
-    uint32 shift = 62;
-    uint64 mult = 0;
-
-    // 从高到低搜索最大的 shift，使 mult 恰好落入 32 位上限 (<= 0xFFFFFFFF)
-    while (shift > 0) {
-        // 防溢出检查：确保 (to_hz << shift) 的高 64 位严格小于除数 from_hz
-        if ((to_hz >> (64 - shift)) < from_hz) {
-            if (round_up) {
-                mult = asm_mul_div64_ceil(to_hz, 1ULL << shift, from_hz);
-            } else {
-                mult = asm_mul_div64(to_hz, 1ULL << shift, from_hz);
-            }
-
-            if (mult <= 0xFFFFFFFFULL && mult > 0) {
-                break;
-            }
-        }
-        shift--;
-    }
-
-    *out_mult = mult;
-    *out_shift = shift;
-}
-
-// 驱动调用此函数主动注册定时器
-void clockevent_register(clockevent_t *ce) {
-    calc_mult_shift(1000000000ULL, ce->freq_hz,
-                    &ce->ns_to_dev_mult, &ce->ns_to_dev_shift, TRUE);
-    ce->ns_to_dev_mask = (1ULL << ce->ns_to_dev_shift) - 1;
-    g_ce_list[g_ce_count++] = ce;
-    PR_OK("%s Timer freq:%ldhz register success.\n",ce->name,ce->freq_hz);
-}
-
 // 驱动调用此函数主动注册时钟源
 void clocksource_register(clocksource_t *cs) {
     // 子系统统一为其预计算定点数 mult 和 shift
@@ -115,6 +129,76 @@ void clocksource_register(clocksource_t *cs) {
 uint64 clocksource_get_active_freq(void) {
     return (g_timekeeper.active_cs != NULL) ? g_timekeeper.active_cs->freq_hz : 0;
 }
+
+
+// =========================================================================
+// 3. 运行时动态切换当前 CPU 核心的硬件定时器 (不断档交接闹钟！)
+// =========================================================================
+boolean clockevent_switch(clockevent_t *new_ce) {
+    cpu_core_t *core = &cpu_cores[THIS_CPU->logical_id];
+    if (new_ce == NULL || new_ce == core->active_ce) {
+        return FALSE;
+    }
+
+    uint64 flags;
+    local_irq_save(&flags);
+
+    // 1. 先关停旧定时器的硬件计数器与中断掩码，防止切完后产生幽灵中断
+    if (core->active_ce != NULL) {
+        core->active_ce->stop_hw(core->active_ce);
+    }
+
+    // 2. 切换指针并初始化新定时器的硬件寄存器
+    core->active_ce = new_ce;
+    new_ce->init_hw(new_ce);
+
+    // 3. 🌟 立即将当前核心正在等待的 next_deadline_ns 重新装填进新定时器！
+    //    哪怕在睡眠中途切换定时器，任务依然会在原定的纳秒时刻准时醒来！
+    uint64 now_ns = get_uptime_ns();
+    uint64 delay_ns = (core->next_deadline_ns > now_ns) ? (core->next_deadline_ns - now_ns) : 1000ULL;
+    new_ce->set_next_delay_ns(new_ce, delay_ns);
+
+    local_irq_restore(flags);
+    PR_INFO("Coer:%d Switch Timer:%s\n",core->logical_id,new_ce->name);
+    return TRUE;
+}
+
+// 驱动调用此函数主动注册定时器
+void clockevent_register(clockevent_t *ce) {
+    calc_mult_shift(1000000000ULL, ce->freq_hz,
+                    &ce->ns_to_dev_mult, &ce->ns_to_dev_shift, TRUE);
+    ce->ns_to_dev_mask = (1ULL << ce->ns_to_dev_shift) - 1;
+    g_ce_list[g_ce_count++] = ce;
+    PR_OK("%s Timer freq:%ldhz register success.\n",ce->name,ce->freq_hz);
+}
+
+// 核心层通知闹钟：请你在这个绝对纳秒时刻叫醒我！
+static inline  void reprogram_clockevent(void) {
+    uint64 now_ns = get_uptime_ns();
+    uint64 target_ns = THIS_CPU->next_deadline_ns;
+
+    // 算出还需要等待的 纳秒(ns) 差值
+    uint64 delay_ns = (target_ns > now_ns) ? (target_ns - now_ns) : 1000ULL;
+
+    // 交给当前激活的定时器驱动
+    clockevent_t *ce = THIS_CPU->active_ce;
+    ce->set_next_delay_ns(ce, delay_ns);
+}
+
+void sleep_ns(uint64 delay_ns) {
+    // 1. 获取现在的绝对纳秒数
+    uint64 now_ns = get_uptime_ns();
+
+    // 2. 加上你要睡的纳秒数，得到闹钟响起的“绝对纳秒目标点”
+    uint64 target_deadline_ns = now_ns + delay_ns;
+
+    // 3. 把这个纳秒目标点登记到当前 CPU 核心的账本里
+    THIS_CPU->next_deadline_ns = target_deadline_ns;
+
+    // 4. 通知底层硬件定时器去装填闹钟...
+    reprogram_clockevent();
+}
+
 
 // =========================================================================
 // 🌟 子系统通用标尺服务：利用当前已激活的 active_cs，为任何未知频率的硬件测算频率
@@ -183,88 +267,6 @@ uint64 timekeeping_measure_freq_hz(uint64 (*target_read)(void), boolean is_down_
     return asm_mul_div64(delta_tgt, ref_cs->freq_hz, delta_ref);
 }
 
-
-// =========================================================================
-// 3. 获取系统单调运行时间 (纳秒) —— 直接通过局部快照 cs 访问静态属性
-// =========================================================================
-static uint64 get_uptime_ns(void) {
-    uint32 seq;
-    uint64 base, last, now_cycles;
-    clocksource_t *cs;
-
-    do {
-        seq = g_timekeeper.seq;
-        base = g_timekeeper.base_ns;
-        last = g_timekeeper.cycle_last;
-        cs   = g_timekeeper.active_cs;
-        now_cycles = cs_read_cycles(cs);
-    } while (__builtin_expect((seq & 1U) || (g_timekeeper.seq != seq), 0));
-
-    // 循环退出后，cs 指针已确保与 base、last 严格对应，直接解引用 cs 的只读常数即可！
-    uint64 delta_cycles = (now_cycles - last) & cs->mask;
-    uint64 delta_ns     = (uint64)(((__uint128_t)delta_cycles * cs->mult) >> cs->shift);
-
-    return base + delta_ns;
-}
-
-// 核心层通知闹钟：请你在这个绝对纳秒时刻叫醒我！
-void reprogram_clockevent(void) {
-    uint64 now_ns = get_uptime_ns();
-    uint64 target_ns = THIS_CPU->next_deadline_ns;
-
-    // 算出还需要等待的 纳秒(ns) 差值
-    uint64 delay_ns = (target_ns > now_ns) ? (target_ns - now_ns) : 1000ULL;
-
-    // 交给当前激活的定时器驱动
-    clockevent_t *ce = THIS_CPU->active_ce;
-    ce->set_next_delay_ns(ce, delay_ns);
-}
-
-void sleep_ns(uint64 delay_ns) {
-    // 1. 获取现在的绝对纳秒数
-    uint64 now_ns = get_uptime_ns();
-
-    // 2. 加上你要睡的纳秒数，得到闹钟响起的“绝对纳秒目标点”
-    uint64 target_deadline_ns = now_ns + delay_ns;
-
-    // 3. 把这个纳秒目标点登记到当前 CPU 核心的账本里
-    THIS_CPU->next_deadline_ns = target_deadline_ns;
-
-    // 4. 通知底层硬件定时器去装填闹钟...
-    reprogram_clockevent();
-}
-
-// =========================================================================
-// 3. 运行时动态切换当前 CPU 核心的硬件定时器 (不断档交接闹钟！)
-// =========================================================================
-boolean clockevent_switch(clockevent_t *new_ce) {
-    cpu_core_t *core = &cpu_cores[THIS_CPU->logical_id];
-    if (new_ce == NULL || new_ce == core->active_ce) {
-        return FALSE;
-    }
-
-    uint64 flags;
-    local_irq_save(&flags);
-
-    // 1. 先关停旧定时器的硬件计数器与中断掩码，防止切完后产生幽灵中断
-    if (core->active_ce != NULL) {
-        core->active_ce->stop_hw(core->active_ce);
-    }
-
-    // 2. 切换指针并初始化新定时器的硬件寄存器
-    core->active_ce = new_ce;
-    new_ce->init_hw(new_ce);
-
-    // 3. 🌟 立即将当前核心正在等待的 next_deadline_ns 重新装填进新定时器！
-    //    哪怕在睡眠中途切换定时器，任务依然会在原定的纳秒时刻准时醒来！
-    uint64 now_ns = get_uptime_ns();
-    uint64 delay_ns = (core->next_deadline_ns > now_ns) ? (core->next_deadline_ns - now_ns) : 1000ULL;
-    new_ce->set_next_delay_ns(new_ce, delay_ns);
-
-    local_irq_restore(flags);
-    PR_INFO("Coer:%d Switch Timer:%s\n",core->logical_id,new_ce->name);
-    return TRUE;
-}
 
 // 每个 CPU 核心从已注册的定时器池中自动绑定评分最高的一个
 void clockevent_init_per_cpu(void) {
