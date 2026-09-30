@@ -45,7 +45,7 @@ uint64 get_uptime_ns(void) {
 // =========================================================================
 //泛化的绝对时间逆推引擎
 // =========================================================================
-boolean time_core_try_abs_ns_to_cycles(uint64 target_ns, clocksource_id_e required_cs_id, uint64 *out_target_cycles) {
+boolean time_ns_to_cycles(uint64 target_ns, clocksource_id_e required_cs_id, uint64 *out_target_cycles) {
     uint32 seq;
     uint64 base_ns, last_cycles;
     clocksource_t *cs;

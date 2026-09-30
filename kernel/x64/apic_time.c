@@ -114,7 +114,7 @@ void tsc_deadline_set_next(clockevent_t *ce, uint64 target_ns, uint64 now_ns) {
     uint64 target_tsc;
 
     // 1. 尝试使用极致性能的纯数学逆推 (前提: Clocksource 也是 TSC)
-    if (time_core_try_abs_ns_to_cycles(target_ns,CLOCKSOURCE_ID_TSC, &target_tsc)) {
+    if (time_ns_to_cycles(target_ns,CLOCKSOURCE_ID_TSC, &target_tsc)) {
         // 完美推导成功，一击入魂！没有任何 NMI 缝隙！
         asm_wrmsr(TSC_DEADLINE_MSR, target_tsc);
         return;

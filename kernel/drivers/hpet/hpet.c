@@ -100,7 +100,7 @@ void hpet_ce_set_next_event(clockevent_t *ce, uint64 target_ns, uint64 now_ns) {
         // =====================================================================
         // 🌟 第二道防线：架构级同构/异构分流 (Architecture Fallback)
         // =====================================================================
-        if (time_core_try_abs_ns_to_cycles(target_ns, CLOCKSOURCE_ID_HPET, &target_cycles)) {
+        if (time_ns_to_cycles(target_ns, CLOCKSOURCE_ID_HPET, &target_cycles)) {
             // [A. 同构路线]
             // 系统当前正好用 HPET 做时钟源！
             // 完美！核心层通过纯数学魔法直接算出了 HPET 的绝对目标比较刻度。
