@@ -33,12 +33,11 @@ uint64 get_uptime_ns(void) {
         last = g_timekeeper.cycle_last;
         cs   = g_timekeeper.active_cs;
         now_cycles = cs_read_cycles(cs);
-    } while (__builtin_expect((seq & 1U) || (g_timekeeper.seq != seq), 0));
+    } while ((seq & 1U) || (g_timekeeper.seq != seq));
 
     // 循环退出后，cs 指针已确保与 base、last 严格对应，直接解引用 cs 的只读常数即可！
     uint64 delta_cycles = (now_cycles - last) & cs->mask;
-    uint64 delta_ns     = (uint64)(((__uint128_t)delta_cycles * cs->mult) >> cs->shift);
-
+    uint64 delta_ns     = (uint64)(((__uint128_t)delta_cycles * cs->cycles_to_ns_mult) >> cs->cycles_to_ns_shift);
     return base + delta_ns;
 }
 
@@ -55,7 +54,7 @@ boolean time_ns_to_cycles(uint64 target_ns, clocksource_id_e required_cs_id, uin
         base_ns = g_timekeeper.base_ns;
         last_cycles = g_timekeeper.cycle_last;
         cs = g_timekeeper.active_cs;
-    } while (__builtin_expect((seq & 1U) || (g_timekeeper.seq != seq), 0));
+    } while ((seq & 1U) || (g_timekeeper.seq != seq));
 
     // 🌟 异构系统拦截：如果全局时钟源不是你这个驱动期望的硬件，拒绝转换！
     if (cs->id != required_cs_id) {
@@ -63,7 +62,7 @@ boolean time_ns_to_cycles(uint64 target_ns, clocksource_id_e required_cs_id, uin
     }
 
     // --- 同构系统纯数学魔法 ---
-    if (__builtin_expect(target_ns <= base_ns, 0)) {
+    if (target_ns <= base_ns) {
         *out_target_cycles = last_cycles;
         return TRUE;
     }
@@ -122,7 +121,7 @@ static boolean clocksource_switch(clocksource_t *new_cs) {
         uint64 old_now   = cs_read_cycles(old_cs);
         uint64 old_delta = (old_now - g_timekeeper.cycle_last) & old_cs->mask;
         current_ns = g_timekeeper.base_ns +
-                     (uint64)(((__uint128_t)old_delta * old_cs->mult) >> old_cs->shift);
+                     (uint64)(((__uint128_t)old_delta * old_cs->cycles_to_ns_mult) >> old_cs->cycles_to_ns_shift);
     }
 
     // 2. 采样新时钟源的起点计数值
@@ -146,7 +145,7 @@ static boolean clocksource_switch(clocksource_t *new_cs) {
 void clocksource_register(clocksource_t *cs) {
     // 1. 顺向推导参数 (Cycles -> ns)
     // 语义：设备以 freq_hz 震荡，换算到 1,000,000,000 Hz 的纳秒域
-    calc_mult_shift(cs->freq_hz, 1000000000ULL, &cs->mult, &cs->shift, FALSE);
+    calc_mult_shift(cs->freq_hz, 1000000000ULL, &cs->cycles_to_ns_mult, &cs->cycles_to_ns_shift, FALSE);
 
     // 2. 🌟 逆向推导参数 (ns -> Cycles) 🌟
     // 语义：输入以 1,000,000,000 Hz (纳秒) 震荡，换算回 freq_hz 的设备硬件域

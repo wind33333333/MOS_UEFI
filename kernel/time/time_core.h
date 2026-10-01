@@ -26,8 +26,8 @@ typedef struct clocksource_t {
     uint64      freq_hz;
     uint64      mask;
 
-    uint64      mult;
-    uint32      shift;
+    uint64      cycles_to_ns_mult;
+    uint32      cycles_to_ns_shift;
     uint64      ns_to_cycles_mult;
     uint32      ns_to_cycles_shift;
     boolean     is_tsc;

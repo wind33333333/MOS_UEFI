@@ -54,7 +54,7 @@ void apic_oneshot_set_next(clockevent_t *ce, uint64 target_ns) {
     uint64 delay_ns;
 
     // 2. 截止时间校验与补偿
-    if (__builtin_expect(target_ns > fresh_now_ns, 1)) {
+    if (target_ns > fresh_now_ns) {
         delay_ns = target_ns - fresh_now_ns;
     } else {
         delay_ns = 1000ULL; // 迟到补偿
@@ -73,7 +73,7 @@ void apic_oneshot_set_next(clockevent_t *ce, uint64 target_ns) {
         // 把发条上到最满 (4.29 秒)，让硬件先睡到极限。
         // 中断触发后，外层的 timer_interrupt_handler 发现还没到目标时间，会继续接力重装！
         final_ticks = 0xFFFFFFFF;
-    } else if (__builtin_expect(ticks_64 == 0, 0)) {
+    } else if (ticks_64 == 0) {
         // 💥 防死锁拦截 (Disarm Protection)
         // 根据 Intel SDM，向 APIC_INITIAL_COUNT 写入 0 的物理语义是【停表】！
         // 绝对不能写入 0，底线必须是 1，否则 CPU 永久丢失这个闹钟。
