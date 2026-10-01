@@ -11,7 +11,7 @@ extern hpet_device_t hpet_dev;
 uint64 hpet_cs_read(clocksource_t *cs);
 void hpet_ce_init_hw(clockevent_t *ce);
 void hpet_ce_stop_hw(clockevent_t *ce);
-void hpet_ce_set_next_event(clockevent_t *ce,uint64 target_ns, uint64 now_ns);
+void hpet_ce_set_next_event(clockevent_t *ce,uint64 target_ns);
 
 void hpet_init(void) {
     //hpet初始化

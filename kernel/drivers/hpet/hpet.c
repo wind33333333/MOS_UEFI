@@ -89,6 +89,8 @@ void hpet_ce_set_next_event(clockevent_t *ce, uint64 target_ns) {
     // 只有我抢到了“全系统第一名”，才加锁操作硬件
     spin_lock(&timer->lock);
 
+    volatile uint64 *main_cnt = &dev->hw_regs->main_counter;
+
     // Double-Check，防止抢锁期间被其它 CPU 捷足先登
     if (target_ns < timer->programmed_ns) {
         // 1. 宣示主权，更新影子缓存
@@ -119,7 +121,6 @@ void hpet_ce_set_next_event(clockevent_t *ce, uint64 target_ns) {
                                             + ce->ns_to_dev_mask) >> ce->ns_to_dev_shift);
 
             // 被迫承受一次读取 MMIO 的巨大延迟
-            volatile uint64 *main_cnt = &dev->hw_regs->main_counter;
             target_cycles = *main_cnt + delay_cycles;
         }
 
@@ -134,7 +135,6 @@ void hpet_ce_set_next_event(clockevent_t *ce, uint64 target_ns) {
         // 刚把 target_cycles 写进比较器，主计数器就已经越过了这个值...
         // 那么闹钟必须等 4 万年溢出才会响，系统彻底死锁！
         // =====================================================================
-        volatile uint64 *main_cnt = &dev->hw_regs->main_counter;
         uint64 now_cnt = *main_cnt; // 刚写完立刻回读主计数器！
 
         // 如果 (目标 - 现实) 小于最小安全步进 (负数代表已经错过，正数代表离得太近)

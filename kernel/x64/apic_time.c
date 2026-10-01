@@ -50,22 +50,20 @@ void apic_oneshot_stop_hw(clockevent_t *ce) {
 // =========================================================================
 void apic_oneshot_set_next(clockevent_t *ce, uint64 target_ns) {
     // 1. 🌟 核心防御：无视旧快照，强制二次读取 (Double Fetch)！
-    uint64 fresh_now_ns = get_uptime_ns();
+    uint64 now_ns = get_uptime_ns();
     uint64 delay_ns;
 
     // 2. 截止时间校验与补偿
-    if (target_ns > fresh_now_ns) {
-        delay_ns = target_ns - fresh_now_ns;
+    if (target_ns > now_ns) {
+        delay_ns = target_ns - now_ns;
     } else {
         delay_ns = 1000ULL; // 迟到补偿
     }
 
     // 3. 算出 64 位的理论刻度 (注意：这里极有可能会超过 32 位的物理极限)
-    uint64 ticks_64 = (uint64)(((__uint128_t)delay_ns * ce->ns_to_dev_mult
-                                + ce->ns_to_dev_mask) >> ce->ns_to_dev_shift);
+    uint64 ticks_64 = (uint64)(((__uint128_t)delay_ns * ce->ns_to_dev_mult + ce->ns_to_dev_mask) >> ce->ns_to_dev_shift);
 
     uint32 final_ticks;
-
     // 4. 🌟 终极硬件怪癖防御矩阵 (防溢出 + 防死锁)
     if (ticks_64 > 0xFFFFFFFFULL) {
         // 💥 防溢出拦截 (Clamping)
