@@ -12,10 +12,10 @@ extern apic_timer_ctx_t apic_timer_ctx;
 uint64 tsc_cs_read(clocksource_t *cs);
 void apic_oneshot_init_hw(clockevent_t *ce);
 void apic_oneshot_stop_hw(clockevent_t *ce);
-void apic_oneshot_set_next(clockevent_t *ce, uint64 target_ns, uint64 now_ns);
+void apic_oneshot_set_next(clockevent_t *ce, uint64 target_ns);
 void tsc_deadline_init_hw(clockevent_t *ce);
 void tsc_deadline_stop_hw(clockevent_t *ce);
-void tsc_deadline_set_next(clockevent_t *ce, uint64 target_ns, uint64 now_ns);
+void tsc_deadline_set_next(clockevent_t *ce, uint64 target_ns);
 
 
 // =========================================================================

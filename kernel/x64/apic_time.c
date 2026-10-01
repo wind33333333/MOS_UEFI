@@ -48,7 +48,7 @@ void apic_oneshot_stop_hw(clockevent_t *ce) {
 // =========================================================================
 // APIC One-Shot 驱动底层实现 (相对时间硬件的终极抗抖动形态)
 // =========================================================================
-void apic_oneshot_set_next(clockevent_t *ce, uint64 target_ns, uint64 now_ns) {
+void apic_oneshot_set_next(clockevent_t *ce, uint64 target_ns) {
     // 1. 🌟 核心防御：无视旧快照，强制二次读取 (Double Fetch)！
     uint64 fresh_now_ns = get_uptime_ns();
     uint64 delay_ns;
@@ -114,7 +114,7 @@ void tsc_deadline_stop_hw(clockevent_t *ce) {
     asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_LVT_MASKED);
 }
 
-void tsc_deadline_set_next(clockevent_t *ce, uint64 target_ns, uint64 now_ns) {
+void tsc_deadline_set_next(clockevent_t *ce, uint64 target_ns) {
     uint64 target_tsc;
 
     // 1. 尝试使用极致性能的纯数学逆推 (前提: Clocksource 也是 TSC)
@@ -129,6 +129,7 @@ void tsc_deadline_set_next(clockevent_t *ce, uint64 target_ns, uint64 now_ns) {
     // 我们必须老老实实算差值，并读取当前的硬件 TSC 快照。
 
     // 算出还要等多久 (纳秒)
+    uint64 now_ns = get_uptime_ns();
     uint64 delay_ns = (target_ns > now_ns) ? (target_ns - now_ns) : 1000ULL;
 
     // 这里的 ns_to_dev_mult 属于 clockevent_t，是开机时专为 TSC 频率校准的

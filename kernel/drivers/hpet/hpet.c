@@ -72,8 +72,8 @@ void hpet_ce_stop_hw(clockevent_t *ce) {
 // =========================================================================
 // HPET 定时器编程引擎：融合无锁快筛、绝对时间数学推导与防死锁回读
 // =========================================================================
-void hpet_ce_set_next_event(clockevent_t *ce, uint64 target_ns, uint64 now_ns) {
-    hpet_device_t *dev = (hpet_device_t *)ce->priv;
+void hpet_ce_set_next_event(clockevent_t *ce, uint64 target_ns) {
+    hpet_device_t *dev = ce->priv;
     hpet_timer_t *timer = &dev->hpet_timers[0];
 
     // =====================================================================
@@ -111,6 +111,7 @@ void hpet_ce_set_next_event(clockevent_t *ce, uint64 target_ns, uint64 now_ns) {
             // [B. 异构降级路线]
             // 系统当前在用 TSC 等其它时钟源。数学推导失效。
             // 只能用上层传进来的 now_ns 快照，降维成相对时间（差值）。
+            uint64 now_ns = get_uptime_ns();
             uint64 delay_ns = (target_ns > now_ns) ? (target_ns - now_ns) : 1000ULL;
 
             // 相对差值 (ns) 转 相对差值 (ticks)

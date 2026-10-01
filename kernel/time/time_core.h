@@ -48,7 +48,7 @@ typedef struct clockevent_t {
 
     void      (*init_hw)(struct clockevent_t *ce);
     void      (*stop_hw)(struct clockevent_t *ce);
-    void      (*set_next_event)(struct clockevent_t *ce, uint64 target_ns, uint64 now_ns);
+    void      (*set_next_event)(struct clockevent_t *ce, uint64 target_ns);
     void       *priv;
 } clockevent_t;
 
