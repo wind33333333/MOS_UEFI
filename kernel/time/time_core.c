@@ -42,43 +42,6 @@ uint64 get_uptime_ns(void) {
 }
 
 // =========================================================================
-//泛化的绝对时间逆推引擎
-// =========================================================================
-boolean time_ns_to_cycles(uint64 target_ns, clocksource_id_e required_cs_id, uint64 *out_target_cycles) {
-    uint32 seq;
-    uint64 base_ns, last_cycles;
-    clocksource_t *cs;
-
-    do {
-        seq = g_timekeeper.seq;
-        base_ns = g_timekeeper.base_ns;
-        last_cycles = g_timekeeper.cycle_last;
-        cs = g_timekeeper.active_cs;
-    } while ((seq & 1U) || (g_timekeeper.seq != seq));
-
-    // 🌟 异构系统拦截：如果全局时钟源不是你这个驱动期望的硬件，拒绝转换！
-    if (cs->id != required_cs_id) {
-        return FALSE;
-    }
-
-    // --- 同构系统纯数学魔法 ---
-    if (target_ns <= base_ns) {
-        *out_target_cycles = last_cycles;
-        return TRUE;
-    }
-
-    uint64 delta_ns = target_ns - base_ns;
-
-    // 🌟 奇迹发生：全乘法+移位操作！
-    // 64 位 delta_ns 乘以 64 位 mult 会产生 128 位结果，编译器自动用一对 rdx:rax 寄存器完成，
-    // 没有任何外部函数调用，速度比之前快几十倍！
-    uint64 delta_cycles = (uint64)(((__uint128_t)delta_ns * cs->ns_to_cycles_mult) >> cs->ns_to_cycles_shift);
-
-    *out_target_cycles = last_cycles + delta_cycles;
-    return TRUE;
-}
-
-// =========================================================================
 // 通用定点数参数计算器 (仅在开机时调用，自动寻找精度最高的 mult 和 shift)
 // =========================================================================
 static void calc_mult_shift(uint64 from_hz,uint64 to_hz,uint64 *out_mult,uint32 *out_shift,boolean round_up) {
@@ -212,8 +175,6 @@ void clockevent_register(clockevent_t *ce) {
 
 static inline void reprogram_clockevent(void) {
     uint64 target_ns = THIS_CPU->next_deadline_ns;
-
-    // 只传递【意图(What)】，不传递【状态(How)】
     THIS_CPU->active_ce->set_next_event(THIS_CPU->active_ce, target_ns);
 }
 
@@ -221,6 +182,43 @@ void sleep_ns(uint64 delay_ns) {
     uint64 now_ns = get_uptime_ns();
     THIS_CPU->next_deadline_ns = now_ns + delay_ns;
     reprogram_clockevent();
+}
+
+// =========================================================================
+//泛化的绝对时间逆推引擎
+// =========================================================================
+boolean time_ns_to_cycles(uint64 target_ns, clocksource_id_e required_cs_id, uint64 *out_target_cycles) {
+    uint32 seq;
+    uint64 base_ns, last_cycles;
+    clocksource_t *cs;
+
+    do {
+        seq = g_timekeeper.seq;
+        base_ns = g_timekeeper.base_ns;
+        last_cycles = g_timekeeper.cycle_last;
+        cs = g_timekeeper.active_cs;
+    } while ((seq & 1U) || (g_timekeeper.seq != seq));
+
+    // 🌟 异构系统拦截：如果全局时钟源不是你这个驱动期望的硬件，拒绝转换！
+    if (cs->id != required_cs_id) {
+        return FALSE;
+    }
+
+    // --- 同构系统纯数学魔法 ---
+    if (target_ns <= base_ns) {
+        *out_target_cycles = last_cycles;
+        return TRUE;
+    }
+
+    uint64 delta_ns = target_ns - base_ns;
+
+    // 🌟 奇迹发生：全乘法+移位操作！
+    // 64 位 delta_ns 乘以 64 位 mult 会产生 128 位结果，编译器自动用一对 rdx:rax 寄存器完成，
+    // 没有任何外部函数调用，速度比之前快几十倍！
+    uint64 delta_cycles = (uint64)(((__uint128_t)delta_ns * cs->ns_to_cycles_mult) >> cs->ns_to_cycles_shift);
+
+    *out_target_cycles = last_cycles + delta_cycles;
+    return TRUE;
 }
 
 
@@ -300,7 +298,7 @@ void clockevent_init_per_cpu(void) {
             best = g_ce_list[i];
         }
     }
-    THIS_CPU->next_deadline_ns = get_uptime_ns() + 1000000ULL;
+    THIS_CPU->next_deadline_ns = get_uptime_ns() + 1000000000ULL;
     clockevent_switch(best);
 }
 
