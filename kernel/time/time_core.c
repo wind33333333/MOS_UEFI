@@ -303,6 +303,7 @@ void clockevent_init_per_cpu(void) {
 }
 
 uint64 s=0;
+extern runqueue_t g_rq;
 #define EARLY_WAKEUP_TOLERANCE_NS 2000ULL // 容差窗口：2微秒
 int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
     // 2. 获取当前系统绝对时间真理 (挂钟)
@@ -324,9 +325,8 @@ int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
         // 1. 呼叫调度器：处理所有到期的软件定时器（红黑树或小顶堆）
         // 调度器会将所有 <= now_ns 的任务唤醒，并把队首的下一个任务时间更新给 next_deadline_ns
         //scheduler_expire_timers(now_ns);
-
+        g_rq.current->need_resched = 1;
         sleep_ns(1000000000UL);
-        color_printk(ORANGE,BLACK,"%lds ",s++);
     } else {
 
         // 【分支 B：中途接力 (Relay) 或 严重早醒】

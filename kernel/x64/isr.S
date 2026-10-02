@@ -311,6 +311,8 @@ isr_common_stub:
     # 呼叫 C 语言中枢
     call c_interrupt_dispatcher
 
+    call check_and_schedule
+
     # 恢复现场
     popq %r15
     popq %r14

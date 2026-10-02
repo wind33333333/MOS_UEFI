@@ -21,33 +21,6 @@
 #include "slub.h"
 
 
-// 任务状态枚举
-typedef enum {
-    TASK_READY,   // 在就绪队列，渴望 CPU
-    TASK_RUNNING, // 正在执行
-    TASK_SLEEPING // 在睡眠树/堆中，等待绝对时间唤醒
-} task_state_t;
-// 任务控制块 (TCB)
-typedef struct task_struct {
-    uint64 rsp;                 // 🌟 栈指针 (必须在结构体最开头，方便汇编存取)
-    uint64 id;                  // 任务 ID
-    task_state_t state;
-    uint32 priority;            // 优先级
-    uint64 wake_up_ns;          // 🌟 绝对唤醒时间 (用于挂载到睡眠队列)
-
-    struct task_struct *next;   // 就绪队列链表指针
-    // ... 其他信息 (页表 CR3, 内存空间等) ...
-} task_t;
-
-
-// 调度器全局/局部数据
-typedef struct {
-    task_t *current;      // 当前正在 CPU 上跑的任务
-    task_t *ready_head;   // 就绪队列头
-    task_t *ready_tail;   // 就绪队列尾
-    task_t *idle_task;
-} runqueue_t;
-
 runqueue_t g_rq; // 假设单核，多核则是 Per-CPU 变量
 
 // 基础队列操作
@@ -99,6 +72,17 @@ void schedule(void) {
     }
 }
 
+void check_and_schedule() {
+    // 如果当前任务被贴了“换人”的条子
+    if (g_rq.current->need_resched) {
+        g_rq.current->need_resched = 0; // 撕掉条子
+
+        // 🌟 在这里进行真正的上下文切换！
+        // 即使栈在这里被劫持，APIC 也绝对不会死锁，因为 EOI 早就发完了！
+        schedule();
+    }
+}
+
 
 // 任务创建函数
 task_t* create_task(void (*entry_point)(void), uint64 stack_size) {
@@ -110,20 +94,21 @@ task_t* create_task(void (*entry_point)(void), uint64 stack_size) {
 
     // 2. 开始伪造案发现场 (顺序必须与 context_switch 里的 pop 严格逆序！)
 
-    // 压入目标函数的入口地址 (当 context_switch 最终执行 ret 时，会跳到这里)
+    // (对应汇编最后的 ret 指令)
     *(--sp) = (uint64)entry_point;
 
-    // 压入 6 个 Callee-saved 寄存器的假数据 (初始为 0)
-    *(--sp) = 0; // r15
-    *(--sp) = 0; // r14
-    *(--sp) = 0; // r13
-    *(--sp) = 0; // r12
-    *(--sp) = 0; // rbx
-    *(--sp) = 0; // rbp
-
-    // 压入 RFLAGS 标志位
-    // 0x200 是 x86 架构保留必须为 1 的位，0x202 代表同时开启中断 (IF=1)
+    // 🌟 (对应汇编倒数第二条的 popfq 指令)
+    // 0x202 代表默认开启 IF 中断标志位
     *(--sp) = 0x202;
+
+    // (对应汇编里的 6 个 popq 通用寄存器，逆序压入)
+    *(--sp) = 0; // rbp
+    *(--sp) = 0; // rbx
+    *(--sp) = 0; // r12
+    *(--sp) = 0; // r13
+    *(--sp) = 0; // r14
+    *(--sp) = 0; // r15
+
 
     // 3. 记录这个精心伪造的栈顶地址
     task->rsp = (uint64)sp;
@@ -140,17 +125,21 @@ task_t *task_b;
 
 void thread_a() {
     while(1) {
-        PR_INFO("A");
-        // 主动让出 CPU，切给 B！
-        schedule();
+        PR_INFO("A ");
+        uint64 times = 0xFFFF;
+        while (times--) {
+            asm_pause();
+        }
     }
 }
 
 void thread_b() {
     while(1) {
-        PR_INFO("B");
-        // 主动让出 CPU，切回给 A！
-       schedule();
+        PR_INFO("B ");
+        uint64 times = 0xFFFF;
+        while (times--) {
+            asm_pause();
+        }
     }
 }
 
@@ -180,6 +169,7 @@ void kernel_init(void) {
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
 
     // 1. 初始化自己
+    idle_task.id = 0;
     idle_task.state = TASK_RUNNING;
     g_rq.current = &idle_task;
     // 🌟 钦定自己为系统的 Idle Task
