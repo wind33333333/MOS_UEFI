@@ -18,9 +18,143 @@
 #include "../include/ioapic.h"
 #include "../drivers/hpet/hpet.h"
 #include "../time/time_core.h"
+#include "slub.h"
+
+
+// 任务状态枚举
+typedef enum {
+    TASK_READY,   // 在就绪队列，渴望 CPU
+    TASK_RUNNING, // 正在执行
+    TASK_SLEEPING // 在睡眠树/堆中，等待绝对时间唤醒
+} task_state_t;
+// 任务控制块 (TCB)
+typedef struct task_struct {
+    uint64 rsp;                 // 🌟 栈指针 (必须在结构体最开头，方便汇编存取)
+    uint64 id;                  // 任务 ID
+    task_state_t state;
+    uint32 priority;            // 优先级
+    uint64 wake_up_ns;          // 🌟 绝对唤醒时间 (用于挂载到睡眠队列)
+
+    struct task_struct *next;   // 就绪队列链表指针
+    // ... 其他信息 (页表 CR3, 内存空间等) ...
+} task_t;
+
+
+// 调度器全局/局部数据
+typedef struct {
+    task_t *current;      // 当前正在 CPU 上跑的任务
+    task_t *ready_head;   // 就绪队列头
+    task_t *ready_tail;   // 就绪队列尾
+    task_t *idle_task;
+} runqueue_t;
+
+runqueue_t g_rq; // 假设单核，多核则是 Per-CPU 变量
+
+// 基础队列操作
+void enqueue_task(task_t *task) {
+    task->next = NULL;
+    if (g_rq.ready_tail) {
+        g_rq.ready_tail->next = task;
+    } else {
+        g_rq.ready_head = task;
+    }
+    g_rq.ready_tail = task;
+    task->state = TASK_READY;
+}
+
+task_t* dequeue_task() {
+    task_t *task = g_rq.ready_head;
+    if (task) {
+        g_rq.ready_head = task->next;
+        if (g_rq.ready_head == NULL) g_rq.ready_tail = NULL;
+    }
+    return task;
+}
+
+// 外部汇编函数声明
+extern void context_switch(uint64 *prev_rsp, uint64 *next_rsp);
+
+void schedule(void) {
+    task_t *prev = g_rq.current; // 此时 prev 绝对不可能为 NULL
+
+    // 如果上一任还能跑，重新排队
+    if (prev->state == TASK_RUNNING && prev != g_rq.idle_task) {
+        enqueue_task(prev);
+    }
+
+    // 从队列头部拿任务
+    task_t *next = dequeue_task();
+
+    // 🌟 核心兜底：如果没有就绪任务了？
+    if (next == NULL) {
+        // 切给空闲任务去休眠！
+        next = g_rq.idle_task;
+    }
+
+    // 正常切换...
+    if (prev != next) {
+        next->state = TASK_RUNNING;
+        g_rq.current = next;
+        context_switch(&prev->rsp, &next->rsp);
+    }
+}
+
+
+// 任务创建函数
+task_t* create_task(void (*entry_point)(void), uint64 stack_size) {
+    task_t *task = kmalloc(sizeof(task_t));
+    void *stack = kmalloc(stack_size); // 分配一块内存作为栈
+
+    // 1. 栈顶指针 (x86 栈是向下生长的，所以从高地址开始)
+    uint64 *sp = (uint64 *)((uint64)stack + stack_size);
+
+    // 2. 开始伪造案发现场 (顺序必须与 context_switch 里的 pop 严格逆序！)
+
+    // 压入目标函数的入口地址 (当 context_switch 最终执行 ret 时，会跳到这里)
+    *(--sp) = (uint64)entry_point;
+
+    // 压入 6 个 Callee-saved 寄存器的假数据 (初始为 0)
+    *(--sp) = 0; // r15
+    *(--sp) = 0; // r14
+    *(--sp) = 0; // r13
+    *(--sp) = 0; // r12
+    *(--sp) = 0; // rbx
+    *(--sp) = 0; // rbp
+
+    // 压入 RFLAGS 标志位
+    // 0x200 是 x86 架构保留必须为 1 的位，0x202 代表同时开启中断 (IF=1)
+    *(--sp) = 0x202;
+
+    // 3. 记录这个精心伪造的栈顶地址
+    task->rsp = (uint64)sp;
+    task->state = TASK_READY;
+
+    return task;
+}
+
+
+task_t *task_a;
+task_t *task_b;
 
 
 
+void thread_a() {
+    while(1) {
+        PR_INFO("A");
+        // 主动让出 CPU，切给 B！
+        schedule();
+    }
+}
+
+void thread_b() {
+    while(1) {
+        PR_INFO("B");
+        // 主动让出 CPU，切回给 A！
+       schedule();
+    }
+}
+
+task_t idle_task;
 
 void kernel_init(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
@@ -37,14 +171,39 @@ void kernel_init(void) {
     vmalloc_init();                                             //初始化vmalloc
     video_mem_map();                                            //映射显存到虚拟地址空间
     ioapic_init();                                              //初始化ioapic
-    time_core_init();
+    time_core_init();                                           //时钟系统初始化
     hpet_init();                                                //hpet初始化
     bsp_backup_mtrr_state();                                    //备份mtrr
     cpu_alloc_resources();                                      //给所有cpu分配资源
     apic_time_init();                                           //apic时钟定时器初始化
     cpu_load_resource();                                        //加载cpu资源
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
-    while(1);
+
+    // 1. 初始化自己
+    idle_task.state = TASK_RUNNING;
+    g_rq.current = &idle_task;
+    // 🌟 钦定自己为系统的 Idle Task
+    g_rq.idle_task = &idle_task;
+
+    // 1. 创建两个新任务
+    task_a = create_task(thread_a, 4096);
+    task_a->id = 1;
+    enqueue_task(task_a);
+
+    task_b = create_task(thread_b, 4096);
+    task_b->id = 2;
+    enqueue_task(task_b);
+
+    // 4. 华丽转身：从“创世”进入“养老”循环
+    while(1) {
+        // 如果没人排队，schedule 会挑中我自己（idle_task）。
+        // 切给自己 = 什么都没发生，直接 return，往下执行 hlt 节能。
+        // 如果有人排队，schedule 会切给别人。等他们全睡了，又会切回这里。
+        schedule();
+
+        // 核心态停机指令，断电休眠，等待下一次时钟中断
+        asm volatile("hlt");
+    }
 
     bus_init();                                                 //总线初始化
     ap_init();                                                  //初始化ap核
