@@ -87,7 +87,7 @@ void check_and_schedule() {
 
 
 // 任务创建函数
-task_t* create_task(void (*entry_point)(void), uint64 arg) {
+task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) {
     task_t *task = kmalloc(sizeof(task_t));
     void *stack = kmalloc(8192); // 分配一块内存作为栈
 
@@ -224,15 +224,15 @@ void kernel_init(void) {
     g_rq.idle_task = &idle_task;
 
     // 1. 创建两个新任务
-    task_a = create_task(thread_a, 0);
+    task_a = create_kernel_task(thread_a, 0);
     task_a->id = 1;
     enqueue_task(task_a);
 
-    task_b = create_task(thread_b, 0);
+    task_b = create_kernel_task(thread_b, 0);
     task_b->id = 2;
     enqueue_task(task_b);
 
-    task_c = create_task(thread_c, 0);
+    task_c = create_kernel_task(thread_c, 0);
     task_c->id = 3;
     enqueue_task(task_c);
 
