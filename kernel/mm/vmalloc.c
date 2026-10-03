@@ -291,7 +291,7 @@ static vmap_area_t *alloc_vmap_area(uint64 va_start, uint64 va_end, uint64 size,
     vmap->flags = flags;
 
     // 放入忙碌树
-    insert_vmap_area(&used_vmap_area_root, vmap, &empty_augment_callbacks);
+    insert_vmap_area(&used_vmap_area_root, vmap, NULL);
     return vmap;
 }
 
@@ -340,7 +340,7 @@ static inline void merge_free_vmap_area(vmap_area_t *vmap) {
  */
 static void free_vmap_area(vmap_area_t *vmap) {
     // 1. 从忙碌树中摘除
-    erase_vmap_area(&used_vmap_area_root, vmap, &empty_augment_callbacks);
+    erase_vmap_area(&used_vmap_area_root, vmap, NULL);
 
     // 2. 尝试吞并周遭游散的空闲块
     merge_free_vmap_area(vmap);
