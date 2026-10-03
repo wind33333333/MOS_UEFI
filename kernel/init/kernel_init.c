@@ -155,6 +155,37 @@ task_t* create_user_task(void *user_entry, void *user_stack) {
 }
 
 
+void msleep(uint64 ms) {
+    // 0. 关中断！保护红黑树和调度队列的并发安全
+    uint64 flags;
+    local_irq_save(&flags);
+
+    task_t *curr = g_rq.current;
+
+    // 1. 计算绝对唤醒时间戳
+    curr->wake_up_ns = get_uptime_ns() + (ms * 1000000ULL);
+    curr->state = TASK_SLEEPING;
+
+    // 2. 插入红黑树 (以 curr->wake_up_ns 为 Key)
+    rb_insert(&g_rq.sleep_tree, &curr->sleep_node);
+
+    // ====================================================================
+    // 🌟 Tickless (无滴答) 终极魔法！
+    // 如果我刚刚插进去的任务，变成了整棵树最左边（最早需要唤醒）的节点...
+    // 说明系统现有的硬件闹钟设得太晚了，必须立刻重新对准我！
+    // ====================================================================
+    if (rb_first(&g_rq.sleep_tree) == &curr->sleep_node) {
+        // 调用你之前写好的 HPET / APIC 驱动，把最近的闹钟设为我的唤醒时间！
+        reprogram_clockevent(curr->wake_up_ns);
+    }
+
+    // 3. 睡觉，主动交出 CPU
+    schedule();
+
+    // 4. 醒来后，代码从这里继续执行，开中断返回
+    local_irq_restore(flags);
+}
+
 task_t *task_a;
 task_t *task_b;
 task_t *task_c;

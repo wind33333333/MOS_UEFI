@@ -1,5 +1,6 @@
 #pragma once
 #include "moslib.h"
+#include "rbtree.h"
 
 #define CS_MASK_64BIT  0xFFFFFFFFFFFFFFFFULL
 #define CS_MASK_32BIT  0x00000000FFFFFFFFULL
@@ -91,14 +92,16 @@ typedef enum {
     TASK_SLEEPING // 在睡眠树/堆中，等待绝对时间唤醒
 } task_state_t;
 // 任务控制块 (TCB)
-typedef struct task_struct {
+typedef struct task_t {
     uint64 rsp;                 // 🌟 栈指针 (必须在结构体最开头，方便汇编存取)
     uint64 id;                  // 任务 ID
     task_state_t state;
     uint32 priority;            // 优先级
-    uint64 wake_up_ns;          // 🌟 绝对唤醒时间 (用于挂载到睡眠队列)
     uint8 need_resched;
 
+    // 🌟 新增：睡眠/定时器专用字段
+    uint64 wake_up_ns;        // 红黑树的 Key (绝对纳秒时间)
+    rb_node_t sleep_node;     // 挂入睡眠树的红黑树节点
     struct task_struct *next;   // 就绪队列链表指针
     // ... 其他信息 (页表 CR3, 内存空间等) ...
 } task_t;
@@ -110,4 +113,6 @@ typedef struct {
     task_t *ready_head;   // 就绪队列头
     task_t *ready_tail;   // 就绪队列尾
     task_t *idle_task;
+    // 🌟 新增：睡眠红黑树 (按 wake_up_ns 从小到大排序)
+    rb_root_t sleep_tree;
 } runqueue_t;
