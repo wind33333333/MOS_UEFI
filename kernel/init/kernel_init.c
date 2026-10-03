@@ -300,14 +300,14 @@ void thread_a() {
 void thread_b() {
     while(1) {
         color_printk(RED,BLACK,"B ");
-        sleep_ms(2000);
+        sleep_ms(1000);
     }
 }
 
 void thread_c() {
     while(1) {
-        color_printk(YELLOW,BLACK,"C");
-        sleep_ms(3000);
+        color_printk(YELLOW,BLACK,"C ");
+        sleep_ms(1000);
     }
 }
 
