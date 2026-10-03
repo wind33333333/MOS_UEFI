@@ -173,16 +173,6 @@ void clockevent_register(clockevent_t *ce) {
     PR_OK("%s Timer freq:%ldhz register success.\n",ce->name,ce->freq_hz);
 }
 
-void reprogram_clockevent(void) {
-    uint64 target_ns = THIS_CPU->next_deadline_ns;
-    THIS_CPU->active_ce->set_next_event(THIS_CPU->active_ce, target_ns);
-}
-
-void sleep_ns(uint64 delay_ns) {
-    uint64 now_ns = get_uptime_ns();
-    THIS_CPU->next_deadline_ns = now_ns + delay_ns;
-    reprogram_clockevent();
-}
 
 // =========================================================================
 //泛化的绝对时间逆推引擎
@@ -303,6 +293,10 @@ void clockevent_init_per_cpu(void) {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
+void reprogram_clockevent(void) {
+    uint64 target_ns = THIS_CPU->next_deadline_ns;
+    THIS_CPU->active_ce->set_next_event(THIS_CPU->active_ce, target_ns);
+}
 
 void check_and_schedule() {
     // 如果当前任务被贴了“换人”的条子
