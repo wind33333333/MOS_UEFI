@@ -302,12 +302,97 @@ void clockevent_init_per_cpu(void) {
     clockevent_switch(best);
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////
 
-void check_and_wakeup_sleeping_tasks(void);
+void check_and_schedule() {
+    // 如果当前任务被贴了“换人”的条子
+    if (g_rq.current->need_resched) {
+        g_rq.current->need_resched = 0; // 撕掉条子
 
-uint64 s=0;
-extern runqueue_t g_rq;
+        // 🌟 在这里进行真正的上下文切换！
+        // 即使栈在这里被劫持，APIC 也绝对不会死锁，因为 EOI 早就发完了！
+        schedule();
+    }
+}
+
+
+/**
+ * @brief 查找红黑树中 Key 最小的节点（最左侧节点）
+ * @param root 树的根节点指针
+ * @return 最小节点的指针，如果树为空则返回 NULL
+ */
+static inline rb_node_t* rb_first(const rb_root_t *root) {
+    rb_node_t *node = root->rb_node;
+
+    // 如果树是空的，直接返回 NULL
+    if (!node) {
+        return NULL;
+    }
+
+    // 只要有左孩子，就一直往左走
+    while (node->left) {
+        node = node->left;
+    }
+
+    return node;
+}
+
+
+/**
+ * @brief 扫描睡眠树，唤醒所有到期的任务，并重设下一个硬件闹钟
+ */
 #define EARLY_WAKEUP_TOLERANCE_NS 2000ULL // 容差窗口：2微秒
+static inline void check_and_wakeup_sleeping_tasks(void) {
+    // 1. 获取挂钟时间
+    uint64 now_ns = get_uptime_ns();
+
+    // 🌟 将容差直接加在当前时间上，形成“有效当前时间”
+    // 在这个时间线之前的所有任务，一律统统叫醒！
+    uint64 effective_now = now_ns + EARLY_WAKEUP_TOLERANCE_NS;
+
+    rb_node_t *node;
+
+    // 2. 循环检查睡眠红黑树
+    while ((node = rb_first(&g_rq.sleep_tree)) != NULL) {
+        task_t *sleep_task = CONTAINER_OF(node, task_t, sleep_node);
+
+        // 如果连最左侧（最早）的人，唤醒时间都大于 effective_now
+        // 说明所有人都还没睡够，直接停止捞人！
+        if (sleep_task->wake_up_ns > effective_now) {
+            break;
+        }
+
+        // =======================================================
+        // 时间到了，捞人！
+        // =======================================================
+        rb_erase(&g_rq.sleep_tree, &sleep_task->sleep_node, NULL);
+        sleep_task->state = TASK_READY;
+        enqueue_task(sleep_task);
+
+        if (sleep_task != g_rq.current) {
+            g_rq.current->need_resched = 1; // 贴上换人标签
+        }
+    }
+
+    // =======================================================
+    // 3. 终极魔法：Tickless 续杯 / APIC 接力 (Relay)
+    // =======================================================
+    // 刚才的循环可能捞出了几个人，也可能一个都没捞出来（比如 APIC 中途溢出早醒）。
+    // 不管怎样，我们再看一眼树上还有没有人在睡：
+    node = rb_first(&g_rq.sleep_tree);
+    if (node != NULL) {
+        task_t *next_sleep_task = CONTAINER_OF(node, task_t, sleep_node);
+
+        THIS_CPU->next_deadline_ns = next_sleep_task->wake_up_ns;
+        reprogram_clockevent();
+    } else {
+        // 所有人都醒了，把硬件闹钟关掉，或者设成最大值
+        THIS_CPU->next_deadline_ns = 0xFFFFFFFFFFFFFFFFULL;
+        reprogram_clockevent();
+    }
+}
+
+extern runqueue_t g_rq;
 int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
     check_and_wakeup_sleeping_tasks();
 }
