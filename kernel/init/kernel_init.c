@@ -175,6 +175,8 @@ rb_node_t* rb_first(const rb_root_t *root) {
     return node;
 }
 
+void reprogram_clockevent(void);
+
 void sleep_ms(uint64 delay_ms) {
     uint64 flags;
     local_irq_save(&flags); // 关中断保护
@@ -213,7 +215,7 @@ void sleep_ms(uint64 delay_ms) {
     if (rb_first(&g_rq.sleep_tree) == &curr->sleep_node) {
         // 如果是，马上更新 CPU 的全局记录，并通知底层硬件改闹钟！
         THIS_CPU->next_deadline_ns = wake_ns;
-        THIS_CPU->active_ce->set_next_event(THIS_CPU->active_ce, wake_ns);
+        reprogram_clockevent();
     }
 
     // 4. 强制交出麦克风！
@@ -226,7 +228,7 @@ void sleep_ms(uint64 delay_ms) {
     local_irq_restore(flags);
 }
 
-void reprogram_clockevent(void);
+
 /**
  * @brief 扫描睡眠树，唤醒所有到期的任务，并重设下一个硬件闹钟
  */
