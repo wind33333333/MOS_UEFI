@@ -177,14 +177,14 @@ rb_node_t* rb_first(const rb_root_t *root) {
 
 void reprogram_clockevent(void);
 
-void sleep_ms(uint64 delay_ms) {
+void sleep_us(uint64 delay_us) {
     uint64 flags;
     local_irq_save(&flags); // 关中断保护
 
     task_t *curr = g_rq.current;
 
     // 1. 记账：算好个人的醒来时间，并把自己的状态改为“睡觉”
-    uint64 wake_ns = get_uptime_ns() + (delay_ms * 1000000ULL);
+    uint64 wake_ns = get_uptime_ns() + (delay_us * 1000ULL);
     curr->wake_up_ns = wake_ns;
     curr->state = TASK_SLEEPING;
 
@@ -226,6 +226,11 @@ void sleep_ms(uint64 delay_ms) {
     // 5. 等未来某一天时钟中断触发，Timer ISR 把你从红黑树里摘下来，
     // schedule() 才会返回，代码才会走到这里！
     local_irq_restore(flags);
+}
+
+//毫秒定时器
+static inline sleep_ms (uint64 delay_ms) {
+    sleep_us(delay_ms*1000);
 }
 
 
