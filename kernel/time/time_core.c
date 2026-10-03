@@ -154,10 +154,10 @@ boolean clockevent_switch(clockevent_t *new_ce) {
 
     // 3. 🌟 绝对时间架构的终极体现：只传目标和快照！
     // 哪怕在睡眠中途切换定时器，任务依然会在原定的纳秒时刻准时醒来！
-    uint64 target_ns = core->next_deadline_ns; // 直接拿绝对目标
+    //uint64 target_ns = core->next_deadline_ns; // 直接拿绝对目标
 
     // 直接下发！
-    new_ce->set_next_event(new_ce, target_ns);
+    //new_ce->set_next_event(new_ce, target_ns);
 
     local_irq_restore(flags);
     PR_INFO("Core:%d Switch Timer:%s\n", core->logical_id, new_ce->name);
@@ -173,7 +173,7 @@ void clockevent_register(clockevent_t *ce) {
     PR_OK("%s Timer freq:%ldhz register success.\n",ce->name,ce->freq_hz);
 }
 
-static inline void reprogram_clockevent(void) {
+void reprogram_clockevent(void) {
     uint64 target_ns = THIS_CPU->next_deadline_ns;
     THIS_CPU->active_ce->set_next_event(THIS_CPU->active_ce, target_ns);
 }
@@ -302,43 +302,14 @@ void clockevent_init_per_cpu(void) {
     clockevent_switch(best);
 }
 
+
+void check_and_wakeup_sleeping_tasks(void);
+
 uint64 s=0;
 extern runqueue_t g_rq;
 #define EARLY_WAKEUP_TOLERANCE_NS 2000ULL // 容差窗口：2微秒
 int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
-    // 2. 获取当前系统绝对时间真理 (挂钟)
-    uint64 now_ns = get_uptime_ns();
-
-    // 3. 取出本 CPU 正在等待的目标绝对时间
-    uint64 target_ns = THIS_CPU->next_deadline_ns;
-
-    // =====================================================================
-    // 🌟 核心裁决逻辑：时间到了吗？
-    // 注意：这里必须加上一个“提前量容差 (Tolerance)”。
-    // 如果硬件因为换算精度提前了 500 纳秒醒来，绝对不能再设一个 500 纳秒的闹钟，
-    // 那会导致毁灭性的背靠背中断风暴 (Interrupt Storm)。必须当场放行！
-    // =====================================================================
-    if ((now_ns + EARLY_WAKEUP_TOLERANCE_NS) >= target_ns) {
-
-        // 【分支 A：目标达成！】 (包含完美准时，以及微小提前和迟到)
-
-        // 1. 呼叫调度器：处理所有到期的软件定时器（红黑树或小顶堆）
-        // 调度器会将所有 <= now_ns 的任务唤醒，并把队首的下一个任务时间更新给 next_deadline_ns
-        //scheduler_expire_timers(now_ns);
-        g_rq.current->need_resched = 1;
-        sleep_ns(1000000000UL);
-    } else {
-
-        // 【分支 B：中途接力 (Relay) 或 严重早醒】
-        // 典型的场景：就是我们上一回合提到的 APIC 32 位溢出！
-        // 目标是 5 秒，现在才过了 4.29 秒。目标还没到，调度器里的任务不能唤醒。
-
-        // 统计日志（可选，用于排查异常早醒）
-        // THIS_CPU->stat_timer_relays++;
-
-        // 啥任务也不做，直接用现在的时间，重新把剩下的时间 (0.71秒) 轰入寄存器！
-        reprogram_clockevent();
-    }
+    check_and_wakeup_sleeping_tasks();
 }
 
 

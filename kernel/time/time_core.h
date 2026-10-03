@@ -102,7 +102,7 @@ typedef struct task_t {
     // 🌟 新增：睡眠/定时器专用字段
     uint64 wake_up_ns;        // 红黑树的 Key (绝对纳秒时间)
     rb_node_t sleep_node;     // 挂入睡眠树的红黑树节点
-    struct task_struct *next;   // 就绪队列链表指针
+    struct task_t *next;   // 就绪队列链表指针
     // ... 其他信息 (页表 CR3, 内存空间等) ...
 } task_t;
 

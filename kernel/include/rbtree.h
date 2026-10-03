@@ -8,11 +8,10 @@ typedef struct rb_node_t {
     struct rb_node_t *right; //右子节点
 } rb_node_t;
 
-// typedef struct rb_root_t {
-//     rb_node_t *rb_node; //树根
-// } rb_root_t;
-
-
+typedef struct rb_root_t {
+    rb_node_t *rb_node; //树根
+                        //锁
+} rb_root_t;
 
 
 // 获取父节点（清除颜色位）
