@@ -15,6 +15,8 @@ static uint32         g_ce_count = 0;
 uint8 g_sys_timer_vector = 0; // 全局统一定时器中断号
 
 
+//================================================ 时钟源 ====================================================================
+
 // 内部辅助：读取指定时钟源的当前计数值
 static inline uint64 cs_read_cycles(clocksource_t *cs) {
     return (cs->is_tsc == TRUE) ? asm_rdtscp() : cs->read(cs);
@@ -70,6 +72,8 @@ static void calc_mult_shift(uint64 from_hz,uint64 to_hz,uint64 *out_mult,uint32 
     *out_shift = shift;
 }
 
+
+//切换时钟源
 static boolean clocksource_switch(clocksource_t *new_cs) {
     if (new_cs == NULL || new_cs == g_timekeeper.active_cs) {
         return FALSE;
@@ -127,10 +131,10 @@ void clocksource_register(clocksource_t *cs) {
     }
 }
 
-uint64 clocksource_get_active_freq(void) {
-    return (g_timekeeper.active_cs != NULL) ? g_timekeeper.active_cs->freq_hz : 0;
-}
 
+//================================================== 定时器 =====================================================================================
+
+//重设定时器
 void reprogram_clockevent(uint64 target_ns) {
     THIS_CPU->next_deadline_ns = target_ns;
     THIS_CPU->active_ce->set_next_event(THIS_CPU->active_ce, target_ns);
@@ -138,7 +142,7 @@ void reprogram_clockevent(uint64 target_ns) {
 
 
 // =========================================================================
-// 3. 运行时动态切换当前 CPU 核心的硬件定时器 (不断档交接闹钟！)
+// 运行时动态切换当前 CPU 核心的硬件定时器 (不断档交接闹钟！)
 // =========================================================================
 boolean clockevent_switch(clockevent_t *new_ce) {
     cpu_core_t *core = &cpu_cores[THIS_CPU->logical_id];
@@ -160,10 +164,10 @@ boolean clockevent_switch(clockevent_t *new_ce) {
 
     // 3. 🌟 绝对时间架构的终极体现：只传目标和快照！
     // 哪怕在睡眠中途切换定时器，任务依然会在原定的纳秒时刻准时醒来！
-    //uint64 target_ns = core->next_deadline_ns; // 直接拿绝对目标
+    uint64 target_ns = core->next_deadline_ns; // 直接拿绝对目标
 
     // 直接下发！
-    //new_ce->set_next_event(new_ce, target_ns);
+    new_ce->set_next_event(new_ce, target_ns);
 
     local_irq_restore(flags);
     PR_INFO("Core:%d Switch Timer:%s\n", core->logical_id, new_ce->name);
@@ -177,6 +181,18 @@ void clockevent_register(clockevent_t *ce) {
     ce->ns_to_dev_mask = (1ULL << ce->ns_to_dev_shift) - 1;
     g_ce_list[g_ce_count++] = ce;
     PR_OK("%s Timer freq:%ldhz register success.\n",ce->name,ce->freq_hz);
+}
+
+// 每个 CPU 核心从已注册的定时器池中自动绑定评分最高的一个
+void clockevent_init_per_cpu(void) {
+    clockevent_t *best = NULL;
+    for (uint32 i = 0; i < g_ce_count; i++) {
+        if (best == NULL || g_ce_list[i]->rating > best->rating) {
+            best = g_ce_list[i];
+        }
+    }
+    THIS_CPU->next_deadline_ns = get_uptime_ns() + 1000000000ULL;
+    clockevent_switch(best);
 }
 
 
@@ -286,17 +302,6 @@ uint64 timekeeping_measure_freq_hz(uint64 (*target_read)(void), boolean is_down_
 }
 
 
-// 每个 CPU 核心从已注册的定时器池中自动绑定评分最高的一个
-void clockevent_init_per_cpu(void) {
-    clockevent_t *best = NULL;
-    for (uint32 i = 0; i < g_ce_count; i++) {
-        if (best == NULL || g_ce_list[i]->rating > best->rating) {
-            best = g_ce_list[i];
-        }
-    }
-    THIS_CPU->next_deadline_ns = get_uptime_ns() + 1000000000ULL;
-    clockevent_switch(best);
-}
 
 /////////////////////////////////////////////////////////////////////////////////////////
 
