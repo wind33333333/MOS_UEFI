@@ -1,32 +1,7 @@
-#include "task.h"
+#include "task_sched.h"
 #include "slub.h"
 
 runqueue_t g_rq; // 假设单核，多核则是 Per-CPU 变量
-
-task_t idle_task; //系统第一个任务，后期作为系统空闲时看门
-
-
-// 任务入队列
-void enqueue_task(task_t *task) {
-    task->next = NULL;
-    if (g_rq.ready_tail) {
-        g_rq.ready_tail->next = task;
-    } else {
-        g_rq.ready_head = task;
-    }
-    g_rq.ready_tail = task;
-    task->state = TASK_READY;
-}
-
-//任务出队列
-task_t* dequeue_task() {
-    task_t *task = g_rq.ready_head;
-    if (task) {
-        g_rq.ready_head = task->next;
-        if (g_rq.ready_head == NULL) g_rq.ready_tail = NULL;
-    }
-    return task;
-}
 
 // 外部汇编函数声明
 void context_switch(uint64 *prev_rsp, uint64 *next_rsp);
@@ -57,6 +32,39 @@ void schedule(void) {
     }
 }
 
+void check_and_schedule() {
+    // 如果当前任务被贴了“换人”的条子
+    if (g_rq.current->need_resched) {
+        g_rq.current->need_resched = 0; // 撕掉条子
+
+        // 🌟 在这里进行真正的上下文切换！
+        // 即使栈在这里被劫持，APIC 也绝对不会死锁，因为 EOI 早就发完了！
+        schedule();
+    }
+}
+
+
+// 任务入队列
+void enqueue_task(task_t *task) {
+    task->next = NULL;
+    if (g_rq.ready_tail) {
+        g_rq.ready_tail->next = task;
+    } else {
+        g_rq.ready_head = task;
+    }
+    g_rq.ready_tail = task;
+    task->state = TASK_READY;
+}
+
+//任务出队列
+task_t* dequeue_task() {
+    task_t *task = g_rq.ready_head;
+    if (task) {
+        g_rq.ready_head = task->next;
+        if (g_rq.ready_head == NULL) g_rq.ready_tail = NULL;
+    }
+    return task;
+}
 
 // 任务创建函数
 task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) {
@@ -127,10 +135,3 @@ task_t* create_user_task(void *user_entry, void *user_stack) {
 }
 
 
-void idle_task_init(void) {
-    // 1. 初始化自己
-    idle_task.id = 0;
-    idle_task.state = TASK_RUNNING;
-    g_rq.current = &idle_task;
-    g_rq.idle_task = &idle_task;// 🌟 钦定自己为系统的 Idle Task
-}

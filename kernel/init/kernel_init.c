@@ -18,7 +18,10 @@
 #include "../include/ioapic.h"
 #include "../drivers/hpet/hpet.h"
 #include "../time/time_core.h"
-#include "task.h"
+#include "../x64/task_sched.h"
+#include "../x64/timer.h"
+
+task_t idle_task; //系统看门狗任务
 
 task_t *task_a;
 task_t *task_b;
@@ -71,7 +74,12 @@ void kernel_init(void) {
     cpu_load_resource();                                        //加载cpu资源
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
 
-    idle_task_init();
+    // 1. 看门狗任务
+    idle_task.id = 0;
+    idle_task.state = TASK_RUNNING;
+    g_rq.current = &idle_task;
+    g_rq.idle_task = &idle_task;// 🌟 钦定自己为系统的 Idle Task
+
 
     // 1. 创建两个新任务
     task_a = create_kernel_task(thread_a, 0);

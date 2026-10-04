@@ -77,12 +77,11 @@ uint64  timekeeping_measure_freq_hz(uint64 (*target_read)(void), boolean is_down
 
 uint64 get_uptime_ns(void);
 
-boolean time_ns_to_cycles(uint64 target_ns, clocksource_id_e required_cs_id, uint64 *out_target_cycles);
+void reprogram_clockevent(uint64 target_ns);
 
-void sleep_ns(uint64 delay_ns);
+
+boolean time_ns_to_cycles(uint64 target_ns, clocksource_id_e required_cs_id, uint64 *out_target_cycles);
 
 //时间系统初始化
 void time_core_init(void);
-
-void schedule(void);
 

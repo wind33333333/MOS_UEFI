@@ -25,9 +25,6 @@ typedef struct task_t {
     // ... 其他信息 (页表 CR3, 内存空间等) ...
 } task_t;
 
-task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) ;
-
-task_t* create_user_task(void *user_entry, void *user_stack);
 
 // 调度器全局/局部数据
 typedef struct {
@@ -37,6 +34,16 @@ typedef struct {
     task_t *idle_task;
     rb_root_t sleep_tree;    // 🌟 新增：睡眠红黑树 (按 wake_up_ns 从小到大排序)
 } runqueue_t;
+
+extern runqueue_t g_rq;
+
+void schedule(void);
+
+void check_and_schedule();
+
+task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) ;
+
+task_t* create_user_task(void *user_entry, void *user_stack);
 
 // 任务入队列
 void enqueue_task(task_t *task);
