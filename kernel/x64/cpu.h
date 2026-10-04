@@ -1,7 +1,7 @@
 #pragma once
 #include "moslib.h"
 #include "gdt_tss.h"
-#include "../time/time_core.h"
+#include "../time/time.h"
 
 
 #define APIC_ONESHOT        (0 << 17)              //一次性定时模式

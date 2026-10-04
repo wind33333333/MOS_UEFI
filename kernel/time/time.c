@@ -1,5 +1,5 @@
 // ========================= [ time_core.c ] =========================
-#include "time_core.h"
+#include "time.h"
 #include "../x64/interrupt.h"
 #include "printk.h"
 #include "../x64/timer.h"

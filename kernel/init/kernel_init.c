@@ -17,7 +17,7 @@
 #include "../x64/interrupt.h"
 #include "../include/ioapic.h"
 #include "../drivers/hpet/hpet.h"
-#include "../time/time_core.h"
+#include "../time/time.h"
 #include "../x64/task_sched.h"
 #include "../x64/timer.h"
 
