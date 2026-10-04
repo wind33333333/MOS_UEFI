@@ -108,6 +108,7 @@ void insert_vmap_area(rb_root_t *root, vmap_area_t *vmap_area, rb_augment_callba
             link = &parent->right;
         } else {
             // 理论上不可能发生：虚拟地址区间绝对互斥
+            PR_ERROR("FATAL: VMA overlap detected at %#lx!", vmap_area->va_start);
             return;
         }
     }

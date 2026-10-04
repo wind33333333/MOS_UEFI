@@ -293,6 +293,7 @@ void clockevent_init_per_cpu(void) {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
+
 void reprogram_clockevent(void) {
     uint64 target_ns = THIS_CPU->next_deadline_ns;
     THIS_CPU->active_ce->set_next_event(THIS_CPU->active_ce, target_ns);
@@ -310,26 +311,6 @@ void check_and_schedule() {
 }
 
 
-/**
- * @brief 查找红黑树中 Key 最小的节点（最左侧节点）
- * @param root 树的根节点指针
- * @return 最小节点的指针，如果树为空则返回 NULL
- */
-static inline rb_node_t* rb_first(const rb_root_t *root) {
-    rb_node_t *node = root->rb_node;
-
-    // 如果树是空的，直接返回 NULL
-    if (!node) {
-        return NULL;
-    }
-
-    // 只要有左孩子，就一直往左走
-    while (node->left) {
-        node = node->left;
-    }
-
-    return node;
-}
 
 
 /**

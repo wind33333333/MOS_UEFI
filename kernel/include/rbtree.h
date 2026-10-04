@@ -37,6 +37,22 @@ typedef struct {
 }rb_augment_callbacks_f;
 
 
+/**
+ * @brief 查找红黑树中 Key 最小的节点（最左侧节点）
+ * @param root 树的根节点指针
+ * @return 最小节点的指针，如果树为空则返回 NULL
+ */
+static inline rb_node_t* rb_first(const rb_root_t *root) {
+    rb_node_t *node = root->rb_node;
+    // 如果树是空的，直接返回 NULL
+    if (!node) return NULL;
+    // 只要有左孩子，就一直往左走
+    while (node->left) {
+        node = node->left;
+    }
+    return node;
+}
+
 
 void rb_erase(rb_root_t *root, rb_node_t *node,rb_augment_callbacks_f *augment_callbacks);          //红黑树删除操作
 void rb_insert(rb_root_t *root, rb_node_t *node, rb_node_t *parent, rb_node_t **link, rb_augment_callbacks_f *augment_callbacks); //红黑树插入操作
