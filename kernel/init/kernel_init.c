@@ -29,21 +29,30 @@ task_t *task_c;
 void thread_a() {
     while(1) {
         color_printk(GREEN,BLACK,"A ");
-        sleep_ms(1000);
+        uint64 i = 0xFFFF;
+        while (i--) {
+            asm_pause();
+        };
     }
 }
 
 void thread_b() {
     while(1) {
         color_printk(RED,BLACK,"B ");
-        sleep_ms(1000);
+        uint64 i = 0xFFFF;
+        while (i--) {
+            asm_pause();
+        };
     }
 }
 
 void thread_c() {
     while(1) {
         color_printk(YELLOW,BLACK,"C ");
-        sleep_ms(1000);
+        uint64 i = 0xFFFF;
+        while (i--) {
+            asm_pause();
+        };
     }
 }
 
