@@ -21,8 +21,6 @@
 #include "../x64/task_sched.h"
 #include "../x64/timer.h"
 
-task_t idle_task; //系统看门狗任务
-
 task_t *task_a;
 task_t *task_b;
 task_t *task_c;
@@ -74,36 +72,21 @@ void kernel_init(void) {
     cpu_load_resource();                                        //加载cpu资源
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
 
-    // 1. 看门狗任务
-    idle_task.id = 0;
-    idle_task.state = TASK_RUNNING;
-    g_rq.current = &idle_task;
-    g_rq.idle_task = &idle_task;// 🌟 钦定自己为系统的 Idle Task
-
 
     // 1. 创建两个新任务
     task_a = create_kernel_task(thread_a, 0);
     task_a->id = 1;
-    enqueue_task(task_a);
+    enqueue_task_eevdf(task_a);
 
     task_b = create_kernel_task(thread_b, 0);
     task_b->id = 2;
-    enqueue_task(task_b);
+    enqueue_task_eevdf(task_b);
 
     task_c = create_kernel_task(thread_c, 0);
     task_c->id = 3;
-    enqueue_task(task_c);
+    enqueue_task_eevdf(task_c);
 
-    // 4. 华丽转身：从“创世”进入“养老”循环
-    while(1) {
-        // 如果没人排队，schedule 会挑中我自己（idle_task）。
-        // 切给自己 = 什么都没发生，直接 return，往下执行 hlt 节能。
-        // 如果有人排队，schedule 会切给别人。等他们全睡了，又会切回这里。
-        schedule();
-
-        // 核心态停机指令，断电休眠，等待下一次时钟中断
-        asm volatile("hlt");
-    }
+    idle_task_init();
 
     bus_init();                                                 //总线初始化
     ap_init();                                                  //初始化ap核
