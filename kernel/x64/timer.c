@@ -57,53 +57,74 @@ void sleep_us(uint64 delay_us) {
  * @brief 扫描睡眠树，唤醒所有到期的任务，并重设下一个硬件闹钟
  */
 #define EARLY_WAKEUP_TOLERANCE_NS 2000ULL // 容差窗口：2微秒
+#define MAX_TIME 0xFFFFFFFFFFFFFFFFULL
+
 void check_and_wakeup_sleeping_tasks(void) {
-    // 1. 获取挂钟时间
     uint64 now_ns = get_uptime_ns();
 
-    // 🌟 将容差直接加在当前时间上，形成“有效当前时间”
-    // 在这个时间线之前的所有任务，一律统统叫醒！
+    // ========================================================
+    // 🔪 第一把镰刀：EEVDF 虚拟时间片剥夺 (保持上一版的修正)
+    // ========================================================
+    task_t *curr = g_rq.current;
+    if (curr && curr != g_rq.idle_task) {
+        update_curr();
+        if (curr->v_eligible >= curr->v_deadline) {
+            curr->flags |= TIF_NEED_RESCHED;
+        }
+    }
+
+    // ========================================================
+    // 捞人逻辑 (保持不变)
+    // ========================================================
     uint64 effective_now = now_ns + EARLY_WAKEUP_TOLERANCE_NS;
-
     rb_node_t *node;
-
-    // 2. 循环检查睡眠红黑树
     while ((node = rb_first(&g_rq.sleep_tree)) != NULL) {
         task_t *sleep_task = CONTAINER_OF(node, task_t, sleep_node);
+        if (sleep_task->wake_up_ns > effective_now) break;
 
-        // 如果连最左侧（最早）的人，唤醒时间都大于 effective_now
-        // 说明所有人都还没睡够，直接停止捞人！
-        if (sleep_task->wake_up_ns > effective_now) {
-            break;
-        }
-
-        // =======================================================
-        // 时间到了，捞人！
-        // =======================================================
         rb_erase(&g_rq.sleep_tree, &sleep_task->sleep_node, NULL);
         sleep_task->state = TASK_READY;
         enqueue_task_eevdf(sleep_task);
 
         if (sleep_task != g_rq.current) {
-            g_rq.current->flags |= TIF_NEED_RESCHED; // 贴上换人标签
+            g_rq.current->flags |= TIF_NEED_RESCHED;
         }
     }
 
     // =======================================================
-    // 3. 终极魔法：Tickless 续杯 / APIC 接力 (Relay)
+    // 🌟 终极魔法 3.0：双轨接力 (睡眠死线 vs 调度死线)
     // =======================================================
-    // 刚才的循环可能捞出了几个人，也可能一个都没捞出来（比如 APIC 中途溢出早醒）。
-    // 不管怎样，我们再看一眼树上还有没有人在睡：
+    uint64 sleep_deadline = MAX_TIME;
+    uint64 sched_deadline = MAX_TIME;
+
+    // 1. 获取最近的睡眠死线 (Clock A)
     node = rb_first(&g_rq.sleep_tree);
     if (node != NULL) {
         task_t *next_sleep_task = CONTAINER_OF(node, task_t, sleep_node);
-        reprogram_clockevent(next_sleep_task->wake_up_ns);
-    } else {
-        // 所有人都醒了，把硬件闹钟关掉，或者设成最大值
-        reprogram_clockevent(0xFFFFFFFFFFFFFFFFULL);
+        sleep_deadline = next_sleep_task->wake_up_ns;
     }
-}
 
+    // 2. 🌟 获取调度死线 (Clock B)
+    // 核心判定：只有当就绪队列里有其他人排队时，我们才需要设定剥夺闹钟！
+    if (curr && curr != g_rq.idle_task && g_rq.sched_tree.rb_node != NULL) {
+        // 如果上面第一把镰刀没给它贴标签，说明它还有剩余虚拟时间
+        if (!(curr->flags & TIF_NEED_RESCHED) && (curr->v_deadline > curr->v_eligible)) {
+            // 反向物理折算：剩余虚拟时间 -> 剩余物理时间
+            uint64 v_left = curr->v_deadline - curr->v_eligible;
+            uint64 phys_left = (v_left * curr->weight) / NICE_0_LOAD;
+
+            sched_deadline = now_ns + phys_left;
+        } else {
+            // 如果已经被贴了标签，说明现在立马就该切走，时间就是现在
+            sched_deadline = now_ns;
+        }
+    }
+
+    // 3. 终极裁决：谁离现在最近，硬件闹钟就听谁的！
+    uint64 final_deadline = (sleep_deadline < sched_deadline) ? sleep_deadline : sched_deadline;
+
+    reprogram_clockevent(final_deadline);
+}
 
 
 

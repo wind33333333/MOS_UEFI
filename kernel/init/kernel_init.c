@@ -29,7 +29,7 @@ task_t *task_c;
 void thread_a() {
     while(1) {
         color_printk(GREEN,BLACK,"A ");
-        uint64 i = 0xFFFF;
+        uint64 i = 0x1FFFF;
         while (i--) {
             asm_pause();
         };
@@ -39,7 +39,7 @@ void thread_a() {
 void thread_b() {
     while(1) {
         color_printk(RED,BLACK,"B ");
-        uint64 i = 0xFFFF;
+        uint64 i = 0x1FFFF;
         while (i--) {
             asm_pause();
         };
@@ -49,7 +49,7 @@ void thread_b() {
 void thread_c() {
     while(1) {
         color_printk(YELLOW,BLACK,"C ");
-        uint64 i = 0xFFFF;
+        uint64 i = 0x1FFFF;
         while (i--) {
             asm_pause();
         };

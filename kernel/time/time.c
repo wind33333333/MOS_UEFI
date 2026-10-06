@@ -308,6 +308,7 @@ uint64 timekeeping_measure_freq_hz(uint64 (*target_read)(void), boolean is_down_
 
 
 int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
+
     check_and_wakeup_sleeping_tasks();
 }
 
