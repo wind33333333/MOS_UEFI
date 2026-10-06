@@ -9,6 +9,10 @@ typedef enum {
     TASK_SLEEPING // 在睡眠树/堆中，等待绝对时间唤醒
 } task_state_t;
 
+// 任务的异步标志位 (位图)
+#define TIF_NEED_RESCHED  (1 << 0)  // 第 0 位：需要重新调度
+#define TIF_SIGPENDING    (1 << 1)  // 第 1 位：有未处理的信号 (未来杀进程用)
+#define TIF_SYSCALL_TRACE (1 << 2)  // 第 2 位：系统调用追踪 (未来调试用)
 
 // 任务控制块 (TCB)
 typedef struct task_t {
@@ -16,7 +20,7 @@ typedef struct task_t {
     uint64 id;                  // 任务 ID
     task_state_t state;
     uint32 priority;            // 优先级
-    uint8 need_resched;
+    uint32 flags;               // 🌟 异步标志位图 (别人给我贴的便签)
 
     // 🌟 新增：睡眠/定时器专用字段
     uint64 wake_up_ns;        // 红黑树的 Key (绝对纳秒时间)
