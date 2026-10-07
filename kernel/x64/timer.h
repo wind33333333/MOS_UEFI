@@ -12,3 +12,5 @@ static inline void sleep_ms (uint64 delay_ms) {
 }
 
 void check_and_wakeup_sleeping_tasks(void);
+
+void reprogram_timer_for_next_event(void);

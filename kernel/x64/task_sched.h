@@ -49,7 +49,7 @@ typedef struct task_t {
 
 // 调度队列 (Per-CPU)
 typedef struct {
-    task_t *current;            // 当前正在 CPU 上飞驰的任务
+    task_t *cur_task;            // 当前正在 CPU 上飞驰的任务
     task_t *idle_task;          // 兜底的系统空闲任务 (hlt)
 
     // =========================================================

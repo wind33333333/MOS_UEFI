@@ -1,6 +1,7 @@
 #include "task_sched.h"
+#include "../time/time_core.h"
 #include "slub.h"
-#include "time.h"
+#include "../x64/timer.h"
 
 task_t idle_task; //系统空闲任务，系统看门狗
 
@@ -79,13 +80,11 @@ rb_augment_callbacks_f eevdf_callbacks = {
 };
 
 
-
-
 /**
  * @brief 计费函数：推进当前任务的虚拟时间
  */
 void update_curr(void) {
-    task_t *curr = g_rq.current;
+    task_t *curr = g_rq.cur_task;
     if (!curr || curr == g_rq.idle_task) return;
 
     uint64 now = get_uptime_ns();
@@ -149,11 +148,15 @@ void dequeue_task_eevdf(task_t *task) {
     rb_erase(&g_rq.sched_tree, &task->sched_node, &eevdf_callbacks);
 }
 
+
 /**
- * @brief 🌟 EEVDF 核心裁决器：挑选最佳任务
- * @details 数学定义：在所有合格的任务 (Ve <= Vtime) 中，挑选截止时间 (Vd) 最小的。
+ * @brief 🌟 EEVDF 核心裁决器：挑选下一个最适合运行的任务
+ * @details
+ * 核心数学法则：在所有“合格”的任务（v_eligible <= 系统 vtime）中，
+ * 挑选“虚拟截止时间”（v_deadline）最小的任务。
  */
 task_t* pick_next_task_eevdf(void) {
+    // 从 EEVDF 增强红黑树的根节点开始向下扫描
     rb_node_t *node = g_rq.sched_tree.rb_node;
     task_t *best = NULL;
 
@@ -161,41 +164,64 @@ task_t* pick_next_task_eevdf(void) {
         task_t *curr = CONTAINER_OF(node, task_t, sched_node);
         task_t *left = curr->sched_node.left ? CONTAINER_OF(curr->sched_node.left, task_t, sched_node) : NULL;
 
-        // 分支 A: 当前节点不合格 (Ve > Vtime)
+        // ==========================================================
+        // 1. 合格性防线：当前节点是否有资格运行？
+        // ==========================================================
+        // 如果 curr->v_eligible > vtime，说明它“太超前了”，不合格。
+        // 根据红黑树性质，右子树的 Ve 必定比当前节点更大，肯定也全都不合格。
+        // 所以此时唯一可能藏着合格任务的地方，只有左子树！
         if (curr->v_eligible > g_rq.vtime) {
-            // 右子树肯定更不合格(Ve更大)，唯一有希望的只在左子树
             node = curr->sched_node.left;
             continue;
         }
 
-        // 分支 B: 当前节点合格 (Ve <= Vtime)
-        // 说明 curr 及其整棵左子树全部合格！
+        // ==========================================================
+        // 2. 走到这里，说明 curr 已经合格 (Ve <= Vtime)。
+        // 极其重要的定理：因为左子树的所有节点的 Ve 都 <= curr 的 Ve，
+        // 所以此时此刻，【整个左子树必定全员合格】！
+        // ==========================================================
 
-        // 候选更新：当前节点可能是最优的
-        if (!best || curr->v_deadline < best->v_deadline) {
+        // 记录或更新最佳候选人 (best)
+        // 判定条件：要么还没选出 best；要么 curr 的截止时间更紧急 (Vd更小)
+        // Tie-breaker 平局决胜：如果 Vd 完全一样，挑选等得更久的 (Ve更小)
+        if (!best || curr->v_deadline < best->v_deadline ||
+           (curr->v_deadline == best->v_deadline && curr->v_eligible < best->v_eligible)) {
             best = curr;
         }
 
-        // 利用增强数据判断：左子树里是否藏着更紧急的任务 (Vd 更小)？
-        if (left && (!best || left->min_v_deadline < best->v_deadline)) {
-            node = curr->sched_node.left; // 左边有金矿，去左边挖
+        // ==========================================================
+        // 3. 🌟 终极防饿死路由法则 (Linux 落袋为安策略)
+        // ==========================================================
+        // 既然左子树已经【全员合格】了，只要左子树里藏着的最小值 (min_v_deadline)
+        // 能够打败我们刚刚确立的 best，我们就【绝对不能放过它】，必须去左边把它挖出来！
+        if (left && left->min_v_deadline < best->v_deadline) {
+            node = curr->sched_node.left;
         } else {
-            node = curr->sched_node.right; // 左边没有更好的了，去右边碰碰运气
+            // 否则，说明左子树里全是“辣鸡”，没有比当前 best 更好的人选了。
+            // 此时，真正的最小值要么是 best 自己，要么藏在未知的【右子树】里。
+            // 毫不犹豫地向右走，去碰碰运气（即使右子树的任务可能不合格，留给下一次循环判定）。
+            node = curr->sched_node.right;
         }
     }
 
-    // 极端边缘保护：如果由于休眠等原因系统虚拟时间 Vtime 严重滞后，导致找不到合格任务
+    // ==========================================================
+    // 4. 极端边缘保护：时间线快进 (Fast-forward)
+    // ==========================================================
+    // 如果系统因为所有任务都在睡眠，导致全局 Vtime 严重滞后，
+    // 此时树上可能一个合格的任务都找不到 (best == NULL)。
+    // 补救措施：直接去红黑树最左端（Ve 最小，等得最久的任务），
+    // 强行把系统的全局时间拨快，对齐到它的 Ve，让它强制合格！
     if (!best) {
         rb_node_t *leftmost = rb_first(&g_rq.sched_tree);
         if (leftmost) {
             best = CONTAINER_OF(leftmost, task_t, sched_node);
-            // 时间线快进 (Fast-forward)，强行让最左侧(Ve最小)的任务合格
             g_rq.vtime = best->v_eligible;
         }
     }
 
     return best;
 }
+
 
 /**
  * @brief 主调度器接管点
@@ -204,7 +230,7 @@ void schedule(void) {
     uint64 flags;
     local_irq_save(&flags);
 
-    task_t *prev = g_rq.current;
+    task_t *prev = g_rq.cur_task;
 
     // 1. 结清前一个任务的时间账单
     update_curr();
@@ -227,7 +253,14 @@ void schedule(void) {
 
     next->state = TASK_RUNNING;
     next->last_update_time = get_uptime_ns();
-    g_rq.current = next;
+    g_rq.cur_task = next;
+
+    // ========================================================
+    // 🌟 终极修复：换人后，决不能继承旧闹钟！
+    // 因为 next 刚刚出列，它的 v_deadline 是重新充满的 10ms，
+    // 调用这个引擎，APIC 就会极其精准地被设定在 10ms 之后！
+    // ========================================================
+    reprogram_timer_for_next_event();
 
     // 4. 底层汇编硬切换
     if (prev != next) {
@@ -239,8 +272,8 @@ void schedule(void) {
 
 void check_and_schedule() {
     // 如果当前任务被贴了“换人”的条子
-    if (g_rq.current->flags & TIF_NEED_RESCHED) {
-        g_rq.current->flags &= ~TIF_NEED_RESCHED; // 撕掉条子
+    if (g_rq.cur_task->flags & TIF_NEED_RESCHED) {
+        g_rq.cur_task->flags &= ~TIF_NEED_RESCHED; // 撕掉条子
 
         // 🌟 在这里进行真正的上下文切换！
         // 即使栈在这里被劫持，APIC 也绝对不会死锁，因为 EOI 早就发完了！
@@ -364,7 +397,7 @@ void set_task_weight(task_t *task, uint64 new_weight) {
     // 5. 抢占裁决：如果你修改的是当前正在 CPU 上跑的任务
     // 比如它的权重被降低了，那我们有理由怀疑此时树上可能存在比它更渴望 CPU 的任务。
     // 贴上抢占便签，强制它在下次中断退出时交出麦克风，走一遍 EEVDF 的 pick_next 裁决。
-    if (task == g_rq.current) {
+    if (task == g_rq.cur_task) {
         task->flags |= TIF_NEED_RESCHED;
     }
 
@@ -397,7 +430,7 @@ void set_task_time_slice(task_t *task, uint64 new_slice_ns) {
         enqueue_task_eevdf(task);
     }
 
-    if (task == g_rq.current) {
+    if (task == g_rq.cur_task) {
         task->flags |= TIF_NEED_RESCHED;
     }
 
@@ -407,8 +440,17 @@ void set_task_time_slice(task_t *task, uint64 new_slice_ns) {
 void idle_task_init(void) {
     idle_task.id = 0;
     idle_task.state = TASK_RUNNING;
-    g_rq.current = &idle_task;
+    g_rq.cur_task = &idle_task;
     g_rq.idle_task = &idle_task;// 🌟 钦定自己为系统的 Idle Task
+    g_rq.vtime = 0;
+
+    // ========================================================
+    // 🌟 第一推力 (Kickstart)：手动压入第一颗闹钟子弹！
+    // 不管红黑树里有谁，我们先强制给硬件定一个 10ms 后的死线。
+    // 只要这第一声枪响，后续的 timer_irq_handler 就会完美接管一切计算。
+    // ========================================================
+    // uint64 first_tick_ns = get_uptime_ns() + 10000000ULL;
+    // reprogram_clockevent(first_tick_ns);
 
     // 4. 华丽转身：从“创世”进入“养老”循环
     while(1) {

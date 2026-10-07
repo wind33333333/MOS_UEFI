@@ -41,7 +41,8 @@ uint64 get_uptime_ns(void) {
     // 循环退出后，cs 指针已确保与 base、last 严格对应，直接解引用 cs 的只读常数即可！
     uint64 delta_cycles = (now_cycles - last) & cs->mask;
     uint64 delta_ns     = (uint64)(((__uint128_t)delta_cycles * cs->cycles_to_ns_mult) >> cs->cycles_to_ns_shift);
-    return base + delta_ns;
+    uint64 result = base + delta_ns;
+    return result;
 }
 
 // =========================================================================
@@ -164,10 +165,10 @@ boolean clockevent_switch(clockevent_t *new_ce) {
 
     // 3. 🌟 绝对时间架构的终极体现：只传目标和快照！
     // 哪怕在睡眠中途切换定时器，任务依然会在原定的纳秒时刻准时醒来！
-    uint64 target_ns = core->next_deadline_ns; // 直接拿绝对目标
+    //uint64 target_ns = core->next_deadline_ns; // 直接拿绝对目标
 
     // 直接下发！
-    new_ce->set_next_event(new_ce, target_ns);
+    //new_ce->set_next_event(new_ce, target_ns);
 
     local_irq_restore(flags);
     PR_INFO("Core:%d Switch Timer:%s\n", core->logical_id, new_ce->name);
@@ -191,7 +192,7 @@ void clockevent_init_per_cpu(void) {
             best = g_ce_list[i];
         }
     }
-    THIS_CPU->next_deadline_ns = get_uptime_ns() + 1000000000ULL;
+    //THIS_CPU->next_deadline_ns = get_uptime_ns() + 1000000000ULL;
     clockevent_switch(best);
 }
 

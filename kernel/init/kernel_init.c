@@ -17,45 +17,36 @@
 #include "../x64/interrupt.h"
 #include "../include/ioapic.h"
 #include "../drivers/hpet/hpet.h"
-#include "../time/time.h"
+#include "../time/time_core.h"
 #include "../x64/task_sched.h"
 #include "../x64/timer.h"
 
 task_t *task_a;
 task_t *task_b;
 task_t *task_c;
+task_t *task_d;
 
 
-void thread_a() {
+// 全局纯内存计数器
+volatile uint64 count_a = 0;
+volatile uint64 count_b = 0;
+volatile uint64 count_c = 0;
+
+void thread_a() { while(1) { count_a++; } }
+void thread_b() { while(1) { count_b++; } }
+void thread_c() { while(1) { count_c++; } }
+
+// 监控任务：绝对的裁判
+void thread_monitor() {
     while(1) {
-        color_printk(GREEN,BLACK,"A ");
-        uint64 i = 0x1FFFF;
-        while (i--) {
-            asm_pause();
-        };
+        // 睡 1 秒钟 (调用你写好的高精度红黑树休眠)
+        sleep_ms(1000);
+
+        // 醒来后，打印三个人的“业绩”
+        color_printk(WHITE, BLACK, "1 Sec Report -> A: %ld, B: %ld, C: %ld\n",
+                     count_a, count_b, count_c);
     }
 }
-
-void thread_b() {
-    while(1) {
-        color_printk(RED,BLACK,"B ");
-        uint64 i = 0x1FFFF;
-        while (i--) {
-            asm_pause();
-        };
-    }
-}
-
-void thread_c() {
-    while(1) {
-        color_printk(YELLOW,BLACK,"C ");
-        uint64 i = 0x1FFFF;
-        while (i--) {
-            asm_pause();
-        };
-    }
-}
-
 
 
 void kernel_init(void) {
@@ -94,6 +85,10 @@ void kernel_init(void) {
     task_c = create_kernel_task(thread_c, 0);
     task_c->id = 3;
     enqueue_task_eevdf(task_c);
+
+    task_d = create_kernel_task(thread_monitor, 0);
+    task_c->id = 4;
+    enqueue_task_eevdf(task_d);
 
     idle_task_init();
 

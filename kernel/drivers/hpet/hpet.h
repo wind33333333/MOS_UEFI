@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../../include/moslib.h"
-#include "../time/time.h"
+#include "../time/time_core.h"
 
 // ---------------------------------------------------------
 // 1. HPET 定时器通道硬件寄存器 (Timer N)

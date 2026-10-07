@@ -1,6 +1,5 @@
 #pragma once
 #include "moslib.h"
-#include "rbtree.h"
 
 #define CS_MASK_64BIT  0xFFFFFFFFFFFFFFFFULL
 #define CS_MASK_32BIT  0x00000000FFFFFFFFULL
