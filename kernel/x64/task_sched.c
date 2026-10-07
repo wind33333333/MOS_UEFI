@@ -326,7 +326,7 @@ task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) {
     // 🌟 EEVDF 引擎初始化
     // =======================================================
     new_task->weight = NICE_0_LOAD;            // 默认公平权重
-    new_task->time_slice = 10000000ULL;        // 10ms 基础配额
+    new_task->time_slice = 100000000ULL;        // 10ms 基础配额
 
     // 严厉打击“出生特权”：虚拟时间直接对齐当前系统 Vtime
     new_task->v_eligible = g_rq.vtime;
@@ -342,38 +342,55 @@ task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) {
 }
 
 task_t* create_user_task(void *user_entry, void *user_stack) {
-    task_t *task = kmalloc(sizeof(task_t));
+    task_t *new_task = kmalloc(sizeof(task_t));
     void *kstack = kmalloc(4096);
-    uint64 *sp = (uint64 *)((uint64)kstack + 4096);
+    uint64 *rsp = (uint64 *)((uint64)kstack + 4096);
 
     // ==========================================================
     // 1. 伪造【中断返回现场】 (为了给最后的 iretq 使用)
     // ==========================================================
-    *(--sp) = 0x23;                 // 用户态 SS (Ring 3 数据段)
-    *(--sp) = (uint64)user_stack;   // 用户态 RSP (Ring 3 栈顶)
-    *(--sp) = 0x202;                // RFLAGS (开启中断)
-    *(--sp) = 0x1B;                 // 用户态 CS (Ring 3 代码段)
-    *(--sp) = (uint64)user_entry;   // 🌟 用户态程序的真实入口地址！
+    *(--rsp) = 0x23;                 // 用户态 SS (Ring 3 数据段)
+    *(--rsp) = (uint64)user_stack;   // 用户态 RSP (Ring 3 栈顶)
+    *(--rsp) = 0x202;                // RFLAGS (开启中断)
+    *(--rsp) = 0x1B;                 // 用户态 CS (Ring 3 代码段)
+    *(--rsp) = (uint64)user_entry;   // 🌟 用户态程序的真实入口地址！
 
     // 伪造 15 个通用寄存器 (初始全部清零)
-    *(--sp) = 0; // err_code
-    *(--sp) = 0; // int_no
-    *(--sp) = 0; // rax
+    *(--rsp) = 0; // err_code
+    *(--rsp) = 0; // int_no
+    *(--rsp) = 0; // rax
     // ... (省略压入其他 14 个寄存器 0) ...
-    *(--sp) = 0; // r15
+    *(--rsp) = 0; // r15
 
     // ==========================================================
     // 2. 伪造【context_switch 现场】 (盖在中断现场的上面)
     // ==========================================================
-    *(--sp) = (uint64)ret_from_fork; // 🌟 统一跳板！
-    *(--sp) = 0x202;                 // RFLAGS
-    *(--sp) = 0;                     // RBP
-    *(--sp) = 0;                     // 🌟 RBX 填 0！极其重要，这告诉跳板：“我是用户态任务”
+    *(--rsp) = (uint64)ret_from_fork; // 🌟 统一跳板！
+    *(--rsp) = 0x202;                 // RFLAGS
+    *(--rsp) = 0;                     // RBP
+    *(--rsp) = 0;                     // 🌟 RBX 填 0！极其重要，这告诉跳板：“我是用户态任务”
     // ... 其他寄存器填 0
 
-    task->rsp = (uint64)sp;
-    task->state = TASK_READY;
-    return task;
+    new_task->rsp = (uint64)rsp;
+    new_task->state = TASK_READY;
+
+    // =======================================================
+    // 🌟 EEVDF 引擎初始化
+    // =======================================================
+    new_task->weight = NICE_0_LOAD;            // 默认公平权重
+    new_task->time_slice = 10000000ULL;        // 10ms 基础配额
+
+    // 严厉打击“出生特权”：虚拟时间直接对齐当前系统 Vtime
+    new_task->v_eligible = g_rq.vtime;
+
+    new_task->v_deadline = 0;                  // 留给 enqueue 时计算
+    new_task->min_v_deadline = 0;              // 留给 enqueue 时计算
+    new_task->last_update_time = 0;            // 留给 schedule 调度时记录
+    // =======================================================
+
+    new_task->wake_up_ns = 0;
+
+    return new_task;
 }
 
 /**
