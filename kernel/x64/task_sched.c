@@ -3,9 +3,20 @@
 #include "slub.h"
 #include "../x64/timer.h"
 
-task_t idle_task; //系统空闲任务，系统看门狗
+//系统空闲任务，系统看门狗
+task_t idle_task = {
+    .id = 0,
+    .state = TASK_RUNNING
+};
 
-runqueue_t g_rq; // 假设单核，多核则是 Per-CPU 变量
+//就绪队列
+runqueue_t g_rq = {
+    .cur_task = &idle_task,
+    .idle_task = &idle_task,
+    .vtime = 0,
+    .sched_tree = NULL,
+    .sleep_tree = NULL
+}; // 假设单核，多核则是 Per-CPU 变量
 
 // 外部汇编函数声明
 void context_switch(uint64 *prev_rsp, uint64 *next_rsp);
@@ -438,12 +449,6 @@ void set_task_time_slice(task_t *task, uint64 new_slice_ns) {
 }
 
 void idle_task_init(void) {
-    idle_task.id = 0;
-    idle_task.state = TASK_RUNNING;
-    g_rq.cur_task = &idle_task;
-    g_rq.idle_task = &idle_task;// 🌟 钦定自己为系统的 Idle Task
-    g_rq.vtime = 0;
-
     // ========================================================
     // 🌟 第一推力 (Kickstart)：手动压入第一颗闹钟子弹！
     // 不管红黑树里有谁，我们先强制给硬件定一个 10ms 后的死线。
