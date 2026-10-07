@@ -88,10 +88,10 @@ void reprogram_timer_for_next_event(void) {
 }
 
 /**
- * @brief 扫描睡眠树，唤醒所有到期的任务，并重设下一个硬件闹钟
+ * @brief 扫描睡眠树和调度树，唤醒所有到期的任务，并重设下一个硬件闹钟
  */
 #define EARLY_WAKEUP_TOLERANCE_NS 2000ULL // 容差窗口：2微秒
-void check_and_wakeup_sleeping_tasks(void) {
+void check_sched_and_sleep_tasks(void) {
     task_t *cur_task = g_rq.cur_task;
 
     // ========================================================
@@ -123,7 +123,7 @@ void check_and_wakeup_sleeping_tasks(void) {
         }
     }
 
-    reprogram_timer_for_next_event();
+    //reprogram_timer_for_next_event();
 
 }
 

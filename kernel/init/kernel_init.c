@@ -34,29 +34,32 @@ volatile uint64 count_c = 0;
 
 void thread_a() {
     while (1) {
-        color_printk(GREEN, BLACK, "A ");
-        uint64 i = 0xFFFF;
-        while(i--) {
-            asm_pause();
-        }
+        // color_printk(GREEN, BLACK, "A ");
+        // uint64 i = 0xFFFF;
+        // while(i--) {
+        //     asm_pause();
+        // }
+        count_a++;
     }
 }
 void thread_b() {
     while (1) {
-        color_printk(YELLOW, BLACK, "B ");
-        uint64 i = 0xFFFF;
-        while(i--) {
-            asm_pause();
-        }
+        // color_printk(YELLOW, BLACK, "B ");
+        // uint64 i = 0xFFFF;
+        // while(i--) {
+        //     asm_pause();
+        // }
+        count_b++;
     }
 }
 void thread_c() {
     while (1) {
-        color_printk(RED, BLACK, "C ");
-        uint64 i = 0xFFFF;
-        while(i--) {
-            asm_pause();
-        }
+        // color_printk(RED, BLACK, "C ");
+        // uint64 i = 0xFFFF;
+        // while(i--) {
+        //     asm_pause();
+        // }
+        count_c++;
     }
 }
 
@@ -110,9 +113,9 @@ void kernel_init(void) {
     task_c->id = 3;
     enqueue_task_eevdf(task_c);
 
-    // task_d = create_kernel_task(thread_monitor, 0);
-    // task_c->id = 4;
-    // enqueue_task_eevdf(task_d);
+    task_d = create_kernel_task(thread_monitor, 0);
+    task_c->id = 4;
+    enqueue_task_eevdf(task_d);
 
     idle_task_init();
 
