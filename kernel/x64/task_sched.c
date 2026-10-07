@@ -94,13 +94,12 @@ rb_augment_callbacks_f eevdf_callbacks = {
 /**
  * @brief 计费函数：推进当前任务的虚拟时间
  */
-void update_curr(void) {
+void update_curr(uint64 now_ns) {
     task_t *curr = g_rq.cur_task;
     if (!curr || curr == g_rq.idle_task) return;
 
-    uint64 now = get_uptime_ns();
-    uint64 delta_exec = now - curr->last_update_time;
-    curr->last_update_time = now;
+    uint64 delta_exec = now_ns - curr->last_update_time;
+    curr->last_update_time = now_ns;
 
     // 计算消耗的虚拟时间: 物理时间 * (基准权重 / 自身权重)
     // 权重越大的任务，虚拟时间流逝越慢
@@ -241,10 +240,12 @@ void schedule(void) {
     uint64 flags;
     local_irq_save(&flags);
 
+    uint64 now_ns = get_uptime_ns();
+
     task_t *prev = g_rq.cur_task;
 
     // 1. 结清前一个任务的时间账单
-    update_curr();
+    update_curr(now_ns);
     prev->flags &= ~TIF_NEED_RESCHED; // 撕下便签
 
     // 2. 状态分发
@@ -263,7 +264,7 @@ void schedule(void) {
     }
 
     next->state = TASK_RUNNING;
-    next->last_update_time = get_uptime_ns();
+    next->last_update_time = now_ns;
     g_rq.cur_task = next;
 
     // ========================================================
@@ -271,7 +272,7 @@ void schedule(void) {
     // 因为 next 刚刚出列，它的 v_deadline 是重新充满的 10ms，
     // 调用这个引擎，APIC 就会极其精准地被设定在 10ms 之后！
     // ========================================================
-    reprogram_timer_for_next_event();
+    reprogram_timer_for_next_event(now_ns);
 
     // 4. 底层汇编硬切换
     if (prev != next) {
@@ -326,7 +327,7 @@ task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) {
     // 🌟 EEVDF 引擎初始化
     // =======================================================
     new_task->weight = NICE_0_LOAD;            // 默认公平权重
-    new_task->time_slice = 100000000ULL;        // 10ms 基础配额
+    new_task->time_slice = 10000000ULL;        // 10ms 基础配额
 
     // 严厉打击“出生特权”：虚拟时间直接对齐当前系统 Vtime
     new_task->v_eligible = g_rq.vtime;

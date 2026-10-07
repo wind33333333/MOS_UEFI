@@ -11,6 +11,4 @@ static inline void sleep_ms (uint64 delay_ms) {
     sleep_us(delay_ms*1000);
 }
 
-void check_sched_and_sleep_tasks(void);
-
-void reprogram_timer_for_next_event(void);
+void reprogram_timer_for_next_event(uint64 now_ns);

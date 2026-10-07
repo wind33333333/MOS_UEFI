@@ -1,4 +1,6 @@
 #include "timer.h"
+
+#include "interrupt.h"
 #include "../time/time_core.h"
 #include "task_sched.h"
 
@@ -56,10 +58,9 @@ void sleep_us(uint64 delay_us) {
  * @brief 动态重置硬件闹钟 (Tickless 核心引擎)
  * @details 负责在任务切换或中断结束时，精准计算下一次闹钟时间
  */
-void reprogram_timer_for_next_event(void) {
+void reprogram_timer_for_next_event(uint64 now_ns) {
     uint64 sleep_deadline = 0xFFFFFFFFFFFFFFFFULL; // MAX
     uint64 sched_deadline = 0xFFFFFFFFFFFFFFFFULL; // MAX
-    uint64 now_ns = get_uptime_ns();
 
     // 1. 扫描睡觉区：最近的唤醒死线 (Clock A)
     rb_node_t *node = rb_first(&g_rq.sleep_tree);
@@ -91,14 +92,15 @@ void reprogram_timer_for_next_event(void) {
  * @brief 扫描睡眠树和调度树，唤醒所有到期的任务，并重设下一个硬件闹钟
  */
 #define EARLY_WAKEUP_TOLERANCE_NS 2000ULL // 容差窗口：2微秒
-void check_sched_and_sleep_tasks(void) {
+int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
+    uint64 now_ns = get_uptime_ns();
     task_t *cur_task = g_rq.cur_task;
 
     // ========================================================
     // 调度任务结算
     // ========================================================
     if (cur_task && cur_task != g_rq.idle_task) {
-        update_curr();
+        update_curr(now_ns);
         if (cur_task->v_eligible >= cur_task->v_deadline) {
             cur_task->flags |= TIF_NEED_RESCHED;
         }
@@ -107,7 +109,6 @@ void check_sched_and_sleep_tasks(void) {
     // ========================================================
     // 定时任务结算
     // ========================================================
-    uint64 now_ns = get_uptime_ns();
     uint64 effective_now = now_ns + EARLY_WAKEUP_TOLERANCE_NS;
     rb_node_t *node;
     while ((node = rb_first(&g_rq.sleep_tree)) != NULL) {

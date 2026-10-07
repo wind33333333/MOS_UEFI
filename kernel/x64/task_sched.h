@@ -76,5 +76,5 @@ void enqueue_task_eevdf(task_t *task);
 void enqueue_task_eevdf(task_t *task);
 void idle_task_init(void);
 
-void update_curr(void);
+void update_curr(uint64 now_ns);
 

@@ -308,11 +308,7 @@ uint64 timekeeping_measure_freq_hz(uint64 (*target_read)(void), boolean is_down_
 
 
 
-int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
-
-    check_sched_and_sleep_tasks();
-}
-
+extern int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id);
 
 void time_core_init(void) {
     // 1. 子系统统一申请，终生不释放
