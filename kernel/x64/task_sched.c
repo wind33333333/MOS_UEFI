@@ -95,12 +95,12 @@ rb_augment_callbacks_f eevdf_callbacks = {
 /**
  * @brief 计费函数：推进当前任务的虚拟时间
  */
-void update_curr(uint64 now_ns) {
+void update_curr() {
     task_t *curr = g_rq.cur_task;
     if (!curr || curr == g_rq.idle_task) return;
 
-    uint64 delta_exec = now_ns - curr->last_update_time;
-    curr->last_update_time = now_ns;
+    uint64 delta_exec = g_rq.clock - curr->last_update_time;
+    curr->last_update_time = g_rq.clock ;
 
     // 计算消耗的虚拟时间: 物理时间 * (基准权重 / 自身权重)
     // 权重越大的任务，虚拟时间流逝越慢
@@ -241,12 +241,13 @@ void schedule(void) {
     uint64 flags;
     local_irq_save(&flags);
 
-    uint64 now_ns = get_uptime_ns();
+    update_rq_clock();
+    g_rq.skip_clock_update = FALSE;
 
     task_t *prev = g_rq.cur_task;
 
     // 1. 结清前一个任务的时间账单
-    update_curr(now_ns);
+    update_curr();
     prev->flags &= ~TIF_NEED_RESCHED; // 撕下便签
 
     // 2. 状态分发
@@ -265,7 +266,7 @@ void schedule(void) {
     }
 
     next->state = TASK_RUNNING;
-    next->last_update_time = now_ns;
+    next->last_update_time = g_rq.clock;
     g_rq.cur_task = next;
 
     // ========================================================
@@ -273,7 +274,7 @@ void schedule(void) {
     // 因为 next 刚刚出列，它的 v_deadline 是重新充满的 10ms，
     // 调用这个引擎，APIC 就会极其精准地被设定在 10ms 之后！
     // ========================================================
-    reprogram_timer_for_next_event(now_ns);
+    reprogram_timer_for_next_event();
 
     // 4. 底层汇编硬切换
     if (prev != next) {

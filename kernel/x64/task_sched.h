@@ -1,6 +1,7 @@
 #pragma once
 #include "moslib.h"
 #include "rbtree.h"
+#include "../time/time_core.h"
 
 #define NICE_0_LOAD 1024ULL // 默认权重，等同于 Linux 的 nice 0
 
@@ -52,6 +53,11 @@ typedef struct {
     task_t *cur_task;            // 当前正在 CPU 上飞驰的任务
     task_t *idle_task;          // 兜底的系统空闲任务 (hlt)
 
+    // 🌟 新增：属于本队列的绝对物理时间快照
+    uint64 clock;
+    boolean skip_clock_update;
+
+
     // =========================================================
     // 🌟 EEVDF 就绪子系统 (活人区)
     // =========================================================
@@ -76,5 +82,11 @@ void enqueue_task_eevdf(task_t *task);
 void enqueue_task_eevdf(task_t *task);
 void idle_task_init(void);
 
-void update_curr(uint64 now_ns);
+void update_curr();
+
+static inline void update_rq_clock(void) {
+    // 如果持有通行证，直接白嫖上一次的快照！
+    if (g_rq.skip_clock_update) return;
+    g_rq.clock = get_uptime_ns();
+}
 
