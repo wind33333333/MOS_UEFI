@@ -76,15 +76,15 @@ void reprogram_timer_for_next_event(uint64 now_ns) {
             // 反推物理余额：剩余虚拟时间 -> 剩余物理时间
             uint64 v_left = curr->v_deadline - curr->v_eligible;
             uint64 phys_left = (v_left * curr->weight) / NICE_0_LOAD;
+            // 🌟 千万别忘了 50us 硬件防线
+            if (phys_left < 50000ULL) phys_left = 50000ULL;
             sched_deadline = now_ns + phys_left;
-        } else {
-            // 已经被贴标签或者透支，立刻执行 (死线=现在)
-            sched_deadline = 0xFFFFFFFFFFFFFFFFULL;
         }
     }
 
     // 3. 终极裁决：谁离现在最近，APIC 就听谁的！
     uint64 final_deadline = (sleep_deadline < sched_deadline) ? sleep_deadline : sched_deadline;
+    // 如果final_deadline = 0xFFFFFFFFFFFFFFFF 则可以关闭定时器进入了。
     reprogram_clockevent(final_deadline);
 }
 
@@ -124,8 +124,7 @@ int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
         }
     }
 
-    //reprogram_timer_for_next_event();
-
+    reprogram_timer_for_next_event(now_ns);
 }
 
 

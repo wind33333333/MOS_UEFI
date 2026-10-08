@@ -467,14 +467,6 @@ void set_task_time_slice(task_t *task, uint64 new_slice_ns) {
 }
 
 void idle_task_init(void) {
-    // ========================================================
-    // 🌟 第一推力 (Kickstart)：手动压入第一颗闹钟子弹！
-    // 不管红黑树里有谁，我们先强制给硬件定一个 10ms 后的死线。
-    // 只要这第一声枪响，后续的 timer_irq_handler 就会完美接管一切计算。
-    // ========================================================
-    // uint64 first_tick_ns = get_uptime_ns() + 10000000ULL;
-    // reprogram_clockevent(first_tick_ns);
-
     // 4. 华丽转身：从“创世”进入“养老”循环
     while(1) {
         // 如果没人排队，schedule 会挑中我自己（idle_task）。
