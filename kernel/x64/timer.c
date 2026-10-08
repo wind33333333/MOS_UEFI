@@ -58,19 +58,19 @@ void reprogram_timer_for_next_event(uint64 cur_ns) {
     uint64 sched_deadline = 0xFFFFFFFFFFFFFFFFULL; // MAX
 
     // 1. 扫描睡觉区：最近的唤醒死线 (Clock A)
-    rb_node_t *node = rb_first(&g_rq.sleep_tree);
-    if (node != NULL) {
-        sleep_deadline = (CONTAINER_OF(node, task_t, sleep_node))->wake_up_ns;
+    rb_node_t *sleep_node = rb_first(&g_rq.sleep_tree);
+    if (sleep_node != NULL) {
+        sleep_deadline = (CONTAINER_OF(sleep_node, task_t, sleep_node))->wake_up_ns;
     }
 
     // 2. 扫描干活区：当前任务的剥夺死线 (Clock B)
-    task_t *curr = g_rq.cur_task;
-    if (curr && curr != g_rq.idle_task) {
+    task_t *cur_task = g_rq.cur_task;
+    if (cur_task && cur_task != g_rq.idle_task) {
         // 如果当前任务没被贴标签，且还有虚拟时间余额
-        if (!(curr->flags & TIF_NEED_RESCHED) && (curr->v_deadline > curr->v_eligible)) {
+        if (!(cur_task->flags & TIF_NEED_RESCHED) && (cur_task->v_deadline > cur_task->v_eligible)) {
             // 反推物理余额：剩余虚拟时间 -> 剩余物理时间
-            uint64 v_left = curr->v_deadline - curr->v_eligible;
-            uint64 phys_left = (v_left * curr->weight) / NICE_0_LOAD;
+            uint64 v_left = cur_task->v_deadline - cur_task->v_eligible;
+            uint64 phys_left = (v_left * cur_task->weight) / NICE_0_LOAD;
             // 🌟 千万别忘了 50us 硬件防线
             if (phys_left < 50000ULL) phys_left = 50000ULL;
             sched_deadline = cur_ns + phys_left;

@@ -240,7 +240,9 @@ task_t* pick_next_task_eevdf(void) {
 void schedule() {
     uint64 flags;
     local_irq_save(&flags);
+
     uint64 cur_ns = get_uptime_ns();
+
     task_t *prev = g_rq.cur_task;
 
     // 1. 结清前一个任务的时间账单
