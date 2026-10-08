@@ -6,7 +6,8 @@
 //系统空闲任务，系统看门狗
 task_t idle_task = {
     .id = 0,
-    .state = TASK_RUNNING
+    .state = TASK_RUNNING,
+    .flags = TIF_NEED_RESCHED
 };
 
 //就绪队列
@@ -467,15 +468,24 @@ void set_task_time_slice(task_t *task, uint64 new_slice_ns) {
 }
 
 void idle_task_init(void) {
-    // 4. 华丽转身：从“创世”进入“养老”循环
     while(1) {
-        // 如果没人排队，schedule 会挑中我自己（idle_task）。
-        // 切给自己 = 什么都没发生，直接 return，往下执行 hlt 节能。
-        // 如果有人排队，schedule 会切给别人。等他们全睡了，又会切回这里。
-        schedule();
+        // 1. 关中断：锁死物理大门，防止在判断期间有中断闯入！
+        asm_cli();
 
-        // 核心态停机指令，断电休眠，等待下一次时钟中断
-        asm volatile("hlt");
+        // 2. 检查是否有任务需要抢占
+        if (g_rq.cur_task->flags & TIF_NEED_RESCHED) {
+            // 如果有，赶紧开中断，并交出 CPU
+            asm_sti();
+            schedule();
+        } else {
+            // 3. 🌟 终极魔法：sti 和 hlt 的原子化结合！
+            // 在 x86 架构中，sti 指令有一个神奇的特性：
+            // 它不会立刻开启中断，而是会延迟一条指令生效！
+            // 所以 sti 紧跟 hlt，CPU 会在进入 hlt 沉睡的同时，瞬间将大门打开。
+            // 这样就绝对不会漏掉任何一个中断！
+            asm_sti();
+            asm_hlt();
+        }
     }
 }
 

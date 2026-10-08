@@ -51,13 +51,19 @@ extern uint8 tmp_paging_level;
 
 // 开启中断 (STI)
 static inline void asm_sti(void) {
-    __asm__ __volatile__("sti \n\t" ::: "memory");
+    __asm__ __volatile__("sti \n\t");
 }
 
 // 关闭中断 (CLI)
 static inline void asm_cli(void) {
-    __asm__ __volatile__("cli \n\t" ::: "memory");
+    __asm__ __volatile__("cli \n\t");
 }
+
+//停机
+static inline void asm_hlt(void) {
+    __asm__ __volatile__("hlt \n\t");
+}
+
 
 // 开启对用户态访问的支持 (STAC)
 static inline void asm_stac(void) {
