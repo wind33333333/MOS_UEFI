@@ -52,27 +52,13 @@ typedef struct task_t {
 typedef struct {
     task_t *cur_task;            // 当前正在 CPU 上飞驰的任务
     task_t *idle_task;          // 兜底的系统空闲任务 (hlt)
-
-    // 🌟 新增：属于本队列的绝对物理时间快照
-    uint64 clock;
-    boolean skip_clock_update;
-
-
-    // =========================================================
-    // 🌟 EEVDF 就绪子系统 (活人区)
-    // =========================================================
-    uint64 vtime;               // 系统当前的全局虚拟时间 (V)
-    rb_root_t sched_tree;       // EEVDF 增强红黑树 (以 Ve 为 Key)
-
-    // =========================================================
-    // 🌟 高精度定时子系统 (睡觉区)
-    // =========================================================
+    rb_root_t sched_tree;       // EEVDF就绪任务红黑树 (以 Ve 为 Key)
     rb_root_t sleep_tree;       // 睡眠红黑树 (以 wake_up_ns 为 Key)
-
+    uint64 vtime;               // 系统当前的全局虚拟时间 (V)
 } runqueue_t;
 
 extern runqueue_t g_rq;
-void schedule(void);
+void schedule();
 void check_and_schedule();
 task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) ;
 task_t* create_user_task(void *user_entry, void *user_stack);
@@ -81,12 +67,6 @@ task_t* create_user_task(void *user_entry, void *user_stack);
 void enqueue_task_eevdf(task_t *task);
 void enqueue_task_eevdf(task_t *task);
 void idle_task_init(void);
+void update_curr(uint64 cur_ns);
 
-void update_curr();
-
-static inline void update_rq_clock(void) {
-    // 如果持有通行证，直接白嫖上一次的快照！
-    if (g_rq.skip_clock_update) return;
-    g_rq.clock = get_uptime_ns();
-}
 

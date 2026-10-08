@@ -8,14 +8,12 @@ void sleep_us(uint64 delay_us) {
     uint64 flags;
     local_irq_save(&flags); // 关中断保护
 
-    g_rq.skip_clock_update = FALSE;
-    update_rq_clock();
-    g_rq.skip_clock_update = TRUE;
+    uint64 cur_ns = get_uptime_ns();
 
     task_t *curr = g_rq.cur_task;
 
     // 1. 记账：算好个人的醒来时间，并把自己的状态改为“睡觉”
-    uint64 wake_ns = g_rq.clock + (delay_us * 1000ULL);
+    uint64 wake_ns = cur_ns+ (delay_us * 1000ULL);
     curr->wake_up_ns = wake_ns;
     curr->state = TASK_SLEEPING;
 
@@ -55,7 +53,7 @@ void sleep_us(uint64 delay_us) {
  * @brief 动态重置硬件闹钟 (Tickless 核心引擎)
  * @details 负责在任务切换或中断结束时，精准计算下一次闹钟时间
  */
-void reprogram_timer_for_next_event() {
+void reprogram_timer_for_next_event(uint64 cur_ns) {
     uint64 sleep_deadline = 0xFFFFFFFFFFFFFFFFULL; // MAX
     uint64 sched_deadline = 0xFFFFFFFFFFFFFFFFULL; // MAX
 
@@ -75,7 +73,7 @@ void reprogram_timer_for_next_event() {
             uint64 phys_left = (v_left * curr->weight) / NICE_0_LOAD;
             // 🌟 千万别忘了 50us 硬件防线
             if (phys_left < 50000ULL) phys_left = 50000ULL;
-            sched_deadline = g_rq.clock + phys_left;
+            sched_deadline = cur_ns + phys_left;
         }
     }
 
@@ -90,18 +88,14 @@ void reprogram_timer_for_next_event() {
  */
 #define EARLY_WAKEUP_TOLERANCE_NS 2000ULL // 容差窗口：2微秒
 int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
-
-    g_rq.skip_clock_update = FALSE;
-    update_rq_clock();
-    g_rq.skip_clock_update = TRUE;
-
+    uint64 cur_ns = get_uptime_ns();
     task_t *cur_task = g_rq.cur_task;
 
     // ========================================================
     // 调度任务结算
     // ========================================================
     if (cur_task && cur_task != g_rq.idle_task) {
-        update_curr();
+        update_curr(cur_ns);
         if (cur_task->v_eligible >= cur_task->v_deadline) {
             cur_task->flags |= TIF_NEED_RESCHED;
         }
@@ -110,7 +104,7 @@ int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
     // ========================================================
     // 定时任务结算
     // ========================================================
-    uint64 effective_now = g_rq.clock + EARLY_WAKEUP_TOLERANCE_NS;
+    uint64 effective_now = cur_ns + EARLY_WAKEUP_TOLERANCE_NS;
     rb_node_t *node;
     while ((node = rb_first(&g_rq.sleep_tree)) != NULL) {
         task_t *sleep_task = CONTAINER_OF(node, task_t, sleep_node);
@@ -125,7 +119,7 @@ int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
         }
     }
 
-    reprogram_timer_for_next_event();
+    reprogram_timer_for_next_event(cur_ns);
 }
 
 
