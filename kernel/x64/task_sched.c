@@ -95,7 +95,7 @@ rb_augment_callbacks_f eevdf_callbacks = {
 /**
  * @brief 计费函数：推进当前任务的虚拟时间
  */
-void update_curr(uint64 cur_ns) {
+void update_cur_task(uint64 cur_ns) {
     task_t *curr = g_rq.cur_task;
     if (!curr || curr == g_rq.idle_task) return;
 
@@ -244,7 +244,7 @@ void schedule() {
     task_t *prev = g_rq.cur_task;
 
     // 1. 结清前一个任务的时间账单
-    update_curr(cur_ns);
+    update_cur_task(cur_ns);
     prev->flags &= ~TIF_NEED_RESCHED; // 撕下便签
 
     // 2. 状态分发

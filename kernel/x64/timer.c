@@ -92,17 +92,17 @@ int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
     task_t *cur_task = g_rq.cur_task;
 
     // ========================================================
-    // 调度任务结算
+    // 调度任务时间结算
     // ========================================================
     if (cur_task && cur_task != g_rq.idle_task) {
-        update_curr(cur_ns);
+        update_cur_task(cur_ns);
         if (cur_task->v_eligible >= cur_task->v_deadline) {
             cur_task->flags |= TIF_NEED_RESCHED;
         }
     }
 
     // ========================================================
-    // 定时任务结算
+    // 定时任务时间结算
     // ========================================================
     uint64 effective_now = cur_ns + EARLY_WAKEUP_TOLERANCE_NS;
     rb_node_t *node;
