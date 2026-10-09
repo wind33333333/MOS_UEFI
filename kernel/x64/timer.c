@@ -54,74 +54,52 @@ void sleep_us(uint64 delay_us) {
  * @details 负责在任务切换或中断结束时，精准计算下一次闹钟时间
  */
 void reprogram_timer_for_next_event(uint64 cur_ns) {
-    uint64 sleep_deadline = 0xFFFFFFFFFFFFFFFFULL; // MAX
-    uint64 sched_deadline = 0xFFFFFFFFFFFFFFFFULL; // MAX
+    uint64 sleep_deadline = TIME_MAX_NS;
 
-    // 1. 扫描睡觉区：最近的唤醒死线 (Clock A)
+    // 1. 获取定时器睡眠树的最早到期时间
     rb_node_t *sleep_node = rb_first(&g_rq.sleep_tree);
     if (sleep_node != NULL) {
         sleep_deadline = (CONTAINER_OF(sleep_node, task_t, sleep_node))->wake_up_ns;
     }
 
-    // 2. 扫描干活区：当前任务的剥夺死线 (Clock B)
-    task_t *cur_task = g_rq.cur_task;
-    if (cur_task && cur_task != g_rq.idle_task) {
-        // 如果当前任务没被贴标签，且还有虚拟时间余额
-        if (!(cur_task->flags & TIF_NEED_RESCHED) && (cur_task->v_deadline > cur_task->v_eligible)) {
-            // 反推物理余额：剩余虚拟时间 -> 剩余物理时间
-            uint64 v_left = cur_task->v_deadline - cur_task->v_eligible;
-            uint64 phys_left = (v_left * cur_task->weight) >> NICE_0_SHIFT;
-            // 🌟 千万别忘了 50us 硬件防线
-            if (phys_left < 50000ULL) phys_left = 50000ULL;
-            sched_deadline = cur_ns + phys_left;
-        }
-    }
+    // 2. 🌟 优雅解耦：直接向调度器索取时间片物理死线，绝不触碰 EEVDF 内部逻辑！
+    uint64 sched_deadline = sched_get_slice_deadline(cur_ns);
 
-    // 3. 终极裁决：谁离现在最近，APIC 就听谁的！
+    // 3. 终极裁决：谁先到期就定谁
     uint64 final_deadline = (sleep_deadline < sched_deadline) ? sleep_deadline : sched_deadline;
-    // 如果final_deadline = 0xFFFFFFFFFFFFFFFF 则可以关闭定时器进入了。
     reprogram_clockevent(final_deadline);
 }
+
 
 /**
  * @brief 扫描睡眠树和调度树，唤醒所有到期的任务，并重设下一个硬件闹钟
  */
 #define EARLY_WAKEUP_TOLERANCE_NS 2000ULL // 容差窗口：2微秒
-int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
+int32 timer_irq_handler(cpu_registers_t *regs, void *dev_id) {
     uint64 cur_ns = get_uptime_ns();
-    task_t *cur_task = g_rq.cur_task;
 
-    // ========================================================
-    // 调度任务结算
-    // ========================================================
-    if (cur_task && cur_task != g_rq.idle_task) {
-        update_cur_task(cur_ns);
-        if (cur_task->v_eligible >= cur_task->v_deadline) {
-            cur_task->flags |= TIF_NEED_RESCHED;
-        }
-    }
+    // 1. 🌟 调用调度器协议：推进计费并判定时间片
+    sched_tick(cur_ns);
 
-    // ========================================================
-    // 定时任务结算
-    // ========================================================
+    // 2. 纯粹处理定时睡眠队列超时
     uint64 effective_now = cur_ns + EARLY_WAKEUP_TOLERANCE_NS;
     rb_node_t *node;
+
     while ((node = rb_first(&g_rq.sleep_tree)) != NULL) {
         task_t *sleep_task = CONTAINER_OF(node, task_t, sleep_node);
-        if (sleep_task->wake_up_ns > effective_now) break;      //定时树最近的时间都未到直接退出
+        if (sleep_task->wake_up_ns > effective_now) break;
 
-        rb_erase(&g_rq.sleep_tree, &sleep_task->sleep_node, NULL);  //定时到了拔出任务
-        sleep_task->state = TASK_READY;     //设置就绪状态
-        if (sleep_task->v_eligible < g_rq.vtime) sleep_task->v_eligible = g_rq.vtime;
-        enqueue_task_eevdf(sleep_task);     //插入就绪树等待调度
+        rb_erase(&g_rq.sleep_tree, &sleep_task->sleep_node, NULL);
 
-        if (sleep_task != cur_task) {
-            cur_task->flags |= TIF_NEED_RESCHED;
-        }
+        // 🌟 规范唤醒：把控制权交还给调度器，由调度器执行状态重置与虚拟时间钳位
+        sched_wake_up(sleep_task);
     }
 
+    // 3. 为下一个周期续命
     reprogram_timer_for_next_event(cur_ns);
-}
 
+    // 🌟 修复：明确返回成功
+    return 0;
+}
 
 

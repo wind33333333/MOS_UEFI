@@ -5,6 +5,8 @@
 #define CS_MASK_32BIT  0x00000000FFFFFFFFULL
 #define CS_MASK_24BIT  0x0000000000FFFFFFULL
 
+#define TIME_MAX_NS    0xFFFFFFFFFFFFFFFFULL // 无限远死线常量
+
 typedef enum {
     CLOCKSOURCE_ID_UNKNOWN = 0, // 未知或未初始化的时钟源
 

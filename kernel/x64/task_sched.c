@@ -121,6 +121,16 @@ void update_cur_task(uint64 cur_ns) {
     }
 }
 
+void sched_tick(uint64 cur_ns) {
+    task_t *cur_task = g_rq.cur_task;
+    if (cur_task && cur_task != g_rq.idle_task) {
+        update_cur_task(cur_ns);
+        if (cur_task->v_eligible >= cur_task->v_deadline) {
+            cur_task->flags |= TIF_NEED_RESCHED;
+        }
+    }
+}
+
 /**
  * @brief 将任务按 EEVDF 规则推入就绪树
  */
@@ -237,6 +247,39 @@ task_t* pick_next_task_eevdf(void) {
     }
 
     return best;
+}
+
+
+uint64 sched_get_slice_deadline(uint64 cur_ns) {
+    task_t *cur_task = g_rq.cur_task;
+    if (!cur_task || cur_task == g_rq.idle_task) return TIME_MAX_NS;
+
+    // 若已被标记换人，或者额度已用尽，不占用调度闹钟
+    if ((cur_task->flags & TIF_NEED_RESCHED) || (cur_task->v_deadline <= cur_task->v_eligible)) {
+        return TIME_MAX_NS;
+    }
+
+    uint64 v_left = cur_task->v_deadline - cur_task->v_eligible;
+    uint64 phys_left = (v_left * cur_task->weight) >> NICE_0_SHIFT;
+
+    // 50 微秒硬件安全窗
+    if (phys_left < 50000ULL) phys_left = 50000ULL;
+    return cur_ns + phys_left;
+}
+
+void sched_wake_up(task_t *task) {
+    task->state = TASK_READY;
+
+    // 🌟 单向钳位：防止超额休眠带来的不当红利，保留合理的透支债务
+    if (task->v_eligible < g_rq.vtime) {
+        task->v_eligible = g_rq.vtime;
+    }
+
+    enqueue_task_eevdf(task);
+
+    if (task != g_rq.cur_task) {
+        g_rq.cur_task->flags |= TIF_NEED_RESCHED;
+    }
 }
 
 

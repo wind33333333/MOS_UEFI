@@ -1,7 +1,7 @@
 #pragma once
 #include "moslib.h"
 #include "rbtree.h"
-#include "../time/time_core.h"
+
 
 #define NICE_0_LOAD 1024ULL // 默认权重
 #define NICE_0_SHIFT    10
@@ -61,14 +61,20 @@ typedef struct {
 } runqueue_t;
 
 extern runqueue_t g_rq;
+
+// 调度器核心 API
 void schedule();
 void check_and_schedule();
-task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) ;
+
+// 🌟 导出给定时器/中断的清晰接口契约
+void   sched_tick(uint64 cur_ns);
+uint64 sched_get_slice_deadline(uint64 cur_ns);
+void   sched_wake_up(task_t *task);
+
+// 任务创建与属性管理
+task_t* create_kernel_task(void (*entry_point)(void), uint64 arg);
 task_t* create_user_task(void *user_entry, void *user_stack);
-
-// 任务入队列
-void enqueue_task_eevdf(task_t *task);
+void set_task_weight(task_t *task, uint64 new_weight);
+void set_task_time_slice(task_t *task, uint64 new_slice_ns);
 void idle_task_init(void);
-void update_cur_task(uint64 cur_ns);
-
 
