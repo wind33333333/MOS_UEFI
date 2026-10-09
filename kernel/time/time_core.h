@@ -81,5 +81,5 @@ boolean clockevent_switch_by_name(const char *name);
 // 后启动的驱动 (如 TSC、APIC) 只需传入自己的计数器读取函数，子系统自动用当前 active_cs 为其测出频率！
 uint64  timekeeping_measure_freq_hz(uint64 (*target_read)(void), boolean is_down_counter, uint32 wait_ms);
 boolean time_ns_to_cycles(uint64 target_ns, clocksource_id_e required_cs_id, uint64 *out_target_cycles);
-void time_core_init(void);//时间系统初始化
+void timer_irq_init(void);//时间系统初始化
 

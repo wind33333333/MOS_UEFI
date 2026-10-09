@@ -18,7 +18,8 @@
 #include "../include/ioapic.h"
 #include "../drivers/hpet/hpet.h"
 #include "../time/time_core.h"
-#include "../x64/task_sched.h"
+#include "../x64/task.h"
+#include "../x64/sched_eevdf.h"
 #include "../x64/timer.h"
 
 task_t *task_a;
@@ -91,7 +92,7 @@ void kernel_init(void) {
     vmalloc_init();                                             //初始化vmalloc
     video_mem_map();                                            //映射显存到虚拟地址空间
     ioapic_init();                                              //初始化ioapic
-    time_core_init();                                           //时钟系统初始化
+    timer_irq_init();                                           //时钟系统初始化
     hpet_init();                                                //hpet初始化
     bsp_backup_mtrr_state();                                    //备份mtrr
     cpu_alloc_resources();                                      //给所有cpu分配资源
@@ -117,7 +118,7 @@ void kernel_init(void) {
     task_c->id = 4;
     enqueue_task_eevdf(task_d);
 
-    idle_task_init();
+    idle_task_loop();
 
     bus_init();                                                 //总线初始化
     ap_init();                                                  //初始化ap核

@@ -12,9 +12,6 @@ static uint32         g_cs_count = 0;
 static clockevent_t  *g_ce_list[8];
 static uint32         g_ce_count = 0;
 
-uint8 g_sys_timer_vector = 0; // 全局统一定时器中断号
-
-
 //================================================ 时钟源 ====================================================================
 
 // 内部辅助：读取指定时钟源的当前计数值
@@ -303,17 +300,3 @@ uint64 timekeeping_measure_freq_hz(uint64 (*target_read)(void), boolean is_down_
 }
 
 
-
-/////////////////////////////////////////////////////////////////////////////////////////
-
-
-
-extern int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id);
-
-void time_core_init(void) {
-    // 1. 子系统统一申请，终生不释放
-    g_sys_timer_vector = alloc_irq();
-
-    // 2. 注册统一的中断处理入口
-    register_isr(g_sys_timer_vector, timer_irq_handler,NULL,"sys-timer-irq");
-}

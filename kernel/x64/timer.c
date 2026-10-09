@@ -1,8 +1,10 @@
 #include "timer.h"
-
 #include "interrupt.h"
 #include "../time/time_core.h"
-#include "task_sched.h"
+#include "sched.h"
+#include "task.h"
+
+uint8 g_sys_timer_vector = 0; // 全局统一定时器中断号
 
 void sleep_us(uint64 delay_us) {
     uint64 flags;
@@ -101,5 +103,15 @@ int32 timer_irq_handler(cpu_registers_t *regs, void *dev_id) {
     // 🌟 修复：明确返回成功
     return 0;
 }
+
+
+void timer_irq_init(void) {
+    // 1. 子系统统一申请，终生不释放
+    g_sys_timer_vector = alloc_irq();
+
+    // 2. 注册统一的中断处理入口
+    register_isr(g_sys_timer_vector, timer_irq_handler,NULL,"sys-timer-irq");
+}
+
 
 

@@ -2,7 +2,6 @@
 #include "moslib.h"
 #include "rbtree.h"
 
-
 #define NICE_0_LOAD 1024ULL // 默认权重
 #define NICE_0_SHIFT    10
 #define WMULT_SHIFT     32
@@ -51,30 +50,9 @@ typedef struct task_t {
 } task_t;
 
 
-// 调度队列 (Per-CPU)
-typedef struct {
-    task_t *cur_task;            // 当前正在 CPU 上飞驰的任务
-    task_t *idle_task;          // 兜底的系统空闲任务 (hlt)
-    rb_root_t sched_tree;       // EEVDF就绪任务红黑树 (以 Ve 为 Key)
-    rb_root_t sleep_tree;       // 睡眠红黑树 (以 wake_up_ns 为 Key)
-    uint64 vtime;               // 系统当前的全局虚拟时间 (V)
-} runqueue_t;
-
-extern runqueue_t g_rq;
-
-// 调度器核心 API
-void schedule();
-void check_and_schedule();
-
-// 🌟 导出给定时器/中断的清晰接口契约
-void   sched_tick(uint64 cur_ns);
-uint64 sched_get_slice_deadline(uint64 cur_ns);
-void   sched_wake_up(task_t *task);
-
 // 任务创建与属性管理
 task_t* create_kernel_task(void (*entry_point)(void), uint64 arg);
 task_t* create_user_task(void *user_entry, void *user_stack);
 void set_task_weight(task_t *task, uint64 new_weight);
 void set_task_time_slice(task_t *task, uint64 new_slice_ns);
-void idle_task_init(void);
-
+void idle_task_loop(void);
