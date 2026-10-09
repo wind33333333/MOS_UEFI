@@ -70,7 +70,7 @@ void reprogram_timer_for_next_event(uint64 cur_ns) {
         if (!(cur_task->flags & TIF_NEED_RESCHED) && (cur_task->v_deadline > cur_task->v_eligible)) {
             // 反推物理余额：剩余虚拟时间 -> 剩余物理时间
             uint64 v_left = cur_task->v_deadline - cur_task->v_eligible;
-            uint64 phys_left = (v_left * cur_task->weight) / NICE_0_LOAD;
+            uint64 phys_left = (v_left * cur_task->weight) >> NICE_0_SHIFT;
             // 🌟 千万别忘了 50us 硬件防线
             if (phys_left < 50000ULL) phys_left = 50000ULL;
             sched_deadline = cur_ns + phys_left;

@@ -3,7 +3,9 @@
 #include "rbtree.h"
 #include "../time/time_core.h"
 
-#define NICE_0_LOAD 1024ULL // 默认权重，等同于 Linux 的 nice 0
+#define NICE_0_LOAD 1024ULL // 默认权重
+#define NICE_0_SHIFT    10
+#define WMULT_SHIFT     32
 
 typedef enum {
     TASK_READY,    // 就绪态：任务已准备好，等待调度器分配CPU
@@ -29,6 +31,7 @@ typedef struct task_t {
     // 🌟 EEVDF 调度引擎专属核心字段
     // =========================================================
     uint64 weight;              // 任务权重 (优先级越高，权重越大)
+    uint64 w_mult;              // 🌟 预计算乘数: (NICE_0_LOAD << 32) / weig
     uint64 time_slice;          // 基础时间片配额 (物理纳秒，例如 10ms)
 
     uint64 v_eligible;          // 虚拟合格时间 (Ve = Vruntime - Lag)，作为红黑树的 Key
