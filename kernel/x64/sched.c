@@ -57,19 +57,14 @@ void sched_wake_up(uint64 cur_ns) {
     while ((node = rb_first(&g_rq.sleep_tree)) != NULL) {
         task_t *sleep_task = CONTAINER_OF(node, task_t, sleep_node);
         if (sleep_task->wake_up_ns > effective_now) break;
-
         rb_erase(&g_rq.sleep_tree, &sleep_task->sleep_node, NULL);
-
         // 🌟 规范唤醒：把控制权交还给调度器，由调度器执行状态重置与虚拟时间钳位
         sleep_task->state = TASK_READY;
-
         // 🌟 单向钳位：防止超额休眠带来的不当红利，保留合理的透支债务
         if (sleep_task->v_eligible < g_rq.vtime) {
             sleep_task->v_eligible = g_rq.vtime;
         }
-
         enqueue_task_eevdf(sleep_task);
-
         if (sleep_task != g_rq.cur_task) {
             g_rq.cur_task->flags |= TIF_NEED_RESCHED;
         }
