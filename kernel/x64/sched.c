@@ -1,6 +1,6 @@
 #include "sched.h"
 #include "sched_eevdf.h"
-#include "../x64/timer.h"
+
 
 void context_switch(uint64 *prev_rsp, uint64 *next_rsp);
 
@@ -70,7 +70,16 @@ void schedule() {
     local_irq_restore(flags);
 }
 
+void check_and_schedule() {
+    // 如果当前任务被贴了“换人”的条子
+    if (g_rq.cur_task->flags & TIF_NEED_RESCHED) {
+        g_rq.cur_task->flags &= ~TIF_NEED_RESCHED; // 撕掉条子
 
+        // 🌟 在这里进行真正的上下文切换！
+        // 即使栈在这里被劫持，APIC 也绝对不会死锁，因为 EOI 早就发完了！
+        schedule();
+    }
+}
 
 
 
