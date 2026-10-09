@@ -65,7 +65,6 @@ task_t* create_user_task(void *user_entry, void *user_stack);
 
 // 任务入队列
 void enqueue_task_eevdf(task_t *task);
-void enqueue_task_eevdf(task_t *task);
 void idle_task_init(void);
 void update_cur_task(uint64 cur_ns);
 

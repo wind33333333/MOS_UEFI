@@ -15,8 +15,8 @@ runqueue_t g_rq = {
     .cur_task = &idle_task,
     .idle_task = &idle_task,
     .vtime = 0,
-    .sched_tree = NULL,
-    .sleep_tree = NULL
+    .sched_tree = {NULL},
+    .sleep_tree = {NULL}
 }; // 假设单核，多核则是 Per-CPU 变量
 
 // 外部汇编函数声明
@@ -96,22 +96,29 @@ rb_augment_callbacks_f eevdf_callbacks = {
  * @brief 计费函数：推进当前任务的虚拟时间
  */
 void update_cur_task(uint64 cur_ns) {
-    task_t *curr = g_rq.cur_task;
-    if (!curr || curr == g_rq.idle_task) return;
+    task_t *cur_task = g_rq.cur_task;
+    if (!cur_task || cur_task == g_rq.idle_task) return;
 
-    uint64 delta_exec = cur_ns- curr->last_update_time;
-    curr->last_update_time = cur_ns;
+    // 🌟 修复 Bug 5：时间回退与下溢安全检查
+    if (cur_ns <= cur_task->last_update_time) {
+        cur_task->last_update_time = cur_ns;
+        return;
+    }
+
+    uint64 delta_exec = cur_ns- cur_task->last_update_time;
+    cur_task->last_update_time = cur_ns;
 
     // 计算消耗的虚拟时间: 物理时间 * (基准权重 / 自身权重)
     // 权重越大的任务，虚拟时间流逝越慢
-    uint64 delta_vruntime = (delta_exec * NICE_0_LOAD) / curr->weight;
+    uint64 weight = cur_task->weight ? cur_task->weight : NICE_0_LOAD;
+    uint64 delta_vruntime = (delta_exec * NICE_0_LOAD) / weight;
 
     // 因为是运行中，它的合格时间(Ve)随之推进
-    curr->v_eligible += delta_vruntime;
+    cur_task->v_eligible += delta_vruntime;
 
     // 系统全局虚拟时间平滑追随当前任务
-    if (curr->v_eligible > g_rq.vtime) {
-        g_rq.vtime = curr->v_eligible;
+    if (cur_task->v_eligible > g_rq.vtime) {
+        g_rq.vtime = cur_task->v_eligible;
     }
 }
 
@@ -126,7 +133,8 @@ void enqueue_task_eevdf(task_t *task) {
     }
 
     // 1. 计算虚拟截止时间: Vd = Ve + (slice / weight)
-    uint64 v_slice = (task->time_slice * NICE_0_LOAD) / task->weight;
+    uint64 weight = task->weight ? task->weight : NICE_0_LOAD;
+    uint64 v_slice = (task->time_slice * NICE_0_LOAD) / weight;
     task->v_deadline = task->v_eligible + v_slice;
 
     // 初始增强数据

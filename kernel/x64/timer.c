@@ -92,7 +92,7 @@ int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
     task_t *cur_task = g_rq.cur_task;
 
     // ========================================================
-    // 调度任务时间结算
+    // 调度任务结算
     // ========================================================
     if (cur_task && cur_task != g_rq.idle_task) {
         update_cur_task(cur_ns);
@@ -102,7 +102,7 @@ int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
     }
 
     // ========================================================
-    // 定时任务时间结算
+    // 定时任务结算
     // ========================================================
     uint64 effective_now = cur_ns + EARLY_WAKEUP_TOLERANCE_NS;
     rb_node_t *node;
@@ -112,6 +112,7 @@ int32 timer_irq_handler (cpu_registers_t *regs,void *dev_id) {
 
         rb_erase(&g_rq.sleep_tree, &sleep_task->sleep_node, NULL);  //定时到了拔出任务
         sleep_task->state = TASK_READY;     //设置就绪状态
+        if (sleep_task->v_eligible < g_rq.vtime) sleep_task->v_eligible = g_rq.vtime;
         enqueue_task_eevdf(sleep_task);     //插入就绪树等待调度
 
         if (sleep_task != cur_task) {
