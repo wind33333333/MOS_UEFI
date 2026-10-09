@@ -2,7 +2,7 @@
 #include "time.h"
 #include "../x64/interrupt.h"
 #include "printk.h"
-#include "../x64/timer.h"
+#include "timer.h"
 #include "../x64/cpu.h"
 
 timekeeper_t   g_timekeeper;

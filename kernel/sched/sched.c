@@ -1,5 +1,5 @@
-#include "sched.h"
-#include "sched_eevdf.h"
+#include "../sched/sched.h"
+#include "../sched/sched_eevdf.h"
 
 
 void context_switch(uint64 *prev_rsp, uint64 *next_rsp);

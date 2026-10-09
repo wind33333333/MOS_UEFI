@@ -1,8 +1,8 @@
-#include "timer.h"
-#include "interrupt.h"
-#include "../time/time_core.h"
-#include "sched.h"
-#include "task.h"
+#include "../time/timer.h"
+#include "../x64/interrupt.h"
+#include "time_core.h"
+#include "../sched/sched.h"
+#include "../sched/task.h"
 
 uint8 g_sys_timer_vector = 0; // 全局统一定时器中断号
 

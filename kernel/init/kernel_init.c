@@ -18,9 +18,9 @@
 #include "../include/ioapic.h"
 #include "../drivers/hpet/hpet.h"
 #include "../time/time_core.h"
-#include "../x64/task.h"
-#include "../x64/sched_eevdf.h"
-#include "../x64/timer.h"
+#include "../sched/task.h"
+#include "../sched/sched_eevdf.h"
+#include "../time/timer.h"
 
 task_t *task_a;
 task_t *task_b;

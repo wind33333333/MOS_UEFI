@@ -1,10 +1,10 @@
 #pragma once
 #include "moslib.h"
 #include "rbtree.h"
-#include "sched_eevdf.h"
-#include "task.h"
+#include "../sched/sched_eevdf.h"
+#include "../sched/task.h"
 #include "../time/time_core.h"
-#include "../x64/timer.h"
+#include "../time/timer.h"
 
 // 调度队列 (Per-CPU)
 typedef struct {
