@@ -76,7 +76,6 @@ void reprogram_timer_for_next_event(uint64 cur_ns) {
 /**
  * @brief 扫描睡眠树和调度树，唤醒所有到期的任务，并重设下一个硬件闹钟
  */
-#define EARLY_WAKEUP_TOLERANCE_NS 2000ULL // 容差窗口：2微秒
 int32 timer_irq_handler(cpu_registers_t *regs, void *dev_id) {
     uint64 cur_ns = get_uptime_ns();
 
@@ -84,18 +83,7 @@ int32 timer_irq_handler(cpu_registers_t *regs, void *dev_id) {
     sched_tick(cur_ns);
 
     // 2. 纯粹处理定时睡眠队列超时
-    uint64 effective_now = cur_ns + EARLY_WAKEUP_TOLERANCE_NS;
-    rb_node_t *node;
-
-    while ((node = rb_first(&g_rq.sleep_tree)) != NULL) {
-        task_t *sleep_task = CONTAINER_OF(node, task_t, sleep_node);
-        if (sleep_task->wake_up_ns > effective_now) break;
-
-        rb_erase(&g_rq.sleep_tree, &sleep_task->sleep_node, NULL);
-
-        // 🌟 规范唤醒：把控制权交还给调度器，由调度器执行状态重置与虚拟时间钳位
-        sched_wake_up(sleep_task);
-    }
+    sched_wake_up(cur_ns);
 
     // 3. 为下一个周期续命
     reprogram_timer_for_next_event(cur_ns);

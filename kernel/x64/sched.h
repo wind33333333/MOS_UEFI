@@ -17,8 +17,9 @@ extern runqueue_t g_rq;
 // 调度器核心 API
 void schedule();
 void sched_tick(uint64 cur_ns);
+void sched_wake_up(uint64 cur_ns);
 uint64 sched_get_slice_deadline(uint64 cur_ns);
-void sched_wake_up(task_t *task);
+
 
 
 
