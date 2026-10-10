@@ -4,21 +4,6 @@
 
 void context_switch(uint64 *prev_rsp, uint64 *next_rsp);
 
-//系统空闲任务，系统看门狗
-task_t idle_task = {
-    .id = 0,
-    .state = TASK_RUNNING,
-    .flags = TIF_NEED_RESCHED
-};
-
-//就绪队列
-runqueue_t g_rq = {
-    .cur_task = &idle_task,
-    .idle_task = &idle_task,
-    .vtime = 0,
-    .sched_tree = {NULL},
-    .sleep_tree = {NULL}
-}; // 假设单核，多核则是 Per-CPU 变量
 
 
 /**

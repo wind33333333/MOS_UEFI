@@ -1,7 +1,9 @@
 #pragma once
 #include "moslib.h"
 #include "gdt_tss.h"
+#include "rbtree.h"
 #include "../time/time_core.h"
+#include "../sched/task.h"
 
 
 #define APIC_ONESHOT        (0 << 17)              //一次性定时模式
@@ -79,6 +81,16 @@ static inline void asm_swapgs() {
 }
 
 
+// 调度队列 (Per-CPU)
+typedef struct {
+    task_t *cur_task;            // 当前正在 CPU 上飞驰的任务
+    task_t *idle_task;          // 兜底的系统空闲任务 (hlt)
+    rb_root_t sched_tree;       // EEVDF就绪任务红黑树 (以 Ve 为 Key)
+    rb_root_t sleep_tree;       // 睡眠红黑树 (以 wake_up_ns 为 Key)
+    uint64 vtime;               // 系统当前的全局虚拟时间 (V)
+} runqueue_t;
+
+
 // 定义 CPU 的生命周期状态
 typedef enum {
     CPU_STATE_OFFLINE = 0, // 尚未唤醒或已下线
@@ -118,7 +130,7 @@ typedef struct cpu_core_t {
     uint64          timer_ticks;          // Local APIC Timer 滴答数
     uint64          interrupt_count;      // 处理的总中断次数
     uint64          context_switches;     // 上下文切换次数
-    // void         *run_queue;           // 未来可放这里：就绪队列指针
+    runqueue_t      runqueue;             // 就绪队列
 
     // =============================================================
     // 🧊 第三层：冰封档案区 (Cold Zone - 强制推到新的 64B 缓存行边界)

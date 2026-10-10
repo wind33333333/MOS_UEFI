@@ -187,13 +187,25 @@ void set_task_time_slice(task_t *task, uint64 new_slice_ns) {
     local_irq_restore(flags);
 }
 
+//系统空闲任务，系统看门狗
+task_t idle_task = {
+    .id = 0,
+    .state = TASK_RUNNING,
+    .flags = TIF_NEED_RESCHED
+};
+
+
 void idle_task_loop(void) {
+    THIS_CPU->runqueue.idle_task = &idle_task;
+    THIS_CPU->runqueue.cur_task = &idle_task;
+    THIS_CPU->runqueue.vtime = 0;
+
     while(1) {
         // 1. 关中断：锁死物理大门，防止在判断期间有中断闯入！
         asm_cli();
 
         // 2. 检查是否有任务需要抢占
-        if (g_rq.cur_task->flags & TIF_NEED_RESCHED) {
+        if (THIS_CPU->runqueue.cur_task->flags & TIF_NEED_RESCHED) {
             // 如果有，赶紧开中断，并交出 CPU
             asm_sti();
             schedule();
