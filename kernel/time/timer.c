@@ -12,7 +12,7 @@ void sleep_us(uint64 delay_us) {
 
     uint64 cur_ns = get_uptime_ns();
 
-    task_t *curr = g_rq.cur_task;
+    task_t *curr = THIS_CPU->cur_task;
 
     // 1. 记账：算好个人的醒来时间，并把自己的状态改为“睡觉”
     uint64 wake_ns = cur_ns+ (delay_us * 1000ULL);
@@ -21,7 +21,7 @@ void sleep_us(uint64 delay_us) {
 
     // 2. 存入账本：把当前任务挂入红黑树
     // (这里的 rb_insert 是你优化过的那套 O(1) NULL 判断的安全代码)
-    rb_node_t **link = &g_rq.sleep_tree.rb_node; // 指向当前需要比较的节点指针
+    rb_node_t **link = &THIS_CPU->sleep_tree.rb_node; // 指向当前需要比较的节点指针
     rb_node_t *parent = NULL;                    // 记录未来新节点的父亲
 
     // 从根节点开始向下遍历，直到遇到空指针（即找到了叶子挂载点）
@@ -39,7 +39,7 @@ void sleep_us(uint64 delay_us) {
         }
     }
 
-    rb_insert(&g_rq.sleep_tree, &curr->sleep_node, parent, link, NULL);
+    rb_insert(&THIS_CPU->sleep_tree, &curr->sleep_node, parent, link, NULL);
 
     // 3. 强制交出麦克风！
     // 不管别人死活，我自己要睡了，调用 schedule 切给下一个人！

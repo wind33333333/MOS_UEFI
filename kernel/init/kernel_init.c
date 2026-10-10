@@ -118,7 +118,7 @@ void kernel_init(void) {
     task_c->id = 4;
     enqueue_task_eevdf(task_d);
 
-    idle_task_loop();
+    idle_task();
 
     bus_init();                                                 //总线初始化
     ap_init();                                                  //初始化ap核

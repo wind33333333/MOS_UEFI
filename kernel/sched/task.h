@@ -55,4 +55,4 @@ task_t* create_kernel_task(void (*entry_point)(void), uint64 arg);
 task_t* create_user_task(void *user_entry, void *user_stack);
 void set_task_weight(task_t *task, uint64 new_weight);
 void set_task_time_slice(task_t *task, uint64 new_slice_ns);
-void idle_task_loop(void);
+void idle_task(void);

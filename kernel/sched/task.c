@@ -51,7 +51,7 @@ task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) {
     new_task->time_slice = 10000000ULL;        // 10ms 基础配额
 
     // 严厉打击“出生特权”：虚拟时间直接对齐当前系统 Vtime
-    new_task->v_eligible = g_rq.vtime;
+    new_task->v_eligible = THIS_CPU->vtime;
 
     new_task->v_deadline = 0;                  // 留给 enqueue 时计算
     new_task->min_v_deadline = 0;              // 留给 enqueue 时计算
@@ -105,7 +105,7 @@ task_t* create_user_task(void *user_entry, void *user_stack) {
     new_task->weight = NICE_0_LOAD;
     calc_task_wmult(new_task); // 🌟 计算初始 w_mult
     new_task->time_slice = 10000000ULL;
-    new_task->v_eligible = g_rq.vtime;
+    new_task->v_eligible = THIS_CPU->vtime;
     new_task->v_deadline = 0;
     new_task->min_v_deadline = 0;
     new_task->last_update_time = 0;
@@ -147,7 +147,7 @@ void set_task_weight(task_t *task, uint64 new_weight) {
     // 5. 抢占裁决：如果你修改的是当前正在 CPU 上跑的任务
     // 比如它的权重被降低了，那我们有理由怀疑此时树上可能存在比它更渴望 CPU 的任务。
     // 贴上抢占便签，强制它在下次中断退出时交出麦克风，走一遍 EEVDF 的 pick_next 裁决。
-    if (task == g_rq.cur_task) {
+    if (task == THIS_CPU->cur_task) {
         task->flags |= TIF_NEED_RESCHED;
     }
 
@@ -180,32 +180,34 @@ void set_task_time_slice(task_t *task, uint64 new_slice_ns) {
         enqueue_task_eevdf(task);
     }
 
-    if (task == g_rq.cur_task) {
+    if (task == THIS_CPU->cur_task) {
         task->flags |= TIF_NEED_RESCHED;
     }
 
     local_irq_restore(flags);
 }
 
-//系统空闲任务，系统看门狗
-task_t idle_task = {
-    .id = 0,
-    .state = TASK_RUNNING,
-    .flags = TIF_NEED_RESCHED
-};
 
+void idle_task(void) {
+    task_t *idle_task = kzalloc(sizeof(task_t));
+    idle_task->id = 1;
+    idle_task->state = TASK_RUNNING;
+    idle_task->flags = TIF_NEED_RESCHED;
 
-void idle_task_loop(void) {
-    THIS_CPU->runqueue.idle_task = &idle_task;
-    THIS_CPU->runqueue.cur_task = &idle_task;
-    THIS_CPU->runqueue.vtime = 0;
+    run_queue_t *run_queue = kmalloc(sizeof(run_queue_t));
+    run_queue->idle_task = idle_task;
+    run_queue->cur_task = idle_task;
+    run_queue->vtime = 0;
 
-    while(1) {
+    THIS_CPU->run_queue = run_queue;
+    THIS_CPU->sleep_queue = kzalloc(sizeof(sleep_queue_t));
+
+    while(TRUE) {
         // 1. 关中断：锁死物理大门，防止在判断期间有中断闯入！
         asm_cli();
 
         // 2. 检查是否有任务需要抢占
-        if (THIS_CPU->runqueue.cur_task->flags & TIF_NEED_RESCHED) {
+        if (THIS_CPU->run_queue->cur_task->flags & TIF_NEED_RESCHED) {
             // 如果有，赶紧开中断，并交出 CPU
             asm_sti();
             schedule();
