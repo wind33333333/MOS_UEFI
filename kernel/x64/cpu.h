@@ -26,33 +26,6 @@ static inline void apic_send_eoi(void) {
 }
 
 
-#define DISABLE_APIC_TIME() \
-        do {  \
-          __asm__ __volatile__( \
-         "xorl   %%edx,%%edx           \n\t"          \
-         "movl   $0x10000,%%eax        \n\t"         /*bit0-7中断向量号,bit16屏蔽标志 0未屏蔽 1屏蔽,bit17 18 00/一次计数 01/周期计数 10/TSC-Deadline*/ \
-         "movl   $0x832,%%ecx          \n\t"         /*定时器模式配置寄存器*/ \
-         "wrmsr                        \n\t"          \
-          :::"%rdx","%rax");    \
-          } while(0)
-
-#define APIC_SET_TSCDEADLINE(TIME) \
-        do {                       \
-        __asm__ __volatile__( \
-        "rdtscp                           \n\t" \
-        "shlq       $32,%%rdx             \n\t" \
-        "orq        %%rdx,%%rax           \n\t" \
-        "addq       %0,%%rax              \n\t" \
-        "movq       %%rax,%%rdx           \n\t" \
-        "movq       $0xFFFFFFFF,%%rcx     \n\t" \
-        "andq       %%rcx,%%rax           \n\t" \
-        "shrq       $32,%%rdx             \n\t" \
-        "movq       $0x6E0,%%ecx          \n\t" /*IA32_TSC_DEADLINE寄存器 TSC-Deadline定时模式 */ \
-        "wrmsr                            \n\t" \
-        ::"m"(TIME):"%rax","%rcx","%rdx"); \
-        } while(0)
-
-
 static inline uint64 asm_rdgsbase(void) {
     uint64 gsbase;
     __asm__ __volatile__(
