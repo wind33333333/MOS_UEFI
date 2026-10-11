@@ -66,7 +66,6 @@ task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) {
     new_task->min_v_deadline = 0;              // 留给 enqueue 时计算
     new_task->last_update_time = 0;            // 留给 schedule 调度时记录
     // =======================================================
-
     new_task->wake_up_ns = 0;
 
     return new_task;
