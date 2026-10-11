@@ -39,7 +39,7 @@ static inline void apic_send_eoi(void) {
         do {                       \
         __asm__ __volatile__( \
         "rdtscp                           \n\t" \
-        "shll       $32,%%rdx             \n\t" \
+        "shlq       $32,%%rdx             \n\t" \
         "orq        %%rdx,%%rax           \n\t" \
         "addq       %0,%%rax              \n\t" \
         "movq       %%rax,%%rdx           \n\t" \

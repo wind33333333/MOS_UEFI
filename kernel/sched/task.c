@@ -188,19 +188,27 @@ void set_task_time_slice(task_t *task, uint64 new_slice_ns) {
 }
 
 void run_sleep_queue_init() {
-    task_t *idle_task = kzalloc(sizeof(task_t));
-    idle_task->id = 1;
-    idle_task->state = TASK_RUNNING;
-    idle_task->flags = TIF_NEED_RESCHED;
+    task_t *idle = kzalloc(sizeof(task_t));
+    idle->id = 1; // 1 号任务为系统空闲任务
+    idle->state = TASK_RUNNING;
+    idle->flags = TIF_NEED_RESCHED;
+    idle->weight = NICE_0_LOAD;
+    calc_task_wmult(idle);
 
-    run_queue_t *run_queue = kmalloc(sizeof(run_queue_t));
-    run_queue->idle_task = idle_task;
-    run_queue->cur_task = idle_task;
+    // 🌟 修复 Bug 1：使用 kzalloc 确保 sched_tree.rb_node 为 NULL
+    run_queue_t *run_queue = kzalloc(sizeof(run_queue_t));
+    run_queue->idle_task = idle;
+    run_queue->cur_task = idle;
     run_queue->vtime = 0;
-
+    run_queue->sched_tree.rb_node = NULL;
     THIS_CPU->run_queue = run_queue;
-    THIS_CPU->sleep_queue = kzalloc(sizeof(sleep_queue_t));
-    THIS_CPU->sleep_queue->next_wake_ns = TIME_MAX_NS;
+
+    // 🌟 初始化 sleep_queue 并挂接初始状态
+    sleep_queue_t *sleep_queue = kzalloc(sizeof(sleep_queue_t));
+    sleep_queue->sleep_tree.rb_node = NULL;
+    sleep_queue->rb_leftmost = NULL;
+    sleep_queue->next_wake_ns = TIME_MAX_NS;
+    THIS_CPU->sleep_queue = sleep_queue;
 }
 
 void idle_task(void) {

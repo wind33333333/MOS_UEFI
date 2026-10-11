@@ -56,4 +56,6 @@ static inline rb_node_t* rb_first(const rb_root_t *root) {
 
 void rb_erase(rb_root_t *root, rb_node_t *node,rb_augment_callbacks_f *augment_callbacks);          //红黑树删除操作
 void rb_insert(rb_root_t *root, rb_node_t *node, rb_node_t *parent, rb_node_t **link, rb_augment_callbacks_f *augment_callbacks); //红黑树插入操作
+rb_node_t *rb_prev(const rb_node_t *node);
+rb_node_t *rb_next(const rb_node_t *node);
 

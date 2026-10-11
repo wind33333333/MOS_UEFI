@@ -9,52 +9,46 @@ uint8 g_sys_timer_vector = 0; // 全局统一定时器中断号
 
 void sleep_us(uint64 delay_us) {
     uint64 flags;
-    local_irq_save(&flags); // 关中断保护
+    local_irq_save(&flags);
 
     uint64 cur_ns = get_uptime_ns();
-
     run_queue_t *run_queue = THIS_CPU->run_queue;
     sleep_queue_t *sleep_queue = THIS_CPU->sleep_queue;
-
     task_t *cur_task = run_queue->cur_task;
 
-    // 1. 记账：算好个人的醒来时间，并把自己的状态改为“睡觉”
+    // 1. 记账
     uint64 wake_ns = cur_ns + (delay_us * 1000ULL);
     cur_task->wake_up_ns = wake_ns;
     cur_task->state = TASK_SLEEPING;
 
-    // 2. 存入账本：把当前任务挂入红黑树
-    // (这里的 rb_insert 是你优化过的那套 O(1) NULL 判断的安全代码)
-    rb_node_t **link = &sleep_queue->sleep_tree.rb_node; // 指向当前需要比较的节点指针
-    rb_node_t *parent = NULL;                    // 记录未来新节点的父亲
+    // 2. 挂入红黑树并实时维护 rb_leftmost
+    rb_node_t **link = &sleep_queue->sleep_tree.rb_node;
+    rb_node_t *parent = NULL;
+    boolean leftmost = TRUE; // 🌟 追踪是否一路向左
 
-    // 从根节点开始向下遍历，直到遇到空指针（即找到了叶子挂载点）
     while (*link) {
         parent = *link;
-        // 通过树节点指针，反向获取到它所属的 task_t 结构体
-        // 假设你定义了 rb_entry，类似于 Linux 的 rb_entry 宏
         task_t *parent_task = CONTAINER_OF(parent, task_t, sleep_node);
 
-        // 比较唤醒时间 (Key)
         if (cur_task->wake_up_ns < parent_task->wake_up_ns) {
-            link = &parent->left;  // 比父节点小，去左子树找
+            link = &parent->left;
         } else {
-            link = &parent->right; // 大于或等于父节点，去右子树找
+            link = &parent->right;
+            leftmost = FALSE; // 🌟 只要发生过一次向右寻址，它就绝不可能是最小节点
         }
     }
 
     rb_insert(&sleep_queue->sleep_tree, &cur_task->sleep_node, parent, link, NULL);
-    if (sleep_queue->next_wake_ns > wake_ns) {
+
+    // 🌟 若为新的最小节点，O(1) 刷新缓存指针与死线
+    if (leftmost) {
+        sleep_queue->rb_leftmost = &cur_task->sleep_node;
         sleep_queue->next_wake_ns = wake_ns;
     }
 
-    // 3. 强制交出麦克风！
-    // 不管别人死活，我自己要睡了，调用 schedule 切给下一个人！
+    // 3. 让出 CPU
     schedule();
 
-    // --- (漫长的等待...) ---
-    // 4. 等未来某一天时钟中断触发，Timer ISR 把你从红黑树里摘下来，
-    // schedule() 才会返回，代码才会走到这里！
     local_irq_restore(flags);
 }
 

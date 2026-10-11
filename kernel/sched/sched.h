@@ -36,31 +36,33 @@ static inline void sched_tick(uint64 cur_ns) {
     }
 }
 
-
+#define EARLY_WAKEUP_TOLERANCE_NS 2000ULL // 2微秒提前容差，防御时钟抖动
 static inline void sched_wake_up(uint64 cur_ns) {
     sleep_queue_t *sleep_queue = THIS_CPU->sleep_queue;
+    uint64 effective_now = cur_ns + EARLY_WAKEUP_TOLERANCE_NS;
 
-    if (sleep_queue->next_wake_ns > cur_ns) return;  //如果当前有效时间小于定时器下一个唤醒时间则所有定时任务都没到期直接跳过找树
+    // 🌟 O(1) 短路拦截：最近的定时任务都没到期，完全不碰红黑树
+    if (sleep_queue->next_wake_ns > effective_now) return;
 
     run_queue_t *run_queue = THIS_CPU->run_queue;
 
-    while (TRUE) {
-        rb_node_t* node = rb_first(&sleep_queue->sleep_tree);
-        if (node == NULL) {
-            sleep_queue->next_wake_ns = TIME_MAX_NS;
-            break;
-        }
-
+    // 🌟 O(1) 消费最左节点，彻底消灭 rb_first 循环遍历
+    while (sleep_queue->rb_leftmost != NULL) {
+        rb_node_t *node = sleep_queue->rb_leftmost;
         task_t *sleep_task = CONTAINER_OF(node, task_t, sleep_node);
-        if (sleep_task->wake_up_ns > cur_ns) {
+
+        if (sleep_task->wake_up_ns > effective_now) {
             sleep_queue->next_wake_ns = sleep_task->wake_up_ns;
             break;
         }
 
-        rb_erase(&sleep_queue->sleep_tree, &sleep_task->sleep_node, NULL);
-        sleep_task->state = TASK_READY;        // 🌟 规范唤醒：把控制权交还给调度器，由调度器执行状态重置与虚拟时间钳位
+        // 🌟 核心算法：在拔出当前最左节点前，通过 rb_next 均摊 O(1) 锁定下一个最左候选
+        rb_node_t *next_node = rb_next(node);
+        rb_erase(&sleep_queue->sleep_tree, node, NULL);
+        sleep_queue->rb_leftmost = next_node;
 
-        // 🌟 单向钳位：防止超额休眠带来的不当红利，保留合理的透支债务
+        // 任务状态扭转与 EEVDF 钳位
+        sleep_task->state = TASK_READY;
         if (sleep_task->v_eligible < run_queue->vtime) {
             sleep_task->v_eligible = run_queue->vtime;
         }
@@ -71,8 +73,11 @@ static inline void sched_wake_up(uint64 cur_ns) {
         }
     }
 
+    // 若全部定时器均已出队，将闹钟推至无限远
+    if (sleep_queue->rb_leftmost == NULL) {
+        sleep_queue->next_wake_ns = TIME_MAX_NS;
+    }
 }
-
 
 static inline uint64 sched_get_slice_deadline(uint64 cur_ns) {
     run_queue_t *run_queue = THIS_CPU->run_queue;

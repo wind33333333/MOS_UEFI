@@ -397,3 +397,68 @@ void rb_erase(rb_root_t *root, rb_node_t *node, rb_augment_callbacks_f *augment_
         rb_erase_fixup(root, child, parent, rot_cb);
     }
 }
+
+#include "rbtree.h"
+
+/**
+ * @brief 查找指定红黑树节点的中序后继节点 (下一个递增节点)
+ * @param node 当前节点
+ * @return 后继节点指针；若当前节点已是树中最大节点或传参为 NULL，返回 NULL
+ */
+rb_node_t *rb_next(const rb_node_t *node) {
+    rb_node_t *parent;
+
+    if (node == NULL) {
+        return NULL;
+    }
+
+    // =========================================================
+    // 情况 1：存在右子树
+    // 后继节点必定在右子树中，直接一路向左下钻到最深处
+    // =========================================================
+    if (node->right) {
+        node = node->right;
+        while (node->left) {
+            node = node->left;
+        }
+        return (rb_node_t *)node;
+    }
+
+    // =========================================================
+    // 情况 2：没有右子树，需要向上回溯寻找祖先
+    // 只要当前节点是父节点的右孩子，说明该父子子树已经处理完毕，继续向上攀爬
+    // 直到当前节点是父节点的“左孩子”时停止，此时的 parent 即为后继
+    // =========================================================
+    while ((parent = rb_parent(node)) && node == parent->right) {
+        node = parent;
+    }
+
+    return parent;
+}
+
+/**
+ * @brief 查找指定红黑树节点的中序前驱节点 (上一个递减节点)
+ */
+rb_node_t *rb_prev(const rb_node_t *node) {
+    rb_node_t *parent;
+
+    if (node == NULL) {
+        return NULL;
+    }
+
+    // 情况 1：存在左子树，前驱是左子树的最右节点
+    if (node->left) {
+        node = node->left;
+        while (node->right) {
+            node = node->right;
+        }
+        return (rb_node_t *)node;
+    }
+
+    // 情况 2：没有左子树，向上回溯，直到当前节点是父节点的右孩子
+    while ((parent = rb_parent(node)) && node == parent->left) {
+        node = parent;
+    }
+
+    return parent;
+}
