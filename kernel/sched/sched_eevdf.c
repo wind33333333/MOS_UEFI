@@ -75,8 +75,9 @@ rb_augment_callbacks_f eevdf_callbacks = {
  * @brief 将任务按 EEVDF 规则推入就绪树
  */
 void enqueue_task_eevdf(task_t *task) {
+    run_queue_t *run_queue =THIS_CPU->run_queue;
     // 🌟 核心防线：idle_task 是兜底幽灵，绝对不能进排队名单！
-    if (task == g_rq.idle_task) {
+    if (task == run_queue->idle_task) {
         task->state = TASK_READY;
         return; // 直接放行，不挂树！
     }
@@ -89,7 +90,7 @@ void enqueue_task_eevdf(task_t *task) {
     task->min_v_deadline = task->v_deadline;
 
     // 2. 红黑树常规 O(log N) 挂载查找 (以 v_eligible 为 Key)
-    rb_node_t **link = &g_rq.sched_tree.rb_node;
+    rb_node_t **link = &run_queue->sched_tree.rb_node;
     rb_node_t *parent = NULL;
 
     while (*link) {
@@ -104,7 +105,7 @@ void enqueue_task_eevdf(task_t *task) {
     }
 
     // 3. 执行增强红黑树插入
-    rb_insert(&g_rq.sched_tree, &task->sched_node, parent, link, &eevdf_callbacks);
+    rb_insert(&run_queue->sched_tree, &task->sched_node, parent, link, &eevdf_callbacks);
     task->state = TASK_READY;
 }
 
@@ -112,7 +113,8 @@ void enqueue_task_eevdf(task_t *task) {
  * @brief 从就绪树中拔出任务
  */
 void dequeue_task_eevdf(task_t *task) {
-    rb_erase(&g_rq.sched_tree, &task->sched_node, &eevdf_callbacks);
+    run_queue_t *run_queue =THIS_CPU->run_queue;
+    rb_erase(&run_queue->sched_tree, &task->sched_node, &eevdf_callbacks);
 }
 
 
@@ -124,7 +126,8 @@ void dequeue_task_eevdf(task_t *task) {
  */
 task_t* pick_next_task_eevdf(void) {
     // 从 EEVDF 增强红黑树的根节点开始向下扫描
-    rb_node_t *node = g_rq.sched_tree.rb_node;
+    run_queue_t *run_queue =THIS_CPU->run_queue;
+    rb_node_t *node = run_queue->sched_tree.rb_node;
     task_t *best = NULL;
 
     while (node) {
@@ -137,7 +140,7 @@ task_t* pick_next_task_eevdf(void) {
         // 如果 curr->v_eligible > vtime，说明它“太超前了”，不合格。
         // 根据红黑树性质，右子树的 Ve 必定比当前节点更大，肯定也全都不合格。
         // 所以此时唯一可能藏着合格任务的地方，只有左子树！
-        if (curr->v_eligible > g_rq.vtime) {
+        if (curr->v_eligible > run_queue->vtime) {
             node = curr->sched_node.left;
             continue;
         }
@@ -179,10 +182,10 @@ task_t* pick_next_task_eevdf(void) {
     // 补救措施：直接去红黑树最左端（Ve 最小，等得最久的任务），
     // 强行把系统的全局时间拨快，对齐到它的 Ve，让它强制合格！
     if (!best) {
-        rb_node_t *leftmost = rb_first(&g_rq.sched_tree);
+        rb_node_t *leftmost = rb_first(&run_queue->sched_tree);
         if (leftmost) {
             best = CONTAINER_OF(leftmost, task_t, sched_node);
-            g_rq.vtime = best->v_eligible;
+            run_queue->vtime = best->v_eligible;
         }
     }
 
@@ -193,8 +196,9 @@ task_t* pick_next_task_eevdf(void) {
  * @brief 计费函数：推进当前任务的虚拟时间
  */
 void update_cur_task_eevdf(uint64 cur_ns) {
-    task_t *cur_task = g_rq.cur_task;
-    if (!cur_task || cur_task == g_rq.idle_task) return;
+    run_queue_t *run_queue =THIS_CPU->run_queue;
+    task_t *cur_task = run_queue->cur_task;
+    if (!cur_task || cur_task == run_queue->idle_task) return;
 
     // 🌟 修复 Bug 5：时间回退与下溢安全检查
     if (cur_ns <= cur_task->last_update_time) {
@@ -213,7 +217,7 @@ void update_cur_task_eevdf(uint64 cur_ns) {
     cur_task->v_eligible += delta_vruntime;
 
     // 系统全局虚拟时间平滑追随当前任务
-    if (cur_task->v_eligible > g_rq.vtime) {
-        g_rq.vtime = cur_task->v_eligible;
+    if (cur_task->v_eligible > run_queue->vtime) {
+        run_queue->vtime = cur_task->v_eligible;
     }
 }

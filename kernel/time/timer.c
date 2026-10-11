@@ -6,22 +6,26 @@
 
 uint8 g_sys_timer_vector = 0; // 全局统一定时器中断号
 
+
 void sleep_us(uint64 delay_us) {
     uint64 flags;
     local_irq_save(&flags); // 关中断保护
 
     uint64 cur_ns = get_uptime_ns();
 
-    task_t *curr = THIS_CPU->cur_task;
+    run_queue_t *run_queue = THIS_CPU->run_queue;
+    sleep_queue_t *sleep_queue = THIS_CPU->sleep_queue;
+
+    task_t *cur_task = run_queue->cur_task;
 
     // 1. 记账：算好个人的醒来时间，并把自己的状态改为“睡觉”
-    uint64 wake_ns = cur_ns+ (delay_us * 1000ULL);
-    curr->wake_up_ns = wake_ns;
-    curr->state = TASK_SLEEPING;
+    uint64 wake_ns = cur_ns + (delay_us * 1000ULL);
+    cur_task->wake_up_ns = wake_ns;
+    cur_task->state = TASK_SLEEPING;
 
     // 2. 存入账本：把当前任务挂入红黑树
     // (这里的 rb_insert 是你优化过的那套 O(1) NULL 判断的安全代码)
-    rb_node_t **link = &THIS_CPU->sleep_tree.rb_node; // 指向当前需要比较的节点指针
+    rb_node_t **link = &sleep_queue->sleep_tree.rb_node; // 指向当前需要比较的节点指针
     rb_node_t *parent = NULL;                    // 记录未来新节点的父亲
 
     // 从根节点开始向下遍历，直到遇到空指针（即找到了叶子挂载点）
@@ -32,14 +36,17 @@ void sleep_us(uint64 delay_us) {
         task_t *parent_task = CONTAINER_OF(parent, task_t, sleep_node);
 
         // 比较唤醒时间 (Key)
-        if (curr->wake_up_ns < parent_task->wake_up_ns) {
+        if (cur_task->wake_up_ns < parent_task->wake_up_ns) {
             link = &parent->left;  // 比父节点小，去左子树找
         } else {
             link = &parent->right; // 大于或等于父节点，去右子树找
         }
     }
 
-    rb_insert(&THIS_CPU->sleep_tree, &curr->sleep_node, parent, link, NULL);
+    rb_insert(&sleep_queue->sleep_tree, &cur_task->sleep_node, parent, link, NULL);
+    if (sleep_queue->next_wake_ns > wake_ns) {
+        sleep_queue->next_wake_ns = wake_ns;
+    }
 
     // 3. 强制交出麦克风！
     // 不管别人死活，我自己要睡了，调用 schedule 切给下一个人！
@@ -56,13 +63,8 @@ void sleep_us(uint64 delay_us) {
  * @details 负责在任务切换或中断结束时，精准计算下一次闹钟时间
  */
 void reprogram_timer_for_next_event(uint64 cur_ns) {
-    uint64 sleep_deadline = TIME_MAX_NS;
-
     // 1. 获取定时器睡眠树的最早到期时间
-    rb_node_t *sleep_node = rb_first(&g_rq.sleep_tree);
-    if (sleep_node != NULL) {
-        sleep_deadline = (CONTAINER_OF(sleep_node, task_t, sleep_node))->wake_up_ns;
-    }
+    uint64 sleep_deadline = THIS_CPU->sleep_queue->next_wake_ns;
 
     // 2. 🌟 优雅解耦：直接向调度器索取时间片物理死线，绝不触碰 EEVDF 内部逻辑！
     uint64 sched_deadline = sched_get_slice_deadline(cur_ns);

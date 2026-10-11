@@ -100,22 +100,23 @@ void kernel_init(void) {
     cpu_load_resource();                                        //加载cpu资源
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
 
+    run_sleep_queue_init();
 
     // 1. 创建两个新任务
     task_a = create_kernel_task(thread_a, 0);
-    task_a->id = 1;
+    task_a->id = 2;
     enqueue_task_eevdf(task_a);
 
     task_b = create_kernel_task(thread_b, 0);
-    task_b->id = 2;
+    task_b->id = 3;
     enqueue_task_eevdf(task_b);
 
     task_c = create_kernel_task(thread_c, 0);
-    task_c->id = 3;
+    task_c->id = 4;
     enqueue_task_eevdf(task_c);
 
     task_d = create_kernel_task(thread_monitor, 0);
-    task_c->id = 4;
+    task_c->id = 5;
     enqueue_task_eevdf(task_d);
 
     idle_task();

@@ -5,7 +5,6 @@
 void context_switch(uint64 *prev_rsp, uint64 *next_rsp);
 
 
-
 /**
  * @brief 主调度器接管点
  */
@@ -15,7 +14,8 @@ void schedule() {
 
     uint64 cur_ns = get_uptime_ns();
 
-    task_t *prev = g_rq.cur_task;
+    run_queue_t *run_queue = THIS_CPU->run_queue;
+    task_t *prev = run_queue->cur_task;
 
     // 1. 结清前一个任务的时间账单
     update_cur_task_eevdf(cur_ns);
@@ -31,14 +31,14 @@ void schedule() {
     // 3. 选出下一个天命之子
     task_t *next = pick_next_task_eevdf();
     if (!next) {
-        next = g_rq.idle_task;
+        next = run_queue->idle_task;
     } else {
         dequeue_task_eevdf(next); // 离开就绪队列，独占 CPU
     }
 
     next->state = TASK_RUNNING;
     next->last_update_time = cur_ns;
-    g_rq.cur_task = next;
+    run_queue->cur_task = next;
 
     // ========================================================
     // 🌟 终极修复：换人后，决不能继承旧闹钟！
@@ -57,8 +57,9 @@ void schedule() {
 
 void check_and_schedule() {
     // 如果当前任务被贴了“换人”的条子
-    if (g_rq.cur_task->flags & TIF_NEED_RESCHED) {
-        g_rq.cur_task->flags &= ~TIF_NEED_RESCHED; // 撕掉条子
+    task_t *cur_task = THIS_CPU->run_queue->cur_task;
+    if (cur_task->flags & TIF_NEED_RESCHED) {
+        cur_task->flags &= ~TIF_NEED_RESCHED; // 撕掉条子
 
         // 🌟 在这里进行真正的上下文切换！
         // 即使栈在这里被劫持，APIC 也绝对不会死锁，因为 EOI 早就发完了！
