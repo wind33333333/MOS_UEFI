@@ -19,7 +19,7 @@ typedef enum {
 #define TIF_SYSCALL_TRACE (1 << 2)  // 第 2 位：系统调用追踪 (未来调试用)
 
 // 任务控制块 (TCB)
-typedef struct task_t {
+typedef struct task_t{
     uint64 rsp;                 // 🌟 栈指针 (必须在结构体最开头，方便汇编存取)
     uint64 id;                  // 任务 ID
     task_state_t state;
@@ -47,7 +47,7 @@ typedef struct task_t {
         rb_node_t sleep_node;   // 当 state == TASK_SLEEPING 时使用
     };
     // ... 其他信息 (页表 CR3, 内存空间等) ...
-} task_t;
+}task_t;
 
 
 // 任务创建与属性管理

@@ -8,24 +8,9 @@
 #include "../time/timer.h"
 
 
-// 调度队列 (Per-CPU)
-typedef struct run_queue_t{
-    rb_root_t sched_tree;       // EEVDF就绪任务红黑树 (以 Ve 为 Key)
-    uint64 vtime;               // 系统当前的全局虚拟时间 (V)
-}run_queue_t;
-
-
-//定时队列
-typedef struct sleep_queue_t{
-    rb_root_t       sleep_tree;       // 睡眠红黑树 (以 wake_up_ns 为 Key)
-    rb_node_t       *rb_leftmost;     // 缓存的最左红黑树节点指针
-    uint64          next_wake_ns;
-}sleep_queue_t;
-
-
 static inline void sched_tick(uint64 cur_ns) {
-    task_t *cur_task = THIS_CPU->run_queue->cur_task;
-    task_t *idle_task = THIS_CPU->run_queue->idle_task;
+    task_t *cur_task = THIS_CPU->cur_task;
+    task_t *idle_task = THIS_CPU->idle_task;
     if (cur_task && cur_task != idle_task) {
         update_cur_task_eevdf(cur_ns);
         if (cur_task->v_eligible >= cur_task->v_deadline) {
@@ -36,13 +21,13 @@ static inline void sched_tick(uint64 cur_ns) {
 
 #define EARLY_WAKEUP_TOLERANCE_NS 2000ULL // 2微秒提前容差，防御时钟抖动
 static inline void sched_wake_up(uint64 cur_ns) {
-    sleep_queue_t *sleep_queue = THIS_CPU->sleep_queue;
+    sleep_queue_t *sleep_queue = &this_cpu_ptr()->sleep_queue;
     uint64 effective_now = cur_ns + EARLY_WAKEUP_TOLERANCE_NS;
 
     // 🌟 O(1) 短路拦截：最近的定时任务都没到期，完全不碰红黑树
     if (sleep_queue->next_wake_ns > effective_now) return;
 
-    run_queue_t *run_queue = THIS_CPU->run_queue;
+    run_queue_t *run_queue = &this_cpu_ptr()->run_queue;
 
     // 🌟 O(1) 消费最左节点，彻底消灭 rb_first 循环遍历
     while (sleep_queue->rb_leftmost != NULL) {
@@ -66,8 +51,8 @@ static inline void sched_wake_up(uint64 cur_ns) {
         }
         enqueue_task_eevdf(sleep_task);
 
-        if (sleep_task != run_queue->cur_task) {
-            run_queue->cur_task->flags |= TIF_NEED_RESCHED;
+        if (sleep_task != THIS_CPU->cur_task) {
+            THIS_CPU->cur_task->flags |= TIF_NEED_RESCHED;
         }
     }
 
@@ -78,9 +63,8 @@ static inline void sched_wake_up(uint64 cur_ns) {
 }
 
 static inline uint64 sched_get_slice_deadline(uint64 cur_ns) {
-    run_queue_t *run_queue = THIS_CPU->run_queue;
-    task_t *cur_task = run_queue->cur_task;
-    if (!cur_task || cur_task == run_queue->idle_task) return TIME_MAX_NS;
+    task_t *cur_task = THIS_CPU->cur_task;
+    if (!cur_task || cur_task == THIS_CPU->idle_task) return TIME_MAX_NS;
 
     // 若已被标记换人，或者额度已用尽，不占用调度闹钟
     if ((cur_task->flags & TIF_NEED_RESCHED) || (cur_task->v_deadline <= cur_task->v_eligible)) {

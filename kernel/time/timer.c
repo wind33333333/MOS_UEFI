@@ -3,6 +3,7 @@
 #include "time_core.h"
 #include "../sched/sched.h"
 #include "../sched/task.h"
+#include "../x64/cpu.h"
 
 uint8 g_sys_timer_vector = 0; // 全局统一定时器中断号
 
@@ -12,9 +13,8 @@ void sleep_us(uint64 delay_us) {
     local_irq_save(&flags);
 
     uint64 cur_ns = get_uptime_ns();
-    run_queue_t *run_queue = THIS_CPU->run_queue;
-    sleep_queue_t *sleep_queue = THIS_CPU->sleep_queue;
-    task_t *cur_task = run_queue->cur_task;
+    task_t *cur_task = THIS_CPU->cur_task;
+    sleep_queue_t *sleep_queue = &this_cpu_ptr()->sleep_queue;
 
     // 1. 记账
     uint64 wake_ns = cur_ns + (delay_us * 1000ULL);
@@ -58,7 +58,7 @@ void sleep_us(uint64 delay_us) {
  */
 void reprogram_timer_for_next_event(uint64 cur_ns) {
     // 1. 获取定时器睡眠树的最早到期时间
-    uint64 sleep_deadline = THIS_CPU->sleep_queue->next_wake_ns;
+    uint64 sleep_deadline = THIS_CPU->sleep_queue.next_wake_ns;
 
     // 2. 🌟 优雅解耦：直接向调度器索取时间片物理死线，绝不触碰 EEVDF 内部逻辑！
     uint64 sched_deadline = sched_get_slice_deadline(cur_ns);

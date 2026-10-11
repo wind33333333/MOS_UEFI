@@ -1,8 +1,8 @@
 #pragma once
 #include "moslib.h"
 #include "gdt_tss.h"
+#include "rbtree.h"
 #include "../time/time_core.h"
-#include "../sched/sched.h"
 
 
 #define APIC_ONESHOT        (0 << 17)              //一次性定时模式
@@ -80,6 +80,21 @@ static inline void asm_swapgs() {
 }
 
 
+// 调度队列 (Per-CPU)
+typedef struct run_queue_t{
+    rb_root_t sched_tree;       // EEVDF就绪任务红黑树 (以 Ve 为 Key)
+    uint64 vtime;               // 系统当前的全局虚拟时间 (V)
+}run_queue_t;
+
+
+//定时队列
+typedef struct sleep_queue_t{
+    rb_root_t       sleep_tree;       // 睡眠红黑树 (以 wake_up_ns 为 Key)
+    rb_node_t       *rb_leftmost;     // 缓存的最左红黑树节点指针
+    uint64          next_wake_ns;
+}sleep_queue_t;
+
+
 // 定义 CPU 的生命周期状态
 typedef enum {
     CPU_STATE_OFFLINE = 0, // 尚未唤醒或已下线
@@ -96,6 +111,7 @@ typedef struct cpu_core_t {
     // =============================================================
     // 🔥 第一层：极热调度区 (Hot Zone - 严格控制在第一个 64B 缓存行内)
     // =============================================================
+    struct cpu_core_t *self;
     uint32          logical_id;           // [0x00] 内核逻辑编号 (0 永远是 BSP)
     uint32          apic_id;              // [0x04] 物理 APIC ID (发 IPI 高频使用)
     cpu_state_t     state;                // [0x08] 核心运行状态 (假设 enum 为 4 字节)
@@ -103,13 +119,11 @@ typedef struct cpu_core_t {
     clockevent_t    *active_ce;
     uint64          next_deadline_ns;
 
-    // 💡 预留给 syscall 汇编入口的极速切栈跳板
     uint64          current_kernel_stack; // [0x10] 当前线程内核栈顶 (与 tss->rsp0 同步)
     uint64          user_rsp_scratch;     // [0x18] syscall 发生时暂存用户态 RSP 的草稿箱
 
     tss_t           *tss;                 // [0x30] 专属 TSS 指针 (中断切栈高频修改)
     void            *kmem_cache_cpu;      // [0x38] SLUB 无锁内存池指针
-    // -------- 👆 以上刚好 64 字节 (0x00 ~ 0x3F)，完美填满第 1 个 Cache Line！ --------
 
     // =============================================================
     // 🌡️ 第二层：温数据/高频统计区 (Warm Zone - 第 2 个 64B 缓存行)
@@ -117,8 +131,8 @@ typedef struct cpu_core_t {
     uint64          timer_ticks;          // Local APIC Timer 滴答数
     uint64          interrupt_count;      // 处理的总中断次数
     uint64          context_switches;     // 上下文切换次数
-    task_t          *cur_task;            // 当前正在 CPU 上飞驰的任务
-    task_t          *idle_task;          // 兜底的系统空闲任务 (hlt)
+    struct task_t   *cur_task;            // 当前正在 CPU 上飞驰的任务
+    struct task_t   *idle_task;          // 兜底的系统空闲任务 (hlt)
     run_queue_t     run_queue;           // 就绪队列
     sleep_queue_t   sleep_queue;         // 定时队列
 
@@ -126,7 +140,7 @@ typedef struct cpu_core_t {
     // 🧊 第三层：冰封档案区 (Cold Zone - 强制推到新的 64B 缓存行边界)
     // 开机初始化或查系统信息时才用，平时绝不占用 L1 Cache！
     // =============================================================
-    gdt_t           *gdt_base __attribute__((aligned(64))); // 强制对齐隔离！
+    gdt_t           *gdt_base; // 强制对齐隔离！
     uint32          acpi_proc_id;         // 从顶部挪下来的冷数据：ACPI 处理器 ID
     uint8           lint_nmi;             // 从顶部挪下来的冷数据：NMI 引脚号
 
@@ -137,12 +151,16 @@ typedef struct cpu_core_t {
     uint32          maximum_mhz;          // 最大睿频 (MHz)
     uint32          bus_mhz;              // 总线/外频 (MHz)
 
-} __attribute__((aligned(64))) cpu_core_t;
+}cpu_core_t;
 
 extern cpu_core_t *cpu_cores;
 extern uint32 active_cpu_count;
 
 #define THIS_CPU ((cpu_core_t __seg_gs *)0) // 这里把 0 强制转换为一个基于 GS 的指针。因为 GS_BASE 已经指向了结构体首地址，所以偏移量为 0！
+
+static inline cpu_core_t* this_cpu_ptr(void) {
+    return THIS_CPU->self;
+}
 
 
 

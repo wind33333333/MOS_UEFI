@@ -4,8 +4,10 @@
 #include "../x64/cpu.h"
 
 static inline void set_gs_base(uint32 logical_id) {
+    cpu_core_t *cpu_core = &cpu_cores[logical_id];
     asm_wrmsr(KERNEL_GS_BASE_MSR,0);
-    asm_wrgsbase(&cpu_cores[logical_id]);
+    asm_wrgsbase(cpu_core);
+    THIS_CPU->self = cpu_core ;
 }
 
 // 根据物理 APIC ID 反查逻辑 ID（仅在启动期解析 SRAT 等冷路径调用）
