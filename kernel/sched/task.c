@@ -24,10 +24,10 @@ static inline void calc_task_wmult(task_t *task) {
 // 任务创建函数
 task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) {
     task_t *new_task = kmalloc(sizeof(task_t));
-    void *stack = kmalloc(8192); // 分配一块内存作为栈
+    void *stack = kmalloc(4096*4); // 分配一块内存作为栈
 
     // 1. 栈顶指针 (x86 栈是向下生长的，所以从高地址开始)
-    uint64 *rsp = (uint64 *)((uint64)stack + 8192);
+    uint64 *rsp = (uint64 *)((uint64)stack + 4096*4);
 
     // 2. 开始伪造案发现场 (顺序必须与 context_switch 里的 pop 严格逆序！)
 
@@ -71,14 +71,38 @@ task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) {
     return new_task;
 }
 
-task_t* create_user_task(void *user_entry, void *user_stack) {
+extern vm_space_t kernel_space;
+
+/**
+ * @brief 创建一个全新的用户态独立页表
+ * @return 新 PML4 的物理基地址
+ */
+void create_user_page_table(task_t *new_task) {
+    uint64 *user_root = kzalloc(PAGE_4K_SIZE);
+    uint64 user_root_phys = va_to_pa(user_root);
+    uint64 *kernel_root = pa_to_va(kernel_space.cr3_root);
+
+    // 2. 共享高半区：将内核的所有映射原样复刻进用户 [0 ~ 255] 项留给用户空间 (低半区)，[256 ~ 511] 项为内核空间 (高半区)
+    asm_mem_cpy(&kernel_root[256],&user_root[256],256*8);
+
+    new_task->vm_space.cr3_root = user_root_phys;
+    new_task->vm_space.ops = kernel_space.ops;
+    new_task->vm_space.paging_level = kernel_space.paging_level;
+    new_task->vm_space.pcid = 0;
+
+
+}
+
+task_t* create_user_task(void *user_entry) {
     task_t *new_task = kmalloc(sizeof(task_t));
-    void *kstack = kmalloc(4096);
-    uint64 *rsp = (uint64 *)((uint64)kstack + 4096);
+    void *kstack = kmalloc(4096*4);
+    uint64 *rsp = (uint64 *)((uint64)kstack + 4096*4);
+
+    uint64 user_stack_top = (kernel_space.paging_level == 5) ? 0x7FFFFFFFFFF000UL : 0x7FFFFFFFF000UL;
 
     // 1. 中断返回现场 (Ring 3 iretq 现场)
     *(--rsp) = 0x23;                 // 用户态 SS
-    *(--rsp) = (uint64)user_stack;   // 用户态 RSP
+    *(--rsp) = user_stack_top;       // 用户态 RSP
     *(--rsp) = 0x202;                // RFLAGS
     *(--rsp) = 0x1B;                 // 用户态 CS
     *(--rsp) = (uint64)user_entry;   // RIP

@@ -1,6 +1,7 @@
 #pragma once
 #include "moslib.h"
 #include "rbtree.h"
+#include "vmm.h"
 
 #define NICE_0_LOAD 1024ULL // 默认权重
 #define NICE_0_SHIFT    10
@@ -42,13 +43,16 @@ typedef struct task_t{
         rb_node_t sched_node;   // 当 state == TASK_READY 时使用
         rb_node_t sleep_node;   // 当 state == TASK_SLEEPING 时使用
     };
+
     // ... 其他信息 (页表 CR3, 内存空间等) ...
+    vm_space_t vm_space;
+    uint64 kstack_top;          // 内核栈最顶端 (写给 TSS.RSP0 使用)
 }task_t;
 
 
 // 任务创建与属性管理
 task_t* create_kernel_task(void (*entry_point)(void), uint64 arg);
-task_t* create_user_task(void *user_entry, void *user_stack);
+task_t* create_user_task(void *user_entry);
 void set_task_weight(task_t *task, uint64 new_weight);
 void set_task_time_slice(task_t *task, uint64 new_slice_ns);
 void idle_task(void);
