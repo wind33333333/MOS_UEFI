@@ -81,26 +81,17 @@ typedef enum {
 // 👑 核心数据结构：每 CPU 控制块 (单结构体·内部冷热隔离版)
 // =================================================================
 typedef struct cpu_core_t {
-    // =============================================================
-    // 🔥 第一层：极热调度区 (Hot Zone - 严格控制在第一个 64B 缓存行内)
-    // =============================================================
-    struct cpu_core_t *self;
-    uint32          logical_id;           // [0x00] 内核逻辑编号 (0 永远是 BSP)
-    uint32          apic_id;              // [0x04] 物理 APIC ID (发 IPI 高频使用)
-    cpu_state_t     state;                // [0x08] 核心运行状态 (假设 enum 为 4 字节)
-    uint32          numa_node;            // [0x0C] 所属 NUMA 节点 (内存分配高频使用)
+    struct cpu_core_t *self;              //指向自己
+    uint32          logical_id;           //内核逻辑编号 (0 永远是 BSP)
+    uint32          apic_id;              // 物理 APIC ID (发 IPI 高频使用)
+    cpu_state_t     state;                //核心运行状态 (假设 enum 为 4 字节)
+    uint32          numa_node;            // 所属 NUMA 节点 (内存分配高频使用)
     clockevent_t    *active_ce;
     uint64          next_deadline_ns;
-
-    uint64          current_kernel_stack; // [0x10] 当前线程内核栈顶 (与 tss->rsp0 同步)
-    uint64          user_rsp_scratch;     // [0x18] syscall 发生时暂存用户态 RSP 的草稿箱
-
-    tss_t           *tss;                 // [0x30] 专属 TSS 指针 (中断切栈高频修改)
-    void            *kmem_cache_cpu;      // [0x38] SLUB 无锁内存池指针
-
-    // =============================================================
-    // 🌡️ 第二层：温数据/高频统计区 (Warm Zone - 第 2 个 64B 缓存行)
-    // =============================================================
+    uint64          current_kernel_stack; // 当前线程内核栈顶 (与 tss->rsp0 同步)
+    uint64          user_rsp_scratch;     //syscall 发生时暂存用户态 RSP 的草稿箱
+    tss_t           *tss;                 // 专属 TSS 指针 (中断切栈高频修改)
+    void            *kmem_cache_cpu;      // SLUB 无锁内存池指针
     uint64          timer_ticks;          // Local APIC Timer 滴答数
     uint64          interrupt_count;      // 处理的总中断次数
     uint64          context_switches;     // 上下文切换次数
@@ -109,11 +100,8 @@ typedef struct cpu_core_t {
     run_queue_t     run_queue;           // 就绪队列
     sleep_queue_t   sleep_queue;         // 定时队列
 
-    // =============================================================
-    // 🧊 第三层：冰封档案区 (Cold Zone - 强制推到新的 64B 缓存行边界)
-    // 开机初始化或查系统信息时才用，平时绝不占用 L1 Cache！
-    // =============================================================
-    gdt_t           *gdt_base; // 强制对齐隔离！
+
+    gdt_t           *gdt_base;            // 强制对齐隔离！
     uint32          acpi_proc_id;         // 从顶部挪下来的冷数据：ACPI 处理器 ID
     uint8           lint_nmi;             // 从顶部挪下来的冷数据：NMI 引脚号
 
