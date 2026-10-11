@@ -77,7 +77,7 @@ rb_augment_callbacks_f eevdf_callbacks = {
 void enqueue_task_eevdf(task_t *task) {
     run_queue_t *run_queue =&this_cpu_ptr()->run_queue;
     // 🌟 核心防线：idle_task 是兜底幽灵，绝对不能进排队名单！
-    if (task == THIS_CPU->idle_task) {
+    if (task->id == 0) {
         task->state = TASK_READY;
         return; // 直接放行，不挂树！
     }
@@ -198,7 +198,7 @@ task_t* pick_next_task_eevdf(void) {
 void update_cur_task_eevdf(uint64 cur_ns) {
     run_queue_t *run_queue =&this_cpu_ptr()->run_queue;
     task_t *cur_task = THIS_CPU->cur_task;
-    if (!cur_task || cur_task == THIS_CPU->idle_task) return;
+    if (!cur_task || cur_task->id==0) return;
 
     // 🌟 修复 Bug 5：时间回退与下溢安全检查
     if (cur_ns <= cur_task->last_update_time) {

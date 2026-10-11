@@ -110,6 +110,7 @@ task_t* create_user_task(void *user_entry, void *user_stack) {
     *(--rsp) = 0; // RBX = 0 标记用户态任务
 
     new_task->rsp = (uint64)rsp;
+    new_task->id = alloc_task_id();
     new_task->state = TASK_READY;
     new_task->weight = NICE_0_LOAD;
     calc_task_wmult(new_task); // 🌟 计算初始 w_mult

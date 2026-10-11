@@ -10,12 +10,10 @@
 
 static inline void sched_tick(uint64 cur_ns) {
     task_t *cur_task = THIS_CPU->cur_task;
-    task_t *idle_task = THIS_CPU->idle_task;
-    if (cur_task && cur_task != idle_task) {
-        update_cur_task_eevdf(cur_ns);
-        if (cur_task->v_eligible >= cur_task->v_deadline) {
-            cur_task->flags |= TIF_NEED_RESCHED;
-        }
+    if (!cur_task && cur_task->id == 0) return;
+    update_cur_task_eevdf(cur_ns);
+    if (cur_task->v_eligible >= cur_task->v_deadline) {
+        cur_task->flags |= TIF_NEED_RESCHED;
     }
 }
 
@@ -64,7 +62,7 @@ static inline void sched_wake_up(uint64 cur_ns) {
 
 static inline uint64 sched_get_slice_deadline(uint64 cur_ns) {
     task_t *cur_task = THIS_CPU->cur_task;
-    if (!cur_task || cur_task == THIS_CPU->idle_task) return TIME_MAX_NS;
+    if (!cur_task || cur_task->id == 0) return TIME_MAX_NS;
 
     // 若已被标记换人，或者额度已用尽，不占用调度闹钟
     if ((cur_task->flags & TIF_NEED_RESCHED) || (cur_task->v_deadline <= cur_task->v_eligible)) {

@@ -339,7 +339,7 @@ static inline void get_cpu_info(void) {
 
 static inline void per_run_sleep_queue_init() {
     task_t *idle = kzalloc(sizeof(task_t));
-    idle->id = 1; // 1 号任务为系统空闲任务
+    idle->id = 0; // 0号任务为系统空闲任务
     idle->state = TASK_RUNNING;
     idle->flags = TIF_NEED_RESCHED;
     idle->weight = NICE_0_LOAD;
