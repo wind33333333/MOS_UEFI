@@ -73,32 +73,19 @@ task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) {
 
 extern vm_space_t kernel_space;
 
-/**
- * @brief 创建一个全新的用户态独立页表
- * @return 新 PML4 的物理基地址
- */
-void create_user_page_table(task_t *new_task) {
-    uint64 *user_root = kzalloc(PAGE_4K_SIZE);
-    uint64 user_root_phys = va_to_pa(user_root);
-    uint64 *kernel_root = pa_to_va(kernel_space.cr3_root);
-
-    // 2. 共享高半区：将内核的所有映射原样复刻进用户 [0 ~ 255] 项留给用户空间 (低半区)，[256 ~ 511] 项为内核空间 (高半区)
-    asm_mem_cpy(&kernel_root[256],&user_root[256],256*8);
-
-    new_task->vm_space.cr3_root = user_root_phys;
-    new_task->vm_space.ops = kernel_space.ops;
-    new_task->vm_space.paging_level = kernel_space.paging_level;
-    new_task->vm_space.pcid = 0;
-
-
-}
-
 task_t* create_user_task(void *user_entry) {
     task_t *new_task = kmalloc(sizeof(task_t));
     void *kstack = kmalloc(4096*4);
     uint64 *rsp = (uint64 *)((uint64)kstack + 4096*4);
 
+    vm_space_init(&new_task->vm_space,kernel_space.paging_level,&kernel_space.ops,TRUE);
+
+    new_task->kstack_top = (uint64)rsp;
+
     uint64 user_stack_top = (kernel_space.paging_level == 5) ? 0x7FFFFFFFFFF000UL : 0x7FFFFFFFF000UL;
+
+    //临时先映射4K用户堆栈测试后期在完善
+    vm_map_range(&new_task->vm_space,user_stack_top-0x1000,va_to_pa(kmalloc(4096)),4096,PAGE_USER_DATA_RW);
 
     // 1. 中断返回现场 (Ring 3 iretq 现场)
     *(--rsp) = 0x23;                 // 用户态 SS

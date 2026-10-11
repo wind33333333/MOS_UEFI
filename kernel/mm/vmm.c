@@ -673,7 +673,7 @@ vm_status_e vm_space_init(vm_space_t *space, uint8 level, const vm_allocator_ops
         uint64 *active_root_va = (uint64 *)space->ops.phys_to_virt(active_cr3 & PTE_ADDR_MASK);
 
         // 初始化时拷贝共享的内核高地址空间映射
-        asm_mem_cpy(active_root_va+256,new_root_va+256,256);
+        asm_mem_cpy(active_root_va+256,new_root_va+256,256*8);
     }
     return VM_SUCCESS;
 }

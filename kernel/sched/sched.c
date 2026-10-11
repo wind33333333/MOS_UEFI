@@ -39,6 +39,17 @@ void schedule() {
     next->last_update_time = cur_ns;
     THIS_CPU->cur_task = next;
 
+    // 🌟 1. 切换页表 (CR3)
+    if (next->vm_space.cr3_root != 0 && next->vm_space.cr3_root != asm_get_cr3()) {
+        asm_set_cr3(next->vm_space.cr3_root);
+    }
+
+    // 🌟 2. 刷新当前 CPU 核心的 TSS RSP0，防止 Ring 3 中断切栈时踩踏
+    if (next->kstack_top != 0) {
+        THIS_CPU->tss->rsp0 = next->kstack_top;
+        THIS_CPU->current_kernel_stack = next->kstack_top; // 供 syscall 汇编快速取用
+    }
+
     // ========================================================
     // 🌟 终极修复：换人后，决不能继承旧闹钟！
     // 因为 next 刚刚出列，它的 v_deadline 是重新充满的 10ms，
