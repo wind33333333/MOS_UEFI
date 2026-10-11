@@ -23,7 +23,6 @@ typedef struct task_t{
     uint64 rsp;                 // 🌟 栈指针 (必须在结构体最开头，方便汇编存取)
     uint64 id;                  // 任务 ID
     task_state_t state;
-    uint32 priority;            // 优先级
     uint32 flags;               // 🌟 异步标志位图 (别人给我贴的便签)
 
     // =========================================================
@@ -32,12 +31,9 @@ typedef struct task_t{
     uint64 weight;              // 任务权重 (优先级越高，权重越大)
     uint64 w_mult;              // 🌟 预计算乘数: (NICE_0_LOAD << 32) / weig
     uint64 time_slice;          // 基础时间片配额 (物理纳秒，例如 10ms)
-
     uint64 v_eligible;          // 虚拟合格时间 (Ve = Vruntime - Lag)，作为红黑树的 Key
     uint64 v_deadline;          // 虚拟截止时间 (Vd = Ve + slice/weight)
-
     uint64 min_v_deadline;      // [增强红黑树] 记录自己及左右子树中最小的 Vd
-
     uint64 last_update_time;    // 上次物理更新的绝对纳秒时间
 
     // 🌟 新增：睡眠/定时器专用字段
