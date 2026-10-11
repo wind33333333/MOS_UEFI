@@ -187,21 +187,6 @@ void set_task_time_slice(task_t *task, uint64 new_slice_ns) {
     local_irq_restore(flags);
 }
 
-void run_sleep_queue_init() {
-    task_t *idle = kzalloc(sizeof(task_t));
-    idle->id = 1; // 1 号任务为系统空闲任务
-    idle->state = TASK_RUNNING;
-    idle->flags = TIF_NEED_RESCHED;
-    idle->weight = NICE_0_LOAD;
-    calc_task_wmult(idle);
-
-    THIS_CPU->idle_task = idle;
-    THIS_CPU->cur_task = idle;
-    THIS_CPU->run_queue.vtime = 0;
-    THIS_CPU->sleep_queue.rb_leftmost = NULL;
-    THIS_CPU->sleep_queue.next_wake_ns = TIME_MAX_NS;
-
-}
 
 void idle_task(void) {
     while(TRUE) {

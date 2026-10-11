@@ -11,6 +11,7 @@
 #include "idt_init.h"
 #include "../x64/apic_time.h"
 #include "../x64/gdt_tss.h"
+#include "../sched/task.h"
 
 
 
@@ -336,6 +337,22 @@ static inline void get_cpu_info(void) {
 
 }
 
+void per_run_sleep_queue_init() {
+    task_t *idle = kzalloc(sizeof(task_t));
+    idle->id = 1; // 1 号任务为系统空闲任务
+    idle->state = TASK_RUNNING;
+    idle->flags = TIF_NEED_RESCHED;
+    idle->weight = NICE_0_LOAD;
+
+    cpu_core_t *cpu_core = &cpu_cores[THIS_CPU->logical_id];
+    THIS_CPU->self = cpu_core;
+    THIS_CPU->idle_task = idle;
+    THIS_CPU->cur_task = idle;
+    THIS_CPU->run_queue.vtime = 0;
+    THIS_CPU->sleep_queue.rb_leftmost = NULL;
+    THIS_CPU->sleep_queue.next_wake_ns = TIME_MAX_NS;
+
+}
 
 
 void cpu_load_resource(void){
@@ -356,6 +373,9 @@ void cpu_load_resource(void){
 
     //设置核心定时器
     clockevent_init_per_cpu();
+
+    //配置队列
+    per_run_sleep_queue_init();
 
     get_cpu_info();                                         //获取cpu信息
     //init_syscall();                                       //初始化系统调用
