@@ -6,6 +6,14 @@
 // 外部汇编函数声明
 void ret_from_fork();
 
+// 全局原子自增生成器 (从 1 开始，0 永远留给 idle_task)
+static volatile uint64 g_next_task_id = 0;
+
+static inline uint64 alloc_task_id(void) {
+    // 使用 x86 原生 LOCK XADD 指令完成无锁原子自增，绝对线程安全
+    return atomic_add_fetch_64(&g_next_task_id, 1);
+}
+
 
 // 辅助函数：根据权重刷新逆乘数
 static inline void calc_task_wmult(task_t *task) {
@@ -42,6 +50,7 @@ task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) {
     // 3. 记录这个精心伪造的栈顶地址
     new_task->rsp = (uint64)rsp;
     new_task->state = TASK_READY;
+    new_task->id = alloc_task_id();
 
     // =======================================================
     // 🌟 EEVDF 引擎初始化

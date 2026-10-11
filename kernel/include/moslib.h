@@ -173,6 +173,45 @@ static inline uint8 asm_lzcnt32(uint32 var) {
     return (uint8)result;
 }
 
+/**
+ * @brief 原子相加并返回旧值 (Atomic Fetch-and-Add)
+ * @param ptr 目标内存指针 (必须 8 字节自然对齐)
+ * @param val 要增加的步长 (可以为负数，实现原子递减)
+ * @return 相加前内存中存放的旧值
+ */
+static inline uint64 atomic_fetch_add_64(volatile uint64 *ptr, uint64 val) {
+    asm volatile(
+        "lock xaddq %0, %1\n\t"
+        : "+r" (val),       // %0: 输入要加的增量，输出保存旧值 (输入/输出复用寄存器)
+          "+m" (*ptr)       // %1: 目标内存 (可读可写)
+        :                   // 无纯输入参数
+        : "memory", "cc"    // "memory" 告知编译器内存已被修改并构建屏障；"cc" 声明算术标志位被改动
+    );
+    return val;
+}
+
+
+/**
+ * @brief 原子相加并返回新值 (Atomic Add-and-Fetch)
+ * @return 累加生效后的新值
+ */
+static inline uint64 atomic_add_fetch_64(volatile uint64 *ptr, uint64 val) {
+    return atomic_fetch_add_64(ptr, val) + val;
+}
+
+
+static inline uint32 atomic_fetch_add_32(volatile uint32 *ptr, uint32 val) {
+    asm volatile(
+        "lock xaddl %0, %1\n\t"
+        : "+r" (val),
+          "+m" (*ptr)
+        :
+        : "memory", "cc"
+    );
+    return val;
+}
+
+
 // 读取当前 RFLAGS 寄存器，存入 flags，然后关中断 (cli)
 static inline void local_irq_save(uint64 *flags) {
     asm volatile( \
