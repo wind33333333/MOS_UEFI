@@ -116,6 +116,8 @@ typedef struct cpu_core_t {
     uint64          timer_ticks;          // Local APIC Timer 滴答数
     uint64          interrupt_count;      // 处理的总中断次数
     uint64          context_switches;     // 上下文切换次数
+    struct task_t   *cur_task;            // 当前正在 CPU 上飞驰的任务
+    struct task_t   *idle_task;          // 兜底的系统空闲任务 (hlt)
     struct run_queue_t     *run_queue;           // 就绪队列
     struct sleep_queue_t   *sleep_queue;         // 定时队列
 
