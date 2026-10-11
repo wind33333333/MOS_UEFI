@@ -337,7 +337,7 @@ static inline void get_cpu_info(void) {
 
 }
 
-void per_run_sleep_queue_init() {
+static inline void per_run_sleep_queue_init() {
     task_t *idle = kzalloc(sizeof(task_t));
     idle->id = 1; // 1 号任务为系统空闲任务
     idle->state = TASK_RUNNING;
