@@ -1,299 +1,10 @@
 .code64
-.section    .text, "ax"
-
-# 宏：没有错误码的中断 (如除零、定时器、所有外部 MSI 中断)
-.macro ISR_NOERRCODE vector
-.global isr\vector
-isr\vector:
-    pushq $0            # 压入假错误码，对齐堆栈
-    pushq $\vector      # 压入中断号
-    jmp isr_common_stub
-.endm
-
-# 宏：带有错误码的 CPU 异常 (如 8, 10-14, 17, 21 等)
-.macro ISR_ERRCODE vector
-.global isr\vector
-isr\vector:
-    # CPU 已经压入了错误码，直接压中断号即可
-    pushq $\vector
-    jmp isr_common_stub
-.endm
+.section .text, "ax"
 
 # ========================================================
-# 1. 批量生成 256 个中断入口桩
+# 1. 通用寄存器现场宏 (彻底消灭重复的 push/pop)
 # ========================================================
-ISR_NOERRCODE 0   #DE	Divide Error (除零)	Fault
-ISR_NOERRCODE 1   #DB	Debug (调试)	Fault/Trap
-ISR_NOERRCODE 3   #BP	Breakpoint (断点)	Trap
-ISR_NOERRCODE 4   #OF	Overflow (溢出)	Trap
-ISR_NOERRCODE 5   #BR	BOUND Range Exceeded	Fault
-ISR_NOERRCODE 6   #UD	Invalid Opcode (非法指令)	Fault
-ISR_NOERRCODE 7   #NM	Device Not Available (FPU不可用)
-ISR_NOERRCODE 9   #-	Coprocessor Segment Overrun (废弃)	Fault
-ISR_ERRCODE   10  #TS	Invalid TSS (无效TSS)	Fault
-ISR_ERRCODE   11  #NP	Segment Not Present (段不存在)	Fault
-ISR_ERRCODE   12  #SS	Stack-Segment Fault (栈段错误)	Fault
-ISR_ERRCODE   13  #GP	General Protection (常规保护错误)	Fault
-ISR_ERRCODE   14  #PF	Page Fault (页错误)	Fault
-ISR_NOERRCODE 15  #-	Intel Reserved (保留)	-
-ISR_NOERRCODE 16  #MF	x87 FPU Floating-Point Error	Fault
-ISR_ERRCODE   17  #AC	Alignment Check (对齐检查)	Fault
-ISR_NOERRCODE 18  #MC	Machine Check (机器检查)	Abort
-ISR_NOERRCODE 19  #XM	SIMD Floating-Point Exception	Fault
-ISR_NOERRCODE 20  #VE	Virtualization Exception	Fault
-ISR_ERRCODE   21  #CP	Control Protection Exception	Fault
-ISR_NOERRCODE 22  #保留
-ISR_NOERRCODE 23  #保留
-ISR_NOERRCODE 24  #保留
-ISR_NOERRCODE 25  #保留
-ISR_NOERRCODE 26  #保留
-ISR_NOERRCODE 27  #保留
-ISR_NOERRCODE 28  #保留
-ISR_NOERRCODE 29  #保留
-ISR_NOERRCODE 30  #保留
-ISR_NOERRCODE 31  #保留
-
-
-# 32~255 全部是外部硬件中断 (无错误码)
-ISR_NOERRCODE 32
-ISR_NOERRCODE 33
-ISR_NOERRCODE 34
-ISR_NOERRCODE 35
-ISR_NOERRCODE 36
-ISR_NOERRCODE 37
-ISR_NOERRCODE 38
-ISR_NOERRCODE 39
-ISR_NOERRCODE 40
-ISR_NOERRCODE 41
-ISR_NOERRCODE 42
-ISR_NOERRCODE 43
-ISR_NOERRCODE 44
-ISR_NOERRCODE 45
-ISR_NOERRCODE 46
-ISR_NOERRCODE 47
-ISR_NOERRCODE 48
-ISR_NOERRCODE 49
-ISR_NOERRCODE 50
-ISR_NOERRCODE 51
-ISR_NOERRCODE 52
-ISR_NOERRCODE 53
-ISR_NOERRCODE 54
-ISR_NOERRCODE 55
-ISR_NOERRCODE 56
-ISR_NOERRCODE 57
-ISR_NOERRCODE 58
-ISR_NOERRCODE 59
-ISR_NOERRCODE 60
-ISR_NOERRCODE 61
-ISR_NOERRCODE 62
-ISR_NOERRCODE 63
-ISR_NOERRCODE 64
-ISR_NOERRCODE 65
-ISR_NOERRCODE 66
-ISR_NOERRCODE 67
-ISR_NOERRCODE 68
-ISR_NOERRCODE 69
-ISR_NOERRCODE 70
-ISR_NOERRCODE 71
-ISR_NOERRCODE 72
-ISR_NOERRCODE 73
-ISR_NOERRCODE 74
-ISR_NOERRCODE 75
-ISR_NOERRCODE 76
-ISR_NOERRCODE 77
-ISR_NOERRCODE 78
-ISR_NOERRCODE 79
-ISR_NOERRCODE 80
-ISR_NOERRCODE 81
-ISR_NOERRCODE 82
-ISR_NOERRCODE 83
-ISR_NOERRCODE 84
-ISR_NOERRCODE 85
-ISR_NOERRCODE 86
-ISR_NOERRCODE 87
-ISR_NOERRCODE 88
-ISR_NOERRCODE 89
-ISR_NOERRCODE 90
-ISR_NOERRCODE 91
-ISR_NOERRCODE 92
-ISR_NOERRCODE 93
-ISR_NOERRCODE 94
-ISR_NOERRCODE 95
-ISR_NOERRCODE 96
-ISR_NOERRCODE 97
-ISR_NOERRCODE 98
-ISR_NOERRCODE 99
-ISR_NOERRCODE 100
-ISR_NOERRCODE 101
-ISR_NOERRCODE 102
-ISR_NOERRCODE 103
-ISR_NOERRCODE 104
-ISR_NOERRCODE 105
-ISR_NOERRCODE 106
-ISR_NOERRCODE 107
-ISR_NOERRCODE 108
-ISR_NOERRCODE 109
-ISR_NOERRCODE 110
-ISR_NOERRCODE 111
-ISR_NOERRCODE 112
-ISR_NOERRCODE 113
-ISR_NOERRCODE 114
-ISR_NOERRCODE 115
-ISR_NOERRCODE 116
-ISR_NOERRCODE 117
-ISR_NOERRCODE 118
-ISR_NOERRCODE 119
-ISR_NOERRCODE 120
-ISR_NOERRCODE 121
-ISR_NOERRCODE 122
-ISR_NOERRCODE 123
-ISR_NOERRCODE 124
-ISR_NOERRCODE 125
-ISR_NOERRCODE 126
-ISR_NOERRCODE 127
-ISR_NOERRCODE 128
-ISR_NOERRCODE 129
-ISR_NOERRCODE 130
-ISR_NOERRCODE 131
-ISR_NOERRCODE 132
-ISR_NOERRCODE 133
-ISR_NOERRCODE 134
-ISR_NOERRCODE 135
-ISR_NOERRCODE 136
-ISR_NOERRCODE 137
-ISR_NOERRCODE 138
-ISR_NOERRCODE 139
-ISR_NOERRCODE 140
-ISR_NOERRCODE 141
-ISR_NOERRCODE 142
-ISR_NOERRCODE 143
-ISR_NOERRCODE 144
-ISR_NOERRCODE 145
-ISR_NOERRCODE 146
-ISR_NOERRCODE 147
-ISR_NOERRCODE 148
-ISR_NOERRCODE 149
-ISR_NOERRCODE 150
-ISR_NOERRCODE 151
-ISR_NOERRCODE 152
-ISR_NOERRCODE 153
-ISR_NOERRCODE 154
-ISR_NOERRCODE 155
-ISR_NOERRCODE 156
-ISR_NOERRCODE 157
-ISR_NOERRCODE 158
-ISR_NOERRCODE 159
-ISR_NOERRCODE 160
-ISR_NOERRCODE 161
-ISR_NOERRCODE 162
-ISR_NOERRCODE 163
-ISR_NOERRCODE 164
-ISR_NOERRCODE 165
-ISR_NOERRCODE 166
-ISR_NOERRCODE 167
-ISR_NOERRCODE 168
-ISR_NOERRCODE 169
-ISR_NOERRCODE 170
-ISR_NOERRCODE 171
-ISR_NOERRCODE 172
-ISR_NOERRCODE 173
-ISR_NOERRCODE 174
-ISR_NOERRCODE 175
-ISR_NOERRCODE 176
-ISR_NOERRCODE 177
-ISR_NOERRCODE 178
-ISR_NOERRCODE 179
-ISR_NOERRCODE 180
-ISR_NOERRCODE 181
-ISR_NOERRCODE 182
-ISR_NOERRCODE 183
-ISR_NOERRCODE 184
-ISR_NOERRCODE 185
-ISR_NOERRCODE 186
-ISR_NOERRCODE 187
-ISR_NOERRCODE 188
-ISR_NOERRCODE 189
-ISR_NOERRCODE 190
-ISR_NOERRCODE 191
-ISR_NOERRCODE 192
-ISR_NOERRCODE 193
-ISR_NOERRCODE 194
-ISR_NOERRCODE 195
-ISR_NOERRCODE 196
-ISR_NOERRCODE 197
-ISR_NOERRCODE 198
-ISR_NOERRCODE 199
-ISR_NOERRCODE 200
-ISR_NOERRCODE 201
-ISR_NOERRCODE 202
-ISR_NOERRCODE 203
-ISR_NOERRCODE 204
-ISR_NOERRCODE 205
-ISR_NOERRCODE 206
-ISR_NOERRCODE 207
-ISR_NOERRCODE 208
-ISR_NOERRCODE 209
-ISR_NOERRCODE 210
-ISR_NOERRCODE 211
-ISR_NOERRCODE 212
-ISR_NOERRCODE 213
-ISR_NOERRCODE 214
-ISR_NOERRCODE 215
-ISR_NOERRCODE 216
-ISR_NOERRCODE 217
-ISR_NOERRCODE 218
-ISR_NOERRCODE 219
-ISR_NOERRCODE 220
-ISR_NOERRCODE 221
-ISR_NOERRCODE 222
-ISR_NOERRCODE 223
-ISR_NOERRCODE 224
-ISR_NOERRCODE 225
-ISR_NOERRCODE 226
-ISR_NOERRCODE 227
-ISR_NOERRCODE 228
-ISR_NOERRCODE 229
-ISR_NOERRCODE 230
-ISR_NOERRCODE 231
-ISR_NOERRCODE 232
-ISR_NOERRCODE 233
-ISR_NOERRCODE 234
-ISR_NOERRCODE 235
-ISR_NOERRCODE 236
-ISR_NOERRCODE 237
-ISR_NOERRCODE 238
-ISR_NOERRCODE 239
-ISR_NOERRCODE 240
-ISR_NOERRCODE 241
-ISR_NOERRCODE 242
-ISR_NOERRCODE 243
-ISR_NOERRCODE 244
-ISR_NOERRCODE 245
-ISR_NOERRCODE 246
-ISR_NOERRCODE 247
-ISR_NOERRCODE 248
-ISR_NOERRCODE 249
-ISR_NOERRCODE 250
-ISR_NOERRCODE 251
-ISR_NOERRCODE 252
-ISR_NOERRCODE 253
-ISR_NOERRCODE 254
-ISR_NOERRCODE 255
-
-# ========================================================
-# 2. 公共大一统跳板：保护现场 -> 调用 C -> 恢复现场
-# ========================================================
-.extern c_interrupt_dispatcher  # 声明 C 语言大管家
-
-isr_common_stub:
-    # 此时栈顶为硬件压入的: [VECTOR,ERRCODE,RIP, CS, RFLAGS, RSP, SS]
-    # 检查 CS (位于 rsp + 24) 的 RPL 字段
-    testb $3, 24(%rsp)
-    jz 1f                   # 如果低 2 位是 0 (Ring 0 打断)，跳过 swapgs！
-    # 说明打断的是 Ring 3 用户态
-    swapgs                  # 🌟 换入内核 GS
-1:
-    # 保存所有通用寄存器 (按照 cpu_registers_t 的顺序)
+.macro SAVE_ALL_REGS
     pushq %rax
     pushq %rbx
     pushq %rcx
@@ -309,15 +20,9 @@ isr_common_stub:
     pushq %r13
     pushq %r14
     pushq %r15
+.endm
 
-    # 此时 %rsp 完美指向 cpu_registers_t 结构的起始位置
-    # System V AMD64 ABI 规定：第一个参数用 %rdi 传递
-    movq %rsp, %rdi
-
-    # 呼叫 C 语言中枢
-    call c_interrupt_dispatcher
-
-    # 恢复现场
+.macro RESTORE_ALL_REGS
     popq %r15
     popq %r14
     popq %r13
@@ -333,384 +38,148 @@ isr_common_stub:
     popq %rcx
     popq %rbx
     popq %rax
+.endm
 
-    # 跨过我们在桩里手动压入的 int_no 和 err_code (共 16 字节)
-    addq $16, %rsp
+# ========================================================
+# 2. 存根宏定义
+# ========================================================
+.macro ISR_NOERRCODE vector
+.global isr\vector
+isr\vector:
+    pushq $0                 # 补齐 dummy 错误码
+    pushq $\vector          # 压入中断号
+    jmp isr_common_stub
+.endm
 
-    // 检查即将返回的 CS 选择子 (此时位于 rsp + 8)
-    testb $3, 8(%rsp)
-    jz 1f                   // 返回 Ring 0，严禁 swapgs，直接 iretq
-    // 证明要返回 Ring 3
-    swapgs                  // 🌟 换回用户态 GS
-    1:
-    # x64 硬件级中断返回，恢复 RIP, CS, RFLAGS, RSP, SS
+.macro ISR_ERRCODE vector
+.global isr\vector
+isr\vector:
+    pushq $\vector          # CPU 已压入错误码，直接压中断号
+    jmp isr_common_stub
+.endm
+
+# ========================================================
+# 3. 0~31 号 CPU 内部异常 (清晰标注，#DF 完美并入通用体系)
+# ========================================================
+ISR_NOERRCODE 0    # #DE 除零错误
+ISR_NOERRCODE 1    # #DB 调试异常
+# 向量 2 (NMI) 保持下方独立实现，此处不生成
+ISR_NOERRCODE 3    # #BP 断点
+ISR_NOERRCODE 4    # #OF 溢出
+ISR_NOERRCODE 5    # #BR 越界
+ISR_NOERRCODE 6    # #UD 无效指令
+ISR_NOERRCODE 7    # #NM 设备不可用
+ISR_ERRCODE   8    # #DF 双重错误 (通过 IST1 切栈，进通用存根后在 C 语言原地终止)
+ISR_NOERRCODE 9    # 协处理器段溢出
+ISR_ERRCODE   10   # #TS 无效TSS
+ISR_ERRCODE   11   # #NP 段不存在
+ISR_ERRCODE   12   # #SS 栈段错误
+ISR_ERRCODE   13   # #GP 常规保护错误
+ISR_ERRCODE   14   # #PF 页错误
+ISR_NOERRCODE 15   # Intel 保留
+ISR_NOERRCODE 16   # #MF 浮点错误
+ISR_ERRCODE   17   # #AC 对齐检查
+ISR_NOERRCODE 18   # #MC 机器检查
+ISR_NOERRCODE 19   # #XM SIMD 异常
+ISR_NOERRCODE 20   # #VE 虚拟化异常
+ISR_ERRCODE   21   # #CP 控制流保护异常
+# 22 ~ 31 保留异常
+ISR_NOERRCODE 22
+ISR_NOERRCODE 23
+ISR_NOERRCODE 24
+ISR_NOERRCODE 25
+ISR_NOERRCODE 26
+ISR_NOERRCODE 27
+ISR_NOERRCODE 28
+ISR_NOERRCODE 29
+ISR_NOERRCODE 30
+ISR_NOERRCODE 31
+
+# ========================================================
+# 4. 32~255 号外部硬件中断 (用 .rept 消除 224 行纯手敲代码)
+# ========================================================
+.altmacro
+.macro BATCH_GEN_EXT_ISR from, to
+    .set i, \from
+    .rept \to - \from + 1
+        ISR_NOERRCODE %i
+        .set i, i + 1
+    .endr
+.endm
+
+BATCH_GEN_EXT_ISR 32, 255
+
+# ========================================================
+# 5. 通用中断跳板 (服务除 NMI 外的所有中断与异常)
+# ========================================================
+.extern c_interrupt_dispatcher
+
+isr_common_stub:
+    # 检查进入前的特权级 (CS 位于 rsp + 24)
+    testb $3, 24(%rsp)
+    jz 1f
+    swapgs                  # 来自 Ring 3，切入内核 GS
+1:
+    SAVE_ALL_REGS           # 保存 15 个通用寄存器
+
+    movq %rsp, %rdi         # pt_regs 指针通过 RDI 传给 C 语言
+    call c_interrupt_dispatcher
+
+    # 退出路径恢复
+    RESTORE_ALL_REGS        # 恢复 15 个通用寄存器
+    addq $16, %rsp          # 跨过 int_no 与 err_code
+
+    testb $3, 8(%rsp)       # 检查返回目标 CS (位于 rsp + 8)
+    jz 2f
+    swapgs                  # 返回 Ring 3 前切回用户 GS
+2:
     iretq
 
+# ========================================================
+# 6. NMI 专属极简存根 (保留 Paranoid 保证安全，杜绝代码膨胀)
+# ========================================================
+.global isr2
+.extern do_nmi
+.set MSR_GS_BASE, 0xC0000101
 
-    .global isr2
-    .extern do_nmi
-    .set MSR_GS_BASE, 0xC0000101
-    isr2:
-        # 1. 硬件自动行为：
-        #    硬件切入 TSS.IST2 栈顶，压入: [SS, RSP, RFLAGS, CS, RIP]
-        # 2. 补齐 dummy 错误码与中断向量号 2
-        pushq $0
-        pushq $2
-        # 3. 保存 15 个通用寄存器
-        pushq %rax
-        pushq %rbx
-        pushq %rcx
-        pushq %rdx
-        pushq %rsi
-        pushq %rdi
-        pushq %rbp
-        pushq %r8
-        pushq %r9
-        pushq %r10
-        pushq %r11
-        pushq %r12
-        pushq %r13
-        pushq %r14
-        pushq %r15
+isr2:
+    pushq $0                # 补齐 dummy 错误码
+    pushq $2                # 压入中断号 2
+    SAVE_ALL_REGS           # 🌟 复用宏
 
-        # 4. Paranoid GS 状态检测
-        xorl %ebx, %ebx             # %ebx 作为标记：0=未执行 swapgs，1=执行了 swapgs
-        movl $MSR_GS_BASE, %ecx
-        rdmsr                       # 读取 GS_BASE 到 EDX:EAX
-        testl %edx, %edx            # 检查高半区符号位 (EDX < 0 说明是内核高半区地址)
-        js 1f                       # 若已是内核 GS，跳过
-
-        swapgs                      # 换入内核 GS
-        movl $1, %ebx               # 打上标记
-    1:
-        # 5. 传参并调用 NMI C 语言处理器
-        movq %rsp, %rdi
-        call do_nmi
-
-        # 6. 恢复 GS 状态
-        testl %ebx, %ebx
-        jz 2f
-        swapgs                      # 换回用户态 GS
-    2:
-        # 7. 恢复 15 个通用寄存器
-        popq %r15
-        popq %r14
-        popq %r13
-        popq %r12
-        popq %r11
-        popq %r10
-        popq %r9
-        popq %r8
-        popq %rbp
-        popq %rdi
-        popq %rsi
-        popq %rdx
-        popq %rcx
-        popq %rbx
-        popq %rax
-        # 8. 跨过 int_no 与 dummy error_code (共 16 字节)
-        addq $16, %rsp
-        # 9. 硬件级还阳 (解封 NMI 屏蔽锁)
-        iretq
-
-
-.global isr8
-.extern do_double_fault
-
-isr8:
-    # 1. 硬件自动行为：
-    #    硬件切入 TSS.IST1 栈顶，并已压入: [SS, RSP, RFLAGS, CS, RIP, ERR_CODE(0)]
-    # 2. 压入中断号 8，对齐结构体
-    pushq $8
-
-    # 3. 保存 15 个通用寄存器 (与通用 stub 顺序保持严格一致)
-    pushq %rax
-    pushq %rbx
-    pushq %rcx
-    pushq %rdx
-    pushq %rsi
-    pushq %rdi
-    pushq %rbp
-    pushq %r8
-    pushq %r9
-    pushq %r10
-    pushq %r11
-    pushq %r12
-    pushq %r13
-    pushq %r14
-    pushq %r15
-
-    # 4. 将当前栈顶 (pt_regs 指针) 作为第 1 参数
+    # Paranoid 偏执状态检测
+    xorl %ebx, %ebx         # EBX: 0 = 未执行 swapgs, 1 = 执行了 swapgs
+    movl $MSR_GS_BASE, %ecx
+    rdmsr
+    testl %edx, %edx        # 检查是否为高半区内核地址
+    js 1f
+    swapgs
+    movl $1, %ebx
+1:
     movq %rsp, %rdi
+    call do_nmi             # 调用独立的 NMI 处理函数 (内部严禁调用调度器)
 
-    # 5. 调用 C 语言 Panic 处理器，打印寄存器现场
-    call do_double_fault
-
-    # 6. #DF 属于硬件 Abort，绝不可返回，直接停机挂起
-1:  cli
-    hlt
-    jmp 1b
+    testl %ebx, %ebx
+    jz 2f
+    swapgs
+2:
+    RESTORE_ALL_REGS        # 🌟 复用宏
+    addq $16, %rsp
+    iretq
 
 # ========================================================
-# 👑 3. 架构师黑科技：中断处理函数指针表
-# 将刚才生成的 256 个标号地址打包成一个数组，C 语言直接遍历即可！
+# 7. 中断处理函数指针表 (用 .rept 压缩至 10 行以内)
 # ========================================================
-.section    .init_data, "wa"
+.section .init_data, "wa"
 .global isr_stub_table
+
+.macro EMIT_TABLE_ENTRY vec
+    .quad isr\vec
+.endm
+
 isr_stub_table:
-    .quad isr0
-    .quad isr1
-    .quad isr2
-    .quad isr3
-    .quad isr4
-    .quad isr5
-    .quad isr6
-    .quad isr7
-    .quad isr8
-    .quad isr9
-    .quad isr10
-    .quad isr11
-    .quad isr12
-    .quad isr13
-    .quad isr14
-    .quad isr15
-    .quad isr16
-    .quad isr17
-    .quad isr18
-    .quad isr19
-    .quad isr20
-    .quad isr21
-    .quad isr22
-    .quad isr23
-    .quad isr24
-    .quad isr25
-    .quad isr26
-    .quad isr27
-    .quad isr28
-    .quad isr29
-    .quad isr30
-    .quad isr31
-    .quad isr32
-    .quad isr33
-    .quad isr34
-    .quad isr35
-    .quad isr36
-    .quad isr37
-    .quad isr38
-    .quad isr39
-    .quad isr40
-    .quad isr41
-    .quad isr42
-    .quad isr43
-    .quad isr44
-    .quad isr45
-    .quad isr46
-    .quad isr47
-    .quad isr48
-    .quad isr49
-    .quad isr50
-    .quad isr51
-    .quad isr52
-    .quad isr53
-    .quad isr54
-    .quad isr55
-    .quad isr56
-    .quad isr57
-    .quad isr58
-    .quad isr59
-    .quad isr60
-    .quad isr61
-    .quad isr62
-    .quad isr63
-    .quad isr64
-    .quad isr65
-    .quad isr66
-    .quad isr67
-    .quad isr68
-    .quad isr69
-    .quad isr70
-    .quad isr71
-    .quad isr72
-    .quad isr73
-    .quad isr74
-    .quad isr75
-    .quad isr76
-    .quad isr77
-    .quad isr78
-    .quad isr79
-    .quad isr80
-    .quad isr81
-    .quad isr82
-    .quad isr83
-    .quad isr84
-    .quad isr85
-    .quad isr86
-    .quad isr87
-    .quad isr88
-    .quad isr89
-    .quad isr90
-    .quad isr91
-    .quad isr92
-    .quad isr93
-    .quad isr94
-    .quad isr95
-    .quad isr96
-    .quad isr97
-    .quad isr98
-    .quad isr99
-    .quad isr100
-    .quad isr101
-    .quad isr102
-    .quad isr103
-    .quad isr104
-    .quad isr105
-    .quad isr106
-    .quad isr107
-    .quad isr108
-    .quad isr109
-    .quad isr110
-    .quad isr111
-    .quad isr112
-    .quad isr113
-    .quad isr114
-    .quad isr115
-    .quad isr116
-    .quad isr117
-    .quad isr118
-    .quad isr119
-    .quad isr120
-    .quad isr121
-    .quad isr122
-    .quad isr123
-    .quad isr124
-    .quad isr125
-    .quad isr126
-    .quad isr127
-    .quad isr128
-    .quad isr129
-    .quad isr130
-    .quad isr131
-    .quad isr132
-    .quad isr133
-    .quad isr134
-    .quad isr135
-    .quad isr136
-    .quad isr137
-    .quad isr138
-    .quad isr139
-    .quad isr140
-    .quad isr141
-    .quad isr142
-    .quad isr143
-    .quad isr144
-    .quad isr145
-    .quad isr146
-    .quad isr147
-    .quad isr148
-    .quad isr149
-    .quad isr150
-    .quad isr151
-    .quad isr152
-    .quad isr153
-    .quad isr154
-    .quad isr155
-    .quad isr156
-    .quad isr157
-    .quad isr158
-    .quad isr159
-    .quad isr160
-    .quad isr161
-    .quad isr162
-    .quad isr163
-    .quad isr164
-    .quad isr165
-    .quad isr166
-    .quad isr167
-    .quad isr168
-    .quad isr169
-    .quad isr170
-    .quad isr171
-    .quad isr172
-    .quad isr173
-    .quad isr174
-    .quad isr175
-    .quad isr176
-    .quad isr177
-    .quad isr178
-    .quad isr179
-    .quad isr180
-    .quad isr181
-    .quad isr182
-    .quad isr183
-    .quad isr184
-    .quad isr185
-    .quad isr186
-    .quad isr187
-    .quad isr188
-    .quad isr189
-    .quad isr190
-    .quad isr191
-    .quad isr192
-    .quad isr193
-    .quad isr194
-    .quad isr195
-    .quad isr196
-    .quad isr197
-    .quad isr198
-    .quad isr199
-    .quad isr200
-    .quad isr201
-    .quad isr202
-    .quad isr203
-    .quad isr204
-    .quad isr205
-    .quad isr206
-    .quad isr207
-    .quad isr208
-    .quad isr209
-    .quad isr210
-    .quad isr211
-    .quad isr212
-    .quad isr213
-    .quad isr214
-    .quad isr215
-    .quad isr216
-    .quad isr217
-    .quad isr218
-    .quad isr219
-    .quad isr220
-    .quad isr221
-    .quad isr222
-    .quad isr223
-    .quad isr224
-    .quad isr225
-    .quad isr226
-    .quad isr227
-    .quad isr228
-    .quad isr229
-    .quad isr230
-    .quad isr231
-    .quad isr232
-    .quad isr233
-    .quad isr234
-    .quad isr235
-    .quad isr236
-    .quad isr237
-    .quad isr238
-    .quad isr239
-    .quad isr240
-    .quad isr241
-    .quad isr242
-    .quad isr243
-    .quad isr244
-    .quad isr245
-    .quad isr246
-    .quad isr247
-    .quad isr248
-    .quad isr249
-    .quad isr250
-    .quad isr251
-    .quad isr252
-    .quad isr253
-    .quad isr254
-    .quad isr255
+    .set j, 0
+    .rept 256
+        EMIT_TABLE_ENTRY %j
+        .set j, j + 1
+    .endr
