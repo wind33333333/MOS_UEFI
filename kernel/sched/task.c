@@ -75,55 +75,79 @@ extern vm_space_t kernel_space;
 
 task_t* create_user_task(void *user_entry) {
     task_t *new_task = kmalloc(sizeof(task_t));
-    void *kstack = kmalloc(4096*4);
-    uint64 *rsp = (uint64 *)((uint64)kstack + 4096*4);
+    void *kstack = kmalloc(4096 * 4);
+    uint64 *rsp = (uint64 *)((uint64)kstack + 4096 * 4);
 
-    vm_space_init(&new_task->vm_space,kernel_space.paging_level,&kernel_space.ops,TRUE);
+    vm_space_init(&new_task->vm_space, kernel_space.paging_level, &kernel_space.ops, TRUE);
 
     new_task->kstack_top = (uint64)rsp;
 
-    uint64 user_stack_top = (kernel_space.paging_level == 5) ? 0x7FFFFFFFFFF000UL : 0x7FFFFFFFF000UL;
+    uint64 user_stack_top = (kernel_space.paging_level == 5) ? 0x7FFFFFFFFFF000ULL : 0x7FFFFFFFF000ULL;
 
-    //临时先映射4K用户堆栈测试后期在完善
-    vm_map_range(&new_task->vm_space,user_stack_top-0x1000,va_to_pa(kmalloc(4096)),4096,PAGE_USER_DATA_RW);
+    // 映射 4K 用户代码段
+    uint8 *user_mem = kzalloc(4096);
+    // ⚠️ 注意：标准 memcpy 参数为 (dest, src, size)，确保目标地址在前
+    asm_mem_cpy(user_entry,user_mem,  4096);
+    vm_map_range(&new_task->vm_space, 0x400000, va_to_pa(user_mem), 4096, PAGE_USER_CODE);
 
-    // 1. 中断返回现场 (Ring 3 iretq 现场)
-    *(--rsp) = 0x23;                 // 用户态 SS
-    *(--rsp) = user_stack_top;       // 用户态 RSP
-    *(--rsp) = 0x202;                // RFLAGS
-    *(--rsp) = 0x1B;                 // 用户态 CS
-    *(--rsp) = (uint64)user_entry;   // RIP
+    // 映射 4K 用户堆栈
+    vm_map_range(&new_task->vm_space, user_stack_top - 0x1000, va_to_pa(kmalloc(4096)), 4096, PAGE_USER_DATA_RW);
 
-    *(--rsp) = 0; // err_code
-    *(--rsp) = 0; // int_no
-    *(--rsp) = 0; // rax
-    *(--rsp) = 0; // rcx
-    *(--rsp) = 0; // rdx
-    *(--rsp) = 0; // rbx
-    *(--rsp) = 0; // rsp (dummy)
-    *(--rsp) = 0; // rbp
-    *(--rsp) = 0; // rsi
-    *(--rsp) = 0; // rdi
-    *(--rsp) = 0; // r8
-    *(--rsp) = 0; // r9
-    *(--rsp) = 0; // r10
-    *(--rsp) = 0; // r11
-    *(--rsp) = 0; // r12
-    *(--rsp) = 0; // r13
-    *(--rsp) = 0; // r14
-    *(--rsp) = 0; // r15
+    // =========================================================================
+    // 1. 中断返回现场 (对应 iretq 硬件要求)
+    // =========================================================================
+    *(--rsp) = 0x23;                  // 用户态 SS
+    *(--rsp) = user_stack_top;        // 用户态 RSP (对齐到页顶)
+    *(--rsp) = 0x202;                 // RFLAGS (IF=1 开启中断)
+    *(--rsp) = 0x2B;                  // 用户态 CS
+    *(--rsp) = (uint64)0x400000;      // RIP
 
-    // 2. 内核切栈现场
-    *(--rsp) = (uint64)ret_from_fork;
-    *(--rsp) = 0x202;
-    *(--rsp) = 0; // RBP
-    *(--rsp) = 0; // RBX = 0 标记用户态任务
+    // =========================================================================
+    // 2. 中断号与错误码 (对应 addq $16, %rsp 跨过的 16 字节)
+    // =========================================================================
+    *(--rsp) = 0;                     // err_code
+    *(--rsp) = 0;                     // int_no
 
+    // =========================================================================
+    // 3. 通用寄存器现场 (严格逆序对应 ret_from_fork 里的 15 个 popq 指令！)
+    // ret_from_fork 顺序: pop r15 ... pop r8, rbp, rdi, rsi, rdx, rcx, rbx, rax
+    // =========================================================================
+    *(--rsp) = 0;                     // rax
+    *(--rsp) = 0;                     // rbx
+    *(--rsp) = 0;                     // rcx
+    *(--rsp) = 0;                     // rdx
+    *(--rsp) = 0;                     // rsi
+    *(--rsp) = 0;                     // rdi
+    *(--rsp) = 0;                     // rbp
+    *(--rsp) = 0;                     // r8
+    *(--rsp) = 0;                     // r9
+    *(--rsp) = 0;                     // r10
+    *(--rsp) = 0;                     // r11
+    *(--rsp) = 0;                     // r12
+    *(--rsp) = 0;                     // r13
+    *(--rsp) = 0;                     // r14
+    *(--rsp) = 0;                     // r15
+
+    // =========================================================================
+    // 4. 内核切栈现场 (严格逆序对应 context_switch 里的 7 个 pop + ret 指令！)
+    // context_switch 顺序: pop r15, r14, r13, r12, rbx, rbp, popfq, ret
+    // =========================================================================
+    *(--rsp) = (uint64)ret_from_fork; // 对应 ret 指令弹出的 RIP
+    *(--rsp) = 0x202;                 // 对应 popfq
+    *(--rsp) = 0;                     // 对应 popq %rbp
+    *(--rsp) = 0;                     // 对应 popq %rbx (0 代表用户态任务)
+    *(--rsp) = 0;                     // 对应 popq %r12
+    *(--rsp) = 0;                     // 对应 popq %r13
+    *(--rsp) = 0;                     // 对应 popq %r14
+    *(--rsp) = 0;                     // 对应 popq %r15
+
+    // 记录伪造完毕后的内核栈顶
     new_task->rsp = (uint64)rsp;
+
     new_task->id = alloc_task_id();
     new_task->state = TASK_READY;
     new_task->weight = NICE_0_LOAD;
-    calc_task_wmult(new_task); // 🌟 计算初始 w_mult
+    calc_task_wmult(new_task);
     new_task->time_slice = 10000000ULL;
     new_task->v_eligible = THIS_CPU->run_queue.vtime;
     new_task->v_deadline = 0;

@@ -363,16 +363,3 @@ tmp_gdt_ptr:
     .globl tmp_paging_level
     tmp_paging_level: .byte   0         // 向 C 语言汇报系统是否成功启用了 5 级分页 (LA57)
 
-
-/************************* 正式内核代码区 (后期扩展用) ************************/
-.section    .text, "ax"
-
-    // 长模式下极速系统调用入口 (SYSCALL / SYSRET)
-.globl  long_mode_syscall_entry
-long_mode_syscall_entry:
-    // TODO: 硬件已自动将用户态 RIP 存入 RCX，RFLAGS 存入 R11
-    // TODO: 手动切换用户态 RSP 到内核态 RSP
-    // TODO: 保存所有通用寄存器到现场结构体 (pt_regs)
-    // TODO: 调用 C 语言 syscall_handler
-    // TODO: 恢复寄存器
-    sysretq                             // 神奇的 sysret，根据 STAR 寄存器自动恢复状态并返回用户态

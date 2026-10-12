@@ -77,6 +77,33 @@ void thread_monitor() {
 }
 
 
+// 纯汇编编写的用户态代码，确保没有外部依赖和绝对地址跳转
+void user_test_payload(void) {
+    __asm__ volatile(
+        // 1. 测试用户栈：写栈操作
+        "movq $0xDEADBEEF, %rax\n\t"
+        "pushq %rax\n\t"
+        "popq %rbx\n\t"             // RBX 此时应该等于 0xDEADBEEF
+
+        "movq $0,%rax \n\t"
+        "syscall \n\t"
+
+        // 2. 局部累加循环测试 (验证用户态流水线和寄存器)
+        "movq $0, %rcx\n\t"
+    "1:\n\t"
+        "incq %rcx\n\t"
+        "cmpq $1000000, %rcx\n\t"
+        "jl 1b\n\t"
+
+        // 3. 终点：自旋等待时钟中断抢占调度
+    "2:\n\t"
+        "jmp 2b\n\t"
+    );
+}
+
+task_t *user_task;
+
+
 void kernel_init(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
     output_init();                                              //初始化输出控制台
@@ -112,6 +139,9 @@ void kernel_init(void) {
 
     task_d = create_kernel_task(thread_monitor, 0);
     enqueue_task_eevdf(task_d);
+
+    user_task = create_user_task(user_test_payload);
+    enqueue_task_eevdf(user_task);
 
     idle_task();
 

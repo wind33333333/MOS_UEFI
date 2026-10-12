@@ -2,7 +2,6 @@
 #include "apic_init.h"
 #include "../drivers/hpet/hpet.h"
 #include "../x64/interrupt.h"
-#include "../x64/syscall.h"
 #include "printk.h"
 #include "vmalloc.h"
 #include "slub.h"
@@ -354,6 +353,27 @@ static inline void per_run_sleep_queue_init() {
 
 }
 
+#define EFER_SCE        (1ULL << 0)
+extern void syscall_entry(void);
+
+static inline void syscall_init(void) {
+    // 1. 启用 EFER.SCE (System Call Enable)
+    uint64 efer = asm_rdmsr(EFER_MSR);
+    asm_wrmsr(EFER_MSR, efer | EFER_SCE);
+
+    // 2. 配置 IA32_STAR
+    // [47:32] 内核 CS=0x08, 硬件自动推导内核 SS=0x08+8=0x10
+    // [63:48] 用户基准=0x18, sysretq 自动推导 SS=0x18+8=0x23, CS=0x18+16=0x2B
+    uint64 star = ((uint64)0x0008 << 32) | ((uint64)0x0018 << 48);
+    asm_wrmsr(STAR_MSR, star);
+
+    // 3. 配置 IA32_LSTAR：指向汇编入口
+    asm_wrmsr(LSTAR_MSR, (uint64)syscall_entry);
+
+    // 4. 配置 IA32_FMASK：掩码位
+    // 0x200 (IF 关中断) | 0x100 (TF 禁用单步调试) | 0x400 (DF 方向标志清零) | 0x4000 (NT 嵌套任务)
+    asm_wrmsr(FMASK_MSR, 0x4700ULL);
+}
 
 void cpu_load_resource(void){
     uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
@@ -362,7 +382,7 @@ void cpu_load_resource(void){
     gdt_ptr_t gdt_ptr;
     gdt_ptr.limit = sizeof(gdt_t) - 1;
     gdt_ptr.base = THIS_CPU->gdt_base;
-    asm_lgdt(&gdt_ptr,8,16);            //加载正式gdt
+    asm_lgdt(&gdt_ptr,8,0x10);            //加载正式gdt
     asm_ltr(48);                                      //加载tr
 
     // 装载 IDTR
@@ -371,6 +391,8 @@ void cpu_load_resource(void){
     idtr.base = &idt;
     asm_lidt(&idtr);
 
+    syscall_init();
+
     //设置核心定时器
     clockevent_init_per_cpu();
 
@@ -378,7 +400,6 @@ void cpu_load_resource(void){
     per_run_sleep_queue_init();
 
     get_cpu_info();                                         //获取cpu信息
-    //init_syscall();                                       //初始化系统调用
 }
 
 void cpu_alloc_resources(void) {
@@ -426,7 +447,7 @@ void ap_main(void){
     //asm_ltr(TSS_DESCRIPTOR_START_INDEX*16+cpu_id*16);
     //asm_lidt(&idt_ptr);
     apic_table_init();
-    init_syscall();
+    syscall_init();
     color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);
     while(1);
 }
