@@ -24,13 +24,11 @@ isr\vector:
 # ========================================================
 ISR_NOERRCODE 0   #DE	Divide Error (除零)	Fault
 ISR_NOERRCODE 1   #DB	Debug (调试)	Fault/Trap
-ISR_NOERRCODE 2   #-	NMI (不可屏蔽中断)	Interrupt
 ISR_NOERRCODE 3   #BP	Breakpoint (断点)	Trap
 ISR_NOERRCODE 4   #OF	Overflow (溢出)	Trap
 ISR_NOERRCODE 5   #BR	BOUND Range Exceeded	Fault
 ISR_NOERRCODE 6   #UD	Invalid Opcode (非法指令)	Fault
 ISR_NOERRCODE 7   #NM	Device Not Available (FPU不可用)
-ISR_ERRCODE   8   #DF	Double Fault (双重故障)	Abort
 ISR_NOERRCODE 9   #-	Coprocessor Segment Overrun (废弃)	Fault
 ISR_ERRCODE   10  #TS	Invalid TSS (无效TSS)	Fault
 ISR_ERRCODE   11  #NP	Segment Not Present (段不存在)	Fault
@@ -54,6 +52,7 @@ ISR_NOERRCODE 28  #保留
 ISR_NOERRCODE 29  #保留
 ISR_NOERRCODE 30  #保留
 ISR_NOERRCODE 31  #保留
+
 
 # 32~255 全部是外部硬件中断 (无错误码)
 ISR_NOERRCODE 32
@@ -348,6 +347,111 @@ isr_common_stub:
     1:
     # x64 硬件级中断返回，恢复 RIP, CS, RFLAGS, RSP, SS
     iretq
+
+
+    .global isr2
+    .extern do_nmi
+    .set MSR_GS_BASE, 0xC0000101
+    isr2:
+        # 1. 硬件自动行为：
+        #    硬件切入 TSS.IST2 栈顶，压入: [SS, RSP, RFLAGS, CS, RIP]
+        # 2. 补齐 dummy 错误码与中断向量号 2
+        pushq $0
+        pushq $2
+        # 3. 保存 15 个通用寄存器
+        pushq %rax
+        pushq %rbx
+        pushq %rcx
+        pushq %rdx
+        pushq %rsi
+        pushq %rdi
+        pushq %rbp
+        pushq %r8
+        pushq %r9
+        pushq %r10
+        pushq %r11
+        pushq %r12
+        pushq %r13
+        pushq %r14
+        pushq %r15
+
+        # 4. Paranoid GS 状态检测
+        xorl %ebx, %ebx             # %ebx 作为标记：0=未执行 swapgs，1=执行了 swapgs
+        movl $MSR_GS_BASE, %ecx
+        rdmsr                       # 读取 GS_BASE 到 EDX:EAX
+        testl %edx, %edx            # 检查高半区符号位 (EDX < 0 说明是内核高半区地址)
+        js 1f                       # 若已是内核 GS，跳过
+
+        swapgs                      # 换入内核 GS
+        movl $1, %ebx               # 打上标记
+    1:
+        # 5. 传参并调用 NMI C 语言处理器
+        movq %rsp, %rdi
+        call do_nmi
+
+        # 6. 恢复 GS 状态
+        testl %ebx, %ebx
+        jz 2f
+        swapgs                      # 换回用户态 GS
+    2:
+        # 7. 恢复 15 个通用寄存器
+        popq %r15
+        popq %r14
+        popq %r13
+        popq %r12
+        popq %r11
+        popq %r10
+        popq %r9
+        popq %r8
+        popq %rbp
+        popq %rdi
+        popq %rsi
+        popq %rdx
+        popq %rcx
+        popq %rbx
+        popq %rax
+        # 8. 跨过 int_no 与 dummy error_code (共 16 字节)
+        addq $16, %rsp
+        # 9. 硬件级还阳 (解封 NMI 屏蔽锁)
+        iretq
+
+
+.global isr8
+.extern do_double_fault
+
+isr8:
+    # 1. 硬件自动行为：
+    #    硬件切入 TSS.IST1 栈顶，并已压入: [SS, RSP, RFLAGS, CS, RIP, ERR_CODE(0)]
+    # 2. 压入中断号 8，对齐结构体
+    pushq $8
+
+    # 3. 保存 15 个通用寄存器 (与通用 stub 顺序保持严格一致)
+    pushq %rax
+    pushq %rbx
+    pushq %rcx
+    pushq %rdx
+    pushq %rsi
+    pushq %rdi
+    pushq %rbp
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
+    pushq %r12
+    pushq %r13
+    pushq %r14
+    pushq %r15
+
+    # 4. 将当前栈顶 (pt_regs 指针) 作为第 1 参数
+    movq %rsp, %rdi
+
+    # 5. 调用 C 语言 Panic 处理器，打印寄存器现场
+    call do_double_fault
+
+    # 6. #DF 属于硬件 Abort，绝不可返回，直接停机挂起
+1:  cli
+    hlt
+    jmp 1b
 
 # ========================================================
 # 👑 3. 架构师黑科技：中断处理函数指针表
