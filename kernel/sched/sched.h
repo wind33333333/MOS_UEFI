@@ -80,7 +80,7 @@ static inline uint64 sched_get_slice_deadline(uint64 cur_ns) {
 
 // 调度器核心 API
 void schedule();
-void check_and_schedule();
+
 
 
 

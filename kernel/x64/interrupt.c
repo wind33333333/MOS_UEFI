@@ -337,6 +337,8 @@ static exception_handler_t exception_table[32] = {
 //MSI/MSI-X 专属 O(1) 独占路由表 (静态分配，快如闪电)
 static irq_desc_t irq_table[256] = {0};
 
+void check_and_schedule();
+
 /**
  * @brief 👑 C 语言大管家 (所有中断的终极交汇点)
  * 汇编层已完全保护现场，并穿透参数，核心只需做 O(1) 分发。
@@ -384,6 +386,8 @@ void c_interrupt_dispatcher(cpu_registers_t *regs) {
         // 通知主板：“本官已审理完毕，允许发送下一批案卷”
         apic_send_eoi();
     }
+
+    check_and_schedule();
 }
 
 
