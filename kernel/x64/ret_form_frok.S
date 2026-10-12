@@ -49,6 +49,6 @@ ret_from_fork:
 
     # 跨过我们在桩里手动压入的 int_no 和 err_code (共 16 字节)
     addq $16, %rsp
-
+    swapgs
     // 终极降维打击，瞬间返回 Ring 3！
     iretq

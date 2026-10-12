@@ -7,7 +7,7 @@
 
 syscall_entry:
     // 1. 原子切入内核 GS 段
-    //swapgs
+    swapgs
 
     // 2. 换栈：暂存用户栈指针，换上当前任务的内核栈
     movq %rsp, %gs:0x08           // 保存用户的 rsp 到 per-cpu scratch 槽
@@ -40,7 +40,7 @@ syscall_entry:
     movq %r10, %rcx               // 将系统调用的第 4 参数 R10 挪给 C 调用的 RCX
 
     // (此时若要开启中断，可在此执行 sti)
-    //sti
+    sti
 
     // 调用 C 语言分发器：do_syscall_dispatcher(syscall_no, a1, a2, a3, a4, a5)
     // RDI 已经是 arg1，但我们需要把 RAX (调用号) 传进分发器
@@ -73,5 +73,5 @@ syscall_entry:
     popq %rsp                     // 恢复用户态栈指针 RSP！
 
     // 6. 换回用户态 GS 并极速返回 Ring 3
-    //swapgs
+    swapgs
     sysretq                       // REX.W + sysret：硬件直接以 64 位原生模式返回 Ring 3！

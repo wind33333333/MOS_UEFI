@@ -287,6 +287,13 @@ ISR_NOERRCODE 255
 .extern c_interrupt_dispatcher  # 声明 C 语言大管家
 
 isr_common_stub:
+    # 此时栈顶为硬件压入的: [VECTOR,ERRCODE,RIP, CS, RFLAGS, RSP, SS]
+    # 检查 CS (位于 rsp + 24) 的 RPL 字段
+    testb $3, 24(%rsp)
+    jz 1f                   # 如果低 2 位是 0 (Ring 0 打断)，跳过 swapgs！
+    # 说明打断的是 Ring 3 用户态
+    swapgs                  # 🌟 换入内核 GS
+1:
     # 保存所有通用寄存器 (按照 cpu_registers_t 的顺序)
     pushq %rax
     pushq %rbx
@@ -333,6 +340,12 @@ isr_common_stub:
     # 跨过我们在桩里手动压入的 int_no 和 err_code (共 16 字节)
     addq $16, %rsp
 
+    // 检查即将返回的 CS 选择子 (此时位于 rsp + 8)
+    testb $3, 8(%rsp)
+    jz 1f                   // 返回 Ring 0，严禁 swapgs，直接 iretq
+    // 证明要返回 Ring 3
+    swapgs                  // 🌟 换回用户态 GS
+    1:
     # x64 硬件级中断返回，恢复 RIP, CS, RFLAGS, RSP, SS
     iretq
 
