@@ -9,6 +9,7 @@ int64 do_syscall_dispatcher(uint64 arg1, uint64 arg2, uint64 arg3, uint64 arg4, 
     switch (sys_num) {
         case 0: // sys_read
             return PR_INFO("syscall!!\n");
+            break;
         // case 1: // sys_write / sys_print
         //     return sys_write((int)arg1, (const char *)arg2, (size_t)arg3);
         // case 60: // sys_exit
