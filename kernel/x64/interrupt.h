@@ -84,11 +84,11 @@ typedef struct {
 
 
 // 对外暴露的 API
-void tmp_idt_init(void);
 int32 alloc_contiguous_irq(uint8 count);
 void free_contiguous_irq(uint8 base_vector, uint8 count);
 int32 alloc_irq(void);
 void free_irq(int32 vector);
 int32 register_isr(int32 vector, irq_handler_f handler, void *dev_id, const char *name);
 int32 unregister_isr(int32 vector);
+void exception_init();
 

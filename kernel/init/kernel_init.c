@@ -10,6 +10,7 @@
 #include "alternative_init.h"
 #include "video_init.h"
 #include "apic_init.h"
+#include "idt_init.h"
 #include "printk.h"
 #include "../x64/mtrr.h"
 #include "../x64/apic_time.h"
@@ -107,7 +108,8 @@ task_t *user_task;
 void kernel_init(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
     output_init();                                              //初始化输出控制台
-    tmp_idt_init();                                             //初始化临时中断描述符表
+    tmp_idt_init();
+    exception_init();
     cpu_enable_feature();                                       //cpu启用高级特性
     apply_alternatives();                                       //动态修复指令
     vm_layout_init();                                           //虚拟内存空间初始化

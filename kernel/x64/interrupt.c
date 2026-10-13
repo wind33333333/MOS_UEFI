@@ -8,8 +8,8 @@
 
 /*********************************************************** 系统异常处理函数 *****************************************************************************/
 
-void do_divide_error(cpu_registers_t *regs) {
-    PR_INFO( "do_divide_error(0),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+int32 do_divide_error(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR( "do_divide_error(0),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
@@ -17,8 +17,8 @@ void do_divide_error(cpu_registers_t *regs) {
 }
 
 
-void do_debug(cpu_registers_t *regs) {
-    PR_INFO( "do_debug(1),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n", regs->err_code, regs->rsp,regs->rip);
+int32 do_debug(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR( "do_debug(1),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n", regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
     }
@@ -30,30 +30,34 @@ void do_nmi(cpu_registers_t *regs) {
     uint8 port_61 = asm_io_in8(0x61);
 
     if (port_61 & 0x80) {
-        PR_INFO( "FATAL: Memory Parity Error!\n");
-        while(1); // 致命故障，直接挂起
+        PR_ERROR( "FATAL: Memory Parity Error!\n");
+        while(1) {
+            asm_hlt();
+        }; // 致命故障，直接挂起
     }
     if (port_61 & 0x40) {
-        PR_INFO( "FATAL: Bus Error!\n");
-        while(1); // 致命故障，直接挂起
+        PR_ERROR( "FATAL: Bus Error!\n");
+        while(1) {
+            asm_hlt();
+        }; // 致命故障，直接挂起
     }
 
     // 2. 如果不是致命故障，大概率是 QEMU 或某些没屏蔽的定时器触发的
     // 直接忽略，让它返回，保持系统继续活下去！
-    color_printk(YELLOW, BLACK, "Warning: Spurious NMI received. Ignoring.\n");
+    PR_WARN("Warning: Spurious NMI received. Ignoring.\n");
 }
 
 
-void do_int3(cpu_registers_t *regs) {
-    PR_INFO( "do_int3(3),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n", regs->err_code, regs->rsp,regs->rip);
+int32 do_int3(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR( "do_int3(3),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n", regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
     }
 }
 
 
-void do_overflow(cpu_registers_t *regs) {
-    PR_INFO( "do_overflow(4),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+int32 do_overflow(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR( "do_overflow(4),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
@@ -61,8 +65,8 @@ void do_overflow(cpu_registers_t *regs) {
 }
 
 
-void do_bounds(cpu_registers_t *regs) {
-    PR_INFO( "do_bounds(5),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+int32 do_bounds(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR( "do_bounds(5),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
@@ -70,8 +74,8 @@ void do_bounds(cpu_registers_t *regs) {
 }
 
 
-void do_undefined_opcode(cpu_registers_t *regs) {
-    PR_INFO( "do_undefined_opcode(6),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+int32 do_undefined_opcode(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR( "do_undefined_opcode(6),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
@@ -79,8 +83,8 @@ void do_undefined_opcode(cpu_registers_t *regs) {
 }
 
 
-void do_dev_not_available(cpu_registers_t *regs) {
-    PR_INFO( "do_dev_not_available(7),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+int32 do_dev_not_available(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR( "do_dev_not_available(7),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
@@ -88,9 +92,9 @@ void do_dev_not_available(cpu_registers_t *regs) {
 }
 
 
-void do_double_fault(cpu_registers_t *regs) {
+int32 do_double_fault(cpu_registers_t *regs, void *dev_id) {
     asm_cli();
-    PR_INFO("do_double_fault(8),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+    PR_ERROR("do_double_fault(8),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
 
     while (1) {
@@ -100,9 +104,8 @@ void do_double_fault(cpu_registers_t *regs) {
 }
 
 
-void do_coprocessor_segment_overrun(cpu_registers_t *regs) {
-    PR_INFO(
-                 "do_coprocessor_segment_overrun(9),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+int32 do_coprocessor_segment_overrun(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR("do_coprocessor_segment_overrun(9),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
@@ -110,54 +113,25 @@ void do_coprocessor_segment_overrun(cpu_registers_t *regs) {
 }
 
 
-void do_invalid_TSS(cpu_registers_t *regs) {
-    PR_INFO( "do_invalid_TSS(10),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
-                 regs->err_code, regs->rsp,regs->rip);
-
-    if (regs->err_code & 0x01)
-        PR_INFO(
-                     "The exception occurred during delivery of an event external to the program,such as an interrupt or an earlier exception.\n");
-
-    if (regs->err_code & 0x02)
-        PR_INFO( "Refers to a gate descriptor in the IDT;\n");
-    else
-        PR_INFO( "Refers to a descriptor in the GDT or the current LDT;\n");
-
-    if ((regs->err_code & 0x02) == 0)
-        if (regs->err_code & 0x04)
-            PR_INFO( "Refers to a segment or gate descriptor in the LDT;\n");
-        else
-            PR_INFO( "Refers to a descriptor in the current GDT;\n");
-
-    PR_INFO( "Segment Selector Index:%#010x\n", regs->err_code & 0xfff8);
-
-        while (1) {
-        asm_hlt();
-    }
-}
-
-
-void do_segment_not_present(cpu_registers_t *regs) {
-    PR_INFO(
-                 "do_segment_not_present(11),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+int32 do_invalid_TSS(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR( "do_invalid_TSS(10),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
 
     if (regs->err_code & 0x01)
-        PR_INFO(
-                     "The exception occurred during delivery of an event external to the program,such as an interrupt or an earlier exception.\n");
+        PR_ERROR("The exception occurred during delivery of an event external to the program,such as an interrupt or an earlier exception.\n");
 
     if (regs->err_code & 0x02)
-        PR_INFO( "Refers to a gate descriptor in the IDT;\n");
+        PR_ERROR( "Refers to a gate descriptor in the IDT;\n");
     else
-        PR_INFO( "Refers to a descriptor in the GDT or the current LDT;\n");
+        PR_ERROR( "Refers to a descriptor in the GDT or the current LDT;\n");
 
     if ((regs->err_code & 0x02) == 0)
         if (regs->err_code & 0x04)
-            PR_INFO( "Refers to a segment or gate descriptor in the LDT;\n");
+            PR_ERROR( "Refers to a segment or gate descriptor in the LDT;\n");
         else
-            PR_INFO( "Refers to a descriptor in the current GDT;\n");
+            PR_ERROR( "Refers to a descriptor in the current GDT;\n");
 
-    PR_INFO( "Segment Selector Index:%#010x\n", regs->err_code & 0xfff8);
+    PR_ERROR( "Segment Selector Index:%#010x\n", regs->err_code & 0xfff8);
 
         while (1) {
         asm_hlt();
@@ -165,27 +139,25 @@ void do_segment_not_present(cpu_registers_t *regs) {
 }
 
 
-void do_stack_segment_fault(cpu_registers_t *regs) {
-    PR_INFO(
-                 "do_stack_segment_fault(12),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+int32 do_segment_not_present(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR("do_segment_not_present(11),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
 
     if (regs->err_code & 0x01)
-        PR_INFO(
-                     "The exception occurred during delivery of an event external to the program,such as an interrupt or an earlier exception.\n");
+        PR_ERROR("The exception occurred during delivery of an event external to the program,such as an interrupt or an earlier exception.\n");
 
     if (regs->err_code & 0x02)
-        PR_INFO( "Refers to a gate descriptor in the IDT;\n");
+        PR_ERROR( "Refers to a gate descriptor in the IDT;\n");
     else
-        PR_INFO( "Refers to a descriptor in the GDT or the current LDT;\n");
+        PR_ERROR( "Refers to a descriptor in the GDT or the current LDT;\n");
 
     if ((regs->err_code & 0x02) == 0)
         if (regs->err_code & 0x04)
-            PR_INFO( "Refers to a segment or gate descriptor in the LDT;\n");
+            PR_ERROR( "Refers to a segment or gate descriptor in the LDT;\n");
         else
-            PR_INFO( "Refers to a descriptor in the current GDT;\n");
+            PR_ERROR( "Refers to a descriptor in the current GDT;\n");
 
-    PR_INFO( "Segment Selector Index:%#010x\n", regs->err_code & 0xfff8);
+    PR_ERROR( "Segment Selector Index:%#010x\n", regs->err_code & 0xfff8);
 
         while (1) {
         asm_hlt();
@@ -193,27 +165,25 @@ void do_stack_segment_fault(cpu_registers_t *regs) {
 }
 
 
-void do_general_protection(cpu_registers_t *regs) {
-    PR_INFO(
-                 "do_general_protection(13),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+int32 do_stack_segment_fault(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR("do_stack_segment_fault(12),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
 
     if (regs->err_code & 0x01)
-        PR_INFO(
-                     "The exception occurred during delivery of an event external to the program,such as an interrupt or an earlier exception.\n");
+        PR_ERROR("The exception occurred during delivery of an event external to the program,such as an interrupt or an earlier exception.\n");
 
     if (regs->err_code & 0x02)
-        PR_INFO( "Refers to a gate descriptor in the IDT;\n");
+        PR_ERROR( "Refers to a gate descriptor in the IDT;\n");
     else
-        PR_INFO( "Refers to a descriptor in the GDT or the current LDT;\n");
+        PR_ERROR( "Refers to a descriptor in the GDT or the current LDT;\n");
 
     if ((regs->err_code & 0x02) == 0)
         if (regs->err_code & 0x04)
-            PR_INFO( "Refers to a segment or gate descriptor in the LDT;\n");
+            PR_ERROR( "Refers to a segment or gate descriptor in the LDT;\n");
         else
-            PR_INFO( "Refers to a descriptor in the current GDT;\n");
+            PR_ERROR( "Refers to a descriptor in the current GDT;\n");
 
-    PR_INFO( "Segment Selector Index:%#010x\n", regs->err_code & 0xfff8);
+    PR_ERROR( "Segment Selector Index:%#010x\n", regs->err_code & 0xfff8);
 
         while (1) {
         asm_hlt();
@@ -221,37 +191,61 @@ void do_general_protection(cpu_registers_t *regs) {
 }
 
 
-void do_page_fault(cpu_registers_t *regs) {
+int32 do_general_protection(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR("do_general_protection(13),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+                 regs->err_code, regs->rsp,regs->rip);
+
+    if (regs->err_code & 0x01)
+        PR_ERROR("The exception occurred during delivery of an event external to the program,such as an interrupt or an earlier exception.\n");
+
+    if (regs->err_code & 0x02)
+        PR_ERROR( "Refers to a gate descriptor in the IDT;\n");
+    else
+        PR_ERROR( "Refers to a descriptor in the GDT or the current LDT;\n");
+
+    if ((regs->err_code & 0x02) == 0)
+        if (regs->err_code & 0x04)
+            PR_ERROR( "Refers to a segment or gate descriptor in the LDT;\n");
+        else
+            PR_ERROR( "Refers to a descriptor in the current GDT;\n");
+
+    PR_ERROR( "Segment Selector Index:%#010x\n", regs->err_code & 0xfff8);
+
+        while (1) {
+        asm_hlt();
+    }
+}
+
+
+int32 do_page_fault(cpu_registers_t *regs, void *dev_id) {
     uint64 *p = NULL;
-    uint64 cr2 = 0;
+    uint64 cr2 = asm_get_cr2();
 
-    cr2 = asm_get_cr2();
-
-    PR_INFO( "do_page_fault(14),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+    PR_ERROR( "do_page_fault(14),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
 
     if (!(regs->err_code & 0x01))
-        PR_INFO( "Page Not-Present,\t");
+        PR_ERROR( "Page Not-Present,\t");
 
     if (regs->err_code & 0x02)
-        PR_INFO( "Write Cause Fault,\t");
+        PR_ERROR( "Write Cause Fault,\t");
     else
-        PR_INFO( "Read Cause Fault,\t");
+        PR_ERROR( "Read Cause Fault,\t");
 
     if (regs->err_code & 0x04)
-        PR_INFO( "Fault in user(3)\t");
+        PR_ERROR( "Fault in user(3)\t");
     else
-        PR_INFO( "Fault in supervisor(0,1,2)\t");
+        PR_ERROR( "Fault in supervisor(0,1,2)\t");
 
     if (regs->err_code & 0x08)
-        PR_INFO( ",Reserved Bit Cause Fault\t");
+        PR_ERROR( ",Reserved Bit Cause Fault\t");
 
     if (regs->err_code & 0x10)
-        PR_INFO( ",Instruction fetch Cause Fault");
+        PR_ERROR( ",Instruction fetch Cause Fault");
 
-    PR_INFO( "\n");
+    PR_ERROR( "\n");
 
-    PR_INFO( "CR2:%#018lx\n", cr2);
+    PR_ERROR( "CR2:%#018lx\n", cr2);
 
         while (1) {
         asm_hlt();
@@ -259,8 +253,8 @@ void do_page_fault(cpu_registers_t *regs) {
 }
 
 
-void do_x87_FPU_error(cpu_registers_t *regs) {
-    PR_INFO( "do_x87_FPU_error(16),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+int32 do_x87_FPU_error(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR( "do_x87_FPU_error(16),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
@@ -268,8 +262,8 @@ void do_x87_FPU_error(cpu_registers_t *regs) {
 }
 
 
-void do_alignment_check(cpu_registers_t *regs) {
-    PR_INFO( "do_alignment_check(17),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+int32 do_alignment_check(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR( "do_alignment_check(17),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
@@ -277,8 +271,8 @@ void do_alignment_check(cpu_registers_t *regs) {
 }
 
 
-void do_machine_check(cpu_registers_t *regs) {
-    PR_INFO( "do_machine_check(18),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+int32 do_machine_check(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR( "do_machine_check(18),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
@@ -286,8 +280,8 @@ void do_machine_check(cpu_registers_t *regs) {
 }
 
 
-void do_SIMD_exception(cpu_registers_t *regs) {
-    PR_INFO( "do_SIMD_exception(19),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+int32 do_SIMD_exception(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR( "do_SIMD_exception(19),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
@@ -295,9 +289,8 @@ void do_SIMD_exception(cpu_registers_t *regs) {
 }
 
 
-void do_virtualization_exception(cpu_registers_t *regs) {
-    PR_INFO(
-                 "do_virtualization_exception(20),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
+int32 do_virtualization_exception(cpu_registers_t *regs, void *dev_id) {
+    PR_ERROR("do_virtualization_exception(20),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
@@ -307,86 +300,61 @@ void do_virtualization_exception(cpu_registers_t *regs) {
 /*******************************************************************************************************************************/
 
 
-// 异常不会动态卸载，直接静态写死极其安全
-static exception_handler_t exception_table[32] = {
-    [0]  = do_divide_error,                 // #DE: 除零错误 (Divide Error)
-    [1]  = do_debug,                        // #DB: 调试异常 (Debug Exception)
-    [2]  = do_nmi,                          // NMI: 不可屏蔽中断 (Non-Maskable Interrupt)
-    [3]  = do_int3,                         // #BP: 断点异常 (Breakpoint/INT3)
-    [4]  = do_overflow,                     // #OF: 溢出异常 (Overflow/INTO)
-    [5]  = do_bounds,                       // #BR: 越界异常 (BOUND Range Exceeded)
-    [6]  = do_undefined_opcode,             // #UD: 非法指令/未定义操作码 (Invalid Opcode)
-    [7]  = do_dev_not_available,            // #NM: 设备不可用/FPU缺失 (Device Not Available)
-    [8]  = do_double_fault,                 // #DF: 双重故障 (Double Fault)
-    [9]  = do_coprocessor_segment_overrun,  // 协处理器段超限 (Coprocessor Segment Overrun，现代 x86 已废弃)
-    [10] = do_invalid_TSS,                  // #TS: 无效的 TSS (Invalid TSS)
-    [11] = do_segment_not_present,          // #NP: 段不存在 (Segment Not Present)
-    [12] = do_stack_segment_fault,          // #SS: 栈段错误 (Stack-Segment Fault)
-    [13] = do_general_protection,           // #GP: 常规保护错误 (General Protection Fault)
-    [14] = do_page_fault,                   // #PF: 页错误/缺页异常 (Page Fault)
-    // [15] 为 Intel 保留 (Intel Reserved)
-    [16] = do_x87_FPU_error,                // #MF: x87 浮点运算错误 (x87 FPU Floating-Point Error)
-    [17] = do_alignment_check,              // #AC: 对齐检查 (Alignment Check)
-    [18] = do_machine_check,                // #MC: 机器检查 (Machine Check)
-    [19] = do_SIMD_exception,               // #XM: SIMD 浮点异常 (SIMD Floating-Point Exception)
-    [20] = do_virtualization_exception,     // #VE: 虚拟化异常 (Virtualization Exception)
-    // [21] - [31] 为 Intel 保留异常或较新的硬件异常 (如 21号 #CP 控制保护异常)，默认初始化为 NULL
-};
-
-
 //MSI/MSI-X 专属 O(1) 独占路由表 (静态分配，快如闪电)
 static irq_desc_t irq_table[256] = {0};
+
+void exception_init() {
+    register_isr(0,do_divide_error,NULL,"Divide Error");
+    register_isr(1,do_debug,NULL,"Debug Exception");
+    //2号 NMI: 不可屏蔽中断 (Non-Maskable Interrupt)，单独的中断入口
+    register_isr(3,do_int3,NULL,"Breakpoint/INT3");
+    register_isr(4,do_overflow,NULL,"Overflow/INTO");
+    register_isr(5,do_bounds,NULL,"BOUND Range Exceeded");
+    register_isr(6,do_undefined_opcode,NULL,"Undefined Opcode");
+    register_isr(7,do_dev_not_available,NULL,"Device Not Available");
+    register_isr(8,do_double_fault,NULL,"Double Fault");
+    register_isr(9,do_coprocessor_segment_overrun,NULL,"Coprocessor Segment Overrun");
+    register_isr(10,do_invalid_TSS,NULL,"Invalid TSS");
+    register_isr(11,do_segment_not_present,NULL,"Segment Not Present");
+    register_isr(12,do_stack_segment_fault,NULL,"Stack Segment Fault");
+    register_isr(13,do_general_protection,NULL,"General Protection");
+    register_isr(14,do_page_fault,NULL,"Page Fault");
+    //15保留
+    register_isr(16,do_x87_FPU_error,NULL,"x87 FPU Floating-Point Error");
+    register_isr(17,do_alignment_check,NULL,"Alignment Check");
+    register_isr(18,do_machine_check,NULL,"Machine Check");
+    register_isr(19,do_SIMD_exception,NULL,"SIMD Exception");
+    register_isr(20,do_virtualization_exception,NULL,"Virtualization Exception");
+    // [21] - [31] 为 Intel 保留异常或较新的硬件异常 (如 21号 #CP 控制保护异常)，默认初始化为 NULL
+}
 
 void check_and_schedule();
 
 /**
- * @brief 👑 C 语言大管家 (所有中断的终极交汇点)
- * 汇编层已完全保护现场，并穿透参数，核心只需做 O(1) 分发。
+ * @brief 👑 C 语言大管家 (所有中断与异常的统一分发中心)
  */
 void c_interrupt_dispatcher(cpu_registers_t *regs) {
     uint64 int_no = regs->int_no;
 
-    // ==========================================
-    // 1. CPU 内部异常处理 (0~31)
-    // ==========================================
-    if (int_no < 32) {
-        exception_handler_t exception = exception_table[int_no];
-        if (exception != NULL) {
-            // 调用注册好的处理函数
-            exception(regs);
-        } else {
-            // 对于保留的异常，或者没有注册的异常，直接 panic
-            PR_INFO( "Unhandled Exception: %d, ERROR_CODE: %#018lx\n", int_no, regs->err_code);
-            while(1) {
-                asm_cli();
-                asm_hlt();
-            };
-        }
-
-        // 🚨 极其重要：异常处理完毕必须直接返回！
-        // 异常是 CPU 内部产生的，绝对不能向外设 APIC 发送 EOI！
-        return;
-    }
-
-    // 2. 硬件中断 O(1) 极速分发 (32~255)
+    // 1. O(1) 统一查表执行 (0~255)
     irq_desc_t *irq_desc = &irq_table[int_no];
     if (irq_desc->handler != NULL) {
-        // 精确制导，将上下文和设备私有指针送达驱动核心
         irq_desc->handler(regs, irq_desc->dev_id);
     } else {
-        color_printk(YELLOW, BLACK, "Spurious Interrupt Vector: %d\n", int_no);
+        color_printk(YELLOW, BLACK, "Unhandled / Spurious Vector: %ld\n", int_no);
     }
 
     // ==========================================
-    // 3. 发送 EOI (End of Interrupt)
+    // 2. 外部硬件中断专属收尾：发送 EOI
     // ==========================================
-    // 假设你将 255 (0xFF) 设为了 APIC Spurious Interrupt Vector
-    // Intel 手册规定：发生伪中断时，不需要也不应该发送 EOI
-    if (int_no != 255) {
-        // 通知主板：“本官已审理完毕，允许发送下一批案卷”
+    // 🌟 核心分水岭：仅限外设硬件中断 (>= 32)，且排除 APIC 伪中断 (255)
+    if (int_no >= 32 && int_no != 255) {
         apic_send_eoi();
     }
 
+    // ==========================================
+    // 3. 调度抢占门禁
+    // ==========================================
     check_and_schedule();
 }
 
@@ -400,18 +368,20 @@ void c_interrupt_dispatcher(cpu_registers_t *regs) {
  * @param name     驱动标识名
  */
 int32 register_isr(int32 vector, irq_handler_f handler, void *dev_id, const char *name) {
-    if (vector < 32 || vector >= 256) return -EINVAL;
+    if (vector >= 256) return -EINVAL;
 
-    // ★ 防火墙 1：不准在没买过的地皮上盖房！
-    if (irq_table[vector].state == IRQ_STATE_FREE) {
-        PR_INFO( "IRQ %d is NOT allocated!\n", vector);
-        return -EPERM;
-    }
+    if (vector >= 32) {
+        // ★ 防火墙 1：不准在没买过的地皮上盖房！
+        if (irq_table[vector].state == IRQ_STATE_FREE) {
+            PR_ERROR( "IRQ %d is NOT allocated!\n", vector);
+            return -EPERM;
+        }
 
-    // ★ 防火墙 2：不准在已经盖好房子的地皮上重复盖房！
-    if (irq_table[vector].state == IRQ_STATE_REGISTERED) {
-        PR_INFO( "IRQ %d is already registered to %s!\n", vector, irq_table[vector].name);
-        return -EBUSY;
+        // ★ 防火墙 2：不准在已经盖好房子的地皮上重复盖房！
+        if (irq_table[vector].state == IRQ_STATE_REGISTERED) {
+            PR_ERROR( "IRQ %d is already registered to %s!\n", vector, irq_table[vector].name);
+            return -EBUSY;
+        }
     }
 
     // 状态推进：正式服役
@@ -434,7 +404,7 @@ int32 unregister_isr(int32 vector) {
 
     // ★ 防火墙 1：防误杀！如果是一块连地皮都没买过的空地，直接报错
     if (irq_table[vector].state == IRQ_STATE_FREE) {
-        PR_INFO( "IRQ %d is completely free, nothing to unregister!\n", vector);
+        PR_ERROR( "IRQ %d is completely free, nothing to unregister!\n", vector);
         return -EPERM;
     }
 
@@ -507,7 +477,7 @@ int32 alloc_contiguous_irq(uint8 count) {
 void free_contiguous_irq(uint8 base_vector, uint8 count) {
     // 1. 基础物理边界检查
     if (base_vector < 32 || (uint16)base_vector + count > 256) {
-        PR_INFO( "IRQ: Attempt to free invalid vector range [%d, %d)\n",
+        PR_ERROR( "IRQ: Attempt to free invalid vector range [%d, %d)\n",
                      base_vector, base_vector + count);
         return;
     }
