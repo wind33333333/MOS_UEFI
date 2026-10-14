@@ -5,6 +5,7 @@
 #include "moslib.h"
 #include "../init/apic_init.h"
 #include "errno.h"
+#include "../sched/sched.h"
 
 /*********************************************************** 系统异常处理函数 *****************************************************************************/
 
@@ -327,8 +328,6 @@ void exception_init() {
     register_isr(20,do_virtualization_exception,NULL,"Virtualization Exception");
     // [21] - [31] 为 Intel 保留异常或较新的硬件异常 (如 21号 #CP 控制保护异常)，默认初始化为 NULL
 }
-
-void check_and_schedule();
 
 /**
  * @brief 👑 C 语言大管家 (所有中断与异常的统一分发中心)
