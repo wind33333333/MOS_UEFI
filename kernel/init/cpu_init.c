@@ -1,4 +1,7 @@
 #include "cpu_init.h"
+
+#include <stdbool.h>
+
 #include "apic_init.h"
 #include "../drivers/hpet/hpet.h"
 #include "../x64/interrupt.h"
@@ -225,8 +228,13 @@ void cpu_enable_feature(void) {
     // 获取当前 CPU 的 Local APIC ID 作为核心编号
     uint32 cpu_id = (uint32)asm_rdmsr(APIC_ID_MSR);
 
+    asm_cpuid_count(7,1,&eax,&ebx,&ecx,&edx);
+    boolean fred = (eax & (1<<17)) ? TRUE : FALSE;
+    boolean lkgs = (eax & (1<<18)) ? TRUE : FALSE;
+
     // 1. 打印基础控制寄存器 (高半核多核排错神器)
     PR_OK("CPU%d Features Initialized Success!\n", cpu_id);
+    PR_INFO("CPU%d FRED:%s LKGS:%s \n",cpu_id ,fred?"yes":"no",lkgs?"yes":"no");
     PR_INFO("CPU%d CR0: %#lx | CR4: %#lx\n", cpu_id, final_cr0, final_cr4);
     PR_INFO("CPU%d EFER:%#lx | XCR0:%#lx\n", cpu_id, final_efer, final_xcr0);
 
