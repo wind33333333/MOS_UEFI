@@ -148,19 +148,16 @@ isr2:
     SAVE_ALL_REGS           # 🌟 复用宏
 
     # Paranoid 偏执状态检测
-    xorl %ebx, %ebx         # EBX: 0 = 未执行 swapgs, 1 = 执行了 swapgs
-    movl $MSR_GS_BASE, %ecx
-    rdmsr
-    testl %edx, %edx        # 检查是否为高半区内核地址
+    rdgsbase %rbx
+    testl %ebx, %ebx        # 检查是否为高半区内核地址
     js 1f
     swapgs
-    movl $1, %ebx
 1:
     movq %rsp, %rdi
     call do_nmi             # 调用独立的 NMI 处理函数 (内部严禁调用调度器)
 
     testl %ebx, %ebx
-    jz 2f
+    js 2f
     swapgs
 2:
     RESTORE_ALL_REGS        # 🌟 复用宏
