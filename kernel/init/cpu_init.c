@@ -234,7 +234,7 @@ void cpu_enable_feature(void) {
 
     // 1. 打印基础控制寄存器 (高半核多核排错神器)
     PR_OK("CPU%d Features Initialized Success!\n", cpu_id);
-    PR_INFO("CPU%d FRED:%s LKGS:%s \n",cpu_id ,fred?"yes":"no",lkgs?"yes":"no");
+    PR_INFO("CPU%d FRED:%s LKGS:%s \n",cpu_id ,fred?"YES":"NO",lkgs?"YES":"NO");
     PR_INFO("CPU%d CR0: %#lx | CR4: %#lx\n", cpu_id, final_cr0, final_cr4);
     PR_INFO("CPU%d EFER:%#lx | XCR0:%#lx\n", cpu_id, final_efer, final_xcr0);
 
