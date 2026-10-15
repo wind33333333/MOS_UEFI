@@ -296,7 +296,7 @@ trampoline_64:
     tmp_rsp0_stack_top:
 
     // 为 BSP 核心预留的 16KB 临时安全堆栈
-    .fill   0x4000, 1, 0
+    .fill 0x4000, 1, 0
     tmp_bsp_stack_top:
 
     .globl  tmp_pml5t
