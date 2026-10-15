@@ -48,7 +48,7 @@ task_t* create_kernel_task(void (*entry_point)(void), uint64 arg) {
 
 
     // 3. 记录这个精心伪造的栈顶地址
-    new_task->rsp = (uint64)rsp;
+    new_task->kernel_rsp = (uint64)rsp;
     new_task->state = TASK_READY;
     new_task->id = alloc_task_id();
 
@@ -80,7 +80,7 @@ task_t* create_user_task(void *user_entry) {
 
     vm_space_init(&new_task->vm_space, kernel_space.paging_level, &kernel_space.ops, TRUE);
 
-    new_task->kstack_top = (uint64)rsp;
+    new_task->kernel_stack_top = (uint64)rsp;
 
     uint64 user_stack_top = (kernel_space.paging_level == 5) ? 0x7FFFFFFFFFF000ULL : 0x7FFFFFFFF000ULL;
 
@@ -142,7 +142,7 @@ task_t* create_user_task(void *user_entry) {
     *(--rsp) = 0;                     // 对应 popq %r15
 
     // 记录伪造完毕后的内核栈顶
-    new_task->rsp = (uint64)rsp;
+    new_task->kernel_rsp = (uint64)rsp;
 
     new_task->id = alloc_task_id();
     new_task->state = TASK_READY;

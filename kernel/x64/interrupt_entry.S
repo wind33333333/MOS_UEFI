@@ -1,44 +1,8 @@
+#include "cpu_registers.h"
+
 .code64
 .section .text, "ax"
 
-# ========================================================
-# 1. 通用寄存器现场宏 (彻底消灭重复的 push/pop)
-# ========================================================
-.macro SAVE_ALL_REGS
-    pushq %rax
-    pushq %rbx
-    pushq %rcx
-    pushq %rdx
-    pushq %rsi
-    pushq %rdi
-    pushq %rbp
-    pushq %r8
-    pushq %r9
-    pushq %r10
-    pushq %r11
-    pushq %r12
-    pushq %r13
-    pushq %r14
-    pushq %r15
-.endm
-
-.macro RESTORE_ALL_REGS
-    popq %r15
-    popq %r14
-    popq %r13
-    popq %r12
-    popq %r11
-    popq %r10
-    popq %r9
-    popq %r8
-    popq %rbp
-    popq %rdi
-    popq %rsi
-    popq %rdx
-    popq %rcx
-    popq %rbx
-    popq %rax
-.endm
 
 # ========================================================
 # 2. 存根宏定义
@@ -140,8 +104,6 @@ isr_common_stub:
 # ========================================================
 .global isr2
 .extern do_nmi
-.set MSR_GS_BASE, 0xC0000101
-
 isr2:
     pushq $0                # 补齐 dummy 错误码
     pushq $2                # 压入中断号 2
@@ -164,6 +126,8 @@ isr2:
     addq $16, %rsp
     iretq
 
+
+
 # ========================================================
 # 7. 中断处理函数指针表 (用 .rept 压缩至 10 行以内)
 # ========================================================
@@ -180,3 +144,6 @@ isr_stub_table:
         EMIT_TABLE_ENTRY %j
         .set j, j + 1
     .endr
+
+
+

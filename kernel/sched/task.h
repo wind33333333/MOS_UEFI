@@ -21,7 +21,9 @@ typedef enum {
 
 // 任务控制块 (TCB)
 typedef struct task_t{
-    uint64 rsp;                 // 🌟 栈指针 (必须在结构体最开头，方便汇编存取)
+    uint64 kernel_stack_top;    // 内核栈最顶端 (写给 TSS.RSP0 使用)
+    uint64 user_rsp;
+    uint64 kernel_rsp;          // 🌟 栈指针
     uint64 id;                  // 任务 ID
     task_state_t state;
     uint32 flags;               // 🌟 异步标志位图 (别人给我贴的便签)
@@ -46,7 +48,6 @@ typedef struct task_t{
 
     // ... 其他信息 (页表 CR3, 内存空间等) ...
     vm_space_t vm_space;
-    uint64 kstack_top;          // 内核栈最顶端 (写给 TSS.RSP0 使用)
 }task_t;
 
 

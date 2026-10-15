@@ -1,5 +1,5 @@
 #pragma once
-
+#include "../x64/cpu_registers.h"
 #include "../include/moslib.h"
 
 // 定义中断处理函数
@@ -32,29 +32,6 @@ void SIMD_exception();
 void virtualization_exception();
 
 //=============================================================================================================
-
-#pragma pack(push,1)
-
-
-// 2. 汇编层压入的 CPU 现场上下文 (严格匹配 push 顺序)
-typedef struct {
-    // 我们的 common_stub 手动 push 的通用寄存器
-    uint64 r15, r14, r13, r12, r11, r10, r9, r8;
-    uint64 rbp, rdi, rsi, rdx, rcx, rbx, rax;
-    
-    // 我们的 ISR 桩硬编码 push 的参数
-    uint64 int_no;   // 中断号
-    uint64 err_code; // 错误码 (无错误码的异常填充 0)
-    
-    // CPU 发生中断时自动压入的关键现场
-    uint64 rip;
-    uint64 cs;
-    uint64 rflags;
-    uint64 rsp;
-    uint64 ss;
-}cpu_registers_t;
-
-#pragma pack(pop)
 
 //CPU异常函数签名
 typedef void (*exception_handler_t)(cpu_registers_t *regs);

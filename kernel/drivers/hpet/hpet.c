@@ -1,6 +1,5 @@
 #include "hpet.h"
-
-#include "../x64/interrupt.h"
+#include "../x64/cpu_registers.h"
 #include "printk.h"
 #include "../x64/cpu.h"
 

@@ -1,6 +1,6 @@
 // ========================= [ time.c ] =========================
 #include "time.h"
-#include "../x64/interrupt.h"
+#include "../x64/interrupt_dispatcher.h"
 #include "printk.h"
 #include "timer.h"
 #include "../x64/cpu.h"

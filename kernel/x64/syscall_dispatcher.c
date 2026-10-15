@@ -1,21 +1,31 @@
 #include "moslib.h"
 #include "printk.h"
+#include "../x64/cpu_registers.h"
 
 
-int64 do_syscall_dispatcher(uint64 arg1, uint64 arg2, uint64 arg3, uint64 arg4, uint64 arg5) {
-    // 从当前线程或暂存寄存器获取系统调用号 (这里从 r12 读取，或通过栈帧结构体传递)
-    register uint64 sys_num asm("r12");
+int64 sys_print(cpu_registers_t *regs) {
+    PR_INFO("syscall !!!");
+}
 
-    switch (sys_num) {
-        case 0: // sys_read
-            return PR_INFO("syscall!!\n");
-            break;
-        // case 1: // sys_write / sys_print
-        //     return sys_write((int)arg1, (const char *)arg2, (size_t)arg3);
-        // case 60: // sys_exit
-        //     sys_exit((int)arg1);
-        //     return 0;
-        default:
-            return -38; // -ENOSYS (函数未实现)
+
+// 1. 定义统一的系统调用函数指针类型
+typedef int64 (*syscall_f)(cpu_registers_t *regs);
+
+// 2. 静态系统调用表 (大小覆盖支持的系统调用号上限)
+#define MAX_SYSCALL_NUM 256
+static syscall_f sys_call_table[MAX_SYSCALL_NUM] = {
+    [0]  = sys_print,
+
+};
+
+// 3. 极速分发
+int64 do_syscall_dispatcher(cpu_registers_t *regs) {
+    uint64 sys_num = regs->rax; // 标准 x86_64 约定使用 RAX
+
+    if (sys_num >= MAX_SYSCALL_NUM || sys_call_table[sys_num] == NULL) {
+        return -38; // -ENOSYS
     }
+
+    // 从栈帧结构体直接传参，安全且不破坏编译器寄存器分配
+    return sys_call_table[sys_num](regs);
 }

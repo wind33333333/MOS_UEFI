@@ -1,7 +1,7 @@
 #include "apic_time.h"
 
 #include "cpu.h"
-#include "interrupt.h"
+#include "interrupt_dispatcher.h"
 #include "msr.h"
 
 

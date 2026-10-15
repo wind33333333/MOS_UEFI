@@ -1,5 +1,4 @@
-#include "interrupt.h"
-
+#include "interrupt_dispatcher.h"
 #include "cpu.h"
 #include "printk.h"
 #include "moslib.h"
