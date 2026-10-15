@@ -1,4 +1,5 @@
   #include "cpu_registers.h"
+  #include "syscall_entry.h"
 
   .code64
   .section .text, "ax"
@@ -13,9 +14,9 @@
     .set PERCPU_KERNEL_STACK_TOP, 0x00    # 当前 CPU 的内核栈顶
     .set PERCPU_USER_RSP,   0x08          # 暂存用户栈指针的临时槽位
 
-    .set MAX_SYSCALL_NUM, 256
     .set ENOSYS, 38                     # -38 代表系统调用不存在
 
+    .extern syscall_table
     .global syscall_entry
     .align 16
 syscall_entry:
@@ -90,12 +91,3 @@ syscall_entry:
 
     swapgs                              # 换回用户 GS
     sysretq                             # 硬件极速还阳
-
-# ========================================================
-#  系统调用函数指针表
-# ========================================================
-.section .init_data, "wa"
-.global syscall_table
-
-syscall_table:
-    .fill 0x256,8,0
