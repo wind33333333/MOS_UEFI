@@ -13,7 +13,7 @@
  */
 
 static inline void idt_set_descriptor(uint8 vector , uint8 attributes, uint8 ist) {
-    uint64 isr_addr = isr_stub_table[vector];
+    uint64 isr_addr = (uint64)interrupt_entry_base + ((uint64)vector << 4);
     idt_desc_t *desc = &idt.desc[vector];
 
     desc->offset_low       = isr_addr & 0xFFFF;

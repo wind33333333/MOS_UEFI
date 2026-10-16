@@ -50,14 +50,14 @@
 #define APIC_SPURIOUS_VECTOR_MSR          0x80F  // 虚假中断向量寄存器
 
 // 中断服务寄存器（ISR）
-#define APIC_ISR_31_0_MSR                 0x810  // ISR位31:0
-#define APIC_ISR_63_32_MSR                0x811  // ISR位63:32
-#define APIC_ISR_95_64_MSR                0x812  // ISR位95:64
-#define APIC_ISR_127_96_MSR               0x813  // ISR位127:96
-#define APIC_ISR_159_128_MSR              0x814  // ISR位159:128
-#define APIC_ISR_191_160_MSR              0x815  // ISR位191:160
-#define APIC_ISR_223_192_MSR              0x816  // ISR位223:192
-#define APIC_ISR_255_224_MSR              0x817  // ISR位255:224
+#define APIC_INTERRUPT_31_0_MSR                 0x810  // ISR位31:0
+#define APIC_INTERRUPT_63_32_MSR                0x811  // ISR位63:32
+#define APIC_INTERRUPT_95_64_MSR                0x812  // ISR位95:64
+#define APIC_INTERRUPT_127_96_MSR               0x813  // ISR位127:96
+#define APIC_INTERRUPT_159_128_MSR              0x814  // ISR位159:128
+#define APIC_INTERRUPT_191_160_MSR              0x815  // ISR位191:160
+#define APIC_INTERRUPT_223_192_MSR              0x816  // ISR位223:192
+#define APIC_INTERRUPT_255_224_MSR              0x817  // ISR位255:224
 
 // 中断请求寄存器（IRR）
 #define APIC_IRR_31_0_MSR                 0x820  // IRR位31:0

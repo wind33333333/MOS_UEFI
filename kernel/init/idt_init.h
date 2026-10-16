@@ -41,7 +41,7 @@ static inline void asm_lidt(const idt_ptr_t *idt_ptr) {
 
 extern idt_t idt;
 
-// 引入汇编里暴露的地址表 (极其优雅，免去了写 256 行 extern)
-extern uint64 isr_stub_table[];
+// 引用汇编中连续中断桩的基地址
+extern const char interrupt_entry_base[];
 
 void tmp_idt_init(void);
