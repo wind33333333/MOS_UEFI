@@ -5,9 +5,9 @@
 
 
 # ========================================================
-# 2. 存根宏定义
+# 1. 无错误码中断入口模板
 # ========================================================
-.macro INTERRUPT_NOERRCODE vector
+.macro INTERRUPT_NOERRCODE_ENTRY vector
 .global interrupt\vector
 interrupt\vector:
     .p2align 4
@@ -16,7 +16,11 @@ interrupt\vector:
     jmp interrupt_com_stub
 .endm
 
-.macro INTERRUPT_ERRCODE vector
+
+# ========================================================
+# 2. 有错误码中断入口模板
+# ========================================================
+.macro INTERRUPT_ERRCODE_ENTRY vector
 .global interrupt\vector
 interrupt\vector:
     .p2align 4
@@ -24,57 +28,60 @@ interrupt\vector:
     jmp interrupt_com_stub
 .endm
 
+
+# ========================================================
+# 256个中断入口
+# ========================================================
 .p2align 4
 .global interrupt_entry_base
 interrupt_entry_base:
 # ========================================================
 # 3. 0~31 号 CPU 内部异常 (清晰标注，#DF 完美并入通用体系)
 # ========================================================
-INTERRUPT_NOERRCODE 0    # #DE 除零错误
-INTERRUPT_NOERRCODE 1    # #DB 调试异常
+INTERRUPT_NOERRCODE_ENTRY 0    # #DE 除零错误
+INTERRUPT_NOERRCODE_ENTRY 1    # #DB 调试异常
 # 🌟 向量 2 (NMI) 占满自己的 16 字节格子，直接跳往后方的独立 Paranoid 流程
 .p2align 4
 jmp interrupt2
-INTERRUPT_NOERRCODE 3    # #BP 断点
-INTERRUPT_NOERRCODE 4    # #OF 溢出
-INTERRUPT_NOERRCODE 5    # #BR 越界
-INTERRUPT_NOERRCODE 6    # #UD 无效指令
-INTERRUPT_NOERRCODE 7    # #NM 设备不可用
-INTERRUPT_ERRCODE   8    # #DF 双重错误 (通过 IST1 切栈，进通用存根后在 C 语言原地终止)
-INTERRUPT_NOERRCODE 9    # 协处理器段溢出
-INTERRUPT_ERRCODE   10   # #TS 无效TSS
-INTERRUPT_ERRCODE   11   # #NP 段不存在
-INTERRUPT_ERRCODE   12   # #SS 栈段错误
-INTERRUPT_ERRCODE   13   # #GP 常规保护错误
-INTERRUPT_ERRCODE   14   # #PF 页错误
-INTERRUPT_NOERRCODE 15   # Intel 保留
-INTERRUPT_NOERRCODE 16   # #MF 浮点错误
-INTERRUPT_ERRCODE   17   # #AC 对齐检查
-INTERRUPT_NOERRCODE 18   # #MC 机器检查
-INTERRUPT_NOERRCODE 19   # #XM SIMD 异常
-INTERRUPT_NOERRCODE 20   # #VE 虚拟化异常
-INTERRUPT_ERRCODE   21   # #CP 控制流保护异常
+INTERRUPT_NOERRCODE_ENTRY 3    # #BP 断点
+INTERRUPT_NOERRCODE_ENTRY 4    # #OF 溢出
+INTERRUPT_NOERRCODE_ENTRY 5    # #BR 越界
+INTERRUPT_NOERRCODE_ENTRY 6    # #UD 无效指令
+INTERRUPT_NOERRCODE_ENTRY 7    # #NM 设备不可用
+INTERRUPT_ERRCODE_ENTRY   8    # #DF 双重错误 (通过 IST1 切栈，进通用存根后在 C 语言原地终止)
+INTERRUPT_NOERRCODE_ENTRY 9    # 协处理器段溢出
+INTERRUPT_ERRCODE_ENTRY   10   # #TS 无效TSS
+INTERRUPT_ERRCODE_ENTRY   11   # #NP 段不存在
+INTERRUPT_ERRCODE_ENTRY   12   # #SS 栈段错误
+INTERRUPT_ERRCODE_ENTRY   13   # #GP 常规保护错误
+INTERRUPT_ERRCODE_ENTRY   14   # #PF 页错误
+INTERRUPT_NOERRCODE_ENTRY 15   # Intel 保留
+INTERRUPT_NOERRCODE_ENTRY 16   # #MF 浮点错误
+INTERRUPT_ERRCODE_ENTRY   17   # #AC 对齐检查
+INTERRUPT_NOERRCODE_ENTRY 18   # #MC 机器检查
+INTERRUPT_NOERRCODE_ENTRY 19   # #XM SIMD 异常
+INTERRUPT_NOERRCODE_ENTRY 20   # #VE 虚拟化异常
+INTERRUPT_ERRCODE_ENTRY   21   # #CP 控制流保护异常
 # 22 ~ 31 保留异常
 .altmacro
 .set k, 22
 .rept 10
-    INTERRUPT_NOERRCODE %k
+    INTERRUPT_NOERRCODE_ENTRY %k
     .set k, k + 1
 .endr
 
 # --- 32~255 外设硬件中断区 ---
 .set i, 32
 .rept 256 - 32
-    INTERRUPT_NOERRCODE %i
+    INTERRUPT_NOERRCODE_ENTRY %i
     .set i, i + 1
 .endr
 
 
-# ========================================================
-# 5. 通用中断跳板 (服务除 NMI 外的所有中断与异常)
-# ========================================================
 .extern c_interrupt_dispatcher
-
+# ========================================================
+# 通用中断跳板 (服务除 NMI 外的所有中断与异常)
+# ========================================================
 interrupt_com_stub:
     # 检查进入前的特权级 (CS 位于 rsp + 24)
     testb $3, 24(%rsp)
@@ -97,9 +104,8 @@ interrupt_com_stub:
     iretq
 
 # ========================================================
-# 6. NMI 专属极简存根 (保留 Paranoid 保证安全，杜绝代码膨胀)
+# NMI 专属极简存根 (保留 Paranoid 保证安全，杜绝代码膨胀)
 # ========================================================
-.global interrupt2
 .extern do_nmi
 interrupt2:
     pushq $0                # 补齐 dummy 错误码
