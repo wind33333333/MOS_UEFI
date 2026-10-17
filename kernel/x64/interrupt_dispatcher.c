@@ -332,7 +332,7 @@ void exception_init() {
  * @brief 👑 C 语言大管家 (所有中断与异常的统一分发中心)
  */
 void c_interrupt_dispatcher(cpu_registers_t *regs) {
-    uint64 int_no = regs->int_no;
+    uint64 int_no = regs->no;
 
     // 1. O(1) 统一查表执行 (0~255)
     irq_desc_t *irq_desc = &irq_table[int_no];
