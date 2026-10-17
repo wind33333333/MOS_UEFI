@@ -361,9 +361,19 @@ static inline void per_run_sleep_queue_init() {
 
 }
 
-#define EFER_SCE        (1ULL << 0)
-extern void syscall_entry(void);
 
+extern void syscall_entry(void);
+#define EFER_SCE        (1ULL << 0)
+
+#define RFLAGS_TF       (1ULL << 8)   /* 0x00100: 单步调试陷阱标志 */
+#define RFLAGS_IF       (1ULL << 9)   /* 0x00200: 外部中断使能标志 */
+#define RFLAGS_DF       (1ULL << 10)  /* 0x00400: 字符串操作方向标志 */
+#define RFLAGS_IOPL     (3ULL << 12)  /* 0x03000: I/O 特权级域 (Bits 12:13) */
+#define RFLAGS_NT       (1ULL << 14)  /* 0x04000: 嵌套任务标志 */
+#define RFLAGS_AC       (1ULL << 18)  /* 0x40000: 对齐检查 / SMAP 放行标志 */
+
+/* 组合为完整系统调用掩码: 0x47700ULL */
+#define SYSCALL_FMASK   (RFLAGS_TF | RFLAGS_IF | RFLAGS_DF | RFLAGS_IOPL | RFLAGS_NT | RFLAGS_AC)
 static inline void syscall_init(void) {
     // 1. 启用 EFER.SCE (System Call Enable)
     uint64 efer = asm_rdmsr(EFER_MSR);
@@ -379,8 +389,7 @@ static inline void syscall_init(void) {
     asm_wrmsr(LSTAR_MSR, (uint64)syscall_entry);
 
     // 4. 配置 IA32_FMASK：掩码位
-    // 0x200 (IF 关中断) | 0x100 (TF 禁用单步调试) | 0x400 (DF 方向标志清零) | 0x4000 (NT 嵌套任务)
-    asm_wrmsr(FMASK_MSR, 0x4700ULL);
+    asm_wrmsr(FMASK_MSR, SYSCALL_FMASK);
 }
 
 void cpu_load_resource(void){
@@ -399,6 +408,7 @@ void cpu_load_resource(void){
     idtr.base = &idt;
     asm_lidt(&idtr);
 
+    //初始化系统调用
     syscall_init();
 
     //设置核心定时器
