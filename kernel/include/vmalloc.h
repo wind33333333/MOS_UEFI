@@ -2,6 +2,7 @@
 #include "rbtree.h"
 #include "moslib.h"
 #include "../include/vmm.h"
+#include "list.h"
 
 /**
  * @brief 离散虚拟内存管理核心描述符 (Virtual Memory Area)

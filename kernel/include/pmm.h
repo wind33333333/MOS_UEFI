@@ -1,6 +1,7 @@
 #pragma once
 #include "moslib.h"
 #include "../include/vmm.h"
+#include "list.h"
 
 // 伙伴系统支持的最大阶数 (例如 10 阶对应 4KB * 2^10 = 4MB 的连续大块)
 #define MAX_ORDER 10

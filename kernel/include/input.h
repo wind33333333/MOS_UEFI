@@ -1,6 +1,6 @@
 #pragma once
-
 #include "moslib.h"
+#include "list.h"
 
 #define KEY_RESERVED        0
 
