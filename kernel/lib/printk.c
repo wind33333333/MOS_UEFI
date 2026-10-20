@@ -1,4 +1,6 @@
 #include "printk.h"
+
+#include "errno.h"
 #include "../init/uefi_init.h"
 
 /* 格式化标志位定义 */
@@ -288,30 +290,24 @@ static void console_scroll_up(uint32 BKcolor) {
 }
 
 /**
- * @brief 内核彩色打印核心接口（采用局部栈缓冲区，支持多核 SMP 并发安全）
+ * @brief 纯文本渲染核心：直接将以 '\0' 结尾的字符串打印到屏幕（SMP 并发安全）
  */
-int32 color_printk(uint32 FRcolor, uint32 BKcolor, const char *fmt, ...) {
-    char buf[1024]; // 局域栈缓存，彻底解决多核全局变量覆盖冲突
-    int32 i = 0;
+int32 color_printk_raw(uint32 FRcolor, uint32 BKcolor, const char *str) {
+    if (!str) return -EINVAL;
+
     int32 count = 0;
     int32 line = 0;
-    va_list args;
-
-    va_start(args, fmt);
-    i = vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-
-    if (i <= 0) return i;
 
     spin_lock(&Pos.lock);
 
-    for (count = 0; count < i || line; count++) {
+    while (str[count] != '\0' || line > 0) {
         if (line > 0) {
-            count--;
+            count--; // 抵消下方循环末尾的 count++
             goto Label_tab;
         }
 
-        unsigned char c = (unsigned char)*(buf + count);
+        unsigned char c = (unsigned char)str[count];
+        if (c == '\0') break;
 
         if (c == '\n') {
             Pos.YPosition++;
@@ -329,8 +325,8 @@ int32 color_printk(uint32 FRcolor, uint32 BKcolor, const char *fmt, ...) {
         } else if (c == '\t') {
             line = ((Pos.XPosition + 8) & ~(8 - 1)) - Pos.XPosition;
 
-        Label_tab:
-            line--;
+            Label_tab:
+                line--;
             putchar(Pos.FB_addr, Pos.PixelsPerScanLine, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor, ' ');
             Pos.XPosition++;
@@ -350,30 +346,45 @@ int32 color_printk(uint32 FRcolor, uint32 BKcolor, const char *fmt, ...) {
         if (Pos.YPosition >= (Pos.YResolution / Pos.YCharSize)) {
             console_scroll_up(BKcolor);
         }
+
+        count++;
     }
 
     spin_unlock(&Pos.lock);
-    return i;
+    return count;
 }
 
 /**
- * @brief 系统调用：彩色打印（统一采用 cpu_registers_t *regs 签名）
- * @param regs 进内核时保存的用户态寄存器现场
+ * @brief 内核内部调用的变参格式化打印函数（支持 %d, %s 等格式化）
+ */
+int32 color_printk(uint32 FRcolor, uint32 BKcolor, const char *fmt, ...) {
+    char buf[1024]; // 内核栈私有缓冲区
+    va_list args;
+
+    va_start(args, fmt);
+    int32 i = vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+
+    if (i <= 0) return i;
+
+    // 直接调用底层渲染核心输出
+    return color_printk_raw(FRcolor, BKcolor, buf);
+}
+
+/**
+ * @brief 系统调用：彩色打印
  */
 int64 sys_color_printk(cpu_registers_t *regs) {
-    // 从寄存器中按 ABI 约定提取参数：
-    // rdi = 前景色 (FRcolor)
-    // rsi = 背景色 (BKcolor)
-    // rdx = 用户态字符串指针 (user_str)
     uint32 FRcolor = (uint32)regs->rdi;
     uint32 BKcolor = (uint32)regs->rsi;
-    const char *user_str   = (const char *)regs->rdx;
+    const char *user_str = (const char*)regs->rdx;
 
     char kernel_buf[512];
 
-    int32 err = strncpy_from_user(kernel_buf, user_str, 512);
+    // 1. 安全从用户空间拷贝字符串
+    int32 err = strncpy_from_user(user_str, kernel_buf, sizeof(kernel_buf));
     if (err < 0) return err;
 
-    // 3. 调用底层的安全打印函数输出到屏幕
-    return color_printk(FRcolor, BKcolor, "%s", kernel_buf);
+    // 2. 🌟 完美：用户层已经格式化好了，内核直接调用 raw 渲染，省去二次格式化开销！
+    return color_printk_raw(FRcolor, BKcolor, kernel_buf);
 }
