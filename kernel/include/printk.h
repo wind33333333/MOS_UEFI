@@ -2,7 +2,7 @@
 #include "moslib.h"
 #include "../include/font.h"
 #include <stdarg.h>
-#include "cpu_registers.h"
+#include "../x64/cpu_registers.h"
 
 #define RED	    0x00ff0000		//红
 #define GREEN	0x0000ff00		//绿

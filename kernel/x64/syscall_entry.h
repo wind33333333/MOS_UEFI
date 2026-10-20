@@ -7,4 +7,4 @@
 
 #endif
 
-#define MAX_SYSCALL_NUM 256
+#define MAX_SYSCALL_NUM 512

@@ -8,7 +8,7 @@
 uint8 g_sys_timer_vector = 0; // 全局统一定时器中断号
 
 
-void sleep_us(uint64 delay_us) {
+void ksleep_us(uint64 delay_us) {
     uint64 flags;
     local_irq_save(&flags);
 
@@ -50,6 +50,10 @@ void sleep_us(uint64 delay_us) {
     schedule();
 
     local_irq_restore(flags);
+}
+
+int64 sys_ksleep_us(cpu_registers_t *regs) {
+    ksleep_us(regs->rdi);
 }
 
 /**

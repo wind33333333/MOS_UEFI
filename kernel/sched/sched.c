@@ -47,7 +47,7 @@ void schedule() {
     // 🌟 2. 刷新当前 CPU 核心的 TSS RSP0，防止 Ring 3 中断切栈时踩踏
     if (next->kernel_stack_top != 0) {
         THIS_CPU->tss->rsp0 = next->kernel_stack_top;
-        THIS_CPU->current_kernel_stack = next->kernel_stack_top; // 供 syscall 汇编快速取用
+        THIS_CPU->kernel_stack_top = next->kernel_stack_top; // 供 syscall 汇编快速取用
     }
 
     // ========================================================
@@ -59,7 +59,7 @@ void schedule() {
 
     // 4. 底层汇编硬切换
     if (prev != next) {
-        context_switch(&prev->kernel_rsp, &next->kernel_rsp);
+        context_switch(&prev->cur_kernel_rsp, &next->cur_kernel_rsp);
     }
 
     local_irq_restore(flags);

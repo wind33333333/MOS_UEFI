@@ -65,11 +65,16 @@ void thread_c() {
     }
 }
 
+int64 sys_print(cpu_registers_t *regs) {
+    color_printk(GREEN, BLACK, "1 Sec Report -> A: %ld, B: %ld, C: %ld\n",
+                 count_a, count_b, count_c);
+}
+
 // 监控任务：绝对的裁判
 void thread_monitor() {
     while(1) {
         // 睡 1 秒钟 (调用你写好的高精度红黑树休眠)
-        sleep_ms(1000);
+        ksleep_ms(1000);
 
         // 醒来后，打印三个人的“业绩”
         color_printk(WHITE, BLACK, "1 Sec Report -> A: %ld, B: %ld, C: %ld\n",
@@ -86,18 +91,15 @@ void user_test_payload(void) {
         "pushq %rax\n\t"
         "popq %rbx\n\t"             // RBX 此时应该等于 0xDEADBEEF
 
+        "2:\n\t"
+
+        "movq $35,%rax \n\t"
+        "movq $1000000,%rdi \n\t"
+        "syscall \n\t"
+
         "movq $0,%rax \n\t"
         "syscall \n\t"
 
-        // 2. 局部累加循环测试 (验证用户态流水线和寄存器)
-        "movq $0, %rcx\n\t"
-    "1:\n\t"
-        "incq %rcx\n\t"
-        "cmpq $1000000, %rcx\n\t"
-        "jl 1b\n\t"
-
-        // 3. 终点：自旋等待时钟中断抢占调度
-    "2:\n\t"
         "jmp 2b\n\t"
     );
 }
@@ -139,8 +141,8 @@ void kernel_init(void) {
     task_c = create_kernel_task(thread_c, 0);
     enqueue_task_eevdf(task_c);
 
-    task_d = create_kernel_task(thread_monitor, 0);
-    enqueue_task_eevdf(task_d);
+    // task_d = create_kernel_task(thread_monitor, 0);
+    // enqueue_task_eevdf(task_d);
 
     user_task = create_user_task(user_test_payload);
     enqueue_task_eevdf(user_task);
