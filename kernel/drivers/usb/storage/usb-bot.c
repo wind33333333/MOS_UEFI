@@ -30,7 +30,7 @@ static int32 bot_request_sense(scsi_cmnd_t *cmnd,scsi_sense_t *sense_buf) {
             copy_len = SCSI_SENSE_ALLOC_SIZE;
         }
 
-        asm_mem_cpy(sense_buf, cmnd->sense, copy_len);
+        asm_mem_cpy(cmnd->sense,sense_buf,  copy_len);
 
     } else {
         color_printk(RED, BLACK, "BOT: Failed to fetch Sense Data (%d). Device may be dead.\n", posix_err);
@@ -223,7 +223,7 @@ int32 bot_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     cbw->flags         = (cmnd->dir == SCSI_DIR_IN) ? BOT_CBW_DATA_IN : BOT_CBW_DATA_OUT;
     cbw->lun           = cmnd->sdev->lun;
     cbw->scsi_cdb_len  = cmnd->scsi_cdb_len;
-    asm_mem_cpy(cmnd->scsi_cdb, cbw->scsi_cdb, cmnd->scsi_cdb_len);
+    asm_mem_cpy(cbw->scsi_cdb,cmnd->scsi_cdb,  cmnd->scsi_cdb_len);
 
     xhci_data_req_t req ={
         cbw,

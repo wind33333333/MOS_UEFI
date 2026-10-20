@@ -1,5 +1,8 @@
 #pragma once
 #include "moslib.h"
+#include "../include/font.h"
+#include <stdarg.h>
+#include "cpu_registers.h"
 
 #define RED	    0x00ff0000		//红
 #define GREEN	0x0000ff00		//绿
@@ -27,7 +30,9 @@ typedef struct position_t {
     uint32 lock;
 }position_t;
 
+int32 vsnprintf(char *buf, uint32 size, const char *fmt, va_list args);
 int32 color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...);
+int64 sys_color_printk(cpu_registers_t *regs);
 
 #define PR_INFO(fmt, ...)   color_printk(CYAN,   BLACK, "[ INFO ] " fmt, ##__VA_ARGS__)
 #define PR_OK(fmt, ...)     color_printk(GREEN,  BLACK, "[  OK  ] " fmt, ##__VA_ARGS__)

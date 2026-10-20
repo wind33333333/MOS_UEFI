@@ -517,7 +517,7 @@ static inline uint64 asm_mul_div64_ceil(uint64 a, uint64 b, uint64 c) {
     return (rem != 0) ? (quotient + 1) : quotient;
 }
 
-static inline void *asm_mem_cpy(void *From, void *To, uint64 Num) {
+static inline void *asm_mem_cpy(void *To,void *From,  uint64 Num) {
     int d0, d1, d2;
     __asm__ __volatile__    (    "cld	\n\t"
                                  "rep	\n\t"
@@ -613,116 +613,129 @@ static inline uint64 asm_forward_find_qword(void *address,uint64 count,uint64 va
     return result;
 }
 
-static inline char *asm_strcpy(char *Dest, char *Src) {
-    __asm__ __volatile__    (    "cld	\n\t"
-                                 "1:	\n\t"
-                                 "lodsb	\n\t"
-                                 "stosb	\n\t"
-                                 "testb	%%al,	%%al	\n\t"
-                                 "jne	1b	\n\t"
-            :
-            :"S"(Src), "D"(Dest)
-            :
-            );
+static inline char *asm_strcpy(char *Dest, const char *Src) {
+    __asm__ __volatile__(
+        "cld\n\t"
+        "1:\n\t"
+        "lodsb\n\t"               // 从 [rsi] 读取字节到 al，rsi++
+        "stosb\n\t"               // 将 al 写入 [rdi]，rdi++
+        "testb %%al, %%al\n\t"    // 检查是否为 '\0'
+        "jne 1b\n\t"              // 如果不是，继续循环
+        : "+S"(Src), "+D"(Dest)   // 声明 Src 和 Dest 既是输入也是输出（会被修改）
+        :
+        : "rax", "memory", "cc"   // 声明 al(rax) 被破坏，有内存修改，有标志位变化
+    );
     return Dest;
 }
 
-static inline char *asm_strncpy(char *Dest, char *Src, long Count) {
-    __asm__ __volatile__    (    "cld	\n\t"
-                                 "1:	\n\t"
-                                 "decq	%2	\n\t"
-                                 "js	2f	\n\t"
-                                 "lodsb	\n\t"
-                                 "stosb	\n\t"
-                                 "testb	%%al,	%%al	\n\t"
-                                 "jne	1b	\n\t"
-                                 "rep	\n\t"
-                                 "stosb	\n\t"
-                                 "2:	\n\t"
-            :
-            :"S"(Src), "D"(Dest), "c"(Count)
-            :
-            );
+static inline char *asm_strncpy(char *Dest, const char *Src, long Count) {
+    __asm__ __volatile__(
+        "cld\n\t"
+        "1:\n\t"
+        "decq %2\n\t"             // Count--
+        "js 2f\n\t"               // 如果 Count 减到负数（标志位符号位为1），跳出
+        "lodsb\n\t"               // 读取源字符
+        "stosb\n\t"               // 写入目标字符
+        "testb %%al, %%al\n\t"    // 检查是否为 '\0'
+        "jne 1b\n\t"              // 如果不是，继续循环
+
+        // 🌟 精妙之处：如果中途遇到了 '\0'，利用剩余的 Count (rcx) 和 al(0) 进行批量补零
+        "rep stosb\n\t"
+
+        "2:\n\t"
+        : "+S"(Src), "+D"(Dest), "+c"(Count) // 声明 Src、Dest、Count 都会被修改
+        :
+        : "rax", "memory", "cc"
+    );
     return Dest;
 }
 
-static inline char *asm_strcat(char *Dest, char *Src) {
-    __asm__ __volatile__    (    "cld	\n\t"
-                                 "repne	\n\t"
-                                 "scasb	\n\t"
-                                 "decq	%1	\n\t"
-                                 "1:	\n\t"
-                                 "lodsb	\n\t"
-                                 "stosb	\n\r"
-                                 "testb	%%al,	%%al	\n\t"
-                                 "jne	1b	\n\t"
-            :
-            :"S"(Src), "D"(Dest), "a"(0), "c"(0xffffffff)
-            :
-            );
+static inline char *asm_strcat(char *Dest, const char *Src) {
+    __asm__ __volatile__(
+        "cld\n\t"
+        "repne\n\t"
+        "scasb\n\t"               // 扫描 Dest 寻找 '\0'
+        "decq %0\n\t"             // 回退一位（%0 对应 Dest），使其恰好覆盖旧的 '\0'
+
+        "1:\n\t"
+        "lodsb\n\t"               // 从 Src 读取字节到 al，rsi++
+        "stosb\n\t"               // 将 al 写入 Dest，rdi++ (注意此处修正了 \n\r 为 \n\t)
+        "testb %%al, %%al\n\t"    // 检查是否复制完了 '\0'
+        "jne 1b\n\t"              // 如果没完，继续循环
+
+        : "+D"(Dest), "+S"(Src)   // 🌟 修正1：Dest(rdi) 和 Src(rsi) 声明为输入输出兼顾
+        : "a"(0), "c"(-1ul)       // al=0 用于 scasb 匹配，rcx设为最大初值
+        : "memory", "cc"          // 🌟 修正2：声明内存和标志位被破坏
+    );
     return Dest;
 }
 
-static inline int asm_strcmp(char *FirstPart, char *SecondPart) {
+static inline int asm_strcmp(const char *FirstPart, const char *SecondPart) {
     register int __res;
-    __asm__ __volatile__    (    "cld	\n\t"
-                                 "1:	\n\t"
-                                 "lodsb	\n\t"
-                                 "scasb	\n\t"
-                                 "jne	2f	\n\t"
-                                 "testb	%%al,	%%al	\n\t"
-                                 "jne	1b	\n\t"
-                                 "xorl	%%eax,	%%eax	\n\t"
-                                 "jmp	3f	\n\t"
-                                 "2:	\n\t"
-                                 "movl	$1,	%%eax	\n\t"
-                                 "jl	3f	\n\t"
-                                 "negl	%%eax	\n\t"
-                                 "3:	\n\t"
-            :"=a"(__res)
-            :"D"(FirstPart), "S"(SecondPart)
-            :
-            );
+    __asm__ __volatile__(
+        "cld\n\t"
+        "1:\n\t"
+        "lodsb\n\t"
+        "scasb\n\t"
+        "jne 2f\n\t"
+        "testb %%al, %%al\n\t"
+        "jne 1b\n\t"
+        "xorl %%eax, %%eax\n\t"
+        "jmp 3f\n\t"
+        "2:\n\t"
+        "movl $1, %%eax\n\t"
+        "jl 3f\n\t"
+        "negl %%eax\n\t"
+        "3:\n\t"
+        : "=a"(__res), "+D"(FirstPart), "+S"(SecondPart) // 声明指针会被修改
+        :
+        : "memory", "cc"
+    );
     return __res;
 }
 
-static inline int asm_strncmp(char *FirstPart, char *SecondPart, long Count) {
+static inline int asm_strncmp(const char *FirstPart, const char *SecondPart, long Count) {
     register int __res;
-    __asm__ __volatile__    (    "cld	\n\t"
-                                 "1:	\n\t"
-                                 "decq	%3	\n\t"
-                                 "js	2f	\n\t"
-                                 "lodsb	\n\t"
-                                 "scasb	\n\t"
-                                 "jne	3f	\n\t"
-                                 "testb	%%al,	%%al	\n\t"
-                                 "jne	1b	\n\t"
-                                 "2:	\n\t"
-                                 "xorl	%%eax,	%%eax	\n\t"
-                                 "jmp	4f	\n\t"
-                                 "3:	\n\t"
-                                 "movl	$1,	%%eax	\n\t"
-                                 "jl	4f	\n\t"
-                                 "negl	%%eax	\n\t"
-                                 "4:	\n\t"
-            :"=a"(__res)
-            :"D"(FirstPart), "S"(SecondPart), "c"(Count)
-            :
-            );
+    __asm__ __volatile__(
+        "cld\n\t"
+        "1:\n\t"
+        "decq %3\n\t"             // Count-- (对应第 4 个操作数 %3: Count)
+        "js 2f\n\t"               // 如果 Count 减到负数（符号位置位），跳出
+        "lodsb\n\t"               // 从 SecondPart 读取字节到 al，rsi++
+        "scasb\n\t"               // 将 al 与 FirstPart 指向的字节比较，rdi++
+        "jne 3f\n\t"              // 如果不相等，跳转到不相等处理分支
+        "testb %%al, %%al\n\t"    // 检查是否遇到了字符串结束符 '\0'
+        "jne 1b\n\t"              // 如果不是 '\0'，继续循环
+
+        "2:\n\t"
+        "xorl %%eax, %%eax\n\t"   // 相等或达到 Count 上限：返回 0
+        "jmp 4f\n\t"
+
+        "3:\n\t"
+        "movl $1, %%eax\n\t"      // 不相等：初步设为 1
+        "jl 4f\n\t"               // 如果小于
+        "negl %%eax\n\t"          // 取反变为 -1
+
+        "4:\n\t"
+        : "=a"(__res), "+D"(FirstPart), "+S"(SecondPart), "+c"(Count) // 🌟 全部修正为输入输出兼顾
+        :
+        : "memory", "cc"          // 声明内存和标志位被修改
+    );
     return __res;
 }
 
-static inline int asm_strlen(char *String) {
+static inline int asm_strlen(const char *String) {
     register int __res;
-    __asm__ __volatile__    (    "cld	\n\t"
-                                 "repne	\n\t"
-                                 "scasb	\n\t"
-                                 "notl	%0	\n\t"
-                                 "decl	%0	\n\t"
-            :"=c"(__res)
-            :"D"(String), "a"(0), "0"(0xffffffff)
-            :
-            );
+    __asm__ __volatile__(
+        "cld\n\t"
+        "repne\n\t"
+        "scasb\n\t"
+        "notl %0\n\t"
+        "decl %0\n\t"
+        : "=c"(__res), "+D"(String)       // 声明 String(rdi) 会被修改
+        : "a"(0), "0"(-1ul)              // 初始 rcx 设为最大值
+        : "memory", "cc"
+    );
     return __res;
 }
 
@@ -879,7 +892,7 @@ static inline uint64 asm_bswap64(uint64 var) {
  * @param dst_len  目标缓冲区最大容量 (包含结束符空间)
  * @return         转换后的字符串长度 (不含结束符)
  */
-uint8 utf16le_to_ascii(uint16 *src, char *dst, uint8 len) {
+uint8 utf16le_to_ascii(char *dst, uint16 *src, uint8 len) {
     if (!src || !dst || !len) {
         return 0;
     }
@@ -910,3 +923,10 @@ static inline uint64 align_up(uint64 value, uint64 align) {
 static inline uint64 align_down(uint64 value, uint64 align) {
     return value & -align;
 }
+
+
+int32 copy_from_user(void *kdst,const void *usrc,  uint32 size);
+
+int32 copy_to_user(void *udst,const void *ksrc,  uint32 size);
+
+int32 strncpy_from_user(char *kdst,const char *usrc, uint32 max_len);

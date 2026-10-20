@@ -32,7 +32,7 @@ static void xhci_ctx_in_sync(usb_dev_t *udev) {
     void *in_ctx = xhci_get_in_ctx_entry(input_ctrl_ctx,0,ctx_size);
 
     // 3. 拷贝 32 个 Context (1 个 Slot + 31 个 EP)
-    asm_mem_cpy(udev->out_ctx, in_ctx, ctx_size * 32);
+    asm_mem_cpy(in_ctx,udev->out_ctx,  ctx_size * 32);
 }
 
 

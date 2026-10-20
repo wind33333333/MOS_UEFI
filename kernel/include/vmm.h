@@ -173,6 +173,9 @@ typedef enum {
 // 动态虚拟内存布局边界控制块
 // =========================================================================
 typedef struct {
+    uint64 user_map_start;
+    uint64 user_map_end;
+
     uint64 direct_map_start;
     uint64 direct_map_end;
 

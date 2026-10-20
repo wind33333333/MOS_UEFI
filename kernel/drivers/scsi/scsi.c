@@ -390,15 +390,15 @@ static void scsi_probe_lun(scsi_host_t *shost) {
     sdev->removable = inq->rmb>>7;
 
     // 拷贝并清理字符串
-    asm_mem_cpy(inq->vendor_id,sdev->vendor, 8);
+    asm_mem_cpy(sdev->vendor,inq->vendor_id, 8);
     sdev->vendor[8] = '\0';
     scsi_trim_string(sdev->vendor, 8);
 
-    asm_mem_cpy(inq->product_id,sdev->model,  16);
+    asm_mem_cpy(sdev->model,inq->product_id,  16);
     sdev->model[16] = '\0';
     scsi_trim_string(sdev->model, 16);
 
-    asm_mem_cpy(inq->revision,sdev->rev,  4);
+    asm_mem_cpy(sdev->rev,inq->revision,  4);
     sdev->rev[4] = '\0';
     scsi_trim_string(sdev->rev, 4);
 

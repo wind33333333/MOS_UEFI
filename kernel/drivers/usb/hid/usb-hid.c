@@ -20,7 +20,7 @@ void hid_irq_complete(void *hdev1) {
         event->hdev = hdev;
         event->data_len = hdev->report_len;
         // 极速内存拷贝 (8 字节通常只要几个 CPU 时钟周期)
-        asm_mem_cpy(hdev->report_buf,event->raw_data,  hdev->report_len);
+        asm_mem_cpy(event->raw_data,hdev->report_buf,  hdev->report_len);
         g_hid_raw_queue.head = next_head;
 
         // 唤醒可能正在沉睡的后台解析线程

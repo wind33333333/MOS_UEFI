@@ -29,6 +29,10 @@
  */
 void vm_layout_init(void) {
     if (tmp_paging_level == 5) {
+        //5级分页用户地址空间
+        vm_layout.user_map_start = 0x400000;
+        vm_layout.user_map_end   = 0xFFFFFFFFFFFFFF;
+
         // 【5 级页表模式 - LA57】(理论上限 128 PB，单位: PB)
         vm_layout.direct_map_start = 0xFF00000000000000ULL;
         vm_layout.direct_map_end   = vm_layout.direct_map_start + 0x0080000000000000ULL; // 占用 32 PB
@@ -43,6 +47,10 @@ void vm_layout_init(void) {
         vm_layout.io_map_start     = vm_layout.page_map_end + 0x0004000000000000ULL;     // Guard Hole: 1 PB
         vm_layout.io_map_end       = vm_layout.io_map_start + 0x0004000000000000ULL;     // MMIO 占用 1 PB
     } else {
+        //4级分页用户地址空间
+        vm_layout.user_map_start = 0x400000;
+        vm_layout.user_map_end   = 0x7FFFFFFFFFFF;
+
         // 【4 级页表模式 - LA48】(理论上限 128 TB，单位: TB)
         vm_layout.direct_map_start = 0xFFFF800000000000ULL;
         vm_layout.direct_map_end   = vm_layout.direct_map_start + 0x0000400000000000ULL; // 占用 64 TB

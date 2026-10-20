@@ -87,7 +87,7 @@ task_t* create_user_task(void *user_entry) {
     // 映射 4K 用户代码段
     uint8 *user_mem = kzalloc(4096);
     // ⚠️ 注意：标准 memcpy 参数为 (dest, src, size)，确保目标地址在前
-    asm_mem_cpy(user_entry,user_mem,  4096);
+    asm_mem_cpy(user_mem, user_entry, 4096);
     vm_map_range(&new_task->vm_space, 0x400000, va_to_pa(user_mem), 4096, PAGE_USER_CODE);
 
     // 映射 4K 用户堆栈

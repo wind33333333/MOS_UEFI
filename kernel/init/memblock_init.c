@@ -253,7 +253,7 @@ void memblock_init(void) {
 
             // 🌟 核心调整 2：原汁原味拷贝！严格按照主板给的 size (例如 48 字节) 进行内存复制
             // 绝不能用标准的结构体 '=' 赋值，防止 40 字节紧凑排列导致跨度丢失！
-            asm_mem_cpy(src_ptr, dst_ptr,  tmp_boot_info->mem_descriptor_size);
+            asm_mem_cpy(dst_ptr, src_ptr,  tmp_boot_info->mem_descriptor_size);
 
             efi_runtime_memmap.count++;
 

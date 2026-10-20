@@ -188,7 +188,7 @@ int32 uas_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     cmd_iu->prio_attr = 0x00;       // Simple Task
     cmd_iu->add_cdb_len = 0;
     cmd_iu->lun = asm_bswap64(cmnd->sdev->lun);
-    asm_mem_cpy(cmnd->scsi_cdb, cmd_iu->scsi_cdb, cmnd->scsi_cdb_len);
+    asm_mem_cpy(cmd_iu->scsi_cdb,cmnd->scsi_cdb,  cmnd->scsi_cdb_len);
 
     // ============================================================
     // 4. 提交传输并自动敲门铃 (逆序投递流水线)
@@ -256,7 +256,7 @@ int32 uas_bulk_transport(scsi_host_t *host, scsi_cmnd_t *cmnd) {
     if (cmnd->status == SCSI_STATUS_CHECK_CONDITION && cmnd->sense) {
         // 提取具体的 Sense 报错详情 (UAS 协议直接把 Sense 附带回传了，极其高效)
         uint16 actual_sense_len = asm_bswap16(sense_iu->scsi_sense_len);
-        asm_mem_cpy(sense_iu->scsi_sense, cmnd->sense, actual_sense_len);
+        asm_mem_cpy(cmnd->sense,sense_iu->scsi_sense,  actual_sense_len);
     }
 
 cleanup:

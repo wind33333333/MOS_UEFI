@@ -1,33 +1,34 @@
 #include "printk.h"
 #include "../init/uefi_init.h"
-#include "../include/font.h"
-#include <stdarg.h>
 
+/* 格式化标志位定义 */
+#define ZEROPAD    1        /* 用零填充 */
+#define SIGN       2        /* 有符号/无符号长整型 */
+#define PLUS       4        /* 显示正号 */
+#define SPACE      8        /* 正号前留空格 */
+#define LEFT       16       /* 左对齐 */
+#define SPECIAL    32       /* 0x 前缀 */
+#define SMALL      64       /* 使用小写十六进制字母 */
 
-#define ZEROPAD	1		/* pad with zero */
-#define SIGN	2		/* unsigned/signed long */
-#define PLUS	4		/* show plus */
-#define SPACE	8		/* space if plus */
-#define LEFT	16		/* left justified */
-#define SPECIAL	32		/* 0x */
-#define SMALL	64		/* use 'abcdef' instead of 'ABCDEF' */
-
-#define is_digit(c)	((c) >= '0' && (c) <= '9')
+#define is_digit(c) ((c) >= '0' && (c) <= '9')
 
 position_t Pos;
 
-
+/* 内联汇编数学除法，用于数字格式化基数转换 */
 #define do_div(n,base) ({ \
-int __res; \
+int32 __res; \
 __asm__("divq %%rcx":"=a" (n),"=d" (__res):"0" (n),"1" (0),"c" (base)); \
 __res; })
 
-void putchar(unsigned int *fb, int Xsize, int x, int y, unsigned int FRcolor, unsigned int BKcolor,
+/**
+ * @brief 在显存帧缓冲区指定坐标绘制单个 ASCII 字符
+ */
+void putchar(uint32 *fb, int32 Xsize, int32 x, int32 y, uint32 FRcolor, uint32 BKcolor,
              unsigned char font) {
-    int i = 0, j = 0;
-    unsigned int *addr = NULL;
+    int32 i = 0, j = 0;
+    uint32 *addr = NULL;
     unsigned char *fontp = NULL;
-    int testval = 0;
+    int32 testval = 0;
     fontp = font_ascii[font];
 
     for (i = 0; i < 16; i++) {
@@ -45,23 +46,25 @@ void putchar(unsigned int *fb, int Xsize, int x, int y, unsigned int FRcolor, un
     }
 }
 
-int skip_atoi(const char **s) {
-    int i = 0;
-
+int32 skip_atoi(const char **s) {
+    int32 i = 0;
     while (is_digit(**s))
         i = i * 10 + *((*s)++) - '0';
     return i;
 }
 
-static char *number(char *str, long num, int base, int size, int precision, int type) {
+/**
+ * @brief 内部数字转字符串函数（加入 end 指针边界检查防溢出）
+ */
+static char *number(char *str, char *end, int64 num, int32 base, int32 size, int32 precision, int32 type) {
     char c, sign, tmp[50];
     const char *digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    int i;
+    int32 i;
 
     if (type & SMALL) digits = "0123456789abcdefghijklmnopqrstuvwxyz";
     if (type & LEFT) type &= ~ZEROPAD;
     if (base < 2 || base > 36)
-        return 0;
+        return str;
     c = (type & ZEROPAD) ? '0' : ' ';
     sign = 0;
     if (type & SIGN && num < 0) {
@@ -70,9 +73,10 @@ static char *number(char *str, long num, int base, int size, int precision, int 
     } else
         sign = (type & PLUS) ? '+' : ((type & SPACE) ? ' ' : 0);
     if (sign) size--;
-    if (type & SPECIAL)
+    if (type & SPECIAL) {
         if (base == 16) size -= 2;
         else if (base == 8) size--;
+    }
     i = 0;
     if (num == 0)
         tmp[i++] = '0';
@@ -81,68 +85,66 @@ static char *number(char *str, long num, int base, int size, int precision, int 
             tmp[i++] = digits[do_div(num, base)];
     if (i > precision) precision = i;
     size -= precision;
-    if (!(type & (ZEROPAD + LEFT)))
+
+    if (!(type & (ZEROPAD | LEFT)))
         while (size-- > 0)
-            *str++ = ' ';
+            if (str < end) *str++ = ' ';
     if (sign)
-        *str++ = sign;
-    if (type & SPECIAL)
-        if (base == 8)
-            *str++ = '0';
-        else if (base == 16) {
-            *str++ = '0';
-            *str++ = digits[33];
+        if (str < end) *str++ = sign;
+    if (type & SPECIAL) {
+        if (base == 8) {
+            if (str < end) *str++ = '0';
+        } else if (base == 16) {
+            if (str < end) *str++ = '0';
+            if (str < end) *str++ = digits[33];
         }
+    }
     if (!(type & LEFT))
         while (size-- > 0)
-            *str++ = c;
+            if (str < end) *str++ = c;
 
     while (i < precision--)
-        *str++ = '0';
+        if (str < end) *str++ = '0';
     while (i-- > 0)
-        *str++ = tmp[i];
+        if (str < end) *str++ = tmp[i];
     while (size-- > 0)
-        *str++ = ' ';
+        if (str < end) *str++ = ' ';
     return str;
 }
 
-int vsprintf(char *buf, const char *fmt, va_list args) {
-    char *str, *s;
-    int flags;
-    int field_width;
-    int precision;
-    int len, i;
+/**
+ * @brief 安全的格式化写入函数（基于首尾指针控制，防止缓冲区溢出）
+ */
+int32 vsnprintf(char *buf, uint32 size, const char *fmt, va_list args) {
+    char *str = buf;
+    char *end = buf + size;
+    char *s;
+    int32 flags;
+    int32 field_width;
+    int32 precision;
+    int32 len, i;
+    int32 qualifier;
 
-    int qualifier; /* 'h', 'l', 'L' or 'Z' for integer fields */
+    if (size == 0) return 0;
+    end--; // 预留 1 字节给字符串结束符 '\0'
 
-    for (str = buf; *fmt; fmt++) {
+    for (; *fmt; fmt++) {
         if (*fmt != '%') {
-            *str++ = *fmt;
+            if (str < end) *str++ = *fmt;
             continue;
         }
         flags = 0;
     repeat:
         fmt++;
         switch (*fmt) {
-            case '-':
-                flags |= LEFT;
-                goto repeat;
-            case '+':
-                flags |= PLUS;
-                goto repeat;
-            case ' ':
-                flags |= SPACE;
-                goto repeat;
-            case '#':
-                flags |= SPECIAL;
-                goto repeat;
-            case '0':
-                flags |= ZEROPAD;
-                goto repeat;
+            case '-': flags |= LEFT; goto repeat;
+            case '+': flags |= PLUS; goto repeat;
+            case ' ': flags |= SPACE; goto repeat;
+            case '#': flags |= SPECIAL; goto repeat;
+            case '0': flags |= ZEROPAD; goto repeat;
         }
 
-        /* get field width */
-
+        /* 获取域宽 */
         field_width = -1;
         if (is_digit(*fmt))
             field_width = skip_atoi(&fmt);
@@ -155,8 +157,7 @@ int vsprintf(char *buf, const char *fmt, va_list args) {
             }
         }
 
-        /* get the precision */
-
+        /* 获取精度 */
         precision = -1;
         if (*fmt == '.') {
             fmt++;
@@ -166,8 +167,7 @@ int vsprintf(char *buf, const char *fmt, va_list args) {
                 fmt++;
                 precision = va_arg(args, int);
             }
-            if (precision < 0)
-                precision = 0;
+            if (precision < 0) precision = 0;
         }
 
         qualifier = -1;
@@ -178,106 +178,85 @@ int vsprintf(char *buf, const char *fmt, va_list args) {
 
         switch (*fmt) {
             case 'c':
-
                 if (!(flags & LEFT))
                     while (--field_width > 0)
-                        *str++ = ' ';
-                *str++ = (unsigned char) va_arg(args, int);
+                        if (str < end) *str++ = ' ';
+                if (str < end) *str++ = (unsigned char) va_arg(args, int);
                 while (--field_width > 0)
-                    *str++ = ' ';
+                    if (str < end) *str++ = ' ';
                 break;
 
             case 's':
-
                 s = va_arg(args, char *);
-                if (!s)
-                    s = '\0';
+                if (!s) s = "(null)"; // 防止空指针异常
                 len = asm_strlen(s);
-                if (precision < 0)
-                    precision = len;
-                else if (len > precision)
-                    len = precision;
+                if (precision < 0) precision = len;
+                else if (len > precision) len = precision;
 
                 if (!(flags & LEFT))
                     while (len < field_width--)
-                        *str++ = ' ';
+                        if (str < end) *str++ = ' ';
                 for (i = 0; i < len; i++)
-                    *str++ = *s++;
+                    if (str < end) *str++ = *s++;
                 while (len < field_width--)
-                    *str++ = ' ';
+                    if (str < end) *str++ = ' ';
                 break;
 
             case 'o':
-
                 if (qualifier == 'l')
-                    str = number(str, va_arg(args, unsigned long), 8, field_width, precision,
-                                 flags);
+                    str = number(str, end, va_arg(args, unsigned long), 8, field_width, precision, flags);
                 else
-                    str = number(str, va_arg(args, unsigned int), 8, field_width, precision, flags);
+                    str = number(str, end, va_arg(args, uint32), 8, field_width, precision, flags);
                 break;
 
             case 'p':
-
                 if (field_width == -1) {
                     field_width = 2 * sizeof(void *);
                     flags |= ZEROPAD;
                 }
-
-                str = number(str, (unsigned long) va_arg(args, void *), 16, field_width, precision,
-                             flags);
+                str = number(str, end, (unsigned long) va_arg(args, void *), 16, field_width, precision, flags);
                 break;
 
             case 'x':
-
                 flags |= SMALL;
-
             case 'X':
-
                 if (qualifier == 'l')
-                    str = number(str, va_arg(args, unsigned long), 16, field_width, precision,
-                                 flags);
+                    str = number(str, end, va_arg(args, unsigned long), 16, field_width, precision, flags);
                 else
-                    str = number(str, va_arg(args, unsigned int), 16, field_width, precision,
-                                 flags);
+                    str = number(str, end, va_arg(args, uint32), 16, field_width, precision, flags);
                 break;
 
             case 'd':
             case 'i':
-
                 flags |= SIGN;
             case 'u':
-
                 if (qualifier == 'l')
-                    str = number(str, va_arg(args, unsigned long), 10, field_width, precision,
-                                 flags);
+                    str = number(str, end, va_arg(args, unsigned long), 10, field_width, precision, flags);
                 else
-                    str = number(str, va_arg(args, unsigned int), 10, field_width, precision,
-                                 flags);
+                    str = number(str, end, va_arg(args, uint32), 10, field_width, precision, flags);
                 break;
 
             case 'n':
-
                 if (qualifier == 'l') {
-                    long *ip = va_arg(args, long *);
+                    int64 *ip = va_arg(args, int64 *);
                     *ip = (str - buf);
                 } else {
-                    int *ip = va_arg(args, int *);
+                    int32 *ip = va_arg(args, int32 *);
                     *ip = (str - buf);
                 }
                 break;
 
             case '%':
-
-                *str++ = '%';
+                if (str < end) *str++ = '%';
                 break;
 
             default:
-
-                *str++ = '%';
-                if (*fmt)
-                    *str++ = *fmt;
-                else
+                if (str < end) *str++ = '%';
+                if (*fmt) {
+                    if (str < end) *str++ = *fmt;
+                } else {
                     fmt--;
+                }
                 break;
         }
     }
@@ -286,75 +265,68 @@ int vsprintf(char *buf, const char *fmt, va_list args) {
 }
 
 /**
- * @brief 帧缓冲终端向上滚屏 1 个字符行高度
- * @param BKcolor 滚屏后底部空白新行要填充的背景色
+ * @brief 帧缓冲终端向上滚屏 1 行
  */
-static void console_scroll_up(unsigned int BKcolor) {
-    // 1. 计算一整行字符占用的总像素点数
-    unsigned long pixels_per_row = (unsigned long)Pos.PixelsPerScanLine * Pos.YCharSize;
-    // 2. 计算屏幕垂直方向最多能容纳的字符行数
-    int max_lines = Pos.YResolution / Pos.YCharSize;
+static void console_scroll_up(uint32 BKcolor) {
+    uint64 pixels_per_row = (unsigned long)Pos.PixelsPerScanLine * Pos.YCharSize;
+    int32 max_lines = Pos.YResolution / Pos.YCharSize;
+    uint64 copy_pixels = pixels_per_row * (max_lines - 1);
 
-    // 3. 需要向高地址偏移移动的像素总量（第 1 行到末行的像素总数）
-    unsigned long copy_pixels = pixels_per_row * (max_lines - 1);
+    uint32 *dest = Pos.FB_addr;
+    uint32 *src  = Pos.FB_addr + pixels_per_row;
 
-    unsigned int *dest = Pos.FB_addr;                  // 目标：第 0 行像素起始地址
-    unsigned int *src  = Pos.FB_addr + pixels_per_row; // 源头：第 1 行像素起始地址
+    // 将显存向上平移 1 行
+    asm_mem_cpy(dest,src,  copy_pixels * sizeof(uint32));
 
-    /*
-     * [拷贝旧画面]：将屏幕第 1 ~ 末行整体向上平移 1 行
-     * 注意：由于是向上移动（src > dest），从前向后按顺序拷贝绝不会引发覆盖冲突
-     * 如果你的内核里已经实现了优化的 asm_mem_cpy，这里强烈建议换成：
-     * asm_mem_cpy(dest, src, copy_pixels * sizeof(unsigned int));
-     */
-    asm_mem_cpy(src,dest,copy_pixels*4);
-
-    /*
-     * [擦除底部新行]：将最后一行的行区域用背景色涂满
-     */
-    unsigned int *last_line = Pos.FB_addr + copy_pixels;
-    for (unsigned long i = 0; i < pixels_per_row; i++) {
+    // 用背景色填满底部空出的最后一行
+    uint32 *last_line = Pos.FB_addr + copy_pixels;
+    for (uint64 i = 0; i < pixels_per_row; i++) {
         last_line[i] = BKcolor;
     }
 
-    // 4. 将光标 Y 轴拉回到屏幕最底下的最后一有效行
     Pos.YPosition = max_lines - 1;
 }
 
-//全局变量buf
-char buf[4096];
-int32 color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ...) {
-    spin_lock(&Pos.lock);
-    int i = 0;
-    int count = 0;
-    int line = 0;
+/**
+ * @brief 内核彩色打印核心接口（采用局部栈缓冲区，支持多核 SMP 并发安全）
+ */
+int32 color_printk(uint32 FRcolor, uint32 BKcolor, const char *fmt, ...) {
+    char buf[1024]; // 局域栈缓存，彻底解决多核全局变量覆盖冲突
+    int32 i = 0;
+    int32 count = 0;
+    int32 line = 0;
     va_list args;
+
     va_start(args, fmt);
-
-    i = vsprintf(buf, fmt, args);
-
+    i = vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
 
+    if (i <= 0) return i;
+
+    spin_lock(&Pos.lock);
+
     for (count = 0; count < i || line; count++) {
-        ////	add \n \b \t
         if (line > 0) {
             count--;
             goto Label_tab;
         }
-        if ((unsigned char) *(buf + count) == '\n') {
+
+        unsigned char c = (unsigned char)*(buf + count);
+
+        if (c == '\n') {
             Pos.YPosition++;
             Pos.XPosition = 0;
-        } else if ((unsigned char) *(buf + count) == '\b') {
+        } else if (c == '\b') {
             Pos.XPosition--;
             if (Pos.XPosition < 0) {
-                Pos.XPosition = (Pos.XResolution / Pos.XCharSize - 1) * Pos.XCharSize;
+                Pos.XPosition = (Pos.XResolution / Pos.XCharSize) - 1;
                 Pos.YPosition--;
                 if (Pos.YPosition < 0)
-                    Pos.YPosition = (Pos.YResolution / Pos.YCharSize - 1) * Pos.YCharSize;
+                    Pos.YPosition = (Pos.YResolution / Pos.YCharSize) - 1;
             }
             putchar(Pos.FB_addr, Pos.PixelsPerScanLine, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor, ' ');
-        } else if ((unsigned char) *(buf + count) == '\t') {
+        } else if (c == '\t') {
             line = ((Pos.XPosition + 8) & ~(8 - 1)) - Pos.XPosition;
 
         Label_tab:
@@ -364,25 +336,56 @@ int32 color_printk(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, 
             Pos.XPosition++;
         } else {
             putchar(Pos.FB_addr, Pos.PixelsPerScanLine, Pos.XPosition * Pos.XCharSize,
-                    Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor,
-                    (unsigned char) *(buf + count));
+                    Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor, c);
             Pos.XPosition++;
         }
 
-        // 处理自动折行
+        /* 自动折行处理 */
         if (Pos.XPosition >= (Pos.XResolution / Pos.XCharSize)) {
             Pos.YPosition++;
             Pos.XPosition = 0;
         }
 
-        // 【核心修改点】：当 Y 轴越界到达屏幕底部时，不再归零触发回绕，而是调用上滚屏函数
+        /* 屏幕底部越界自动上滚屏 */
         if (Pos.YPosition >= (Pos.YResolution / Pos.YCharSize)) {
             console_scroll_up(BKcolor);
         }
     }
-    Pos.lock = 0; // 解锁
+
+    spin_unlock(&Pos.lock);
     return i;
 }
 
+/**
+ * @brief 系统调用：彩色打印（统一采用 cpu_registers_t *regs 签名）
+ * @param regs 进内核时保存的用户态寄存器现场
+ */
+int64 sys_color_printk(cpu_registers_t *regs) {
+    // 从寄存器中按 ABI 约定提取参数：
+    // rdi = 前景色 (FRcolor)
+    // rsi = 背景色 (BKcolor)
+    // rdx = 用户态字符串指针 (user_str)
+    uint32 FRcolor = (uint32)regs->rdi;
+    uint32 BKcolor = (uint32)regs->rsi;
+    const char *user_str   = (const char *)regs->rdx;
 
+    char kernel_buf[512];
 
+    // 1. 安全边界检查：确保用户指针在合法的低半区用户空间范围内
+    if ((unsigned long)user_str >= 0x00007FFFFFFFFFFFULL) {
+        return -1; // 非法地址，拒绝访问
+    }
+
+    // 2. 从用户空间安全复制字符串到内核栈缓冲区（带截断保护防范越界）
+    int i = 0;
+    while (i < sizeof(kernel_buf) - 1) {
+        char c = user_str[i];
+        kernel_buf[i] = c;
+        if (c == '\0') break;
+        i++;
+    }
+    kernel_buf[sizeof(kernel_buf) - 1] = '\0';
+
+    // 3. 调用底层的安全打印函数输出到屏幕
+    return color_printk(FRcolor, BKcolor, "%s", kernel_buf);
+}

@@ -732,7 +732,7 @@ static inline int usb_get_string_desc(usb_dev_t *udev) {
             //解析字符串描述符
             uint8 string_ascii_length = (desc_head->length-2)/2;
             string_ascii[i] = kzalloc(string_ascii_length+1);
-            utf16le_to_ascii(string_desc[i]->string,string_ascii[i],string_ascii_length);
+            utf16le_to_ascii(string_ascii[i],string_desc[i]->string,string_ascii_length);
         }else {
             string_desc[i] = NULL;
         }
