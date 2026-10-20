@@ -81,7 +81,7 @@ typedef enum {
 // 👑 核心数据结构：每 CPU 控制块 (单结构体·内部冷热隔离版)
 // =================================================================
 typedef struct cpu_core_t {
-    uint64          kernel_stack_top;     // 当前线程内核栈顶 (与 tss->rsp0 同步)
+    uint64          kernel_rsp_top;       //当前线程内核栈顶 (与 tss->rsp0 同步)
     uint64          cur_user_rsp;         //syscall 发生时暂存用户态 RSP 的草稿箱
     struct cpu_core_t *self;              //指向自己
     uint32          logical_id;           //内核逻辑编号 (0 永远是 BSP)

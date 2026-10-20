@@ -80,7 +80,7 @@ task_t* create_user_task(void *user_entry) {
 
     vm_space_init(&new_task->vm_space, kernel_space.paging_level, &kernel_space.ops, TRUE);
 
-    new_task->kernel_stack_top = (uint64)rsp;
+    new_task->kernel_rsp_top = (uint64)rsp;
 
     uint64 user_stack_top = (kernel_space.paging_level == 5) ? 0x7FFFFFFFFFF000ULL : 0x7FFFFFFFF000ULL;
 

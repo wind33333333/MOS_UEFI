@@ -45,9 +45,9 @@ void schedule() {
     }
 
     // 🌟 2. 刷新当前 CPU 核心的 TSS RSP0，防止 Ring 3 中断切栈时踩踏
-    if (next->kernel_stack_top != 0) {
-        THIS_CPU->tss->rsp0 = next->kernel_stack_top;
-        THIS_CPU->kernel_stack_top = next->kernel_stack_top; // 供 syscall 汇编快速取用
+    if (next->kernel_rsp_top != 0) {
+        THIS_CPU->tss->rsp0 = next->kernel_rsp_top;
+        THIS_CPU->kernel_rsp_top = next->kernel_rsp_top; // 供 syscall 汇编快速取用
     }
 
     // ========================================================
