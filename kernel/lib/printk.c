@@ -371,20 +371,8 @@ int64 sys_color_printk(cpu_registers_t *regs) {
 
     char kernel_buf[512];
 
-    // 1. 安全边界检查：确保用户指针在合法的低半区用户空间范围内
-    if ((unsigned long)user_str >= 0x00007FFFFFFFFFFFULL) {
-        return -1; // 非法地址，拒绝访问
-    }
-
-    // 2. 从用户空间安全复制字符串到内核栈缓冲区（带截断保护防范越界）
-    int i = 0;
-    while (i < sizeof(kernel_buf) - 1) {
-        char c = user_str[i];
-        kernel_buf[i] = c;
-        if (c == '\0') break;
-        i++;
-    }
-    kernel_buf[sizeof(kernel_buf) - 1] = '\0';
+    int32 err = strncpy_from_user(kernel_buf, user_str, 512);
+    if (err < 0) return err;
 
     // 3. 调用底层的安全打印函数输出到屏幕
     return color_printk(FRcolor, BKcolor, "%s", kernel_buf);
