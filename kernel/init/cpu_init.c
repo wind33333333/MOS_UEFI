@@ -7,7 +7,6 @@
 #include "slub.h"
 #include "../x64/mtrr.h"
 #include "alternative_init.h"
-#include "idt_init.h"
 #include "../x64/apic_time.h"
 #include "../x64/gdt_tss.h"
 #include "../sched/task.h"
@@ -392,12 +391,15 @@ static inline void syscall_init(void) {
 void cpu_load_resource(void){
     uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
     uint32 logical_id = get_logical_id_by_apic(apic_id);
+
     set_gs_base(logical_id);                                 //设置bsp核gs基地址
+
     gdt_ptr_t gdt_ptr;
     gdt_ptr.limit = sizeof(gdt_t) - 1;
     gdt_ptr.base = THIS_CPU->gdt_base;
     asm_lgdt(&gdt_ptr,8,0x10);            //加载正式gdt
-    asm_ltr(48);                                      //加载tr
+
+    asm_ltr(48);                                        //加载tr
 
     // 装载 IDTR
     idt_ptr_t idtr;
