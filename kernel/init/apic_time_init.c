@@ -39,7 +39,7 @@ static uint64 detect_tsc_hz() {
 
 //读取当前apic计数数值
 static uint64 apic_count_read() {
-    asm_rdmsr(APIC_CURRENT_COUNT_MSR );
+    return asm_rdmsr(APIC_CURRENT_COUNT_MSR );
 }
 
 

@@ -122,18 +122,18 @@ void apic_table_init(void) {
                 irq_idx++;
                 break;
             case 3: //不可屏蔽中断
-                nmi_source_entry_t *nmi_source_entry = (nmi_source_entry_t *) madt_start;
+                //nmi_source_entry_t *nmi_source_entry = (nmi_source_entry_t *) madt_start;
                 break;
             case 4: //apic nmi引脚
                 apic_nmi_entry_t *apic_nmi_entry = (apic_nmi_entry_t *) madt_start;
                 // 如果 ID 是 0xFF，说明这是“全服广播”
                 if (apic_nmi_entry->apic_id == 0xFF) {
-                    for (int i = 0; i < active_cpu_count; i++) {
+                    for (uint32 i = 0; i < active_cpu_count; i++) {
                         cpu_cores[i].lint_nmi = apic_nmi_entry->lint;
                     }
                 } else {
                     // 针对特定 CPU，去数组里找它
-                    for (int i = 0; i < active_cpu_count; i++) {
+                    for (uint32 i = 0; i < active_cpu_count; i++) {
                         if (cpu_cores[i].apic_id == apic_nmi_entry->apic_id) {
                             cpu_cores[i].lint_nmi = apic_nmi_entry->lint;
                             break;
@@ -166,11 +166,11 @@ void apic_table_init(void) {
                 x2apic_nmi_entry_t *x2apic_nmi_entry = (x2apic_nmi_entry_t *) madt_start;
                 // X2APIC 的广播 ID 是 0xFFFFFFFF
                 if (x2apic_nmi_entry->x2apic_id == 0xFFFFFFFF) {
-                    for (int i = 0; i < active_cpu_count; i++) {
+                    for (uint32 i = 0; i < active_cpu_count; i++) {
                         cpu_cores[i].lint_nmi = x2apic_nmi_entry->lint;
                     }
                 } else {
-                    for (int i = 0; i < active_cpu_count; i++) {
+                    for (uint32 i = 0; i < active_cpu_count; i++) {
                         if (cpu_cores[i].apic_id == x2apic_nmi_entry->x2apic_id) {
                             cpu_cores[i].lint_nmi = x2apic_nmi_entry->lint;
                             break;
