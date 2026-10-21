@@ -1,7 +1,4 @@
 #include "cpu_init.h"
-
-#include <stdbool.h>
-
 #include "apic_init.h"
 #include "../drivers/hpet/hpet.h"
 #include "../x64/interrupt_dispatcher.h"
@@ -446,17 +443,17 @@ void ap_init(void) {
         counter--;
 
     //Start-up IPI bit0-7处理器启动实模式物理地址VV000的高两位 ，bit8-10投递模式start-up110 ，bit14 1 ，bit18-19投递目标11所有处理器（不包括自身）
-    asm_wrmsr(APIC_INTERRUPT_COMMAND_MSR,(ap_boot_loader_address>>12)&0xFF|0xC4600);
+    asm_wrmsr(APIC_INTERRUPT_COMMAND_MSR,((ap_boot_loader_address>>12)&0xFF)|0xC4600);
 
     counter=0x5000;
     while (counter !=0 )  //延时
         counter--;
 
-    asm_wrmsr(APIC_INTERRUPT_COMMAND_MSR,(ap_boot_loader_address>>12)&0xFF|0xC4600);      //Start-up IPI
+    asm_wrmsr(APIC_INTERRUPT_COMMAND_MSR,((ap_boot_loader_address>>12)&0xFF)|0xC4600);      //Start-up IPI
 }
 
 void ap_main(void){
-    uint32 apic_id,cpu_id,tmp;
+    uint32 apic_id,tmp;
     asm_cpuid_count(0xB,0x1,&tmp,&tmp,&tmp,&apic_id);        //获取apic_ia
     //cpu_id = apicid_to_cpuid(apic_id);
     cpu_enable_feature();
@@ -466,6 +463,6 @@ void ap_main(void){
     //asm_lidt(&idt_ptr);
     apic_table_init();
     syscall_init();
-    color_printk(GREEN, BLACK, "CPUID:%d APICID:%d init successful\n", cpu_id,apic_id);
+    color_printk(GREEN, BLACK, " APICID:%d init successful\n",apic_id);
     while(1);
 }

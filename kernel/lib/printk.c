@@ -25,11 +25,10 @@ __res; })
 /**
  * @brief 在显存帧缓冲区指定坐标绘制单个 ASCII 字符
  */
-void putchar(uint32 *fb, int32 Xsize, int32 x, int32 y, uint32 FRcolor, uint32 BKcolor,
-             unsigned char font) {
+void putchar(uint32 *fb, int32 Xsize, int32 x, int32 y, uint32 FRcolor, uint32 BKcolor,uint8 font) {
     int32 i = 0, j = 0;
     uint32 *addr = NULL;
-    unsigned char *fontp = NULL;
+    const uint8 *fontp = NULL;
     int32 testval = 0;
     fontp = font_ascii[font];
 
@@ -221,6 +220,7 @@ int32 vsnprintf(char *buf, uint32 size, const char *fmt, va_list args) {
 
             case 'x':
                 flags |= SMALL;
+                /* fall through */
             case 'X':
                 if (qualifier == 'l')
                     str = number(str, end, va_arg(args, unsigned long), 16, field_width, precision, flags);
@@ -231,6 +231,7 @@ int32 vsnprintf(char *buf, uint32 size, const char *fmt, va_list args) {
             case 'd':
             case 'i':
                 flags |= SIGN;
+                /* fall through */
             case 'u':
                 if (qualifier == 'l')
                     str = number(str, end, va_arg(args, unsigned long), 10, field_width, precision, flags);
@@ -313,13 +314,19 @@ int32 color_printk_raw(uint32 FRcolor, uint32 BKcolor, const char *str) {
             Pos.YPosition++;
             Pos.XPosition = 0;
         } else if (c == '\b') {
-            Pos.XPosition--;
-            if (Pos.XPosition < 0) {
-                Pos.XPosition = (Pos.XResolution / Pos.XCharSize) - 1;
-                Pos.YPosition--;
-                if (Pos.YPosition < 0)
-                    Pos.YPosition = (Pos.YResolution / Pos.YCharSize) - 1;
+            if (Pos.XPosition == 0) {
+                // 如果在行首，则退回到上一行的行尾
+                if (Pos.YPosition > 0) {
+                    Pos.YPosition--;
+                    Pos.XPosition = (Pos.XResolution / Pos.XCharSize) - 1;
+                }
+                // 注：如果 X 和 Y 都是 0（屏幕左上角），则什么都不做，丢弃退格动作
+            } else {
+                // 正常情况，X坐标后退一格
+                Pos.XPosition--;
             }
+
+            // 用空格覆盖掉退格后的字符
             putchar(Pos.FB_addr, Pos.PixelsPerScanLine, Pos.XPosition * Pos.XCharSize,
                     Pos.YPosition * Pos.YCharSize, FRcolor, BKcolor, ' ');
         } else if (c == '\t') {
@@ -382,7 +389,7 @@ int64 sys_color_printk(cpu_registers_t *regs) {
     char kernel_buf[512];
 
     // 1. 安全从用户空间拷贝字符串
-    int32 err = strncpy_from_user(user_str, kernel_buf, sizeof(kernel_buf));
+    int32 err = strncpy_from_user( kernel_buf,user_str, sizeof(kernel_buf));
     if (err < 0) return err;
 
     // 2. 🌟 完美：用户层已经格式化好了，内核直接调用 raw 渲染，省去二次格式化开销！

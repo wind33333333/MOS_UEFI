@@ -106,5 +106,5 @@ int32 strncpy_from_user(char *kdst,const char *usrc,  uint32 max_len) {
     // 5. 强制添加字符串结束符 '\0'，防止缓冲区溢出
     *end = '\0';
 
-    return (int32)end - (int32)kdst;
+    return (int32)((uint64)end - (uint64)kdst);
 }

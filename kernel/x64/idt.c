@@ -1,5 +1,3 @@
-#pragma once
-
 #include "moslib.h"
 #include "../init/idt_init.h"
 

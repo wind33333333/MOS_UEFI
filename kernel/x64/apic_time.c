@@ -14,7 +14,8 @@ apic_timer_ctx_t apic_timer_ctx;
 uint8 g_sys_timer_vector;
 
 uint64 tsc_cs_read(clocksource_t *cs) {
-    asm_rdtscp();
+    (void)cs;
+    return asm_rdtscp();
 }
 
 // =========================================================================
@@ -36,8 +37,9 @@ void apic_oneshot_init_hw(clockevent_t *ce) {
 // 2. 关停当前 CPU 核心的 APIC 定时器硬件
 //    (在系统关机、或热切换到其他定时器驱动时被子系统回调)
 // =========================================================================
-#define APIC_LVT_MASKED           (1U << 16)
+#define APIC_LVT_MASKED    (1U << 16)
 void apic_oneshot_stop_hw(clockevent_t *ce) {
+    (void)ce;
     // 1. 将初始倒数值清零，硬件会当场中止当前的倒数倒计时
     asm_wrmsr(APIC_INITIAL_COUNT_MSR, 0);
 
@@ -90,6 +92,7 @@ void apic_oneshot_set_next(clockevent_t *ce, uint64 target_ns) {
 // 1. 初始化当前 CPU 核心的 TSC-Deadline 硬件
 // =========================================================================
 void tsc_deadline_init_hw(clockevent_t *ce) {
+    (void)ce;
     // 清理可能残留的历史记录，防止刚开启就收到幽灵中断
     asm_wrmsr(TSC_DEADLINE_MSR, 0);
 
@@ -105,6 +108,7 @@ void tsc_deadline_init_hw(clockevent_t *ce) {
 // 2. 关停当前 CPU 核心的 TSC-Deadline 定时器硬件
 // =========================================================================
 void tsc_deadline_stop_hw(clockevent_t *ce) {
+    (void)ce;
     // 1. 根据 Intel SDM 手册，向 MSR 0x6E0 写入 0 即可立刻解除 (Disarm) 定时器
     asm_wrmsr(TSC_DEADLINE_MSR, 0);
 

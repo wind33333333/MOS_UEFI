@@ -150,7 +150,7 @@ int32 color_printf(uint32 FRcolor, uint32 BKcolor, const char *fmt, ...) {
     // 2. 使用标准库或用户态轻量级 vsnprintf 在本地完成可变参和格式化拼接
     va_start(args, fmt);
     // 注意：在标准 libc 中是 vsnprintf，如果你的用户态是自研 Runtime，调用对应的实现即可
-    int len = vsnprintf(user_buf, sizeof(user_buf), fmt, args);
+    int32 len = vsnprintf(user_buf, sizeof(user_buf), fmt, args);
     va_end(args);
 
     if (len < 0) {
@@ -158,7 +158,7 @@ int32 color_printf(uint32 FRcolor, uint32 BKcolor, const char *fmt, ...) {
     }
 
     // 如果内容超长被截断，确保末尾有结束符
-    if (len >= sizeof(user_buf)) {
+    if (len >= (int32)sizeof(user_buf)) {
         user_buf[sizeof(user_buf) - 1] = '\0';
     }
 
@@ -175,5 +175,5 @@ int32 color_printf(uint32 FRcolor, uint32 BKcolor, const char *fmt, ...) {
 
 
 int32 sleep_us(uint64 delay_us) {
-    syscall1(__NR_nanosleep,delay_us);
+    return (int32)syscall1(__NR_nanosleep,delay_us);
 }
