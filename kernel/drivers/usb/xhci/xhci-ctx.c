@@ -183,6 +183,7 @@ int32 xhci_ctx_addr_dev(usb_dev_t *udev) {
     int32 err = xhci_cmd_addr_dev(udev->xhcd, udev->slot_id, udev->in_ctx);
     if (err < 0) return err;
     xhci_up_ep_map (udev);
+    return 0;
 }
 
 //配置slot context
@@ -192,6 +193,7 @@ int32 xhci_ctx_slot_cfg(usb_dev_t *udev) {
     int32 err = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, udev->in_ctx, 0);
     if (err < 0) return err;
     xhci_up_ep_map (udev);
+    return 0;
 }
 
 //微调slot ep0 context
@@ -202,6 +204,7 @@ int32 xhci_ctx_slot_ep0_eval(usb_dev_t *udev) {
     int32 err = xhci_cmd_eval_ctx(udev->xhcd, udev->slot_id, udev->in_ctx);
     if (err < 0) return err;
     xhci_up_ep_map (udev);
+    return 0;
 }
 
 
@@ -250,6 +253,7 @@ int32 xhci_ctx_eps_cfg(usb_if_alt_t *drop_uif_alt,usb_if_alt_t *add_uif_alt) {
     int32 err = xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, udev->in_ctx, 0);
     if (err < 0) return err;
     xhci_up_ep_map (udev);
+    return 0;
 }
 
 //批量清空业务端点
@@ -257,6 +261,7 @@ int32 xhci_ctx_deconfigure_all(usb_dev_t *udev ) {
     int32 err =xhci_cmd_cfg_ep(udev->xhcd, udev->slot_id, udev->in_ctx, 1);
     if (err < 0) return err;
     udev->active_ep_map = (1 << 0) | (1 << 1); // 仅留 Slot 和 EP0
+    return 0;
 }
 
 

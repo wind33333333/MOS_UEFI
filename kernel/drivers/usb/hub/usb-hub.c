@@ -30,7 +30,7 @@ static inline int32 usb_hub20_get_desc(usb_dev_t *udev, void *buf) {
         TX_IOC,
         0,
         NULL,
-        0,
+         {0}
     };
 
     req.setup_packet.request_type = req_type;
@@ -56,7 +56,7 @@ static inline int32 usb_hub30_get_desc(usb_dev_t *udev, void *buf) {
         TX_IOC,
         0,
         NULL,
-        0,
+         {0}
     };
 
     req.setup_packet.request_type = req_type;
@@ -80,7 +80,7 @@ static inline int32 usb_hub30_set_depth(usb_dev_t *udev) {
         TX_IOC,
         0,
         NULL,
-        0,
+         {0}
     };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_CLASS, USB_REQ_REC_DEVICE);
@@ -115,7 +115,7 @@ static int32 usb_hub_port_get_status(usb_dev_t *udev, uint8 port_num, uint32 *po
         TX_IOC,
         0,
         NULL,
-        0,
+        {0}
     };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_CLASS, USB_REQ_REC_OTHER);
@@ -151,7 +151,7 @@ static inline int32 usb_hub_port_set_feature(usb_dev_t *udev, uint8 port_num, ui
         TX_IOC,
         0,
         NULL,
-        0,
+         {0}
     };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_CLASS, USB_REQ_REC_OTHER);;
@@ -175,7 +175,7 @@ static inline int32 usb_hub_port_clear_feature(usb_dev_t *udev, uint8 port_num, 
         TX_IOC,
         0,
         NULL,
-        0,
+        {0}
     };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_CLASS, USB_REQ_REC_OTHER);
@@ -618,6 +618,7 @@ void usb_hub_irq_complete(void* hub1) {
 
 //hub驱动
 int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
+    (void)(uid);
     usb_dev_t *udev = uif->udev;
 
     // USB 规范硬性限制：外部 Hub 最多级联 5 层。udev->hub_depth = 0 代表第一级外接 Hub ... 为 4 代表第五级外接 Hub。
@@ -671,12 +672,12 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
         // 🐢 USB 2.0/1.1 (High/Full/Low Speed) Hub 处理逻辑
         // ==========================================
         // 1. 🥈 尝试寻找 USB 2.0 高级多事务 Hub (MTT, Protocol = 2)
-        if (if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY, 2)) {
+        if ((if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY, 2))) {
             udev->hub_mtt = 1;
-        } else if (if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY, 1)) {
+        } else if ((if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY, 1))) {
             // 2. 🥉 降级寻找 USB 2.0 单事务 Hub (STT, Protocol = 1)
             udev->hub_mtt = 0;
-        } else if (if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY, 0)) {
+        } else if ((if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY, 0))) {
             // 3. 🪨 终极保底：USB 1.1 全速 Hub 或基础兼容模式 (Protocol = 0)
             udev->hub_mtt = 0;
         } else {
@@ -731,12 +732,12 @@ int32 usb_hub_probe(usb_if_t *uif, usb_id_t *uid) {
     req->waker = hub;
     req->stream_id = 0;
     req->cb = usb_hub_irq_complete;
-    xhci_submit_normal(ep1,req);
-
+    return xhci_submit_normal(ep1,req);
 }
 
 
 void usb_hub_remove(usb_if_t *usb_if) {
+    (void)(usb_if);
 }
 
 usb_drv_t *create_usb_hub_driver() {

@@ -75,11 +75,14 @@ int usb_bus_match(device_t *dev, driver_t *drv) {
 }
 
 //usb总线层探测初始化回调
-int usb_bus_probe(device_t *dev) {
+int32 usb_bus_probe(device_t *dev) {
+    (void)dev;
+    return 0;
 }
 
 //usb总线层卸载在回调
 void usb_bus_remove(device_t *dev) {
+    (void)dev;
 }
 
 //usb驱动层探测初始化回调
@@ -93,6 +96,7 @@ int usb_drv_probe(device_t *dev) {
 
 //usb驱动层卸载回调
 void usb_drv_remove(device_t *dev) {
+    (void)dev;
 }
 
 

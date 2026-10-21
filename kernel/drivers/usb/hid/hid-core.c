@@ -23,7 +23,7 @@ static inline int32 usb_hid_get_report_desc(usb_dev_t *udev, uint8 interface_num
         TX_IOC,
         0,
         NULL,
-        0,
+        {0}
     };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN,USB_REQ_TYPE_STANDARD,USB_REQ_REC_INTERFACE);
@@ -32,8 +32,7 @@ static inline int32 usb_hid_get_report_desc(usb_dev_t *udev, uint8 interface_num
     req.setup_packet.index = interface_num;
     req.setup_packet.length = length;
 
-    int32 ret = xhci_submit_control(udev,&req);
-
+    return xhci_submit_control(udev,&req);
 }
 
 
@@ -79,7 +78,8 @@ extern void hid_irq_complete(void *urb);
  * @param uif 触发本次探测的 USB 接口结构体指针
  * @return int 0 表示接管成功，非 0 表示失败
  */
-static int hid_probe(usb_if_t *uif, usb_id_t *uid) {
+static int32 hid_probe(usb_if_t *uif, usb_id_t *uid) {
+    (void)uid;
     usb_dev_t *udev = uif->udev; // 从接口反向拿到物理设备对象
     usb_if_alt_t *if_alt = &uif->if_alts[0];
 
@@ -144,11 +144,12 @@ static int hid_probe(usb_if_t *uif, usb_id_t *uid) {
     req->waker = hdev;
     req->stream_id = 0;
     req->cb = hid_irq_complete;
-    xhci_submit_normal(ep1,req);
+    return xhci_submit_normal(ep1,req);
 
 }
 
 static void hid_remove(usb_if_t *uif) {
+    (void)uif;
 }
 
 

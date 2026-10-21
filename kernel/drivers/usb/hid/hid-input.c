@@ -174,11 +174,11 @@ static const uint16 hid_keyboard_map[256] = {
  */
 static inline void hid_usage_to_input(hid_dev_t *hdev, input_dev_t *idev) {
     // 1. 遍历设备描述符解析出的所有逻辑字段 (Field 可以理解为比特流的解包模具)
-    for (int i = 0; i < hdev->field_count; i++) {
+    for (uint32 i = 0; i < hdev->field_count; i++) {
         hid_field_t *field = hdev->fields[i];
 
         // 2. 遍历当前 Field 下绑定的所有用途子项 (Usage)
-        for (int j = 0; j < field->max_usages; j++) {
+        for (uint32 j = 0; j < field->max_usages; j++) {
             hid_usage_t *usage = &field->usages[j];
 
             /*

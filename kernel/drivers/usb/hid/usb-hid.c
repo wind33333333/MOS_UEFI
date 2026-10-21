@@ -40,6 +40,7 @@ void hid_irq_complete(void *hdev1) {
 // 🐌 底半部 (Bottom Half)：专用内核线程，执行复杂逻辑
 // =======================================================
 void hid_worker_thread_main(void *arg) {
+    (void)arg;
     // 1. 如果队列为空，线程在这里休眠，不消耗 CPU
     // semaphore_down(&g_hid_raw_queue.wait_sem);
 
@@ -62,7 +63,7 @@ void hid_worker_thread_main(void *arg) {
     uint8 *raw_data = event.raw_data; // 注意这里用的是刚刚从队列里取出来的备份数据
 
     // 外层循环：遍历所有 field
-    for (int i = 0; i < hdev->field_count; i++) {
+    for (uint32 i = 0; i < hdev->field_count; i++) {
         hid_field_t *field = hdev->fields[i];
         if (field->report_type != HID_MAIN_TAG_INPUT) continue;
 

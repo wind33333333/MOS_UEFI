@@ -252,12 +252,13 @@ static inline int32 xhci_parse_supported_protocols(xhci_hcd_t *xhcd) {
             xhcd->port_to_spc[j] = i;
         }
     }
-
+    return 0;
 }
 
 
 //xhci设备探测初始化驱动
 int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
+    (void)id;
     xdev->dev.drv_data = kzalloc(sizeof(xhci_hcd_t)); //存放xhci相关信息
     xhci_hcd_t *xhcd = xdev->dev.drv_data;
     xhcd->xdev = xdev;
@@ -376,10 +377,11 @@ int32 xhci_probe(pcie_dev_t *xdev, pcie_id_t *id) {
         xhcd->op_reg->usbsts);
 
     xhci_port_scan(xhcd);
-
+    return 0;
 }
 
 void xhci_remove(pcie_dev_t *xhci_dev) {
+    (void)xhci_dev;
 }
 
 //xhci驱动初始化

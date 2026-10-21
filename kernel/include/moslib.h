@@ -580,26 +580,29 @@ static inline void *asm_mem_set(void *Address, uint8 C, uint64 Count) {
     return Address;
 }
 
-static inline uint64 asm_reverse_find_qword(void *address,uint64 count,uint64 value){
+static inline uint64 asm_reverse_find_qword(void *address, uint64 count, uint64 value) {
     uint64 result;
+    // 明确加括号，消除 -Wparentheses 警告，并提前计算好尾地址
+    uint64 end_addr = (uint64)address + ((count - 1) << 3);
+
     __asm__ __volatile__(
-            "std                  \n\t"
-            "repz                 \n\t"
-            "scasq                \n\t"
-            "je  1f               \n\t"
-            "inc   %%rcx          \n\t"
-            "1:                   \n\t"
-            :"=c"(result)
-            :"a"(value),"c"(count),"D"((uint64)address+(count-1<<3))
-            :"memory"
-            );
+            "std\n\t"                // 设置 DF=1，逆向扫描
+            "repnz\n\t"              // 假设你是要找某个值 (Not Zero/Not Equal 时继续循环)
+            "scasq\n\t"
+            "je 1f\n\t"              // 如果找到了 (ZF=1)，跳过 inc
+            "inc %%rcx\n\t"          // 没找到时调整结果
+            "1:\n\t"
+            "cld\n\t"                // 🌟 核心保命指令：必须恢复 DF=0，否则整个内核会崩溃！
+            : "=c" (result), "+D" (end_addr) // rcx 和 rdi 都是输出/输入
+            : "a" (value), "0" (count)       // eax 是输入，rcx 初始值为 count
+            : "memory", "cc"         // 声明内存和标志位被修改
+    );
     return result;
 }
 
 static inline uint64 asm_forward_find_qword(void *address,uint64 count,uint64 value){
     uint64 result;
     __asm__ __volatile__(
-            "cld                  \n\t"
             "repz                 \n\t"
             "scasq                \n\t"
             "je  1f               \n\t"
@@ -831,14 +834,14 @@ uint8 utf16le_to_ascii(char *dst, uint16 *src, uint8 len) {
 }
 
 // 纯编译器屏障：告诉 GCC "不要把我上下的内存读写指令打乱重排，不要优化缓存变量"
-static void compiler_barrier() {
+static inline void compiler_barrier() {
     asm volatile("" ::: "memory");
 }
 
 
 // 对齐函数，确保 addr 按 align 对齐（align 为 2 的幂）
 static inline uint64 align_up(uint64 value, uint64 align) {
-    return value + (align - 1) & -align;
+    return (value + (align - 1)) & -align;
 }
 
 static inline uint64 align_down(uint64 value, uint64 align) {

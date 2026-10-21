@@ -66,6 +66,7 @@ void thread_c() {
 }
 
 int64 sys_print(cpu_registers_t *regs) {
+    (void)regs;
     color_printk(GREEN, BLACK, "1 Sec Report -> A: %ld, B: %ld, C: %ld\n",
                  count_a, count_b, count_c);
 }

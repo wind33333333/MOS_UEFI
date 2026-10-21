@@ -343,7 +343,7 @@ static inline int32 _usb_get_dev_desc(usb_dev_t *udev, void *buf, uint16 len) {
         TX_IOC,
         0,
         NULL,
-        0,
+        {0}
     };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
@@ -367,7 +367,7 @@ static inline int32 _usb_get_cfg_desc(usb_dev_t *udev, uint8 config_index, void 
         TX_IOC,
         0,
         NULL,
-        0,
+        {0}
     };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
@@ -392,7 +392,7 @@ static inline int32 _usb_get_string_desc(usb_dev_t *udev, uint8 string_index, ui
         TX_IOC,
         0,
         NULL,
-        0,
+        {0}
     };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
@@ -415,7 +415,7 @@ static inline int32 usb_get_bos_desc(usb_dev_t *udev, void *buf, uint16 len) {
         TX_IOC,
         0,
         NULL,
-        0,
+        {0}
     };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
@@ -715,7 +715,7 @@ static inline int usb_get_string_desc(usb_dev_t *udev) {
         udev->dev_desc->manufacturer_index, udev->dev_desc->product_index,udev->dev_desc->serial_number_index
     };
     usb_string_desc_t *string_desc[3];
-    uint8 *string_ascii[3];
+    char *string_ascii[3];
 
     //获取制造商/产品型号/序列号字符串描述符
     for (uint8 i = 0; i < 3; i++) {
@@ -806,10 +806,10 @@ void usb_dev_init(usb_dev_t *udev) {
     // USB 2.0/1.1 规范：复位结束后，必须给设备固件 10ms~50ms 的清醒时间。USB 3.0 直接跳过
     if (udev->port_speed <= USB_SPEED_HIGH) {
         uint32 times = 0x2000000;
-        // while (times) {
-        //     times--;
-        //     asm_pause();
-        // }
+        while (times) {
+            times--;
+            asm_pause();
+        }
     }
 
     // 挂载总线对象模型

@@ -126,9 +126,9 @@ typedef struct usb_dev_t{
     usb_string_desc_t               *product_desc;         //产品型号名描述符
     usb_string_desc_t               *serial_number_desc;   //序列号描述符
 
-    uint8                           *manufacturer;     // 制造商ascii字符
-    uint8                           *product;          // 产品型号ascii字符
-    uint8                           *serial_number;    // 序列号ascii字符
+    char                           *manufacturer;     // 制造商ascii字符
+    char                           *product;          // 产品型号ascii字符
+    char                           *serial_number;    // 序列号ascii字符
 
     // 3. 逻辑端点与接口路由 (暴露给业务层驱动的资源)
     usb_if_t                        *ifs;              // 接口指针根据接口数量动态分配
@@ -176,7 +176,7 @@ static inline int32 usb_clear_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
         TX_IOC,
         0,
         NULL,
-        0,
+        {0},
     };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_ENDPOINT);;
@@ -203,7 +203,8 @@ static inline int32 usb_set_ep_halt(usb_dev_t *udev, uint8 ep_dci) {
         TX_IOC,
         0,
         NULL,
-        0};
+        {0}
+        };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_ENDPOINT);;
     req.setup_packet.request =  USB_REQ_SET_FEATURE;
@@ -226,7 +227,7 @@ static inline int32 usb_set_cfg(usb_dev_t *udev) {
         TX_IOC,
         0,
         NULL,
-        0,
+        {0}
     };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_DEVICE);
@@ -250,7 +251,7 @@ static inline int32 usb_set_if(usb_dev_t *udev, uint8 if_num, uint8 alt_num) {
         TX_IOC,
         0,
         NULL,
-        0,
+        {0}
     };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_STANDARD, USB_REQ_REC_INTERFACE);

@@ -57,13 +57,13 @@ static inline xhci_submit_ring_t* xhci_get_ring_by_pa(usb_ep_t *ep, uint64 trb_p
 }
 
 
-static inline void xhci_submit_ring_update_deq_idx(xhci_submit_ring_t *ring, uint64 comp_trb_pa) {
+/*static inline void xhci_submit_ring_update_deq_idx(xhci_submit_ring_t *ring, uint64 comp_trb_pa) {
     // 根据物理地址，反算出它在环里的数组索引
-    uint32 deq_idx = (comp_trb_pa - va_to_pa(ring->ring_base))>>4;
+    //uint32 deq_idx = (comp_trb_pa - va_to_pa(ring->ring_base))>>4;
 
     // 硬件执行完这个了，说明下一个是待处理的，更新消费者游标
-    ring->deq_idx = xhci_submit_ring_next_idx(deq_idx,ring->size);
-}
+    //ring->deq_idx = xhci_submit_ring_next_idx(deq_idx,ring->size);
+}*/
 
 
 /**
@@ -168,8 +168,8 @@ static inline void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_
     uint64 trb_pa     = evt_trb->parameter;
 
     // 剩余数据长度和完成码从 DW2 (status) 提取
-    uint32 remainder  = TRB_GET_TR_LEN(evt_trb->status);
-    uint32 comp_code  = TRB_GET_COMP_CODE(evt_trb->status);
+    // uint32 remainder  = TRB_GET_TR_LEN(evt_trb->status);
+    // uint32 comp_code  = TRB_GET_COMP_CODE(evt_trb->status);
 
     // 端点号和槽位号从 DW3 (control) 提取
     uint8  evt_ep_dci = TRB_GET_EP_ID(evt_trb->control);
@@ -210,7 +210,7 @@ static inline void xhci_handle_transfer_event(xhci_hcd_t *xhcd, xhci_trb_t *evt_
     tracker->is_completed = TRUE;
 
 // 更新硬件消费指针
-    int32 ring_mask = ring->size - 1;
+    uint32 ring_mask = ring->size - 1;
     ring->deq_idx = (trb_idx + 1) & ring_mask;
 
     // 如果硬件正好跨过了 Link TRB，再往前推一格 (回到0)
@@ -236,7 +236,7 @@ static inline void xhci_handle_cmd_completion(xhci_hcd_t *xhcd, xhci_trb_t *evt_
     xhci_submit_ring_t *ring = &xhcd->cmd_ring;
 
     // 1. DW2: 提取附加参数与完成码
-    uint32 comp_param = TRB_GET_CMD_COMP_PARAM(evt_trb->status);
+    //uint32 comp_param = TRB_GET_CMD_COMP_PARAM(evt_trb->status);
     uint32 comp_code  = TRB_GET_COMP_CODE(evt_trb->status);
     // DW3: 提取可能分配到的 Slot ID
     uint8  slot_id    = TRB_GET_SLOT_ID(evt_trb->control);
@@ -323,6 +323,7 @@ static inline void xhci_process_single_event(xhci_hcd_t *xhcd, xhci_trb_t *trb) 
 
 //xhci中断服务函数
 int32 xhci_isr(cpu_registers_t *regs,void *dev_id) {
+    (void)regs;
     pcie_dev_t *xdev = dev_id;
     xhci_hcd_t *xhcd = xdev->priv_data;
 
@@ -369,8 +370,8 @@ int32 xhci_isr(cpu_registers_t *regs,void *dev_id) {
         uint64 erdp_pa = va_to_pa(&evt_ring->ring_base[evt_ring->deq_idx]) | XHCI_ERDP_EHB;
         xhcd->rt_reg->intr_regs[evtnt_idx].erdp = erdp_pa;
     }
-
     spin_unlock_irqrestore(&evt_ring->ring_lock, flags);
+    return 0;
 }
 
 

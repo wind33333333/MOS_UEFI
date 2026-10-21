@@ -74,7 +74,7 @@ uint8 bot_get_max_lun(usb_dev_t *udev, uint8 if_num) {
         TX_IOC,
         0,
         NULL,
-        0,
+        {0}
     };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_IN, USB_REQ_TYPE_CLASS, USB_REQ_REC_INTERFACE);;
@@ -141,7 +141,7 @@ static inline int32 bot_mass_storage_reset(usb_dev_t *udev, uint8 if_num) {
         TX_IOC,
         0,
         NULL,
-        0,
+        {0}
     };
 
     req.setup_packet.request_type = USB_BM_REQ_TYPE(USB_REQ_DIR_OUT, USB_REQ_TYPE_CLASS, USB_REQ_REC_INTERFACE);

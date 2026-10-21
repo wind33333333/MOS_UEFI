@@ -73,6 +73,7 @@ void hpet_ce_stop_hw(clockevent_t *ce) {
 // =========================================================================
 void hpet_ce_set_next_event(clockevent_t *ce, uint64 target_ns) {
     hpet_device_t *dev = ce->priv;
+    hpet_hw_regs_t *hw_regs = dev->hw_regs;
     hpet_timer_t *timer = &dev->hpet_timers[0];
 
     // =====================================================================
@@ -87,8 +88,6 @@ void hpet_ce_set_next_event(clockevent_t *ce, uint64 target_ns) {
 
     // 只有我抢到了“全系统第一名”，才加锁操作硬件
     spin_lock(&timer->lock);
-
-    volatile uint64 *main_cnt = &dev->hw_regs->main_counter;
 
     // Double-Check，防止抢锁期间被其它 CPU 捷足先登
     if (target_ns < timer->programmed_ns) {
@@ -120,12 +119,11 @@ void hpet_ce_set_next_event(clockevent_t *ce, uint64 target_ns) {
                                             + ce->ns_to_dev_mask) >> ce->ns_to_dev_shift);
 
             // 被迫承受一次读取 MMIO 的巨大延迟
-            target_cycles = *main_cnt + delay_cycles;
+            target_cycles = hw_regs->main_counter + delay_cycles;
         }
 
         // 2. 轰入比较器寄存器
-        volatile uint64 *comp_reg = &dev->hw_regs->timers[0].comparator;
-        *comp_reg = target_cycles;
+        hw_regs->timers[0].comparator = target_cycles;
 
         // =====================================================================
         // 🌟 第三道防线：防死锁与漏触发回读保护 (Deadlock Watchdog)
@@ -134,13 +132,13 @@ void hpet_ce_set_next_event(clockevent_t *ce, uint64 target_ns) {
         // 刚把 target_cycles 写进比较器，主计数器就已经越过了这个值...
         // 那么闹钟必须等 4 万年溢出才会响，系统彻底死锁！
         // =====================================================================
-        uint64 now_cnt = *main_cnt; // 刚写完立刻回读主计数器！
+        uint64 now_cnt = hw_regs->main_counter; // 刚写完立刻回读主计数器！
 
         // 如果 (目标 - 现实) 小于最小安全步进 (负数代表已经错过，正数代表离得太近)
         if ((int64)(target_cycles - now_cnt) < (int64)min_ticks) {
             // 哎呀，由于被打断或者目标太近，已经来不及了！
             // 强制将比较器设在当前时间点再往后推 5 微秒，让硬件立马“补”一枪中断！
-            *comp_reg = now_cnt + min_ticks;
+            hw_regs->timers[0].comparator = now_cnt + min_ticks;
         }
     }
 
@@ -157,6 +155,7 @@ uint64 hpet_cs_read(clocksource_t *cs) {
 // HPET 硬件中断处理函数 (ISR)
 // =========================================================================
 int32 hpet_interrupt_handler(cpu_registers_t *regs,void *dev_id) {
+    (void)regs;
     hpet_device_t *dev = dev_id;
     hpet_timer_t *timer = &dev->hpet_timers[0];
 
@@ -174,4 +173,5 @@ int32 hpet_interrupt_handler(cpu_registers_t *regs,void *dev_id) {
     // 2. 通知操作系统的 time_core 去处理唤醒任务并设置下一个新闹钟
     // 此时 time_core 会再次调用 hpet_ce_set_next_event。
     // 因为 programmed_ns 已经是无穷大了，新闹钟绝对能成功写入 MMIO！
+    return 0;
 }

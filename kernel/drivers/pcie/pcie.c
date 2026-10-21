@@ -44,7 +44,7 @@ struct {
     {SERCOS_CLASS_CODE, "SERCOS Interface (IEC 61491)"},
     {CANBUS_CLASS_CODE, "CANbus Controller"},
     {SERIAL_BUS_OTHER_CLASS_CODE, "Other Serial Bus Controller"},
-    {0x000000, NULL}
+    {0x000000, "Unknown device"}
 };
 
 /*
@@ -162,16 +162,16 @@ static inline void pcie_parse_irq(pcie_dev_t *pcie_dev) {
 }
 
 
-int32 pcie_alloc_irq(pcie_dev_t *pdev, int8 count) {
+int32 pcie_alloc_irq(pcie_dev_t *pdev, uint8 count) {
     if (count == 0 || count > PCIE_MAX_VECTORS) return -EINVAL;
     if (pdev->allocated_vectors > 0) return -EBUSY;
 
     // ========== 路线 A：MSI-X 降维打击 (支持稀疏分布) ==========
     if (pdev->msix.msg_control != NULL) {
-        int8 allocated = 0;
-        for (int8 i = 0; i < count; i++) {
-            int32 vector = alloc_irq();
-            if (vector < 0) break;
+        uint8 allocated = 0;
+        for (uint8 i = 0; i < count; i++) {
+            uint32 vector = alloc_irq();
+            if (vector == 0) break;
             pdev->cpu_vectors[i] = vector;
             allocated++;
         }
@@ -190,19 +190,19 @@ int32 pcie_alloc_irq(pcie_dev_t *pdev, int8 count) {
         // 呼叫咱们刚写的连续对齐分配大招！
         int32 vector = alloc_contiguous_irq(power2_count);
 
-        if (vector < 0) {
+        if (vector == 0) {
             // ★ 工业级 OS 容错降级：如果连续分配失败，内核不能直接拒绝！
             // 而是强行降级为只分配 1 个中断！让网卡多队列退化为单队列运行。
             color_printk(YELLOW, BLACK, "PCIE MSI: Contiguous alloc failed. Downgrading to 1 vector.\n");
             vector = alloc_irq();
-            if (vector < 0) return -ENOSPC;
+            if (vector == 0) return -ENOSPC;
             pdev->cpu_vectors[0] = vector;
             pdev->allocated_vectors = 1;
             return 1;
         }
 
         // 成功拿到了连续的队列
-        for (int8 i = 0; i < power2_count; i++) {
+        for (uint8 i = 0; i < power2_count; i++) {
             pdev->cpu_vectors[i] = vector + i;
         }
         pdev->active_irq_type = PCIE_IRQ_MSI;
@@ -222,7 +222,7 @@ void pcie_free_irq(pcie_dev_t *pdev) {
     }
     else if (pdev->active_irq_type == PCIE_IRQ_MSIX) {
         // MSI-X 可能是稀疏分配的，所以必须逐个释放
-        for (int8 i = 0; i < pdev->allocated_vectors; i++) {
+        for (uint8 i = 0; i < pdev->allocated_vectors; i++) {
             free_irq(pdev->cpu_vectors[i]); // 你之前写的单向量释放函数
         }
     }
@@ -340,10 +340,10 @@ void pcie_disable_irq(pcie_dev_t *pdev) {
  * @brief 注册中断服务函数
  * @param index 设备的第几个中断队列 (0 ~ allocated_vectors-1)
  */
-int32 pcie_register_isr(pcie_dev_t *pdev, int8 index, irq_handler_f isr, const char *name) {
+int32 pcie_register_isr(pcie_dev_t *pdev, uint8 index, irq_handler_f isr, const char *name) {
     if (index >= pdev->allocated_vectors) return -EINVAL;
 
-    int8 vector = pdev->cpu_vectors[index];
+    uint8 vector = pdev->cpu_vectors[index];
     // 调用大管家的注册接口
     return register_isr(vector, isr, pdev, name);
 }
@@ -351,7 +351,7 @@ int32 pcie_register_isr(pcie_dev_t *pdev, int8 index, irq_handler_f isr, const c
 /**
  * @brief 卸载中断服务函数
  */
-void pcie_unregister_isr(pcie_dev_t *pdev, int8 index) {
+void pcie_unregister_isr(pcie_dev_t *pdev, uint8 index) {
     if (index < pdev->allocated_vectors) {
         unregister_isr(pdev->cpu_vectors[index]);
     }
@@ -390,6 +390,7 @@ int pcie_bus_probe(device_t *dev) {
 
 //pcie总线层卸载在回调
 void pcie_bus_remove(device_t *dev) {
+    (void)dev;
 }
 
 //pcie驱动层探测初始化回调
@@ -403,6 +404,7 @@ int pcie_drv_probe(device_t *dev) {
 
 //pcie驱动层卸载回调
 void pcie_drv_remove(device_t *dev) {
+    (void)dev;
 }
 
 //获取pice设备的class_code
@@ -414,9 +416,11 @@ static inline uint32 pcie_get_classcode(pcie_dev_t *pcie_dev) {
 //查找pcie的类名
 static inline char *pcie_clasename_find(pcie_dev_t *pcie_dev) {
     uint32 class_code = pcie_get_classcode(pcie_dev);
-    for (int i = 0; pcie_classnames[i].name != NULL; i++) {
+    uint32 i = 0;
+    for (; pcie_classnames[i].class_code != 0; i++) {
         if (class_code == pcie_classnames[i].class_code) return pcie_classnames[i].name;
     }
+    return pcie_classnames[i].name;
 }
 
 extern bus_type_t pcie_bus_type;
@@ -507,7 +511,7 @@ pcie_root_complex_t *pcie_rc_create(mcfg_entry_t* mcfg_entry) {
 //pcie总线初始化
 INIT_TEXT void pcie_bus_init(void) {
     //查找mcfg表
-    mcfg_t *mcfg = acpi_get_table('GFCM',0);
+    mcfg_t *mcfg = acpi_get_table(ACPI_SIG_MCFG,0);
     uint32 ecma_count = (mcfg->acpi_header.length - sizeof(acpi_header_t) - sizeof(mcfg->reserved)) / sizeof(
                             mcfg_entry_t);
     //创建pcie根复合体

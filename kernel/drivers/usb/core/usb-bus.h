@@ -27,6 +27,7 @@ typedef struct usb_id_t {
     uint8  if_protocol;
 } usb_id_t;
 
+struct usb_if_t;
 
 //usb驱动
 typedef struct usb_drv_t{

@@ -14,7 +14,7 @@ extern scsi_host_template_t bot_host_template;
 
 //u盘驱动程序
 int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
-
+    (void)uid;
     usb_if_alt_t *uas_if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY,0x62);
     usb_if_alt_t *bot_if_alt = usb_find_alt_if(uif,USB_MATCH_ANY,USB_MATCH_ANY,0x50);
 
@@ -101,10 +101,11 @@ int32 usb_storage_probe(usb_if_t *uif,usb_id_t *uid) {
     }
 
     scsi_add_host(shost);
+    return 0;
 }
 
 void usb_storage_remove(usb_if_t *usb_if) {
-
+    (void)usb_if;
 }
 
 usb_drv_t *create_usb_storage_driver() {

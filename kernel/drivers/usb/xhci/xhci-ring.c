@@ -161,6 +161,7 @@ int32 xhci_free_submit_ring(xhci_submit_ring_t *ring) {
     ring->size = 0;
     ring->free_trbs = 0;
     ring->cycle = 0;
+    return 0;
 }
 
 //事件环分配函数
@@ -174,6 +175,7 @@ int32 xhci_alloc_event_ring(xhci_event_ring_t *ring, uint32 ring_size) {
     ring->erst_base->ring_seg_base = va_to_pa(ring->ring_base);
     ring->erst_base->ring_seg_size = ring_size;
     ring->erst_base->reserved = 0;
+    return  0;
 }
 
 
@@ -337,6 +339,7 @@ static inline xhci_trb_t xhci_build_data_trb(uint64 *current_pa,
                                              uint16 max_packet,
                                              uint8 wants_ioc,
                                              uint8 needs_zlp) {
+    (void)max_packet;
     xhci_trb_t trb = {0};
     uint32 space_to_boundary = 0x10000 - (uint32) (*current_pa & 0xFFFF);
     uint8 has_more_data = (*left_len > space_to_boundary);
@@ -449,8 +452,6 @@ int32 xhci_submit_stream(usb_ep_t *ep, const xhci_data_req_t *req) {
         return 0;
     }
 
-    uint16 last_trb_idx = 0;
-
     // 2. 纯净灌入 Data TRB 循环 (毫无 ZLP 的拖累)
     while (left_len > 0) {
         // needs_zlp 永远传 0
@@ -465,12 +466,9 @@ int32 xhci_submit_stream(usb_ep_t *ep, const xhci_data_req_t *req) {
             trb.control |= TRB_CHAIN; // 连续态：用 CHAIN 无缝粘合！
         }
 
-        last_trb_idx = xhci_submit_ring_enq(ring, &trb);
+        xhci_submit_ring_enq(ring, &trb);
     }
 
-    // 3. 🛡️ 架构闭环：记录活跃 TRB 索引防幽灵中断
-    // (注意：这里现在指向的是最后一块有真实数据的 TRB！)
-    //tracker->active_trb_idx = last_trb_idx;
 
     // 4. 响铃唤醒 DMA
     uint32 db_target = ep->ep_dci | ((uint32) stream_id << 16);

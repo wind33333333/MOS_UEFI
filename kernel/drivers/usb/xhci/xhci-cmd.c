@@ -37,7 +37,7 @@ int32 xhci_cmd_enable_slot(xhci_hcd_t *xhcd, uint8 port_num) {
 
     // 5. 提交命令并等待完成
     xhci_cmd_io_tracker_t out_cmd_io_tracker = {0};
-    int32 status = xhci_submit_cmd(xhcd, &cmd_trb, &out_cmd_io_tracker);
+    xhci_submit_cmd(xhcd, &cmd_trb, &out_cmd_io_tracker);
 
     return out_cmd_io_tracker.out_slot_id;
 }
