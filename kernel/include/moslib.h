@@ -40,7 +40,7 @@ extern uint8 tmp_paging_level;
 
 #define BOCHS_DG()    __asm__ __volatile__ ("xchg %%bx,%%bx \n\t":: :);
 
-#define NULL 0
+#define NULL ((void *)0)
 #define FALSE 0
 #define TRUE 1
 

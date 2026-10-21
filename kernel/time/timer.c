@@ -54,6 +54,7 @@ void ksleep_us(uint64 delay_us) {
 
 int64 sys_ksleep_us(cpu_registers_t *regs) {
     ksleep_us(regs->rdi);
+    return 0;
 }
 
 /**
@@ -77,6 +78,7 @@ void reprogram_timer_for_next_event(uint64 cur_ns) {
  * @brief 扫描睡眠树和调度树，唤醒所有到期的任务，并重设下一个硬件闹钟
  */
 int32 timer_irq_handler(cpu_registers_t *regs, void *dev_id) {
+    (void)regs, (void)dev_id;
     uint64 cur_ns = get_uptime_ns();
 
     // 1. 🌟 调用调度器协议：推进计费并判定时间片

@@ -179,7 +179,7 @@ int32 pcie_alloc_irq(pcie_dev_t *pdev, uint8 count) {
         if (allocated == 0) return -ENOSPC;
         pdev->active_irq_type = PCIE_IRQ_MSIX;
         pdev->allocated_vectors = allocated;
-    }else if (pdev->msi->msg_control != NULL) {
+    }else if (pdev->msi->msg_control != 0) {
         // ========== 路线 B：古董 MSI 戴着镣铐跳舞 ==========
         // 规范化 count：MSI 必须申请 2 的次幂，如果驱动要 3 个，只能强行升到 4 个
         int8 power2_count = 1;
