@@ -69,6 +69,7 @@ int64 sys_print(cpu_registers_t *regs) {
     (void)regs;
     color_printk(GREEN, BLACK, "1 Sec Report -> A: %ld, B: %ld, C: %ld\n",
                  count_a, count_b, count_c);
+    return 0;
 }
 
 // 监控任务：绝对的裁判
@@ -152,6 +153,7 @@ void kernel_init(void) {
 
     bus_init();                                                 //总线初始化
     ap_init();                                                  //初始化ap核
+
 
     while (1);
 }
