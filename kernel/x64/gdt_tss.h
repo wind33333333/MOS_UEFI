@@ -31,7 +31,7 @@ typedef struct {
 
     // x86_64 下 TSS 描述符强制占用 16 字节 (两个 8 字节槽位)
     uint64 tss_desc[2];        // 0x30 ~ 0x3F: TSS Descriptor
-} __attribute__((packed)) gdt_t;
+} gdt_t;
 
 typedef struct{
     uint16 limit;
