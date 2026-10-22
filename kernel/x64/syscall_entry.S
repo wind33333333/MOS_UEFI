@@ -11,8 +11,8 @@
 .set USER_CS, 0x2B                      // GDT 64位用户代码段 (RPL=3)
 
 // Per-CPU 结构体内部偏移 (通过 %gs: 寻址)
-.set KERNEL_STACK_TOP,     0x00      // 当前 CPU 的内核栈顶
-.set TMP_USER_RSP,         0x08      // 暂存用户栈指针的临时槽位
+.set KERNEL_STACK_TOP,     0x08      // 当前 CPU 的内核栈顶
+.set TMP_USER_RSP,         0x16      // 暂存用户栈指针的临时槽位
 
 .set ENOSYS, 38                         // -38 代表系统调用未实现
 
@@ -51,6 +51,7 @@ syscall_entry:
     // ---------------------------------------------------------
     // 5. 汇编层直接查表分发
     // ---------------------------------------------------------
+    cld
     cmpq $MAX_SYSCALL_NUM, %rax             // 检查系统调用号范围 (无符号比较)
     jae .Lsyscall_bad_num
 

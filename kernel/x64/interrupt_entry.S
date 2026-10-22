@@ -3,123 +3,205 @@
 .code64
 .section .text, "ax"
 
-# ========================================================
-# 1. 通用中断桩生成宏 (强制 16 字节边界先行对齐)
-# ========================================================
-.macro ISR_STUB_NOERR vec
-    .p2align 4
-    pushq $0                    # 补齐 dummy 错误码 (2 字节)
-    pushq $\vec                 # 压入中断号 (2~5 字节)
-    jmp interrupt_com_stub      # 跳转通用跳板 (5 字节)
+/* ========================================================================
+ * 现代微内核中断与异常总入口 (Interrupt & Exception Entry)
+ * 架构特性: 无中断嵌套 / 无脑切换 HardIRQ 栈 / 定长栅格 O(1) 路由
+ * ======================================================================== */
+
+.altmacro
+.section .text
+
+# ---------------------------------------------------------
+# 上下文保存与恢复宏
+# ---------------------------------------------------------
+.macro SAVE_ALL_REGS
+    pushq %r15; pushq %r14; pushq %r13; pushq %r12; pushq %r11
+    pushq %r10; pushq %r9;  pushq %r8;  pushq %rbp; pushq %rdi
+    pushq %rsi; pushq %rdx; pushq %rcx; pushq %rbx; pushq %rax
 .endm
 
-.macro ISR_STUB_ERR vec
+.macro RESTORE_ALL_REGS
+    popq %rax; popq %rbx; popq %rcx; popq %rdx; popq %rsi
+    popq %rdi; popq %rbp; popq %r8;  popq %r9;  popq %r10
+    popq %r11; popq %r12; popq %r13; popq %r14; popq %r15
+.endm
+
+# ---------------------------------------------------------
+# 栅格生成宏 (每个宏展开后严格占据 16 字节物理空间)
+# ---------------------------------------------------------
+
+/* 异常桩 - 无错误码 (自动补 0，跳向异常处理中枢) */
+.macro EXC_NOERR vector
+    .p2align 4                  /* 🌟 强制对齐到 16 字节边界，不足自动补 NOP */
+    pushq $0                    /* 填补 dummy Error Code (2 字节) */
+    pushq $\vector              /* 压入向量号 (2~5 字节) */
+    jmp exception_com_stub      /* 跳转到异常公共入口 (5 字节) */
+.endm
+
+/* 异常桩 - 有硬件错误码 (跳向异常处理中枢) */
+.macro EXC_ERR vector
     .p2align 4
-    pushq $\vec                 # 硬件已压入错误码，直接压中断号 (2~5 字节)
-    jmp interrupt_com_stub      # 跳转通用跳板 (5 字节)
+    pushq $\vector
+    jmp exception_com_stub
+.endm
+
+/* 硬件 IRQ 桩 (跳向外设中断处理中枢) */
+.macro IRQ_STUB vector
+    .p2align 4
+    pushq $0                    /* IRQ 无错误码，补 0 */
+    pushq $\vector
+    jmp irq_com_stub            /* 👉 跳转到 IRQ 专属公共入口 */
 .endm
 
 # ========================================================
-# 2. 256 个中断入口连续物理阵列 (纯基址导出)
+# 2. 定长栅格跳板阵列 (Fixed-Stride Array)
 # ========================================================
-.p2align 4
 .global interrupt_entry_base
+.p2align 4                      /* 确保整个基址起始于 16 字节对齐处 */
 interrupt_entry_base:
 
-# --- 0~31 CPU 异常区 ---
-ISR_STUB_NOERR 0    # #DE
-ISR_STUB_NOERR 1    # #DB
+/* --- 前 32 个：CPU 异常与陷阱 --- */
+EXC_NOERR 0     /* 0: #DE 除零异常 */
+EXC_NOERR 1     /* 1: #DB 调试异常 */
 
-# 向量 2 (NMI) 占满自己的 16 字节栅格，直接跳转独立 Paranoid 处理流程
+/* 2: NMI 专属通道。严格遵守 16 字节栅格，但跳向 Paranoid 入口 */
 .p2align 4
-jmp interrupt2_nmi_entry
+pushq $0        /* NMI 无错误码，补 0 */
+pushq $2        /* 压入向量号 2 */
+jmp nmi_entry   /* 👉 跳向 NMI 专属中枢 */
 
-ISR_STUB_NOERR 3    # #BP
-ISR_STUB_NOERR 4    # #OF
-ISR_STUB_NOERR 5    # #BR
-ISR_STUB_NOERR 6    # #UD
-ISR_STUB_NOERR 7    # #NM
-ISR_STUB_ERR   8    # #DF (双重错误)
-ISR_STUB_NOERR 9    # 协处理器段溢出
-ISR_STUB_ERR   10   # #TS
-ISR_STUB_ERR   11   # #NP
-ISR_STUB_ERR   12   # #SS
-ISR_STUB_ERR   13   # #GP
-ISR_STUB_ERR   14   # #PF (缺页异常)
-ISR_STUB_NOERR 15   # 保留
-ISR_STUB_NOERR 16   # #MF
-ISR_STUB_ERR   17   # #AC
-ISR_STUB_NOERR 18   # #MC
-ISR_STUB_NOERR 19   # #XM
-ISR_STUB_NOERR 20   # #VE
-ISR_STUB_ERR   21   # #CP (控制保护异常)
+EXC_NOERR 3     /* 3: #BP 断点 */
+EXC_NOERR 4     /* 4: #OF 溢出 */
+EXC_NOERR 5     /* 5: #BR 越界 */
+EXC_NOERR 6     /* 6: #UD 无效指令 */
+EXC_NOERR 7     /* 7: #NM 设备不可用 */
+EXC_ERR   8     /* 8: #DF 双重错误 (有 Error Code) */
+EXC_NOERR 9     /* 9: 协处理器段越界 */
+EXC_ERR   10    /* 10: #TS 无效 TSS */
+EXC_ERR   11    /* 11: #NP 段不存在 */
+EXC_ERR   12    /* 12: #SS 栈段错误 */
+EXC_ERR   13    /* 13: #GP 常规保护错误 */
+EXC_ERR   14    /* 14: #PF 缺页异常 */
+EXC_NOERR 15    /* 15: 保留 */
+EXC_NOERR 16    /* 16: #MF 浮点异常 */
+EXC_ERR   17    /* 17: #AC 对齐检查 */
+EXC_NOERR 18    /* 18: #MC 机器检查 */
+EXC_NOERR 19    /* 19: #XM SIMD 异常 */
+EXC_NOERR 20    /* 20: #VE 虚拟化异常 */
+EXC_ERR   21    /* 21: #CP 控制保护 */
 
-# 22 ~ 31 保留异常
-.altmacro
+/* 22 ~ 28 保留异常 (循环生成) */
 .set k, 22
-.rept 10
-    ISR_STUB_NOERR %k
+.rept 7
+    EXC_NOERR %k
     .set k, k + 1
 .endr
 
-# --- 32~255 外设硬件中断区 (全部无错误码) ---
+EXC_ERR   29    /* 29: #VC VMM 通信异常 */
+EXC_ERR   30    /* 30: #SX 安全异常 */
+EXC_NOERR 31    /* 31: 保留 */
+
+/* --- 32 ~ 255：外设硬件 IRQ 区 (循环生成) --- */
 .set i, 32
-.rept 256 - 32
-    ISR_STUB_NOERR %i
+.rept 224
+    IRQ_STUB %i
     .set i, i + 1
 .endr
 
 # ========================================================
-# 3. 通用中断跳板 (服务除 NMI 外的所有中断与异常)
+# 3. 三大核心处理中枢 (隔离执行流)
 # ========================================================
-.extern c_interrupt_dispatcher
 
-interrupt_com_stub:
-    # 检查进入前的特权级 (CS 位于 rsp + 24)
-    testb $3, 24(%rsp)
+# ---------------------------------------------------------
+# A. 异常中枢 (Exception): 不换栈，允许挂起/休眠
+# ---------------------------------------------------------
+.extern c_exception_dispatcher
+
+exception_com_stub:
+    testb $3, 24(%rsp)          # 检查被中断时的特权级
     jz 1f
-    swapgs                      # 来自 Ring 3，切入内核 GS
+    swapgs                      # 如果来自 Ring 3，切入内核 GS
 1:
-    SAVE_ALL_REGS               # 保存 15 个通用寄存器
+    SAVE_ALL_REGS
+    cld                         # 清除方向标志，保护 C 代码
 
-    cld                         # 🌟 防御：确保 DF=0，杜绝用户态 std 导致 C 库内存踩踏
-    movq %rsp, %rdi             # cpu_registers_t 结构体指针送入 RDI
-    call c_interrupt_dispatcher
+    movq %rsp, %rdi             # 参数 1: pt_regs* 传入
+    call c_exception_dispatcher # ⚠️ 直接在原线程栈运行，允许引发 IO 和休眠！
 
-    RESTORE_ALL_REGS            # 恢复 15 个通用寄存器
-    addq $16, %rsp              # 跨过 int_no 与 err_code (16 字节)
+    RESTORE_ALL_REGS
+    addq $16, %rsp              # 清理 vector 和 dummy error code
 
-    # 检查返回目标特权级 (CS 位于 rsp + 8)
     testb $3, 8(%rsp)
     jz 2f
-    swapgs                      # 即将还阳回 Ring 3，切回用户 GS
+    swapgs                      # 返回 Ring 3 前恢复 GS
 2:
-    iretq                       # 硬件原子恢复 RIP, CS, RFLAGS, RSP, SS
+    iretq
 
-# ========================================================
-# 4. NMI 专属存根 (Paranoid 64 位精准状态探测)
-# ========================================================
+# ---------------------------------------------------------
+# B. 硬件中断中枢 (Hardware IRQ): 无脑切换 HardIRQ 栈，绝对禁止休眠
+# ---------------------------------------------------------
+.extern c_irq_dispatcher
+.extern schedule
+.set HARDIRQ_RSP_TOP, 0         # 假设 Per-CPU 结构中 HardIRQ 栈顶位于 offset 0
+
+irq_com_stub:
+    testb $3, 24(%rsp)
+    jz 1f
+    swapgs
+1:
+    SAVE_ALL_REGS
+    cld
+
+    movq %rsp, %rdi             # 参数 1: 旧栈的 pt_regs*
+    movq %rsp, %rbx             # 借用 rbx 保存原线程栈指针
+
+    /* 👉 无脑切换 HardIRQ 栈 (极速，无分支) */
+    movq %gs:HARDIRQ_RSP_TOP, %rsp
+    andq $-16, %rsp             # 强制 16 字节对齐
+
+    call c_irq_dispatcher       # ⚠️ 专属栈运行，绝对禁止主动休眠！
+
+    movq %rbx, %rsp             # 恢复原线程栈
+
+    RESTORE_ALL_REGS
+    addq $16, %rsp
+
+    /* --- 抢占式调度拦截点 --- */
+    testb $3, 8(%rsp)           # 检查即将返回的特权级
+    jz 2f                       # 早期微内核: 返回 Ring 0 不抢占
+
+    /* 检查是否需要调度 (假设 need_resched 标志在当前 CPU 某个偏移，如 offset 8) */
+    # cmpl $1, %gs:8
+    # jne 3f
+    # call schedule             # 如果需要，执行上下文切换
+
+3:
+    swapgs
+2:
+    iretq
+
+# ---------------------------------------------------------
+# C. NMI 专属中枢 (Paranoid): 基于 rdgsbase 的精准探测，防嵌套死锁
+# ---------------------------------------------------------
 .extern do_nmi
 
-interrupt2_nmi_entry:
-    pushq $0                    # 补齐 dummy 错误码
-    pushq $2                    # 压入中断号 2
+nmi_entry:
+    /* 注意: NMI 的 dummy error code 和 vector 2 已经在跳板里压入了 */
     SAVE_ALL_REGS
+    cld
 
-    # 🌟 修正：使用 64 位 testq 精确检测 Bit 63 是否为高半区内核地址
+    /* 🌟 Paranoid 防御: 64 位精准检测 GS 归属，杜绝 `swapgs` 缝隙危机 */
     rdgsbase %rbx
-    testq %rbx, %rbx            # 检测全 64 位 GS_BASE 的符号位
-    js 1f                       # 若符号位为 1 (内核高半区)，跳过 swapgs
-    swapgs                      # 若为用户态低半区地址，切换到内核 GS
+    testq %rbx, %rbx            # 判断符号位: 负数(高半区) 为内核态
+    js 1f
+    swapgs                      # 符号位 0(低半区)，说明在用户态被打断，切换 GS
 1:
-    cld                         # 遵循 ABI 清除方向标志
     movq %rsp, %rdi
     call do_nmi
 
-    # 根据进入时记录的状态决定是否切回用户 GS
-    testq %rbx, %rbx
+    testq %rbx, %rbx            # 取出保存的 GS_BASE 再次验证
     js 2f
-    swapgs
+    swapgs                      # 恢复用户态 GS
 2:
     RESTORE_ALL_REGS
     addq $16, %rsp
