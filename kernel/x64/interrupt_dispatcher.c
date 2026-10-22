@@ -362,22 +362,22 @@ static irq_desc_t irq_table[256] = {0};
 /**
  * @brief 👑 C 语言大管家 (所有中断与异常的统一分发中心)
  */
-void c_interrupt_dispatcher(cpu_registers_t *regs) {
-    uint64 int_no = regs->no;
+void c_irq_dispatcher(cpu_registers_t *regs) {
+    uint64 irq_no = regs->no;
 
     // 1. O(1) 统一查表执行 (0~255)
-    irq_desc_t *irq_desc = &irq_table[int_no];
+    irq_desc_t *irq_desc = &irq_table[irq_no];
     if (irq_desc->handler != NULL) {
         irq_desc->handler(regs, irq_desc->dev_id);
     } else {
-        color_printk(YELLOW, BLACK, "Unhandled / Spurious Vector: %ld\n", int_no);
+        color_printk(YELLOW, BLACK, "Unhandled / Spurious Vector: %ld\n", irq_no);
     }
 
     // ==========================================
     // 2. 外部硬件中断专属收尾：发送 EOI
     // ==========================================
     // 🌟 核心分水岭：仅限外设硬件中断 (>= 32)，且排除 APIC 伪中断 (255)
-    if (int_no >= 32 && int_no != 255) {
+    if (irq_no >= 32 && irq_no != 255) {
         apic_send_eoi();
     }
 
