@@ -182,7 +182,7 @@ void clockevent_register(clockevent_t *ce) {
 }
 
 // 每个 CPU 核心从已注册的定时器池中自动绑定评分最高的一个
-void clockevent_init_per_cpu(void) {
+void clockevent_per_cpu_init(void) {
     clockevent_t *best = NULL;
     for (uint32 i = 0; i < g_ce_count; i++) {
         if (best == NULL || g_ce_list[i]->rating > best->rating) {

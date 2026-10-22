@@ -69,7 +69,7 @@
 #define APIC_IRR_223_192_MSR              0x826  // IRR位223:192
 #define APIC_IRR_255_224_MSR              0x827  // IRR位255:224
 
-// 中断屏蔽寄存器（TMR）
+// 触发模式寄存器
 #define APIC_TMR_31_0_MSR                 0x818  // TMR位31:0
 #define APIC_TMR_63_32_MSR                0x819  // TMR位63:32
 #define APIC_TMR_95_64_MSR                0x81A  // TMR位95:64

@@ -99,7 +99,7 @@ void tsc_deadline_init_hw(clockevent_t *ce) {
     // TSC-Deadline 模式极其纯粹：
     // 它【不需要】配置 APIC_DIVIDE_CONFIG_MSR (分频器被硬件无视)
     // 它【不需要】配置 APIC_INITIAL_COUNT_MSR (倒数器被硬件无视)
-    // 只需要把 LVT 设为 DEADLINE 模式，并放行 0x20 向量中断即可！
+    // 只需要把 LVT 设为 DEADLINE 模式！
     asm_wrmsr(APIC_LVT_TIMER_MSR, APIC_TSC_DEADLINE | g_sys_timer_vector);
 
 }

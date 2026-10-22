@@ -24,7 +24,7 @@ extern uint64 ap_boot_loader_address;
 
 uint64 cpu_featuer_mask =0;
 
-void apic_init_1(void) {
+static inline void apic_init(void) {
     uint64 value;
 
     //region APIC_BASE_MSR (MSR 0x1B)
@@ -56,9 +56,9 @@ void apic_init_1(void) {
     if (apic_version & (1 << 24)) {
         // 如果硬件支持，才敢把 Bit 12 置为 1！
         value |= 0x1000;
-        color_printk(GREEN, BLACK, "[APIC] EOI-Broadcast Suppression ENABLED.\n");
+        PR_INFO("[APIC] EOI-Broadcast Suppression ENABLED.\n");
     } else {
-        color_printk(YELLOW, BLACK, "[APIC] EOI-Broadcast Suppression NOT supported (VirtualBox?), skipped.\n");
+        PR_INFO("[APIC] EOI-Broadcast Suppression NOT supported.\n");
     }
     // ==========================================================
     // 3. 安全写入 SVR
@@ -72,7 +72,7 @@ void apic_init_1(void) {
     asm_wrmsr(APIC_LVT_THERMAL_SENSOR_MSR,0x10022);
 
     //性能计数器LVT寄存器 bit0-7中断号，bit8-10投递模式000 fixed, bit16屏蔽标志 0未屏蔽 1屏蔽
-    asm_wrmsr(APIC_LVT_PERF_COUNTER_MSR,0x10023);
+    asm_wrmsr(APIC_LVT_PERF_COUNTER_MSR,0x0);
 
     //本地中断LINT0寄存器 bit0-7中断号，bit8-10投递模式000 fixed, bit13电平触发极性0高电平触发 1低电平触发,bit15触发模式0边沿 1电平，bit16屏蔽标志 0未屏蔽 1屏蔽
     asm_wrmsr(APIC_LVT_LINT0_MSR,0x10024);
@@ -407,11 +407,13 @@ void cpu_load_resource(void){
     idtr.base = &idt;
     asm_lidt(&idtr);
 
+    apic_init();
+
     //初始化系统调用
     syscall_init();
 
     //设置核心定时器
-    clockevent_init_per_cpu();
+    clockevent_per_cpu_init();
 
     //配置队列
     per_run_sleep_queue_init();

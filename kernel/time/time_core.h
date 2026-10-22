@@ -72,7 +72,7 @@ static inline uint64 clocksource_get_active_freq(void) {
 }
 
 void reprogram_clockevent(uint64 target_ns);
-void    clockevent_init_per_cpu(void);
+void    clockevent_per_cpu_init(void);
 void    clockevent_register(clockevent_t *ce);
 boolean clockevent_switch_by_name(const char *name);
 
