@@ -22,7 +22,7 @@
     pushq %r13
     pushq %r14
     pushq %r15
-    cld
+    cld             #清除方向标志防止方向错误导致踩踏内核
 .endm
 
 .macro RESTORE_ALL_REGS
