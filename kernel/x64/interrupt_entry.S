@@ -3,20 +3,6 @@
 .code64
 .section .text, "ax"
 .altmacro
-# ---------------------------------------------------------
-# 上下文保存与恢复宏
-# ---------------------------------------------------------
-.macro SAVE_ALL_REGS
-    pushq %r15; pushq %r14; pushq %r13; pushq %r12; pushq %r11
-    pushq %r10; pushq %r9;  pushq %r8;  pushq %rbp; pushq %rdi
-    pushq %rsi; pushq %rdx; pushq %rcx; pushq %rbx; pushq %rax
-.endm
-
-.macro RESTORE_ALL_REGS
-    popq %rax; popq %rbx; popq %rcx; popq %rdx; popq %rsi
-    popq %rdi; popq %rbp; popq %r8;  popq %r9;  popq %r10
-    popq %r11; popq %r12; popq %r13; popq %r14; popq %r15
-.endm
 
 # ---------------------------------------------------------
 # 栅格生成宏 (每个宏展开后严格占据 16 字节物理空间)
@@ -115,7 +101,6 @@ exception_com_stub:
     swapgs                      # 如果来自 Ring 3，切入内核 GS
 1:
     SAVE_ALL_REGS
-    cld                         # 清除方向标志，保护 C 代码
 
     movq %rsp, %rdi             # 参数 1: pt_regs* 传入
     call c_exception_dispatcher # ⚠️ 直接在原线程栈运行，允许引发 IO 和休眠！
@@ -142,7 +127,6 @@ irq_com_stub:
     swapgs
 1:
     SAVE_ALL_REGS
-    cld
 
     movq %rsp, %rdi             # 参数 1: 旧栈的 pt_regs*
     movq %rsp, %rbx             # 借用 rbx 保存原线程栈指针
@@ -180,7 +164,6 @@ irq_com_stub:
 nmi_entry:
     /* 注意: NMI 的 dummy error code 和 vector 2 已经在跳板里压入了 */
     SAVE_ALL_REGS
-    cld
 
     /* 🌟 Paranoid 防御: 64 位精准检测 GS 归属，杜绝 `swapgs` 缝隙危机 */
     rdgsbase %rbx

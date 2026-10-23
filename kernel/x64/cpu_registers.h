@@ -22,6 +22,7 @@
     pushq %r13
     pushq %r14
     pushq %r15
+    cld
 .endm
 
 .macro RESTORE_ALL_REGS
