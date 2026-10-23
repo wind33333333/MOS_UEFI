@@ -118,7 +118,6 @@ exception_com_stub:
 # B. 硬件中断中枢 (Hardware IRQ): 无脑切换 HardIRQ 栈，绝对禁止休眠
 # ---------------------------------------------------------
 .extern c_irq_dispatcher
-.extern schedule
 .set HARDIRQ_RSP_TOP, 0         # 假设 Per-CPU 结构中 HardIRQ 栈顶位于 offset 0
 
 irq_com_stub:
