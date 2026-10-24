@@ -14,7 +14,7 @@ void ksleep_us(uint64 delay_us) {
 
     uint64 cur_ns = get_uptime_ns();
     task_t *cur_task = THIS_CPU->cur_task;
-    sleep_queue_t *sleep_queue = &this_cpu_ptr()->sleep_queue;
+    sleep_queue_t *sleep_queue = &this_cpu()->sleep_queue;
 
     // 1. 记账
     uint64 wake_ns = cur_ns + (delay_us * 1000ULL);

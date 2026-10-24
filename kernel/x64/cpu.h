@@ -105,6 +105,7 @@ typedef struct cpu_core_t {
     uint32          acpi_proc_id;         // 从顶部挪下来的冷数据：ACPI 处理器 ID
 
     irq_desc_t      irq_table[223];       //中断路由表 233 = 256-32异常（0-31）4-1个虚假中断（255号）
+    uint32          irq_lock;
 
     uint8           lint_nmi;             // 从顶部挪下来的冷数据：NMI 引脚号
 
@@ -117,14 +118,21 @@ typedef struct cpu_core_t {
 
 }cpu_core_t;
 
-extern cpu_core_t *cpu_cores;
-extern uint32 active_cpu_count;
+#define THIS_CPU ((cpu_core_t __seg_gs *)0) //通过gs直接访问cpu_core
 
-#define THIS_CPU ((cpu_core_t __seg_gs *)0) // 这里把 0 强制转换为一个基于 GS 的指针。因为 GS_BASE 已经指向了结构体首地址，所以偏移量为 0！
-
-static inline cpu_core_t* this_cpu_ptr(void) {
+//间接访问cpu_core
+static inline cpu_core_t* this_cpu(void) {
     return THIS_CPU->self;
 }
+
+
+extern cpu_core_t **cpu_cores;
+extern uint32 active_cpu_count;
+
+static inline cpu_core_t *cpu_lid_to_core(uint32 logical_id) {
+    return (logical_id < active_cpu_count) ? cpu_cores[logical_id] : NULL;
+}
+
 
 
 

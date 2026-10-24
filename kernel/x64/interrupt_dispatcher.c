@@ -336,6 +336,42 @@ RODATA __attribute__((aligned(4096))) const idt_t idt = {0};
 
 static exception_handler_f exception_table[32];
 
+int32 register_exception(int32 vector, exception_handler_f handler) {
+    if (vector < 0 || vector >= 32) return -EINVAL;
+
+    // 异常是内核初始化早期设定的，通常不需要复杂的锁和状态机
+    if (exception_table[vector] != NULL) {
+        PR_ERROR("Exception %d is already registered!\n", vector);
+        return -EBUSY;
+    }
+
+    exception_table[vector] = handler;
+    return 0;
+}
+
+/**
+ * @brief 卸载全局异常处理例程
+ * @param vector 异常向量号 (0 ~ 31)
+ */
+int32 unregister_exception(int32 vector) {
+    // 1. 严格的边界检查 (仅限 CPU 同步异常)
+    if (vector < 0 || vector >= 32) {
+        return -EINVAL;
+    }
+
+    // 2. 幂等性与安全性检查
+    if (exception_table[vector] == NULL) {
+        PR_ERROR("Exception %d is already NULL, nothing to unregister.\n", vector);
+        return -ENODEV;
+    }
+
+    // 3. 卸载：直接清空函数指针
+    // 异常是同步触发的，只要此时没有线程在故意触发该异常，直接置空即可
+    exception_table[vector] = NULL;
+
+    return 0;
+}
+
 //异常分发
 void c_exception_dispatcher(cpu_registers_t *regs) {
     exception_handler_f exception = exception_table[regs->no];
@@ -351,13 +387,13 @@ void c_exception_dispatcher(cpu_registers_t *regs) {
 //中断分发
 void c_irq_dispatcher(cpu_registers_t *regs) {
     // 1. 过滤虚假中断
-    if (regs->no == 255) return;
+    if (regs->no == APIC_SPURIOUS_VECTOR) return;
 
     // 2. 映射为 0~223 的索引
     uint64 irq_no = regs->no - 32;
 
     // 3. 🌟 O(1) 极速本地查表 (全程在本地 L1 Cache 内完成)
-    irq_desc_t *irq_desc = &this_cpu_ptr()->irq_table[irq_no];
+    irq_desc_t *irq_desc = &this_cpu()->irq_table[irq_no];
 
     if (irq_desc->handler != NULL) {
         // 传递 regs 和 驱动注册时的私有 dev_id (如网卡对象指针)
@@ -373,175 +409,230 @@ void c_irq_dispatcher(cpu_registers_t *regs) {
 
 
 /**
- * @brief 在已分配的向量上挂载具体的处理例程
- * @param vector   之前 alloc_irq_vector 借到的号码
- * @param handler  中断服务例程
- * @param dev_id   设备上下文
- * @param name     驱动标识名
+ * @brief 在指定 CPU 的向量上挂载具体的处理例程 (硬件中断专属)
+ * @param target_cpu_id 目标 CPU 的逻辑 ID
+ * @param vector        之前 alloc_irq_vector 借到的号码 (32~255)
+ * @param handler       中断服务例程
+ * @param dev_id        设备上下文
+ * @param name          驱动标识名
  */
-int32 register_isr(int32 vector, irq_handler_f handler, void *dev_id, const char *name) {
-    if (vector >= 256) return -EINVAL;
+int32 register_irq(uint32 target_cpu_id, int32 vector, irq_handler_f handler, void *dev_id, const char *name) {
+    // 1. 参数合法性校验
+    if (vector < 32 || vector >= 256 || target_cpu_id >= active_cpu_count) return -EINVAL;
 
-    if (vector >= 32) {
-        // ★ 防火墙 1：不准在没买过的地皮上盖房！
-        if (irq_table[vector].state == IRQ_STATE_FREE) {
-            PR_ERROR( "IRQ %d is NOT allocated!\n", vector);
-            return -EPERM;
+    // 2. 获取目标 CPU 的控制块指针 (核心：跨 CPU 寻址！)
+    cpu_core_t *target_cpu = cpu_lid_to_core(target_cpu_id);
+    if (!target_cpu) return -ENODEV;
+
+    // 3. 计算在 target_cpu->irq_table 中的实际索引 (0 ~ 223)
+    uint32 irq_index = vector - 32;
+
+    // 4. 🌟 跨核修改防护：获取目标 CPU 中断表的自旋锁 (保存中断状态)
+    uint64 flags;
+    spin_lock_irqsave(&target_cpu->irq_lock, &flags);
+
+    irq_desc_t *desc = &target_cpu->irq_table[irq_index];
+
+    // ★ 防火墙 1：不准在没买过的地皮上盖房！
+    if (desc->state == IRQ_STATE_FREE) {
+        spin_unlock_irqrestore(&target_cpu->irq_lock, flags);
+        PR_ERROR("CPU %u IRQ %d is NOT allocated!\n", target_cpu_id, vector);
+        return -EPERM;
+    }
+
+    // ★ 防火墙 2：不准在已经盖好房子的地皮上重复盖房！
+    if (desc->state == IRQ_STATE_REGISTERED) {
+        spin_unlock_irqrestore(&target_cpu->irq_lock, flags);
+        PR_ERROR("CPU %u IRQ %d is already registered to %s!\n", target_cpu_id, vector, desc->name);
+        return -EBUSY;
+    }
+
+    // 5. 状态推进：正式服役
+    desc->handler = handler;
+    desc->dev_id  = dev_id;
+    desc->name    = name;
+
+    desc->state = IRQ_STATE_REGISTERED;
+
+    // 6. 释放锁
+    spin_unlock_irqrestore(&target_cpu->irq_lock, flags);
+
+    return 0;
+}
+
+
+/**
+ * @brief 卸载特定 CPU 上的硬件中断处理例程
+ * @param target_cpu_id 目标 CPU 的逻辑 ID
+ * @param vector        要卸载的硬件中断号 (32 ~ 255)
+ * @param dev_id        设备上下文指针 (作为卸载的“私钥”安全凭证)
+ */
+int32 unregister_irq(uint32 target_cpu_id, int32 vector, void *dev_id) {
+    // 1. 参数合法性校验
+    if (vector < 32 || vector >= 256 || target_cpu_id >= active_cpu_count) return -EINVAL;
+
+    // 2. 获取目标 CPU 的控制块指针 (核心：跨 CPU 寻址！)
+    cpu_core_t *target_cpu = cpu_lid_to_core(target_cpu_id);
+    if (!target_cpu) return -ENODEV;
+
+    uint32 irq_index = vector - 32;
+    uint64 flags;
+
+    // 3. 🌟 跨核修改防护：获取目标 CPU 中断表的自旋锁，并关中断
+    spin_lock_irqsave(&target_cpu->irq_lock, &flags);
+
+    irq_desc_t *desc = &target_cpu->irq_table[irq_index];
+
+    // ★ 校验 1：确保这块地皮确实盖了房子
+    if (desc->state != IRQ_STATE_REGISTERED) {
+        spin_unlock_irqrestore(&target_cpu->irq_lock, flags);
+        PR_ERROR("CPU %u IRQ %d is not registered!\n", target_cpu_id, vector);
+        return -EINVAL;
+    }
+
+    // ★ 校验 2：安全凭证（dev_id）必须匹配！
+    // 杜绝恶意驱动 A 去强行卸载驱动 B 注册的中断
+    if (desc->dev_id != dev_id) {
+        spin_unlock_irqrestore(&target_cpu->irq_lock, flags);
+        PR_ERROR("Dev ID mismatch! You don't own CPU %u IRQ %d!\n", target_cpu_id, vector);
+        return -EPERM;
+    }
+
+    // 4. 🌟 极其讲究的卸载顺序 (配合无锁的 dispatcher)
+
+    // 步骤 A: 先修改状态为已分配未注册 (退回 Alloc 状态，地皮仍归该设备，但房子拆了)
+    desc->state = IRQ_STATE_ALLOCATED;
+
+    // 步骤 C: 清空关键的函数指针和设备上下文
+    // 由于 dispatcher 是先检查 handler != NULL 才调用，
+    // 哪怕此时刚好进来一个中断，也会走到 "Unhandled Vector" 分支，而不会调用空指针。
+    desc->handler = NULL;
+    desc->dev_id  = NULL;
+    desc->name    = NULL;
+
+    // 5. 释放锁
+    spin_unlock_irqrestore(&target_cpu->irq_lock, flags);
+
+    return 0;
+}
+
+
+/**
+ * @brief 在目标 CPU 上动态分配连续的中断向量 (支持 MSI 硬件对齐)
+ * @param target_cpu_id 目标 CPU 逻辑 ID
+ * @param count         需要的连续向量个数 (MSI 通常为 1, 2, 4, 8, 16, 32)
+ * @param align         首向量对齐要求 (通常与 count 相等，填 1 则不对齐)
+ * @param strategy      分配策略 (高速设备优先占用高编号)
+ * @return 成功返回分配到的首个向量号 (Base Vector)；失败返回负数错误码
+ */
+int32 alloc_irq_vector(uint32 target_cpu_id, uint32 count, uint32 align, irq_alloc_strategy_t strategy) {
+    if (count == 0 || align == 0 || target_cpu_id >= active_cpu_count) return -EINVAL;
+
+    cpu_core_t *target_cpu = cpu_lid_to_core(target_cpu_id);
+    if (!target_cpu) return -ENODEV;
+
+    int32 allocated_base = -1;
+    uint64 flags;
+
+    // 🌟 跨核分配防护：必须获取目标 CPU 的 IRQ 表锁
+    spin_lock_irqsave(&target_cpu->irq_lock, &flags);
+
+    if (strategy == IRQ_ALLOC_HIGH_SPEED) {
+        // --- 策略 1：高速设备 (Top-Down 向下查找) ---
+        // 比如从 0xDF 开始往下找，优先赋予高硬件优先级
+        for (int32 v = IRQ_DYNAMIC_FAST_LIMIT - count + 1; v >= IRQ_DYNAMIC_LOW_BASE; v--) {
+            if (v % align != 0) continue; // 满足 MSI 的 2^N 对齐要求
+
+            // 检查这连续的 count 个位置是否全为 FREE
+            boolean available = TRUE;
+            for (uint32 i = 0; i < count; i++) {
+                if (target_cpu->irq_table[(v + i) - 32].state != IRQ_STATE_FREE) {
+                    available = FALSE;
+                    break;
+                }
+            }
+
+            if (available) {
+                allocated_base = v;
+                break;
+            }
+        }
+    } else {
+        // --- 策略 2：低速设备 (Bottom-Up 向上查找) ---
+        for (int32 v = IRQ_DYNAMIC_LOW_BASE; v <= IRQ_DYNAMIC_FAST_LIMIT - count + 1; v++) {
+            if (v % align != 0) continue;
+
+            boolean available = TRUE;
+            for (uint32 i = 0; i < count; i++) {
+                if (target_cpu->irq_table[(v + i) - 32].state != IRQ_STATE_FREE) {
+                    available = FALSE;
+                    break;
+                }
+            }
+
+            if (available) {
+                allocated_base = v;
+                break;
+            }
+        }
+    }
+
+    // 如果找到了合适的连续区间，推进状态
+    if (allocated_base != -1) {
+        for (uint32 i = 0; i < count; i++) {
+            // 状态变为 ALLOCATED（已被地主买下，但还没调用 register_irq 盖房子）
+            target_cpu->irq_table[(allocated_base + i) - 32].state = IRQ_STATE_ALLOCATED;
+        }
+    }
+
+    spin_unlock_irqrestore(&target_cpu->irq_lock, flags);
+
+    return (allocated_base != -1) ? allocated_base : -ENOSPC; // 空间不足
+}
+
+/**
+ * @brief 释放目标 CPU 上的中断向量 (归还到资源池)
+ * @param target_cpu_id 目标 CPU 逻辑 ID
+ * @param base_vector   要释放的首向量号
+ * @param count         连续释放的个数
+ */
+int32 free_irq_vector(uint32 target_cpu_id, int32 base_vector, uint32 count) {
+    if (count == 0 || base_vector < IRQ_DYNAMIC_LOW_BASE ||
+        (base_vector + count - 1 > IRQ_DYNAMIC_FAST_LIMIT) ||
+        target_cpu_id >= active_cpu_count) {
+        return -EINVAL;
         }
 
-        // ★ 防火墙 2：不准在已经盖好房子的地皮上重复盖房！
-        if (irq_table[vector].state == IRQ_STATE_REGISTERED) {
-            PR_ERROR( "IRQ %d is already registered to %s!\n", vector, irq_table[vector].name);
+    cpu_core_t *target_cpu = cpu_lid_to_core(target_cpu_id);
+    if (!target_cpu) return -ENODEV;
+
+    uint64 flags;
+    spin_lock_irqsave(&target_cpu->irq_lock, &flags);
+
+    // 严格安全校验：确保要释放的向量当前处于 ALLOCATED 状态
+    // 如果处于 REGISTERED 状态，说明驱动还没调用 unregister_irq 卸载函数！
+    for (uint32 i = 0; i < count; i++) {
+        irq_desc_t *desc = &target_cpu->irq_table[(base_vector + i) - 32];
+        if (desc->state == IRQ_STATE_REGISTERED) {
+            spin_unlock_irqrestore(&target_cpu->irq_lock, flags);
+            PR_ERROR("CPU %u Vector %d is still REGISTERED! Call unregister_irq first.\n",
+                     target_cpu_id, base_vector + i);
             return -EBUSY;
         }
     }
 
-    // 状态推进：正式服役
-    irq_table[vector].state = IRQ_STATE_REGISTERED;
-    irq_table[vector].handler = handler;
-    irq_table[vector].dev_id = dev_id;
-    irq_table[vector].name = name;
+    // 安全通过，彻底清空并归还状态
+    for (uint32 i = 0; i < count; i++) {
+        irq_desc_t *desc = &target_cpu->irq_table[(base_vector + i) - 32];
+        desc->handler = NULL;
+        desc->dev_id  = NULL;
+        desc->name    = NULL;
+        desc->state = IRQ_STATE_FREE;
+    }
 
+    spin_unlock_irqrestore(&target_cpu->irq_lock, flags);
     return 0;
 }
-
-/**
- * @brief 注销中断服务例程 (拆除业务，但保留向量分配状态)
- * @param vector 要注销的中断向量号
- * @return 0 成功，负数表示失败
- */
-int32 unregister_isr(int32 vector) {
-    // 1. 基础物理边界防御
-    if (vector < 32 || vector >= 256) return -EINVAL;
-
-    // ★ 防火墙 1：防误杀！如果是一块连地皮都没买过的空地，直接报错
-    if (irq_table[vector].state == IRQ_STATE_FREE) {
-        PR_ERROR( "IRQ %d is completely free, nothing to unregister!\n", vector);
-        return -EPERM;
-    }
-
-    // ★ 防火墙 2：防空拆！如果这块地只是买下来了，还没盖房子，也不需要拆
-    if (irq_table[vector].state == IRQ_STATE_ALLOCATED) {
-        color_printk(YELLOW, BLACK, "IRQ %d is allocated but no ISR registered.\n", vector);
-        return 0; // 某种意义上不算致命错误，可以直接返回成功或特定警告码
-    }
-
-    // 2. 状态倒退：正式退役 (REGISTERED -> ALLOCATED)
-    // 核心架构思想：仅仅是拆掉业务逻辑，坑位（Vector）依然归当前设备所有！
-    irq_table[vector].state = IRQ_STATE_ALLOCATED;
-
-    // 3. 清理残留指针，防止大管家 (Dispatcher) 误调引发野指针蓝屏
-    irq_table[vector].handler = NULL;
-    irq_table[vector].dev_id  = NULL;
-    irq_table[vector].name    = NULL; // 配合你的指针设计，直接置空
-
-    return 0;
-}
-
-/**
- * @brief 分配连续且对齐的中断向量 (专供纯 MSI 多消息使用)
- * @param count            申请的数量 (必须是 2 的幂：1, 2, 4, 8, 16, 32)
- * @param out_base_vector  [输出] 成功时写入基准向量号
- * @return 0 成功，负数失败
- */
-int32 alloc_contiguous_irq(uint8 count) {
-    if (count == 0 || count > 32) return -EINVAL;
-    
-    // 确保 count 是 2 的整数次幂 (位运算魔法)
-    if ((count & (count - 1)) != 0) return -EINVAL;
-
-    // 从 32 开始找，直到 255 - count
-    for (int32 i = 32; i <= 256 - count; i++) {
-        
-        // ★ 核心物理铁律：基准向量必须向 count 对齐！
-        // 如果 count = 4，基准向量必须是 40, 44, 48...
-        if ((i % count) != 0) {
-            continue; 
-        }
-
-        // 检查这连续的 count 个位置是否全都是 FREE
-        boolean all_free = TRUE;
-        for (uint8 j = 0; j < count; j++) {
-            if (irq_table[i + j].state != IRQ_STATE_FREE) {
-                all_free = FALSE;
-                break;
-            }
-        }
-
-        // 如果找到了这块完美的“风水宝地”
-        if (all_free) {
-            // 批量占坑
-            for (uint8 j = 0; j < count; j++) {
-                irq_table[i + j].state = IRQ_STATE_ALLOCATED;
-            }
-            return i; // 成功
-        }
-    }
-
-    return -ENOSPC; // 碎片化太严重，找不到连续对齐的空间了
-}
-
-/**
- * @brief 释放连续的中断向量 (归还给中断池)
- * @param base_vector  之前分配得到的基准向量号 (起始号)
- * @param count        当初申请的数量 (2, 4, 8, 16, 32)
- */
-void free_contiguous_irq(uint8 base_vector, uint8 count) {
-    // 1. 基础物理边界检查
-    if (base_vector < 32 || (uint16)base_vector + count > 256) {
-        PR_ERROR( "IRQ: Attempt to free invalid vector range [%d, %d)\n",
-                     base_vector, base_vector + count);
-        return;
-    }
-
-    // 2. 逐个抹除状态，回归池中
-    for (uint8 i = 0; i < count; i++) {
-        uint8 v = base_vector + i;
-
-        // 如果这里已经是 FREE 状态，说明驱动程序逻辑有误（重复释放）
-        if (irq_table[v].state == IRQ_STATE_FREE) {
-            color_printk(YELLOW, BLACK, "Warning: IRQ %d is already FREE!\n", v);
-            continue;
-        }
-
-        // ★ 核心：执行彻底的状态回退
-        irq_table[v].state   = IRQ_STATE_FREE;
-        irq_table[v].handler = NULL;
-        irq_table[v].dev_id  = NULL;
-        irq_table[v].name = NULL; // 清空深拷贝的名称
-    }
-
-    // 此时这块连续的 Vector 空间已经可以被下一个 MSI 设备重新申请了
-}
-
-/**
- * @brief 分配一个空闲的中断向量号 (不挂载业务)
- * @return 成功返回 Vector 号 (32~255)，失败返回 -EAGAIN
- */
-int32 alloc_irq(void) {
-    // 32开始找
-    for (int32 i = 32; i < 256; i++) {
-        if (irq_table[i].state == IRQ_STATE_FREE) {
-            irq_table[i].state = IRQ_STATE_ALLOCATED; // 👑 先占坑，宣示主权
-            return i;
-        }
-    }
-    return -EAGAIN; // 向量资源池枯竭
-}
-
-/**
- * @brief 释放中断向量
- */
-void free_irq(int32 vector) {
-    if (vector >= 32) {
-        irq_table[vector].state = IRQ_STATE_FREE;
-        irq_table[vector].handler = NULL;
-        irq_table[vector].dev_id = NULL;
-        irq_table[vector].name = NULL;
-    }
-}
-
-
 
 
 

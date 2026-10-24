@@ -2,6 +2,49 @@
 #include "../x64/cpu_registers.h"
 #include "../include/moslib.h"
 
+
+// ==========================================
+// 1. CPU 架构保留区 (0x00 - 0x1F)
+// ==========================================
+// 0x00 ~ 0x1F 严禁被外设或软件占用，由硬件异常独占。
+
+// ==========================================
+// 2. 传统 ISA 与低速设备区 (0x20 - 0x2F) [Priority 2]
+// ==========================================
+// 即便在 UEFI 和纯 64 位下，IOAPIC 依然可能会把主板上残存的
+// 8254 定时器、PS/2 键盘模拟、串口等映射到前 16 个引脚。
+#define IRQ_ISA_BASE                0x20 // IOAPIC 默认 ISA 映射起点
+
+// ==========================================
+// 3. 现代设备动态分配池 (0x30 - 0xDF) [Priority 3 ~ 13]
+// ==========================================
+// - 低速设备 (USB 鼠标/键盘, 触摸板, 声卡)：从 0x30 往上分配 (Bottom-Up)
+// - 高速设备 (NVMe 固态, 10G/40G 万兆网卡, GPU)：从 0xDF 往下分配 (Top-Down)
+#define IRQ_DYNAMIC_LOW_BASE        0x30
+#define IRQ_DYNAMIC_FAST_LIMIT      0xDF
+
+// ==========================================
+// 4. Local APIC 本地核心控制区 (0xE0 - 0xEF) [Priority 14]
+// ==========================================
+// 这些中断不是外设发出的，而是 CPU 内部的 Local APIC 硬件自己产生的。
+#define APIC_CMCI_VECTOR            0xEB // Corrected Machine Check (内存可纠正错误告警)
+#define APIC_PMU_VECTOR             0xEC // 性能监控计数器溢出 (用于内核 Profiling/火焰图)
+#define APIC_ERROR_VECTOR           0xED // APIC 自身硬件校验错误
+#define APIC_THERMAL_VECTOR         0xEE // CPU 温度过热降频警告
+#define APIC_TIMER_VECTOR           0xEF // APIC 本地时钟中断 (驱动当前 CPU 的线程调度器)
+
+// ==========================================
+// 5. SMP 核间中断 (IPI) 与最高权限区 (0xF0 - 0xFF) [Priority 15]
+// ==========================================
+// 整个系统最紧急的事件，一旦发生，必须以最快速度被硬件选中投递。
+#define IPI_GENERIC_CALL            0xFA // 泛型核间调用 (让其他核执行特定的 C 函数，用于软中断/RCU)
+#define IPI_RESCHEDULE              0xFB // 调度器 IPI：强制其他核心立即触发线程调度
+#define IPI_TLB_SHOOTDOWN           0xFC // TLB 击落：命令其他核心使特定的页表缓存失效
+#define IPI_CRASH_DUMP              0xFD // 崩溃转储：一个核 Panic 了，命令其他核冻结并保存寄存器
+#define IPI_HALT                    0xFE // 停机命令：全系统致命崩溃，强制其他所有 CPU 无条件执行 hlt
+#define APIC_SPURIOUS_VECTOR        0xFF // 虚假中断 (Intel 规范建议使用 0xFF)
+
+
 // 门类型宏定义
 #define IDT_INTERRUPT_DESC 0x8E // P=1, DPL=0, Type=E (硬件中断，自动关 IF)
 #define IDT_TRAP_DESC      0x8F // P=1, DPL=0, Type=F (异常陷阱，不关 IF)
@@ -96,11 +139,15 @@ typedef struct {
 } irq_desc_t;
 
 
-// 对外暴露的 API
-int32 alloc_contiguous_irq(uint8 count);
-void free_contiguous_irq(uint8 base_vector, uint8 count);
-int32 alloc_irq(void);
-void free_irq(int32 vector);
-int32 register_isr(int32 vector, irq_handler_f handler, void *dev_id, const char *name);
-int32 unregister_isr(int32 vector);
+typedef enum {
+    IRQ_ALLOC_LOW_SPEED,   // 低速设备：从 0x30 开始 Bottom-Up 查找
+    IRQ_ALLOC_HIGH_SPEED   // 高速设备：从 0xDF 开始 Top-Down 查找
+} irq_alloc_strategy_t;
+
+int32 alloc_irq_vector(uint32 target_cpu_id, uint32 count, uint32 align, irq_alloc_strategy_t strategy);
+int32 free_irq_vector(uint32 target_cpu_id, int32 base_vector, uint32 count) ;
+
+int32 register_irq(uint32 target_cpu_id, int32 vector, irq_handler_f handler, void *dev_id, const char *name);
+int32 unregister_irq(uint32 target_cpu_id, int32 vector, void *dev_id);
+
 void idt_init(void);
