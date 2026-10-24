@@ -154,3 +154,4 @@ int32 register_exception(int32 vector, exception_handler_f handler);
 int32 unregister_exception(int32 vector);
 
 void idt_init(void);
+void tmp_exception_init();

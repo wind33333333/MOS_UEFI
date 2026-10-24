@@ -21,31 +21,6 @@ static inline void idt_set_descriptor(uint8 vector , uint8 attributes, uint8 ist
     desc->reserved         = 0; // 必须为 0
 }
 
-static inline void exception_init() {
-    register_exception(0,do_divide_error);
-    register_exception(1,do_debug);
-    //2号 NMI: 不可屏蔽中断 (Non-Maskable Interrupt)，单独的中断入口
-    register_exception(3,do_int3);
-    register_exception(4,do_overflow);
-    register_exception(5,do_bounds);
-    register_exception(6,do_undefined_opcode);
-    register_exception(7,do_dev_not_available);
-    register_exception(8,do_double_fault);
-    register_exception(9,do_coprocessor_segment_overrun);
-    register_exception(10,do_invalid_tss);
-    register_exception(11,do_segment_not_present);
-    register_exception(12,do_stack_segment_fault);
-    register_exception(13,do_general_protection);
-    register_exception(14,do_page_fault);
-    //15保留
-    register_exception(16,do_x87_FPU_error);
-    register_exception(17,do_alignment_check);
-    register_exception(18,do_machine_check);
-    register_exception(19,do_SIMD_exception);
-    register_exception(20,do_virtualization_exception);
-    // [21] - [31] 为 Intel 保留异常或较新的硬件异常 (如 21号 #CP 控制保护异常)，默认初始化为 NULL
-}
-
 
 /**
  * @brief 初始化临时中断系统 (在内核早期初始化时调用)
@@ -73,10 +48,34 @@ void idt_init(void) {
     idtr.base = &idt;
     asm_lidt(&idtr);
 
-    exception_init();   //配置前32个异常
-
     // 打开 CPU 全局中断标志
     asm_sti();
 
     PR_OK("IDT Initialized with 256 vectors.\n");
+}
+
+void tmp_exception_init() {
+    register_exception(0,do_divide_error);
+    register_exception(1,do_debug);
+    //2号 NMI: 不可屏蔽中断 (Non-Maskable Interrupt)，单独的中断入口
+    register_exception(3,do_int3);
+    register_exception(4,do_overflow);
+    register_exception(5,do_bounds);
+    register_exception(6,do_undefined_opcode);
+    register_exception(7,do_dev_not_available);
+    register_exception(8,do_double_fault);
+    register_exception(9,do_coprocessor_segment_overrun);
+    register_exception(10,do_invalid_tss);
+    register_exception(11,do_segment_not_present);
+    register_exception(12,do_stack_segment_fault);
+    register_exception(13,do_general_protection);
+    register_exception(14,do_page_fault);
+    //15保留
+    register_exception(16,do_x87_FPU_error);
+    register_exception(17,do_alignment_check);
+    register_exception(18,do_machine_check);
+    register_exception(19,do_SIMD_exception);
+    register_exception(20,do_virtualization_exception);
+    // [21] - [31] 为 Intel 保留异常或较新的硬件异常 (如 21号 #CP 控制保护异常)，默认初始化为 NULL
+    PR_INFO("0-32 Temporary Exception Init Success!\n");
 }
