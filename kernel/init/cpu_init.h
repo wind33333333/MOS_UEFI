@@ -3,16 +3,26 @@
 #include "../x64/msr.h"
 #include "../x64/cpu.h"
 
+// 定义一个极其轻量级的硬件拓扑描述符
+typedef struct {
+    uint32 apic_id;
+    uint32 acpi_proc_id;
+    uint32 logical_id;
+    uint32 numa_node;     // 后续通过解析 SRAT 表填入
+    boolean is_present;
+} cpu_hw_info_t;
+
+
 static inline void set_gs_base(uint32 logical_id) {
-    cpu_core_t *cpu_core = cpu_cores[logical_id];
-    asm_wrgsbase(cpu_core);
+    per_cpu_t *per_cpu = cpu_info.per_cpus[logical_id];
+    asm_wrgsbase(per_cpu);
     asm_wrmsr(KERNEL_GS_BASE_MSR,0);
 }
 
 // 根据物理 APIC ID 反查逻辑 ID（仅在启动期解析 SRAT 等冷路径调用）
-static inline uint32 get_logical_id_by_apic(uint32 apic_id) {
-    for (uint32 i = 0; i < active_cpu_count; i++) {
-        if (cpu_cores[i]->apic_id == apic_id) {
+static inline uint32 get_lid_by_apic(uint32 apic_id) {
+    for (uint32 i = 0; i < cpu_info.run_cpu_count; i++) {
+        if (cpu_info.per_cpus[i]->apic_id == apic_id) {
             return i; // 找到了对应的逻辑编号
         }
     }

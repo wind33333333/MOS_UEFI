@@ -22,6 +22,8 @@ extern uint64* ap_tmp_pml4t_ptr;
 extern uint32 *apic_id_table_ptr;
 extern uint64 ap_boot_loader_address;
 
+cpu_hw_info_t **cpu_hw_info;
+
 uint64 cpu_featuer_mask =0;
 
 static inline void apic_init(void) {
@@ -300,42 +302,42 @@ static inline void get_cpu_info(void) {
     uint32 max_basic_leaf = 0, max_ext_leaf = 0;
     uint32 ebx, ecx, edx;
 
-    cpu_core_t *core = cpu_cores[THIS_CPU->logical_id];
+    per_cpu_t *per_cpu = THIS_CPU->self;
 
     // 1. 获取厂商名称 & max_basic_leaf
     asm_cpuid(0, &max_basic_leaf,
-                 (uint32 *)&core->manufacturer_name[0],
-                 (uint32 *)&core->manufacturer_name[8],
-                 (uint32 *)&core->manufacturer_name[4]);
-    core->manufacturer_name[12] = '\0';
+                 (uint32 *)&per_cpu->manufacturer_name[0],
+                 (uint32 *)&per_cpu->manufacturer_name[8],
+                 (uint32 *)&per_cpu->manufacturer_name[4]);
+    per_cpu->manufacturer_name[12] = '\0';
 
     // 2. 获取 CPU 型号字符串
     asm_cpuid(0x80000000, &max_ext_leaf, &ebx, &ecx, &edx);
     if (max_ext_leaf >= 0x80000004) {
-        asm_cpuid(0x80000002, (uint32 *)&core->model_name[0],  (uint32 *)&core->model_name[4],
-                              (uint32 *)&core->model_name[8],  (uint32 *)&core->model_name[12]);
-        asm_cpuid(0x80000003, (uint32 *)&core->model_name[16], (uint32 *)&core->model_name[20],
-                              (uint32 *)&core->model_name[24], (uint32 *)&core->model_name[28]);
-        asm_cpuid(0x80000004, (uint32 *)&core->model_name[32], (uint32 *)&core->model_name[36],
-                              (uint32 *)&core->model_name[40], (uint32 *)&core->model_name[44]);
-        core->model_name[48] = '\0';
+        asm_cpuid(0x80000002, (uint32 *)&per_cpu->model_name[0],  (uint32 *)&per_cpu->model_name[4],
+                              (uint32 *)&per_cpu->model_name[8],  (uint32 *)&per_cpu->model_name[12]);
+        asm_cpuid(0x80000003, (uint32 *)&per_cpu->model_name[16], (uint32 *)&per_cpu->model_name[20],
+                              (uint32 *)&per_cpu->model_name[24], (uint32 *)&per_cpu->model_name[28]);
+        asm_cpuid(0x80000004, (uint32 *)&per_cpu->model_name[32], (uint32 *)&per_cpu->model_name[36],
+                              (uint32 *)&per_cpu->model_name[40], (uint32 *)&per_cpu->model_name[44]);
+        per_cpu->model_name[48] = '\0';
     } else {
-        core->model_name[0] = '\0';
+        per_cpu->model_name[0] = '\0';
     }
 
     // 3. 获取处理器标称频率 (Intel 走 0x16，AMD 走 P-State 0 MSR)
     if (max_basic_leaf >= 0x16) {
-        asm_cpuid(0x16, &core->fundamental_mhz, &core->maximum_mhz, &core->bus_mhz, &edx);
+        asm_cpuid(0x16, &per_cpu->fundamental_mhz, &per_cpu->maximum_mhz, &per_cpu->bus_mhz, &edx);
     } else {
-        core->fundamental_mhz = 0;
-        core->maximum_mhz     = 0;
-        core->bus_mhz         = 0;
+        per_cpu->fundamental_mhz = 0;
+        per_cpu->maximum_mhz     = 0;
+        per_cpu->bus_mhz         = 0;
     }
 
-    if (core->fundamental_mhz == 0 && core->manufacturer_name[0] == 'A') {
-        core->fundamental_mhz = amd_get_pstate0_mhz();
-        core->maximum_mhz     = core->fundamental_mhz;
-        core->bus_mhz         = (core->fundamental_mhz != 0) ? 100 : 0;
+    if (per_cpu->fundamental_mhz == 0 && per_cpu->manufacturer_name[0] == 'A') {
+        per_cpu->fundamental_mhz = amd_get_pstate0_mhz();
+        per_cpu->maximum_mhz     = per_cpu->fundamental_mhz;
+        per_cpu->bus_mhz         = (per_cpu->fundamental_mhz != 0) ? 100 : 0;
     }
 
 }
@@ -347,8 +349,6 @@ static inline void per_run_sleep_queue_init() {
     idle->flags = TIF_NEED_RESCHED;
     idle->weight = NICE_0_LOAD;
 
-    cpu_core_t *cpu_core = &cpu_cores[THIS_CPU->logical_id];
-    THIS_CPU->self = cpu_core;
     THIS_CPU->idle_task = idle;
     THIS_CPU->cur_task = idle;
     THIS_CPU->run_queue.vtime = 0;
@@ -390,7 +390,7 @@ static inline void syscall_init(void) {
 
 void cpu_load_resource(void){
     uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
-    uint32 logical_id = get_logical_id_by_apic(apic_id);
+    uint32 logical_id = get_lid_by_apic(apic_id);
 
     set_gs_base(logical_id);                                 //设置bsp核gs基地址
 
@@ -422,7 +422,7 @@ void cpu_load_resource(void){
 }
 
 void cpu_alloc_resources(void) {
-    for (uint32 i=0;i < active_cpu_count;i++) {
+    for (uint32 i=0;i < cpu_info.run_cpu_count;i++) {
         gdt_tss_init(i);
     }
 }

@@ -421,7 +421,7 @@ int32 register_irq(uint32 target_cpu_id, int32 vector, irq_handler_f handler, vo
     if (vector < 32 || vector >= 256 || target_cpu_id >= active_cpu_count) return -EINVAL;
 
     // 2. 获取目标 CPU 的控制块指针 (核心：跨 CPU 寻址！)
-    cpu_core_t *target_cpu = cpu_lid_to_core(target_cpu_id);
+    per_cpu_t *target_cpu = get_lid_by_per_cpu(target_cpu_id);
     if (!target_cpu) return -ENODEV;
 
     // 3. 计算在 target_cpu->irq_table 中的实际索引 (0 ~ 223)
@@ -472,7 +472,7 @@ int32 unregister_irq(uint32 target_cpu_id, int32 vector, void *dev_id) {
     if (vector < 32 || vector >= 256 || target_cpu_id >= active_cpu_count) return -EINVAL;
 
     // 2. 获取目标 CPU 的控制块指针 (核心：跨 CPU 寻址！)
-    cpu_core_t *target_cpu = cpu_lid_to_core(target_cpu_id);
+    per_cpu_t *target_cpu = get_lid_by_per_cpu(target_cpu_id);
     if (!target_cpu) return -ENODEV;
 
     uint32 irq_index = vector - 32;
@@ -528,7 +528,7 @@ int32 unregister_irq(uint32 target_cpu_id, int32 vector, void *dev_id) {
 int32 alloc_irq_vector(uint32 target_cpu_id, uint32 count, uint32 align, irq_alloc_strategy_t strategy) {
     if (count == 0 || align == 0 || target_cpu_id >= active_cpu_count) return -EINVAL;
 
-    cpu_core_t *target_cpu = cpu_lid_to_core(target_cpu_id);
+    per_cpu_t *target_cpu = get_lid_by_per_cpu(target_cpu_id);
     if (!target_cpu) return -ENODEV;
 
     int32 allocated_base = -1;
@@ -605,7 +605,7 @@ int32 free_irq_vector(uint32 target_cpu_id, int32 base_vector, uint32 count) {
         return -EINVAL;
         }
 
-    cpu_core_t *target_cpu = cpu_lid_to_core(target_cpu_id);
+    per_cpu_t *target_cpu = get_lid_by_per_cpu(target_cpu_id);
     if (!target_cpu) return -ENODEV;
 
     uint64 flags;

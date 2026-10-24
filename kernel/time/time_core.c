@@ -143,7 +143,7 @@ void reprogram_clockevent(uint64 target_ns) {
 // 运行时动态切换当前 CPU 核心的硬件定时器 (不断档交接闹钟！)
 // =========================================================================
 boolean clockevent_switch(clockevent_t *new_ce) {
-    cpu_core_t *core = &cpu_cores[THIS_CPU->logical_id];
+    per_cpu_t *core = &cpu_cores_ptr[THIS_CPU->logical_id];
     if (new_ce == NULL || new_ce == core->active_ce) {
         return FALSE;
     }

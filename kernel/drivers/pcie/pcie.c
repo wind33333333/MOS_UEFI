@@ -323,7 +323,7 @@ int32 pcie_enable_irq(pcie_dev_t *pdev) {
 
         // 1. 🌟 提取目标 CPU 的 APIC ID
         uint32 target_cpu = pdev->cpu_vectors[0].cpu_id;
-        uint32 apic_id    = cpu_lid_to_core(target_cpu)->apic_id; // 需确保 cpu_core 结构体里有 apic_id
+        uint32 apic_id    = get_lid_by_per_cpu(target_cpu)->apic_id; // 需确保 cpu_core 结构体里有 apic_id
 
         // 2. 🌟 动态生成 Address 和获取 Vector
         msi->msg_addr_lo = build_msi_address(apic_id);
@@ -359,7 +359,7 @@ int32 pcie_enable_irq(pcie_dev_t *pdev) {
         for (int i = 0; i < pdev->allocated_vectors; i++) {
             // 1. 🌟 逐个提取每个队列的目标 CPU 的 APIC ID
             uint32 target_cpu = pdev->cpu_vectors[i].cpu_id;
-            uint32 apic_id    = cpu_lid_to_core(target_cpu)->apic_id;
+            uint32 apic_id    = get_lid_by_per_cpu(target_cpu)->apic_id;
             uint32 vector     = pdev->cpu_vectors[i].vector;
 
             // 2. 🌟 硬件编程：分别指引这 N 个队列走向不同的 CPU！
