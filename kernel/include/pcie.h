@@ -6,8 +6,8 @@
 
 #pragma pack(push,1)
 
-// x86 架构下的 Local APIC MSI 魔法地址
-#define X86_MSI_ADDRESS 0xFEE00000
+// x86 MSI 的基地址魔法字
+#define X86_MSI_BASE_ADDRESS 0xFEE00000
 
 typedef struct {
     /* PCI 通用配置头（前 64 字节）*/
@@ -218,6 +218,11 @@ typedef enum {
 // 假设一个设备最多申请 64 个中断队列 (针对高端 NVMe/网卡足够了)
 #define PCIE_MAX_VECTORS 64
 
+typedef struct {
+    uint32 cpu_id;
+    uint32 vector;
+} irq_route_t;
+
 //pcie设备
 typedef struct pcie_dev_t{
     device_t    dev;                    //内嵌设备通用结构
@@ -232,7 +237,7 @@ typedef struct pcie_dev_t{
 
     pcie_irq_type_t active_irq_type;           // 当前激活的是 MSI 还是 MSI-X
     uint8         allocated_vectors;         // 成功申请到了几个中断向量
-    uint8         cpu_vectors[PCIE_MAX_VECTORS]; // 保存内核分配给它的绝对向量号 (32~255)
+    irq_route_t   cpu_vectors[PCIE_MAX_VECTORS]; // 保存内核分配给它的绝对向量号
 
     msi_t *msi;
     msix_t msix;

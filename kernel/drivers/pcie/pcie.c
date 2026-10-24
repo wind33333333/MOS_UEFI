@@ -4,6 +4,7 @@
 #include "slub.h"
 #include "vmalloc.h"
 #include "bus.h"
+#include "cpu.h"
 #include "errno.h"
 
 
@@ -162,68 +163,130 @@ static inline void pcie_parse_irq(pcie_dev_t *pcie_dev) {
 }
 
 
+#include "moslib.h"
+
+// 辅助函数：简单的多核轮询负载均衡分配器
+// 每次调用返回下一个 CPU 的 ID，保证多队列设备的中断均匀散布到各个核心
+static uint32 get_next_routing_cpu(void) {
+    static uint32 current_cpu_idx = 0;
+    // 使用原子操作或加锁获取下一个 CPU (这里假设有个简单的原子递增)
+    // 假设 MAX_CPU_NUM 是系统当前激活的 CPU 数量
+    uint32 target = (current_cpu_idx++) % active_cpu_count;
+    return target;
+}
+
+/**
+ * @brief 为 PCIe 设备动态分配并路由中断 (支持 MSI-X 稀疏分配与 MSI 连续对齐降级)
+ * @param pdev  PCIe 设备结构体
+ * @param count 驱动请求的中断队列数量
+ * @return 成功返回实际分配的数量，失败返回负数错误码
+ */
 int32 pcie_alloc_irq(pcie_dev_t *pdev, uint8 count) {
     if (count == 0 || count > PCIE_MAX_VECTORS) return -EINVAL;
     if (pdev->allocated_vectors > 0) return -EBUSY;
 
-    // ========== 路线 A：MSI-X 降维打击 (支持稀疏分布) ==========
+    // 默认高速设备策略：从 0xDF 向下分配
+    irq_alloc_strategy_t strategy = IRQ_ALLOC_HIGH_SPEED;
+
+    // =========================================================================
+    // 路线 A：MSI-X (现代设备的巅峰，支持跨 CPU 自由散布，完全无需连续对齐)
+    // =========================================================================
     if (pdev->msix.msg_control != NULL) {
         uint8 allocated = 0;
+
         for (uint8 i = 0; i < count; i++) {
-            uint32 vector = alloc_irq();
-            if (vector == 0) break;
-            pdev->cpu_vectors[i] = vector;
+            // 🌟 负载均衡：每个队列都去寻找下一个空闲的 CPU
+            uint32 target_cpu = get_next_routing_cpu();
+
+            // 🌟 调用新 API：申请 1 个，无需对齐 (align=1)
+            int32 vector = alloc_irq_vector(target_cpu, 1, 1, strategy);
+
+            if (vector < 0) {
+                // 如果当前 CPU 池子满了，在工业级代码中，可以重试另一个 CPU。
+                // 这里为了简化，直接中断分配。已分配的不会丢失。
+                break;
+            }
+
+            // 记录下这个队列被路由到了哪个 CPU 的哪个 Vector
+            pdev->cpu_vectors[i].cpu_id = target_cpu;
+            pdev->cpu_vectors[i].vector = vector;
             allocated++;
         }
 
         if (allocated == 0) return -ENOSPC;
+
         pdev->active_irq_type = PCIE_IRQ_MSIX;
         pdev->allocated_vectors = allocated;
-    }else if (pdev->msi->msg_control != 0) {
-        // ========== 路线 B：古董 MSI 戴着镣铐跳舞 ==========
-        // 规范化 count：MSI 必须申请 2 的次幂，如果驱动要 3 个，只能强行升到 4 个
-        int8 power2_count = 1;
-        while (power2_count < count) { power2_count <<= 1; }
-        // PCIe 规范规定单个设备 MSI 最多申请 32 个
-        if (power2_count > 32) power2_count = 32;
-
-        // 呼叫咱们刚写的连续对齐分配大招！
-        int32 vector = alloc_contiguous_irq(power2_count);
-
-        if (vector == 0) {
-            // ★ 工业级 OS 容错降级：如果连续分配失败，内核不能直接拒绝！
-            // 而是强行降级为只分配 1 个中断！让网卡多队列退化为单队列运行。
-            color_printk(YELLOW, BLACK, "PCIE MSI: Contiguous alloc failed. Downgrading to 1 vector.\n");
-            vector = alloc_irq();
-            if (vector == 0) return -ENOSPC;
-            pdev->cpu_vectors[0] = vector;
-            pdev->allocated_vectors = 1;
-            return 1;
-        }
-
-        // 成功拿到了连续的队列
-        for (uint8 i = 0; i < power2_count; i++) {
-            pdev->cpu_vectors[i] = vector + i;
-        }
-        pdev->active_irq_type = PCIE_IRQ_MSI;
-        pdev->allocated_vectors = power2_count;
+        return allocated;
     }
 
-    return pdev->allocated_vectors;
+    // =========================================================================
+    // 路线 B：古董 MSI (必须在同一个 CPU 上，必须绝对连续且 Base 按 2 的次幂对齐)
+    // =========================================================================
+    else if (pdev->msi->msg_control != 0) {
+
+        // 规范化 count：MSI 必须申请 2 的次幂
+        int8 power2_count = 1;
+        while (power2_count < count) { power2_count <<= 1; }
+        if (power2_count > 32) power2_count = 32;
+
+        // 🌟 负载均衡：因为传统 MSI 只能绑定一个 CPU，所以整个设备的所有队列只能路由给这 1 个 CPU
+        uint32 target_cpu = get_next_routing_cpu();
+
+        int32 base_vector = -1;
+
+        // 尝试分配 (自带回退降级逻辑)
+        while (power2_count >= 1) {
+            // 🌟 调用新 API：必须申请连续的 count 个，且首地址必须按 count 对齐！
+            base_vector = alloc_irq_vector(target_cpu, power2_count, power2_count, strategy);
+
+            if (base_vector >= 0) {
+                break; // 成功拿到连续对齐的资源！
+            }
+
+            // 降级：连这都分不出来？砍半重试！
+            PR_WARN("PCIE MSI: %d contiguous vectors alloc failed on CPU %u. Downgrading...\n",
+                    power2_count, target_cpu);
+            power2_count >>= 1;
+        }
+
+        if (base_vector < 0) return -ENOSPC; // 连 1 个都分不出来，资源彻底枯竭
+
+        // 成功拿到了连续的队列，记录到设备结构体中
+        for (uint8 i = 0; i < power2_count; i++) {
+            pdev->cpu_vectors[i].cpu_id = target_cpu;
+            pdev->cpu_vectors[i].vector = base_vector + i;
+        }
+
+        pdev->active_irq_type = PCIE_IRQ_MSI;
+        pdev->allocated_vectors = power2_count;
+        return power2_count;
+    }
+
+    return -ENODEV; // 既不支持 MSI-X 也不支持 MSI
 }
 
-//释放中断号和apic
+/**
+ * @brief 释放 PCIe 设备占据的中断向量
+ */
 void pcie_free_irq(pcie_dev_t *pdev) {
     if (pdev->allocated_vectors == 0) return;
 
     if (pdev->active_irq_type == PCIE_IRQ_MSI) {
-        // MSI 是连续分配的，调用连续释放函数
-        free_contiguous_irq(pdev->cpu_vectors[0], pdev->allocated_vectors);
+        // 🌟 调用新 API：MSI 是挂在同一个 CPU 上的连续分配，一把全部释放
+        uint32 target_cpu = pdev->cpu_vectors[0].cpu_id;
+        int32 base_vector = pdev->cpu_vectors[0].vector;
+
+        free_irq_vector(target_cpu, base_vector, pdev->allocated_vectors);
     }
     else if (pdev->active_irq_type == PCIE_IRQ_MSIX) {
-        // MSI-X 可能是稀疏分配的，所以必须逐个释放
+        // 🌟 调用新 API：MSI-X 是散布在各个 CPU 上的，必须逐个归还地皮
         for (uint8 i = 0; i < pdev->allocated_vectors; i++) {
-            free_irq(pdev->cpu_vectors[i]); // 你之前写的单向量释放函数
+            uint32 target_cpu = pdev->cpu_vectors[i].cpu_id;
+            int32 vector      = pdev->cpu_vectors[i].vector;
+
+            // 逐个归还 (每次归还 1 个)
+            free_irq_vector(target_cpu, vector, 1);
         }
     }
 
@@ -232,28 +295,50 @@ void pcie_free_irq(pcie_dev_t *pdev) {
 }
 
 
+/**
+ * @brief 辅助宏：根据目标 CPU 的 APIC ID，生成 MSI Address
+ */
+static uint32 build_msi_address(uint32 apic_id) {
+    // 🌟 工业级防火墙：如果内核尚未开启 VT-d 中断重映射，绝对禁止路由到高级核心！
+    // 注：0xFF (255) 在传统 APIC 中通常被保留为 Broadcast（广播）地址，不能用于单播。
+    if (apic_id >= 255) {
+        PR_ERROR("FATAL: Cannot route MSI to x2APIC ID %u without IOMMU Interrupt Remapping!\n", apic_id);
+
+        // 【降级策略】：强行把中断降级路由给 CPU 0 (Boot Processor)
+        // 保证系统还能运行，但失去了该设备在超多核上的负载均衡
+        apic_id = 0;
+    }
+    // 物理目标模式 (RH=0, DM=0)，将 APIC ID 放在 Bit 12~19
+    return X86_MSI_BASE_ADDRESS | ((apic_id & 0xFF) << 12);
+}
 
 /**
- * @brief 启用设备中断 (写硬件寄存器)
- * 这一步告诉 PCIe 设备：“有事往 x86_MSI_ADDRESS 写，数据内容就是 Vector 号！”
+ * @brief 启用设备中断 (写硬件寄存器，正式下发路由表)
  */
 int32 pcie_enable_irq(pcie_dev_t *pdev) {
     if (pdev->allocated_vectors == 0) return -EINVAL;
 
     if (pdev->active_irq_type == PCIE_IRQ_MSI) {
-        // ========== 启用纯 MSI ==========
+        // ========== 启用纯 MSI (所有队列绑在同一个 CPU) ==========
         msi_t *msi = pdev->msi;
-        msi->msg_addr_lo = X86_MSI_ADDRESS;
+
+        // 1. 🌟 提取目标 CPU 的 APIC ID
+        uint32 target_cpu = pdev->cpu_vectors[0].cpu_id;
+        uint32 apic_id    = cpu_lid_to_core(target_cpu)->apic_id; // 需确保 cpu_core 结构体里有 apic_id
+
+        // 2. 🌟 动态生成 Address 和获取 Vector
+        msi->msg_addr_lo = build_msi_address(apic_id);
+        uint32 vector    = pdev->cpu_vectors[0].vector;
+
         uint16 ctrl = msi->msg_control;
-        if (ctrl & 0x80) {
+        if (ctrl & 0x80) { // 64位地址支持
             msi->_64bit.msg_addr_hi = 0;
-            msi->_64bit.msg_data = pdev->cpu_vectors[0];
-        }else {
-            msi->_32bit.msg_data = pdev->cpu_vectors[0];
+            msi->_64bit.msg_data = vector;
+        } else {
+            msi->_32bit.msg_data = vector;
         }
 
         // 3. 配置多消息使能 (Multiple Message Enable: Bits 4-6)
-        // 根据实际分配的向量数 (allocated_vectors)，计算对应的 2的幂次
         uint8 log2_count = 0;
         while ((1 << log2_count) < pdev->allocated_vectors && log2_count < 5) {
             log2_count++;
@@ -261,27 +346,38 @@ int32 pcie_enable_irq(pcie_dev_t *pdev) {
         ctrl &= ~(0x07 << 4);      // 先清空 Bits 4-6
         ctrl |= (log2_count << 4); // 填入启用的数量
 
+        // 4. 打开 MSI 硬件总开关 (Bit 0)
         ctrl |= 0x0001;
         msi->msg_control = ctrl;
-        return 0;
 
+        return 0;
     }
 
     if (pdev->active_irq_type == PCIE_IRQ_MSIX) {
-        // ========== 启用 MSI-X ==========
+        // ========== 启用 MSI-X (终极自由：跨 CPU 散布) ==========
         msix_entry_t *msix_entry = pdev->msix.msix_entry;
-         for (int i = 0; i < pdev->allocated_vectors; i++) {
-            msix_entry[i].msg_addr_lo = X86_MSI_ADDRESS;
+
+        for (int i = 0; i < pdev->allocated_vectors; i++) {
+            // 1. 🌟 逐个提取每个队列的目标 CPU 的 APIC ID
+            uint32 target_cpu = pdev->cpu_vectors[i].cpu_id;
+            uint32 apic_id    = cpu_lid_to_core(target_cpu)->apic_id;
+            uint32 vector     = pdev->cpu_vectors[i].vector;
+
+            // 2. 🌟 硬件编程：分别指引这 N 个队列走向不同的 CPU！
+            msix_entry[i].msg_addr_lo = build_msi_address(apic_id);
             msix_entry[i].msg_addr_hi = 0;
-            msix_entry[i].msg_data = pdev->cpu_vectors[i];
-            msix_entry[i].vector_control &= ~0x1; // 清除 Mask 位，允许触发
+            msix_entry[i].msg_data    = vector;
+
+            // 3. 清除硬件 Mask 位，允许网卡开始发信号
+            msix_entry[i].vector_control &= ~0x1;
         }
 
-        // 修改 MSI-X Control 寄存器，打开 MSI-X Enable 位 (Bit 15)
+        // 4. 修改 MSI-X Control 寄存器
         uint16 ctrl = *pdev->msix.msg_control;
-        ctrl |= 0x8000;
-        ctrl &= ~0x4000;
+        ctrl |= 0x8000;  // MSI-X Enable 位 (Bit 15) 打开
+        ctrl &= ~0x4000; // Function Mask 位 (Bit 14) 清除，全放行
         *pdev->msix.msg_control = ctrl;
+
         return 0;
     }
 
@@ -337,27 +433,43 @@ void pcie_disable_irq(pcie_dev_t *pdev) {
 
 
 /**
- * @brief 注册中断服务函数
- * @param index 设备的第几个中断队列 (0 ~ allocated_vectors-1)
+ * @brief 在已分配的 PCIe 中断通道上，正式挂载/注册驱动服务程序 (ISR)
+ * @param pdev  PCIe 设备控制块 (包含已分配的 cpu_id 和 vector)
+ * @param index 设备的第几个中断队列 (0 ~ allocated_vectors - 1)
+ * @param isr   驱动提供的中断处理函数指针
+ * @param name  驱动的文本标识 (用于 /proc/interrupts 日志)
+ * @return 0 成功；负数表示失败
  */
 int32 pcie_register_isr(pcie_dev_t *pdev, uint8 index, irq_handler_f isr, const char *name) {
+    // 1. 边界防御：只能在之前 alloc 分配到的数量范围内注册
     if (index >= pdev->allocated_vectors) return -EINVAL;
 
-    uint8 vector = pdev->cpu_vectors[index];
-    // 调用大管家的注册接口
-    return register_isr(vector, isr, pdev, name);
+    // 2. 提取属于这个队列的专属 CPU ID 和 Vector 号
+    uint32 target_cpu = pdev->cpu_vectors[index].cpu_id;
+    uint32 vector     = pdev->cpu_vectors[index].vector;
+
+    // 3. 呼叫底层的跨核安全注册大管家
+    // 注意：把 pdev 作为 dev_id (安全凭证和私有数据) 传递给底层
+    return register_irq(target_cpu, vector, isr, pdev, name);
 }
 
 /**
- * @brief 卸载中断服务函数
+ * @brief 卸载 PCIe 设备的某个中断队列的 ISR
+ * @param pdev  PCIe 设备控制块
+ * @param index 设备的第几个中断队列
  */
 void pcie_unregister_isr(pcie_dev_t *pdev, uint8 index) {
-    if (index < pdev->allocated_vectors) {
-        unregister_isr(pdev->cpu_vectors[index]);
-    }
+    // 1. 边界防御
+    if (index >= pdev->allocated_vectors) return;
+
+    // 2. 提取属于这个队列的专属 CPU ID 和 Vector 号
+    uint32 target_cpu = pdev->cpu_vectors[index].cpu_id;
+    uint32 vector     = pdev->cpu_vectors[index].vector;
+
+    // 3. 呼叫底层的跨核安全卸载大管家
+    // 注意：必须传入 pdev 作为 dev_id 安全凭证，证明这是我的设备，我才有权卸载
+    unregister_irq(target_cpu, vector, pdev);
 }
-
-
 
 //匹配驱动id
 static inline pcie_id_t *pcie_match_id(pcie_dev_t *pcie_dev,driver_t *drv) {
