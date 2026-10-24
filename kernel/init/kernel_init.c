@@ -111,7 +111,7 @@ task_t *user_task;
 void kernel_init(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
     output_init();                                              //初始化输出控制台
-    idt_init();                                       //临时中断系统初始化
+    idt_init();                                                 //中断描述符表初始化
     cpu_enable_feature();                                       //cpu启用高级特性
     apply_alternatives();                                       //动态修复指令
     vm_layout_init();                                           //虚拟内存空间初始化

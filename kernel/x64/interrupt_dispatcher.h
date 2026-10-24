@@ -91,26 +91,26 @@ static inline void asm_lidt(const idt_ptr_t *idt_ptr) {
 }
 
 // 定义0-20异常处理函数
-int32 do_divide_error(cpu_registers_t *regs, void *dev_id);
-int32 do_debug(cpu_registers_t *regs, void *dev_id);
+void do_divide_error(cpu_registers_t *regs);
+void do_debug(cpu_registers_t *regs);
 void do_nmi(cpu_registers_t *regs);
-int32 do_int3(cpu_registers_t *regs, void *dev_id);
-int32 do_overflow(cpu_registers_t *regs, void *dev_id) ;
-int32 do_bounds(cpu_registers_t *regs, void *dev_id);
-int32 do_undefined_opcode(cpu_registers_t *regs, void *dev_id);
-int32 do_dev_not_available(cpu_registers_t *regs, void *dev_id);
-int32 do_double_fault(cpu_registers_t *regs, void *dev_id);
-int32 do_coprocessor_segment_overrun(cpu_registers_t *regs, void *dev_id);
-int32 do_invalid_tss(cpu_registers_t *regs, void *dev_id);
-int32 do_segment_not_present(cpu_registers_t *regs, void *dev_id);
-int32 do_stack_segment_fault(cpu_registers_t *regs, void *dev_id);
-int32 do_general_protection(cpu_registers_t *regs, void *dev_id);
-int32 do_page_fault(cpu_registers_t *regs, void *dev_id);
-int32 do_x87_FPU_error(cpu_registers_t *regs, void *dev_id) ;
-int32 do_alignment_check(cpu_registers_t *regs, void *dev_id) ;
-int32 do_machine_check(cpu_registers_t *regs, void *dev_id);
-int32 do_SIMD_exception(cpu_registers_t *regs, void *dev_id);
-int32 do_virtualization_exception(cpu_registers_t *regs, void *dev_id) ;
+void do_int3(cpu_registers_t *regs);
+void do_overflow(cpu_registers_t *regs) ;
+void do_bounds(cpu_registers_t *regs);
+void do_undefined_opcode(cpu_registers_t *regs);
+void do_dev_not_available(cpu_registers_t *regs);
+void do_double_fault(cpu_registers_t *regs);
+void do_coprocessor_segment_overrun(cpu_registers_t *regs);
+void do_invalid_tss(cpu_registers_t *regs);
+void do_segment_not_present(cpu_registers_t *regs);
+void do_stack_segment_fault(cpu_registers_t *regs);
+void do_general_protection(cpu_registers_t *regs);
+void do_page_fault(cpu_registers_t *regs);
+void do_x87_FPU_error(cpu_registers_t *regs) ;
+void do_alignment_check(cpu_registers_t *regs) ;
+void do_machine_check(cpu_registers_t *regs);
+void do_SIMD_exception(cpu_registers_t *regs);
+void do_virtualization_exception(cpu_registers_t *regs) ;
 
 //=============================================================================================================
 
@@ -149,5 +149,8 @@ int32 free_irq_vector(uint32 target_cpu_id, int32 base_vector, uint32 count) ;
 
 int32 register_irq(uint32 target_cpu_id, int32 vector, irq_handler_f handler, void *dev_id, const char *name);
 int32 unregister_irq(uint32 target_cpu_id, int32 vector, void *dev_id);
+
+int32 register_exception(int32 vector, exception_handler_f handler);
+int32 unregister_exception(int32 vector);
 
 void idt_init(void);

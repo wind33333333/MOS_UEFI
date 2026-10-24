@@ -8,8 +8,8 @@
 
 /*********************************************************** 系统异常处理函数 *****************************************************************************/
 
-int32 do_divide_error(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_divide_error(cpu_registers_t *regs) {
+
     PR_ERROR( "do_divide_error(0),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
@@ -18,8 +18,8 @@ int32 do_divide_error(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_debug(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_debug(cpu_registers_t *regs) {
+
     PR_ERROR( "do_debug(1),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n", regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
@@ -51,8 +51,8 @@ void do_nmi(cpu_registers_t *regs) {
 }
 
 
-int32 do_int3(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_int3(cpu_registers_t *regs) {
+
     PR_ERROR( "do_int3(3),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n", regs->err_code, regs->rsp,regs->rip);
         while (1) {
         asm_hlt();
@@ -60,8 +60,8 @@ int32 do_int3(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_overflow(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_overflow(cpu_registers_t *regs) {
+
     PR_ERROR( "do_overflow(4),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
@@ -70,8 +70,8 @@ int32 do_overflow(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_bounds(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_bounds(cpu_registers_t *regs) {
+
     PR_ERROR( "do_bounds(5),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
@@ -80,8 +80,8 @@ int32 do_bounds(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_undefined_opcode(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_undefined_opcode(cpu_registers_t *regs) {
+
     PR_ERROR( "do_undefined_opcode(6),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
@@ -90,8 +90,8 @@ int32 do_undefined_opcode(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_dev_not_available(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_dev_not_available(cpu_registers_t *regs) {
+
     PR_ERROR( "do_dev_not_available(7),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
@@ -100,8 +100,8 @@ int32 do_dev_not_available(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_double_fault(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_double_fault(cpu_registers_t *regs) {
+
     asm_cli();
     PR_ERROR("do_double_fault(8),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
@@ -113,8 +113,8 @@ int32 do_double_fault(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_coprocessor_segment_overrun(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_coprocessor_segment_overrun(cpu_registers_t *regs) {
+
     PR_ERROR("do_coprocessor_segment_overrun(9),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
@@ -123,8 +123,8 @@ int32 do_coprocessor_segment_overrun(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_invalid_tss(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_invalid_tss(cpu_registers_t *regs) {
+
     PR_ERROR( "do_invalid_TSS(10),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
 
@@ -154,8 +154,8 @@ int32 do_invalid_tss(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_segment_not_present(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_segment_not_present(cpu_registers_t *regs) {
+
     PR_ERROR("do_segment_not_present(11),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
 
@@ -185,8 +185,8 @@ int32 do_segment_not_present(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_stack_segment_fault(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_stack_segment_fault(cpu_registers_t *regs) {
+
     PR_ERROR("do_stack_segment_fault(12),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
 
@@ -214,8 +214,8 @@ int32 do_stack_segment_fault(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_general_protection(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_general_protection(cpu_registers_t *regs) {
+
     PR_ERROR("do_general_protection(13),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
 
@@ -243,8 +243,8 @@ int32 do_general_protection(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_page_fault(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_page_fault(cpu_registers_t *regs) {
+
     //uint64 *p = NULL;
     uint64 cr2 = asm_get_cr2();
 
@@ -280,8 +280,8 @@ int32 do_page_fault(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_x87_FPU_error(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_x87_FPU_error(cpu_registers_t *regs) {
+
     PR_ERROR( "do_x87_FPU_error(16),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
@@ -290,8 +290,8 @@ int32 do_x87_FPU_error(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_alignment_check(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_alignment_check(cpu_registers_t *regs) {
+
     PR_ERROR( "do_alignment_check(17),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
@@ -300,8 +300,8 @@ int32 do_alignment_check(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_machine_check(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_machine_check(cpu_registers_t *regs) {
+
     PR_ERROR( "do_machine_check(18),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
@@ -310,8 +310,8 @@ int32 do_machine_check(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_SIMD_exception(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_SIMD_exception(cpu_registers_t *regs) {
+
     PR_ERROR( "do_SIMD_exception(19),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
@@ -320,8 +320,8 @@ int32 do_SIMD_exception(cpu_registers_t *regs, void *dev_id) {
 }
 
 
-int32 do_virtualization_exception(cpu_registers_t *regs, void *dev_id) {
-    (void)dev_id;
+void do_virtualization_exception(cpu_registers_t *regs) {
+
     PR_ERROR("do_virtualization_exception(20),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",
                  regs->err_code, regs->rsp,regs->rip);
         while (1) {
