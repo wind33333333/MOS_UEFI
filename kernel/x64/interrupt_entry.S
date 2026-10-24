@@ -23,6 +23,7 @@
     jmp exception_com_stub
 .endm
 
+
 /* 硬件 IRQ 桩 (跳向外设中断处理中枢) */
 .macro IRQ_STUB vector
     .p2align 4

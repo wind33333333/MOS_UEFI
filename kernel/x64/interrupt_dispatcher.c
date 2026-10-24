@@ -537,43 +537,45 @@ int32 alloc_irq_vector(uint32 target_cpu_id, uint32 count, uint32 align, irq_all
     // 🌟 跨核分配防护：必须获取目标 CPU 的 IRQ 表锁
     spin_lock_irqsave(&target_cpu->irq_lock, &flags);
 
+    // 提前计算好搜索的理论上下界
+    int32 upper_bound = IRQ_DYNAMIC_FAST_LIMIT - count + 1;
+    int32 lower_bound = IRQ_DYNAMIC_LOW_BASE;
+
+    int32 start, limit, step;
+
     if (strategy == IRQ_ALLOC_HIGH_SPEED) {
         // --- 策略 1：高速设备 (Top-Down 向下查找) ---
-        // 比如从 0xDF 开始往下找，优先赋予高硬件优先级
-        for (int32 v = IRQ_DYNAMIC_FAST_LIMIT - count + 1; v >= IRQ_DYNAMIC_LOW_BASE; v--) {
-            if (v % align != 0) continue; // 满足 MSI 的 2^N 对齐要求
+        // 数学魔法：向下取整到 align 的倍数
+        start = (upper_bound / align) * align;
+        limit = lower_bound;
+        step  = - (int32)align;
+    } else {
+        // --- 策略 2：低速设备 (Bottom-Up 向上查找) ---
+        // 数学魔法：向上取整到 align 的倍数
+        start = ((lower_bound + align - 1) / align) * align;
+        limit = upper_bound;
+        step  = (int32)align;
+    }
 
-            // 检查这连续的 count 个位置是否全为 FREE
-            boolean available = TRUE;
-            for (uint32 i = 0; i < count; i++) {
-                if (target_cpu->irq_table[(v + i) - 32].state != IRQ_STATE_FREE) {
-                    available = FALSE;
-                    break;
-                }
-            }
+    // =========================================================
+    // 核心遍历逻辑 (完全合并，且消灭了 v % align != 0 的判断！)
+    // 这里的循环条件利用了三元运算符，优雅兼容向上和向下双向遍历
+    // =========================================================
+    for (int32 v = start; (step > 0) ? (v <= limit) : (v >= limit); v += step) {
 
-            if (available) {
-                allocated_base = v;
+        boolean available = TRUE;
+
+        // 检查这连续的 count 个位置是否全为 FREE
+        for (uint32 i = 0; i < count; i++) {
+            if (target_cpu->irq_table[(v + i) - 32].state != IRQ_STATE_FREE) {
+                available = FALSE;
                 break;
             }
         }
-    } else {
-        // --- 策略 2：低速设备 (Bottom-Up 向上查找) ---
-        for (int32 v = IRQ_DYNAMIC_LOW_BASE; v <= IRQ_DYNAMIC_FAST_LIMIT - count + 1; v++) {
-            if (v % align != 0) continue;
 
-            boolean available = TRUE;
-            for (uint32 i = 0; i < count; i++) {
-                if (target_cpu->irq_table[(v + i) - 32].state != IRQ_STATE_FREE) {
-                    available = FALSE;
-                    break;
-                }
-            }
-
-            if (available) {
-                allocated_base = v;
-                break;
-            }
+        if (available) {
+            allocated_base = v;
+            break;
         }
     }
 
