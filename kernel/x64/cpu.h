@@ -1,6 +1,7 @@
 #pragma once
 #include "moslib.h"
 #include "gdt_tss.h"
+#include "interrupt_dispatcher.h"
 #include "rbtree.h"
 #include "../time/time_core.h"
 
@@ -100,10 +101,11 @@ typedef struct cpu_core_t {
     struct task_t   *idle_task;          // 兜底的系统空闲任务 (hlt)
     run_queue_t     run_queue;           // 就绪队列
     sleep_queue_t   sleep_queue;         // 定时队列
-
-
     gdt_t           *gdt_base;            // 强制对齐隔离！
     uint32          acpi_proc_id;         // 从顶部挪下来的冷数据：ACPI 处理器 ID
+
+    irq_desc_t      irq_table[223];       //中断路由表 233 = 256-32异常（0-31）4-1个虚假中断（255号）
+
     uint8           lint_nmi;             // 从顶部挪下来的冷数据：NMI 引脚号
 
     char8           manufacturer_name[13];// 例如 "GenuineIntel\0" (13B)

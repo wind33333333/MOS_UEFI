@@ -332,61 +332,44 @@ int32 do_virtualization_exception(cpu_registers_t *regs, void *dev_id) {
 /*******************************************************************************************************************************/
 
 //全局中断描述符表
-__attribute__((aligned(4096))) idt_t idt;
+RODATA __attribute__((aligned(4096))) const idt_t idt = {0};
 
-// 引用汇编中连续中断桩的基地址
-extern const char interrupt_entry_base[];
+static exception_handler_f exception_table[32];
 
-/**
- * @brief 内部函数：组装 16 字节的 IDT 描述符
- */
-
-void idt_set_descriptor(uint8 vector , uint8 attributes, uint8 ist) {
-    uint64 isr_addr = (uint64)interrupt_entry_base + ((uint64)vector << 4);
-    idt_desc_t *desc = &idt.desc[vector];
-
-    desc->offset_low       = isr_addr & 0xFFFF;
-    desc->segment_selector = 0x08; // 你的内核代码段选择子 (根据你的 GDT 调整)
-    desc->ist              = ist & 0x07;
-    desc->attributes       = attributes;
-    desc->offset_mid       = (isr_addr >> 16) & 0xFFFF;
-    desc->offset_high      = (isr_addr >> 32) & 0xFFFFFFFF;
-    desc->reserved         = 0; // 必须为 0
+//异常分发
+void c_exception_dispatcher(cpu_registers_t *regs) {
+    exception_handler_f exception = exception_table[regs->no];
+    if (exception == NULL) {
+        PR_ERROR("Exception Func NULL\n");
+        while (1) {
+            asm_hlt();
+        }
+    }
+    exception(regs);
 }
 
-
-//MSI/MSI-X 专属 O(1) 独占路由表 (静态分配，快如闪电)
-static irq_desc_t irq_table[256] = {0};
-
-
-/**
- * @brief 👑 C 语言大管家 (所有中断与异常的统一分发中心)
- */
+//中断分发
 void c_irq_dispatcher(cpu_registers_t *regs) {
-    uint64 irq_no = regs->no;
+    // 1. 过滤虚假中断
+    if (regs->no == 255) return;
 
-    // 1. O(1) 统一查表执行 (0~255)
-    irq_desc_t *irq_desc = &irq_table[irq_no];
+    // 2. 映射为 0~223 的索引
+    uint64 irq_no = regs->no - 32;
+
+    // 3. 🌟 O(1) 极速本地查表 (全程在本地 L1 Cache 内完成)
+    irq_desc_t *irq_desc = &this_cpu_ptr()->irq_table[irq_no];
+
     if (irq_desc->handler != NULL) {
+        // 传递 regs 和 驱动注册时的私有 dev_id (如网卡对象指针)
         irq_desc->handler(regs, irq_desc->dev_id);
     } else {
-        color_printk(YELLOW, BLACK, "Unhandled / Spurious Vector: %ld\n", irq_no);
+        color_printk(YELLOW, BLACK, "CPU %d Unhandled Vector: %ld\n",
+                     THIS_CPU->logical_id, irq_no);
     }
 
-    // ==========================================
-    // 2. 外部硬件中断专属收尾：发送 EOI
-    // ==========================================
-    // 🌟 核心分水岭：仅限外设硬件中断 (>= 32)，且排除 APIC 伪中断 (255)
-    if (irq_no >= 32 && irq_no != 255) {
-        apic_send_eoi();
-    }
-
-    // ==========================================
-    // 3. 调度抢占门禁
-    // ==========================================
-    check_and_schedule();
+    // 4. 发送 EOI，解除 APIC 锁定
+    apic_send_eoi();
 }
-
 
 
 /**

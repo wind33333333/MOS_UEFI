@@ -4,6 +4,11 @@
 #define INIT_RODATA __attribute__((__section__(".init_rodata")))
 #define INIT_DATA __attribute__((__section__(".init_data")))
 
+#define TEXT __attribute__((__section__(".text")))
+#define RODATA __attribute__((__section__(".rodata")))
+#define DATA __attribute__((__section__(".data")))
+
+
 typedef unsigned char uint8;
 typedef uint8 boolean;
 typedef uint8 char8;

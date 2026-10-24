@@ -27,10 +27,31 @@ static inline void exception_init() {
     // [21] - [31] 为 Intel 保留异常或较新的硬件异常 (如 21号 #CP 控制保护异常)，默认初始化为 NULL
 }
 
+// 引用汇编中连续中断桩的基地址
+extern const char interrupt_entry_base[];
+
+/**
+ * @brief 内部函数：组装 16 字节的 IDT 描述符
+ */
+
+static inline void idt_set_descriptor(uint8 vector , uint8 attributes, uint8 ist) {
+    uint64 isr_addr = (uint64)interrupt_entry_base + ((uint64)vector << 4);
+    idt_desc_t *desc = (idt_desc_t*)(&idt.desc[vector]);
+
+    desc->offset_low       = isr_addr & 0xFFFF;
+    desc->segment_selector = 0x08; // 你的内核代码段选择子 (根据你的 GDT 调整)
+    desc->ist              = ist & 0x07;
+    desc->attributes       = attributes;
+    desc->offset_mid       = (isr_addr >> 16) & 0xFFFF;
+    desc->offset_high      = (isr_addr >> 32) & 0xFFFFFFFF;
+    desc->reserved         = 0; // 必须为 0
+}
+
+
 /**
  * @brief 初始化临时中断系统 (在内核早期初始化时调用)
  */
-void tmp_interrupt_init(void) {
+void idt_init(void) {
     // 循环挂载 256 个中断门
     for (int i = 0; i < IDT_ENTRIES; i++) {
         idt_set_descriptor(i, IDT_INTERRUPT_DESC,0);
@@ -38,7 +59,6 @@ void tmp_interrupt_init(void) {
 
     // 特例：如果是供用户态引发的异常/系统调用，可以改属性
     idt_set_descriptor(3, IDT_USER_DESC,0);
-    idt_set_descriptor(4, IDT_USER_DESC,0);
 
     // =========================================================
     // 👑 架构师核心修改：为致命异常颁发 IST 免死金牌！

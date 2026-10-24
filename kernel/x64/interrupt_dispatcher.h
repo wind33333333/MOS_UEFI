@@ -23,10 +23,12 @@ typedef struct {
     idt_desc_t desc[IDT_ENTRIES];
 }__attribute__((packed))idt_t;
 
+extern const idt_t idt;
+
 // IDTR 寄存器结构
 typedef struct idt_ptr_t{
     uint16 limit;
-    idt_t  *base;
+    const idt_t  *base;
 }__attribute__((packed))idt_ptr_t;
 
 
@@ -44,8 +46,6 @@ static inline void asm_lidt(const idt_ptr_t *idt_ptr) {
         : "memory"      // 内存屏障，非常正确！
     );
 }
-
-extern idt_t idt;
 
 // 定义0-20异常处理函数
 int32 do_divide_error(cpu_registers_t *regs, void *dev_id);
@@ -72,7 +72,7 @@ int32 do_virtualization_exception(cpu_registers_t *regs, void *dev_id) ;
 //=============================================================================================================
 
 //CPU异常函数签名
-typedef void (*exception_handler_t)(cpu_registers_t *regs);
+typedef void (*exception_handler_f)(cpu_registers_t *regs);
 
 // 3. 独占式 (MSI/MSI-X) 中断路由表数据结构
 #define IRQ_NONE        0 // 硬件没数据，虚假唤醒
@@ -97,11 +97,10 @@ typedef struct {
 
 
 // 对外暴露的 API
-void idt_set_descriptor(uint8 vector , uint8 attributes, uint8 ist);
 int32 alloc_contiguous_irq(uint8 count);
 void free_contiguous_irq(uint8 base_vector, uint8 count);
 int32 alloc_irq(void);
 void free_irq(int32 vector);
 int32 register_isr(int32 vector, irq_handler_f handler, void *dev_id, const char *name);
 int32 unregister_isr(int32 vector);
-void tmp_interrupt_init(void);
+void idt_init(void);
