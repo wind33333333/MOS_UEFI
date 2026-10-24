@@ -61,16 +61,16 @@ void apic_table_init(void) {
         while (1);
     }
 
-    uint64 cpu_core_size = active_cpu_count * sizeof(cpu_core_t);
+    uint64 core_ptr_size = active_cpu_count * sizeof(cpu_core_t*);
     uint64 ioapic_dev_size = ioapic_count * sizeof(ioapic_devive_t);
     uint64 irq_override_size = irq_override_count * sizeof(irq_override_t);
 
-    uint64 total_size = PAGE_4K_ALIGN(cpu_core_size+ioapic_dev_size +irq_override_size);
+    uint64 total_size = PAGE_4K_ALIGN(core_ptr_size+ioapic_dev_size +irq_override_size);
     cpu_cores = pa_to_va(memblock_alloc(total_size,PAGE_4K_SIZE));
     asm_mem_set(cpu_cores,0,total_size);
 
     if (ioapic_count > 0) {
-        ioapic_dev = (ioapic_devive_t*)((uint64)cpu_cores+cpu_core_size);
+        ioapic_dev = (ioapic_devive_t*)((uint64)cpu_cores+core_ptr_size);
     }
 
     if (irq_override_count > 0) {

@@ -4,7 +4,7 @@
 #include "slub.h"
 #include "vmalloc.h"
 #include "bus.h"
-#include "cpu.h"
+#include "../x64/cpu.h"
 #include "errno.h"
 
 
@@ -163,8 +163,6 @@ static inline void pcie_parse_irq(pcie_dev_t *pcie_dev) {
 }
 
 
-#include "moslib.h"
-
 // 辅助函数：简单的多核轮询负载均衡分配器
 // 每次调用返回下一个 CPU 的 ID，保证多队列设备的中断均匀散布到各个核心
 static uint32 get_next_routing_cpu(void) {
@@ -172,7 +170,8 @@ static uint32 get_next_routing_cpu(void) {
     // 使用原子操作或加锁获取下一个 CPU (这里假设有个简单的原子递增)
     // 假设 MAX_CPU_NUM 是系统当前激活的 CPU 数量
     uint32 target = (current_cpu_idx++) % active_cpu_count;
-    return target;
+    (void)target;
+    return 0;   //暂时统一返回bsp核心
 }
 
 /**

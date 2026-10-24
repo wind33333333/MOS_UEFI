@@ -300,7 +300,7 @@ static inline void get_cpu_info(void) {
     uint32 max_basic_leaf = 0, max_ext_leaf = 0;
     uint32 ebx, ecx, edx;
 
-    cpu_core_t *core = &cpu_cores[THIS_CPU->logical_id];
+    cpu_core_t *core = cpu_cores[THIS_CPU->logical_id];
 
     // 1. 获取厂商名称 & max_basic_leaf
     asm_cpuid(0, &max_basic_leaf,
