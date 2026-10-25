@@ -5,9 +5,6 @@
 #include "../sched/task.h"
 #include "../x64/cpu.h"
 
-uint8 g_sys_timer_vector = 0; // 全局统一定时器中断号
-
-
 void ksleep_us(uint64 delay_us) {
     uint64 flags;
     local_irq_save(&flags);
@@ -96,11 +93,8 @@ int32 timer_irq_handler(cpu_registers_t *regs, void *dev_id) {
 
 
 void timer_irq_init(void) {
-    // 1. 子系统统一申请，终生不释放
-    g_sys_timer_vector = alloc_irq();
-
     // 2. 注册统一的中断处理入口
-    register_isr(g_sys_timer_vector, timer_irq_handler,NULL,"sys-timer-irq");
+    register_irq(THIS_CPU->logical_id,APIC_TIMER_VECTOR,timer_irq_handler,NULL,"sys-timer");
 }
 
 

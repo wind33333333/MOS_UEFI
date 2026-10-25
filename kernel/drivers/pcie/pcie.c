@@ -169,7 +169,7 @@ static uint32 get_next_routing_cpu(void) {
     static uint32 current_cpu_idx = 0;
     // 使用原子操作或加锁获取下一个 CPU (这里假设有个简单的原子递增)
     // 假设 MAX_CPU_NUM 是系统当前激活的 CPU 数量
-    uint32 target = (current_cpu_idx++) % active_cpu_count;
+    uint32 target = (current_cpu_idx++) % cpu_info.run_cpu_count;
     (void)target;
     return 0;   //暂时统一返回bsp核心
 }

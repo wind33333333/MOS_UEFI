@@ -63,7 +63,8 @@ static inline void set_tss_desc(uint64 *tss_desc_ptr, tss_t *tss) {
 
 void gdt_tss_init(uint32 logical_id) {
     gdt_t *gdt = kzalloc(sizeof(gdt_t));
-    cpu_cores_ptr[logical_id].gdt_base = gdt;
+    per_cpu_t *per_cpu =  cpu_info.per_cpus[logical_id];
+    per_cpu->gdt_base = gdt;
     gdt->kernel_code64_desc = KERNEL_CODE64_DESC;
     gdt->kernel_data_desc = KERNEL_DATA_DESC;
     gdt->user_code32_desc = USER_CODE32_DESC;
@@ -71,7 +72,7 @@ void gdt_tss_init(uint32 logical_id) {
     gdt->user_code64_desc = USER_CODE64_DESC;
 
     tss_t *tss = kzalloc(sizeof(tss_t));
-    cpu_cores_ptr[logical_id].tss = tss;
+    per_cpu->tss = tss;
     set_tss_desc(gdt->tss_desc,tss);
     tss->rsp0 = (uint64)vmalloc(4*4096) + 4*4096;       // 内核栈 16K
     tss->ist1 = (uint64)vmalloc(2*4096) + 2*4096;       // 8: Double Fault (#DF) 双重故障 8K

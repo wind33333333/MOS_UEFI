@@ -143,8 +143,7 @@ void reprogram_clockevent(uint64 target_ns) {
 // 运行时动态切换当前 CPU 核心的硬件定时器 (不断档交接闹钟！)
 // =========================================================================
 boolean clockevent_switch(clockevent_t *new_ce) {
-    per_cpu_t *core = &cpu_cores_ptr[THIS_CPU->logical_id];
-    if (new_ce == NULL || new_ce == core->active_ce) {
+    if (new_ce == NULL || new_ce == THIS_CPU->active_ce) {
         return FALSE;
     }
 
@@ -152,12 +151,12 @@ boolean clockevent_switch(clockevent_t *new_ce) {
     local_irq_save(&flags);
 
     // 1. 先关停旧定时器的硬件计数器与中断掩码，防止切完后产生幽灵中断
-    if (core->active_ce != NULL) {
-        core->active_ce->stop_hw(core->active_ce);
+    if (THIS_CPU->active_ce != NULL) {
+        THIS_CPU->active_ce->stop_hw(THIS_CPU->active_ce);
     }
 
     // 2. 切换指针并初始化新定时器的硬件寄存器
-    core->active_ce = new_ce;
+    THIS_CPU->active_ce = new_ce;
     new_ce->init_hw(new_ce);
 
     // 3. 🌟 绝对时间架构的终极体现：只传目标和快照！
@@ -168,7 +167,7 @@ boolean clockevent_switch(clockevent_t *new_ce) {
     //new_ce->set_next_event(new_ce, target_ns);
 
     local_irq_restore(flags);
-    PR_INFO("Core:%d Switch Timer:%s\n", core->logical_id, new_ce->name);
+    PR_INFO("Core:%d Switch Timer:%s\n", THIS_CPU->logical_id, new_ce->name);
     return TRUE;
 }
 

@@ -1,5 +1,5 @@
 #pragma once
-#include "interrupt_dispatcher.h"
+#include "../x64/interrupt_dispatcher.h"
 #include "moslib.h"
 #include "ioapic.h"
 
