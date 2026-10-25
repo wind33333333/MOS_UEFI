@@ -112,8 +112,6 @@ void do_machine_check(cpu_registers_t *regs);
 void do_SIMD_exception(cpu_registers_t *regs);
 void do_virtualization_exception(cpu_registers_t *regs) ;
 
-//=============================================================================================================
-
 //CPU异常函数签名
 typedef void (*exception_handler_f)(cpu_registers_t *regs);
 
@@ -155,3 +153,16 @@ int32 unregister_exception(int32 vector);
 
 void idt_init(void);
 void tmp_exception_init();
+
+
+typedef struct {
+    int8  bus_source;                    // 总线源（通常为 0，表示 ISA 总线）
+    uint8 irq_source;                    // ISA IRQ 号（0-15）
+    uint16 flags;                        // 中断标志（边沿/电平触发，高/低电平等）
+    uint32 global_system_interrupt;      // 重定向后的全局系统中断号
+}irq_override_t;
+
+typedef struct {
+    irq_override_t *irq_override;
+    uint32 irq_override_count;
+}irq_override_info_t;

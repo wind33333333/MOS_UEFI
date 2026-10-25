@@ -7,22 +7,10 @@
 #include "ioapic.h"
 #include "../x64/msr.h"
 
-extern per_cpu_t *cpu_cores;
-extern uint32 active_cpu_count;
 
-extern ioapic_devive_t *ioapic_dev;
-extern uint32 ioapic_count;
-
-
-typedef struct {
-    int8  bus_source;                    // 总线源（通常为 0，表示 ISA 总线）
-    uint8 irq_source;                    // ISA IRQ 号（0-15）
-    uint16 flags;                        // 中断标志（边沿/电平触发，高/低电平等）
-    uint32 global_system_interrupt;      // 重定向后的全局系统中断号
-}irq_override_t;
-
-irq_override_t *irq_override = NULL;
-uint32 irq_override_count = 0;
+cpu_apic_info_t cpu_apic_info = {0};
+irq_override_info_t early_irq_override_info = {0};
+ioapic_info_t early_ioapic_info = {0};
 
 // 1. 全局 LAPIC 基地址
 uint64 global_lapic_base = 0;
@@ -43,7 +31,7 @@ void apic_table_init(void) {
     // =========================================================
     // 第一遍扫描：纯计数 (Count) - 【全面统计 3 大巨头】
     // =========================================================
-    uint32 count_xapic = 0, count_x2apic = 0;
+    uint32 count_xapic = 0, count_x2apic = 0,ioapic_count = 0,irq_override_count = 0,total_cpu_count =0;
 
     while ((uint64) madt_start < madt_end) {
         switch (madt_start->type) {
@@ -55,26 +43,29 @@ void apic_table_init(void) {
         madt_start = (madt_header_t *)((uint64) madt_start + madt_start->length);
     }
     // 🌟 核心决策：如果存在 x2APIC，就用 x2APIC 的数量，否则回退到传统 xAPIC
-    active_cpu_count = (count_x2apic > 0) ? count_x2apic : count_xapic;
-    if (active_cpu_count == 0) {
+    total_cpu_count = (count_x2apic > 0) ? count_x2apic : count_xapic;
+    if (total_cpu_count == 0) {
         PR_ERROR("No active CPU found!\n");
         while (1);
     }
 
-    uint64 core_ptr_size = active_cpu_count * sizeof(per_cpu_t*);
+    cpu_apic_info.total_cpu_count = total_cpu_count;
+    uint64 cpu_hw_size = total_cpu_count * sizeof(cpu_hw_t);
     uint64 ioapic_dev_size = ioapic_count * sizeof(ioapic_devive_t);
     uint64 irq_override_size = irq_override_count * sizeof(irq_override_t);
 
-    uint64 total_size = PAGE_4K_ALIGN(core_ptr_size+ioapic_dev_size +irq_override_size);
-    cpu_cores_ptr = pa_to_va(memblock_alloc(total_size,PAGE_4K_SIZE));
-    asm_mem_set(cpu_cores_ptr,0,total_size);
+    uint64 total_size = PAGE_4K_ALIGN(cpu_hw_size+ioapic_dev_size +irq_override_size);
+    cpu_apic_info.cpu_hw = pa_to_va(memblock_alloc(total_size,PAGE_4K_SIZE));
+    asm_mem_set(cpu_apic_info.cpu_hw,0,total_size);
 
     if (ioapic_count > 0) {
-        ioapic_dev = (ioapic_devive_t*)((uint64)cpu_cores_ptr+core_ptr_size);
+        early_ioapic_info.ioapic_count = ioapic_count;
+        early_ioapic_info.ioapic_devive = (ioapic_devive_t*)((uint64)cpu_apic_info.cpu_hw+cpu_hw_size);
     }
 
     if (irq_override_count > 0) {
-        irq_override = (irq_override_t*)((uint64)ioapic_dev+ioapic_dev_size);
+        early_irq_override_info.irq_override_count = irq_override_count;
+        early_irq_override_info.irq_override = (irq_override_t*)((uint64)early_ioapic_info.ioapic_devive+ioapic_dev_size);
     }
 
     // 💡 必须让 BSP 永远霸占 logical_id = 0 的宝座！
@@ -100,25 +91,25 @@ void apic_table_init(void) {
                         }else {
                             logical_id = ap_idx++;
                         }
-                        cpu_cores_ptr[logical_id].apic_id = lapic_entry->apic_id;
-                        cpu_cores_ptr[logical_id].acpi_proc_id = lapic_entry->processor_id;
-                        cpu_cores_ptr[logical_id].logical_id = logical_id;
+                        cpu_apic_info.cpu_hw[logical_id].apic_id = lapic_entry->apic_id;
+                        cpu_apic_info.cpu_hw[logical_id].acpi_proc_id = lapic_entry->processor_id;
+                        cpu_apic_info.cpu_hw[logical_id].logical_id = logical_id;
                     }
                 }
                 break;
             case 1: //ioapic
                 ioapic_entry_t *ioapic_entry = (ioapic_entry_t *) madt_start;
-                ioapic_dev[ioapic_idx].phys_addr = ioapic_entry->ioapic_address;
-                ioapic_dev[ioapic_idx].gsi_base = ioapic_entry->global_system_interrupt_base;
-                ioapic_dev[ioapic_idx].id = ioapic_entry->ioapic_id;
+                early_ioapic_info.ioapic_devive[ioapic_idx].phys_addr = ioapic_entry->ioapic_address;
+                early_ioapic_info.ioapic_devive[ioapic_idx].gsi_base = ioapic_entry->global_system_interrupt_base;
+                early_ioapic_info.ioapic_devive[ioapic_idx].id = ioapic_entry->ioapic_id;
                 ioapic_idx++;
                 break;
             case 2: //中断重定向
                 interrupt_source_override_entry_t *iso_entry = (interrupt_source_override_entry_t *) madt_start;
-                irq_override[irq_idx].flags = iso_entry->flags;
-                irq_override[irq_idx].bus_source = iso_entry->bus_source;
-                irq_override[irq_idx].irq_source = iso_entry->irq_source;
-                irq_override[irq_idx].global_system_interrupt = iso_entry->global_system_interrupt;
+                early_irq_override_info.irq_override[irq_idx].flags = iso_entry->flags;
+                early_irq_override_info.irq_override[irq_idx].bus_source = iso_entry->bus_source;
+                early_irq_override_info.irq_override[irq_idx].irq_source = iso_entry->irq_source;
+                early_irq_override_info.irq_override[irq_idx].global_system_interrupt = iso_entry->global_system_interrupt;
                 irq_idx++;
                 break;
             case 3: //不可屏蔽中断
@@ -128,14 +119,14 @@ void apic_table_init(void) {
                 apic_nmi_entry_t *apic_nmi_entry = (apic_nmi_entry_t *) madt_start;
                 // 如果 ID 是 0xFF，说明这是“全服广播”
                 if (apic_nmi_entry->apic_id == 0xFF) {
-                    for (uint32 i = 0; i < active_cpu_count; i++) {
-                        cpu_cores_ptr[i].lint_nmi = apic_nmi_entry->lint;
+                    for (uint32 i = 0; i < total_cpu_count; i++) {
+                        cpu_apic_info.cpu_hw[i].lint_nmi = apic_nmi_entry->lint;
                     }
                 } else {
                     // 针对特定 CPU，去数组里找它
-                    for (uint32 i = 0; i < active_cpu_count; i++) {
-                        if (cpu_cores_ptr[i].apic_id == apic_nmi_entry->apic_id) {
-                            cpu_cores_ptr[i].lint_nmi = apic_nmi_entry->lint;
+                    for (uint32 i = 0; i < total_cpu_count; i++) {
+                        if (cpu_apic_info.cpu_hw[i].apic_id == apic_nmi_entry->apic_id) {
+                            cpu_apic_info.cpu_hw[i].lint_nmi = apic_nmi_entry->lint;
                             break;
                         }
                     }
@@ -156,9 +147,9 @@ void apic_table_init(void) {
                         }else {
                             logical_id = ap_idx++;
                         }
-                        cpu_cores_ptr[logical_id].apic_id = x2apic_entry->x2apic_id;
-                        cpu_cores_ptr[logical_id].acpi_proc_id = x2apic_entry->processor_id;
-                        cpu_cores_ptr[logical_id].logical_id = logical_id;
+                        cpu_apic_info.cpu_hw[logical_id].apic_id = x2apic_entry->x2apic_id;
+                        cpu_apic_info.cpu_hw[logical_id].acpi_proc_id = x2apic_entry->processor_id;
+                        cpu_apic_info.cpu_hw[logical_id].logical_id = logical_id;
                     }
                 }
                 break;
@@ -166,13 +157,13 @@ void apic_table_init(void) {
                 x2apic_nmi_entry_t *x2apic_nmi_entry = (x2apic_nmi_entry_t *) madt_start;
                 // X2APIC 的广播 ID 是 0xFFFFFFFF
                 if (x2apic_nmi_entry->x2apic_id == 0xFFFFFFFF) {
-                    for (uint32 i = 0; i < active_cpu_count; i++) {
-                        cpu_cores_ptr[i].lint_nmi = x2apic_nmi_entry->lint;
+                    for (uint32 i = 0; i < total_cpu_count; i++) {
+                        cpu_apic_info.cpu_hw[i].lint_nmi = x2apic_nmi_entry->lint;
                     }
                 } else {
-                    for (uint32 i = 0; i < active_cpu_count; i++) {
-                        if (cpu_cores_ptr[i].apic_id == x2apic_nmi_entry->x2apic_id) {
-                            cpu_cores_ptr[i].lint_nmi = x2apic_nmi_entry->lint;
+                    for (uint32 i = 0; i < total_cpu_count; i++) {
+                        if (cpu_apic_info.cpu_hw[i].apic_id == x2apic_nmi_entry->x2apic_id) {
+                            cpu_apic_info.cpu_hw[i].lint_nmi = x2apic_nmi_entry->lint;
                             break;
                         }
                     }

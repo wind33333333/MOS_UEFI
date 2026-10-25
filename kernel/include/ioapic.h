@@ -1,5 +1,4 @@
 #pragma once
-
 #include "moslib.h"
 
 // -------------------------------------------------------------
@@ -59,13 +58,11 @@ typedef struct ioapic_devive_t {
     ioapic_rte_t *shadow_rtes;   // (可选) 在内存中备份一份 RTE，用于快速读取和恢复
 }ioapic_devive_t;
 
+typedef struct {
+    ioapic_devive_t *ioapic_devive;
+    uint32 ioapic_count;
+}ioapic_info_t;
 
 void ioapic_init(void);
-
-typedef struct{
-    uint8 *ioregsel;    //索引寄存器 8位
-    uint32 *iowin;      //数据寄存器 32位
-    uint32 *eoi;        //中断结束寄存器   32位
-}ioapic_address_t;
 
 

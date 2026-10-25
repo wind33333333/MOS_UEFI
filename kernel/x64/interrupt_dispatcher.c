@@ -6,6 +6,8 @@
 #include "errno.h"
 #include "../sched/sched.h"
 
+irq_override_info_t irq_override_info = {0};
+
 /*********************************************************** 系统异常处理函数 *****************************************************************************/
 
 void do_divide_error(cpu_registers_t *regs) {

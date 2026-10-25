@@ -22,8 +22,6 @@ extern uint64* ap_tmp_pml4t_ptr;
 extern uint32 *apic_id_table_ptr;
 extern uint64 ap_boot_loader_address;
 
-cpu_hw_info_t **cpu_hw_info;
-
 uint64 cpu_featuer_mask =0;
 
 static inline void apic_init(void) {

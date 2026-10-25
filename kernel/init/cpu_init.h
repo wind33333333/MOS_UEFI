@@ -3,16 +3,6 @@
 #include "../x64/msr.h"
 #include "../x64/cpu.h"
 
-// 定义一个极其轻量级的硬件拓扑描述符
-typedef struct {
-    uint32 apic_id;
-    uint32 acpi_proc_id;
-    uint32 logical_id;
-    uint32 numa_node;     // 后续通过解析 SRAT 表填入
-    boolean is_present;
-} cpu_hw_info_t;
-
-
 static inline void set_gs_base(uint32 logical_id) {
     per_cpu_t *per_cpu = cpu_info.per_cpus[logical_id];
     asm_wrgsbase(per_cpu);

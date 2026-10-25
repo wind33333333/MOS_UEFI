@@ -5,8 +5,7 @@
 #include "../../include/printk.h"
 #include "../include/vmalloc.h"
 
-ioapic_devive_t *ioapic_dev = NULL;
-uint32 ioapic_count = 0;
+ioapic_info_t early_ioapic_info;
 
 
 // 基础读写原语
@@ -68,7 +67,7 @@ void ioapic_write_rte(struct ioapic_devive_t *dev, uint8 pin, ioapic_rte_t rte) 
 // 禁用指定 IOAPIC 的所有引脚中断
 // -------------------------------------------------------------
 void ioapic_disable_all_interrupts(struct ioapic_devive_t *dev) {
-    ioapic_dev->ioapic_hw_res = ioremap(ioapic_dev->phys_addr,4096);
+    dev->ioapic_hw_res = ioremap(dev->phys_addr,4096);
 
     // 1. 读取版本寄存器 (0x01)
     uint32 ver = ioapic_read(dev, IOAPIC_REG_VER);
@@ -101,7 +100,7 @@ void ioapic_disable_all_interrupts(struct ioapic_devive_t *dev) {
         ioapic_write_rte(dev, i, rte);
     }
 
-    PR_INFO("IOAPIC Disabling all %d pa:%#lx va:%#lx \n",max_entries, ioapic_dev->phys_addr,ioapic_dev->ioapic_hw_res);
+    PR_INFO("IOAPIC Disabling all %d pa:%#lx va:%#lx \n",max_entries, dev->phys_addr,dev->ioapic_hw_res);
 }
 
 
@@ -125,8 +124,8 @@ void ioapic_init(void) {
     asm_io_out8(0x42,0);        //禁用8054计时器2
 
     //仅用系统所有ioapic
-    for (uint32 i = 0; i < ioapic_count; i++) {
-        ioapic_disable_all_interrupts(&ioapic_dev[i]);
+    for (uint32 i = 0; i < early_ioapic_info.ioapic_count; i++) {
+        ioapic_disable_all_interrupts(&early_ioapic_info.ioapic_devive[i]);
     }
 
 }
