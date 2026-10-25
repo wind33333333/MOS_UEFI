@@ -347,11 +347,13 @@ void cpu_alloc_resources(void) {
     cpu_info.per_cpus = per_cpus;
     cpu_hw_t *cpu_hw = cpu_apic_info.cpu_hw;
     for (uint32 i=0;i < total_cpu_count;i++) {
-        per_cpus[i] = kzalloc(sizeof(per_cpu_t));
-        per_cpus[i]->logical_id = cpu_hw[i].logical_id;
-        per_cpus[i]->apic_id = cpu_hw[i].apic_id;
-        per_cpus[i]->acpi_proc_id = cpu_hw[i].acpi_proc_id;
-        per_cpus[i]->lint_nmi = cpu_hw[i].lint_nmi;
+        per_cpu_t *per_cpu = kzalloc(sizeof(per_cpu_t));
+        per_cpus[i] = per_cpu;
+        per_cpu->self = per_cpu;
+        per_cpu->logical_id = cpu_hw[i].logical_id;
+        per_cpu->apic_id = cpu_hw[i].apic_id;
+        per_cpu->acpi_proc_id = cpu_hw[i].acpi_proc_id;
+        per_cpu->lint_nmi = cpu_hw[i].lint_nmi;
 
         gdt_tss_init(i);
 
