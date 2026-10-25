@@ -68,7 +68,7 @@ void apic_table_init(void) {
     }
 
     // 💡 必须让 BSP 永远霸占 logical_id = 0 的宝座！
-    uint32 ap_idx = 1,ioapic_idx=0,irq_idx=0;
+    uint32 ap_idx = 0,ioapic_idx=0,irq_idx=0;
     uint32 bsp_apic_id = asm_rdmsr(APIC_ID_MSR);
 
     // ✅ 修复 3：设置 LAPIC 的默认基地址 (如果后面有 case 5 会将其覆盖)
@@ -88,7 +88,7 @@ void apic_table_init(void) {
                         if (lapic_entry->apic_id == bsp_apic_id) {
                             logical_id = 0;
                         }else {
-                            logical_id = ap_idx++;
+                            logical_id = ++ap_idx;
                         }
                         cpu_apic_info.cpu_hw[logical_id].apic_id = lapic_entry->apic_id;
                         cpu_apic_info.cpu_hw[logical_id].acpi_proc_id = lapic_entry->processor_id;
@@ -144,7 +144,7 @@ void apic_table_init(void) {
                         if (x2apic_entry->x2apic_id == bsp_apic_id) {
                             logical_id = 0;
                         }else {
-                            logical_id = ap_idx++;
+                            logical_id = ++ap_idx;
                         }
                         cpu_apic_info.cpu_hw[logical_id].apic_id = x2apic_entry->x2apic_id;
                         cpu_apic_info.cpu_hw[logical_id].acpi_proc_id = x2apic_entry->processor_id;
