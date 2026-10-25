@@ -420,7 +420,7 @@ void c_irq_dispatcher(cpu_registers_t *regs) {
  */
 int32 register_irq(uint32 target_cpu_id, int32 vector, irq_handler_f handler, void *dev_id, const char *name) {
     // 1. 参数合法性校验
-    if (vector < 32 || vector >= 256 || target_cpu_id >= cpu_info.run_cpu_count) return -EINVAL;
+    if (vector < 32 || vector >= 256 || target_cpu_id >= cpu_info.total_cpu_count) return -EINVAL;
 
     // 2. 获取目标 CPU 的控制块指针 (核心：跨 CPU 寻址！)
     per_cpu_t *target_cpu = get_lid_by_per_cpu(target_cpu_id);
@@ -436,14 +436,14 @@ int32 register_irq(uint32 target_cpu_id, int32 vector, irq_handler_f handler, vo
     irq_desc_t *desc = &target_cpu->irq_table[irq_index];
 
     // ★ 防火墙 1：不准在没买过的地皮上盖房！
-    if (desc->state == IRQ_STATE_FREE) {
+    if (desc->state == IRQ_STATE_FREE && vector < 0xE0) {
         spin_unlock_irqrestore(&target_cpu->irq_lock, flags);
         PR_ERROR("CPU %u IRQ %d is NOT allocated!\n", target_cpu_id, vector);
         return -EPERM;
     }
 
     // ★ 防火墙 2：不准在已经盖好房子的地皮上重复盖房！
-    if (desc->state == IRQ_STATE_REGISTERED) {
+    if (desc->state == IRQ_STATE_REGISTERED && vector < 0xE0) {
         spin_unlock_irqrestore(&target_cpu->irq_lock, flags);
         PR_ERROR("CPU %u IRQ %d is already registered to %s!\n", target_cpu_id, vector, desc->name);
         return -EBUSY;

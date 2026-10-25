@@ -123,11 +123,11 @@ void kernel_init(void) {
     slub_init();                                                //初始化slub内存分配器
     vmalloc_init();                                             //初始化vmalloc
     video_mem_map();                                            //映射显存到虚拟地址空间
+    cpu_alloc_resources();                                      //给所有cpu分配资源
     ioapic_init();                                              //初始化ioapic
     timer_irq_init();                                           //时钟系统初始化
     hpet_init();                                                //hpet初始化
     bsp_backup_mtrr_state();                                    //备份mtrr
-    cpu_alloc_resources();                                      //给所有cpu分配资源
     apic_time_init();                                           //apic时钟定时器初始化
     cpu_load_resource();                                        //加载cpu资源
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间

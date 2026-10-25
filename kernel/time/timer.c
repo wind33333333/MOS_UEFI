@@ -94,7 +94,10 @@ int32 timer_irq_handler(cpu_registers_t *regs, void *dev_id) {
 
 void timer_irq_init(void) {
     // 2. 注册统一的中断处理入口
-    register_irq(THIS_CPU->logical_id,APIC_TIMER_VECTOR,timer_irq_handler,NULL,"sys-timer");
+    for (uint32 i = 0 ; i < cpu_info.total_cpu_count;i++) {
+        register_irq(i,APIC_TIMER_VECTOR,timer_irq_handler,NULL,"sys-timer");
+    }
+
 }
 
 

@@ -340,6 +340,25 @@ static inline void get_cpu_info(void) {
 
 }
 
+void cpu_alloc_resources(void) {
+    uint32 total_cpu_count = cpu_apic_info.total_cpu_count;
+    cpu_info.total_cpu_count = total_cpu_count;
+    per_cpu_t **per_cpus = kzalloc(sizeof(per_cpu_t *) * total_cpu_count);
+    cpu_info.per_cpus = per_cpus;
+    cpu_hw_t *cpu_hw = cpu_apic_info.cpu_hw;
+    for (uint32 i=0;i < total_cpu_count;i++) {
+        per_cpus[i] = kzalloc(sizeof(per_cpu_t));
+        per_cpus[i]->logical_id = cpu_hw[i].logical_id;
+        per_cpus[i]->apic_id = cpu_hw[i].apic_id;
+        per_cpus[i]->acpi_proc_id = cpu_hw[i].acpi_proc_id;
+        per_cpus[i]->lint_nmi = cpu_hw[i].lint_nmi;
+
+        gdt_tss_init(i);
+
+    }
+}
+
+
 static inline void per_run_sleep_queue_init() {
     task_t *idle = kzalloc(sizeof(task_t));
     idle->id = 0; // 0号任务为系统空闲任务
@@ -419,11 +438,6 @@ void cpu_load_resource(void){
     get_cpu_info();                                         //获取cpu信息
 }
 
-void cpu_alloc_resources(void) {
-    for (uint32 i=0;i < cpu_info.run_cpu_count;i++) {
-        gdt_tss_init(i);
-    }
-}
 
 
 uint64 ap_boot_loader_address;
