@@ -4,7 +4,6 @@
 #include "acpi_init.h"
 #include "slub.h"
 #include "../include/printk.h"
-#include "ioapic.h"
 #include "../x64/msr.h"
 
 
