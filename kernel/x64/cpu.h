@@ -82,10 +82,10 @@ typedef enum {
 // 👑 核心数据结构：每 CPU 控制块 (单结构体·内部冷热隔离版)
 // =================================================================
 typedef struct per_cpu_t {
+    struct per_cpu_t *self;               //指向自己
     uint64          hardirq_rsp_top;      //硬件中断专业栈
     uint64          kernel_rsp_top;       //当前线程内核栈顶 (与 tss->rsp0 同步)
     uint64          tmp_user_rsp;         //syscall发生时暂存用户态RSP的草稿箱
-    struct per_cpu_t *self;              //指向自己
     uint32          logical_id;           //内核逻辑编号 (0 永远是 BSP)
     uint32          apic_id;              // 物理 APIC ID (发 IPI 高频使用)
     cpu_state_t     state;                //核心运行状态 (假设 enum 为 4 字节)

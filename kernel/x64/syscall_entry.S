@@ -11,8 +11,8 @@
 .set USER_CS, 0x2B                      // GDT 64位用户代码段 (RPL=3)
 
 // Per-CPU 结构体内部偏移 (通过 %gs: 寻址)
-.set KERNEL_STACK_TOP,     0x08      // 当前 CPU 的内核栈顶
-.set TMP_USER_RSP,         0x16      // 暂存用户栈指针的临时槽位
+.set KERNEL_RSP_TOP,   16                      // 当前 CPU 的内核栈顶
+.set TMP_USER_RSP,     KERNEL_RSP_TOP + 8      // 暂存用户栈指针的临时槽位
 
 .set ENOSYS, 38                         // -38 代表系统调用未实现
 
@@ -25,7 +25,7 @@ syscall_entry:
     // ---------------------------------------------------------
     swapgs
     movq %rsp, %gs:TMP_USER_RSP      // 暂存不可信的用户 RSP
-    movq %gs:KERNEL_STACK_TOP, %rsp  // 切换至当前 CPU 的内核栈顶
+    movq %gs:KERNEL_RSP_TOP, %rsp  // 切换至当前 CPU 的内核栈顶
 
     // ---------------------------------------------------------
     // 2. 模拟构造硬件栈现场 (共 40 字节)

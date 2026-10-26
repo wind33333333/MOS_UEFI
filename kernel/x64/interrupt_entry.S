@@ -120,7 +120,7 @@ exception_com_stub:
 # ---------------------------------------------------------
 .extern c_irq_dispatcher
 .extern check_and_schedule
-.set HARDIRQ_RSP_TOP, 0         # 假设 Per-CPU 结构中 HardIRQ 栈顶位于 offset 0
+.set HARDIRQ_RSP_TOP, 8         # 假设 Per-CPU 结构中 HardIRQ 栈顶位于 offset 8
 
 irq_com_stub:
     testb $3, 24(%rsp)
