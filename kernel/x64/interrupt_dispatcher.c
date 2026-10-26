@@ -333,11 +333,50 @@ void do_virtualization_exception(cpu_registers_t *regs) {
 
 /*******************************************************************************************************************************/
 
-//全局中断描述符表
-RODATA __attribute__((aligned(4096))) const idt_t idt = {0};
 
+
+//前32个异常处理函数表
 static exception_handler_f exception_table[32];
 
+
+//异常分发  汇编exc_cmn_stub -> c_exception_dispatcher
+void c_exception_dispatcher(cpu_registers_t *regs) {
+    exception_handler_f exception = exception_table[regs->no];
+    if (exception == NULL) {
+        PR_ERROR("Exception Func NULL\n");
+        while (1) {
+            asm_hlt();
+        }
+    }
+    exception(regs);
+}
+
+//中断分发 汇编irq_cmn_stub -> c_irq_dispatcher
+void c_irq_dispatcher(cpu_registers_t *regs) {
+    // 1. 过滤虚假中断
+    if (regs->no == APIC_SPURIOUS_VECTOR) return;
+
+    // 2. 映射为 0~223 的索引
+    uint64 irq_no = regs->no - 32;
+
+    // 3. 🌟 O(1) 极速本地查表 (全程在本地 L1 Cache 内完成)
+    irq_desc_t *irq_desc = &this_cpu()->irq_table[irq_no];
+
+    if (irq_desc->handler != NULL) {
+        // 传递 regs 和 驱动注册时的私有 dev_id (如网卡对象指针)
+        irq_desc->handler(regs, irq_desc->dev_id);
+    } else {
+        color_printk(YELLOW, BLACK, "CPU %d Unhandled Vector: %ld\n",
+                     THIS_CPU->logical_id, irq_no);
+    }
+
+    // 4. 发送 EOI，解除 APIC 锁定
+    apic_send_eoi();
+
+}
+
+
+//异常函数注册函数
 int32 register_exception(int32 vector, exception_handler_f handler) {
     if (vector < 0 || vector >= 32) return -EINVAL;
 
@@ -374,41 +413,6 @@ int32 unregister_exception(int32 vector) {
     return 0;
 }
 
-//异常分发
-void c_exception_dispatcher(cpu_registers_t *regs) {
-    exception_handler_f exception = exception_table[regs->no];
-    if (exception == NULL) {
-        PR_ERROR("Exception Func NULL\n");
-        while (1) {
-            asm_hlt();
-        }
-    }
-    exception(regs);
-}
-
-//中断分发
-void c_irq_dispatcher(cpu_registers_t *regs) {
-    // 1. 过滤虚假中断
-    if (regs->no == APIC_SPURIOUS_VECTOR) return;
-
-    // 2. 映射为 0~223 的索引
-    uint64 irq_no = regs->no - 32;
-
-    // 3. 🌟 O(1) 极速本地查表 (全程在本地 L1 Cache 内完成)
-    irq_desc_t *irq_desc = &this_cpu()->irq_table[irq_no];
-
-    if (irq_desc->handler != NULL) {
-        // 传递 regs 和 驱动注册时的私有 dev_id (如网卡对象指针)
-        irq_desc->handler(regs, irq_desc->dev_id);
-    } else {
-        color_printk(YELLOW, BLACK, "CPU %d Unhandled Vector: %ld\n",
-                     THIS_CPU->logical_id, irq_no);
-    }
-
-    // 4. 发送 EOI，解除 APIC 锁定
-    apic_send_eoi();
-
-}
 
 
 /**

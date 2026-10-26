@@ -13,31 +13,31 @@
     .p2align 4                  /* 🌟 强制对齐到 16 字节边界，不足自动补 NOP */
     pushq $0                    /* 填补 dummy Error Code (2 字节) */
     pushq $\vector              /* 压入向量号 (2~5 字节) */
-    jmp exception_com_stub      /* 跳转到异常公共入口 (5 字节) */
+    jmp exc_cmn_stub      /* 跳转到异常公共入口 (5 字节) */
 .endm
 
 /* 异常桩 - 有硬件错误码 (跳向异常处理中枢) */
 .macro EXC_ERR vector
     .p2align 4
     pushq $\vector
-    jmp exception_com_stub
+    jmp exc_cmn_stub
 .endm
 
 
 /* 硬件 IRQ 桩 (跳向外设中断处理中枢) */
-.macro IRQ_STUB vector
+.macro IRQ_NOERR vector
     .p2align 4
     pushq $0                    /* IRQ 无错误码，补 0 */
     pushq $\vector
-    jmp irq_com_stub            /* 👉 跳转到 IRQ 专属公共入口 */
+    jmp irq_cmn_stub            /* 👉 跳转到 IRQ 专属公共入口 */
 .endm
 
 # ========================================================
 # 2. 定长栅格跳板阵列 (Fixed-Stride Array)
 # ========================================================
-.global interrupt_entry_base
+.global irq_ecx_base
 .p2align 4                      /* 确保整个基址起始于 16 字节对齐处 */
-interrupt_entry_base:
+irq_ecx_base:
 
 /* --- 前 32 个：CPU 异常与陷阱 --- */
 EXC_NOERR 0     /* 0: #DE 除零异常 */
@@ -83,7 +83,7 @@ EXC_NOERR 31    /* 31: 保留 */
 /* --- 32 ~ 255：外设硬件 IRQ 区 (循环生成) --- */
 .set i, 32
 .rept 224
-    IRQ_STUB %i
+    IRQ_NOERR %i
     .set i, i + 1
 .endr
 
@@ -96,7 +96,7 @@ EXC_NOERR 31    /* 31: 保留 */
 # ---------------------------------------------------------
 .extern c_exception_dispatcher
 
-exception_com_stub:
+exc_cmn_stub:
     testb $3, 24(%rsp)          # 检查被中断时的特权级
     jz 1f
     swapgs                      # 如果来自 Ring 3，切入内核 GS
@@ -122,7 +122,7 @@ exception_com_stub:
 .extern check_and_schedule
 .set HARDIRQ_RSP_TOP, 8         # 假设 Per-CPU 结构中 HardIRQ 栈顶位于 offset 8
 
-irq_com_stub:
+irq_cmn_stub:
     testb $3, 24(%rsp)
     jz 1f
     swapgs
