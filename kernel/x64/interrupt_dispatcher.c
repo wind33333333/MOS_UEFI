@@ -407,6 +407,8 @@ void c_irq_dispatcher(cpu_registers_t *regs) {
 
     // 4. 发送 EOI，解除 APIC 锁定
     apic_send_eoi();
+
+    check_and_schedule();
 }
 
 
