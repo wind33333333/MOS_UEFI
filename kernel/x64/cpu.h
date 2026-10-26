@@ -83,7 +83,7 @@ typedef enum {
 // =================================================================
 typedef struct per_cpu_t {
     struct per_cpu_t *self;               //指向自己
-    uint64          hardirq_rsp_top;      //硬件中断专业栈
+    uint64          hwirq_rsp_top;        //硬件中断专业栈
     uint64          kernel_rsp_top;       //当前线程内核栈顶 (与 tss->rsp0 同步)
     uint64          tmp_user_rsp;         //syscall发生时暂存用户态RSP的草稿箱
     uint32          logical_id;           //内核逻辑编号 (0 永远是 BSP)

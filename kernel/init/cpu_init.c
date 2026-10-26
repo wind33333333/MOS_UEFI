@@ -349,7 +349,7 @@ void per_cpu_alloc_resources(void) {
     for (uint32 i=0;i < total_cpu_count;i++) {
         per_cpu_t *per_cpu = kzalloc(sizeof(per_cpu_t));
         per_cpus[i] = per_cpu;
-        per_cpu->hardirq_rsp_top = (uint64)kmalloc(4096*4)+4096*4;
+        per_cpu->hwirq_rsp_top = (uint64)kmalloc(4096*4)+4096*4;
         per_cpu->self = per_cpu;
         per_cpu->logical_id = cpu_hw[i].logical_id;
         per_cpu->apic_id = cpu_hw[i].apic_id;
