@@ -21,7 +21,7 @@ static inline uint32 get_lid_by_apic(uint32 apic_id) {
 
 
 void cpu_enable_feature(void);
-void cpu_alloc_resources(void);
+void per_cpu_alloc_resources(void);
 void cpu_load_resource(void);
 void ap_init(void);
 void ap_main(void);

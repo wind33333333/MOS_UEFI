@@ -44,7 +44,7 @@ static inline void apic_init(void) {
     value = asm_rdmsr(APIC_SPURIOUS_VECTOR_MSR);
     // 基础配置：开启 Local APIC (Bit 8) + 伪中断向量号设为 0xFF (Bit 0-7)
     // 此时 value 的掩码是 0x01FF
-    value |= 0x01FF;
+    value |= (0x0100 | APIC_SPURIOUS_VECTOR);
 
     // ==========================================================
     // 2. 动态探测是否支持“禁用 EOI 广播” (防 #GP 死机神技)
@@ -340,7 +340,7 @@ static inline void get_cpu_info(void) {
 
 }
 
-void cpu_alloc_resources(void) {
+void per_cpu_alloc_resources(void) {
     uint32 total_cpu_count = cpu_apic_info.total_cpu_count;
     cpu_info.total_cpu_count = total_cpu_count;
     per_cpu_t **per_cpus = kzalloc(sizeof(per_cpu_t *) * total_cpu_count);
@@ -349,6 +349,7 @@ void cpu_alloc_resources(void) {
     for (uint32 i=0;i < total_cpu_count;i++) {
         per_cpu_t *per_cpu = kzalloc(sizeof(per_cpu_t));
         per_cpus[i] = per_cpu;
+        per_cpu->hardirq_rsp_top = (uint64)kmalloc(4096*4)+4096*4;
         per_cpu->self = per_cpu;
         per_cpu->logical_id = cpu_hw[i].logical_id;
         per_cpu->apic_id = cpu_hw[i].apic_id;
