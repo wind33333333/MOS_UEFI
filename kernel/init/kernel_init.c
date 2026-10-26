@@ -143,11 +143,11 @@ void kernel_init(void) {
     task_c = create_kernel_task(thread_c, 0);
     enqueue_task_eevdf(task_c);
 
-    task_d = create_kernel_task(thread_monitor, 0);
-    enqueue_task_eevdf(task_d);
+    // task_d = create_kernel_task(thread_monitor, 0);
+    // enqueue_task_eevdf(task_d);
 
-    // user_task = create_user_task(user_test_payload);
-    // enqueue_task_eevdf(user_task);
+    user_task = create_user_task(user_test_payload);
+    enqueue_task_eevdf(user_task);
 
     idle_task();
 

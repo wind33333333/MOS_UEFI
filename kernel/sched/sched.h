@@ -81,17 +81,7 @@ static inline uint64 sched_get_slice_deadline(uint64 cur_ns) {
 // 调度器核心 API
 void schedule();
 
-static inline void check_and_schedule() {
-    // 如果当前任务被贴了“换人”的条子
-    task_t *cur_task = THIS_CPU->cur_task;
-    if (cur_task->flags & TIF_NEED_RESCHED) {
-        cur_task->flags &= ~TIF_NEED_RESCHED; // 撕掉条子
 
-        // 🌟 在这里进行真正的上下文切换！
-        // 即使栈在这里被劫持，APIC 也绝对不会死锁，因为 EOI 早就发完了！
-        schedule();
-    }
-}
 
 
 

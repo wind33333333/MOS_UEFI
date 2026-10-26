@@ -119,6 +119,7 @@ exception_com_stub:
 # B. 硬件中断中枢 (Hardware IRQ): 无脑切换 HardIRQ 栈，绝对禁止休眠
 # ---------------------------------------------------------
 .extern c_irq_dispatcher
+.extern check_and_schedule
 .set HARDIRQ_RSP_TOP, 0         # 假设 Per-CPU 结构中 HardIRQ 栈顶位于 offset 0
 
 irq_com_stub:
@@ -141,6 +142,8 @@ irq_com_stub:
 
     RESTORE_ALL_REGS
     addq $16, %rsp
+
+    call check_and_schedule
 
     /* --- 抢占式调度拦截点 --- */
     testb $3, 8(%rsp)           # 检查即将返回的特权级
