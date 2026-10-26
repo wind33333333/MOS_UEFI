@@ -1,7 +1,7 @@
 #pragma once
 #include "moslib.h"
 #include "gdt_tss.h"
-#include "interrupt_dispatcher.h"
+#include "irq_dispatcher.h"
 #include "rbtree.h"
 #include "../time/time_core.h"
 

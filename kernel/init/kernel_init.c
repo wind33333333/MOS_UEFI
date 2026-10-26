@@ -14,7 +14,7 @@
 #include "../x64/mtrr.h"
 #include "../x64/apic_time.h"
 #include "../include/bus.h"
-#include "../x64/interrupt_dispatcher.h"
+#include "intr_init.h"
 #include "../include/ioapic.h"
 #include "../drivers/hpet/hpet.h"
 #include "../time/time_core.h"

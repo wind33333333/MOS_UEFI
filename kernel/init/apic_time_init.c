@@ -3,7 +3,7 @@
 #include "../x64/msr.h"
 #include "../x64/apic_time.h"
 #include "../time/time_core.h"
-#include "../x64/interrupt_dispatcher.h"
+
 
 extern clocksource_t tsc_cs;
 extern clockevent_t tsc_deadline_ce;

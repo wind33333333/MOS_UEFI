@@ -1,7 +1,7 @@
 #include "cpu_init.h"
 #include "apic_init.h"
 #include "../drivers/hpet/hpet.h"
-#include "../x64/interrupt_dispatcher.h"
+#include "../x64/idt.h"
 #include "printk.h"
 #include "vmalloc.h"
 #include "slub.h"

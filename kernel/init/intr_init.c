@@ -1,4 +1,5 @@
-#include "../x64/interrupt_dispatcher.h"
+#include "../x64/ecx_dispatcher.h"
+#include "../x64/idt.h"
 #include "printk.h"
 
 // 引用汇编中连续中断桩的基地址

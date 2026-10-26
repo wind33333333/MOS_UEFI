@@ -2,7 +2,7 @@
 #include "moslib.h"
 #include "device.h"
 #include "driver.h"
-#include "../x64/interrupt_dispatcher.h"
+#include "../x64/irq_dispatcher.h"
 
 #pragma pack(push,1)
 

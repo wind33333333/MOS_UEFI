@@ -4,11 +4,6 @@
 
 
 // ==========================================
-// 1. CPU 架构保留区 (0x00 - 0x1F)
-// ==========================================
-// 0x00 ~ 0x1F 严禁被外设或软件占用，由硬件异常独占。
-
-// ==========================================
 // 2. 传统 ISA 与低速设备区 (0x20 - 0x2F) [Priority 2]
 // ==========================================
 // 即便在 UEFI 和纯 64 位下，IOAPIC 依然可能会把主板上残存的
@@ -45,32 +40,6 @@
 #define APIC_SPURIOUS_VECTOR        0xFF // 虚假中断 (Intel 规范建议使用 0xFF)
 
 
-
-// 定义0-20异常处理函数
-void do_divide_error(cpu_registers_t *regs);
-void do_debug(cpu_registers_t *regs);
-void do_nmi(cpu_registers_t *regs);
-void do_int3(cpu_registers_t *regs);
-void do_overflow(cpu_registers_t *regs) ;
-void do_bounds(cpu_registers_t *regs);
-void do_undefined_opcode(cpu_registers_t *regs);
-void do_dev_not_available(cpu_registers_t *regs);
-void do_double_fault(cpu_registers_t *regs);
-void do_coprocessor_segment_overrun(cpu_registers_t *regs);
-void do_invalid_tss(cpu_registers_t *regs);
-void do_segment_not_present(cpu_registers_t *regs);
-void do_stack_segment_fault(cpu_registers_t *regs);
-void do_general_protection(cpu_registers_t *regs);
-void do_page_fault(cpu_registers_t *regs);
-void do_x87_FPU_error(cpu_registers_t *regs) ;
-void do_alignment_check(cpu_registers_t *regs) ;
-void do_machine_check(cpu_registers_t *regs);
-void do_SIMD_exception(cpu_registers_t *regs);
-void do_virtualization_exception(cpu_registers_t *regs) ;
-
-//CPU异常函数签名
-typedef void (*exception_handler_f)(cpu_registers_t *regs);
-
 // 3. 独占式 (MSI/MSI-X) 中断路由表数据结构
 #define IRQ_NONE        0 // 硬件没数据，虚假唤醒
 #define IRQ_HANDLED     1 // 已成功处理
@@ -103,13 +72,6 @@ int32 free_irq_vector(uint32 target_cpu_id, int32 base_vector, uint32 count) ;
 
 int32 register_irq(uint32 target_cpu_id, int32 vector, irq_handler_f handler, void *dev_id, const char *name);
 int32 unregister_irq(uint32 target_cpu_id, int32 vector, void *dev_id);
-
-int32 register_exception(int32 vector, exception_handler_f handler);
-int32 unregister_exception(int32 vector);
-
-void idt_init(void);
-void tmp_exception_init();
-
 
 typedef struct {
     int8  bus_source;                    // 总线源（通常为 0，表示 ISA 总线）

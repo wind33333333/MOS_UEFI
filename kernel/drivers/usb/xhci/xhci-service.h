@@ -1,6 +1,6 @@
 #pragma once
 #include "../../../include/moslib.h"
-#include "../../../x64/interrupt_dispatcher.h"
+#include "../x64/irq_dispatcher.h"
 
 struct xhci_hcd_t;
 int32 xhci_isr(cpu_registers_t *regs,void *dev_id);

@@ -1,5 +1,4 @@
 #include "../time/timer.h"
-#include "../x64/interrupt_dispatcher.h"
 #include "time_core.h"
 #include "../sched/sched.h"
 #include "../sched/task.h"
