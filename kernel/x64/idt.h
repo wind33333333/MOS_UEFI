@@ -28,5 +28,4 @@ typedef struct idt_ptr_t{
     const idt_t  *base;
 }__attribute__((packed))idt_ptr_t;
 
-void idt_set_descriptor(uint8 vector , uint8 attributes, uint8 ist);
 void asm_lidt();
