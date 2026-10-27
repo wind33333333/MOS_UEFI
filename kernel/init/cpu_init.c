@@ -414,12 +414,9 @@ void cpu_load_resource(void){
 
     set_gs_base(logical_id);                                 //设置bsp核gs基地址
 
-    gdt_ptr_t gdt_ptr;
-    gdt_ptr.limit = sizeof(gdt_t) - 1;
-    gdt_ptr.base = THIS_CPU->gdt_base;
-    asm_lgdt(&gdt_ptr,8,0x10);            //加载正式gdt
+    asm_lgdt(&this_cpu()->gdt);                                         //加载正式gdt
 
-    asm_ltr(48);                                        //加载tr
+    asm_ltr();                                          //加载tr
 
     // 装载 IDTR
     asm_lidt();

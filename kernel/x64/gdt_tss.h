@@ -1,6 +1,4 @@
 #pragma once
-
-
 #include "moslib.h"
 
 typedef struct {
@@ -39,7 +37,11 @@ typedef struct{
 } __attribute__((packed)) gdt_ptr_t;
 
 
-static inline void asm_lgdt(const gdt_ptr_t *gdt_ptr, uint16 code64_sel, uint16 data64_sel) {
+static inline void asm_lgdt(gdt_t *gdt) {
+    gdt_ptr_t gdt_ptr;
+    gdt_ptr.limit = sizeof(gdt_t) - 1;
+    gdt_ptr.base = gdt;
+
     __asm__ __volatile__(
             "lgdtq       %0                  \n\t"  // 加载 GDT 描述符地址
             "pushq       %q1                 \n\t"  // 压入代码段选择器
@@ -47,22 +49,22 @@ static inline void asm_lgdt(const gdt_ptr_t *gdt_ptr, uint16 code64_sel, uint16 
             "pushq       %%rax               \n\t"  // 压入返回地址
             "lretq                           \n\t"  // 执行长返回，切换到新代码段选择子
             "1:                              \n\t"  // 跳转目标标记
-            "movw        %2, %%ss            \n\t"  // 设置堆栈段选择器
-            "movw        %2, %%ds            \n\t"  // 设置数据段选择器
-            "movw        %2, %%es            \n\t"  // 设置额外段选择器
+            "movw        %w2, %%ss            \n\t"  // 设置堆栈段选择器
+            "movw        %w2, %%ds            \n\t"  // 设置数据段选择器
+            "movw        %w2, %%es            \n\t"  // 设置额外段选择器
             :
-            : "m"(*gdt_ptr), "r"(code64_sel), "r"(data64_sel)
+            : "m"(gdt_ptr), "r"(8), "r"(16)
             : "memory", "%rax"
             );
 }
 
 
-
-static inline void asm_ltr(uint16 tss_sel) {
+//tss在gdt中固定为编译48
+static inline void asm_ltr() {
     __asm__ __volatile__(
             "ltr    %w0 \n\t"
             :
-            : "r"(tss_sel)
+            : "r"(48)
             :
             );
 }

@@ -101,7 +101,7 @@ typedef struct per_cpu_t {
     struct task_t   *idle_task;          // 兜底的系统空闲任务 (hlt)
     run_queue_t     run_queue;           // 就绪队列
     sleep_queue_t   sleep_queue;         // 定时队列
-    gdt_t           *gdt_base;            // 强制对齐隔离！
+    gdt_t           gdt __attribute__((aligned(64)));
     uint32          acpi_proc_id;         // 从顶部挪下来的冷数据：ACPI 处理器 ID
 
     irq_desc_t      irq_table[223];       //中断路由表 233 = 256-32异常（0-31）4-1个虚假中断（255号）

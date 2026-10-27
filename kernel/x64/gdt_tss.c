@@ -62,9 +62,8 @@ static inline void set_tss_desc(uint64 *tss_desc_ptr, tss_t *tss) {
 
 
 void gdt_tss_init(uint32 logical_id) {
-    gdt_t *gdt = kzalloc(sizeof(gdt_t));
     per_cpu_t *per_cpu =  cpu_info.per_cpus[logical_id];
-    per_cpu->gdt_base = gdt;
+    gdt_t *gdt = &per_cpu->gdt;
     gdt->kernel_code64_desc = KERNEL_CODE64_DESC;
     gdt->kernel_data_desc = KERNEL_DATA_DESC;
     gdt->user_code32_desc = USER_CODE32_DESC;
