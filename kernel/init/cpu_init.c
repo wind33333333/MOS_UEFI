@@ -89,16 +89,6 @@ void cpu_enable_feature(void) {
     uint32 eax,ebx,ecx,edx;
     uint64 tmp,value;
 
-    //region APIC_BASE_MSR (MSR 0x1B)
-    //X2APIC（bit 10）：作用：如果该位被设置为 1，处理器启用 X2APIC 模式。X2APIC 是 APIC 的扩展版本，提供了更多的功能，例如更大的中断目标地址空间。
-    //EN（bit 11）：作用：控制是否启用本地 APIC。设置为 1 时启用本地 APIC；设置为 0 时禁用。
-    //BSP（bit 9）：作用：标记该处理器是否是系统的启动处理器（BSP）。系统启动时，BSP 是首先执行初始化代码的 CPU，其它处理器是 AP（Application Processors，应用处理器）。
-    //APIC Base Address（bit 12-31）：作用：指定本地 APIC 的基地址。默认情况下，APIC 基地址为 0xFEE00000，但该值可以通过修改来改变，前提是该地址对齐到 4KB。
-    ////endregion
-    value=asm_rdmsr(APIC_BASE_MSR);
-    value |= 0xC00;                        //bit8 1=bsp 0=ap bit10 X2APIC使能   bit11 APIC全局使能
-    asm_wrmsr(APIC_BASE_MSR,value);
-
     //region CR4 寄存器
     //VME（bit 0） 描述：启用虚拟 8086 模式的扩展功能，允许在虚拟 8086 模式中支持虚拟中断。用途：用于实现虚拟机监控或虚拟 8086 环境中的精细中断控制。
     //PVI（bit 1） 描述：启用保护模式下的虚拟中断标志，支持在虚拟化环境中进行中断管理。用途：允许虚拟化软件在保护模式下模拟中断处理，用于虚拟机监控程序。
@@ -410,13 +400,13 @@ static inline void syscall_init(void) {
 
 void per_cpu_init(void){
     cpu_enable_feature();
+    apic_init();                                            //本地apic初始化
     uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
     uint32 logical_id = apicid_to_logcalid(apic_id);
     set_gs_base(logical_id);                                //设置bsp核gs基地址
     asm_lgdt(&this_cpu()->gdt);                             //加载正式gdt
     asm_ltr();                                              //加载tr
     asm_lidt();                                             // 装载 IDTR
-    apic_init();
     syscall_init();                                         //初始化系统调用
     clockevent_per_cpu_init();                              //设置核心定时器
     per_run_sleep_queue_init();                             //配置队列
