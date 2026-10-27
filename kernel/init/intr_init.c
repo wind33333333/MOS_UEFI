@@ -33,15 +33,15 @@ void idt_init(void) {
     }
 
     // 特例：如果是供用户态引发的异常/系统调用，可以改属性
-    idt_set_descriptor(3, IDT_USER_DESC,0);
+    idt_set_descriptor(X86_EXC_BP, IDT_USER_DESC,0);
 
     // =========================================================
     // 👑 架构师核心修改：为致命异常颁发 IST 免死金牌！
     // =========================================================
-    idt_set_descriptor(8, IDT_INTERRUPT_DESC,1);// 8: Double Fault (#DF) 双重故障
-    idt_set_descriptor(2, IDT_INTERRUPT_DESC,2);// 2: NMI 不可屏蔽中断
-    idt_set_descriptor(18, IDT_INTERRUPT_DESC,3);// 18: Machine Check (#MC) 机器检查
-    idt_set_descriptor(1, IDT_INTERRUPT_DESC,4);// 1: Debug (#DB) 调试异常
+    idt_set_descriptor(X86_EXC_DF, IDT_INTERRUPT_DESC,1);// 8: Double Fault (#DF) 双重故障
+    idt_set_descriptor(X86_EXC_NMI, IDT_INTERRUPT_DESC,2);// 2: NMI 不可屏蔽中断
+    idt_set_descriptor(X86_EXC_MC, IDT_INTERRUPT_DESC,3);// 18: Machine Check (#MC) 机器检查
+    idt_set_descriptor(X86_EXC_DB, IDT_INTERRUPT_DESC,4);// 1: Debug (#DB) 调试异常
 
     // 装载 IDTR
     idt_ptr_t idtr;
