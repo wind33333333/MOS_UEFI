@@ -409,32 +409,17 @@ static inline void syscall_init(void) {
 }
 
 void per_cpu_init(void){
-
     cpu_enable_feature();
-
     uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
     uint32 logical_id = apicid_to_logcalid(apic_id);
-
-    set_gs_base(logical_id);                                 //设置bsp核gs基地址
-
-    asm_lgdt(&this_cpu()->gdt);                                         //加载正式gdt
-
-    asm_ltr();                                          //加载tr
-
-    // 装载 IDTR
-    asm_lidt();
-
+    set_gs_base(logical_id);                                //设置bsp核gs基地址
+    asm_lgdt(&this_cpu()->gdt);                             //加载正式gdt
+    asm_ltr();                                              //加载tr
+    asm_lidt();                                             // 装载 IDTR
     apic_init();
-
-    //初始化系统调用
-    syscall_init();
-
-    //设置核心定时器
-    clockevent_per_cpu_init();
-
-    //配置队列
-    per_run_sleep_queue_init();
-
+    syscall_init();                                         //初始化系统调用
+    clockevent_per_cpu_init();                              //设置核心定时器
+    per_run_sleep_queue_init();                             //配置队列
     get_cpu_info();                                         //获取cpu信息
 }
 
