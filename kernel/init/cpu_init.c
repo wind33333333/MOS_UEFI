@@ -413,7 +413,7 @@ void per_cpu_init(void){
     cpu_enable_feature();
 
     uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
-    uint32 logical_id = get_lid_by_apic(apic_id);
+    uint32 logical_id = get_aid_to_lid(apic_id);
 
     set_gs_base(logical_id);                                 //设置bsp核gs基地址
 
