@@ -56,27 +56,27 @@ void idt_init(void) {
 }
 
 void tmp_exception_init() {
-    register_exception(0,do_divide_error);
-    register_exception(1,do_debug);
-    //2号 NMI: 不可屏蔽中断 (Non-Maskable Interrupt)，单独的中断入口
-    register_exception(3,do_int3);
-    register_exception(4,do_overflow);
-    register_exception(5,do_bounds);
-    register_exception(6,do_undefined_opcode);
-    register_exception(7,do_dev_not_available);
-    register_exception(8,do_double_fault);
-    register_exception(9,do_coprocessor_segment_overrun);
-    register_exception(10,do_invalid_tss);
-    register_exception(11,do_segment_not_present);
-    register_exception(12,do_stack_segment_fault);
-    register_exception(13,do_general_protection);
-    register_exception(14,do_page_fault);
-    //15保留
-    register_exception(16,do_x87_FPU_error);
-    register_exception(17,do_alignment_check);
-    register_exception(18,do_machine_check);
-    register_exception(19,do_SIMD_exception);
-    register_exception(20,do_virtualization_exception);
-    // [21] - [31] 为 Intel 保留异常或较新的硬件异常 (如 21号 #CP 控制保护异常)，默认初始化为 NULL
-    PR_INFO("0-32 Temporary Exception Init Success!\n");
+    register_exception(X86_EXC_DE,  do_divide_error);
+    register_exception(X86_EXC_DB,  do_debug);
+    // X86_EXC_NMI (2号) 通常需要极其特殊的硬件级处理机制，所以不在这里用普通异常接口注册
+    register_exception(X86_EXC_BP,  do_int3);
+    register_exception(X86_EXC_OF,  do_overflow);
+    register_exception(X86_EXC_BR,  do_bounds);
+    register_exception(X86_EXC_UD,  do_undefined_opcode);
+    register_exception(X86_EXC_NM,  do_dev_not_available);
+    register_exception(X86_EXC_DF,  do_double_fault);
+    register_exception(X86_EXC_CSO, do_coprocessor_segment_overrun);
+    register_exception(X86_EXC_TS,  do_invalid_tss);
+    register_exception(X86_EXC_NP,  do_segment_not_present);
+    register_exception(X86_EXC_SS,  do_stack_segment_fault);
+    register_exception(X86_EXC_GP,  do_general_protection);
+    register_exception(X86_EXC_PF,  do_page_fault);
+    // 15 保留
+    register_exception(X86_EXC_MF,  do_x87_FPU_error);
+    register_exception(X86_EXC_AC,  do_alignment_check);
+    register_exception(X86_EXC_MC,  do_machine_check);
+    register_exception(X86_EXC_XM,  do_SIMD_exception);
+    register_exception(X86_EXC_VE,  do_virtualization_exception);
+    // [21] - [31] 为 Intel 保留异常或较新的硬件异常 (如 X86_EXC_CP 控制保护异常)，默认初始化为 NULL
+    PR_INFO("0-31 Temporary Exception Init Success!\n");
 }
