@@ -422,10 +422,7 @@ void cpu_load_resource(void){
     asm_ltr(48);                                        //加载tr
 
     // 装载 IDTR
-    idt_ptr_t idtr;
-    idtr.limit = sizeof(idt) - 1;
-    idtr.base = &idt;
-    asm_lidt(&idtr);
+    asm_lidt();
 
     apic_init();
 

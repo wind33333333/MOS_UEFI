@@ -42,10 +42,7 @@ void idt_init(void) {
     idt_set_descriptor(X86_EXC_DB, IDT_INTERRUPT_DESC,4);// 1: Debug (#DB) 调试异常
 
     //4. 装载 IDTR
-    idt_ptr_t idtr;
-    idtr.limit = sizeof(idt) - 1;
-    idtr.base = &idt;
-    asm_lidt(&idtr);
+    asm_lidt();
 
     //5. 打开 CPU 全局中断标志
     asm_sti();
