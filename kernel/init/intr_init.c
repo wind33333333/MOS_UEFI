@@ -53,7 +53,7 @@ void idt_init(void) {
     PR_OK("IDT Initialized with 256 vectors.\n");
 }
 
-//初始化启动阶段异常函数
+//初始化启动阶段异常函数,后面有正式内核接管
 void boot_exception_init() {
     register_exception(X86_EXC_DE,  do_divide_error);
     register_exception(X86_EXC_DB,  do_debug);
