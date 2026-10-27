@@ -112,7 +112,7 @@ void kernel_init(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
     output_init();                                              //初始化输出控制台
     idt_init();                                                 //中断描述符表初始化
-    tmp_exception_init();                                       //0-31号临时异常注册成功
+    boot_exception_init();                                       //0-31号临时异常注册成功
     cpu_enable_feature();                                       //cpu启用高级特性
     apply_alternatives();                                       //动态修复指令
     vm_layout_init();                                           //虚拟内存空间初始化

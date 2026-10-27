@@ -24,38 +24,37 @@ static inline void idt_set_descriptor(uint8 vector , uint8 attributes, uint8 ist
 
 
 /**
- * @brief 初始化临时中断系统 (在内核早期初始化时调用)
+ * 初始化中断描述符表
  */
 void idt_init(void) {
-    // 循环挂载 256 个中断门
+    // 1.先默认统一格式化idt为256个中断门
     for (int i = 0; i < IDT_ENTRIES; i++) {
         idt_set_descriptor(i, IDT_INTERRUPT_DESC,0);
     }
 
-    // 特例：如果是供用户态引发的异常/系统调用，可以改属性
+    // 2.int3调试指令，中断门权限调成user
     idt_set_descriptor(X86_EXC_BP, IDT_USER_DESC,0);
 
-    // =========================================================
-    // 👑 架构师核心修改：为致命异常颁发 IST 免死金牌！
-    // =========================================================
+    //3.这4个异常的中断门设置独立栈
     idt_set_descriptor(X86_EXC_DF, IDT_INTERRUPT_DESC,1);// 8: Double Fault (#DF) 双重故障
     idt_set_descriptor(X86_EXC_NMI, IDT_INTERRUPT_DESC,2);// 2: NMI 不可屏蔽中断
     idt_set_descriptor(X86_EXC_MC, IDT_INTERRUPT_DESC,3);// 18: Machine Check (#MC) 机器检查
     idt_set_descriptor(X86_EXC_DB, IDT_INTERRUPT_DESC,4);// 1: Debug (#DB) 调试异常
 
-    // 装载 IDTR
+    //4. 装载 IDTR
     idt_ptr_t idtr;
     idtr.limit = sizeof(idt) - 1;
     idtr.base = &idt;
     asm_lidt(&idtr);
 
-    // 打开 CPU 全局中断标志
+    //5. 打开 CPU 全局中断标志
     asm_sti();
 
     PR_OK("IDT Initialized with 256 vectors.\n");
 }
 
-void tmp_exception_init() {
+//初始化启动阶段异常函数
+void boot_exception_init() {
     register_exception(X86_EXC_DE,  do_divide_error);
     register_exception(X86_EXC_DB,  do_debug);
     // X86_EXC_NMI (2号) 通常需要极其特殊的硬件级处理机制，所以不在这里用普通异常接口注册
