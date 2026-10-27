@@ -92,7 +92,8 @@ typedef struct per_cpu_t {
     uint32          numa_node;            // 所属 NUMA 节点 (内存分配高频使用)
     clockevent_t    *active_ce;
     uint64          next_deadline_ns;
-    tss_t           *tss;                 // 专属 TSS 指针 (中断切栈高频修改)
+    gdt_t           gdt __attribute__((aligned(64)));
+    tss_t           tss __attribute__((aligned(64)));    // 专属 TSS 指针 (中断切栈高频修改)
     void            *kmem_cache_cpu;      // SLUB 无锁内存池指针
     uint64          timer_ticks;          // Local APIC Timer 滴答数
     uint64          interrupt_count;      // 处理的总中断次数
@@ -101,17 +102,12 @@ typedef struct per_cpu_t {
     struct task_t   *idle_task;          // 兜底的系统空闲任务 (hlt)
     run_queue_t     run_queue;           // 就绪队列
     sleep_queue_t   sleep_queue;         // 定时队列
-    gdt_t           gdt __attribute__((aligned(64)));
     uint32          acpi_proc_id;         // 从顶部挪下来的冷数据：ACPI 处理器 ID
-
     irq_desc_t      irq_table[223];       //中断路由表 233 = 256-32异常（0-31）4-1个虚假中断（255号）
     uint32          irq_lock;
-
     uint8           lint_nmi;             // 从顶部挪下来的冷数据：NMI 引脚号
-
     char8           manufacturer_name[13];// 例如 "GenuineIntel\0" (13B)
     char8           model_name[49];       // 处理器具体型号字符串 (49B)
-
     uint32          fundamental_mhz;      // 基础频率 (MHz)
     uint32          maximum_mhz;          // 最大睿频 (MHz)
     uint32          bus_mhz;              // 总线/外频 (MHz)

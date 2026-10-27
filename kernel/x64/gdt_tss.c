@@ -70,8 +70,7 @@ void gdt_tss_init(uint32 logical_id) {
     gdt->user_data_desc = USER_DATA_DESC;
     gdt->user_code64_desc = USER_CODE64_DESC;
 
-    tss_t *tss = kzalloc(sizeof(tss_t));
-    per_cpu->tss = tss;
+    tss_t *tss = &per_cpu->tss;
     set_tss_desc(gdt->tss_desc,tss);
     tss->rsp0 = (uint64)vmalloc(4*4096) + 4*4096;       // 内核栈 16K
     tss->ist1 = (uint64)vmalloc(2*4096) + 2*4096;       // 8: Double Fault (#DF) 双重故障 8K
