@@ -10,7 +10,7 @@ static inline void set_gs_base(uint32 logical_id) {
 }
 
 // 根据物理 APIC ID 反查逻辑 ID（仅在启动期解析 SRAT 等冷路径调用）
-static inline uint32 get_aid_to_lid(uint32 apic_id) {
+static inline uint32 apicid_to_logcalid(uint32 apic_id) {
     for (uint32 i = 0; i < cpu_info.run_cpu_count; i++) {
         if (cpu_info.per_cpus[i]->apic_id == apic_id) {
             return i; // 找到了对应的逻辑编号
