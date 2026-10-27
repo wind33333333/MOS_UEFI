@@ -28,18 +28,5 @@ typedef struct idt_ptr_t{
     const idt_t  *base;
 }__attribute__((packed))idt_ptr_t;
 
-
-extern const idt_t idt;
-
-static inline void asm_lidt() {
-    idt_ptr_t idt_ptr;
-    idt_ptr.limit = sizeof(idt) - 1;
-    idt_ptr.base = &idt;
-
-    __asm__ __volatile__(
-        "lidt %0 \n\t"
-        :
-        : "m"(idt_ptr)
-        : "memory"      // 内存屏障，非常正确！
-    );
-}
+void idt_set_descriptor(uint8 vector , uint8 attributes, uint8 ist);
+void asm_lidt();
