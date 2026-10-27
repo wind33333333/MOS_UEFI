@@ -157,7 +157,7 @@ static inline uint64 asm_rdmsr(uint32 msr) {
  __asm__ __volatile__(
      "rdmsr"
      : "=a"(low), "=d"(high)    // 明确告诉编译器：这行指令覆盖了 EAX(=a) 和 EDX(=d)！
-     : "c"(msr)     // 输入 MSR 地址到 ECX(=c)
+     : "c"(msr)                 // 输入 MSR 地址到 ECX(=c)
      : "memory"                 // 读外设可能产生副作用，加 memory 屏障
  );
 

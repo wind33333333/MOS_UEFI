@@ -113,8 +113,8 @@ void kernel_init(void) {
     output_init();                                              //初始化输出控制台
     idt_init();                                                 //中断描述符表初始化
     boot_exception_init();                                       //0-31号临时异常注册成功
-    cpu_enable_feature();                                       //cpu启用高级特性
-    apply_alternatives();                                       //动态修复指令
+    //cpu_enable_feature();                                       //cpu启用高级特性
+    // apply_alternatives();                                       //动态修复指令
     vm_layout_init();                                           //虚拟内存空间初始化
     memblock_init();                                            //初始化启动内存分配器
     kpage_table_init();                                         //初始化正式内核页表
@@ -129,7 +129,8 @@ void kernel_init(void) {
     bsp_backup_mtrr_state();                                    //备份mtrr
     apic_time_init();                                           //apic时钟定时器初始化
     timer_irq_init();                                           //时钟系统初始化
-    cpu_load_resource();                                        //加载cpu资源
+    per_cpu_init();                                        //加载cpu资源
+    apply_alternatives();                                       //动态修复指令
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
 
 

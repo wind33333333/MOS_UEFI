@@ -45,6 +45,11 @@ _start:
     // 保存 loader(Bootloader/UEFI) 通过 rdi 传递过来的 tmp_boot_info 指针
     movq     %rdi, tmp_boot_info(%rip)
 
+    movl   $0x1B,%ecx
+    rdmsr
+    orl    $0xC00,%eax
+    wrmsr               //启用x2apic
+
 
     /* ==================================================================== */
     /* 阶段 1：构建基础的 4 级临时页表 (PML4)                                 */

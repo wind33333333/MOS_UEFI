@@ -408,7 +408,10 @@ static inline void syscall_init(void) {
     asm_wrmsr(FMASK_MSR, SYSCALL_FMASK);
 }
 
-void cpu_load_resource(void){
+void per_cpu_init(void){
+
+    cpu_enable_feature();
+
     uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
     uint32 logical_id = get_lid_by_apic(apic_id);
 
