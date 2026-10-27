@@ -72,10 +72,10 @@ void gdt_tss_init(uint32 logical_id) {
 
     tss_t *tss = &per_cpu->tss;
     set_tss_desc(gdt->tss_desc,tss);
-    tss->rsp0 = (uint64)vmalloc(4*4096) + 4*4096;       // 内核栈 16K
-    tss->ist1 = (uint64)vmalloc(2*4096) + 2*4096;       // 8: Double Fault (#DF) 双重故障 8K
-    tss->ist2 = (uint64)vmalloc(2*4096) + 2*4096;       // 2: NMI 不可屏蔽中断 8K
-    tss->ist3 = (uint64)vmalloc(2*4096) + 2*4096;       // 18: Machine Check (#MC) 机器检查 8K
-    tss->ist4 = (uint64)vmalloc(2*4096) + 2*4096;       // 1: Debug (#DB) 调试异常 8K
+    tss->rsp0 = (uint64)vmalloc(2*4096) + 2*4096;       // 内核栈 8K
+    tss->ist1 = (uint64)kmalloc(2*4096) + 2*4096;       // 8: Double Fault (#DF) 双重故障 8K
+    tss->ist2 = (uint64)kmalloc(2*4096) + 2*4096;       // 2: NMI 不可屏蔽中断 8K
+    tss->ist3 = (uint64)kmalloc(2*4096) + 2*4096;       // 18: Machine Check (#MC) 机器检查 8K
+    tss->ist4 = (uint64)kmalloc(2*4096) + 2*4096;       // 1: Debug (#DB) 调试异常 8K
 
 }

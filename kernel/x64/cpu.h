@@ -92,8 +92,8 @@ typedef struct per_cpu_t {
     uint32          numa_node;            // 所属 NUMA 节点 (内存分配高频使用)
     clockevent_t    *active_ce;
     uint64          next_deadline_ns;
-    gdt_t           gdt __attribute__((aligned(64)));
-    tss_t           tss __attribute__((aligned(64)));    // 专属 TSS 指针 (中断切栈高频修改)
+    gdt_t           gdt __attribute__((aligned(64)));    // gdt描述符表
+    tss_t           tss __attribute__((aligned(64)));    // TSS
     void            *kmem_cache_cpu;      // SLUB 无锁内存池指针
     uint64          timer_ticks;          // Local APIC Timer 滴答数
     uint64          interrupt_count;      // 处理的总中断次数
