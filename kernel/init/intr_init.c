@@ -3,14 +3,14 @@
 #include "printk.h"
 
 // 引用汇编中连续中断桩的基地址
-extern const char irq_ecx_base[];
+extern const char irq_ecx_entry[];
 
 /**
  * @brief 内部函数：组装 16 字节的 IDT 描述符
  */
 
 static inline void idt_set_descriptor(uint8 vector , uint8 attributes, uint8 ist) {
-    uint64 isr_addr = (uint64)irq_ecx_base + ((uint64)vector << 4);
+    uint64 isr_addr = (uint64)irq_ecx_entry + ((uint64)vector << 4);
     idt_desc_t *desc = (idt_desc_t*)(&idt.desc[vector]);
 
     desc->offset_low       = isr_addr & 0xFFFF;
