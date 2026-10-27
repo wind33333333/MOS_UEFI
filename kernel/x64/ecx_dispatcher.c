@@ -1,5 +1,3 @@
-#pragma once
-#include "idt.h"
 #include "ecx_dispatcher.h"
 #include "errno.h"
 #include "printk.h"
