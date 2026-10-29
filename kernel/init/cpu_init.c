@@ -7,6 +7,7 @@
 #include "slub.h"
 #include "../x64/mtrr.h"
 #include "alternative_init.h"
+#include "../x64/per_cpu.h"
 #include "../x64/apic_time.h"
 #include "../x64/gdt_tss.h"
 #include "../sched/task.h"
@@ -336,8 +337,11 @@ void per_cpu_alloc_resources(void) {
     per_cpu_t **per_cpus = kzalloc(sizeof(per_cpu_t *) * total_cpu_count);
     cpu_info.per_cpus = per_cpus;
     cpu_hw_t *cpu_hw = cpu_apic_info.cpu_hw;
+    uint64 per_cpu_va = vm_layout.percpu_vaddr_start;
     for (uint32 i=0;i < total_cpu_count;i++) {
-        per_cpu_t *per_cpu = kzalloc(sizeof(per_cpu_t));
+        per_cpu_t *per_cpu = (per_cpu_t*)per_cpu_va;
+        asm_mem_set(per_cpu,0,sizeof(per_cpu_t));
+        per_cpu_va += PERCPU_SIZE;
         per_cpus[i] = per_cpu;
         per_cpu->hwirq_rsp_top = (uint64)kmalloc(4096*4)+4096*4;
         per_cpu->self = per_cpu;

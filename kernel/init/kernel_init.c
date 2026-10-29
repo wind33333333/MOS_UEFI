@@ -15,6 +15,7 @@
 #include "../x64/apic_time.h"
 #include "../include/bus.h"
 #include "intr_init.h"
+#include "../x64/per_cpu.h"
 #include "../include/ioapic.h"
 #include "../drivers/hpet/hpet.h"
 #include "../time/time_core.h"
@@ -118,6 +119,7 @@ void kernel_init(void) {
     kpage_table_init();                                         //初始化正式内核页表
     apic_table_init();                                          //apic表初始化
     buddy_system_init();                                        //初始化伙伴系统
+    per_cpu_mem_init();
     slub_init();                                                //初始化slub内存分配器
     vmalloc_init();                                             //初始化vmalloc
     video_mem_map();                                            //映射显存到虚拟地址空间
