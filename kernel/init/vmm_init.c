@@ -37,12 +37,12 @@ void vm_layout_init(void) {
         vm_layout.direct_map_start = 0xFF00000000000000ULL;
         vm_layout.direct_map_end   = vm_layout.direct_map_start + 0x0080000000000000ULL; // 占用 32 PB
 
+        vm_layout.page_map_start   = vm_layout.vmalloc_end + 0x0004000000000000ULL;      // Guard Hole: 1 PB
+        vm_layout.page_map_end     = vm_layout.page_map_start + 0x0004000000000000ULL;   // vmemmap 占用 1 PB
+
         // 【安全隔离】：留出 1 PB 的 Guard Hole！越过直接映射区后不可立即接盘。
         vm_layout.vmalloc_start    = vm_layout.direct_map_end + 0x0004000000000000ULL;
         vm_layout.vmalloc_end      = vm_layout.vmalloc_start + 0x0040000000000000ULL;    // vmalloc 占用 16 PB
-
-        vm_layout.page_map_start   = vm_layout.vmalloc_end + 0x0004000000000000ULL;      // Guard Hole: 1 PB
-        vm_layout.page_map_end     = vm_layout.page_map_start + 0x0004000000000000ULL;   // vmemmap 占用 1 PB
 
         vm_layout.io_map_start     = vm_layout.page_map_end + 0x0004000000000000ULL;     // Guard Hole: 1 PB
         vm_layout.io_map_end       = vm_layout.io_map_start + 0x0004000000000000ULL;     // MMIO 占用 1 PB
@@ -59,12 +59,12 @@ void vm_layout_init(void) {
         vm_layout.direct_map_start = 0xFFFF800000000000ULL;
         vm_layout.direct_map_end   = vm_layout.direct_map_start + 0x0000400000000000ULL; // 占用 64 TB
 
+        vm_layout.page_map_start   = vm_layout.vmalloc_end + 0x0000010000000000ULL;      // Guard Hole: 1 TB
+        vm_layout.page_map_end     = vm_layout.page_map_start + 0x0000010000000000ULL;   // vmemmap 占用 1 TB
+
         // 【安全隔离】：留出 1 TB 的 Guard Hole！
         vm_layout.vmalloc_start    = vm_layout.direct_map_end + 0x0000010000000000ULL;
         vm_layout.vmalloc_end      = vm_layout.vmalloc_start + 0x0000200000000000ULL;    // vmalloc 占用 32 TB
-
-        vm_layout.page_map_start   = vm_layout.vmalloc_end + 0x0000010000000000ULL;      // Guard Hole: 1 TB
-        vm_layout.page_map_end     = vm_layout.page_map_start + 0x0000010000000000ULL;   // vmemmap 占用 1 TB
 
         vm_layout.io_map_start     = vm_layout.page_map_end + 0x0000010000000000ULL;     // Guard Hole: 1 TB
         vm_layout.io_map_end       = vm_layout.io_map_start + 0x0000020000000000ULL;     // MMIO 占用 2 TB
