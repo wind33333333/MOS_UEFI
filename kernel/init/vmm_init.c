@@ -3,7 +3,7 @@
 
 // UEFI 运行时服务专属虚拟地址空间 (2GB 预留)
 #define UEFI_RTS_VA_START   0xFFFFFFFF00000000ULL
-#define UEFI_RTS_VA_END     0xFFFFFFFFA0000000ULL
+#define UEFI_RTS_VA_END     0xFFFFFFFF80000000ULL
 
 /* ========================================================================== */
 /*                 静态内核代码与模块区 (必须固定在顶部 2GB)                  */
@@ -14,13 +14,13 @@
 // 全局变量全部分布在虚拟地址空间最高的 2GB 内，以便使用极速的 32 位相对寻址。
 // -----------------------------------------------------------------------------
 
-// 动态内核模块 (KO) 加载空间 (1.5 GB，紧贴最高 2GB 往下排布)
-#define MODULES_VA_START  0xFFFFFFFFA0000000ULL
-#define MODULES_VA_END    0xFFFFFFFFFFFFFFFFULL
-
 // 内核主代码 (Text) 与数据区起始虚拟地址 (512 MB，紧贴在模块空间下方)
 #define KERNEL_VA_START   0xFFFFFFFF80000000ULL
 #define KERNEL_VA_END     0xFFFFFFFFA0000000ULL
+
+// 动态内核模块 (KO) 加载空间 (1.5 GB，紧贴最高 2GB 往下排布)
+#define MODULES_VA_START  0xFFFFFFFFA0000000ULL
+#define MODULES_VA_END    0xFFFFFFFFFFFFFFFFULL
 
 /**
  * @brief 初始化全局虚拟内存布局
