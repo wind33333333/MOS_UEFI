@@ -46,6 +46,10 @@ void vm_layout_init(void) {
 
         vm_layout.io_map_start     = vm_layout.page_map_end + 0x0004000000000000ULL;     // Guard Hole: 1 PB
         vm_layout.io_map_end       = vm_layout.io_map_start + 0x0004000000000000ULL;     // MMIO 占用 1 PB
+
+        vm_layout.percpu_vaddr_start = vm_layout.io_map_end+ 0x0004000000000000ULL;      // Guard Hole: 1 PB
+        vm_layout.percpu_vaddr_end   = vm_layout.percpu_vaddr_start + 0x0004000000000000ULL; //percpu占用1PB
+
     } else {
         //4级分页用户地址空间
         vm_layout.user_map_start = 0x400000;
@@ -64,6 +68,10 @@ void vm_layout_init(void) {
 
         vm_layout.io_map_start     = vm_layout.page_map_end + 0x0000010000000000ULL;     // Guard Hole: 1 TB
         vm_layout.io_map_end       = vm_layout.io_map_start + 0x0000020000000000ULL;     // MMIO 占用 2 TB
+
+        vm_layout.percpu_vaddr_start = vm_layout.io_map_end+ 0x0000010000000000ULL;      // Guard Hole: 1 TB
+        vm_layout.percpu_vaddr_end   = vm_layout.percpu_vaddr_start + 0x0000010000000000ULL; //percpu占用1TB
+
     }
 
     vm_layout.efi_rts_start = UEFI_RTS_VA_START;

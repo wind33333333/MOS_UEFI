@@ -36,8 +36,15 @@ void* kmem_cache_alloc(kmem_cache_t *cache);
 int32 kmem_cache_free(kmem_cache_t *cache, void *object);
 
 void* kmalloc(uint64 size);
-void* kzalloc(uint64 size);
 int32 kfree(void *va);
+
+
+static inline void *kzalloc(uint64 size) {
+    if (size == 0) return NULL;
+    void *ptr = kmalloc(size);
+    if (ptr) asm_mem_set(ptr, 0, size);
+    return ptr;
+}
 
 /**
  * @brief 分配用于 DMA 的内存 (严格 64 字节 CacheLine 对齐并清零)

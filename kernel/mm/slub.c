@@ -265,12 +265,6 @@ void *kmalloc(uint64 size) {
     return kmem_cache_alloc(kmalloc_cache[index]);
 }
 
-void *kzalloc(uint64 size) {
-    if (size == 0) return NULL;
-    void *ptr = kmalloc(size);
-    if (ptr) asm_mem_set(ptr, 0, size);
-    return ptr;
-}
 
 int32 kfree(void *va) {
     if (va == NULL) return -1;

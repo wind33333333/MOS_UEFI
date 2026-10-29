@@ -188,6 +188,9 @@ typedef struct {
     uint64 io_map_start;
     uint64 io_map_end;
 
+    uint64 percpu_vaddr_start;
+    uint64 percpu_vaddr_end;
+
     uint64 efi_rts_start;
     uint64 efi_rts_end;
 
