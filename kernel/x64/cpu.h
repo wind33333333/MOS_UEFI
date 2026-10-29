@@ -111,8 +111,7 @@ typedef struct per_cpu_t {
     uint32          fundamental_mhz;      // 基础频率 (MHz)
     uint32          maximum_mhz;          // 最大睿频 (MHz)
     uint32          bus_mhz;              // 总线/外频 (MHz)
-
-}per_cpu_t;
+}__attribute__((aligned(4096)))per_cpu_t;
 
 #define THIS_CPU ((per_cpu_t __seg_gs *)0) //通过gs直接访问cpu_core
 
