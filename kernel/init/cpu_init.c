@@ -341,7 +341,7 @@ void per_cpu_alloc_resources(void) {
     for (uint32 i=0;i < total_cpu_count;i++) {
         per_cpu_t *per_cpu = (per_cpu_t*)per_cpu_va;
         asm_mem_set(per_cpu,0,sizeof(per_cpu_t));
-        per_cpu_va += PERCPU_SIZE;
+        per_cpu_va += PERCPU_WINDOW_SIZE;
         per_cpus[i] = per_cpu;
         per_cpu->hwirq_rsp_top = (uint64)kmalloc(4096*4)+4096*4;
         per_cpu->self = per_cpu;

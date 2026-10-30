@@ -121,6 +121,10 @@ void kernel_init(void) {
     buddy_system_init();                                        //初始化伙伴系统
     per_cpu_mem_init();
     slub_init();                                                //初始化slub内存分配器
+
+    void* i = alloc_percpu(8,8);
+    free_percpu(i);
+
     vmalloc_init();                                             //初始化vmalloc
     video_mem_map();                                            //映射显存到虚拟地址空间
     per_cpu_alloc_resources();                                  //给所有cpu分配资源
