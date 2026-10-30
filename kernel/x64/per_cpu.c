@@ -19,6 +19,7 @@ pcpu_block_t free_block;    // 第一个手动拆下来的空闲块。
 
 void per_cpu_mem_init() {
     uint32 total_cpu_count = cpu_apic_info.total_cpu_count;
+    cpu_info.total_cpu_count = total_cpu_count;
     uint64 per_cpu_va = vm_layout.percpu_vaddr_start;
     for (uint32 i = 0; i < total_cpu_count; i++) {
         uint64 pa = page_to_pa(alloc_pages(4));
@@ -82,6 +83,37 @@ static inline pcpu_chunk_t *pcpu_expand_chunk(void) {
     list_add_tail(&pcpu_chunk_head, &chunk->list);
 
     return chunk;
+}
+
+// =========================================================================
+// 🌟 进阶：空闲 Chunk 终极回收引擎 (内联封装)
+// =========================================================================
+static inline void pcpu_recycle_empty_chunk(pcpu_chunk_t *chunk) {
+    extern pcpu_chunk_t pcpu_chunk; // 引入静态的创世 Chunk
+
+    // 1. 阈值与防御性拦截：必须全空，且绝对不能是创世 Chunk
+    if (chunk->free_bytes != PCPU_CHUNK_SIZE || chunk == &pcpu_chunk) {
+        return;
+    }
+
+    // 2. 释放底层物理页，并解除 VMM 映射
+    for (uint32 i = 0; i < cpu_info.total_cpu_count; i++) {
+        uint64 per_cpu_va = vm_layout.percpu_vaddr_start + chunk->start_off + (i * PERCPU_WINDOW_SIZE);
+
+        // 解除页表映射 (清理 PTE 等级)
+        vm_unmap_range(&kernel_space, per_cpu_va, PCPU_CHUNK_SIZE,UNMAP_FLAG_FREE_PHYS);
+    }
+
+    // 3. 销毁最后残留的那个涵盖整个 Chunk 的空闲 Block 元数据
+    pcpu_block_t *last_block = CONTAINER_OF(chunk->block_list.next, pcpu_block_t, list);
+    list_del(&last_block->list);
+    if (last_block->is_dynamic == TRUE) {
+        kfree(last_block);
+    }
+
+    // 4. 从全局 Chunk 链表摘除，并将 Chunk 自身送进焚尸炉
+    list_del(&chunk->list);
+    kfree(chunk);
 }
 
 
@@ -159,16 +191,13 @@ void free_percpu(void *ptr) {
     list_for_each(chunk_pos, &pcpu_chunk_head) {
         pcpu_chunk_t *chunk = CONTAINER_OF(chunk_pos, pcpu_chunk_t, list);
 
-        // 范围判定：确定这个 offset 属于哪个 Chunk
         if (target_offset >= chunk->start_off && target_offset < chunk->end_off) {
 
             list_head_t *blk_pos;
             list_for_each(blk_pos, &chunk->block_list) {
                 pcpu_block_t *block = CONTAINER_OF(blk_pos, pcpu_block_t, list);
 
-                // 考虑到分配时做了对齐(align_padding)，查找条件需要稍微放宽
                 if (block->offset <= target_offset && (block->offset + block->size) > target_offset) {
-
                     if (block->is_free) {
                         PR_WARN("Double free in percpu!");
                     }
@@ -181,10 +210,8 @@ void free_percpu(void *ptr) {
                     if (block->list.next != &chunk->block_list) {
                         pcpu_block_t *next_blk = CONTAINER_OF(block->list.next, pcpu_block_t, list);
                         if (next_blk->is_free) {
-                            block->size += next_blk->size; // 当前块吃掉后一块
+                            block->size += next_blk->size;
                             list_del(&next_blk->list);
-
-                            // 🌟 修复：销毁 next_blk 前必须判断生命周期！
                             if (next_blk->is_dynamic == TRUE) {
                                 kfree(next_blk);
                             }
@@ -195,20 +222,16 @@ void free_percpu(void *ptr) {
                     if (block->list.prev != &chunk->block_list) {
                         pcpu_block_t *prev_blk = CONTAINER_OF(block->list.prev, pcpu_block_t, list);
                         if (prev_blk->is_free) {
-                            prev_blk->size += block->size; // 前一块吃掉当前块
-
-                            // 💥 修复：绝对不能改 prev_blk 的 offset，已删除错误代码
-
+                            prev_blk->size += block->size;
                             list_del(&block->list);
-
                             if (block->is_dynamic == TRUE) {
-                                kfree(block); // 销毁多余的元数据块
+                                kfree(block);
                             }
                         }
                     }
 
-                    // (进阶可选): 如果 chunk->free_bytes == PCPU_CHUNK_SIZE，
-                    // 说明这个 Chunk 彻底空了，可以解除映射并将物理页还给 pmm。
+                    // 🌟 4. 终极清理：尝试回收全空的 Chunk (内联调用)
+                    pcpu_recycle_empty_chunk(chunk);
 
                     spin_unlock(&pcpu_alloc_lock);
                     return;

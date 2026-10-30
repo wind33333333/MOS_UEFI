@@ -122,7 +122,7 @@ void kernel_init(void) {
     per_cpu_mem_init();
     slub_init();                                                //初始化slub内存分配器
 
-    void* i = alloc_percpu(8,8);
+    void* i = alloc_percpu(64*1024,8);
     free_percpu(i);
 
     vmalloc_init();                                             //初始化vmalloc
