@@ -13,6 +13,7 @@ typedef struct pcpu_block_t {
     uint32      offset;     // 该块的全局相对偏移量
     uint32      size;       // 该块的大小 (字节)
     boolean     is_free;    // true 为空闲，false 为被占用
+    boolean     is_dynamic;
 } pcpu_block_t;
 
 // 🌟 管理一次扩容的 Chunk 结构
