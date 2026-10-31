@@ -58,13 +58,13 @@ void per_cpu_mem_init() {
 // 🌟 扩容函数：创造一个新的 Chunk 并映射给所有 CPU
 static inline pcpu_chunk_t *pcpu_expand_chunk(void) {
     // 1. 创建全局 Chunk 控制块
-    pcpu_chunk_t *chunk = kmalloc(sizeof(pcpu_chunk_t));
-    if (!chunk) return NULL;
+    pcpu_chunk_t *new_chunk = kmalloc(sizeof(pcpu_chunk_t));
+    if (!new_chunk) return NULL;
 
-    chunk->start_off  = global_max_offset;
-    chunk->end_off    = global_max_offset + PCPU_CHUNK_SIZE;
-    chunk->free_bytes = PCPU_CHUNK_SIZE;
-    list_head_init(&chunk->block_list);
+    new_chunk->start_off  = global_max_offset;
+    new_chunk->end_off    = global_max_offset + PCPU_CHUNK_SIZE;
+    new_chunk->free_bytes = PCPU_CHUNK_SIZE;
+    list_head_init(&new_chunk->block_list);
 
     uint64 per_cpu_va = vm_layout.percpu_vaddr_start + global_max_offset;
 
@@ -76,18 +76,18 @@ static inline pcpu_chunk_t *pcpu_expand_chunk(void) {
     }
 
     // 3. 创建一个涵盖整个新 Chunk 的初始空闲大块
-    pcpu_block_t *init_block = kmalloc(sizeof(pcpu_block_t));
-    init_block->offset  = chunk->start_off;
-    init_block->size    = PCPU_CHUNK_SIZE;
-    init_block->is_free = TRUE;
-    init_block->is_dynamic = TRUE; // 🌟 新增：标记为动态块
-    list_add_tail( &init_block->node,&chunk->block_list);
+    pcpu_block_t *new_block = kmalloc(sizeof(pcpu_block_t));
+    new_block->offset  = new_chunk->start_off;
+    new_block->size    = PCPU_CHUNK_SIZE;
+    new_block->is_free = TRUE;
+    new_block->is_dynamic = TRUE; // 🌟 新增：标记为动态块
+    list_add_tail( &new_block->node,&new_chunk->block_list);
 
     // 4. 更新全局状态
     global_max_offset += PCPU_CHUNK_SIZE;
-    list_add_tail( &chunk->node,&chunk_list);
+    list_add_tail( &new_chunk->node,&chunk_list);
 
-    return chunk;
+    return new_chunk;
 }
 
 // =========================================================================
