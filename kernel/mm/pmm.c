@@ -38,7 +38,7 @@ page_t *alloc_pages(uint32 order) {
         buddy_half->order = current_order;
         buddy_half->flags |= (1ULL << PG_BUDDY); // 必须给伙伴打上空闲印记，否则以后无法合并！
 
-        list_add_head(&buddy_system.free_area[current_order].list, &buddy_half->list);
+        list_add(&buddy_half->list,&buddy_system.free_area[current_order].list);
         buddy_system.free_area[current_order].count++;
     }
 
@@ -96,6 +96,6 @@ void free_pages(page_t *page) {
     // 2. 融合终了，将最终的超级块打上印记，挂入对应阶的圣殿
     page->order = order;
     page->flags |= (1ULL << PG_BUDDY); // 🌟 修复 Bug 3：使用绝对安全的标准 C 位或操作
-    list_add_head(&buddy_system.free_area[order].list, &page->list);
+    list_add( &page->list,&buddy_system.free_area[order].list);
     buddy_system.free_area[order].count++;
 }

@@ -344,6 +344,6 @@ void hid_create_input_dev(hid_dev_t *hdev) {
        } else {
            // 5. 正式注册：挂载到系统的全局 input 链表
            // (注：如果是多核系统，这里需要加自旋锁)
-           list_add_tail(&g_input_dev_list,&idev->node);
+           list_add_tail(&idev->node,&g_input_dev_list);
        }
 }

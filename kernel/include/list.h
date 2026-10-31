@@ -1,30 +1,41 @@
 #pragma once
 #include "moslib.h"
 
-/*
- * 链表操作函数
+// 基础双向链表结构
+typedef struct list_head {
+    struct list_head *next;
+    struct list_head *prev;
+} list_head_t;
+
+/**
+ * 内部核心辅助函数：在已知的两个相邻节点之间插入新节点
+ * @param new_node 要插入的新节点
+ * @param prev     前驱节点
+ * @param next     后继节点
  */
-typedef struct list_head_t{
-    struct list_head_t *prev;
-    struct list_head_t *next;
-}list_head_t;
-
-static inline void list_add_head(list_head_t *head,list_head_t *new) {
-    new->next = head->next;  // 新节点指向原头节点
-    new->prev = head;        // 新节点前驱指向头节点
-    head->next->prev = new;  // 原头节点的前驱指向新节点
-    head->next = new;        // 头节点指向新节点
+static inline void __list_add(list_head_t *new_node, list_head_t *prev, list_head_t *next) {
+    next->prev = new_node;
+    new_node->next = next;
+    new_node->prev = prev;
+    prev->next = new_node;
 }
 
-static inline void list_add_tail(list_head_t *head,list_head_t *new) {
-    new->next = head;        // 新节点指向头节点（循环）
-    new->prev = head->prev;  // 新节点前驱指向原尾节点
-    head->prev->next = new;  // 原尾节点的后继指向新节点
-    head->prev = new;        // 头节点的前驱指向新节点
+/**
+ * 将新节点插入到指定节点 (head) 的正后方 (即头插法/紧随其后)
+ */
+static inline void list_add(list_head_t *new_node, list_head_t *head) {
+    __list_add(new_node, head, head->next);
 }
 
-static inline void list_del(list_head_t * node)
-{
+/**
+ * 将新节点插入到指定节点 (head) 的正前方 (即链表尾部)
+ */
+static inline void list_add_tail(list_head_t *new_node, list_head_t *head) {
+    __list_add(new_node, head->prev, head);
+}
+
+
+static inline void list_del(list_head_t *node) {
     node->next->prev = node->prev;
     node->prev->next = node->next;
 }
@@ -35,47 +46,41 @@ static inline void list_head_init(list_head_t *head) {
 }
 
 /**
- * @brief 遍历双向链表
- * @param pos  用来当作迭代游标的 list_head_t * 指针
- * @param head 链表的头节点
+ * 遍历双向链表
  */
 #define list_for_each(pos, head) \
 for (pos = (head)->next; pos != (head); pos = pos->next)
 
 /**
- * @brief 安全遍历双向链表 (允许在循环内删除节点)
- * @param pos  用来当作迭代游标的 list_head_t * 指针
- * @param n    用来做临时备份的 list_head_t * 指针 (★ 核心防线)
- * @param head 链表的头节点
+ * 安全遍历双向链表 (允许在循环内调用 list_del 删除当前节点)
  */
 #define list_for_each_safe(pos, n, head) \
 for (pos = (head)->next, n = pos->next; pos != (head); pos = n, n = pos->next)
 
-
 /**
- * @brief 将节点从链表中安全摘除，并将其重新初始化为空节点
- * @param node 要摘除的节点
+ * 将节点从链表中安全摘除，并将其重新初始化为空节点
  */
 static inline void list_del_init(list_head_t *node) {
-    // 1. 让它的前驱和后继互相牵手 (把它踢出群聊)
     list_del(node);
-
-    // 2. 🌟 关键动作：让它自己牵自己的手！
     list_head_init(node);
 }
 
-static inline boolean list_find(list_head_t *head,list_head_t *node) {
-    list_head_t *next = head;
-    while (next->next != head) {
-        if (next->next == node)
+/**
+ * 🌟 优化：复用宏，让代码更优雅
+ */
+static inline boolean list_find( list_head_t *node,list_head_t *head) {
+    list_head_t *pos;
+    list_for_each(pos, head) {
+        if (pos == node) {
             return TRUE;
-        next=next->next;
+        }
     }
     return FALSE;
 }
 
-static inline boolean list_empty(list_head_t *head) {
-    if (head->next == NULL && head->prev == NULL)
-        return TRUE;
-    return FALSE;
+/**
+ * 🌟 致命 Bug 修复：循环链表判空必须是判断是否指向自己
+ */
+static inline boolean list_empty(const list_head_t *head) {
+    return head->next == head;
 }

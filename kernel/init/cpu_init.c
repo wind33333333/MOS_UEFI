@@ -349,9 +349,7 @@ void per_cpu_alloc_resources(void) {
         per_cpu->apic_id = cpu_hw[i].apic_id;
         per_cpu->acpi_proc_id = cpu_hw[i].acpi_proc_id;
         per_cpu->lint_nmi = cpu_hw[i].lint_nmi;
-
         gdt_tss_init(i);
-
     }
 }
 

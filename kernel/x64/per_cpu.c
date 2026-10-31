@@ -9,44 +9,49 @@
 extern cpu_apic_info_t cpu_apic_info;
 extern vm_space_t kernel_space;
 
-list_head_t pcpu_chunk_head;
-uint32      pcpu_alloc_lock;
-uint32      global_max_offset = 0; // 记录当前系统扩张到的最大偏移量
+static list_head_t chunk_list;
+static uint32      pcpu_alloc_lock;
+static uint32      global_max_offset = 0; // 记录当前系统扩张到的最大偏移量
 
-pcpu_chunk_t pcpu_chunk;    // 第一个大块手动分配
-pcpu_block_t pcpu_block;    // 第一个小块手动分配，存放per_cpu结构
-pcpu_block_t free_block;    // 第一个手动拆下来的空闲块。
+static pcpu_chunk_t first_chunk;       // 第一个大块手动分配
+static pcpu_block_t pcpu_cpu_block;    // 第一个小块手动分配，存放per_cpu结构
+static pcpu_block_t free_block;        // 第一个手动拆下来的空闲块。
 
 void per_cpu_mem_init() {
     uint32 total_cpu_count = cpu_apic_info.total_cpu_count;
     cpu_info.total_cpu_count = total_cpu_count;
     uint64 per_cpu_va = vm_layout.percpu_vaddr_start;
+
     for (uint32 i = 0; i < total_cpu_count; i++) {
         uint64 pa = page_to_pa(alloc_pages(4));
         vm_map_range(&kernel_space, per_cpu_va, pa, PCPU_CHUNK_SIZE, PAGE_KERNEL_DATA_RW);
         per_cpu_va += PERCPU_WINDOW_SIZE;
     }
 
-    list_head_init(&pcpu_chunk_head);
-    list_head_init(&pcpu_chunk.block_list);
+    //初始化chunk头
+    list_head_init(&chunk_list);
+    list_head_init(&first_chunk.block_list);
     global_max_offset = PCPU_CHUNK_SIZE;
 
-    pcpu_chunk.start_off = 0;
-    pcpu_chunk.end_off = PCPU_CHUNK_SIZE;
-    pcpu_chunk.free_bytes = PCPU_CHUNK_SIZE - sizeof(per_cpu_t); // 修复换行截断
-    list_add_tail(&pcpu_chunk_head, &pcpu_chunk.list);
+    //手动创建第一个chunk
+    first_chunk.start_off = 0;
+    first_chunk.end_off = PCPU_CHUNK_SIZE;
+    first_chunk.free_bytes = PCPU_CHUNK_SIZE - sizeof(per_cpu_t); // 修复换行截断
+    list_add_tail( &first_chunk.node,&chunk_list);
 
-    pcpu_block.is_free = FALSE;
-    pcpu_block.is_dynamic = FALSE;
-    pcpu_block.offset = 0;
-    pcpu_block.size = sizeof(per_cpu_t);
-    list_add_tail(&pcpu_chunk.block_list, &pcpu_block.list);
+    //手动创建per_cpu的block
+    pcpu_cpu_block.is_free = FALSE;
+    pcpu_cpu_block.is_dynamic = FALSE;
+    pcpu_cpu_block.offset = 0;
+    pcpu_cpu_block.size = sizeof(per_cpu_t);
+    list_add_tail( &pcpu_cpu_block.node,&first_chunk.block_list);
 
+    //手动创建第一个空闲block
     free_block.is_free = TRUE;
     free_block.is_dynamic = FALSE;
     free_block.offset = sizeof(per_cpu_t);
     free_block.size = PCPU_CHUNK_SIZE - sizeof(per_cpu_t);
-    list_add_tail(&pcpu_chunk.block_list, &free_block.list);
+    list_add_tail( &free_block.node,&first_chunk.block_list);
 }
 
 
@@ -76,11 +81,11 @@ static inline pcpu_chunk_t *pcpu_expand_chunk(void) {
     init_block->size    = PCPU_CHUNK_SIZE;
     init_block->is_free = TRUE;
     init_block->is_dynamic = TRUE; // 🌟 新增：标记为动态块
-    list_add_tail(&chunk->block_list, &init_block->list);
+    list_add_tail( &init_block->node,&chunk->block_list);
 
     // 4. 更新全局状态
     global_max_offset += PCPU_CHUNK_SIZE;
-    list_add_tail(&pcpu_chunk_head, &chunk->list);
+    list_add_tail( &chunk->node,&chunk_list);
 
     return chunk;
 }
@@ -89,10 +94,9 @@ static inline pcpu_chunk_t *pcpu_expand_chunk(void) {
 // 🌟 进阶：空闲 Chunk 终极回收引擎 (内联封装)
 // =========================================================================
 static inline void pcpu_recycle_empty_chunk(pcpu_chunk_t *chunk) {
-    extern pcpu_chunk_t pcpu_chunk; // 引入静态的创世 Chunk
 
     // 1. 阈值与防御性拦截：必须全空，且绝对不能是创世 Chunk
-    if (chunk->free_bytes != PCPU_CHUNK_SIZE || chunk == &pcpu_chunk) {
+    if (chunk->free_bytes != PCPU_CHUNK_SIZE || chunk == &first_chunk) {
         return;
     }
 
@@ -105,14 +109,14 @@ static inline void pcpu_recycle_empty_chunk(pcpu_chunk_t *chunk) {
     }
 
     // 3. 销毁最后残留的那个涵盖整个 Chunk 的空闲 Block 元数据
-    pcpu_block_t *last_block = CONTAINER_OF(chunk->block_list.next, pcpu_block_t, list);
-    list_del(&last_block->list);
+    pcpu_block_t *last_block = CONTAINER_OF(chunk->block_list.next, pcpu_block_t, node);
+    list_del(&last_block->node);
     if (last_block->is_dynamic == TRUE) {
         kfree(last_block);
     }
 
     // 4. 从全局 Chunk 链表摘除，并将 Chunk 自身送进焚尸炉
-    list_del(&chunk->list);
+    list_del(&chunk->node);
     kfree(chunk);
 }
 
@@ -124,13 +128,13 @@ void *alloc_percpu(uint32 size, uint32 align) {
 
 retry:
     list_head_t *chunk_pos;
-    list_for_each(chunk_pos, &pcpu_chunk_head) {
-        pcpu_chunk_t *chunk = CONTAINER_OF(chunk_pos, pcpu_chunk_t, list);
+    list_for_each(chunk_pos, &chunk_list) {
+        pcpu_chunk_t *chunk = CONTAINER_OF(chunk_pos, pcpu_chunk_t, node);
         if (chunk->free_bytes < size) continue;
 
         list_head_t *blk_pos;
         list_for_each(blk_pos, &chunk->block_list) {
-            pcpu_block_t *block = CONTAINER_OF(blk_pos, pcpu_block_t, list);
+            pcpu_block_t *block = CONTAINER_OF(blk_pos, pcpu_block_t, node);
 
             // 必须是空闲块
             if (!block->is_free) continue;
@@ -154,7 +158,7 @@ retry:
 
                     // 🌟 修复：将其紧密插入到当前 block 的正后方
                     // 注意：标准链表 API 中，list_add 才是插入到指定节点后面，如果使用 list_add_tail 会被插到链表末尾
-                    list_add_tail(&block->list,&split_blk->list );
+                    list_add_tail(&split_blk->node,&block->node );
                 }
 
                 // 更新当前块为已占用
@@ -188,14 +192,14 @@ void free_percpu(void *ptr) {
     spin_lock(&pcpu_alloc_lock);
 
     list_head_t *chunk_pos;
-    list_for_each(chunk_pos, &pcpu_chunk_head) {
-        pcpu_chunk_t *chunk = CONTAINER_OF(chunk_pos, pcpu_chunk_t, list);
+    list_for_each(chunk_pos, &chunk_list) {
+        pcpu_chunk_t *chunk = CONTAINER_OF(chunk_pos, pcpu_chunk_t, node);
 
         if (target_offset >= chunk->start_off && target_offset < chunk->end_off) {
 
             list_head_t *blk_pos;
             list_for_each(blk_pos, &chunk->block_list) {
-                pcpu_block_t *block = CONTAINER_OF(blk_pos, pcpu_block_t, list);
+                pcpu_block_t *block = CONTAINER_OF(blk_pos, pcpu_block_t, node);
 
                 if (block->offset <= target_offset && (block->offset + block->size) > target_offset) {
                     if (block->is_free) {
@@ -207,11 +211,11 @@ void free_percpu(void *ptr) {
                     chunk->free_bytes += block->size;
 
                     // 2. 向后融合 (Merge Next)
-                    if (block->list.next != &chunk->block_list) {
-                        pcpu_block_t *next_blk = CONTAINER_OF(block->list.next, pcpu_block_t, list);
+                    if (block->node.next != &chunk->block_list) {
+                        pcpu_block_t *next_blk = CONTAINER_OF(block->node.next, pcpu_block_t, node);
                         if (next_blk->is_free) {
                             block->size += next_blk->size;
-                            list_del(&next_blk->list);
+                            list_del(&next_blk->node);
                             if (next_blk->is_dynamic == TRUE) {
                                 kfree(next_blk);
                             }
@@ -219,11 +223,11 @@ void free_percpu(void *ptr) {
                     }
 
                     // 3. 向前融合 (Merge Prev)
-                    if (block->list.prev != &chunk->block_list) {
-                        pcpu_block_t *prev_blk = CONTAINER_OF(block->list.prev, pcpu_block_t, list);
+                    if (block->node.prev != &chunk->block_list) {
+                        pcpu_block_t *prev_blk = CONTAINER_OF(block->node.prev, pcpu_block_t, node);
                         if (prev_blk->is_free) {
                             prev_blk->size += block->size;
-                            list_del(&block->list);
+                            list_del(&block->node);
                             if (block->is_dynamic == TRUE) {
                                 kfree(block);
                             }

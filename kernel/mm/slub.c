@@ -132,7 +132,7 @@ static inline void new_slub(kmem_cache_t *cache) {
     free_list_init(slub->free_list, cache->object_size, cache->object_per_slub - 1);
 
     // 优先挂在头部，利用 L1 Cache 局部性原理
-    list_add_head(&cache->slub_head, &slub->list);
+    list_add( &slub->list,&cache->slub_head);
 
     cache->slub_count++;
     cache->total_free += cache->object_per_slub;
@@ -206,7 +206,7 @@ void *kmem_cache_alloc(kmem_cache_t *cache) {
             // 把它移到链表最头部，下一次分配将直接 O(1) 命中！
             if (pos != cache->slub_head.next) {
                 list_del(&slub->list);
-                list_add_head(&cache->slub_head, &slub->list);
+                list_add( &slub->list,&cache->slub_head);
             }
 
             return object;
