@@ -26,12 +26,12 @@ static pcpu_block_t free_block;        // 第一个手动拆下来的空闲块
 // -------------------------------------------------------------------------
 // 位图辅助函数：寻找第一个为 0 的 bit，并将其置为 1 (O(1) 极速寻址)
 // -------------------------------------------------------------------------
-static inline int find_first_zero_bit_and_set(void) {
-    for (int i = 0; i < 4; i++) {
+static inline int32 find_first_zero_bit_and_set(void) {
+    for (int32 i = 0; i < 4; i++) {
         if (pcpu_chunk_bitmap[i] != 0xFFFFFFFFFFFFFFFFULL) {
             // __builtin_ctzll 是 GCC/Clang 内建函数，直接映射 x86 的 BSF/TZCNT 硬件指令
             // ~ 操作将 0 变 1，ctzll 会光速找到最低位的 1 的位置
-            int bit = __builtin_ctzll(~pcpu_chunk_bitmap[i]);
+            int32 bit = asm_tzcnt(~pcpu_chunk_bitmap[i]);
             pcpu_chunk_bitmap[i] |= (1ULL << bit); // 将其标记为已用
             return (i * 64) + bit; // 返回全局 Chunk 索引 (0 ~ 255)
         }
@@ -43,8 +43,8 @@ static inline int find_first_zero_bit_and_set(void) {
 // 位图辅助函数：回收 Chunk，将对应的 bit 清零
 // -------------------------------------------------------------------------
 static inline void clear_chunk_bit(uint32 chunk_idx) {
-    int array_idx = chunk_idx / 64;
-    int bit_idx   = chunk_idx % 64;
+    int32 array_idx = chunk_idx / 64;
+    int32 bit_idx   = chunk_idx % 64;
     pcpu_chunk_bitmap[array_idx] &= ~(1ULL << bit_idx);
 }
 
@@ -91,7 +91,7 @@ void per_cpu_mem_init() {
 // 🌟 扩容函数：创造一个新的 Chunk 并映射给所有 CPU
 static inline pcpu_chunk_t *pcpu_expand_chunk(void) {
     // 1. O(1) 极速从位图中分配一个绝对空闲的 64KB 虚拟空间索引
-    int chunk_idx = find_first_zero_bit_and_set();
+    int32 chunk_idx = find_first_zero_bit_and_set();
     if (chunk_idx < 0) {
         PR_WARN("Per-CPU 16MB vaddr window exhausted!");
         return NULL; // OOM 拦截防线
