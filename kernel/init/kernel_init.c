@@ -109,6 +109,8 @@ void user_test_payload(void) {
 task_t *user_task;
 
 
+
+
 void kernel_init(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
     output_init();                                              //初始化输出控制台
