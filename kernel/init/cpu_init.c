@@ -333,8 +333,7 @@ static inline void get_cpu_info(void) {
 
 void per_cpu_alloc_resources(void) {
     uint32 total_cpu_count = cpu_apic_info.total_cpu_count;
-    cpu_info.total_cpu_count = total_cpu_count;
-    per_cpu_t **per_cpus = kzalloc(sizeof(per_cpu_t *) * total_cpu_count);
+    per_cpu_t **per_cpus = kzalloc(sizeof(per_cpu_t*) * total_cpu_count);
     cpu_info.per_cpus = per_cpus;
     cpu_hw_t *cpu_hw = cpu_apic_info.cpu_hw;
     uint64 per_cpu_va = vm_layout.percpu_vaddr_start;
