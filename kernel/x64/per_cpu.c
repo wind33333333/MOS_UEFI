@@ -55,7 +55,7 @@ static inline void clear_chunk_bit(uint32 chunk_idx) {
 }
 
 
-void per_cpu_mem_init() {
+void alloc_percpu_init() {
     uint32 total_cpu_count = cpu_apic_info.total_cpu_count;
     cpu_info.total_cpu_count = total_cpu_count;
     uint64 per_cpu_va = vm_layout.percpu_vaddr_start;

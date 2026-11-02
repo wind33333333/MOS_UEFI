@@ -109,7 +109,7 @@ typedef struct pcpu_chunk_t {
 } pcpu_chunk_t;
 
 
-void per_cpu_mem_init();
+void alloc_percpu_init();
 
 void *alloc_percpu(uint32 size, uint32 align);
 void free_percpu(void *ptr);

@@ -22,6 +22,6 @@ static inline uint32 apicid_to_logcalid(uint32 apic_id) {
 
 void cpu_enable_feature(void);
 void per_cpu_alloc_resources(void);
-void cpu_init(void);
+void per_cpu_init(void);
 void ap_init(void);
 void ap_main(void);

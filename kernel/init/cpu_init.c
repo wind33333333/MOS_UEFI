@@ -400,7 +400,7 @@ static inline void syscall_init(void) {
     asm_wrmsr(FMASK_MSR, SYSCALL_FMASK);
 }
 
-void cpu_init(void){
+void per_cpu_init(void){
     cpu_enable_feature();
     apic_init();                                            //本地apic初始化
     uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
