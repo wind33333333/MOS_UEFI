@@ -13,21 +13,21 @@ cpu_info_t cpu_info = {
 };
 
 
-extern cpu_apic_info_t cpu_apic_info;
+
 extern vm_space_t kernel_space;
 
-static list_head_t chunk_list;
-static uint32      pcpu_alloc_lock;
+list_head_t chunk_list;
+uint32      pcpu_alloc_lock;
 
 // =========================================================================
 // 🌟 核心巨变：256-bit 极速位图 (掌控 16MB 窗口内的 256 个 64KB Chunk)
 // =========================================================================
 // 4 个 uint64_t 刚好 256 bit。bit 位为 0 表示 Chunk 虚拟地址空闲，1 表示已分配
-static uint64 pcpu_chunk_bitmap[4] = {0};
+uint64 pcpu_chunk_bitmap[4] = {0};
 
-static pcpu_chunk_t first_chunk;       // 第一个大块手动分配 (占据 bit 0)
-static pcpu_block_t pcpu_cpu_block;    // 第一个小块手动分配，存放per_cpu结构
-static pcpu_block_t free_block;        // 第一个手动拆下来的空闲块
+pcpu_chunk_t first_chunk;       // 第一个大块手动分配 (占据 bit 0)
+pcpu_block_t pcpu_cpu_block;    // 第一个小块手动分配，存放per_cpu结构
+pcpu_block_t free_block;        // 第一个手动拆下来的空闲块
 
 // -------------------------------------------------------------------------
 // 位图辅助函数：寻找第一个为 0 的 bit，并将其置为 1 (O(1) 极速寻址)
@@ -52,45 +52,6 @@ static inline void clear_chunk_bit(uint32 chunk_idx) {
     int32 array_idx = chunk_idx / 64;
     int32 bit_idx   = chunk_idx % 64;
     pcpu_chunk_bitmap[array_idx] &= ~(1ULL << bit_idx);
-}
-
-
-void alloc_percpu_init() {
-    uint32 total_cpu_count = cpu_apic_info.total_cpu_count;
-    cpu_info.total_cpu_count = total_cpu_count;
-    uint64 per_cpu_va = vm_layout.percpu_vaddr_start;
-
-    for (uint32 i = 0; i < total_cpu_count; i++) {
-        uint64 pa = page_to_pa(alloc_pages(4));
-        vm_map_range(&kernel_space, per_cpu_va, pa, PCPU_CHUNK_SIZE, PAGE_KERNEL_DATA_RW);
-        per_cpu_va += PERCPU_WINDOW_SIZE;
-    }
-
-    list_head_init(&chunk_list);
-    list_head_init(&first_chunk.block_list);
-
-    // 🌟 创世 Chunk 永远占据 offset 0，所以必须在位图中把第 0 位锁死 (置 1)
-    pcpu_chunk_bitmap[0] = 1ULL;
-
-    // 手动创建第一个 chunk
-    first_chunk.start_off = 0;
-    first_chunk.end_off = PCPU_CHUNK_SIZE;
-    first_chunk.free_bytes = PCPU_CHUNK_SIZE - sizeof(per_cpu_t);
-    list_add_tail(&first_chunk.node, &chunk_list);
-
-    // 手动创建 per_cpu 的 block
-    pcpu_cpu_block.is_free = FALSE;
-    pcpu_cpu_block.is_dynamic = FALSE;
-    pcpu_cpu_block.offset = 0;
-    pcpu_cpu_block.size = sizeof(per_cpu_t);
-    list_add_tail(&pcpu_cpu_block.node, &first_chunk.block_list);
-
-    // 手动创建第一个空闲 block
-    free_block.is_free = TRUE;
-    free_block.is_dynamic = FALSE;
-    free_block.offset = sizeof(per_cpu_t);
-    free_block.size = PCPU_CHUNK_SIZE - sizeof(per_cpu_t);
-    list_add_tail(&free_block.node, &first_chunk.block_list);
 }
 
 
