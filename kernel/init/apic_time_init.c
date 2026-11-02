@@ -1,5 +1,4 @@
-#include "printk.h"
-#include "../mm/alloc_percpu.h"
+#include "../x64/cpu.h"
 #include "../x64/msr.h"
 #include "../x64/apic_time.h"
 #include "../time/time_core.h"

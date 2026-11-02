@@ -1,7 +1,7 @@
 #include "apic_time.h"
-#include "../mm/alloc_percpu.h"
+#include "../x64/cpu.h"
 #include "msr.h"
-
+#include "../time/time_core.h"
 
 clocksource_t tsc_cs;
 clockevent_t tsc_deadline_ce;

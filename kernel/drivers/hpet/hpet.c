@@ -1,7 +1,6 @@
 #include "hpet.h"
 #include "../x64/cpu_registers.h"
-#include "printk.h"
-#include "../../mm/alloc_percpu.h"
+#include "../x64/cpu.h"
 
 // HPET设备
 hpet_device_t hpet_dev;

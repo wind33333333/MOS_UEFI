@@ -1,5 +1,6 @@
 #include "../mm/alloc_percpu.h"
 #include "apic_init.h"
+#include "../x64/cpu.h"
 #include "list.h"
 #include "moslib.h"
 #include "pmm.h"
@@ -12,6 +13,7 @@ extern cpu_apic_info_t cpu_apic_info;
 extern uint64 pcpu_chunk_bitmap[4];
 extern pcpu_block_t free_block;
 extern vm_space_t kernel_space;
+
 void alloc_percpu_init() {
     uint32 total_cpu_count = cpu_apic_info.total_cpu_count;
     cpu_info.total_cpu_count = total_cpu_count;

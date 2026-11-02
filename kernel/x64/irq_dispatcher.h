@@ -84,3 +84,16 @@ typedef struct {
     irq_override_t *irq_override;
     uint32 irq_override_count;
 }irq_override_info_t;
+
+//中断结束发送EOI
+static inline void apic_send_eoi(void) {
+    __asm__ __volatile__(
+        "xorl %%edx, %%edx \n\t"
+        "xorl %%eax, %%eax \n\t"
+        "movl $0x80B, %%ecx \n\t"
+        "wrmsr             \n\t"
+        : /* 无输出 */
+        : /* 无输入 */
+        : "%rax", "%rcx", "%rdx", "memory" // 明确告知编译器这三个寄存器被破坏了
+    );
+}

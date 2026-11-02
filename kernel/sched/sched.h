@@ -1,11 +1,10 @@
 #pragma once
+#include "../x64/cpu.h"
 #include "moslib.h"
 #include "rbtree.h"
-#include "../mm/alloc_percpu.h"
 #include "../sched/sched_eevdf.h"
 #include "../sched/task.h"
 #include "../time/time_core.h"
-#include "../time/timer.h"
 
 
 static inline void sched_tick(uint64 cur_ns) {

@@ -1,5 +1,5 @@
 #include "irq_dispatcher.h"
-#include "../mm/alloc_percpu.h"
+#include "../x64/cpu.h"
 #include "printk.h"
 #include "moslib.h"
 #include "errno.h"

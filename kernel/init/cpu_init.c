@@ -3,16 +3,13 @@
 #include "../drivers/hpet/hpet.h"
 #include "../x64/idt.h"
 #include "printk.h"
-#include "vmalloc.h"
 #include "slub.h"
-#include "../x64/mtrr.h"
 #include "alternative_init.h"
 #include "pmm.h"
 #include "../mm/alloc_percpu.h"
-#include "../x64/apic_time.h"
 #include "../x64/gdt_tss.h"
 #include "../sched/task.h"
-
+#include "../x64/cpu.h"
 
 
 extern uint8 _apboot_start[];

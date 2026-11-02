@@ -1,10 +1,7 @@
 #include "gdt_tss.h"
-#include "../mm/alloc_percpu.h"
+#include "cpu.h"
 #include "slub.h"
 #include "vmalloc.h"
-
-
-
 
 // 1. 基础段类型 (统一，没必要区分32/64)
 #define TYPE_CODE           (0xAUL << 40)  // 可执行、可读代码段

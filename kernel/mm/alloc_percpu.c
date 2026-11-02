@@ -1,17 +1,10 @@
 #include "alloc_percpu.h"
-#include "../init/apic_init.h"
+#include "../x64/cpu.h"
 #include "vmm.h"
 #include "pmm.h"
 #include "printk.h"
 #include "slub.h"
 #include "list.h"
-
-cpu_info_t cpu_info = {
-    .per_cpus = NULL,      //运行时动态分配
-    .run_cpu_count = 1,     //启动时只有bsp核心在运行，后面每个ap核心启动后自动修改
-    .total_cpu_count = 1    //后面解析acpi表后修改cpu核心总数
-};
-
 
 extern vm_space_t kernel_space;
 

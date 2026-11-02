@@ -1,7 +1,8 @@
 #pragma once
+#include "../x64/cpu.h"
 #include "moslib.h"
 #include "../x64/msr.h"
-#include "../mm/alloc_percpu.h"
+
 
 static inline void set_gs_base(uint32 logical_id) {
     per_cpu_t *per_cpu = cpu_info.per_cpus[logical_id];
@@ -18,7 +19,6 @@ static inline uint32 apicid_to_logcalid(uint32 apic_id) {
     }
     return 0xFFFFFFFF; // 未找到（无效或被禁用的核心）
 }
-
 
 
 void cpu_enable_feature(void);

@@ -1,8 +1,8 @@
 // ========================= [ time.c ] =========================
+#include "time_core.h"
+#include "../x64/cpu.h"
 #include "time.h"
 #include "printk.h"
-#include "timer.h"
-#include "../mm/alloc_percpu.h"
 
 timekeeper_t   g_timekeeper;
 static clocksource_t *g_cs_list[8];
