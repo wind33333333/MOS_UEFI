@@ -1,5 +1,5 @@
 #include "apic_time.h"
-#include "per_cpu.h"
+#include "../mm/alloc_percpu.h"
 #include "msr.h"
 
 

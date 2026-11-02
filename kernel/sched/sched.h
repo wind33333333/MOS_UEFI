@@ -1,7 +1,7 @@
 #pragma once
 #include "moslib.h"
 #include "rbtree.h"
-#include "../x64/per_cpu.h"
+#include "../mm/alloc_percpu.h"
 #include "../sched/sched_eevdf.h"
 #include "../sched/task.h"
 #include "../time/time_core.h"

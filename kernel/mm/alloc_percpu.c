@@ -1,4 +1,4 @@
-#include "per_cpu.h"
+#include "alloc_percpu.h"
 #include "../init/apic_init.h"
 #include "vmm.h"
 #include "pmm.h"

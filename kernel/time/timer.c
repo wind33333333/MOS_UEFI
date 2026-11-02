@@ -2,7 +2,7 @@
 #include "time_core.h"
 #include "../sched/sched.h"
 #include "../sched/task.h"
-#include "../x64/per_cpu.h"
+#include "../mm/alloc_percpu.h"
 
 void ksleep_us(uint64 delay_us) {
     uint64 flags;

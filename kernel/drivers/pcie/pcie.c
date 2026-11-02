@@ -4,7 +4,7 @@
 #include "slub.h"
 #include "vmalloc.h"
 #include "bus.h"
-#include "../x64/per_cpu.h"
+#include "../../mm/alloc_percpu.h"
 #include "errno.h"
 
 

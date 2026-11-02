@@ -1,5 +1,5 @@
 #include "gdt_tss.h"
-#include "per_cpu.h"
+#include "../mm/alloc_percpu.h"
 #include "slub.h"
 #include "vmalloc.h"
 

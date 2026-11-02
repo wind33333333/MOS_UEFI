@@ -1,7 +1,7 @@
 #pragma once
 #include "moslib.h"
 #include "../x64/msr.h"
-#include "../x64/per_cpu.h"
+#include "../mm/alloc_percpu.h"
 
 static inline void set_gs_base(uint32 logical_id) {
     per_cpu_t *per_cpu = cpu_info.per_cpus[logical_id];
@@ -20,6 +20,7 @@ static inline uint32 apicid_to_logcalid(uint32 apic_id) {
 }
 
 
+void alloc_percpu_init();
 void cpu_enable_feature(void);
 void per_cpu_alloc_resources(void);
 void per_cpu_init(void);

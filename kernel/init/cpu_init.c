@@ -8,7 +8,7 @@
 #include "../x64/mtrr.h"
 #include "alternative_init.h"
 #include "pmm.h"
-#include "../x64/per_cpu.h"
+#include "../mm/alloc_percpu.h"
 #include "../x64/apic_time.h"
 #include "../x64/gdt_tss.h"
 #include "../sched/task.h"
@@ -400,20 +400,7 @@ static inline void syscall_init(void) {
     asm_wrmsr(FMASK_MSR, SYSCALL_FMASK);
 }
 
-void per_cpu_init(void){
-    cpu_enable_feature();
-    apic_init();                                            //本地apic初始化
-    uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
-    uint32 logical_id = apicid_to_logcalid(apic_id);
-    set_gs_base(logical_id);                                //设置bsp核gs基地址
-    asm_lgdt(&this_cpu()->gdt);                             //加载正式gdt
-    asm_ltr();                                              //加载tr
-    asm_lidt();                                             // 装载 IDTR
-    syscall_init();                                         //初始化系统调用
-    clockevent_per_cpu_init();                              //设置核心定时器
-    per_run_sleep_queue_init();                             //配置队列
-    get_cpu_info();                                         //获取cpu信息
-}
+
 
 extern list_head_t chunk_list;
 extern pcpu_chunk_t first_chunk;
@@ -460,6 +447,20 @@ void alloc_percpu_init() {
     list_add_tail(&free_block.node, &first_chunk.block_list);
 }
 
+void per_cpu_init(void){
+    cpu_enable_feature();
+    apic_init();                                            //本地apic初始化
+    uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
+    uint32 logical_id = apicid_to_logcalid(apic_id);
+    set_gs_base(logical_id);                                //设置bsp核gs基地址
+    asm_lgdt(&this_cpu()->gdt);                             //加载正式gdt
+    asm_ltr();                                              //加载tr
+    asm_lidt();                                             // 装载 IDTR
+    syscall_init();                                         //初始化系统调用
+    clockevent_per_cpu_init();                              //设置核心定时器
+    per_run_sleep_queue_init();                             //配置队列
+    get_cpu_info();                                         //获取cpu信息
+}
 
 
 uint64 ap_boot_loader_address;

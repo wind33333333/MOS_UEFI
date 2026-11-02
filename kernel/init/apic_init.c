@@ -1,5 +1,5 @@
 #include "apic_init.h"
-#include "../x64/per_cpu.h"
+#include "../mm/alloc_percpu.h"
 #include "memblock_init.h"
 #include "acpi_init.h"
 #include "slub.h"

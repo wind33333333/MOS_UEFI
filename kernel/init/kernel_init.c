@@ -15,7 +15,7 @@
 #include "../x64/apic_time.h"
 #include "../include/bus.h"
 #include "intr_init.h"
-#include "../x64/per_cpu.h"
+#include "../mm/alloc_percpu.h"
 #include "../include/ioapic.h"
 #include "../drivers/hpet/hpet.h"
 #include "../time/time_core.h"
