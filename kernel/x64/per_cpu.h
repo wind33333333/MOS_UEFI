@@ -4,7 +4,7 @@
 #include "moslib.h"
 #include "list.h"
 #include "rbtree.h"
-#include "time_core.h"
+#include "../time/time_core.h"
 
 // 调度队列 (Per-CPU)
 typedef struct run_queue_t{

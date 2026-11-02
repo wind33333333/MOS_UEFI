@@ -2,7 +2,7 @@
 #include "time.h"
 #include "printk.h"
 #include "timer.h"
-#include "../x64/cpu.h"
+#include "../x64/per_cpu.h"
 
 timekeeper_t   g_timekeeper;
 static clocksource_t *g_cs_list[8];

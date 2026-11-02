@@ -1,7 +1,6 @@
 #include "ioapic.h"
 #include "../../init/acpi_init.h"
 #include "../../include/slub.h"
-#include "../x64/cpu.h"
 #include "../../include/printk.h"
 #include "../include/vmalloc.h"
 
