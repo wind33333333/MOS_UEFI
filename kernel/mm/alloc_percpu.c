@@ -13,7 +13,6 @@ cpu_info_t cpu_info = {
 };
 
 
-
 extern vm_space_t kernel_space;
 
 list_head_t chunk_list;

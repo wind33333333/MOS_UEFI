@@ -108,7 +108,7 @@ typedef struct pcpu_chunk_t {
     list_head_t block_list; // 有序挂载该 Chunk 内所有的 pcpu_block_t
 } pcpu_chunk_t;
 
-
+void alloc_percpu_init();
 void *alloc_percpu(uint32 size, uint32 align);
 void free_percpu(void *ptr);
 
