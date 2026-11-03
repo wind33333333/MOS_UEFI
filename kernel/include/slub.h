@@ -10,6 +10,12 @@
 #define MAX_OBJECT_SIZE     (1 * 1024 * 1024) ///< 支持的最大分配对象为 1MB
 #define KMALLOC_CACHE_SIZE  18                ///< kmalloc 预置的常规缓存池阶数 (8B ~ 1MB)
 
+// 🌟 1. CPU 的私有极速工作台 (本地无锁通道)
+typedef struct kmem_cache_cpu_t {
+    void    *freelist;  // 本地无锁空闲链表 (指向下一个空闲对象的虚拟地址)
+    page_t  *page;      // 当前 CPU 正在切分的专属 SLUB 物理大页
+} kmem_cache_cpu_t;
+
 /**
  * @brief kmem_cache 缓存池管理描述符
  * @note  负责管理一类固定大小对象的分配与回收。每个缓存池下挂载多个 slub (物理页框集合)。
@@ -19,6 +25,15 @@ typedef struct kmem_cache_t {
     uint32      object_size;      ///< 经过严格对齐后的单个对象字节大小
     uint32      order_per_slub;   ///< 每个 slub 块占据的伙伴系统阶数 (0阶=4K, 1阶=8K...)
     uint32      object_per_slub;  ///< 每个 slub 块最多能容纳的对象总数
+
+    // ==========================================================
+    // 🚀 核心巨变：不再是静态数组！而是一个动态 Per-CPU 指针！
+    kmem_cache_cpu_t *cpu_slab;
+
+    // 🛡️ 新增：保护下方全局链表和统计数据的全局自旋锁 (慢速路径使用)
+    uint32      lock;
+    // ==========================================================
+
     uint32      slub_count;       ///< 当前缓存池名下挂载的 slub 块总数
     uint64      total_using;      ///< 全局统计：当前正在被使用的对象总数
     uint64      total_free;       ///< 全局统计：当前可供分配的空闲对象总数
