@@ -84,7 +84,7 @@ static inline boolean cpu_has_tsc_deadline(void) {
     return (ecx & CPUID_FEAT_ECX_TSC_DEADLINE) != 0;
 }
 
-//初始化tsc始终和定时器
+//初始化tsc时钟和定时器
 void apic_time_init() {
     //tsc时钟注册
     tsc_cs.freq_hz = detect_tsc_hz();

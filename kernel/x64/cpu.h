@@ -64,12 +64,14 @@ typedef struct per_cpu_t {
     uint32          bus_mhz;              // 总线/外频 (MHz)
 }__attribute__((aligned(4096)))per_cpu_t;
 
-#define THIS_CPU ((per_cpu_t __seg_gs *)0) //通过gs直接访问cpu_core
+//通过gs直接访问cpu似有数据
+#define THIS_CPU ((per_cpu_t __seg_gs *)0)
 
-//间接访问cpu_core
-static inline per_cpu_t* this_cpu(void) {
+//间接访问当前cpu似有数据
+static inline per_cpu_t* this_cpu_ptr(void) {
     return THIS_CPU->self;
 }
+
 
 typedef struct cpu_info_t {
     per_cpu_t **per_cpus;       //所有per_cpu结构体
