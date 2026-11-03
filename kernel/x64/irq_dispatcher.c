@@ -15,7 +15,7 @@ void c_irq_dispatcher(cpu_registers_t *regs) {
     uint64 irq_no = regs->no - 32;
 
     // 3. 🌟 O(1) 极速本地查表 (全程在本地 L1 Cache 内完成)
-    irq_desc_t *irq_desc = &this_cpu_ptr()->irq_table[irq_no];
+    irq_desc_t *irq_desc = &this_cpu()->irq_table[irq_no];
 
     if (irq_desc->handler != NULL) {
         // 传递 regs 和 驱动注册时的私有 dev_id (如网卡对象指针)

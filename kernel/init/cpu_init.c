@@ -403,7 +403,7 @@ void per_cpu_init(void){
     uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
     uint32 logical_id = apicid_to_logcalid(apic_id);
     set_gs_base(logical_id);                                //设置bsp核gs基地址
-    asm_lgdt(&this_cpu_ptr()->gdt);                             //加载正式gdt
+    asm_lgdt(&this_cpu()->gdt);                             //加载正式gdt
     asm_ltr();                                              //加载tr
     asm_lidt();                                             // 装载 IDTR
     syscall_init();                                         //初始化系统调用

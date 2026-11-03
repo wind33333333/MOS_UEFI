@@ -68,7 +68,7 @@ typedef struct per_cpu_t {
 #define THIS_CPU ((per_cpu_t __seg_gs *)0)
 
 //间接访问当前cpu似有数据
-static inline per_cpu_t* this_cpu_ptr(void) {
+static inline per_cpu_t* this_cpu(void) {
     return THIS_CPU->self;
 }
 
