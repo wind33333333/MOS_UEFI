@@ -34,20 +34,20 @@ void alloc_percpu_init() {
     // 手动创建第一个 chunk
     first_chunk.start_off = 0;
     first_chunk.end_off = PCPU_CHUNK_SIZE;
-    first_chunk.free_bytes = PCPU_CHUNK_SIZE - sizeof(per_cpu_t);
+    first_chunk.free_bytes = PCPU_CHUNK_SIZE - sizeof(cpu_control_block_t);
     list_add_tail(&first_chunk.node, &chunk_list);
 
     // 手动创建 per_cpu 的 block
     pcpu_cpu_block.is_free = FALSE;
     pcpu_cpu_block.is_dynamic = FALSE;
     pcpu_cpu_block.offset = 0;
-    pcpu_cpu_block.size = sizeof(per_cpu_t);
+    pcpu_cpu_block.size = sizeof(cpu_control_block_t);
     list_add_tail(&pcpu_cpu_block.node, &first_chunk.block_list);
 
     // 手动创建第一个空闲 block
     free_block.is_free = TRUE;
     free_block.is_dynamic = FALSE;
-    free_block.offset = sizeof(per_cpu_t);
-    free_block.size = PCPU_CHUNK_SIZE - sizeof(per_cpu_t);
+    free_block.offset = sizeof(cpu_control_block_t);
+    free_block.size = PCPU_CHUNK_SIZE - sizeof(cpu_control_block_t);
     list_add_tail(&free_block.node, &first_chunk.block_list);
 }

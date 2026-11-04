@@ -289,63 +289,63 @@ static inline void get_cpu_info(void) {
     uint32 max_basic_leaf = 0, max_ext_leaf = 0;
     uint32 ebx, ecx, edx;
 
-    per_cpu_t *per_cpu = THIS_CPU->self;
+    cpu_control_block_t *ccb = THIS_CPU->self;
 
     // 1. 获取厂商名称 & max_basic_leaf
     asm_cpuid(0, &max_basic_leaf,
-                 (uint32 *)&per_cpu->manufacturer_name[0],
-                 (uint32 *)&per_cpu->manufacturer_name[8],
-                 (uint32 *)&per_cpu->manufacturer_name[4]);
-    per_cpu->manufacturer_name[12] = '\0';
+                 (uint32 *)&ccb->manufacturer_name[0],
+                 (uint32 *)&ccb->manufacturer_name[8],
+                 (uint32 *)&ccb->manufacturer_name[4]);
+    ccb->manufacturer_name[12] = '\0';
 
     // 2. 获取 CPU 型号字符串
     asm_cpuid(0x80000000, &max_ext_leaf, &ebx, &ecx, &edx);
     if (max_ext_leaf >= 0x80000004) {
-        asm_cpuid(0x80000002, (uint32 *)&per_cpu->model_name[0],  (uint32 *)&per_cpu->model_name[4],
-                              (uint32 *)&per_cpu->model_name[8],  (uint32 *)&per_cpu->model_name[12]);
-        asm_cpuid(0x80000003, (uint32 *)&per_cpu->model_name[16], (uint32 *)&per_cpu->model_name[20],
-                              (uint32 *)&per_cpu->model_name[24], (uint32 *)&per_cpu->model_name[28]);
-        asm_cpuid(0x80000004, (uint32 *)&per_cpu->model_name[32], (uint32 *)&per_cpu->model_name[36],
-                              (uint32 *)&per_cpu->model_name[40], (uint32 *)&per_cpu->model_name[44]);
-        per_cpu->model_name[48] = '\0';
+        asm_cpuid(0x80000002, (uint32 *)&ccb->model_name[0],  (uint32 *)&ccb->model_name[4],
+                              (uint32 *)&ccb->model_name[8],  (uint32 *)&ccb->model_name[12]);
+        asm_cpuid(0x80000003, (uint32 *)&ccb->model_name[16], (uint32 *)&ccb->model_name[20],
+                              (uint32 *)&ccb->model_name[24], (uint32 *)&ccb->model_name[28]);
+        asm_cpuid(0x80000004, (uint32 *)&ccb->model_name[32], (uint32 *)&ccb->model_name[36],
+                              (uint32 *)&ccb->model_name[40], (uint32 *)&ccb->model_name[44]);
+        ccb->model_name[48] = '\0';
     } else {
-        per_cpu->model_name[0] = '\0';
+        ccb->model_name[0] = '\0';
     }
 
     // 3. 获取处理器标称频率 (Intel 走 0x16，AMD 走 P-State 0 MSR)
     if (max_basic_leaf >= 0x16) {
-        asm_cpuid(0x16, &per_cpu->fundamental_mhz, &per_cpu->maximum_mhz, &per_cpu->bus_mhz, &edx);
+        asm_cpuid(0x16, &ccb->fundamental_mhz, &ccb->maximum_mhz, &ccb->bus_mhz, &edx);
     } else {
-        per_cpu->fundamental_mhz = 0;
-        per_cpu->maximum_mhz     = 0;
-        per_cpu->bus_mhz         = 0;
+        ccb->fundamental_mhz = 0;
+        ccb->maximum_mhz     = 0;
+        ccb->bus_mhz         = 0;
     }
 
-    if (per_cpu->fundamental_mhz == 0 && per_cpu->manufacturer_name[0] == 'A') {
-        per_cpu->fundamental_mhz = amd_get_pstate0_mhz();
-        per_cpu->maximum_mhz     = per_cpu->fundamental_mhz;
-        per_cpu->bus_mhz         = (per_cpu->fundamental_mhz != 0) ? 100 : 0;
+    if (ccb->fundamental_mhz == 0 && ccb->manufacturer_name[0] == 'A') {
+        ccb->fundamental_mhz = amd_get_pstate0_mhz();
+        ccb->maximum_mhz     = ccb->fundamental_mhz;
+        ccb->bus_mhz         = (ccb->fundamental_mhz != 0) ? 100 : 0;
     }
 
 }
 
 void per_cpu_alloc_resources(void) {
     uint32 total_cpu_count = cpu_apic_info.total_cpu_count;
-    per_cpu_t **per_cpus = kzalloc(sizeof(per_cpu_t*) * total_cpu_count);
-    cpu_info.per_cpus = per_cpus;
+    cpu_control_block_t **ccb_ptr = kzalloc(sizeof(cpu_control_block_t*) * total_cpu_count);
+    cpu_info.ccb_ptr = ccb_ptr;
     cpu_hw_t *cpu_hw = cpu_apic_info.cpu_hw;
     uint64 per_cpu_va = vm_layout.percpu_vaddr_start;
     for (uint32 i=0;i < total_cpu_count;i++) {
-        per_cpu_t *per_cpu = (per_cpu_t*)per_cpu_va;
-        asm_mem_set(per_cpu,0,sizeof(per_cpu_t));
+        cpu_control_block_t *ccb = (cpu_control_block_t*)per_cpu_va;
+        asm_mem_set(ccb,0,sizeof(cpu_control_block_t));
         per_cpu_va += PERCPU_WINDOW_SIZE;
-        per_cpus[i] = per_cpu;
-        per_cpu->hwirq_rsp_top = (uint64)kmalloc(4096*4)+4096*4;
-        per_cpu->self = per_cpu;
-        per_cpu->logical_id = cpu_hw[i].logical_id;
-        per_cpu->apic_id = cpu_hw[i].apic_id;
-        per_cpu->acpi_proc_id = cpu_hw[i].acpi_proc_id;
-        per_cpu->lint_nmi = cpu_hw[i].lint_nmi;
+        ccb_ptr[i] = ccb;
+        ccb->hwirq_rsp_top = (uint64)kmalloc(4096*4)+4096*4;
+        ccb->self = ccb;
+        ccb->logical_id = cpu_hw[i].logical_id;
+        ccb->apic_id = cpu_hw[i].apic_id;
+        ccb->acpi_proc_id = cpu_hw[i].acpi_proc_id;
+        ccb->lint_nmi = cpu_hw[i].lint_nmi;
         gdt_tss_init(i);
     }
 }

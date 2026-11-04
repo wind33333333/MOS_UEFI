@@ -32,8 +32,8 @@ typedef enum {
 // =================================================================
 // 👑 核心数据结构：每 CPU 控制块 (单结构体·内部冷热隔离版)
 // =================================================================
-typedef struct per_cpu_t {
-    struct per_cpu_t *self;               //指向自己
+typedef struct cpu_control_block_t {
+    struct cpu_control_block_t *self;               //指向自己
     uint64          hwirq_rsp_top;        //硬件中断专业栈
     uint64          kernel_rsp_top;       //当前线程内核栈顶 (与 tss->rsp0 同步)
     uint64          tmp_user_rsp;         //syscall发生时暂存用户态RSP的草稿箱
@@ -62,27 +62,27 @@ typedef struct per_cpu_t {
     uint32          fundamental_mhz;      // 基础频率 (MHz)
     uint32          maximum_mhz;          // 最大睿频 (MHz)
     uint32          bus_mhz;              // 总线/外频 (MHz)
-}__attribute__((aligned(4096)))per_cpu_t;
+}__attribute__((aligned(64)))cpu_control_block_t;
 
 //通过gs直接访问cpu似有数据
-#define THIS_CPU ((per_cpu_t __seg_gs *)0)
+#define THIS_CPU ((cpu_control_block_t __seg_gs *)0)
 
 //间接访问当前cpu似有数据
-static inline per_cpu_t* this_cpu(void) {
+static inline cpu_control_block_t* this_cpu(void) {
     return THIS_CPU->self;
 }
 
 
 typedef struct cpu_info_t {
-    per_cpu_t **per_cpus;       //所有per_cpu结构体
+    cpu_control_block_t **ccb_ptr;       //所有per_cpu结构体
     uint32 run_cpu_count;       //运行中的cpu核心数量
     uint32 total_cpu_count;     //cpu核心总数量
 }cpu_info_t;
 
 extern cpu_info_t cpu_info;
 
-static inline per_cpu_t *get_lid_by_per_cpu(uint32 logical_id) {
-    return (logical_id < cpu_info.run_cpu_count) ? cpu_info.per_cpus[logical_id] : NULL;
+static inline cpu_control_block_t *get_lid_by_per_cpu(uint32 logical_id) {
+    return (logical_id < cpu_info.run_cpu_count) ? cpu_info.ccb_ptr[logical_id] : NULL;
 }
 
 
