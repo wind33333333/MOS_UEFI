@@ -15,7 +15,7 @@ void schedule() {
 
     uint64 cur_ns = get_uptime_ns();
 
-    task_t *prev = THIS_CPU->cur_task;
+    task_t *prev = THIS_CCB->cur_task;
 
     // 1. 结清前一个任务的时间账单
     update_cur_task_eevdf(cur_ns);
@@ -31,14 +31,14 @@ void schedule() {
     // 3. 选出下一个天命之子
     task_t *next = pick_next_task_eevdf();
     if (!next) {
-        next = THIS_CPU->idle_task;
+        next = THIS_CCB->idle_task;
     } else {
         dequeue_task_eevdf(next); // 离开就绪队列，独占 CPU
     }
 
     next->state = TASK_RUNNING;
     next->last_update_time = cur_ns;
-    THIS_CPU->cur_task = next;
+    THIS_CCB->cur_task = next;
 
     // 🌟 1. 切换页表 (CR3)
     if (next->vm_space.cr3_root != 0 && next->vm_space.cr3_root != asm_get_cr3()) {
@@ -47,8 +47,8 @@ void schedule() {
 
     // 🌟 2. 刷新当前 CPU 核心的 TSS RSP0，防止 Ring 3 中断切栈时踩踏
     if (next->kernel_rsp_top != 0) {
-        THIS_CPU->tss.rsp0 = next->kernel_rsp_top;
-        THIS_CPU->kernel_rsp_top = next->kernel_rsp_top; // 供 syscall 汇编快速取用
+        THIS_CCB->tss.rsp0 = next->kernel_rsp_top;
+        THIS_CCB->kernel_rsp_top = next->kernel_rsp_top; // 供 syscall 汇编快速取用
     }
 
     // ========================================================
@@ -68,7 +68,7 @@ void schedule() {
 
 void check_and_schedule() {
     // 如果当前任务被贴了“换人”的条子
-    task_t *cur_task = THIS_CPU->cur_task;
+    task_t *cur_task = THIS_CCB->cur_task;
     if (cur_task->flags & TIF_NEED_RESCHED) {
         cur_task->flags &= ~TIF_NEED_RESCHED; // 撕掉条子
 

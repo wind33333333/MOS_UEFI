@@ -289,7 +289,7 @@ static inline void get_cpu_info(void) {
     uint32 max_basic_leaf = 0, max_ext_leaf = 0;
     uint32 ebx, ecx, edx;
 
-    cpu_control_block_t *ccb = THIS_CPU->self;
+    cpu_control_block_t *ccb = THIS_CCB->self;
 
     // 1. 获取厂商名称 & max_basic_leaf
     asm_cpuid(0, &max_basic_leaf,
@@ -358,11 +358,11 @@ static inline void per_run_sleep_queue_init() {
     idle->flags = TIF_NEED_RESCHED;
     idle->weight = NICE_0_LOAD;
 
-    THIS_CPU->idle_task = idle;
-    THIS_CPU->cur_task = idle;
-    THIS_CPU->run_queue.vtime = 0;
-    THIS_CPU->sleep_queue.rb_leftmost = NULL;
-    THIS_CPU->sleep_queue.next_wake_ns = TIME_MAX_NS;
+    THIS_CCB->idle_task = idle;
+    THIS_CCB->cur_task = idle;
+    THIS_CCB->run_queue.vtime = 0;
+    THIS_CCB->sleep_queue.rb_leftmost = NULL;
+    THIS_CCB->sleep_queue.next_wake_ns = TIME_MAX_NS;
 
 }
 
@@ -403,7 +403,7 @@ void per_cpu_init(void){
     uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
     uint32 logical_id = apicid_to_logcalid(apic_id);
     set_gs_base(logical_id);                                //设置bsp核gs基地址
-    asm_lgdt(&this_cpu()->gdt);                             //加载正式gdt
+    asm_lgdt(&this_ccb()->gdt);                             //加载正式gdt
     asm_ltr();                                              //加载tr
     asm_lidt();                                             // 装载 IDTR
     syscall_init();                                         //初始化系统调用

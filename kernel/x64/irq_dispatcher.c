@@ -15,14 +15,14 @@ void c_irq_dispatcher(cpu_registers_t *regs) {
     uint64 irq_no = regs->no - 32;
 
     // 3. 🌟 O(1) 极速本地查表 (全程在本地 L1 Cache 内完成)
-    irq_desc_t *irq_desc = &this_cpu()->irq_table[irq_no];
+    irq_desc_t *irq_desc = &this_ccb()->irq_table[irq_no];
 
     if (irq_desc->handler != NULL) {
         // 传递 regs 和 驱动注册时的私有 dev_id (如网卡对象指针)
         irq_desc->handler(regs, irq_desc->dev_id);
     } else {
         color_printk(YELLOW, BLACK, "CPU %d Unhandled Vector: %ld\n",
-                     THIS_CPU->logical_id, irq_no);
+                     THIS_CCB->logical_id, irq_no);
     }
 
     // 4. 发送 EOI，解除 APIC 锁定

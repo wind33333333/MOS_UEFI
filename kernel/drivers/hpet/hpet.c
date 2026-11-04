@@ -25,7 +25,7 @@ void hpet_ce_init_hw(clockevent_t *ce) {
 
     // 拿到第 0 号通道的逻辑上下文 (其中包含了我们要的锁和 mask)
     hpet_timer_t *timer = &dev->hpet_timers[0];
-    uint32 cpu_id = THIS_CPU->logical_id;
+    uint32 cpu_id = THIS_CCB->logical_id;
 
     // 🌟 细粒度加锁：只锁住通道 0，绝不影响其它声卡/外设去抢通道 1 或通道 2
     spin_lock(&timer->lock);
@@ -48,7 +48,7 @@ void hpet_ce_init_hw(clockevent_t *ce) {
 void hpet_ce_stop_hw(clockevent_t *ce) {
     hpet_device_t *dev = (hpet_device_t *)ce->priv;
     hpet_timer_t *timer = &dev->hpet_timers[0];
-    uint32 cpu_id = THIS_CPU->logical_id;
+    uint32 cpu_id = THIS_CCB->logical_id;
 
     spin_lock(&timer->lock);
 

@@ -64,12 +64,12 @@ typedef struct cpu_control_block_t {
     uint32          bus_mhz;              // 总线/外频 (MHz)
 }__attribute__((aligned(64)))cpu_control_block_t;
 
-//通过gs直接访问cpu似有数据
-#define THIS_CPU ((cpu_control_block_t __seg_gs *)0)
+//通过gs直接访问cpu控制块
+#define THIS_CCB ((cpu_control_block_t __seg_gs *)0)
 
-//间接访问当前cpu似有数据
-static inline cpu_control_block_t* this_cpu(void) {
-    return THIS_CPU->self;
+//间接访问当前cpu控制块
+static inline cpu_control_block_t* this_ccb(void) {
+    return THIS_CCB->self;
 }
 
 
