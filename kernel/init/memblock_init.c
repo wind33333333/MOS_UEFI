@@ -336,17 +336,13 @@ void memblock_init(void) {
 // =========================================================================
 // 全局 NUMA 拓扑状态
 // =========================================================================
-#define MAX_NUMA_NODES 32
-
-
-
-
+#define CONFIG_NUMA_NODES 64
 
 // CPU 到 NUMA 节点的映射表 (使用 APIC ID 索引)
-int32 cpu_to_node_map[CONFIG_NR_CPUS];
+uint32 cpu_to_numa_node_map[CONFIG_NR_CPUS];
 
 // NUMA 节点间的距离权重矩阵
-uint8 numa_distance[MAX_NUMA_NODES][MAX_NUMA_NODES];
+uint8 numa_node_distance[CONFIG_NUMA_NODES][CONFIG_NUMA_NODES];
 
 // 系统实际发现的 NUMA 节点总数
 uint32 total_numa_nodes = 0;
@@ -363,7 +359,7 @@ void acpi_parse_srat(srat_t *srat) {
 
     // 1. 初始化映射表，默认所有 CPU 未绑定 (-1)
     for (int32 i = 0; i < CONFIG_NR_CPUS; i++) {
-        cpu_to_node_map[i] = -1;
+        cpu_to_numa_node_map[i] = -1;
     }
 
     // 2. 设置指针跨过 SRAT 表头，指向第一个 Entry
@@ -385,7 +381,7 @@ void acpi_parse_srat(srat_t *srat) {
                              (srat_apic->proximity_domain_hi[1] << 16) |
                              (srat_apic->proximity_domain_hi[2] << 24);
 
-                cpu_to_node_map[srat_apic->apic_id] = node;
+                cpu_to_numa_node_map[srat_apic->apic_id] = node;
 
                 // 动态更新系统最大节点数
                 if (node >= total_numa_nodes) {
@@ -415,7 +411,7 @@ void acpi_parse_srat(srat_t *srat) {
         else if (entry->type == 2) {
             srat_x2apic_t *srat_x2apic = (srat_x2apic_t *)entry;
             if (srat_x2apic->flags & 0x01) {
-                cpu_to_node_map[srat_x2apic->x2apic_id] = srat_x2apic->proximity_domain;
+                cpu_to_numa_node_map[srat_x2apic->x2apic_id] = srat_x2apic->proximity_domain;
                 PR_INFO("  [SRAT] CPU x2APIC %d -> NUMA Node %d\n", srat_x2apic->x2apic_id, srat_x2apic->proximity_domain);
             }
         }
@@ -439,14 +435,14 @@ void acpi_parse_slit(slit_t *slit) {
     PR_INFO("  [SLIT] Declared NUMA nodes: %ld\n", num_nodes);
 
     // 防御性拦截：避免读取越界
-    if (num_nodes > MAX_NUMA_NODES) {
-        PR_WARN("[SLIT] Node count exceeds MAX_NUMA_NODES (%d), truncating.\n", MAX_NUMA_NODES);
-        num_nodes = MAX_NUMA_NODES;
+    if (num_nodes > CONFIG_NUMA_NODES) {
+        PR_WARN("[SLIT] Node count exceeds CONFIG_NUMA_NODES (%d), truncating.\n", CONFIG_NUMA_NODES);
+        num_nodes = CONFIG_NUMA_NODES;
     }
 
     // 1. 初始化矩阵：自身访问标准化为 10，不可达初始化为 255
-    for (int32 i = 0; i < MAX_NUMA_NODES; i++) {
-        for (int32 j = 0; j < MAX_NUMA_NODES; j++) {
+    for (int32 i = 0; i < CONFIG_NUMA_NODES; i++) {
+        for (int32 j = 0; j < CONFIG_NUMA_NODES; j++) {
             numa_distance[i][j] = (i == j) ? 10 : 255;
         }
     }
