@@ -1,4 +1,6 @@
 #include "memblock_init.h"
+
+#include "cpu.h"
 #include "../include/vmm.h"
 #include "../include/printk.h"
 #include "../include/errno.h"
@@ -335,10 +337,13 @@ void memblock_init(void) {
 // 全局 NUMA 拓扑状态
 // =========================================================================
 #define MAX_NUMA_NODES 32
-#define MAX_CPUS 256
+
+
+
+
 
 // CPU 到 NUMA 节点的映射表 (使用 APIC ID 索引)
-int32 cpu_to_node_map[MAX_CPUS];
+int32 cpu_to_node_map[CONFIG_NR_CPUS];
 
 // NUMA 节点间的距离权重矩阵
 uint8 numa_distance[MAX_NUMA_NODES][MAX_NUMA_NODES];
@@ -357,7 +362,7 @@ void acpi_parse_srat(srat_t *srat) {
     PR_INFO("[ACPI] Parsing SRAT (NUMA Topology)...\n");
 
     // 1. 初始化映射表，默认所有 CPU 未绑定 (-1)
-    for (int32 i = 0; i < MAX_CPUS; i++) {
+    for (int32 i = 0; i < CONFIG_NR_CPUS; i++) {
         cpu_to_node_map[i] = -1;
     }
 

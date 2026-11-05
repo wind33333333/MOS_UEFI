@@ -5,6 +5,10 @@
 #include "rbtree.h"
 #include "../time/time_core.h"
 
+// 定义cpu核心最大物理槽位上限，编译时自定义，64的倍数，64/128/256/512/1024...
+#define CONFIG_NR_CPUS 256
+
+
 // 调度队列 (Per-CPU)
 typedef struct run_queue_t{
     rb_root_t sched_tree;       // EEVDF就绪任务红黑树 (以 Ve 为 Key)
