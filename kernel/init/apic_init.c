@@ -7,7 +7,6 @@
 #include "../x64/msr.h"
 
 
-cpu_apic_info_t cpu_apic_info = {0};
 irq_override_info_t early_irq_override_info = {0};
 ioapic_info_t early_ioapic_info = {0};
 

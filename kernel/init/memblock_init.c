@@ -338,8 +338,8 @@ void memblock_init(void) {
 // =========================================================================
 #define CONFIG_NUMA_NODES 64
 
-// CPU 到 NUMA 节点的映射表 (使用 APIC ID 索引)
-uint32 cpu_to_numa_node_map[CONFIG_NR_CPUS];
+// CPU 到 NUMA 节点的映射表 (使用 cpu逻辑ID 索引)
+uint32 cpu_lid_to_numa_map[CONFIG_NR_CPUS];
 
 // NUMA 节点间的距离权重矩阵
 uint8 numa_node_distance[CONFIG_NUMA_NODES][CONFIG_NUMA_NODES];
@@ -359,7 +359,7 @@ void acpi_parse_srat(srat_t *srat) {
 
     // 1. 初始化映射表，默认所有 CPU 未绑定 (-1)
     for (int32 i = 0; i < CONFIG_NR_CPUS; i++) {
-        cpu_to_numa_node_map[i] = -1;
+        cpu_lid_to_numa_map[i] = -1;
     }
 
     // 2. 设置指针跨过 SRAT 表头，指向第一个 Entry
@@ -381,7 +381,7 @@ void acpi_parse_srat(srat_t *srat) {
                              (srat_apic->proximity_domain_hi[1] << 16) |
                              (srat_apic->proximity_domain_hi[2] << 24);
 
-                cpu_to_numa_node_map[srat_apic->apic_id] = node;
+                cpu_lid_to_numa_map[srat_apic->apic_id] = node;
 
                 // 动态更新系统最大节点数
                 if (node >= total_numa_nodes) {
@@ -411,7 +411,7 @@ void acpi_parse_srat(srat_t *srat) {
         else if (entry->type == 2) {
             srat_x2apic_t *srat_x2apic = (srat_x2apic_t *)entry;
             if (srat_x2apic->flags & 0x01) {
-                cpu_to_numa_node_map[srat_x2apic->x2apic_id] = srat_x2apic->proximity_domain;
+                cpu_lid_to_numa_map[srat_x2apic->x2apic_id] = srat_x2apic->proximity_domain;
                 PR_INFO("  [SRAT] CPU x2APIC %d -> NUMA Node %d\n", srat_x2apic->x2apic_id, srat_x2apic->proximity_domain);
             }
         }

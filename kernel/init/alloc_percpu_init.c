@@ -9,7 +9,7 @@
 extern list_head_t chunk_list;
 extern pcpu_chunk_t first_chunk;
 extern pcpu_block_t pcpu_cpu_block;
-extern cpu_apic_info_t cpu_apic_info;
+extern cpu_topo_t cpu_apic_info;
 extern uint64 pcpu_chunk_bitmap[4];
 extern pcpu_block_t free_block;
 extern vm_space_t kernel_space;

@@ -8,6 +8,20 @@
 // 定义cpu核心最大物理槽位上限，编译时自定义，64的倍数，64/128/256/512/1024...
 #define CONFIG_NR_CPUS 512
 
+// 定义一个极其轻量级的硬件拓扑描述符
+typedef struct {
+    uint32 apic_id;
+    uint32 acpi_proc_id;
+    uint32 logical_id;
+    uint32 numa_node;     // 后续通过解析 SRAT 表填入
+    uint8  lint_nmi;
+} cpu_hw_t;
+
+typedef struct {
+    cpu_hw_t cpu_hw[CONFIG_NR_CPUS];
+    uint32 cpu_count;
+}cpu_topo_t;
+
 
 // 调度队列 (Per-CPU)
 typedef struct run_queue_t{
