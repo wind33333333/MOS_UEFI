@@ -117,6 +117,7 @@ void kernel_init(void) {
     idt_init();                                                 //中断描述符表初始化
     boot_exception_init();                                       //0-31号临时异常注册成功
     vm_layout_init();                                           //虚拟内存空间初始化
+    numa_init();
     memblock_init();                                            //初始化启动内存分配器
     kpage_table_init();                                         //初始化正式内核页表
     apic_table_init();                                          //apic表初始化

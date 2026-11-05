@@ -107,12 +107,27 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	-pkill udk-gdb-server
 	-pkill qemu-system-x86
 	qemu-system-x86_64 \
-	  `# --- 1. 基础系统与调试参数 ---` \
+	  `# --- 1. 基础系统与 SMP 参数 ---` \
 	  -M q35 -m 8G -cpu max -smp sockets=2,cores=2,threads=2 -bios OVMF.fd \
 	  -net none -S -s -monitor telnet:localhost:4444,server,nowait \
+	  `# --- [新增] 1.1 NUMA 内存后端 (4 个 2GB 物理内存条) ---` \
+	  -object memory-backend-ram,id=mem0,size=2G \
+	  -object memory-backend-ram,id=mem1,size=2G \
+	  -object memory-backend-ram,id=mem2,size=2G \
+	  -object memory-backend-ram,id=mem3,size=2G \
+	  `# --- [新增] 1.2 NUMA 节点绑定 (生成 ACPI SRAT 表) ---` \
+	  -numa node,nodeid=0,cpus=0-1,memdev=mem0 \
+	  -numa node,nodeid=1,cpus=2-3,memdev=mem1 \
+	  -numa node,nodeid=2,cpus=4-5,memdev=mem2 \
+	  -numa node,nodeid=3,cpus=6-7,memdev=mem3 \
+	  `# --- [新增] 1.3 NUMA 访问距离矩阵 (生成 ACPI SLIT 表) ---` \
+	  -numa dist,src=0,dst=0,val=10 -numa dist,src=0,dst=1,val=21 -numa dist,src=0,dst=2,val=31 -numa dist,src=0,dst=3,val=41 \
+	  -numa dist,src=1,dst=0,val=21 -numa dist,src=1,dst=1,val=10 -numa dist,src=1,dst=2,val=21 -numa dist,src=1,dst=3,val=31 \
+	  -numa dist,src=2,dst=0,val=31 -numa dist,src=2,dst=1,val=21 -numa dist,src=2,dst=2,val=10 -numa dist,src=2,dst=3,val=21 \
+	  -numa dist,src=3,dst=0,val=41 -numa dist,src=3,dst=1,val=31 -numa dist,src=3,dst=2,val=21 -numa dist,src=3,dst=3,val=10 \
 	  `# --- 2. 核心总线与中断控制器 ---` \
 	  -device intel-iommu,intremap=on,caching-mode=on \
-      -device qemu-xhci,id=xhci,msi=on,msix=on,p2=8,p3=8 \
+	  -device qemu-xhci,id=xhci,msi=on,msix=on,p2=8,p3=8 \
 	  `# --- 3. 启动盘 (BOT, 根端口 1) ---` \
 	  -drive if=none,id=bootdisk,format=raw,file=fat:rw:./esp \
 	  -device usb-storage,drive=bootdisk,bus=xhci.0,port=1,bootindex=1 \
@@ -121,9 +136,9 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	  -device usb-uas,id=uas_dev,bus=xhci.0,port=2 \
 	  -device scsi-hd,bus=uas_dev.0,scsi-id=0,lun=0,drive=uas_backend \
 	  `# 2. 将标准的 USB HID 鼠标挂载到控制器的端口上---` \
-      -device usb-mouse,id=mouse1,bus=xhci.0,port=4 \
+	  -device usb-mouse,id=mouse1,bus=xhci.0,port=4 \
 	  `# --- 8. 插入一把虚拟 USB 键盘 (直连 xHCI 根端口) ---` \
-      -device usb-kbd,id=vkbd,bus=xhci.0,port=3 \
+	  -device usb-kbd,id=vkbd,bus=xhci.0,port=3 \
 	  `# --- 5. 外部 Hub (插入根端口 4，它是低速的) ---` \
 	  -device usb-hub,id=ext_hub,bus=xhci.0,port=5 \
 	  `# --- 6. Hub 级联测试盘 (BOT 协议完美兼容低速，挂在 Hub 端口 1) ---` \

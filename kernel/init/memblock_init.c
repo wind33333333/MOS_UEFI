@@ -327,4 +327,8 @@ void memblock_init(void) {
     PR_INFO("Total Physics Memory:%dMB\n", phy_mem_size / 1024 / 1024);
 }
 
+void numa_init(void) {
+    srat_t *srat = acpi_get_table(ACPI_SIG_SRAT,0);
+    slit_t *slit = acpi_get_table(ACPI_SIG_SLIT,0);
+}
 

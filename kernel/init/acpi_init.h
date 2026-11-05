@@ -158,6 +158,84 @@ typedef struct {
 }  rsdp_t;
 //endregion
 
+//region srat表
+// SRAT 主表
+typedef struct {
+    acpi_header_t header;      // 基础表头 (36 Bytes)
+    uint32 table_revision;     // 必须为 1
+    uint64 reserved;           // 保留位，共 8 字节
+    // 这里紧接着就是各种子结构体 (Entry) 的数组
+} srat_t;
+
+// 子结构体通用头部
+typedef struct {
+    uint8 type;                // 0=LAPIC, 1=Memory, 2=x2APIC
+    uint8 length;              // 该子结构体的总长度
+}srat_entry_header_t;
+
+// ==========================================================
+// Type 0: CPU LAPIC 亲和性 (Length: 16 Bytes)
+// ==========================================================
+typedef struct {
+    srat_entry_header_t header;
+    uint8  proximity_domain_lo;// NUMA 节点 ID (低 8 位)
+    uint8  apic_id;            // CPU 的 LAPIC ID
+    uint32 flags;              // 标志位 (Bit 0: 1 表示启用)
+    uint8  local_sapic_eid;
+    uint8  proximity_domain_hi[3]; // NUMA 节点 ID (高 24 位)
+    uint32 clock_domain;
+}srat_apic_t;
+
+// ==========================================================
+// Type 1: 内存亲和性 (Length: 40 Bytes) - 🌟 注入 Memblock 的关键！
+// ==========================================================
+typedef struct {
+    srat_entry_header_t header;
+    uint32 proximity_domain;   // 归属的 NUMA 节点 ID
+    uint16 reserved1;
+    uint32 base_addr_lo;       // 物理内存基址低 32 位
+    uint32 base_addr_hi;       // 物理内存基址高 32 位
+    uint32 length_lo;          // 内存长度低 32 位
+    uint32 length_hi;          // 内存长度高 32 位
+    uint32 reserved2;
+    uint32 flags;              // 标志位 (Bit 0: 启用; Bit 1: 支持热插拔; Bit 2: 非易失性内存)
+    uint64 reserved3;
+}srat_memory_t;
+
+// ==========================================================
+// Type 2: CPU x2APIC 亲和性 (Length: 24 Bytes) - 用于多于 255 核心的系统
+// ==========================================================
+typedef struct {
+    srat_entry_header_t header;
+    uint16 reserved1;
+    uint32 proximity_domain;   // 归属的 NUMA 节点 ID
+    uint32 x2apic_id;          // CPU 的 x2APIC ID
+    uint32 flags;              // 标志位 (Bit 0: 1 表示启用)
+    uint32 clock_domain;
+    uint32 reserved2;
+} srat_x2apic_t;
+
+//endregion
+
+//region slit表
+
+typedef struct {
+    acpi_header_t header;      // 基础表头 (36 Bytes)
+    uint64 localities;         // 系统中包含的 NUMA 节点总数 (N)
+
+    // 紧随其后的是一个 uint8 类型的矩阵，大小为 localities * localities。
+    // 在 C 语言中，我们通常用零长数组 (柔性数组) 来表示这种尾部数据：
+    uint8 entries[];           // 距离权重矩阵
+} slit_t;
+
+// 🌟 解析辅助宏：获取 Node A 到 Node B 的延迟距离
+// SLIT 规定：对角线(自身到自身)的值标准化为 10。如果不能互通则为 255。
+#define SLIT_DISTANCE(slit_ptr, node_a, node_b) \
+((slit_ptr)->entries[(node_a) * (slit_ptr)->localities + (node_b)])
+
+//endregion
+
+
 //region intel DMAR表
 //DMAR主表
 typedef struct {
