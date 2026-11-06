@@ -338,128 +338,172 @@ void memblock_init(void) {
 // =========================================================================
 #define CONFIG_NUMA_NODES 64
 
-// CPU 到 NUMA 节点的映射表 (使用 cpu逻辑ID 索引)
-uint32 cpu_lid_to_numa_map[CONFIG_NR_CPUS];
+// 热路径数组：记录 逻辑CPU ID -> 逻辑NUMA Node ID 的映射
+// 初始化为 0xFF 表示该 CPU 尚未关联或不存在
+uint8 cpu_lid_to_numa_map[CONFIG_NR_CPUS];
 
-// NUMA 节点间的距离权重矩阵
-uint8 numa_node_distance[CONFIG_NUMA_NODES][CONFIG_NUMA_NODES];
+// 热路径数组：紧凑的二维矩阵，记录 逻辑Node 到 逻辑Node 的访问距离
+uint8 numa_distance[CONFIG_NUMA_NODES][CONFIG_NUMA_NODES];
 
-// 系统实际发现的 NUMA 节点总数
-uint32 total_numa_nodes = 0;
+// 核心映射表：物理 Domain 数组。数组的下标就是分配的【逻辑 Node ID】
+static uint32 phys_domain_table[CONFIG_NUMA_NODES];
+uint8 total_numa_nodes = 0; // 系统实际存在的 NUMA 节点总数
 
-// 外部依赖：你的 Memblock 核心 API (带 NUMA 节点感知)
-//extern void memblock_add_node(uint64 base, uint64 size, int32 numa_node);
 
 // =========================================================================
-// 解析 SRAT (System Resource Affinity Table)
+// 核心映射辅助函数：物理号 -> 逻辑号 转换器
 // =========================================================================
-void acpi_parse_srat(srat_t *srat) {
-    if (srat == NULL) return;
-    PR_INFO("[ACPI] Parsing SRAT (NUMA Topology)...\n");
 
-    // 1. 初始化映射表，默认所有 CPU 未绑定 (-1)
-    for (int32 i = 0; i < CONFIG_NR_CPUS; i++) {
-        cpu_lid_to_numa_map[i] = -1;
+/**
+ * @brief 将稀疏的物理 Proximity Domain 转换为紧凑连续的 逻辑 Node ID (0, 1, 2...)
+ */
+static uint8 get_or_create_logical_node(uint32 phys_domain) {
+    // 1. 查找是否已经注册过该物理 Domain
+    for (uint8 i = 0; i < total_numa_nodes; i++) {
+        if (phys_domain_table[i] == phys_domain) {
+            return i; // 返回已存在的逻辑 ID
+        }
     }
 
-    // 2. 设置指针跨过 SRAT 表头，指向第一个 Entry
-    uint8 *cursor = (uint8 *)srat + sizeof(srat_t);
-    uint8 *end    = (uint8 *)srat + srat->header.length;
+    // 2. 如果没找到，说明发现了一个新的 NUMA 节点，分配新 ID
+    if (total_numa_nodes >= CONFIG_NUMA_NODES) {
+        PR_ERROR("NUMA nodes exceed CONFIG_NUMA_NODES limit!\n");
+        while (1) asm_hlt(); // 生产环境请走 Panic 流程
+    }
 
-    // 3. 遍历所有不定长子表
+    uint8 logical_node = total_numa_nodes;
+    phys_domain_table[logical_node] = phys_domain;
+    total_numa_nodes++;
+
+    return logical_node;
+}
+
+/**
+ * @brief 仅用于 SLIT 解析时，将逻辑 Node ID 反向查回物理 Domain
+ */
+static uint32 logical_node_to_phys_domain(uint8 logical_node) {
+    if (logical_node >= total_numa_nodes) return 0xFFFFFFFF;
+    return phys_domain_table[logical_node];
+}
+
+// =========================================================================
+// 1. 解析 SRAT (系统资源亲和性表)
+// =========================================================================
+void acpi_parse_srat(void *srat_ptr) {
+    if (!srat_ptr) return;
+
+    acpi_header_t *header = (acpi_header_t *)srat_ptr;
+    PR_INFO("[ACPI] Parsing SRAT...\n");
+
+    // 初始化映射数组
+    for (int i = 0; i < CONFIG_NR_CPUS; i++) {
+        cpu_lid_to_numa_map[i] = 0xFF;
+    }
+
+    // SRAT 头部固定偏移 48 字节 (Header 36 + Reserved 12)
+    uint8 *cursor = (uint8 *)srat_ptr + 48;
+    uint8 *end    = (uint8 *)srat_ptr + header->length;
+
     while (cursor < end) {
         srat_entry_header_t *entry = (srat_entry_header_t *)cursor;
+        if (entry->length == 0) break; // 防御性拦截死循环
 
-        // 🌟 处理 Type 0: 逻辑 CPU (LAPIC) 映射
-        if (entry->type == 0) {
-            srat_apic_t *srat_apic = (srat_apic_t *)entry;
+        if (entry->type == 0) { // Type 0: Local APIC
+            srat_apic_t *lapic = (srat_apic_t *)entry;
+            if (lapic->flags & 0x01) { // 检查 Enabled 标志
+                // ⚠️ 拼装被历史遗留问题切碎的 32-bit 物理 Domain ID
+                uint32 phys_domain = lapic->proximity_domain_lo |
+                                     (lapic->proximity_domain_hi[0] << 8) |
+                                     (lapic->proximity_domain_hi[1] << 16) |
+                                     (lapic->proximity_domain_hi[2] << 24);
 
-            if (srat_apic->flags & 0x01) { // 检查该 CPU 是否启用
-                // 根据 ACPI 规范，Proximity Domain 拼装：低8位 + 高24位
-                uint32 node = srat_apic->proximity_domain_lo |
-                             (srat_apic->proximity_domain_hi[0] << 8) |
-                             (srat_apic->proximity_domain_hi[1] << 16) |
-                             (srat_apic->proximity_domain_hi[2] << 24);
+                // 获取两个逻辑 ID (完全脱离物理环境)
+                uint32 logical_cpu = hw_apic_to_logical_cpu(lapic->apic_id);
+                uint8  logical_node = get_or_create_logical_node(phys_domain);
 
-                cpu_lid_to_numa_map[srat_apic->apic_id] = node;
-
-                // 动态更新系统最大节点数
-                if (node >= total_numa_nodes) {
-                    total_numa_nodes = node + 1;
+                if (logical_cpu != 0xFFFFFFFF) {
+                    cpu_lid_to_numa_map[logical_cpu] = logical_node;
                 }
-                PR_INFO("  [SRAT] CPU APIC %d -> NUMA Node %d\n", srat_apic->apic_id, node);
+            }
+        }
+        else if (entry->type == 1) { // Type 1: Memory
+            srat_memory_t *mem = (srat_memory_t *)entry;
+            if (mem->flags & 0x01) {
+                uint32 phys_domain = mem->proximity_domain;
+                uint8  logical_node = get_or_create_logical_node(phys_domain);
+
+                uint64 base = ((uint64)mem->base_addr_hi << 32) | mem->base_addr_lo;
+                uint64 size = ((uint64)mem->length_hi << 32)  | mem->length_lo;
+
+                // TODO: 传给底层的全部是 逻辑 Node ID，物理域从此抛弃
+                // memblock_add_node(base, size, logical_node);
+            }
+        }
+        else if (entry->type == 2) { // Type 2: x2APIC
+            srat_x2apic_t *x2apic = (srat_x2apic_t *)entry;
+            if (x2apic->flags & 0x01) {
+                uint32 phys_domain = x2apic->proximity_domain; // x2APIC 很干净，直接是 32 位
+
+                uint32 logical_cpu = hw_apic_to_logical_cpu(x2apic->x2apic_id);
+                uint8  logical_node = get_or_create_logical_node(phys_domain);
+
+                if (logical_cpu != 0xFFFFFFFF) {
+                    cpu_lid_to_numa_map[logical_cpu] = logical_node;
+                }
             }
         }
 
-        // 🌟 处理 Type 1: 物理内存拓扑映射
-        else if (entry->type == 1) {
-            srat_memory_t *srat_mem = (srat_memory_t *)entry;
-
-            if (srat_mem->flags & 0x01) { // 检查该内存段是否启用
-                uint64 base   = ((uint64)srat_mem->base_addr_hi << 32) | srat_mem->base_addr_lo;
-                uint64 length = ((uint64)srat_mem->length_hi << 32) | srat_mem->length_lo;
-                uint32 node   = srat_mem->proximity_domain;
-
-                PR_INFO("  [SRAT] Memory [%#lx - %#lx] -> Node %d\n", base, base + length, node);
-
-                // ⚡️ 核心联动：将这段物理内存注入到底层的 Memblock 引擎中
-                //memblock_add_node(base, length, node);
-            }
-        }
-
-        // 可选扩展：处理 Type 2 (x2APIC，如果你的 CPU 核心数 > 255)
-        else if (entry->type == 2) {
-            srat_x2apic_t *srat_x2apic = (srat_x2apic_t *)entry;
-            if (srat_x2apic->flags & 0x01) {
-                cpu_lid_to_numa_map[srat_x2apic->x2apic_id] = srat_x2apic->proximity_domain;
-                PR_INFO("  [SRAT] CPU x2APIC %d -> NUMA Node %d\n", srat_x2apic->x2apic_id, srat_x2apic->proximity_domain);
-            }
-        }
-
-        // 步进到下一个子表
         cursor += entry->length;
     }
 
-    PR_OK("[ACPI] SRAT parsing complete. Total NUMA Nodes: %d\n", total_numa_nodes);
+    PR_INFO("[ACPI] SRAT parsing complete. Detected %d Logical NUMA Nodes.\n", total_numa_nodes);
 }
 
-
 // =========================================================================
-// 解析 SLIT (System Locality Information Table)
+// 2. 解析 SLIT (系统局部性信息表)
 // =========================================================================
-void acpi_parse_slit(slit_t *slit) {
-    if (slit == NULL) return;
-    PR_INFO("[ACPI] Parsing SLIT (NUMA Distance Matrix)...\n");
-
-    uint64 num_nodes = slit->localities;
-    PR_INFO("  [SLIT] Declared NUMA nodes: %ld\n", num_nodes);
-
-    // 防御性拦截：避免读取越界
-    if (num_nodes > CONFIG_NUMA_NODES) {
-        PR_WARN("[SLIT] Node count exceeds CONFIG_NUMA_NODES (%d), truncating.\n", CONFIG_NUMA_NODES);
-        num_nodes = CONFIG_NUMA_NODES;
+void acpi_parse_slit(void *slit_ptr) {
+    if (!slit_ptr) {
+        PR_INFO("[ACPI] No SLIT found. Assuming flat NUMA distances.\n");
+        return;
     }
 
-    // 1. 初始化矩阵：自身访问标准化为 10，不可达初始化为 255
-    for (int32 i = 0; i < CONFIG_NUMA_NODES; i++) {
-        for (int32 j = 0; j < CONFIG_NUMA_NODES; j++) {
+    slit_t *slit = (slit_t *)slit_ptr;
+    uint64 phys_localities = slit->localities; // 物理维度的矩阵大小，可能存在巨量空洞
+
+    // 1. 初始化我们自己的逻辑二维数组
+    // 对角线为 10 (本地访问基准距离)，其余初始化为不可达 (255)
+    for (int i = 0; i < CONFIG_NUMA_NODES; i++) {
+        for (int j = 0; j < CONFIG_NUMA_NODES; j++) {
             numa_distance[i][j] = (i == j) ? 10 : 255;
         }
     }
 
-    // 2. 从柔性数组中读取矩阵数据
-    for (uint64 i = 0; i < num_nodes; i++) {
-        for (uint64 j = 0; j < num_nodes; j++) {
-            // 在一维柔性数组中提取二维坐标 (i, j) 的值
-            uint8 dist = slit->entries[i * slit->localities + j];
-            numa_distance[i][j] = dist;
+    // 2. 遍历有效逻辑 Node (只提取需要的数据，丢弃物理矩阵的空洞)
+    for (uint8 log_i = 0; log_i < total_numa_nodes; log_i++) {
+        for (uint8 log_j = 0; log_j < total_numa_nodes; log_j++) {
 
-            // 打印验证 QEMU 的命令行参数是否生效
-            PR_INFO("  [SLIT] Node %ld -> Node %ld : Distance %d\n", i, j, dist);
+            // 将逻辑坐标还原为物理坐标，去固件给的矩阵里查数据
+            uint32 phys_i = logical_node_to_phys_domain(log_i);
+            uint32 phys_j = logical_node_to_phys_domain(log_j);
+
+            // 防御越界：如果物理域编号超出了 SLIT 给的维度，跳过
+            if (phys_i >= phys_localities || phys_j >= phys_localities) {
+                continue;
+            }
+
+            // 从一维柔性数组中，使用物理坐标计算偏移并提取距离数据
+            uint8 dist = slit->entries[phys_i * phys_localities + phys_j];
+
+            // 存入紧凑的逻辑矩阵中 (供调度器和 SLUB 读取)
+            numa_distance[log_i][log_j] = dist;
+
+            // *Verification:* 观察此处打印，应只显示连续紧凑的逻辑节点距离
+            // PR_INFO("  [SLIT] Logical Node %d -> Node %d : Distance %d\n", log_i, log_j, dist);
         }
     }
 
-    PR_OK("[ACPI] SLIT matrix loaded successfully.\n");
+    PR_INFO("[ACPI] SLIT matrix loaded and compacted successfully.\n");
 }
 
 void numa_init(void) {

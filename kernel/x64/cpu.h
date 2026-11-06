@@ -13,7 +13,6 @@ typedef struct {
     uint32 apic_id;
     uint32 acpi_proc_id;
     uint32 logical_id;
-    uint32 numa_node;     // 后续通过解析 SRAT 表填入
     uint8  lint_nmi;
 } cpu_hw_t;
 
@@ -21,6 +20,13 @@ typedef struct {
     cpu_hw_t cpu_hw[CONFIG_NR_CPUS];
     uint32 cpu_count;
 }cpu_topo_t;
+
+
+extern uint32 cpu_logicid_to_apicid[];
+
+uint32 cpu_lid_to_aid(uint32 lid) {
+    return cpu_logicid_to_apicid[lid];
+}
 
 
 // 调度队列 (Per-CPU)
@@ -91,17 +97,6 @@ static inline cpu_control_block_t* this_ccb(void) {
 }
 
 
-typedef struct cpu_info_t {
-    cpu_control_block_t **ccb_ptr;       //所有per_cpu结构体
-    uint32 run_cpu_count;       //运行中的cpu核心数量
-    uint32 total_cpu_count;     //cpu核心总数量
-}cpu_info_t;
-
-extern cpu_info_t cpu_info;
-
-static inline cpu_control_block_t *get_lid_by_per_cpu(uint32 logical_id) {
-    return (logical_id < cpu_info.run_cpu_count) ? cpu_info.ccb_ptr[logical_id] : NULL;
-}
 
 
 static inline uint64 asm_rdgsbase(void) {

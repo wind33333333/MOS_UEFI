@@ -12,13 +12,6 @@ uint32 cpu_logicid_to_apicid[CONFIG_NR_CPUS] = {0xFFFFFFFF}; //cpu逻辑id转api
 
 cpu_topo_t cpu_topo = {0};
 
-cpu_info_t cpu_info = {
-    .ccb_ptr = NULL, //运行时动态分配
-    .run_cpu_count = 1, //启动时只有bsp核心在运行，后面每个ap核心启动后自动修改
-    .total_cpu_count = 1 //后面解析acpi表后修改cpu核心总数
-};
-
-
 void cpu_topo_init(void) {
     madt_t *madt = acpi_get_table(ACPI_SIG_APIC, 0);
     if (!madt) {
@@ -145,4 +138,11 @@ void cpu_topo_init(void) {
 
         madt_start = (madt_header_t *) ((uint64) madt_start + madt_start->length);
     }
+
+    //apic id 到 logc id建立映射
+    for (uint32 i = 0; i < cpu_topo.cpu_count; i++) {
+        cpu_logicid_to_apicid[i] = cpu_topo.cpu_hw[i].apic_id;
+    }
+
 }
+

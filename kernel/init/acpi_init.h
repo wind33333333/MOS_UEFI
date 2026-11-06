@@ -228,10 +228,6 @@ typedef struct {
     uint8 entries[];           // 距离权重矩阵
 } slit_t;
 
-// 🌟 解析辅助宏：获取 Node A 到 Node B 的延迟距离
-// SLIT 规定：对角线(自身到自身)的值标准化为 10。如果不能互通则为 255。
-#define SLIT_DISTANCE(slit_ptr, node_a, node_b) \
-((slit_ptr)->entries[(node_a) * (slit_ptr)->localities + (node_b)])
 
 //endregion
 
