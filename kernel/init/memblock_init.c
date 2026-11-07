@@ -5,10 +5,10 @@
 #include "../include/errno.h"
 #include "slub.h"
 
-memblock_t memblock; // 临时内存器内存地图，后面buddy system需要用到空闲地图。
-memblock_type_t page_mem_map; // page页映射区内存地图
-efi_runtime_memmap_t efi_runtime_memmap; // uefi运行时的数据和代码地图
-memblock_type_t direct_mem_map; // 直接映射区内存地图
+memblock_t memblock = {0}; // 临时内存器内存地图，后面buddy system需要用到空闲地图。
+memblock_type_t page_mem_map = {0}; // page页映射区内存地图
+efi_runtime_memmap_t efi_runtime_memmap = {0}; // uefi运行时的数据和代码地图
+memblock_type_t direct_mem_map = {0}; // 直接映射区内存地图
 
 extern vm_space_t kernel_space;
 

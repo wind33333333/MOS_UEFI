@@ -48,7 +48,8 @@ static uint32 logical_node_to_phys_domain(uint8 logical_node) {
 // =========================================================================
 // 1. 解析 SRAT (系统资源亲和性表)
 // =========================================================================
-static inline void acpi_parse_srat(void *srat_ptr) {
+static inline void acpi_parse_srat(void) {
+    srat_t *srat_ptr = acpi_get_table(ACPI_SIG_SRAT, 0);
     if (!srat_ptr) return;
 
     acpi_header_t *header = (acpi_header_t *) srat_ptr;
@@ -130,7 +131,8 @@ static inline void acpi_parse_srat(void *srat_ptr) {
 // =========================================================================
 // 2. 解析 SLIT (系统局部性信息表)
 // =========================================================================
-static inline void acpi_parse_slit(void *slit_ptr) {
+static inline void acpi_parse_slit() {
+    slit_t *slit_ptr = acpi_get_table(ACPI_SIG_SLIT, 0);
     if (!slit_ptr) {
         PR_INFO("[ACPI] No SLIT found. Assuming flat NUMA distances.\n");
         return;
@@ -262,11 +264,10 @@ static inline void sanitize_numa_mem_regions(void) {
 }
 
 void numa_node_init(void) {
-    srat_t *srat = acpi_get_table(ACPI_SIG_SRAT, 0);
-    acpi_parse_srat(srat);
 
-    slit_t *slit = acpi_get_table(ACPI_SIG_SLIT, 0);
-    acpi_parse_slit(slit);
+    acpi_parse_srat();
+
+    acpi_parse_slit();
 
     sanitize_numa_mem_regions();
 

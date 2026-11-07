@@ -24,7 +24,7 @@ typedef struct {
 }cpu_topo_t;
 
 extern cpu_topo_t cpu_topo;
-extern uint32 cpu_logicid_to_apicid[];
+extern uint32 cpu_logicid_to_apicid[CONFIG_NR_CPUS];
 
 //cpu逻辑id转apic id
 uint32 cpu_lid_to_aid(uint32 lid) {

@@ -7,7 +7,7 @@ uint64 cpu_possible_mask[CONFIG_NR_CPUS / 64] = {0}; //可能存在的 CPU
 uint64 cpu_present_mask[CONFIG_NR_CPUS / 64] = {0}; //已插入的 CPU
 uint64 cpu_online_mask[CONFIG_NR_CPUS / 64] = {0}; //完全上线的 CPU
 
-uint32 cpu_logicid_to_apicid[CONFIG_NR_CPUS] = {0xFFFFFFFF}; //cpu逻辑id转apicid
+uint32 cpu_logicid_to_apicid[CONFIG_NR_CPUS] = {0x0}; //cpu逻辑id转apicid
 
 cpu_topo_t cpu_topo = {0};
 
