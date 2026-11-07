@@ -25,11 +25,11 @@ void memblock_add(mem_arr_t *memblock_type, uint64 pa_start, uint64 size) {
                    memblock_type->count - 1].
                size == pa_start) {
         memblock_type->region[memblock_type->count - 1].size += size;
-               } else {
-                   memblock_type->region[memblock_type->count].start_pa = pa_start;
-                   memblock_type->region[memblock_type->count].size = size;
-                   memblock_type->count++;
-               }
+    } else {
+        memblock_type->region[memblock_type->count].start_pa = pa_start;
+        memblock_type->region[memblock_type->count].size = size;
+        memblock_type->count++;
+    }
 }
 
 
@@ -61,21 +61,18 @@ uint64 memblock_alloc(uint64 size, uint64 align) {
             memblock.free.region[j] = memblock.free.region[j + 1];
         }
         memblock.free.count--;
-
     } else if (align_base == memblock.free.region[index].start_pa) {
         // 切头
         memblock.free.region[index].start_pa += size;
         memblock.free.region[index].size -= size;
-
     } else if (align_size == memblock.free.region[index].size) {
         // 切尾
         memblock.free.region[index].size -= align_size; // ⚠️ 注意：切尾时，剩下的是前面的部分，减去的是 align_size！
-
     } else {
         // 中间切 (一分为二)
         if (memblock.free.count >= MAX_MEMBLOCK) {
             color_printk(RED, BLACK, "PANIC: memblock free array overflow in alloc!\n");
-            while(1); // 必须死机保护
+            while (1); // 必须死机保护
         }
 
         // 把后面的数据全部向右挪一位，腾出空间
@@ -146,7 +143,7 @@ int32 memblock_free(uint64 ptr, uint64 size) {
     if (!merged_left && !merged_right) {
         if (memblock.free.count >= MAX_MEMBLOCK) {
             color_printk(RED, BLACK, "PANIC: memblock free array overflow in free!\n");
-            while(1);
+            while (1);
         }
         // 数组向右平移，腾出坑位
         for (uint32 j = memblock.free.count; j > insert_idx; j--) {
@@ -170,7 +167,7 @@ int32 memblock_free(uint64 ptr, uint64 size) {
 /**
  * @brief 伪装分配：将 memblock 的线性分配转换为对象指针
  */
-static page_t* memblock_alloc_pages(uint32 order) {
+static page_t *memblock_alloc_pages(uint32 order) {
     // 1. 将 order 翻译为 memblock 听得懂的字节 size
     uint64 size = PAGE_4K_SIZE << order;
 
@@ -181,7 +178,7 @@ static page_t* memblock_alloc_pages(uint32 order) {
     // 🌟 【核心黑魔法：指针欺骗】：
     // VMM 把 page_t 当作不透明句柄 (Opaque Handle) 处理，绝不会主动去解引用它。
     // 因此，我们直接把 64 位的物理地址强行伪装成 page_t* 指针交差！
-    return (page_t*)paddr;
+    return (page_t *) paddr;
 }
 
 /**
@@ -191,7 +188,7 @@ static void memblock_free_pages(page_t *page) {
     if (!page) return;
 
     // 扒下伪装，还原出真实的物理地址
-    uint64 paddr = (uint64)page;
+    uint64 paddr = (uint64) page;
 
     // 🌟 【架构级推演：为什么这里写死 4KB 是绝对安全的？】
     // Memblock 的释放需要 size 参数，但我们手头没有真实的 page_t 元数据去提取 order。
@@ -208,18 +205,19 @@ static void memblock_free_pages(page_t *page) {
  */
 static uint64 memblock_page_to_pa(page_t *page) {
     // VMM 需要物理地址来写 PTE，我们直接把指针强转回 64 位整数原样奉还
-    return (uint64)page;
+    return (uint64) page;
 }
 
 /**
  * @brief 裸地址升维：将物理地址重新包装为句柄
  */
-static page_t* memblock_pa_to_page(uint64 paddr) {
-    return (page_t*)paddr;
+static page_t *memblock_pa_to_page(uint64 paddr) {
+    return (page_t *) paddr;
 }
 
 
 #define MEM_1MB (0x100000ULL) // 1MB 物理地址边界
+
 void memblock_init(void) {
     uint64 phy_mem_size = 0;
     uint64 kernel_pa_start = (uint64) _start - vm_layout.kernel_start;
@@ -228,11 +226,11 @@ void memblock_init(void) {
     uint32 count = tmp_boot_info->mem_map_size / tmp_boot_info->mem_descriptor_size;
 
     // 用于字节级精准拷贝的源指针
-    uint8 *src_ptr = (uint8 *)tmp_boot_info->mem_map;
+    uint8 *src_ptr = (uint8 *) tmp_boot_info->mem_map;
 
     for (uint32 i = 0; i < count; i++) {
         // 强转为结构体以便读取字段
-        EFI_MEMORY_DESCRIPTOR *mem_des = (EFI_MEMORY_DESCRIPTOR *)src_ptr;
+        EFI_MEMORY_DESCRIPTOR *mem_des = (EFI_MEMORY_DESCRIPTOR *) src_ptr;
 
         if (mem_des->NumberOfPages == 0) {
             src_ptr += tmp_boot_info->mem_descriptor_size;
@@ -250,12 +248,12 @@ void memblock_init(void) {
         // =====================================================================
         if (attr & EFI_MEMORY_RUNTIME) {
             // 计算目标数组的字节级偏移地址
-            uint8 *dst_ptr = (uint8 *)efi_runtime_memmap.mem_map +
+            uint8 *dst_ptr = (uint8 *) efi_runtime_memmap.mem_map +
                              (efi_runtime_memmap.count * tmp_boot_info->mem_descriptor_size);
 
             // 🌟 核心调整 2：原汁原味拷贝！严格按照主板给的 size (例如 48 字节) 进行内存复制
             // 绝不能用标准的结构体 '=' 赋值，防止 40 字节紧凑排列导致跨度丢失！
-            asm_mem_cpy(dst_ptr, src_ptr,  tmp_boot_info->mem_descriptor_size);
+            asm_mem_cpy(dst_ptr, src_ptr, tmp_boot_info->mem_descriptor_size);
 
             efi_runtime_memmap.count++;
 
@@ -271,7 +269,6 @@ void memblock_init(void) {
             type == EFI_BOOT_SERVICES_CODE ||
             type == EFI_BOOT_SERVICES_DATA ||
             type == EFI_CONVENTIONAL_MEMORY) {
-
             phy_mem_size += size;
 
             memblock_add(&direct_mem_map, pa_start, size);
@@ -300,9 +297,9 @@ void memblock_init(void) {
                 memblock_add(&memblock.free, pa_start, size);
             }
 
-        // =====================================================================
-        // 3. 处理 ACPI 内存 (仅映射，不释放)
-        // =====================================================================
+            // =====================================================================
+            // 3. 处理 ACPI 内存 (仅映射，不释放)
+            // =====================================================================
         } else if (type == EFI_ACPI_RECLAIM_MEMORY || type == EFI_ACPI_MEMORY_NVS) {
             phy_mem_size += size;
 
@@ -329,187 +326,4 @@ void memblock_init(void) {
     PR_INFO("Total Physics Memory:%dMB\n", phy_mem_size / 1024 / 1024);
 }
 
-
-
-
-
-// =========================================================================
-// 全局 NUMA 拓扑状态
-// =========================================================================
-#define CONFIG_NUMA_NODES 64
-
-// 热路径数组：记录 逻辑CPU ID -> 逻辑NUMA Node ID 的映射
-// 初始化为 0xFF 表示该 CPU 尚未关联或不存在
-uint8 cpu_lid_to_numa_map[CONFIG_NR_CPUS];
-
-// 热路径数组：紧凑的二维矩阵，记录 逻辑Node 到 逻辑Node 的访问距离
-uint8 numa_distance[CONFIG_NUMA_NODES][CONFIG_NUMA_NODES];
-
-// 核心映射表：物理 Domain 数组。数组的下标就是分配的【逻辑 Node ID】
-static uint32 phys_domain_table[CONFIG_NUMA_NODES];
-uint8 total_numa_nodes = 0; // 系统实际存在的 NUMA 节点总数
-
-
-// =========================================================================
-// 核心映射辅助函数：物理号 -> 逻辑号 转换器
-// =========================================================================
-
-/**
- * @brief 将稀疏的物理 Proximity Domain 转换为紧凑连续的 逻辑 Node ID (0, 1, 2...)
- */
-static uint8 get_or_create_logical_node(uint32 phys_domain) {
-    // 1. 查找是否已经注册过该物理 Domain
-    for (uint8 i = 0; i < total_numa_nodes; i++) {
-        if (phys_domain_table[i] == phys_domain) {
-            return i; // 返回已存在的逻辑 ID
-        }
-    }
-
-    // 2. 如果没找到，说明发现了一个新的 NUMA 节点，分配新 ID
-    if (total_numa_nodes >= CONFIG_NUMA_NODES) {
-        PR_ERROR("NUMA nodes exceed CONFIG_NUMA_NODES limit!\n");
-        while (1) asm_hlt(); // 生产环境请走 Panic 流程
-    }
-
-    uint8 logical_node = total_numa_nodes;
-    phys_domain_table[logical_node] = phys_domain;
-    total_numa_nodes++;
-
-    return logical_node;
-}
-
-/**
- * @brief 仅用于 SLIT 解析时，将逻辑 Node ID 反向查回物理 Domain
- */
-static uint32 logical_node_to_phys_domain(uint8 logical_node) {
-    if (logical_node >= total_numa_nodes) return 0xFFFFFFFF;
-    return phys_domain_table[logical_node];
-}
-
-// =========================================================================
-// 1. 解析 SRAT (系统资源亲和性表)
-// =========================================================================
-void acpi_parse_srat(void *srat_ptr) {
-    if (!srat_ptr) return;
-
-    acpi_header_t *header = (acpi_header_t *)srat_ptr;
-    PR_INFO("[ACPI] Parsing SRAT...\n");
-
-    // 初始化映射数组
-    for (int i = 0; i < CONFIG_NR_CPUS; i++) {
-        cpu_lid_to_numa_map[i] = 0xFF;
-    }
-
-    // SRAT 头部固定偏移 48 字节 (Header 36 + Reserved 12)
-    uint8 *cursor = (uint8 *)srat_ptr + 48;
-    uint8 *end    = (uint8 *)srat_ptr + header->length;
-
-    while (cursor < end) {
-        srat_entry_header_t *entry = (srat_entry_header_t *)cursor;
-        if (entry->length == 0) break; // 防御性拦截死循环
-
-        if (entry->type == 0) { // Type 0: Local APIC
-            srat_apic_t *lapic = (srat_apic_t *)entry;
-            if (lapic->flags & 0x01) { // 检查 Enabled 标志
-                // ⚠️ 拼装被历史遗留问题切碎的 32-bit 物理 Domain ID
-                uint32 phys_domain = lapic->proximity_domain_lo |
-                                     (lapic->proximity_domain_hi[0] << 8) |
-                                     (lapic->proximity_domain_hi[1] << 16) |
-                                     (lapic->proximity_domain_hi[2] << 24);
-
-                // 获取两个逻辑 ID (完全脱离物理环境)
-                uint32 logical_cpu = hw_apic_to_logical_cpu(lapic->apic_id);
-                uint8  logical_node = get_or_create_logical_node(phys_domain);
-
-                if (logical_cpu != 0xFFFFFFFF) {
-                    cpu_lid_to_numa_map[logical_cpu] = logical_node;
-                }
-            }
-        }
-        else if (entry->type == 1) { // Type 1: Memory
-            srat_memory_t *mem = (srat_memory_t *)entry;
-            if (mem->flags & 0x01) {
-                uint32 phys_domain = mem->proximity_domain;
-                uint8  logical_node = get_or_create_logical_node(phys_domain);
-
-                uint64 base = ((uint64)mem->base_addr_hi << 32) | mem->base_addr_lo;
-                uint64 size = ((uint64)mem->length_hi << 32)  | mem->length_lo;
-
-                // TODO: 传给底层的全部是 逻辑 Node ID，物理域从此抛弃
-                // memblock_add_node(base, size, logical_node);
-            }
-        }
-        else if (entry->type == 2) { // Type 2: x2APIC
-            srat_x2apic_t *x2apic = (srat_x2apic_t *)entry;
-            if (x2apic->flags & 0x01) {
-                uint32 phys_domain = x2apic->proximity_domain; // x2APIC 很干净，直接是 32 位
-
-                uint32 logical_cpu = hw_apic_to_logical_cpu(x2apic->x2apic_id);
-                uint8  logical_node = get_or_create_logical_node(phys_domain);
-
-                if (logical_cpu != 0xFFFFFFFF) {
-                    cpu_lid_to_numa_map[logical_cpu] = logical_node;
-                }
-            }
-        }
-
-        cursor += entry->length;
-    }
-
-    PR_INFO("[ACPI] SRAT parsing complete. Detected %d Logical NUMA Nodes.\n", total_numa_nodes);
-}
-
-// =========================================================================
-// 2. 解析 SLIT (系统局部性信息表)
-// =========================================================================
-void acpi_parse_slit(void *slit_ptr) {
-    if (!slit_ptr) {
-        PR_INFO("[ACPI] No SLIT found. Assuming flat NUMA distances.\n");
-        return;
-    }
-
-    slit_t *slit = (slit_t *)slit_ptr;
-    uint64 phys_localities = slit->localities; // 物理维度的矩阵大小，可能存在巨量空洞
-
-    // 1. 初始化我们自己的逻辑二维数组
-    // 对角线为 10 (本地访问基准距离)，其余初始化为不可达 (255)
-    for (int i = 0; i < CONFIG_NUMA_NODES; i++) {
-        for (int j = 0; j < CONFIG_NUMA_NODES; j++) {
-            numa_distance[i][j] = (i == j) ? 10 : 255;
-        }
-    }
-
-    // 2. 遍历有效逻辑 Node (只提取需要的数据，丢弃物理矩阵的空洞)
-    for (uint8 log_i = 0; log_i < total_numa_nodes; log_i++) {
-        for (uint8 log_j = 0; log_j < total_numa_nodes; log_j++) {
-
-            // 将逻辑坐标还原为物理坐标，去固件给的矩阵里查数据
-            uint32 phys_i = logical_node_to_phys_domain(log_i);
-            uint32 phys_j = logical_node_to_phys_domain(log_j);
-
-            // 防御越界：如果物理域编号超出了 SLIT 给的维度，跳过
-            if (phys_i >= phys_localities || phys_j >= phys_localities) {
-                continue;
-            }
-
-            // 从一维柔性数组中，使用物理坐标计算偏移并提取距离数据
-            uint8 dist = slit->entries[phys_i * phys_localities + phys_j];
-
-            // 存入紧凑的逻辑矩阵中 (供调度器和 SLUB 读取)
-            numa_distance[log_i][log_j] = dist;
-
-            // *Verification:* 观察此处打印，应只显示连续紧凑的逻辑节点距离
-            // PR_INFO("  [SLIT] Logical Node %d -> Node %d : Distance %d\n", log_i, log_j, dist);
-        }
-    }
-
-    PR_INFO("[ACPI] SLIT matrix loaded and compacted successfully.\n");
-}
-
-void numa_init(void) {
-    srat_t *srat = acpi_get_table(ACPI_SIG_SRAT,0);
-    acpi_parse_srat(srat);
-    slit_t *slit = acpi_get_table(ACPI_SIG_SLIT,0);
-    acpi_parse_slit(slit);
-}
 

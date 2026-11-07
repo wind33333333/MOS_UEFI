@@ -193,10 +193,8 @@ typedef struct {
     srat_entry_header_t header;
     uint32 proximity_domain;   // 归属的 NUMA 节点 ID
     uint16 reserved1;
-    uint32 base_addr_lo;       // 物理内存基址低 32 位
-    uint32 base_addr_hi;       // 物理内存基址高 32 位
-    uint32 length_lo;          // 内存长度低 32 位
-    uint32 length_hi;          // 内存长度高 32 位
+    uint64 base_addr;       // 物理内存基址
+    uint64 length;          // 内存长度
     uint32 reserved2;
     uint32 flags;              // 标志位 (Bit 0: 启用; Bit 1: 支持热插拔; Bit 2: 非易失性内存)
     uint64 reserved3;

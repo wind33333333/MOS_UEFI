@@ -21,11 +21,19 @@ typedef struct {
     uint32 cpu_count;
 }cpu_topo_t;
 
-
+extern cpu_topo_t cpu_topo;
 extern uint32 cpu_logicid_to_apicid[];
 
+//cpu逻辑id转apic id
 uint32 cpu_lid_to_aid(uint32 lid) {
     return cpu_logicid_to_apicid[lid];
+}
+
+//cpu apic id 转 逻辑id
+uint32 cpu_aid_to_lid(uint32 aid) {
+    for (uint32 i=0; i<cpu_topo.cpu_count; i++) {
+        if (cpu_logicid_to_apicid[i] == aid) return i;
+    }
 }
 
 
