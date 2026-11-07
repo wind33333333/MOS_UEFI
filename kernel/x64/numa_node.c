@@ -1,6 +1,7 @@
 #include "numa_node.h"
 #include "acpi_init.h"
 #include "cpu.h"
+#include "memblock_init.h"
 #include "printk.h"
 
 numa_info_t numa_info = {0};
@@ -268,4 +269,14 @@ void numa_node_init(void) {
     acpi_parse_slit(slit);
 
     sanitize_numa_mem_regions();
+
+    // 1. 遍历已经清洗得干干净净、无重叠的界碑表，对 Memblock 逐一盖章
+    for (uint32 i = 0; i < numa_info.numa_mem_count; i++) {
+        numa_mem_region_t *reg = &numa_info.numa_mem_region[i];
+        // 调用我们刚刚写好的交集分裂算法
+        memblock_set_node_by_intersection(reg->base, reg->size, reg->node_id);
+    }
+
+    // 2. 治疗内存碎片：经过多次跨界分裂后，可能产生多余的切口，执行一次终极愈合
+    memblock_merge_regions(&memblock.memory);
 }

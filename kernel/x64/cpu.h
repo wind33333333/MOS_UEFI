@@ -36,6 +36,7 @@ uint32 cpu_aid_to_lid(uint32 aid) {
     }
 }
 
+void cpu_topo_init(void);
 
 // 调度队列 (Per-CPU)
 typedef struct run_queue_t{
@@ -71,8 +72,8 @@ typedef struct cpu_control_block_t {
     uint64          tmp_user_rsp;         //syscall发生时暂存用户态RSP的草稿箱
     uint32          logical_id;           //内核逻辑编号 (0 永远是 BSP)
     uint32          apic_id;              // 物理 APIC ID (发 IPI 高频使用)
+    uint8           numa_node;
     cpu_state_t     state;                //核心运行状态 (假设 enum 为 4 字节)
-    uint32          numa_node;            // 所属 NUMA 节点 (内存分配高频使用)
     clockevent_t    *active_ce;
     uint64          next_deadline_ns;
     gdt_t           gdt __attribute__((aligned(64)));    // gdt描述符表

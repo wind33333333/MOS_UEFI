@@ -2,6 +2,8 @@
 #include "moslib.h"
 #include "../include/vmm.h"
 #include "list.h"
+#include "memblock_init.h"
+#include "numa_node.h"
 
 // 伙伴系统支持的最大阶数 (例如 10 阶对应 4KB * 2^10 = 4MB 的连续大块)
 #define MAX_ORDER 10
@@ -34,23 +36,47 @@ typedef struct page_t {
     };
 } __attribute__((aligned(64))) page_t;
 
-/**
- * @brief 某阶伙伴链表的管理头
- */
+// NUMA Node ID 占据 flags 的最顶端 8 位 (Bit 56 ~ 63)
+#define PG_NID_SHIFT    56
+#define PG_NID_MASK     0xFFULL
+
+
 typedef struct {
-    uint64      count;                 // 当前阶的空闲块总数
-    list_head_t list;                  // 双向链表头
+    list_head_t list;
+    uint32 count;
 } free_area_t;
 
-/**
- * @brief 伙伴系统全局状态管理器
- */
-typedef struct buddy_system_t {
-    page_t*     page_table;            // 指向 Vmemmap (page_t 元数据大数组) 的首地址
-    free_area_t free_area[MAX_ORDER + 1]; // 0~10 阶的空闲链表数组
+typedef struct {
+    free_area_t free_area[MAX_ORDER + 1]; // 单个 Node 的专属空闲链表
+} numa_zone_t;
+
+typedef struct {
+    page_t *page_table;                     // 全局 page_t 映射表基址
+    numa_zone_t zones[CONFIG_NUMA_NODES];   // 核心升维：每个 Node 一个专属 Zone
 } buddy_system_t;
 
 extern buddy_system_t buddy_system;
+
+/**
+ * @brief 为 page_t 安全地烙印 NUMA Node ID
+ * @note  必须先清空旧数据，再写入新数据，防止直接按位或 (|) 导致脏数据叠加
+ */
+static inline void set_page_nid(page_t *page, uint8 nid) {
+    // 1. 清理：用反向掩码 ~(0xFF << 56) 将高 8 位挖空置 0，同时绝对保留低 56 位原有标志
+    page->flags &= ~(PG_NID_MASK << PG_NID_SHIFT);
+
+    // 2. 写入：将传入的 nid 转换为 64 位并左移到顶端，合并进去
+    page->flags |= ((uint64)nid << PG_NID_SHIFT);
+}
+
+/**
+ * @brief 从 page_t 中快速提取所属的 NUMA Node ID
+ */
+static inline uint8 page_to_nid(page_t *page) {
+    // 右移 56 位，并与 0xFF 掩码做与运算，截取出干净的 Node ID
+    return (uint8)((page->flags >> PG_NID_SHIFT) & PG_NID_MASK);
+}
+
 
 // -----------------------------------------------------------------------------
 // 高频内联寻址转换引擎
@@ -75,5 +101,9 @@ static inline page_t *compound_head(page_t *page) {
     return page;
 }
 
-page_t* alloc_pages(uint32 order);
+page_t *alloc_pages_node(uint32 order, uint8 target_nid);
+// 兼容接口：暴露给外界的无状态调用
+page_t *alloc_pages(uint32 order) {
+    return alloc_pages_node(order, NUMA_NO_NODE);
+};
 void free_pages(page_t *page);

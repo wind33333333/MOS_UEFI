@@ -117,14 +117,17 @@ void kernel_init(void) {
     idt_init();                                                 //中断描述符表初始化
     boot_exception_init();                                       //0-31号临时异常注册成功
     vm_layout_init();                                           //虚拟内存空间初始化
-    numa_node_init();
-    memblock_init();                                            //初始化启动内存分配器
+    memory_init();                                              //初始化启动内存分配器
+    cpu_topo_init();                                            //cpu拓扑
+    numa_node_init();                                           //numa节点初始化
     kpage_table_init();                                         //初始化正式内核页表
-    apic_table_init();                                          //apic表初始化
-    buddy_system_init();                                        //初始化伙伴系统
     alloc_percpu_init();                                        //alloc_percpu分配器初始化
+    buddy_system_init();                                        //初始化伙伴系统
     slub_init();                                                //初始化slub内存分配器
     vmalloc_init();                                             //初始化vmalloc
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////
+    apic_table_init();                                          //apic表初始化
     video_mem_map();                                            //映射显存到虚拟地址空间
     per_cpu_alloc_resources();                                  //给所有cpu分配资源
     ioapic_init();                                              //初始化ioapic

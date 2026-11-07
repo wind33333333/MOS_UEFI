@@ -31,7 +31,7 @@ static inline void page_map_init() {
     // =========================================================================
     // （这部分代码你的逻辑堪称完美，一行都不用改，完美解决了碰撞与重叠！）
     for (uint64 i = 0; i < page_mem_map.count; i++) {
-        uint64 p_start = page_mem_map.region[i].start_pa;
+        uint64 p_start = page_mem_map.region[i].base;
         uint64 p_end   = p_start + page_mem_map.region[i].size;
 
         uint64 va_start = (uint64)pa_to_page(p_start);
@@ -115,9 +115,8 @@ void kpage_table_init(void) {
     tmp_video_mem_map();
 
     //直接映射区
-
     for (uint64 i=0;i < direct_mem_map.count;i++) {
-        uint64 start_pa = direct_mem_map.region[i].start_pa;
+        uint64 start_pa = direct_mem_map.region[i].base;
         uint64 size = direct_mem_map.region[i].size;
         vm_map_range(&kernel_space,(uint64)pa_to_va(start_pa),start_pa,size,PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_1G );
 

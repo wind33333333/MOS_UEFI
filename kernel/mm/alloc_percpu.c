@@ -71,7 +71,7 @@ static inline pcpu_chunk_t *pcpu_expand_chunk(void) {
     uint64 per_cpu_va = vm_layout.percpu_vaddr_start + new_chunk->start_off;
 
     // 3. 为系统中的【每一个】CPU 分配真实的物理页，并映射到连续的虚拟空间
-    for (uint32 i = 0; i < cpu_info.total_cpu_count; i++) {
+    for (uint32 i = 0; i < cpu_topo.cpu_count; i++) {
         uint64 pa = page_to_pa(alloc_pages(4));
         vm_map_range(&kernel_space, per_cpu_va, pa, PCPU_CHUNK_SIZE, PAGE_KERNEL_DATA_RW);
         per_cpu_va += PERCPU_WINDOW_SIZE;
@@ -101,7 +101,7 @@ static inline void pcpu_recycle_empty_chunk(pcpu_chunk_t *chunk) {
     }
 
     // 2. 释放底层物理页，并解除 VMM 映射
-    for (uint32 i = 0; i < cpu_info.total_cpu_count; i++) {
+    for (uint32 i = 0; i < cpu_topo.cpu_count; i++) {
         uint64 per_cpu_va = vm_layout.percpu_vaddr_start + chunk->start_off + (i * PERCPU_WINDOW_SIZE);
         vm_unmap_range(&kernel_space, per_cpu_va, PCPU_CHUNK_SIZE, UNMAP_FLAG_FREE_PHYS);
     }

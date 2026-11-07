@@ -2,25 +2,26 @@
 #include "apic_init.h"
 #include "../x64/cpu.h"
 #include "list.h"
+#include "memblock_init.h"
 #include "moslib.h"
+#include "numa_node.h"
 #include "pmm.h"
 #include "vmm.h"
 
 extern list_head_t chunk_list;
 extern pcpu_chunk_t first_chunk;
 extern pcpu_block_t pcpu_cpu_block;
-extern cpu_topo_t cpu_apic_info;
 extern uint64 pcpu_chunk_bitmap[4];
 extern pcpu_block_t free_block;
 extern vm_space_t kernel_space;
 
 void alloc_percpu_init() {
-    uint32 total_cpu_count = cpu_apic_info.total_cpu_count;
-    cpu_info.total_cpu_count = total_cpu_count;
+    uint32 cpu_count = cpu_topo.cpu_count;
     uint64 per_cpu_va = vm_layout.percpu_vaddr_start;
 
-    for (uint32 i = 0; i < total_cpu_count; i++) {
-        uint64 pa = page_to_pa(alloc_pages(4));
+    for (uint32 i = 0; i < cpu_count; i++) {
+        uint8 node_lid = cpu_lid_to_numa_lid(i);
+        uint64 pa = memblock_alloc_node(PERCPU_WINDOW_SIZE,4096,node_lid);
         vm_map_range(&kernel_space, per_cpu_va, pa, PCPU_CHUNK_SIZE, PAGE_KERNEL_DATA_RW);
         per_cpu_va += PERCPU_WINDOW_SIZE;
     }

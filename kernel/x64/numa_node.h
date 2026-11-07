@@ -30,3 +30,7 @@ typedef struct {
 }numa_info_t;
 
 extern numa_info_t numa_info;
+
+static inline uint8 cpu_lid_to_numa_lid(uint32 cpu_lid) {
+    return numa_info.cpu_lid_to_numa_map[cpu_lid];
+}
