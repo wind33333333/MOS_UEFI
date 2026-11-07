@@ -268,93 +268,64 @@ cleanup_reserved:
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
+
 /**
- * @brief 核心算法：用 SRAT 的物理边界去切割并标记 Memblock 空闲账本
- *
- * @param srat_base SRAT Type 1 给出的节点物理基址
- * @param srat_size SRAT Type 1 给出的节点覆盖长度
- * @param nid       洗白后映射的 逻辑 NUMA Node ID
+ * @brief 核心算法：用 SRAT 的物理边界去切割并标记指定的 Memblock 账本
  */
-void memblock_set_node_by_intersection(uint64 srat_base, uint64 srat_size, uint8 nid) {
+void memblock_set_node_by_intersection(memblock_type_t *type, uint64 srat_base, uint64 srat_size, uint8 nid) {
     uint64 srat_end = srat_base + srat_size;
 
-    // 遍历当前的 memory 资产簿
-    for (uint32 i = 0; i < memblock.memory.count; i++) {
-        uint64 reg_base = memblock.memory.region[i].base;
-        uint64 reg_size = memblock.memory.region[i].size;
+    // 遍历指定的资产簿或债务簿
+    for (uint32 i = 0; i < type->count; i++) {
+        uint64 reg_base = type->region[i].base;
+        uint64 reg_size = type->region[i].size;
         uint64 reg_end = reg_base + reg_size;
 
-        // 1. 判断是否发生物理空间上的交集 (Overlap)
         if (reg_base < srat_end && reg_end > srat_base) {
-
-            // 计算交集的精确起止点
             uint64 inter_start = MAX(reg_base, srat_base);
             uint64 inter_end = MIN(reg_end, srat_end);
 
-            // =========================================================
-            // 2. 左侧突出处理 (Left Overhang Split)
-            // 如果 Memblock 块的开头早于 SRAT 边界，必须在 inter_start 切一刀
-            // =========================================================
+            // 左侧突出处理 (Left Overhang Split)
             if (inter_start > reg_base) {
-                if (memblock.memory.count >= MAX_MEMBLOCK_REGIONS) {
+                if (type->count >= MAX_MEMBLOCK_REGIONS) {
                     PR_ERROR("PANIC: memblock array overflow during NUMA left split!\n");
                     while (1) asm_hlt();
                 }
 
-                // 数组整体向右挪一位，腾出 i+1
-                for (uint32 j = memblock.memory.count; j > i + 1; j--) {
-                    memblock.memory.region[j] = memblock.memory.region[j - 1];
+                for (uint32 j = type->count; j > i + 1; j--) {
+                    type->region[j] = type->region[j - 1];
                 }
 
-                // [索引 i] 变成突出在左侧、没有交集的部分
-                memblock.memory.region[i].size = inter_start - reg_base;
+                type->region[i].size = inter_start - reg_base;
+                type->region[i + 1].base = inter_start;
+                type->region[i + 1].size = reg_end - inter_start;
+                type->region[i + 1].nid = type->region[i].nid;
 
-                // [索引 i+1] 变成剩下的包含交集的部分 (坚决继承原有的 nid)
-                memblock.memory.region[i + 1].base = inter_start;
-                memblock.memory.region[i + 1].size = reg_end - inter_start;
-                memblock.memory.region[i + 1].nid = memblock.memory.region[i].nid;
-
-                memblock.memory.count++;
-
-                // 🌟 核心黑魔法：左半边处理完毕。
-                // 我们直接 continue，下一轮循环 i 会自增变为 i+1。
-                // 此时循环将直接针对刚刚切出来的 [inter_start, reg_end] 重新执行交集判断！
+                type->count++;
                 continue;
             }
 
-            // =========================================================
-            // 3. 右侧突出处理 (Right Overhang Split)
-            // 运行到这里，说明 inter_start 已经绝对对齐 reg_base。
-            // 检查如果结尾超出 SRAT 边界，则在 inter_end 切一刀
-            // =========================================================
+            // 右侧突出处理 (Right Overhang Split)
             if (inter_end < reg_end) {
-                if (memblock.memory.count >= MAX_MEMBLOCK_REGIONS) {
+                if (type->count >= MAX_MEMBLOCK_REGIONS) {
                     PR_ERROR("PANIC: memblock array overflow during NUMA right split!\n");
                     while (1) asm_hlt();
                 }
 
-                // 数组整体向右挪一位，腾出 i+1
-                for (uint32 j = memblock.memory.count; j > i + 1; j--) {
-                    memblock.memory.region[j] = memblock.memory.region[j - 1];
+                for (uint32 j = type->count; j > i + 1; j--) {
+                    type->region[j] = type->region[j - 1];
                 }
 
-                // [索引 i] 变成完美剥离出来的交集部分
-                memblock.memory.region[i].size = inter_end - reg_base;
+                type->region[i].size = inter_end - reg_base;
+                type->region[i + 1].base = inter_end;
+                type->region[i + 1].size = reg_end - inter_end;
+                type->region[i + 1].nid = type->region[i].nid;
 
-                // [索引 i+1] 变成突出在右侧的部分
-                memblock.memory.region[i + 1].base = inter_end;
-                memblock.memory.region[i + 1].size = reg_end - inter_end;
-                memblock.memory.region[i + 1].nid = memblock.memory.region[i].nid;
-
-                memblock.memory.count++;
+                type->count++;
             }
 
-            // =========================================================
-            // 4. 精准盖章 (Stamping)
-            // 经历过左切和右切后，此时的 region[i] 百分之百等同于 [inter_start, inter_end]
-            // 直接暴力烙上 Node ID！
-            // =========================================================
-            memblock.memory.region[i].nid = nid;
+            // 精准盖章 (Stamping)
+            type->region[i].nid = nid;
         }
     }
 }

@@ -271,13 +271,18 @@ void numa_node_init(void) {
 
     sanitize_numa_mem_regions();
 
-    // 1. 遍历已经清洗得干干净净、无重叠的界碑表，对 Memblock 逐一盖章
+    // 1. 遍历界碑表，对 Memblock 的所有资产和债务逐一盖章
     for (uint32 i = 0; i < numa_info.numa_mem_count; i++) {
         numa_mem_region_t *reg = &numa_info.numa_mem_region[i];
-        // 调用我们刚刚写好的交集分裂算法
-        memblock_set_node_by_intersection(reg->base, reg->size, reg->node_id);
+
+        // 资产簿 (空闲内存) 盖章
+        memblock_set_node_by_intersection(&memblock.memory, reg->base, reg->size, reg->node_id);
+
+        // 债务簿 (保留内存) 盖章，确保未来的 memblock_free 能够精准寻祖
+        memblock_set_node_by_intersection(&memblock.reserved, reg->base, reg->size, reg->node_id);
     }
 
-    // 2. 治疗内存碎片：经过多次跨界分裂后，可能产生多余的切口，执行一次终极愈合
+    // 2. 治疗内存碎片：双管齐下执行终极愈合
     memblock_merge_regions(&memblock.memory);
+    memblock_merge_regions(&memblock.reserved);
 }
