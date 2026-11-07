@@ -330,23 +330,19 @@ static inline void get_cpu_info(void) {
 }
 
 void per_cpu_alloc_resources(void) {
-    uint32 total_cpu_count = cpu_apic_info.total_cpu_count;
-    cpu_control_block_t **ccb_ptr = kzalloc(sizeof(cpu_control_block_t*) * total_cpu_count);
-    cpu_info.ccb_ptr = ccb_ptr;
-    cpu_hw_t *cpu_hw = cpu_apic_info.cpu_hw;
-    uint64 per_cpu_va = vm_layout.percpu_vaddr_start;
-    for (uint32 i=0;i < total_cpu_count;i++) {
-        cpu_control_block_t *ccb = (cpu_control_block_t*)per_cpu_va;
-        asm_mem_set(ccb,0,sizeof(cpu_control_block_t));
-        per_cpu_va += PERCPU_WINDOW_SIZE;
-        ccb_ptr[i] = ccb;
-        ccb->hwirq_rsp_top = (uint64)kmalloc(4096*4)+4096*4;
-        ccb->self = ccb;
-        ccb->logical_id = cpu_hw[i].logical_id;
-        ccb->apic_id = cpu_hw[i].apic_id;
-        ccb->acpi_proc_id = cpu_hw[i].acpi_proc_id;
-        ccb->lint_nmi = cpu_hw[i].lint_nmi;
+    uint32 cpu_count = cpu_topo.cpu_count;
+    cpu_control_block_t *per_ccb = (void*)vm_layout.percpu_vaddr_start;
+    cpu_hw_t *cpu_hw = cpu_topo.cpu_hw;
+    for (uint32 i=0;i < cpu_count;i++) {
+        asm_mem_set(per_ccb,0,sizeof(cpu_control_block_t));
+        per_ccb->hwirq_rsp_top = (uint64)kmalloc(4096*4)+4096*4;
+        per_ccb->self = per_ccb;
+        per_ccb->logical_id = cpu_hw[i].logical_id;
+        per_ccb->apic_id = cpu_hw[i].apic_id;
+        per_ccb->acpi_proc_id = cpu_hw[i].acpi_proc_id;
+        per_ccb->lint_nmi = cpu_hw[i].lint_nmi;
         gdt_tss_init(i);
+        per_ccb = (void*)((uint64)per_ccb+PERCPU_WINDOW_SIZE);
     }
 }
 
@@ -401,7 +397,7 @@ void per_cpu_init(void){
     cpu_enable_feature();
     apic_init();                                            //本地apic初始化
     uint32 apic_id = asm_rdmsr(APIC_ID_MSR);
-    uint32 logical_id = apicid_to_logcalid(apic_id);
+    uint32 logical_id = cpu_aid_to_lid(apic_id);
     set_gs_base(logical_id);                                //设置bsp核gs基地址
     asm_lgdt(&this_ccb()->gdt);                             //加载正式gdt
     asm_ltr();                                              //加载tr

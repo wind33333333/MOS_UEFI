@@ -1,6 +1,5 @@
 #include "cpu.h"
-
-#include "acpi_init.h"
+#include "../init/acpi_init.h"
 #include "msr.h"
 #include "printk.h"
 
@@ -23,7 +22,7 @@ void cpu_topo_init(void) {
     madt_header_t *madt_start;
 
     // 💡 确保这个函数能正确读取 x2APIC (MSR 0x802) 或 xAPIC (CPUID) 的 ID
-    uint32 bsp_apic_id = asm_rdmsr(APIC_ID_MSR); 
+    uint32 bsp_apic_id = asm_rdmsr(APIC_ID_MSR);
     uint32 ap_idx = 0;
     cpu_topo.cpu_count = 0; // 重置为 0，在第二遍真实计算
 
@@ -43,10 +42,10 @@ void cpu_topo_init(void) {
             x2apic_entry_t *ent = (x2apic_entry_t *) madt_start;
             if (ent->flags & 1) { // 检查在线标记
                 hw_apic_id = ent->x2apic_id;
-                acpi_uid = ent->processor_id; 
+                acpi_uid = ent->processor_id;
                 is_valid_cpu = TRUE;
             }
-        } 
+        }
         // 提取 Type 0 (Local APIC)
         else if (madt_start->type == 0) {
             apic_entry_t *ent = (apic_entry_t *) madt_start;
@@ -76,7 +75,7 @@ void cpu_topo_init(void) {
             if (!duplicate) {
                 uint32 logical_id;
                 if (hw_apic_id == bsp_apic_id) {
-                    logical_id = 0; 
+                    logical_id = 0;
                 } else {
                     logical_id = ++ap_idx;
                 }
@@ -84,8 +83,8 @@ void cpu_topo_init(void) {
                 cpu_topo.cpu_hw[logical_id].acpi_proc_id = acpi_uid;
                 cpu_topo.cpu_hw[logical_id].logical_id = logical_id;
                 // 初始化 NMI 默认值（可选）
-                cpu_topo.cpu_hw[logical_id].lint_nmi = 0xFF; 
-                
+                cpu_topo.cpu_hw[logical_id].lint_nmi = 0xFF;
+
                 cpu_topo.cpu_count++;
             }
         }
@@ -104,7 +103,7 @@ void cpu_topo_init(void) {
     // =========================================================
     madt_start = (madt_header_t *) &madt->entry;
     while ((uint64) madt_start < madt_end) {
-        
+
         if (madt_start->type == 4) {
             apic_nmi_entry_t *ent = (apic_nmi_entry_t *) madt_start;
             if (ent->apic_id == 0xFF) {
@@ -119,7 +118,7 @@ void cpu_topo_init(void) {
                     }
                 }
             }
-        } 
+        }
         else if (madt_start->type == 10) {
             x2apic_nmi_entry_t *ent = (x2apic_nmi_entry_t *) madt_start;
             if (ent->x2apic_id == 0xFFFFFFFF) {

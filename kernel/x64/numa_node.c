@@ -1,7 +1,7 @@
 #include "numa_node.h"
-#include "acpi_init.h"
+#include "../init/acpi_init.h"
 #include "cpu.h"
-#include "memblock_init.h"
+#include "../init/memblock_init.h"
 #include "printk.h"
 
 numa_info_t numa_info = {0};

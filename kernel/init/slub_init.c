@@ -1,6 +1,6 @@
 #include "slub.h"
 #include "printk.h"
-#include "cpu.h" // 引入 asm_hlt 等宏
+#include "../x64/cpu.h"
 
 // 外部依赖声明
 extern void create_cache(char *cache_name, kmem_cache_t *cache, uint32 object_size);

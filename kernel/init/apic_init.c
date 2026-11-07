@@ -47,23 +47,23 @@ void apic_table_init(void) {
         while (1);
     }
 
-    cpu_apic_info.total_cpu_count = total_cpu_count;
-    uint64 cpu_hw_size = total_cpu_count * sizeof(cpu_hw_t);
-    uint64 ioapic_dev_size = ioapic_count * sizeof(ioapic_devive_t);
-    uint64 irq_override_size = irq_override_count * sizeof(irq_override_t);
+    // cpu_apic_info.total_cpu_count = total_cpu_count;
+    // uint64 cpu_hw_size = total_cpu_count * sizeof(cpu_hw_t);
+    // uint64 ioapic_dev_size = ioapic_count * sizeof(ioapic_devive_t);
+    // uint64 irq_override_size = irq_override_count * sizeof(irq_override_t);
 
-    uint64 total_size = PAGE_4K_ALIGN(cpu_hw_size+ioapic_dev_size +irq_override_size);
-    cpu_apic_info.cpu_hw = pa_to_va(memblock_alloc(total_size,PAGE_4K_SIZE));
-    asm_mem_set(cpu_apic_info.cpu_hw,0,total_size);
+    // uint64 total_size = PAGE_4K_ALIGN(cpu_hw_size+ioapic_dev_size +irq_override_size);
+    // cpu_apic_info.cpu_hw = pa_to_va(memblock_alloc(total_size,PAGE_4K_SIZE));
+    // asm_mem_set(cpu_apic_info.cpu_hw,0,total_size);
 
     if (ioapic_count > 0) {
         early_ioapic_info.ioapic_count = ioapic_count;
-        early_ioapic_info.ioapic_devive = (ioapic_devive_t*)((uint64)cpu_apic_info.cpu_hw+cpu_hw_size);
+        //early_ioapic_info.ioapic_devive = (ioapic_devive_t*)((uint64)cpu_apic_info.cpu_hw+cpu_hw_size);
     }
 
     if (irq_override_count > 0) {
         early_irq_override_info.irq_override_count = irq_override_count;
-        early_irq_override_info.irq_override = (irq_override_t*)((uint64)early_ioapic_info.ioapic_devive+ioapic_dev_size);
+        //early_irq_override_info.irq_override = (irq_override_t*)((uint64)early_ioapic_info.ioapic_devive+ioapic_dev_size);
     }
 
     // 💡 必须让 BSP 永远霸占 logical_id = 0 的宝座！
@@ -89,9 +89,9 @@ void apic_table_init(void) {
                         }else {
                             logical_id = ++ap_idx;
                         }
-                        cpu_apic_info.cpu_hw[logical_id].apic_id = lapic_entry->apic_id;
-                        cpu_apic_info.cpu_hw[logical_id].acpi_proc_id = lapic_entry->processor_id;
-                        cpu_apic_info.cpu_hw[logical_id].logical_id = logical_id;
+                        // cpu_apic_info.cpu_hw[logical_id].apic_id = lapic_entry->apic_id;
+                        // cpu_apic_info.cpu_hw[logical_id].acpi_proc_id = lapic_entry->processor_id;
+                        // cpu_apic_info.cpu_hw[logical_id].logical_id = logical_id;
                     }
                 }
                 break;
@@ -118,15 +118,15 @@ void apic_table_init(void) {
                 // 如果 ID 是 0xFF，说明这是“全服广播”
                 if (apic_nmi_entry->apic_id == 0xFF) {
                     for (uint32 i = 0; i < total_cpu_count; i++) {
-                        cpu_apic_info.cpu_hw[i].lint_nmi = apic_nmi_entry->lint;
+                        // cpu_apic_info.cpu_hw[i].lint_nmi = apic_nmi_entry->lint;
                     }
                 } else {
                     // 针对特定 CPU，去数组里找它
                     for (uint32 i = 0; i < total_cpu_count; i++) {
-                        if (cpu_apic_info.cpu_hw[i].apic_id == apic_nmi_entry->apic_id) {
-                            cpu_apic_info.cpu_hw[i].lint_nmi = apic_nmi_entry->lint;
-                            break;
-                        }
+                        // if (cpu_apic_info.cpu_hw[i].apic_id == apic_nmi_entry->apic_id) {
+                        //     cpu_apic_info.cpu_hw[i].lint_nmi = apic_nmi_entry->lint;
+                        //     break;
+                        // }
                     }
                 }
                 break;
@@ -145,9 +145,9 @@ void apic_table_init(void) {
                         }else {
                             logical_id = ++ap_idx;
                         }
-                        cpu_apic_info.cpu_hw[logical_id].apic_id = x2apic_entry->x2apic_id;
-                        cpu_apic_info.cpu_hw[logical_id].acpi_proc_id = x2apic_entry->processor_id;
-                        cpu_apic_info.cpu_hw[logical_id].logical_id = logical_id;
+                        // cpu_apic_info.cpu_hw[logical_id].apic_id = x2apic_entry->x2apic_id;
+                        // cpu_apic_info.cpu_hw[logical_id].acpi_proc_id = x2apic_entry->processor_id;
+                        // cpu_apic_info.cpu_hw[logical_id].logical_id = logical_id;
                     }
                 }
                 break;
@@ -156,14 +156,14 @@ void apic_table_init(void) {
                 // X2APIC 的广播 ID 是 0xFFFFFFFF
                 if (x2apic_nmi_entry->x2apic_id == 0xFFFFFFFF) {
                     for (uint32 i = 0; i < total_cpu_count; i++) {
-                        cpu_apic_info.cpu_hw[i].lint_nmi = x2apic_nmi_entry->lint;
+                        // cpu_apic_info.cpu_hw[i].lint_nmi = x2apic_nmi_entry->lint;
                     }
                 } else {
                     for (uint32 i = 0; i < total_cpu_count; i++) {
-                        if (cpu_apic_info.cpu_hw[i].apic_id == x2apic_nmi_entry->x2apic_id) {
-                            cpu_apic_info.cpu_hw[i].lint_nmi = x2apic_nmi_entry->lint;
-                            break;
-                        }
+                        // if (cpu_apic_info.cpu_hw[i].apic_id == x2apic_nmi_entry->x2apic_id) {
+                        //     cpu_apic_info.cpu_hw[i].lint_nmi = x2apic_nmi_entry->lint;
+                        //     break;
+                        // }
                     }
                 }
                 color_printk(RED,BLACK, "X2APIC NMI X2ApicID:%#lX LINT:%d\n", x2apic_nmi_entry->x2apic_id,

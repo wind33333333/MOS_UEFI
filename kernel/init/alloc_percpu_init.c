@@ -4,7 +4,7 @@
 #include "list.h"
 #include "memblock_init.h"
 #include "moslib.h"
-#include "numa_node.h"
+#include "../x64/numa_node.h"
 #include "pmm.h"
 #include "vmm.h"
 

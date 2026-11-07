@@ -1,24 +1,8 @@
 #pragma once
-#include "../x64/cpu.h"
-#include "moslib.h"
-#include "../x64/msr.h"
+#include "vmm.h"
 
+extern vm_layout_t vm_layout;
 
-static inline void set_gs_base(uint32 logical_id) {
-    cpu_control_block_t *ccb = cpu_info.ccb_ptr[logical_id];
-    asm_wrgsbase(ccb);
-    asm_wrmsr(KERNEL_GS_BASE_MSR,0);
-}
-
-// 根据物理 APIC ID 反查逻辑 ID（仅在启动期解析 SRAT 等冷路径调用）
-static inline uint32 apicid_to_logcalid(uint32 apic_id) {
-    for (uint32 i = 0; i < cpu_info.run_cpu_count; i++) {
-        if (cpu_info.ccb_ptr[i]->apic_id == apic_id) {
-            return i; // 找到了对应的逻辑编号
-        }
-    }
-    return 0xFFFFFFFF; // 未找到（无效或被禁用的核心）
-}
 
 
 void cpu_enable_feature(void);

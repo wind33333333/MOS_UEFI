@@ -2,7 +2,9 @@
 #include "gdt_tss.h"
 #include "irq_dispatcher.h"
 #include "moslib.h"
+#include "msr.h"
 #include "rbtree.h"
+#include "vmm.h"
 #include "../time/time_core.h"
 
 // 定义cpu核心最大物理槽位上限，编译时自定义，64的倍数，64/128/256/512/1024...
@@ -106,6 +108,15 @@ static inline cpu_control_block_t* this_ccb(void) {
 }
 
 
+static inline void* this_cpu_ptr(void* offfset) {
+    return (void*)((uint64)THIS_CCB->self + (uint64)offfset);
+}
+
+extern vm_layout_t vm_layout;
+
+static inline cpu_control_block_t* cpu_lid_by_ccb(uint32 lid) {
+    return (cpu_control_block_t*)(vm_layout.percpu_vaddr_start + lid*(16*1024*1024));
+};
 
 
 static inline uint64 asm_rdgsbase(void) {
@@ -132,4 +143,10 @@ static inline void asm_swapgs() {
         :
         :
         :"memory");
+}
+
+static inline void set_gs_base(uint32 logical_id) {
+    void* per_cpu_base = (void*)(vm_layout.percpu_vaddr_start+logical_id*(16*1024*1024));
+    asm_wrgsbase(per_cpu_base);
+    asm_wrmsr(KERNEL_GS_BASE_MSR,0);
 }

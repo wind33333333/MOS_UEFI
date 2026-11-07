@@ -1,9 +1,8 @@
 #pragma once
-
 #include "moslib.h"
 #include "vmm.h"
 #include "list.h"
-#include "numa_node.h"
+#include "../x64/numa_node.h"
 
 // -----------------------------------------------------------------------------
 // SLUB 分配器配置参数

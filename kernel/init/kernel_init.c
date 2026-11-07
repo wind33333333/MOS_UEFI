@@ -10,6 +10,7 @@
 #include "alternative_init.h"
 #include "video_init.h"
 #include "apic_init.h"
+#include "../x64/cpu.h"
 #include "printk.h"
 #include "../x64/mtrr.h"
 #include "../x64/apic_time.h"

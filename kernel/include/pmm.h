@@ -2,8 +2,8 @@
 #include "moslib.h"
 #include "../include/vmm.h"
 #include "list.h"
-#include "memblock_init.h"
-#include "numa_node.h"
+#include "../init/memblock_init.h"
+#include "../x64/numa_node.h"
 
 // 伙伴系统支持的最大阶数 (例如 10 阶对应 4KB * 2^10 = 4MB 的连续大块)
 #define MAX_ORDER 10

@@ -1,7 +1,7 @@
 #include "../include/pmm.h"
 #include "../init/memblock_init.h"
 #include "slub.h"
-#include "numa_node.h" // 必须引入之前写的 NUMA 拓扑矩阵
+#include "../x64/numa_node.h" // 必须引入之前写的 NUMA 拓扑矩阵
 
 buddy_system_t buddy_system;
 

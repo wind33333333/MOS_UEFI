@@ -59,7 +59,7 @@ static inline void set_tss_desc(uint64 *tss_desc_ptr, tss_t *tss) {
 
 
 void gdt_tss_init(uint32 logical_id) {
-    cpu_control_block_t *per_cpu =  cpu_info.ccb_ptr[logical_id];
+    cpu_control_block_t *per_cpu =  cpu_lid_by_ccb(logical_id);
     gdt_t *gdt = &per_cpu->gdt;
     gdt->kernel_code64_desc = KERNEL_CODE64_DESC;
     gdt->kernel_data_desc = KERNEL_DATA_DESC;

@@ -1,5 +1,5 @@
 #include "memblock_init.h"
-#include "cpu.h"
+#include "../x64/cpu.h"
 #include "../include/vmm.h"
 #include "../include/printk.h"
 #include "../include/errno.h"
