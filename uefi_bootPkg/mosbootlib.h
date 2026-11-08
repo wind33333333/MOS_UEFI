@@ -11,8 +11,6 @@
 #include <Library/DevicePathLib.h>
 #include <Guid/Acpi.h>
 
-#define KERNELSTARTADDR 0x100000
-
 EFI_STATUS EFIAPI keyCountdown (IN UINT32 Times);
 EFI_STATUS EFIAPI PrintInput (IN OUT CHAR16* InputBuffer,IN OUT UINT32* InputBufferLength);
 EFI_DEVICE_PATH_PROTOCOL* WalkthroughDevicePath(EFI_DEVICE_PATH_PROTOCOL* DevPath, EFI_STATUS (*Callbk)(EFI_DEVICE_PATH_PROTOCOL*));
@@ -68,6 +66,10 @@ typedef struct {
 } __attribute__((packed)) RSDP_Struct;
 
 typedef struct{
+    // 🌟 新增：动态分配的内核物理基址和大小
+    EFI_PHYSICAL_ADDRESS KernelBase;
+    UINT64               KernelSize;
+
     /*显卡信息*/
     UINT64  FrameBufferBase;
     UINT32  HorizontalResolution;

@@ -682,6 +682,10 @@ typedef struct {
 
 //region BootInfo结构
 typedef struct{
+    // 🌟 新增：动态分配的内核物理基址和大小
+    EFI_PHYSICAL_ADDRESS KernelBase;
+    uint64               KernelSize;
+
     /*显卡信息*/
     uint64  frame_buffer_base;
     uint32  horizontal_resolution;
