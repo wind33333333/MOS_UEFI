@@ -123,6 +123,8 @@ void kernel_init(void) {
     numa_node_init();                                           //numa节点初始化
     kpage_table_init();                                         //初始化正式内核页表
     alloc_percpu_init();                                        //alloc_percpu分配器初始化
+    per_cpu_alloc_resources();                                  //给所有cpu分配资源
+    per_cpu_init();                                             //加载cpu资源
     buddy_system_init();                                        //初始化伙伴系统
     slub_init();                                                //初始化slub内存分配器
     vmalloc_init();                                             //初始化vmalloc
@@ -130,13 +132,12 @@ void kernel_init(void) {
     /////////////////////////////////////////////////////////////////////////////////////////////////////
     apic_table_init();                                          //apic表初始化
     video_mem_map();                                            //映射显存到虚拟地址空间
-    per_cpu_alloc_resources();                                  //给所有cpu分配资源
     ioapic_init();                                              //初始化ioapic
     hpet_init();                                                //hpet时钟和定时器初始化
     apic_time_init();                                           //apic时钟和定时器初始化
     timer_irq_init();                                           //定时器中断初始化
     bsp_backup_mtrr_state();                                    //备份mtrr
-    per_cpu_init();                                             //加载cpu资源
+
     apply_alternatives();                                       //动态修复指令
     efi_runtime_service_init();                                 //映射efi运行时服务到虚拟地址空间
 

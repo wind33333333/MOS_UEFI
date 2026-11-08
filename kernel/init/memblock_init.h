@@ -48,5 +48,4 @@ uint64 memblock_alloc(uint64 size, uint64 align) {
     return memblock_alloc_node(size, align, NUMA_NO_NODE);
 }
 void memblock_set_node_by_intersection(memblock_type_t *type, uint64 srat_base, uint64 srat_size, uint8 nid);
-void memblock_merge_regions(memblock_type_t *type);
 

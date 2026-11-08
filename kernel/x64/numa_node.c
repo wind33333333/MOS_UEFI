@@ -282,7 +282,4 @@ void numa_node_init(void) {
         memblock_set_node_by_intersection(&memblock.reserved, reg->base, reg->size, reg->node_id);
     }
 
-    // 2. 治疗内存碎片：双管齐下执行终极愈合
-    memblock_merge_regions(&memblock.memory);
-    memblock_merge_regions(&memblock.reserved);
 }
