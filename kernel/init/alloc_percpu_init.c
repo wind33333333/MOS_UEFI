@@ -21,7 +21,7 @@ void alloc_percpu_init() {
 
     for (uint32 i = 0; i < cpu_count; i++) {
         uint8 node_lid = cpu_lid_to_numa_lid(i);
-        uint64 pa = memblock_alloc_node(PERCPU_WINDOW_SIZE,4096,node_lid);
+        uint64 pa = memblock_alloc_node(PCPU_CHUNK_SIZE,4096,node_lid);
         vm_map_range(&kernel_space, per_cpu_va, pa, PCPU_CHUNK_SIZE, PAGE_KERNEL_DATA_RW);
         per_cpu_va += PERCPU_WINDOW_SIZE;
     }

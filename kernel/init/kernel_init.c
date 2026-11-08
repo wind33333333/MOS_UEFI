@@ -122,12 +122,13 @@ void kernel_init(void) {
     cpu_topo_init();                                            //cpu拓扑
     numa_node_init();                                           //numa节点初始化
     kpage_table_init();                                         //初始化正式内核页表
-    alloc_percpu_init();                                        //alloc_percpu分配器初始化
-    per_cpu_alloc_resources();                                  //给所有cpu分配资源
-    per_cpu_init();                                             //加载cpu资源
     buddy_system_init();                                        //初始化伙伴系统
     slub_init();                                                //初始化slub内存分配器
     vmalloc_init();                                             //初始化vmalloc
+
+    alloc_percpu_init();                                        //alloc_percpu分配器初始化
+    per_cpu_init();                                             //加载cpu资源
+    per_cpu_alloc_resources();                                  //给所有cpu分配资源
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////
     apic_table_init();                                          //apic表初始化
