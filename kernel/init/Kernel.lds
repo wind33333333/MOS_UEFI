@@ -1,10 +1,17 @@
 OUTPUT_FORMAT("elf64-x86-64","elf64-x86-64","elf64-x86-64")
 OUTPUT_ARCH(i386:x86-64)
 ENTRY(_start)
+
+/* 定义内核高半区的虚拟基址常量 */
+KERNEL_VMA = 0xFFFFFFFF80000000;
+
 SECTIONS
 {
-    /* 内核初始化起始地址 */
-    . = 0xFFFFFFFF80000000 + 0x100000;
+    /* ================================================================= */
+    /* 核心改变：我们只指定 VMA（虚拟内存地址），不再绑定死 LMA（物理加载地址） */
+    /* 此时 . 的值是 0xFFFFFFFF80000000，这是代码在开启分页后期望运行的地址 */
+    /* ================================================================= */
+    . = KERNEL_VMA;
 
     /* ================================================================= */
     /*                       一、 初始化丢弃区 (Init)                    */
@@ -29,7 +36,7 @@ SECTIONS
        _start_init_rodata = .;
        *(.init_rodata)
        *(.init_rodata.*)
-       /* 💡 降维打击：暴力吸入 init 文件的常量和字符串 (如 .rodata.str1.1) */
+       /* 💡 降维打击：暴力吸入 init 文件的常量和字符串 */
        *init.o(.rodata .rodata.*)
        *init_*.o(.rodata .rodata.*)
        . = ALIGN(4096);
@@ -77,7 +84,6 @@ SECTIONS
     .text :
     {
        _start_text = .;
-       /* 💡 EXCLUDE_FILE：排除掉刚才被吸走的文件，防止链接器报重复定义的错误 */
        *(EXCLUDE_FILE(*init.o *init_*.o) .text .text.*)
        . = ALIGN(4096);
        _end_text = .;
@@ -87,7 +93,6 @@ SECTIONS
     .rodata :
     {
        _start_rodata = .;
-       /* 💡 排除掉初始化文件的字符串和常量 */
        *(EXCLUDE_FILE(*init.o *init_*.o) .rodata .rodata.*)
        . = ALIGN(4096);
        _end_rodata = .;

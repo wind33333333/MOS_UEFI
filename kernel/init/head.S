@@ -1,8 +1,90 @@
 /* ==================================================================== */
-/* 全局内核虚拟地址空间常量定义 (与链接脚本及 C 语言宏保持高度一致)           */
+/* 极简全域复用架构：x86-64 早期启动汇编 (Bootstrapping)                  */
+/* 特性：运行时动态计算所有页表索引，为未来 Virtual KASLR 铺平道路          */
 /* ==================================================================== */
-.equ DIRECT_MAP_VA_START, 0xFFFF800000000000    // 物理内存直接映射区起始虚拟地址
-.equ KERNEL_VA_START,     0xFFFFFFFF80000000    // 高半核内核代码/数据区起始虚拟地址
+.equ KERNEL_VA_START,        0xFFFFFFFF80000000    // 高半核内核代码/数据区起始虚拟地址
+.equ DIRECT_MAP_VA_START_4L, 0xFFFF800000000000    // 4 级分页直接映射区起始地址
+.equ DIRECT_MAP_VA_START_5L, 0xFF00000000000000    // 5 级分页直接映射区起始地址
+.equ PARITY_MAP_VA_START,    0x0                   // 对等映射起始地址
+
+/********************** 内核初始化数据静态分配区 **************************/
+.section    .init_data, "wa"
+
+    // 页表必须严格 4KB 物理对齐
+    .balign 4096
+
+    // 中断专属安全栈 (Interrupt Stack Table)
+    .fill 0x1000, 1, 0
+    tmp_df_stack_top:       // 给 #DF (双重异常) 用 (IST1)
+
+    .fill 0x1000, 1, 0
+    tmp_nmi_stack_top:      // 给 #NMI (不可屏蔽中断) 用 (IST2)
+
+    .fill 0x1000, 1, 0
+    tmp_mc_stack_top:       // 给 #MC (机器检查异常) 用 (IST3)
+
+    .fill 0x1000, 1, 0
+    tmp_db_stack_top:       // 给 #DB (调试异常) 用 (IST4)
+
+    .fill 0x1000, 1, 0
+    tmp_rsp0_stack_top:     // TSS Ring 0 默认栈
+
+    // BSP 引导处理器的临时安全栈 (16KB)
+    .fill 0x4000, 1, 0
+    tmp_bsp_stack_top:
+
+    /* ================== 🌟 极简页表体系 🌟 ================== */
+    /* 砍掉了一半的临时页表，通过精妙的指针复用覆盖所有地址空间 */
+    .globl  tmp_pml5t
+    tmp_pml5t:       .fill 0x1000, 1, 0    // 顶级 PML5 (LA57 专用)
+
+    .globl  tmp_pml4t
+    tmp_pml4t:       .fill 0x1000, 1, 0    // 顶级 PML4 (4 级主根)
+
+    // 核心复用：同时肩负“1:1恒等映射”与“上帝视角直接映射”
+    tmp_pdpt_direct: .fill 0x1000, 1, 0    // 1GB 大页表 (精准覆盖 0~512GB 物理内存)
+
+    tmp_pdpt_kernel: .fill 0x1000, 1, 0    // 高半区 KERNEL 专属 PDPT
+    tmp_pd_kernel:   .fill 0x1000, 1, 0    // 高半区 KERNEL 专属 PD (2MB 页)
+    /* ======================================================== */
+
+    // 临时 TSS (Task State Segment)
+    .balign 64                          // Cache Line 对齐，防止 SMP 伪共享
+tmp_tss:
+    .long 0
+    .quad tmp_rsp0_stack_top
+    .quad 0
+    .quad 0
+    .quad 0
+    .quad tmp_df_stack_top
+    .quad tmp_nmi_stack_top
+    .quad tmp_mc_stack_top
+    .quad tmp_db_stack_top
+    .quad 0
+    .quad 0
+    .quad 0
+    .quad 0
+    .word 0
+    .word 0x0068                        // iomap_base 拦截 IO
+
+    // 早期全局描述符表 (GDT)
+    .balign 16
+tmp_gdt:
+    .quad 0x0000000000000000            // 0x00: Null
+    .quad 0x00AF9A000000FFFF            // 0x08: 64-bit Kernel Code (Ring 0)
+    .quad 0x00CF9A000000FFFF            // 0x10: 32-bit Compat Code (蹦床跳跃专用)
+    .quad 0x00CF92000000FFFF            // 0x18: 32/64-bit Data (Ring 0)
+
+    // 0x20: 临时 64 位 TSS 描述符 (占 16 字节 = 2 个槽位)
+    .word 0x0067, 0x0000
+    .byte 0x00, 0x89, 0x00, 0x00
+    .long 0x00000000, 0x00000000
+
+    .globl tmp_boot_info
+    tmp_boot_info:    .quad 0           // 存放 Bootloader 信息物理指针
+
+    .globl tmp_paging_level
+    tmp_paging_level: .byte 0           // 记录当前处于 4 级还是 5 级分页 (供 C 语言读取)
 
 
 /*************************** 内核初始化代码入口 *******************************/
@@ -11,207 +93,226 @@
 .globl _start
 _start:
     jmp .
-    cli     // 彻底屏蔽外部中断，直到我们完全准备好 IDT
+    cli
+
+    // 切换到内核堆栈
+    leaq   tmp_bsp_stack_top(%rip),%rsp
+
+    movq     %rdi, %r15                 // 保护 BootInfo 物理指针到 %r15，防止被破坏
 
     /* ==================================================================== */
-    /* 阶段 0：接管宇宙 - 立即加载专属 GDT 并清洗所有段寄存器                    */
-    /* 这是系统极其关键的“净身”操作，彻底抹除 UEFI/Bootloader 留下的隐患。        */
+    /* 阶段 0：接管宇宙 - 加载物理 GDT 并刷新环境                             */
     /* ==================================================================== */
+    leaq     tmp_gdt(%rip), %rax        // 获取 GDT 物理基址
+    pushq    %rax                       // 压入 8 字节的 Base 地址到栈上
 
-    // 1. 动态修补 GDT 描述符基址并加载
-    leaq     tmp_gdt(%rip), %rax
-    leaq     tmp_gdt_ptr(%rip), %rcx
-    movq     %rax, 2(%rcx)              // 消除 PIE(位置无关代码)带来的偏移，填入真实物理地址
-    lgdt     (%rcx)                     // 第一时间接管全局描述符表！
+    // GDT Size = 48 字节, Limit = 47 (0x2F)
+    pushw    $0x2F                      // 压入 2 字节的 Limit 到栈上
 
-    // 2. 清洗数据段寄存器 (使用 0x18 即我们的 64位读写数据段)
+    movq     %rsp, %rcx                 // %rcx 精准指向栈顶的 10 字节 GDTR 结构！
+    lgdt     (%rcx)                     // 安全加载 GDT
+
+    addq     $10, %rsp                  // 恢复栈顶指针，清理我们刚才借用的 10 字节
+
+    // 清洗数据段寄存器
     movw     $0x18, %ax
     movw     %ax, %ds
     movw     %ax, %es
     movw     %ax, %ss
-    xorw     %ax, %ax                   // FS 和 GS 通常清零，留给后期 TLS/Per-CPU 机制
+    xorw     %ax, %ax
     movw     %ax, %fs
     movw     %ax, %gs
 
-    // 3. 洗礼代码段：远跳转强制刷新 CS 寄存器为我们的 64 位代码段 (0x08)
-    // 64位长模式下无法直接使用 jmp 刷新 CS，必须用 push + lretq 技巧
+    // 空中翻滚刷新 CS 寄存器
     leaq     .reload_cs(%rip), %rax
-    pushq    $0x08                      // 压入专属 64-bit Code Segment
-    pushq    %rax                       // 压入目标地址 (.reload_cs)
-    lretq                               // 华丽空翻，刷新 CS！
+    pushq    $0x08
+    pushq    %rax
+    lretq
 
 .reload_cs:
-    // 【至此，整个系统 100% 纯净地运行在我们自己的 GDT 体系下！】
+    // 将 BootInfo 物理指针存入全局变量
+    leaq     tmp_boot_info(%rip), %rax
+    movq     %r15, (%rax)
 
-    // 保存 loader(Bootloader/UEFI) 通过 rdi 传递过来的 tmp_boot_info 指针
-    movq     %rdi, tmp_boot_info(%rip)
-
-    movl   $0x1B,%ecx
+    // 启用 x2apic (如果支持)
+    movl     $0x1B, %ecx
     rdmsr
-    orl    $0xC00,%eax
-    wrmsr               //启用x2apic
-
+    orl      $0xC00, %eax
+    wrmsr
 
     /* ==================================================================== */
-    /* 阶段 1：构建基础的 4 级临时页表 (PML4)                                 */
-    /* 无论后续硬件是否支持或切换 5 级分页，这个 4 级页表都是一切映射的基石。       */
+    /* 阶段 1：构建极简复用页表 (运行时动态计算偏移槽位)                       */
     /* ==================================================================== */
 
-    // 1. 初始化 PML4[0] (平坦恒等映射 0x0 - 0x8000000000, 覆盖前 512GB 物理内存)
+    // 提取当前内核加载的物理基址到 R12 (2MB 向下对齐)
+    leaq     _start(%rip), %r12
+    movq     $0xFFFFFFFFFFE00000, %rbx
+    andq     %rbx, %r12
+
+    // --------------------------------------------------------------------
+    // 定律 2 + 1 融合：构建全域巨无霸 PDPT (覆盖 0~512GB)
+    // --------------------------------------------------------------------
+    leaq     tmp_pdpt_direct(%rip), %rdi
+    movq     $0x183, %rax               // 物理 0 开始，1GB大页 (PRESENT | RW | HUGE)
+    movl     $512, %ecx                 // 512 个 1GB 页 = 512GB
+.fill_direct_pdpt:
+    stosq
+    addq     $0x40000000, %rax          // 物理地址步长 1GB
+    loop     .fill_direct_pdpt
+
+    // 🌟 复用魔法开始：双挂载 (动态索引计算) 🌟
     leaq     tmp_pml4t(%rip), %rdi
-    leaq     tmp_pdpt0(%rip), %rax
-    orq      $0x3, %rax                 // 0x3 = PAGE_PRESENT | PAGE_RW (存在且可读写)
-    movq     %rax, (%rdi)               // 填入 PML4 第 0 项
+    leaq     tmp_pdpt_direct(%rip), %rbx
+    orq      $0x3, %rbx
 
-    // 2. 初始化 PML4[256] (物理内存直接映射区 DIRECT_MAP_VA_START)
-    movq     $DIRECT_MAP_VA_START, %rsi
-    shrq     $39, %rsi                  // 提取 PML4 索引偏移 (第 39~47 位)
-    andq     $0x1ff, %rsi
-    shlq     $3, %rsi                   // 乘以 8 字节得到数组偏移量
-    movq     %rax, (%rdi, %rsi)         // 同样指向 tmp_pdpt0
+    // 挂载 A：恒等映射 (动态计算 PARITY_MAP_VA_START 在 PML4 的索引)
+    movabs   $PARITY_MAP_VA_START, %rax
+    shrq     $39, %rax
+    andq     $0x1FF, %rax
+    movq     %rbx, (%rdi, %rax, 8)      // 动态槽位：通常是 0
 
-    // 3. 初始化 PML4[511] (内核代码执行区 KERNEL_VA_START, 即 0xFFFFFFFF80...)
-    leaq     tmp_pdpt1(%rip), %rax
-    orq      $0x3, %rax
-    movq     $KERNEL_VA_START, %rsi
-    shrq     $39, %rsi
-    andq     $0x1ff, %rsi
-    shlq     $3, %rsi
-    movq     %rax, (%rdi, %rsi)         // 指向专用的 tmp_pdpt1
+    // 挂载 B：4 级分页直接映射区 (动态计算 DIRECT_MAP_VA_START_4L 在 PML4 的索引)
+    movabs   $DIRECT_MAP_VA_START_4L, %rax
+    shrq     $39, %rax
+    andq     $0x1FF, %rax
+    movq     %rbx, (%rdi, %rax, 8)      // 动态槽位：通常是 256
 
-    // 4. 填充 PDPT0 (映射 512 个 1GB 大页，覆盖 0~512GB 物理内存)
-    leaq     tmp_pdpt0(%rip), %rdi
-    movq     $0x183, %rax               // 0x183 = PRESENT | RW | HUGE_PAGE (开启大页)
-    movq     $512, %rcx                 // 循环 512 次
-.init_tmp_pdptt0:
-    stosq                               // 将 RAX 填入 RDI 指向的内存，并 RDI+=8
-    addq     $0x40000000, %rax          // RAX 累加 1GB 的物理步长
-    loopq    .init_tmp_pdptt0
+    // --------------------------------------------------------------------
+    // 定律 3：构建 KERNEL 高半区专属映射 (动态锚定 KERNEL_VA_START)
+    // --------------------------------------------------------------------
+    leaq     tmp_pml4t(%rip), %rdi
+    leaq     tmp_pdpt_kernel(%rip), %rbx
+    orq      $0x3, %rbx
 
-    // 5. 填充 PDPT1 (专为 KERNEL 区域映射最后 2GB 的虚拟空间)
-    leaq     tmp_pdpt1(%rip), %rdi
-    movq     $KERNEL_VA_START, %rsi
-    shrq     $30, %rsi                  // 提取 PDPT 索引 (第 30~38 位)
-    andq     $0x1ff, %rsi
-    shlq     $3, %rsi
+    // 动态计算 KERNEL_VA_START 在 PML4 的索引
+    movabs   $KERNEL_VA_START, %rax
+    shrq     $39, %rax
+    andq     $0x1FF, %rax
+    movq     %rbx, (%rdi, %rax, 8)      // 动态槽位：通常是 511
 
-    // 提取当前内核代码实际加载的物理基址，并按照 1GB 对齐挂载
-    leaq     _start(%rip), %rax
-    movq     $0xFFFFFFFFC0000000, %rbx
-    andq     %rbx, %rax                 // 向下对齐到 1GB 物理边界
-    orq      $0x183, %rax               // 挂载 1GB 大页标志
-    movq     %rax, (%rdi, %rsi)         // 填入 PDPT1[510]
-    addq     $0x40000000, %rax          // 增加 1GB 物理地址
-    movq     %rax, 8(%rdi, %rsi)        // 填入 PDPT1[511]
+    leaq     tmp_pdpt_kernel(%rip), %rdi
+    leaq     tmp_pd_kernel(%rip), %rbx
+    orq      $0x3, %rbx
+
+    // 动态计算 KERNEL_VA_START 在 PDPT 的索引
+    movabs   $KERNEL_VA_START, %rax
+    shrq     $30, %rax
+    andq     $0x1FF, %rax
+    movq     %rbx, (%rdi, %rax, 8)      // 动态槽位：通常是 510
+
+    // 精确填充内核专属 PD (2MB 大页)，起点强制从 R12(内核物理基址) 开始！
+    leaq     tmp_pd_kernel(%rip), %rdi
+    movq     %r12, %rax                 // 将 KASLR 随机基址融入虚拟映射
+    orq      $0x83, %rax                // PRESENT | RW | HUGE
+    movl     $512, %ecx                 // 映射 1GB 虚拟空间
+.fill_kernel_pd:
+    stosq
+    addq     $0x200000, %rax            // 物理地址步长 2MB
+    loop     .fill_kernel_pd
 
 
     /* ==================================================================== */
-    /* 阶段 2：LA57 (5级分页) 智能探测与路由                                  */
+    /* 阶段 2：LA57 (5级分页) 智能探测与无缝路由                              */
     /* ==================================================================== */
-
-    // 【探测 1】：检查当前 Bootloader (UEFI) 是否已经帮我们开启了 5 级分页？
     movq     %cr4, %rax
-    btq      $12, %rax                  // 测试 CR4.LA57 (Bit 12)
-    jc       .already_in_la57           // 如果已开启，直接去挂载 PML5，跳过 32 位蹦床
+    btq      $12, %rax                  // 探测 CR4.LA57 是否被 UEFI 开启
+    jc       .already_in_la57
 
-    // 【探测 2】：UEFI 没开，那物理 CPU 是否支持 5 级分页机制？
     movl     $7, %eax
     xorl     %ecx, %ecx
     cpuid
-    btl      $16, %ecx                  // 测试 CPUID (EAX=7, ECX=0) 的 ECX 第 16 位
-    jc       .need_trampoline_la57      // 硬件支持！走蹦床代码强行开启 5 级分页
+    btl      $16, %ecx                  // 探测 CPU 是否支持 LA57 指令集
+    jc       .need_trampoline_la57
 
-
-    /* ==================================================================== */
-    /* 阶段 3：分页机制分支处理逻辑                                          */
-    /* ==================================================================== */
-
-    // 【后备分支】：硬件太老，不支持 LA57，老老实实用 4 级分页
-    movb     $4, tmp_paging_level(%rip) // 记录内核状态为 4 级
+    // 【降级分支】仅支持 4 级分页
+    leaq     tmp_paging_level(%rip), %rax
+    movb     $4, (%rax)
     leaq     tmp_pml4t(%rip), %rax
-    movq     %rax, %cr3                 // 真正启用刚才写好的 4 级页表
-    jmp      .prepare_c_env             // 去准备 C 环境
+    movq     %rax, %cr3                 // 加载 4 级根页表
+    jmp      .ready_to_jump
 
 .already_in_la57:
-    movb     $5, tmp_paging_level(%rip) // 记录内核状态为 5 级
-    call     .build_pml5_bridge         // 构造神级 PML5 桥接页表
+    leaq     tmp_paging_level(%rip), %rax
+    movb     $5, (%rax)
+    call     .build_pml5_bridge
     leaq     tmp_pml5t(%rip), %rax
-    movq     %rax, %cr3                 // 直接刷新 CR3 即可，无需降级 32 位！
-    jmp      .prepare_c_env             // 去准备 C 环境
+    movq     %rax, %cr3                 // 刷新为 5 级桥接页表
+    jmp      .ready_to_jump
 
 .need_trampoline_la57:
-    movb     $5, tmp_paging_level(%rip)
-    call     .build_pml5_bridge         // 构造神级 PML5 桥接页表
+    leaq     tmp_paging_level(%rip), %rax
+    movb     $5, (%rax)
+    call     .build_pml5_bridge
 
-    // 准备跳转蹦床所需的平坦物理地址 (因为开启分页瞬间 RIP 必须合法)
-    leaq     tmp_pml5t(%rip), %rdi       // RDI = 新的 PML5 物理基址 (传给 tramp32 用)
-    leaq     trampoline_64(%rip), %rsi   // RSI = 蹦床完跳回 64 位的物理地址
-    leaq     trampoline_32(%rip), %rax   // RAX = 32 位兼容模式蹦床入口
-
-    // 惊险跳跃：远跳转进入 32 位兼容模式
-    // 感谢阶段 0，这里的 0x10 指向的绝对是我们自己的 tmp_gdt 里的 32 位段！
-    pushq    $0x10                       // 压入 32 位 Code Segment 选择子
-    pushq    %rax                        // 压入 32 位入口 EIP
+    // 准备 32 位降级跳板 (因为切换 CR4.LA57 必须暂时关闭分页)
+    leaq     tmp_pml5t(%rip), %rdi
+    leaq     trampoline_64(%rip), %rsi
+    leaq     trampoline_32(%rip), %rax
+    pushq    $0x10
+    pushq    %rax
     lretq
 
 
-    /* ==================================================================== */
-    /* 辅助子例程：构造神级折叠 PML5 桥接页表                                */
-    /* 此机制能让 5 级目录完美兼容并重用所有的 4 级目录结构，极大地节省了代码。  */
-    /* ==================================================================== */
+/* ==================================================================== */
+/* 子例程：构造 LA57 路由桥接，完美重用 4 级页表树 (纯动态索引计算)         */
+/* ==================================================================== */
 .build_pml5_bridge:
     leaq     tmp_pml5t(%rip), %rdi
-    leaq     tmp_pml4t(%rip), %rax
-    orq      $0x3, %rax                 // PML5 指向 PML4 (PRESENT | RW)
+    leaq     tmp_pml4t(%rip), %rbx
+    orq      $0x3, %rbx
 
-    // 1. PML5[0] 指向 PML4 (维持平坦映射)
-    movq     %rax, (%rdi)
+    // 路由 1：1:1 恒等映射区 (动态计算 PARITY_MAP_VA_START 在 PML5 的索引)
+    movabs   $PARITY_MAP_VA_START, %rax
+    shrq     $48, %rax
+    andq     $0x1FF, %rax
+    movq     %rbx, (%rdi, %rax, 8)      // 动态槽位：通常是 0
 
-    // 2. PML5[256] 指向 PML4 (适配 LA57 的 DIRECT_MAP_VA_START 映射区)
-    movq     %rax, 2048(%rdi)
+    // 路由 2：5级直接映射区 (动态计算 DIRECT_MAP_VA_START_5L 在 PML5 的索引)
+    // 寻址链：PML5[动态槽位] -> PML4 -> PML4[0] -> 巨无霸 PDPT -> 完美映射物理内存！
+    movabs   $DIRECT_MAP_VA_START_5L, %rax
+    shrq     $48, %rax
+    andq     $0x1FF, %rax
+    movq     %rbx, (%rdi, %rax, 8)      // 动态槽位：通常是 256
 
-    // 3. PML5[511] 指向 PML4 (适配 KERNEL_VA_START 静态高半核映射区)
-    movq     %rax, 4088(%rdi)
+    // 路由 3：内核高半区 (动态计算 KERNEL_VA_START 在 PML5 的索引)
+    movabs   $KERNEL_VA_START, %rax
+    shrq     $48, %rax
+    andq     $0x1FF, %rax
+    movq     %rbx, (%rdi, %rax, 8)      // 动态槽位：通常是 511
+
     ret
 
 
 /* ==================================================================== */
-/* 阶段 4：极其惊险的 32 位空中换擎蹦床区 (Trampoline)                       */
+/* 阶段 3：32 位蹦床 (开启 5 级硬件开关)                                  */
 /* ==================================================================== */
 .code32
 trampoline_32:
-    // 1. 强制加载 32 位兼容模式数据段 (0x18 兼容 32 位/64 位数据)
     movw     $0x18, %ax
     movw     %ax, %ds
     movw     %ax, %es
     movw     %ax, %ss
 
-    // 2. 拔掉网线：关闭分页 (CR0.PG = 0) - 进入纯物理寻址！
     movl     %cr0, %eax
-    btrl     $31, %eax
+    btrl     $31, %eax                  // 拔掉网线：关闭分页
     movl     %eax, %cr0
 
-    // 3. 更换核芯：拨动 5 级分页硬件开关 (CR4.LA57 = 1)
     movl     %cr4, %eax
-    btsl     $12, %eax
+    btsl     $12, %eax                  // 拨动开关：开启 CR4.LA57
     movl     %eax, %cr4
 
-    // 4. 将刚才构造的 PML5 物理基址强行注入 CR3 (地址由 %edi 传入)
-    movl     %edi, %cr3
+    movl     %edi, %cr3                 // 加载 tmp_pml5t 物理基址
 
-    // 5. 插上网线：重新开启分页 (CR0.PG = 1) - 此时宇宙已扩张到 64 PB！
     movl     %cr0, %eax
-    btsl     $31, %eax
+    btsl     $31, %eax                  // 插上网线：重新开启分页
     movl     %eax, %cr0
 
-    // 6. 浴火重生：远跳转，回归全新的 64 位宽广模式 (CS 恢复为 0x08)
     pushl    $0x08
-    pushl    %esi                       // 之前存放在 RSI 里的 64 位返回地址
+    pushl    %esi
     lret
 
 .code64
 trampoline_64:
-    // 恢复 64 位的数据段，准备迎接最后的跨越
     movw     $0x18, %ax
     movw     %ax, %ds
     movw     %ax, %es
@@ -219,153 +320,103 @@ trampoline_64:
 
 
 /* ==================================================================== */
-/* 阶段 5：环境就绪，打补丁并飞跃至高半核 C 语言内核主入口                       */
+/* 阶段 4：极速跃迁！计算绝对高半区目标地址并跳转 (动态锚定)                  */
 /* ==================================================================== */
-.prepare_c_env:
-
-    // 1. 更新 GDT 描述符基址并加载
-    leaq     tmp_gdt(%rip), %rax
+.ready_to_jump:
+    // 计算 .higher_half 在高半区虚拟空间的绝对地址：
+    // VTarget = (.higher_half物理 - 内核物理基址) + 动态目标虚拟基址
+    leaq     .higher_half(%rip), %rax   // 当前物理指令地址
+    subq     %r12, %rax                 // 减去内核 2MB 对齐物理基址 (算出偏移量)
     movabs   $KERNEL_VA_START, %rbx
-    orq      %rbx, %rax
-    leaq     tmp_gdt_ptr(%rip), %rcx
-    movq     %rax, 2(%rcx)              // 消除 PIE(位置无关代码)带来的偏移，填入gdt虚拟地址
-    lgdt     (%rcx)                     // 第一时间接管全局描述符表！
+    addq     %rbx, %rax                 // 加上极高位虚拟基址
 
-    /*
-     * 动态修补临时 64 位 TSS 描述符并加载。
-     * 此时 GDTR 稳稳指向 tmp_gdt，TSS 描述符位于偏移 0x20 处 (第 5 个槽位)
-     */
-     
-    // 1. 获取 tmp_tss 最终的高半核虚拟首地址到 %rax
-    leaq     tmp_tss(%rip), %rax
-    movabs   $KERNEL_VA_START, %rbx
-    orq      %rbx, %rax
-
-    // 2. 获取 tmp_gdt 的当前内存地址到 %rdi
-    leaq     tmp_gdt(%rip), %rdi
-
-    // 3. 开始切片填坑 (由于链接器不支持复杂运算，纯手工在汇编里塞入)
-    movw     %ax, 0x22(%rdi)            // Base [15:0] 填入
-
-    movq     %rax, %rcx
-    shrq     $16, %rcx
-    movb     %cl, 0x24(%rdi)            // Base [23:16] 填入
-
-    movq     %rax, %rcx
-    shrq     $24, %rcx
-    movb     %cl, 0x27(%rdi)            // Base [31:24] 填入
-
-    movq     %rax, %rcx
-    shrq     $32, %rcx
-    movl     %ecx, 0x28(%rdi)           // Base [63:32] 填入
-
-    // 4. 加载 TSS，一旦 C 代码里发生异常，CPU 将顺着这个 TSS 找到安全栈！
-    movw     $0x20, %cx
-    ltr      %cx
-
-    /* ======================= 终极跃迁准备 ============================== */
-
-    // 计算并设置当前 BSP 核心的高半核虚拟栈顶指针
-    // 这里完美利用了汇编符号链接时的绝对地址特性
-    leaq     tmp_bsp_stack_top(%rip), %rsp
-    movabs   $KERNEL_VA_START, %rax
-    orq      %rax, %rsp
-
-    // 计算内核 C 语言入口 (kernel_init) 的高半核虚拟地址
-    leaq     kernel_init(%rip), %rax
-    movabs   $KERNEL_VA_START, %rbx
-    orq      %rbx, %rax
-
-    // 发动绝对空间跃迁：脱离低内存泥潭，永远跳入 0xFFFFFFFF80000000 空间！
+    // 发动空间跃迁！
     jmp      *%rax
 
 
-/********************** 内核初始化数据静态分配区 **************************/
-.section    .init_data, "wa"
+/* ==================================================================== */
+/* 阶段 5：过河拆桥！重建高级 C 语言环境                                  */
+/* ==================================================================== */
+.higher_half:
+    // ！！！成功存活：现在的 %rip 已经是 0xFFFFFFFF80xxxxxx ！！！
 
-    // 页表必须严格 4KB 对齐
-    .balign 4096
+    // --------------------------------------------------------------------
+    // 定律 1 执行：拆除 1:1 恒等映射，防御空指针 (动态计算目标索引并拆除)
+    // --------------------------------------------------------------------
+    cmpb     $5, tmp_paging_level(%rip)
+    je       .clear_pml5
 
-    .fill 0x1000, 1, 0
-    tmp_df_stack_top:       // 给 #DF 用 (IST1)
+    // 4 级分页：斩断 tmp_pml4t 上的 PARITY_MAP_VA_START 映射
+    movabs   $PARITY_MAP_VA_START, %rax
+    shrq     $39, %rax
+    andq     $0x1FF, %rax
+    leaq     tmp_pml4t(%rip), %rdi      // %rip 已是虚拟地址，取出的指针合法！
+    movq     $0, (%rdi, %rax, 8)
+    jmp      .flush_tlb
 
-    .fill 0x1000, 1, 0
-    tmp_nmi_stack_top:      // 给 #NMI 用 (IST2)
+.clear_pml5:
+    // 5 级分页：斩断 tmp_pml5t 上的 PARITY_MAP_VA_START 映射
+    movabs   $PARITY_MAP_VA_START, %rax
+    shrq     $48, %rax
+    andq     $0x1FF, %rax
+    leaq     tmp_pml5t(%rip), %rdi
+    movq     $0, (%rdi, %rax, 8)
 
-    .fill 0x1000, 1, 0
-    tmp_mc_stack_top:       // 给 #MC 用 (IST3)
-
-    .fill 0x1000, 1, 0
-    tmp_db_stack_top:       // 给 #DB 用 (IST4)
-
-    .fill 0x1000, 1, 0      // tss rsp0栈
-    tmp_rsp0_stack_top:
-
-    // 为 BSP 核心预留的 16KB 临时安全堆栈
-    .fill 0x4000, 1, 0
-    tmp_bsp_stack_top:
-
-    .globl  tmp_pml5t
-    tmp_pml5t:  .fill   0x1000, 1, 0    // 预留 PML5 物理页
-
-    .globl  tmp_pml4t
-    tmp_pml4t:  .fill   0x1000, 1, 0    // 预留 PML4 物理页
-
-    tmp_pdpt0:  .fill   0x1000, 1, 0    // 用于平坦映射和直接映射区
-    tmp_pdpt1:  .fill   0x1000, 1, 0    // 专用于 KERNEL 代码映射
-
-    /*
-     * 临时 TSS (Task State Segment) 内存区 (104 字节)
-     */
-    .balign 64                          // Cache Line 对齐，防止 SMP 伪共享
-tmp_tss:
-    .long 0                             // 0x00: reserved0
-    .quad tmp_rsp0_stack_top            // 0x04: rsp0 (Ring 0 内核栈)
-    .quad 0                             // 0x0C: rsp1 (废弃)
-    .quad 0                             // 0x14: rsp2 (废弃)
-    .quad 0                             // 0x1C: reserved1
-    .quad tmp_df_stack_top              // 0x24: ist1
-    .quad tmp_nmi_stack_top             // 0x2C: ist2
-    .quad tmp_mc_stack_top              // 0x34: ist3
-    .quad tmp_db_stack_top              // 0x3C: ist4
-    .quad 0                             // 0x44: ist5
-    .quad 0                             // 0x4C: ist6
-    .quad 0                             // 0x54: ist7
-    .quad 0                             // 0x5C: reserved2
-    .word 0                             // 0x64: reserved3
-    .word 0x0068                        // 0x66: iomap_base (104, 彻底拦截 Ring3 的 I/O 操作)
+.flush_tlb:
+    // 强刷 TLB，旧世界的 0 地址桥梁彻底粉碎
+    movq     %cr3, %rax
+    movq     %rax, %cr3
 
 
-    // 蹦床跳跃专用的临时全局描述符表 (GDT)
-    .balign 16
-tmp_gdt:
-    .quad 0x0000000000000000            // 0x00: Null / Reserved
-    .quad 0x00AF9A000000FFFF            // 0x08: 64-bit Kernel Code (Ring 0)
-    .quad 0x00CF9A000000FFFF            // 0x10: 32-bit Compat Code (Ring 0, 蹦床专用)
-    .quad 0x00CF92000000FFFF            // 0x18: 32/64-bit Data (Ring 0, 兼容所有)
+    // --------------------------------------------------------------------
+    // 动态重修 GDT 与 TSS (此时全是在高半核虚拟地址空间操作)
+    // --------------------------------------------------------------------
+    leaq     tmp_gdt(%rip), %rax
+    //leaq     tmp_gdt_ptr(%rip), %rcx
+    movq     %rax, 2(%rcx)
+    lgdt     (%rcx)
 
-    /*
-     * 0x20: 临时 64 位 TSS 描述符 (占 16 字节 = 2 个槽位)
-     * 静态声明时 Base 地址全填 0，由顶部的 .prepare_c_env 运行时动态精雕细琢！
-     */
-    .word 0x0067                        // Limit 15:0 (104 - 1 = 0x67)
-    .word 0x0000                        // Base  15:0  [运行时补丁区]
-    .byte 0x00                          // Base  23:16 [运行时补丁区]
-    .byte 0x89                          // Type = 0x9 (Available 64-bit TSS), DPL=0, P=1
-    .byte 0x00                          // Limit 19:16 = 0, Flags 全部为 0
-    .byte 0x00                          // Base  31:24 [运行时补丁区]
-    .long 0x00000000                    // Base  63:32 [运行时补丁区]
-    .long 0x00000000                    // Reserved (TSS 高8字节的后32位强制保留为0)
+    leaq     tmp_tss(%rip), %rax
+    leaq     tmp_gdt(%rip), %rdi
+    movw     %ax, 0x22(%rdi)
+    movq     %rax, %rcx
+    shrq     $16, %rcx
+    movb     %cl, 0x24(%rdi)
+    movq     %rax, %rcx
+    shrq     $24, %rcx
+    movb     %cl, 0x27(%rdi)
+    movq     %rax, %rcx
+    shrq     $32, %rcx
+    movl     %ecx, 0x28(%rdi)
 
-tmp_gdt_ptr:
-    .word tmp_gdt_ptr - tmp_gdt - 1     // 汇编器自动计算出包含 TSS 后的真实 GDT Size！
-    .quad tmp_gdt                       // 运行时会被动态修补为真实物理基址
+    movw     $0x20, %cx
+    ltr      %cx
 
 
-    .globl tmp_boot_info
-    tmp_boot_info:          .quad   0   // 存放解析好的 Bootloader 信息的指针
+    // --------------------------------------------------------------------
+    // 零化 BSS 数据段 (安全规范)
+    // --------------------------------------------------------------------
+    movabs   $_start_bss, %rdi
+    movabs   $_end_bss, %rcx
+    subq     %rdi, %rcx
+    shrq     $3, %rcx                   // 按 8 字节(qword)清零
+    xorl     %eax, %eax
+    rep stosq
 
-    // 全局系统状态标记
-    .globl tmp_paging_level
-    tmp_paging_level: .byte   0         // 向 C 语言汇报系统是否成功启用了 5 级分页 (LA57)
 
+    // --------------------------------------------------------------------
+    // 切换至绝对安全的高半核栈，并挂载参数进入 C 语言
+    // --------------------------------------------------------------------
+    leaq     tmp_bsp_stack_top(%rip), %rsp
+
+    // R15 一直保存着 BootInfo 的物理基址，现在传给 RDI 作为 kernel_init 第一个参数
+    movq     %r15, %rdi
+
+    // 极速呼叫 C 语言大门
+    leaq     kernel_init(%rip), %rax
+    call     *%rax
+
+    cli
+.hlt_loop:
+    hlt
+    jmp .hlt_loop
