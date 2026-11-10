@@ -105,13 +105,8 @@ _start:
     /* ==================================================================== */
     leaq     tmp_gdt(%rip), %rax        // 获取 GDT 物理基址
     pushq    %rax                       // 压入 8 字节的 Base 地址到栈上
-
-    // GDT Size = 48 字节, Limit = 47 (0x2F)
-    pushw    $0x2F                      // 压入 2 字节的 Limit 到栈上
-
-    movq     %rsp, %rcx                 // %rcx 精准指向栈顶的 10 字节 GDTR 结构！
-    lgdt     (%rcx)                     // 安全加载 GDT
-
+    pushw    $0x2F                      // 压入 2 字节的 Limit 到栈上 GDT Size = 48 字节, Limit = 47 (0x2F)
+    lgdt     (%rsp)                     // 安全加载 GDT精准指向栈顶的 10 字节 GDTR 结构！
     addq     $10, %rsp                  // 恢复栈顶指针，清理我们刚才借用的 10 字节
 
     // 清洗数据段寄存器
@@ -371,10 +366,11 @@ trampoline_64:
     // --------------------------------------------------------------------
     // 动态重修 GDT 与 TSS (此时全是在高半核虚拟地址空间操作)
     // --------------------------------------------------------------------
-    leaq     tmp_gdt(%rip), %rax
-    //leaq     tmp_gdt_ptr(%rip), %rcx
-    movq     %rax, 2(%rcx)
-    lgdt     (%rcx)
+    leaq     tmp_gdt(%rip), %rax        // 获取 GDT 物理基址
+    pushq    %rax                       // 压入 8 字节的 Base 地址到栈上
+    pushw    $0x2F                      // 压入 2 字节的 Limit 到栈上 GDT Size = 48 字节, Limit = 47 (0x2F)
+    lgdt     (%rsp)                     // 安全加载 GDT精准指向栈顶的 10 字节 GDTR 结构！
+    addq     $10, %rsp                  // 恢复栈顶指针，清理我们刚才借用的 10 字节
 
     leaq     tmp_tss(%rip), %rax
     leaq     tmp_gdt(%rip), %rdi
