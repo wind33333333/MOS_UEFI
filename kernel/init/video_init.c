@@ -3,8 +3,11 @@
 #include "slub.h"
 #include "vmalloc.h"
 #include "uefi_init.h"
+#include "vmm_init.h"
 
 extern position_t Pos;
+
+__attribute__((aligned(4096))) uint64 tmp_page_buffer[1024];
 
 void output_init(void) {
     Pos.XResolution = tmp_boot_info->horizontal_resolution;
@@ -14,7 +17,7 @@ void output_init(void) {
     Pos.YPosition = 0;
     Pos.XCharSize = 8;
     Pos.YCharSize = 16;
-    Pos.FB_addr = (uint32*)tmp_boot_info->frame_buffer_base;
+    Pos.FB_addr = tmp_directly_map(tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size,tmp_page_buffer);
     Pos.FB_length = tmp_boot_info->frame_buffer_size;
     Pos.lock = 0;
 

@@ -16,6 +16,7 @@
 #include "../x64/apic_time.h"
 #include "../include/bus.h"
 #include "intr_init.h"
+#include "slub.h"
 #include "../mm/alloc_percpu.h"
 #include "../include/ioapic.h"
 #include "../drivers/hpet/hpet.h"
@@ -114,10 +115,11 @@ task_t *user_task;
 
 void kernel_init(void) {
     asm_mem_set(_start_bss,0x0,_end_bss-_start_bss);    //初始化bss段
+    vm_layout_init();                                           //虚拟内存空间初始化
+    tmp_boot_info = pa_to_va((uint64)tmp_boot_info);            //将boot_info物理地址转换成虚拟地址
     output_init();                                              //初始化输出控制台
     idt_init();                                                 //中断描述符表初始化
     boot_exception_init();                                       //0-31号临时异常注册成功
-    vm_layout_init();                                           //虚拟内存空间初始化
     memory_init();                                              //初始化启动内存分配器
     cpu_topo_init();                                            //cpu拓扑
     numa_node_init();                                           //numa节点初始化

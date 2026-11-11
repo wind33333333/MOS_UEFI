@@ -1,5 +1,7 @@
 #include "vmm_init.h"
 #include "printk.h"
+#include "slub.h"
+#include "uefi_init.h"
 
 // UEFI 运行时服务专属虚拟地址空间 (2GB 预留)
 #define UEFI_RTS_VA_START   0xFFFFFFFF00000000ULL
@@ -89,4 +91,84 @@ void vm_layout_init(void) {
     PR_INFO("UEFI RTS Start Addr:%#lx  End Addr:%#lx \n",vm_layout.efi_rts_start,vm_layout.efi_rts_end);
     PR_INFO("Kernel Start Addr:%#lx  End Addr:%#lx \n",vm_layout.kernel_start,vm_layout.kernel_end);
     PR_INFO("Modules Start Addr:%#lx  End Addr:%#lx \n",vm_layout.module_start,vm_layout.module_end);
+
+}
+
+
+// 将高半区页表指针转换为纯物理地址的宏
+#define EARLY_VA_TO_PA(va) ((uint64)(va) - vm_layout.kernel_start + tmp_boot_info->KernelBase)
+/*
+ * 内核启动初期临时页表映射 (状态驱动版)
+ * pa: 物理地址
+ * size: 映射长度
+ * page_table: 调用方提供的一块预分配内存，用于按需充当新的 PDPT/PML4 (大小由层级深度决定)
+ */
+void* tmp_directly_map(uint64 pa, uint64 size, uint64* page_table_buffer) {
+    // 1GB 边界对齐：向下对齐起点，向上对齐终点
+    uint64 start_pa = PAGE_1G_ALIGN_DOWN(pa);
+    uint64 aligned_end = PAGE_1G_ALIGN(pa + size);
+    
+    // 页表分配游标
+    uint64* alloc_ptr = page_table_buffer;
+
+    // 遍历所需覆盖的每一个 1GB 物理内存块
+    for (uint64 curr_pa = start_pa; curr_pa < aligned_end; curr_pa += (1ULL << 30)) {
+        
+        uint64 va = (uint64)pa_to_va(curr_pa);
+        uint64* current_pml4 = tmp_pml4t; 
+        
+        // -----------------------------------------------------------
+        // 阶段 1：5级分页专属路由 (按需创建 PML4 表)
+        // -----------------------------------------------------------
+        if (tmp_paging_level == 5) {
+            uint64 pml5_idx = (va >> 48) & 0x1FF;
+            
+            // 状态检测：PML5 槽位是否为空？
+            if (!(tmp_pml5t[pml5_idx] & 1)) { 
+                for (int i = 0; i < 512; i++) alloc_ptr[i] = 0; // 清零新页表
+                tmp_pml5t[pml5_idx] = EARLY_VA_TO_PA(alloc_ptr) | 0x3; // 挂载 PML4 (PRESENT | RW)
+                alloc_ptr += 512;
+            }
+            
+            // 解析出下级 PML4 的虚拟地址 (必须走直接映射区访问)
+            uint64 pml4_pa = tmp_pml5t[pml5_idx] & ~0xFFFULL;
+            current_pml4 = pa_to_va(pml4_pa);
+        }
+        
+        // -----------------------------------------------------------
+        // 阶段 2：4级/5级通用路由 (按需创建 PDPT 表)
+        // -----------------------------------------------------------
+        uint64 pml4_idx = (va >> 39) & 0x1FF;
+        
+        // 状态检测：PML4 槽位是否为空？
+        if (!(current_pml4[pml4_idx] & 1)) {
+            for (int i = 0; i < 512; i++) alloc_ptr[i] = 0; // 清零新页表
+            current_pml4[pml4_idx] = EARLY_VA_TO_PA(alloc_ptr) | 0x3; // 挂载 PDPT (PRESENT | RW)
+            alloc_ptr += 512;
+        }
+        
+        // 解析出下级 PDPT 的虚拟地址
+        uint64 pdpt_pa = current_pml4[pml4_idx] & ~0xFFFULL;
+        uint64* current_pdpt = pa_to_va(pdpt_pa);
+        
+        // -----------------------------------------------------------
+        // 阶段 3：终极状态检测与 1GB 大页映射
+        // -----------------------------------------------------------
+        uint64 pdpt_idx = (va >> 30) & 0x1FF;
+        
+        // 🌟 核心精简逻辑：检测 PDPT 槽位的 PRESENT 位！
+        // 如果它为 1，说明 head.S 的直接映射区或其他逻辑已经映射过这 1GB 空间，直接跳过！
+        if (current_pdpt[pdpt_idx] & 1) {
+            continue; 
+        }
+        
+        // 执行 1GB 物理页映射 (PRESENT=1 | RW=2 | HUGE=0x80) -> 0x83
+        current_pdpt[pdpt_idx] = curr_pa | 0x83; 
+    }
+    
+    // 强刷 TLB，确保新挂载的高位映射立刻生效
+    asm volatile("mov %%cr3, %%rax; mov %%rax, %%cr3" ::: "rax", "memory");
+    
+    // 返回计算好的精确虚拟地址（原物理地址直接加上基址）
+    return pa_to_va(pa);
 }
