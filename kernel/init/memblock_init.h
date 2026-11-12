@@ -25,6 +25,7 @@ typedef struct {
 typedef struct {
     memblock_type_t memory;         // 【资产簿】系统所有物理存在的可用 RAM
     memblock_type_t reserved;       // 【债务簿】已经被使用或保留的内存
+    memblock_type_t phys_map;       // 🌟【全景基石】仅用于建立页表，记录物理绝对连续性
 } memblock_t;
 
 
