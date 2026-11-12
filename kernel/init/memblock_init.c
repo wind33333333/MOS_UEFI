@@ -1,192 +1,472 @@
-#include "kpt_init.h"
-#include "slub.h"
 #include "memblock_init.h"
-#include "printk.h"
+#include "../x64/cpu.h"
 #include "../include/vmm.h"
-#include "pmm.h"
-#include "../mm/tlb.h"
-#include "video_init.h"
-#include "../x64/msr.h"
+#include "../include/printk.h"
+#include "../include/errno.h"
+#include "slub.h"
 
-vm_space_t kernel_space;
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-// =========================================================================
-// 核心映射器：支持巨页 / 大页自动对齐与回落映射
-// =========================================================================
-static void __map_large_pages(uint64 va_start, uint64 pa_start, uint64 size) {
-    uint64 va_curr = va_start;
-    uint64 pa_curr = pa_start;
-    uint64 va_end  = va_start + size;
-
-    while (va_curr < va_end) {
-        uint64 remaining = va_end - va_curr;
-        uint64 step_size;
-        uint64 map_flags = PAGE_KERNEL_DATA_RW;
-
-        // 智能嗅探：VA 和 PA 必须同时按 1GB 对齐，且剩余空间足够
-        if ((va_curr & PAGE_1G_OFFSET_MASK) == 0 &&
-            (pa_curr & PAGE_1G_OFFSET_MASK) == 0 &&
-            remaining >= PAGE_1G_SIZE) {
-
-            step_size = PAGE_1G_SIZE;
-            map_flags |= SW_FLAG_MAX_1G;
-        }
-        // 退而求其次：2MB 大页对齐
-        else if ((va_curr & PAGE_2M_OFFSET_MASK) == 0 &&
-                 (pa_curr & PAGE_2M_OFFSET_MASK) == 0 &&
-                 remaining >= PAGE_2M_SIZE) {
-
-            step_size = PAGE_2M_SIZE;
-            map_flags |= SW_FLAG_MAX_2M;
-        }
-        // 碎片页：4KB 映射
-        else {
-            step_size = PAGE_4K_SIZE;
-        }
-
-        vm_map_range(&kernel_space, va_curr, pa_curr, step_size, map_flags);
-
-        va_curr += step_size;
-        pa_curr += step_size;
-    }
-}
 
 // =========================================================================
-// 阶段一：建立高半区直接映射区 (Direct Map)
+// 全局账本定义
 // =========================================================================
-static void direct_map_init(void) {
-    // 1. 映射所有纯净空闲 RAM
-    for (uint32 i = 0; i < memblock.memory.count; i++) {
-        uint64 p_start = memblock.memory.region[i].base;
-        uint64 size    = memblock.memory.region[i].size;
-        __map_large_pages((uint64)pa_to_va(p_start), p_start, size);
-    }
+memblock_t memblock = {0};
 
-    // 2. 映射受保护的保留区 (剔除绝地隔离的 NVS)
-    for (uint32 i = 0; i < memblock.reserved.count; i++) {
-        uint32 type = memblock.reserved.region[i].type;
-        uint64 p_start = memblock.reserved.region[i].base;
-        uint64 size    = memblock.reserved.region[i].size;
+extern vm_space_t kernel_space;
 
-        // 🚨 剔除：NVS (防踩踏) 和 UEFI Runtime (后期独立映射 RX/RW)
-        if (type != EFI_ACPI_MEMORY_NVS &&
-            type != EFI_RUNTIME_SERVICES_CODE &&
-            type != EFI_RUNTIME_SERVICES_DATA) {
-            __map_large_pages((uint64)pa_to_va(p_start), p_start, size);
-        }
-    }
-}
+extern efi_runtime_memmap_t efi_runtime_memmap;
 
 // =========================================================================
-// 阶段二：建立 struct page 映射区 (Vmemmap) - 🌟 NUMA 感知
+// 内部算法：清理、合并与切割
 // =========================================================================
-static void page_map_init(void) {
-    // 提取通用挂载逻辑，支持 NUMA 亲和性分配
-    auto __mount_vmemmap = [](uint64 p_start, uint64 size, uint8 target_nid) {
-        uint64 p_end = p_start + size;
-        uint64 va_start = (uint64)pa_to_page(p_start);
-        uint64 va_end   = (uint64)pa_to_page(p_end);
 
-        // 向上、向下按 2MB 边界对齐 (因为 struct page 数组体积庞大，强制用 2M 大页最合理)
-        va_start = PAGE_2M_ALIGN_DOWN(va_start);
-        va_end   = PAGE_2M_ALIGN(va_end);
+/**
+ * @brief 清理算法：合并物理地址接壤、Node ID 相同 且 Type 相同的连续区间
+ */
+static void memblock_merge_regions(memblock_type_t *mem_type) {
+    if (mem_type->count < 2) return;
 
-        uint64 va_curr = va_start;
-        while (va_curr < va_end) {
-            // 检查该 2MB 虚拟块是否已经被映射过 (防止两个紧邻的物理块对应的 struct page 落在同一个 2M 大页里被重复分配)
-            if (!vm_is_mapped(&kernel_space, va_curr)) {
-                // 🌟 NUMA 亲和力分配：在物理页所在的 Node 上，分配它的 struct page！
-                uint64 vmemmap_pa = memblock_alloc_node(PAGE_2M_SIZE, PAGE_2M_SIZE, target_nid);
-                if (!vmemmap_pa) {
-                    PR_ERROR("OOM allocating vmemmap for Node %d!\n", target_nid);
-                    while(1);
-                }
+    for (uint32 i = 0; i < mem_type->count - 1; i++) {
+        // 🌟 严格合并法则：三者必须同时满足 (接壤、同 Node、同类型)
+        if (mem_type->region[i].base + mem_type->region[i].size == mem_type->region[i + 1].base &&
+            mem_type->region[i].nid == mem_type->region[i + 1].nid &&
+            mem_type->region[i].type == mem_type->region[i + 1].type) {
 
-                // 映射这个 2MB 的大砖块
-                vm_map_range(&kernel_space, va_curr, vmemmap_pa, PAGE_2M_SIZE, PAGE_KERNEL_DATA_RW | SW_FLAG_MAX_2M);
+            // 吞并下一块
+            mem_type->region[i].size += mem_type->region[i + 1].size;
+
+            // 数组整体左移覆盖
+            for (uint32 j = i + 1; j < mem_type->count - 1; j++) {
+                mem_type->region[j] = mem_type->region[j + 1];
             }
-            va_curr += PAGE_2M_SIZE;
-        }
-    };
 
-    // 1. 给纯净 RAM 挂载 struct page
-    for (uint32 i = 0; i < memblock.memory.count; i++) {
-        __mount_vmemmap(memblock.memory.region[i].base,
-                        memblock.memory.region[i].size,
-                        memblock.memory.region[i].nid);
+            // 🌟 斩断尾巴：清零脏数据，防止游离野指针
+            mem_type->region[mem_type->count - 1].base = 0;
+            mem_type->region[mem_type->count - 1].size = 0;
+            mem_type->region[mem_type->count - 1].nid = 0;
+            mem_type->region[mem_type->count - 1].type = 0;
+
+            mem_type->count--;
+            i--; // 退一步重试：因为新吞并的块可能还能跟后面的接壤
+        }
+    }
+}
+
+/**
+ * @brief 核心辅助：从指定的 memblock 账本中精确移除一段区域 (会引发区间分裂)
+ */
+static void memblock_remove_region(memblock_type_t *mem_type, uint64 base, uint64 size) {
+    for (uint32 i = 0; i < mem_type->count; i++) {
+        uint64 r_base = mem_type->region[i].base;
+        uint64 r_size = mem_type->region[i].size;
+
+        if (base >= r_base && base + size <= r_base + r_size) {
+            if (base == r_base && size == r_size) {
+                // 完全重合，整块抹除，左移覆盖
+                for (uint32 j = i; j < mem_type->count - 1; j++) {
+                    mem_type->region[j] = mem_type->region[j + 1];
+                }
+                mem_type->region[mem_type->count - 1].base = 0;
+                mem_type->region[mem_type->count - 1].size = 0;
+                mem_type->region[mem_type->count - 1].nid = 0;
+                mem_type->region[mem_type->count - 1].type = 0;
+                mem_type->count--;
+            } else if (base == r_base) {
+                // 切头
+                mem_type->region[i].base += size;
+                mem_type->region[i].size -= size;
+            } else if (base + size == r_base + r_size) {
+                // 切尾
+                mem_type->region[i].size -= size;
+            } else {
+                // 掏空中间 (分裂为两块)
+                if (mem_type->count >= MAX_MEMBLOCK_REGIONS) {
+                    color_printk(RED, BLACK, "PANIC: memblock reserved array overflow!\n");
+                    while (1) asm_hlt();
+                }
+                for (uint32 j = mem_type->count; j > i + 1; j--) {
+                    mem_type->region[j] = mem_type->region[j - 1];
+                }
+                // 设置右半部 (必须继承左侧的 Node ID 和 Type)
+                mem_type->region[i + 1].base = base + size;
+                mem_type->region[i + 1].size = r_base + r_size - (base + size);
+                mem_type->region[i + 1].nid = mem_type->region[i].nid;
+                mem_type->region[i + 1].type = mem_type->region[i].type;
+
+                // 修正左半部
+                mem_type->region[i].size = base - r_base;
+                mem_type->count++;
+            }
+            break;
+        }
+    }
+    memblock_merge_regions(mem_type);
+}
+
+// =========================================================================
+// 核心对外接口
+// =========================================================================
+
+/**
+ * @brief 向 memblock 添加内存区域，保持自动合并
+ */
+void memblock_add(memblock_type_t *memblock_type, uint64 pa_start, uint64 size, uint32 type) {
+    if (memblock_type->count == 0) {
+        memblock_type->region[0].base = pa_start;
+        memblock_type->region[0].size = size;
+        memblock_type->region[0].nid = NUMA_NO_NODE;
+        memblock_type->region[0].type = type;
+        memblock_type->count++;
+    } else {
+        uint32 last_idx = memblock_type->count - 1;
+        // 追加合并判定：除了接壤，还要求 nid 和 type 完全一致
+        if (memblock_type->region[last_idx].base + memblock_type->region[last_idx].size == pa_start &&
+            memblock_type->region[last_idx].nid == NUMA_NO_NODE &&
+            memblock_type->region[last_idx].type == type) {
+            memblock_type->region[last_idx].size += size;
+        } else {
+            memblock_type->region[memblock_type->count].base = pa_start;
+            memblock_type->region[memblock_type->count].size = size;
+            memblock_type->region[memblock_type->count].nid = NUMA_NO_NODE;
+            memblock_type->region[memblock_type->count].type = type;
+            memblock_type->count++;
+        }
+    }
+}
+
+/**
+ * @brief 按 NUMA 节点要求分配内存 (从 memory 切割，并带血统记录到 reserved)
+ */
+uint64 memblock_alloc_node(uint64 size, uint64 align, uint8 target_nid) {
+    if (!size) return EINVAL;
+    uint64 align_base, align_size;
+    uint32 index = 0;
+    boolean found = FALSE;
+
+    for (index = 0; index < memblock.memory.count; index++) {
+        if (target_nid != NUMA_NO_NODE && memblock.memory.region[index].nid != target_nid) continue;
+        uint64 base = memblock.memory.region[index].base;
+        align_base = align_up(base, align);
+        align_size = align_base - base + size;
+
+        if (align_size <= memblock.memory.region[index].size) {
+            found = TRUE;
+            break;
+        }
     }
 
-    // 2. 给特定的 reserved 资产挂载 (只有未来会被释放的 Loader 资产才需要)
-    for (uint32 i = 0; i < memblock.reserved.count; i++) {
-        uint32 type = memblock.reserved.region[i].type;
-        // 只有 Loader 资产会在后期归还伙伴系统
-        if (type == EFI_LOADER_CODE || type == EFI_LOADER_DATA ||
-            type == EFI_BOOT_SERVICES_CODE || type == EFI_BOOT_SERVICES_DATA) {
+    // 降级尝试
+    if (!found && target_nid != NUMA_NO_NODE) {
+        PR_WARN("NUMA Node %d memory exhausted! Falling back to any node.\n", target_nid);
+        return memblock_alloc_node(size, align, NUMA_NO_NODE);
+    }
+    if (!found) return ENOMEM;
 
-            __mount_vmemmap(memblock.reserved.region[i].base,
-                            memblock.reserved.region[i].size,
-                            memblock.reserved.region[i].nid);
+    // 🌟 锁定源血统：记录这块内存原本属于哪个节点、什么类型
+    uint8 original_nid = memblock.memory.region[index].nid;
+    uint32 original_type = memblock.memory.region[index].type;
+
+    // ---- 记入债务簿 (reserved) ----
+    uint32 insert_idx = 0;
+    while (insert_idx < memblock.reserved.count && memblock.reserved.region[insert_idx].base < align_base) {
+        insert_idx++;
+    }
+
+    if (memblock.reserved.count >= MAX_MEMBLOCK_REGIONS) {
+        color_printk(RED, BLACK, "PANIC: memblock reserved array overflow!\n");
+        while (1) asm_hlt();
+    }
+
+    for (uint32 j = memblock.reserved.count; j > insert_idx; j--) {
+        memblock.reserved.region[j] = memblock.reserved.region[j - 1];
+    }
+    memblock.reserved.region[insert_idx].base = align_base;
+    memblock.reserved.region[insert_idx].size = size;
+    memblock.reserved.region[insert_idx].nid = original_nid;
+    memblock.reserved.region[insert_idx].type = original_type; // 血统继承
+    memblock.reserved.count++;
+    memblock_merge_regions(&memblock.reserved);
+
+    // ---- 从空闲池 (memory) 中剔除 ----
+    if (align_base == memblock.memory.region[index].base && size == memblock.memory.region[index].size) {
+        for (uint32 j = index; j < memblock.memory.count - 1; j++) {
+            memblock.memory.region[j] = memblock.memory.region[j + 1];
+        }
+        memblock.memory.region[memblock.memory.count - 1].base = 0;
+        memblock.memory.region[memblock.memory.count - 1].size = 0;
+        memblock.memory.region[memblock.memory.count - 1].nid = 0;
+        memblock.memory.region[memblock.memory.count - 1].type = 0;
+        memblock.memory.count--;
+    } else if (align_base == memblock.memory.region[index].base) {
+        memblock.memory.region[index].base += size;
+        memblock.memory.region[index].size -= size;
+    } else if (align_base + size == memblock.memory.region[index].base + memblock.memory.region[index].size) {
+        memblock.memory.region[index].size = align_base - memblock.memory.region[index].base;
+    } else {
+        if (memblock.memory.count >= MAX_MEMBLOCK_REGIONS) {
+            color_printk(RED, BLACK, "PANIC: memblock free array overflow in alloc!\n");
+            while (1) asm_hlt();
+        }
+        for (uint32 j = memblock.memory.count; j > index + 1; j--) {
+            memblock.memory.region[j] = memblock.memory.region[j - 1];
+        }
+        memblock.memory.region[index + 1].base = align_base + size;
+        memblock.memory.region[index + 1].size = memblock.memory.region[index].size - align_size;
+        memblock.memory.region[index + 1].nid = original_nid;
+        memblock.memory.region[index + 1].type = original_type; // 继承属性
+
+        memblock.memory.region[index].size = align_base - memblock.memory.region[index].base;
+        memblock.memory.count++;
+    }
+
+    asm_mem_set(pa_to_va(align_base), 0, size);
+    return align_base;
+}
+
+/**
+ * @brief 释放内存：归还至 memory 空闲池，并从 reserved 中精准切除
+ */
+int32 memblock_free(uint64 ptr, uint64 size) {
+    if (!size) return EINVAL;
+
+    // 🌟 认祖归宗：去 reserved 账本里查清楚，这块内存当初被分配时是啥类型的？
+    uint8 free_nid = NUMA_NO_NODE;
+    uint32 free_type = 0;
+    for (uint32 i = 0; i < memblock.reserved.count; i++) {
+        uint64 r_base = memblock.reserved.region[i].base;
+        uint64 r_size = memblock.reserved.region[i].size;
+
+        if (ptr >= r_base && ptr + size <= r_base + r_size) {
+            free_nid = memblock.reserved.region[i].nid;
+            free_type = memblock.reserved.region[i].type;
+            break;
+        }
+    }
+
+    uint32 insert_idx = 0;
+    while (insert_idx < memblock.memory.count && memblock.memory.region[insert_idx].base < ptr) {
+        insert_idx++;
+    }
+
+    boolean merged_left = FALSE;
+
+    if (insert_idx > 0) {
+        uint32 left = insert_idx - 1;
+        // 🌟 只有物理接壤且 type、nid 全部吻合才能还进左边的池子
+        if (memblock.memory.region[left].base + memblock.memory.region[left].size == ptr &&
+            memblock.memory.region[left].nid == free_nid &&
+            memblock.memory.region[left].type == free_type) {
+            memblock.memory.region[left].size += size;
+            merged_left = TRUE;
+        }
+    }
+
+    if (insert_idx < memblock.memory.count) {
+        if (ptr + size == memblock.memory.region[insert_idx].base &&
+            memblock.memory.region[insert_idx].nid == free_nid &&
+            memblock.memory.region[insert_idx].type == free_type) {
+
+            if (merged_left) {
+                // 左右大贯通合并
+                uint32 left = insert_idx - 1;
+                memblock.memory.region[left].size += memblock.memory.region[insert_idx].size;
+                for (uint32 j = insert_idx; j < memblock.memory.count - 1; j++) {
+                    memblock.memory.region[j] = memblock.memory.region[j + 1];
+                }
+                memblock.memory.region[memblock.memory.count - 1].base = 0;
+                memblock.memory.region[memblock.memory.count - 1].size = 0;
+                memblock.memory.region[memblock.memory.count - 1].nid = 0;
+                memblock.memory.region[memblock.memory.count - 1].type = 0;
+                memblock.memory.count--;
+            } else {
+                memblock.memory.region[insert_idx].base = ptr;
+                memblock.memory.region[insert_idx].size += size;
+            }
+            goto cleanup_reserved;
+        }
+    }
+
+    if (!merged_left) {
+        if (memblock.memory.count >= MAX_MEMBLOCK_REGIONS) {
+            color_printk(RED, BLACK, "PANIC: memblock free array overflow in free!\n");
+            while (1) asm_hlt();
+        }
+        for (uint32 j = memblock.memory.count; j > insert_idx; j--) {
+            memblock.memory.region[j] = memblock.memory.region[j - 1];
+        }
+        memblock.memory.region[insert_idx].base = ptr;
+        memblock.memory.region[insert_idx].size = size;
+        memblock.memory.region[insert_idx].nid = free_nid;
+        memblock.memory.region[insert_idx].type = free_type;
+        memblock.memory.count++;
+    }
+
+cleanup_reserved:
+    memblock_remove_region(&memblock.reserved, ptr, size);
+    return 0;
+}
+
+/**
+ * @brief NUMA 节点盖章机制 (SRAT 切割)
+ */
+void memblock_set_node_by_intersection(memblock_type_t *mem_type, uint64 srat_base, uint64 srat_size, uint8 nid) {
+    uint64 srat_end = srat_base + srat_size;
+
+    for (uint32 i = 0; i < mem_type->count; i++) {
+        uint64 reg_base = mem_type->region[i].base;
+        uint64 reg_size = mem_type->region[i].size;
+        uint64 reg_end = reg_base + reg_size;
+
+        if (reg_base < srat_end && reg_end > srat_base) {
+            uint64 inter_start = MAX(reg_base, srat_base);
+            uint64 inter_end = MIN(reg_end, srat_end);
+
+            // 左侧溢出切割
+            if (inter_start > reg_base) {
+                if (mem_type->count >= MAX_MEMBLOCK_REGIONS) {
+                    color_printk(RED, BLACK, "PANIC: memblock overflow during NUMA left split!\n");
+                    while (1) asm_hlt();
+                }
+                for (uint32 j = mem_type->count; j > i + 1; j--) {
+                    mem_type->region[j] = mem_type->region[j - 1];
+                }
+                mem_type->region[i].size = inter_start - reg_base;
+                mem_type->region[i + 1].base = inter_start;
+                mem_type->region[i + 1].size = reg_end - inter_start;
+                mem_type->region[i + 1].nid = mem_type->region[i].nid;
+                mem_type->region[i + 1].type = mem_type->region[i].type; // 继承类型
+
+                mem_type->count++;
+                continue; // 切割后，当前块不再满足相交条件，进入下一次循环处理切割出的右块
+            }
+
+            // 右侧溢出切割
+            if (inter_end < reg_end) {
+                if (mem_type->count >= MAX_MEMBLOCK_REGIONS) {
+                    color_printk(RED, BLACK, "PANIC: memblock overflow during NUMA right split!\n");
+                    while (1) asm_hlt();
+                }
+                for (uint32 j = mem_type->count; j > i + 1; j--) {
+                    mem_type->region[j] = mem_type->region[j - 1];
+                }
+                mem_type->region[i].size = inter_end - reg_base;
+                mem_type->region[i + 1].base = inter_end;
+                mem_type->region[i + 1].size = reg_end - inter_end;
+                mem_type->region[i + 1].nid = mem_type->region[i].nid;
+                mem_type->region[i + 1].type = mem_type->region[i].type; // 继承类型
+
+                mem_type->count++;
+            }
+
+            // 完美包围，精准盖章
+            mem_type->region[i].nid = nid;
         }
     }
 }
 
 // =========================================================================
-// 总装：页表初始化入口
+// Memblock 高阶封装，对接系统层
 // =========================================================================
-void kpage_table_init(void) {
-    // 强制全局分配根页表，对齐 4KB
-    kernel_space.cr3_root = memblock_alloc_node(PAGE_4K_SIZE, PAGE_4K_SIZE, NUMA_NO_NODE);
-    kernel_space.paging_level = tmp_paging_level;
 
-    // 1. 临时显存对等映射 (通常是 0xB8000 或者是 UEFI Framebuffer)
-    tmp_video_mem_map();
+static page_t *memblock_alloc_pages(uint32 order) {
+    uint64 size = PAGE_4K_SIZE << order;
+    uint64 paddr = memblock_alloc_node(size, size, NUMA_NO_NODE); // 默认全局分配
+    if (!paddr) return NULL;
+    return (page_t *) paddr;
+}
 
-    // 2. 直接映射区 (Direct Map)
-    direct_map_init();
+static void memblock_free_pages(page_t *page) {
+    if (!page) return;
+    uint64 paddr = (uint64) page;
+    memblock_free(paddr, PAGE_4K_SIZE);
+}
 
-    // 3. struct page 映射区 (Vmemmap)
-    page_map_init();
+static uint64 memblock_page_to_pa(page_t *page) {
+    return (uint64) page;
+}
 
-    // 4. 映射内核映像 (Kernel Image - 严格权限控制)
-    // .init_text (用完即抛)
-    uint64 init_text_va = (uint64)_start_init_text;
-    uint64 init_text_pa = init_text_va - vm_layout.kernel_start;
-    uint64 init_text_sz = (uint64)_end_init_text - init_text_va;
-    vm_map_range(&kernel_space, init_text_va, init_text_pa, init_text_sz, PAGE_KERNEL_CODE);
+static page_t *memblock_pa_to_page(uint64 paddr) {
+    return (page_t *) paddr;
+}
 
-    // .init_rodata
-    uint64 init_rodata_va = (uint64)_start_init_rodata;
-    uint64 init_rodata_pa = init_rodata_va - vm_layout.kernel_start;
-    uint64 init_rodata_sz = (uint64)_end_init_rodata - init_rodata_va;
-    vm_map_range(&kernel_space, init_rodata_va, init_rodata_pa, init_rodata_sz, PAGE_KERNEL_DATA_RO);
+// =========================================================================
+// 全局入口：极其清爽的启动扫描
+// =========================================================================
+/**
+ * @brief 物理内存的“造物主”阶段初始化
+ * 扫描 UEFI 传给内核的物理内存描述符，并将其清洗归类到全局 Memblock 账本。
+ */
+void memblock_init(void) {
+    uint64 phy_mem_size = 0;
 
-    // .init_data
-    uint64 init_data_va = (uint64)_start_init_data;
-    uint64 init_data_pa = init_data_va - vm_layout.kernel_start;
-    uint64 init_data_sz = (uint64)_end_init_bss - init_data_va;
-    vm_map_range(&kernel_space, init_data_va, init_data_pa, init_data_sz, PAGE_KERNEL_DATA_RW);
+    uint32 count = tmp_boot_info->mem_map_size / tmp_boot_info->mem_descriptor_size;
+    uint8 *src_ptr = (uint8 *) tmp_boot_info->mem_map;
 
-    // .text (正式代码，RX)
-    uint64 text_va = (uint64)_start_text;
-    uint64 text_pa = text_va - vm_layout.kernel_start;
-    uint64 text_sz = (uint64)_end_text - text_va;
-    vm_map_range(&kernel_space, text_va, text_pa, text_sz, PAGE_KERNEL_CODE);
+    for (uint32 i = 0; i < count; i++) {
+        EFI_MEMORY_DESCRIPTOR *mem_des = (EFI_MEMORY_DESCRIPTOR *) src_ptr;
 
-    // .rodata (只读数据)
-    uint64 rodata_va = (uint64)_start_rodata;
-    uint64 rodata_pa = rodata_va - vm_layout.kernel_start;
-    uint64 rodata_sz = (uint64)_end_rodata - rodata_va;
-    vm_map_range(&kernel_space, rodata_va, rodata_pa, rodata_sz, PAGE_KERNEL_DATA_RO);
+        if (mem_des->NumberOfPages == 0) {
+            src_ptr += tmp_boot_info->mem_descriptor_size;
+            continue;
+        }
 
-    // .data .bss (可读写)
-    uint64 data_va = (uint64)_start_data;
-    uint64 data_pa = data_va - vm_layout.kernel_start;
-    uint64 data_sz = (uint64)_end_bss - data_va;
-    vm_map_range(&kernel_space, data_va, data_pa, data_sz, PAGE_KERNEL_DATA_RW);
+        uint64 pa_start = mem_des->PhysicalStart;
+        uint64 size = mem_des->NumberOfPages << 12; // 算出字节大小
+        EFI_MEMORY_TYPE type = mem_des->Type;
+        uint64 attr = mem_des->Attribute;
 
-    // 5. 切换 CR3 并刷新 TLB
-    asm_set_cr3(kernel_space.cr3_root);
-    tlb_flush_all();
+        // 🌟 只要不是真正的硬件坏块和 IO 保留，全部纳入系统的全局“物理内存”统计容量
+        if (type != EFI_RESERVED_MEMORY_TYPE && type != EFI_MEMORY_MAPPED_IO && type != EFI_UNUSABLE_MEMORY) {
+            phy_mem_size += size;
+        }
 
-    PR_OK("Kernel page table switch successful, %d level paging enabled, CR3:%lx \n", kernel_space.paging_level, kernel_space.cr3_root);
+        // ---------------------------------------------------------------------
+        // 分支 1：UEFI 运行时固件 (将来需映射 RX/RW 权限供系统调用)
+        // ---------------------------------------------------------------------
+        if (attr & EFI_MEMORY_RUNTIME) {
+            // 直接放入债务簿。它不会被映射进普通直接映射区，也不会拥有 struct page。
+            memblock_add(&memblock.reserved, pa_start, size, type);
+
+            // 备份原数据给后期的 SetVirtualAddressMap 使用
+            uint8 *dst_ptr = (uint8 *) efi_runtime_memmap.mem_map +
+                             (efi_runtime_memmap.count * tmp_boot_info->mem_descriptor_size);
+            asm_mem_cpy(dst_ptr, src_ptr, tmp_boot_info->mem_descriptor_size);
+            efi_runtime_memmap.count++;
+        }
+
+        // ---------------------------------------------------------------------
+        // 分支 2：内核与引导期不可动摇的核心资产
+        // ---------------------------------------------------------------------
+        else if (type == EFI_LOADER_DATA ||
+                 type == EFI_LOADER_CODE ||
+                 type == EFI_ACPI_RECLAIM_MEMORY ||
+                 type == EFI_ACPI_MEMORY_NVS) {
+            // 统统打上它们原来的 type 印章，关进 reserved 保护起来
+            memblock_add(&memblock.reserved, pa_start, size, type);
+        }
+
+        // ---------------------------------------------------------------------
+        // 分支 3：毫无挂碍的纯净可用内存
+        // ---------------------------------------------------------------------
+        else if (type == EFI_BOOT_SERVICES_CODE ||
+                 type == EFI_BOOT_SERVICES_DATA ||
+                 type == EFI_CONVENTIONAL_MEMORY) {
+            // 统一“洗白”成常规可用 RAM
+            memblock_add(&memblock.memory, pa_start, size, EFI_CONVENTIONAL_MEMORY);
+        }
+
+        src_ptr += tmp_boot_info->mem_descriptor_size;
+    }
+
+    // 绑定内核全局 ops
+    kernel_space.ops.alloc_pages = memblock_alloc_pages;
+    kernel_space.ops.free_pages = memblock_free_pages;
+    kernel_space.ops.page_to_phys = memblock_page_to_pa;
+    kernel_space.ops.phys_to_page = memblock_pa_to_page;
+    kernel_space.ops.phys_to_virt = pa_to_va; // 假定你已实现虚拟物理地址转换
+    kernel_space.ops.virt_to_phys = va_to_pa;
+
+    PR_INFO("Total Physics Memory: %d MB\n", phy_mem_size / 1024 / 1024);
 }
