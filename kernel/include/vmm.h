@@ -74,34 +74,6 @@
 #define PTE_ADDR_MASK       0x000FFFFFFFFFF000ULL  ///< 物理地址提取掩码 (Bits 12..51)
 
 
-/* ========================================================================== */
-/*                      VMM 软件控制宏 (Software Flags)                       */
-/* ========================================================================== */
-
-// -----------------------------------------------------------------------------
-// VMM 内部控制位 (利用 x86_64 硬件忽略的保留位：Bits 9..11 与 高位 52..62)
-// -----------------------------------------------------------------------------
-#define SW_FLAG_COW             (1ULL << 9)   ///< 软件扩展: 写时复制 (Copy-On-Write)
-#define SW_FLAG_GUARD           (1ULL << 10)  ///< 软件扩展: 警戒页 (Guard Page，栈溢出检测)
-
-// --- 映射行为控制 (Map Engine) ---
-#define SW_FLAG_OVERWRITE       (1ULL << 52)  ///< 允许强行覆写已存在的映射 (否则报 VM_ERR_ALREADY_MAPPED)
-#define SW_FLAG_FREE_OLD_PHYS   (1ULL << 59)  ///< 安全覆写: 覆盖原映射时，自动回收原属物理页 (防内存泄漏)
-#define SW_FLAG_STRICT_HUGE     (1ULL << 55)  ///< 严苛大页: 强迫使用最大可能的页层级，拒绝退化为 4K 小页
-
-// --- 最大页层级约束 ---
-#define SW_FLAG_MAX_LEVEL_MASK  (3ULL << 53)  ///< 用于提取最大允许层级的掩码 (占用 Bits 53..54)
-#define SW_FLAG_MAX_4K          (1ULL << 53)  ///< 限制上限: 仅允许使用 Level 1 (4KB)
-#define SW_FLAG_MAX_2M          (2ULL << 53)  ///< 限制上限: 最高允许 Level 2 (2MB)
-#define SW_FLAG_MAX_1G          (3ULL << 53)  ///< 限制上限: 最高允许 Level 3 (1GB)
-
-/** @brief 提取用户允许的最大页层级。若未配置则安全退化至 Level 1 (4KB) */
-#define GET_MAX_LEVEL(flags)    (((flags) & SW_FLAG_MAX_LEVEL_MASK) ? (((flags) & SW_FLAG_MAX_LEVEL_MASK) >> 53) : 1)
-
-// --- 解映射行为控制 (Unmap Engine) ---
-#define UNMAP_FLAG_NONE         0x00          ///< 仅拆除虚拟索引，不触碰底层物理页 (适用于 MMIO/共享内存)
-#define UNMAP_FLAG_FREE_PHYS    0x01          ///< 彻底摧毁：拆除索引并把真金白银的物理内存退还给分配器
-
 
 /* ========================================================================== */
 /*                      缓存策略预设 (PAT Profile Presets)                    */
@@ -276,6 +248,24 @@ void vm_space_switch(const vm_space_t *space);
  * @param flags 属性组合 (HW_PAGE_* 与 SW_FLAG_*)
  * @return vm_status_e 执行状态
  */
+// -----------------------------------------------------------------------------
+// VMM 内部控制位 (利用 x86_64 硬件忽略的保留位：Bits 9..11 与 高位 52..62)
+// -----------------------------------------------------------------------------
+#define SW_FLAG_COW             (1ULL << 9)   ///< 软件扩展: 写时复制 (Copy-On-Write)
+#define SW_FLAG_GUARD           (1ULL << 10)  ///< 软件扩展: 警戒页 (Guard Page，栈溢出检测)
+
+// --- 映射行为控制 (Map Engine) ---
+#define SW_FLAG_OVERWRITE       (1ULL << 52)  ///< 允许强行覆写已存在的映射 (否则报 VM_ERR_ALREADY_MAPPED)
+#define SW_FLAG_FREE_OLD_PHYS   (1ULL << 59)  ///< 安全覆写: 覆盖原映射时，自动回收原属物理页 (防内存泄漏)
+#define SW_FLAG_STRICT_HUGE     (1ULL << 55)  ///< 严苛大页: 强迫使用最大可能的页层级，拒绝退化为 4K 小页
+
+// --- 最大页层级约束 ---
+#define SW_FLAG_MAX_LEVEL_MASK  (3ULL << 53)  ///< 用于提取最大允许层级的掩码 (占用 Bits 53..54)
+#define SW_FLAG_MAX_4K          (1ULL << 53)  ///< 限制上限: 仅允许使用 Level 1 (4KB)
+#define SW_FLAG_MAX_2M          (2ULL << 53)  ///< 限制上限: 最高允许 Level 2 (2MB)
+#define SW_FLAG_MAX_1G          (3ULL << 53)  ///< 限制上限: 最高允许 Level 3 (1GB)
+/** @brief 提取用户允许的最大页层级。若未配置则安全退化至 Level 1 (4KB) */
+#define GET_MAX_LEVEL(flags)    (((flags) & SW_FLAG_MAX_LEVEL_MASK) ? (((flags) & SW_FLAG_MAX_LEVEL_MASK) >> 53) : 1)
 vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 size, uint64 flags);
 
 /**
@@ -287,6 +277,8 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
  * @param flags 行为控制 (如 UNMAP_FLAG_FREE_PHYS，决定是否真的回收物理数据内存)
  * @return vm_status_e 执行状态
  */
+#define UNMAP_FLAG_NONE         0x00          ///< 仅拆除虚拟索引，不触碰底层物理页 (适用于 MMIO/共享内存)
+#define UNMAP_FLAG_FREE_PHYS    0x01          ///< 彻底摧毁：拆除索引并把真金白银的物理内存退还给分配器
 vm_status_e vm_unmap_range(vm_space_t *space, uint64 vaddr, uint64 size, uint32 flags);
 
 /**

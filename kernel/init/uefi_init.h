@@ -73,7 +73,7 @@ typedef enum:uint32 {
  EFI_RUNTIME_SERVICES_DATA        ,  // UEFI 运行时服务数据
  EFI_CONVENTIONAL_MEMORY          ,  // 常规可用内存 (操作系统可用)
  EFI_UNUSABLE_MEMORY              ,  // 损坏或不可用内存
- EFI_ACPI_RECLAIM_MEMORY          ,  // ACPI 表内存 (OS启动后可回收)
+ EFI_ACPI_RECLAIM_MEMORY          ,  // ACPI 表内存 (建议不要回收)
  EFI_ACPI_MEMORY_NVS              , // ACPI NVS 内存 (操作系统不能使用)
  EFI_MEMORY_MAPPED_IO             , // 内存映射 I/O (MMIO) 区域
  EFI_MEMORY_MAPPED_IO_PORT_SPACE  , // 内存映射 I/O 端口空间
@@ -716,3 +716,9 @@ extern  tmp_boot_info_t* tmp_boot_info;
 //endregion
 
 void efi_runtime_service_init(void);
+void tmp_boot_info_init(void);
+
+typedef struct {
+  EFI_MEMORY_DESCRIPTOR mem_map[10];
+  uint32 count;
+}efi_runtime_memmap_t;

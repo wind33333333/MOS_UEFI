@@ -3,9 +3,23 @@
 #include "printk.h"
 #include "vmm.h"
 #include "slub.h"
+#include "vmm_init.h"
 #include "../mm/tlb.h"
 
 extern vm_space_t kernel_space;
+
+__attribute__((aligned(4096))) uint64 tmp_page_buffer[1024];
+
+void tmp_boot_info_init(void) {
+    tmp_boot_info = pa_to_va((uint64)tmp_boot_info);            //将boot_info物理地址转换成虚拟地址
+    tmp_boot_info->mem_map = pa_to_va((uint64)tmp_boot_info->mem_map);
+    tmp_boot_info->rsdp = tmp_directly_map((uint64)tmp_boot_info->rsdp,PAGE_1G_SIZE,tmp_page_buffer);
+};
+
+
+// efi_runtime_memmap 依然独立保留。
+// 原因：它是向 UEFI 固件原封不动汇报 SetVirtualAddressMap 的参数结构，需要保留 EFI_MEMORY_DESCRIPTOR 原始格式。
+efi_runtime_memmap_t efi_runtime_memmap = {0};
 
 void efi_runtime_service_init(void) {
     // 将起点转换为单字节指针，以便进行精准的字节级跨度跳跃
