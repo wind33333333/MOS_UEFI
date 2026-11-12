@@ -83,20 +83,23 @@ void vm_layout_init(void) {
     vm_layout.module_start = MODULES_VA_START;
     vm_layout.module_end = MODULES_VA_END;
 
-    PR_INFO("Direct Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.direct_map_start,vm_layout.direct_map_end);
-    PR_INFO("Page Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.page_map_start,vm_layout.page_map_end);
-    PR_INFO("PerCpu Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.percpu_vaddr_start,vm_layout.percpu_vaddr_end);
-    PR_INFO("Vmalloc Start Addr:%#lx  End Addr:%#lx \n",vm_layout.vmalloc_start,vm_layout.vmalloc_end);
-    PR_INFO("IO Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.io_map_start,vm_layout.io_map_end);
-    PR_INFO("UEFI RTS Start Addr:%#lx  End Addr:%#lx \n",vm_layout.efi_rts_start,vm_layout.efi_rts_end);
-    PR_INFO("Kernel Start Addr:%#lx  End Addr:%#lx \n",vm_layout.kernel_start,vm_layout.kernel_end);
-    PR_INFO("Modules Start Addr:%#lx  End Addr:%#lx \n",vm_layout.module_start,vm_layout.module_end);
+    // PR_INFO("Direct Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.direct_map_start,vm_layout.direct_map_end);
+    // PR_INFO("Page Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.page_map_start,vm_layout.page_map_end);
+    // PR_INFO("PerCpu Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.percpu_vaddr_start,vm_layout.percpu_vaddr_end);
+    // PR_INFO("Vmalloc Start Addr:%#lx  End Addr:%#lx \n",vm_layout.vmalloc_start,vm_layout.vmalloc_end);
+    // PR_INFO("IO Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.io_map_start,vm_layout.io_map_end);
+    // PR_INFO("UEFI RTS Start Addr:%#lx  End Addr:%#lx \n",vm_layout.efi_rts_start,vm_layout.efi_rts_end);
+    // PR_INFO("Kernel Start Addr:%#lx  End Addr:%#lx \n",vm_layout.kernel_start,vm_layout.kernel_end);
+    // PR_INFO("Modules Start Addr:%#lx  End Addr:%#lx \n",vm_layout.module_start,vm_layout.module_end);
 
 }
 
 
-// 将高半区页表指针转换为纯物理地址的宏
-#define EARLY_VA_TO_PA(va) ((uint64)(va) - vm_layout.kernel_start + tmp_boot_info->KernelBase)
+// 将高半区页表指针转换为纯物理地址
+static inline uint64 early_va_to_pa(void* va) {
+    return ((uint64)(va) - vm_layout.kernel_start + tmp_boot_info->KernelBase);
+}
+
 /*
  * 内核启动初期临时页表映射 (状态驱动版)
  * pa: 物理地址
@@ -112,7 +115,7 @@ void* tmp_directly_map(uint64 pa, uint64 size, uint64* page_table_buffer) {
     uint64* alloc_ptr = page_table_buffer;
 
     // 遍历所需覆盖的每一个 1GB 物理内存块
-    for (uint64 curr_pa = start_pa; curr_pa < aligned_end; curr_pa += (1ULL << 30)) {
+    for (uint64 curr_pa = start_pa; curr_pa < aligned_end; curr_pa += PAGE_1G_SIZE) {
         
         uint64 va = (uint64)pa_to_va(curr_pa);
         uint64* current_pml4 = tmp_pml4t; 
@@ -124,9 +127,9 @@ void* tmp_directly_map(uint64 pa, uint64 size, uint64* page_table_buffer) {
             uint64 pml5_idx = (va >> 48) & 0x1FF;
             
             // 状态检测：PML5 槽位是否为空？
-            if (!(tmp_pml5t[pml5_idx] & 1)) { 
-                for (int i = 0; i < 512; i++) alloc_ptr[i] = 0; // 清零新页表
-                tmp_pml5t[pml5_idx] = EARLY_VA_TO_PA(alloc_ptr) | 0x3; // 挂载 PML4 (PRESENT | RW)
+            if (!(tmp_pml5t[pml5_idx] & 1)) {
+                asm_mem_set(alloc_ptr,0,4096);// 清零新页表
+                tmp_pml5t[pml5_idx] = early_va_to_pa(alloc_ptr) | 0x3; // 挂载 PML4 (PRESENT | RW)
                 alloc_ptr += 512;
             }
             
@@ -142,8 +145,8 @@ void* tmp_directly_map(uint64 pa, uint64 size, uint64* page_table_buffer) {
         
         // 状态检测：PML4 槽位是否为空？
         if (!(current_pml4[pml4_idx] & 1)) {
-            for (int i = 0; i < 512; i++) alloc_ptr[i] = 0; // 清零新页表
-            current_pml4[pml4_idx] = EARLY_VA_TO_PA(alloc_ptr) | 0x3; // 挂载 PDPT (PRESENT | RW)
+            asm_mem_set(alloc_ptr,0,4096);// 清零新页表
+            current_pml4[pml4_idx] = early_va_to_pa(alloc_ptr) | 0x3; // 挂载 PDPT (PRESENT | RW)
             alloc_ptr += 512;
         }
         
@@ -165,9 +168,6 @@ void* tmp_directly_map(uint64 pa, uint64 size, uint64* page_table_buffer) {
         // 执行 1GB 物理页映射 (PRESENT=1 | RW=2 | HUGE=0x80) -> 0x83
         current_pdpt[pdpt_idx] = curr_pa | 0x83; 
     }
-    
-    // 强刷 TLB，确保新挂载的高位映射立刻生效
-    asm volatile("mov %%cr3, %%rax; mov %%rax, %%cr3" ::: "rax", "memory");
     
     // 返回计算好的精确虚拟地址（原物理地址直接加上基址）
     return pa_to_va(pa);
