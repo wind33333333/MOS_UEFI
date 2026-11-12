@@ -9,55 +9,18 @@
 
 extern vm_space_t kernel_space;
 
-// =========================================================================
-// 核心映射器：流式执行，智能挂载 1GB / 2MB / 4KB 页
-// =========================================================================
-static void __map_large_pages(uint64 va_start, uint64 pa_start, uint64 size) {
-    uint64 va_curr = va_start;
-    uint64 pa_curr = pa_start;
-    uint64 va_end  = va_start + size;
-
-    while (va_curr < va_end) {
-        uint64 remaining = va_end - va_curr;
-        uint64 step_size;
-        uint64 map_flags = PAGE_KERNEL_DATA_RW;
-
-        // 1GB 巨页对齐检测
-        if ((va_curr & PAGE_1G_OFFSET_MASK) == 0 &&
-            (pa_curr & PAGE_1G_OFFSET_MASK) == 0 && remaining >= PAGE_1G_SIZE) {
-            step_size = PAGE_1G_SIZE;
-            map_flags |= SW_FLAG_MAX_1G;
-        }
-        // 2MB 大页对齐检测
-        else if ((va_curr & PAGE_2M_OFFSET_MASK) == 0 &&
-                 (pa_curr & PAGE_2M_OFFSET_MASK) == 0 && remaining >= PAGE_2M_SIZE) {
-            step_size = PAGE_2M_SIZE;
-            map_flags |= SW_FLAG_MAX_2M;
-        }
-        // 4KB 兜底映射
-        else {
-            step_size = PAGE_4K_SIZE;
-        }
-
-        // 呼叫底层 VMM 铺砖
-        vm_map_range(&kernel_space, va_curr, pa_curr, step_size, map_flags);
-
-        va_curr += step_size;
-        pa_curr += step_size;
-    }
-}
 
 // =========================================================================
 // 阶段一：建立高半区直接映射区 (Direct Map)
 // =========================================================================
-static void direct_map_init(void) {
+static inline void direct_map_init(void) {
     // 🌟 降维打击：直接遍历 phys_map 全景视图。
     // 在 memblock_init 中， Loader 造成的碎片已经被自动缝合成完美的大块，TLB 火力全开！
     // 且 NVS 和 Runtime 已被提前剔除，物理级免疫越权访问。
     for (uint32 i = 0; i < memblock.phys_map.count; i++) {
-        uint64 p_start = memblock.phys_map.region[i].base;
+        uint64 pbase = memblock.phys_map.region[i].base;
         uint64 size    = memblock.phys_map.region[i].size;
-        __map_large_pages((uint64)pa_to_va(p_start), p_start, size);
+        vm_map_range(&kernel_space, (uint64)pa_to_va(pbase), pbase, size, SW_FLAG_MAX_1G);
     }
 }
 
@@ -90,7 +53,7 @@ static void mount_vmemmap_region(uint64 p_start, uint64 size, uint8 target_nid) 
     }
 }
 
-static void page_map_init(void) {
+static inline void page_map_init(void) {
     // 🌟 全景映射：遍历 phys_map，为所有合法 RAM (含 ACPI Reclaim) 提供 page 元数据基础
     for (uint32 i = 0; i < memblock.phys_map.count; i++) {
         mount_vmemmap_region(memblock.phys_map.region[i].base,
