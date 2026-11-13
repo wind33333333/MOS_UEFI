@@ -13,6 +13,7 @@
 #include "vmm.h"
 #include "tlb.h"
 #include "printk.h"
+#include "slub.h"
 
 
 //全局内存布局图
@@ -221,7 +222,7 @@ void vmm_tlb_batch_commit(vm_space_t *space, vm_tlb_batch_t *batch) {
 /* ========================================================================== */
 
 // PTE 属性保留掩码 (增加 HW_PAGE_HUGE_PAT 修复大页 PAT 丢失漏洞)
-#define PTE_PRESERVE_MASK (HW_PAGE_P | HW_PAGE_US | HW_PAGE_G | HW_PAGE_PWT | HW_PAGE_PCD | HW_PAGE_A | HW_PAGE_D | HW_PAGE_4K_PAT | HW_PAGE_HUGE_PAT)
+#define HW_PAGE_PRESERVE_MASK (HW_PAGE_P | HW_PAGE_US | HW_PAGE_G | HW_PAGE_PWT | HW_PAGE_PCD | HW_PAGE_A | HW_PAGE_D | HW_PAGE_4K_PAT | HW_PAGE_HUGE_PAT)
 #define PTE_MODIFY_MASK   (HW_PAGE_RW | HW_PAGE_NX)
 
 // VMM 漫游内部控制位压缩 (避开 SW_FLAG 分配的 52~61 位，使用绝对安全的 48~51 位段)
@@ -277,7 +278,7 @@ static vm_status_e vmm_walk(vm_space_t *space, uint64 vaddr, uint64 flags, vm_wa
 
         if (entry & HW_PAGE_P) {
             if (entry & HW_PAGE_PS) return VM_ERR_ALREADY_MAPPED; // 遇大页直接拦截
-            cur_table_pa = entry & PTE_ADDR_MASK;
+            cur_table_pa = entry & PAGE_FRAME_MASK;
         } else {
             if (!create_missing) return VM_ERR_NOT_MAPPED;
 
@@ -434,7 +435,7 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
                 continue; // 原地复试
             }
 
-            uint64 old_pa = *entry & PTE_ADDR_MASK;
+            uint64 old_pa = *entry & PAGE_FRAME_MASK;
             if ((new_flags & SW_FLAG_FREE_OLD_PHYS) && old_pa != 0) {
                 space->ops.free_pages(space->ops.phys_to_page(old_pa));
             }
@@ -443,7 +444,7 @@ vm_status_e vm_map_range(vm_space_t *space, uint64 vaddr, uint64 paddr, uint64 s
         }
 
         uint64 pte_flags = new_flags & PTE_WRITE_MASK;
-        *entry = (curr_pa & PTE_ADDR_MASK) | pte_flags;
+        *entry = (curr_pa & PAGE_FRAME_MASK) | pte_flags;
 
         curr_va += step_bytes;
         curr_pa += step_bytes;
@@ -490,7 +491,7 @@ static boolean vmm_unmap_tree_range(vm_op_ctx_t *ctx, uint64 table_pa, uint8 lvl
 
         if (entry & HW_PAGE_P) {
             boolean is_global = (entry & HW_PAGE_G) ? TRUE : FALSE;
-            uint64 old_pa = entry & PTE_ADDR_MASK;
+            uint64 old_pa = entry & PAGE_FRAME_MASK;
 
             if (lvl == PAGE_LVL_4K || ((entry & HW_PAGE_PS) && cur == entry_base && sub_end == next_boundary)) {
                 // 完全覆盖：执行 O(1) 对象级清理
@@ -505,14 +506,14 @@ static boolean vmm_unmap_tree_range(vm_op_ctx_t *ctx, uint64 table_pa, uint8 lvl
                 // 局部破坏：向下敲碎大页
                 if (vm_split_huge_page(space, entry_base, (vm_page_lvl_e)lvl) == VM_SUCCESS) {
                     entry = table_va[idx];
-                    uint64 next_pa = entry & PTE_ADDR_MASK;
+                    uint64 next_pa = entry & PAGE_FRAME_MASK;
                     if (vmm_unmap_tree_range(ctx, next_pa, lvl - 1, cur, sub_end)) {
                         table_va[idx] = 0;
                     }
                 }
             } else {
                 // 标准递归
-                uint64 next_pa = entry & PTE_ADDR_MASK;
+                uint64 next_pa = entry & PAGE_FRAME_MASK;
                 if (vmm_unmap_tree_range(ctx, next_pa, lvl - 1, cur, sub_end)) {
                     table_va[idx] = 0;
                 }
@@ -579,25 +580,25 @@ static vm_status_e vmm_protect_tree_range(vm_op_ctx_t *ctx, uint64 table_pa, uin
         if (!(entry & HW_PAGE_P)) return VM_ERR_NOT_MAPPED;
 
         if (lvl == 1) {
-            uint64 pa = entry & PTE_ADDR_MASK;
-            table_va[idx] = pa | (entry & PTE_PRESERVE_MASK) | (new_flags & PTE_MODIFY_MASK);
+            uint64 pa = entry & PAGE_FRAME_MASK;
+            table_va[idx] = pa | (entry & HW_PAGE_PRESERVE_MASK) | (new_flags & PTE_MODIFY_MASK);
             tlb_batch_add(batch, cur, step, step, (entry & HW_PAGE_G)?TRUE:FALSE);
 
         } else if (entry & HW_PAGE_PS) {
             if (cur == entry_base && sub_end == next_boundary) {
                 uint64 huge_pa = entry & ~(step - 1);
-                table_va[idx] = huge_pa | (entry & PTE_PRESERVE_MASK) | (new_flags & PTE_MODIFY_MASK) | HW_PAGE_PS;
+                table_va[idx] = huge_pa | (entry & HW_PAGE_PRESERVE_MASK) | (new_flags & PTE_MODIFY_MASK) | HW_PAGE_PS;
                 tlb_batch_add(batch, cur, step, step, (entry & HW_PAGE_G)?TRUE:FALSE);
             } else {
                 vm_status_e split_status = vm_split_huge_page(space, entry_base, (vm_page_lvl_e)lvl);
                 if (split_status != VM_SUCCESS) return split_status;
 
                 entry = table_va[idx];
-                vm_status_e status = vmm_protect_tree_range(ctx, entry & PTE_ADDR_MASK, lvl - 1, cur, sub_end);
+                vm_status_e status = vmm_protect_tree_range(ctx, entry & PAGE_FRAME_MASK, lvl - 1, cur, sub_end);
                 if (status != VM_SUCCESS) return status;
             }
         } else {
-            vm_status_e status = vmm_protect_tree_range(ctx, entry & PTE_ADDR_MASK, lvl - 1, cur, sub_end);
+            vm_status_e status = vmm_protect_tree_range(ctx, entry & PAGE_FRAME_MASK, lvl - 1, cur, sub_end);
             if (status != VM_SUCCESS) return status;
         }
         cur = sub_end;
@@ -642,12 +643,12 @@ vm_status_e vm_query(const vm_space_t *space, uint64 vaddr, uint64 *out_paddr,
 
         if ((entry & HW_PAGE_PS) || lvl == PAGE_LVL_4K) {
             uint64 offset_mask = (1ULL << (12 + 9 * (lvl - 1))) - 1;
-            if (out_paddr) *out_paddr = (entry & PTE_ADDR_MASK) | (vaddr & offset_mask);
+            if (out_paddr) *out_paddr = (entry & PAGE_FRAME_MASK) | (vaddr & offset_mask);
             if (out_flags) *out_flags = (uint64)(entry & PTE_WRITE_MASK);
             if (out_size)  *out_size  = (vm_page_lvl_e)lvl;
             return VM_SUCCESS;
         }
-        cur_table_pa = entry & PTE_ADDR_MASK;
+        cur_table_pa = entry & PAGE_FRAME_MASK;
     }
     return VM_ERR_NOT_MAPPED;
 }
@@ -670,7 +671,7 @@ vm_status_e vm_space_init(vm_space_t *space, uint8 level, const vm_allocator_ops
 
     if (clone_kernel) {
         uint64 active_cr3 = asm_get_cr3();
-        uint64 *active_root_va = (uint64 *)space->ops.phys_to_virt(active_cr3 & PTE_ADDR_MASK);
+        uint64 *active_root_va = (uint64 *)space->ops.phys_to_virt(active_cr3 & PAGE_FRAME_MASK);
 
         // 初始化时拷贝共享的内核高地址空间映射
         asm_mem_cpy(new_root_va+256,active_root_va+256,256*8);

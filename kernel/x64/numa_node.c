@@ -280,6 +280,9 @@ void numa_node_init(void) {
 
         // 债务簿 (保留内存) 盖章，确保未来的 memblock_free 能够精准寻祖
         memblock_set_node_by_intersection(&memblock.reserved, reg->base, reg->size, reg->node_id);
+
+        // 所有物理内存盖章
+        memblock_set_node_by_intersection(&memblock.phys_map, reg->base, reg->size, reg->node_id);
     }
 
 }

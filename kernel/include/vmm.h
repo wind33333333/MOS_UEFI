@@ -71,7 +71,7 @@
 #define HW_PAGE_PS          (1ULL << 7)   ///< 大页标志 (Page Size): 在 Level 2/3 表示大页/巨页
 #define HW_PAGE_G           (1ULL << 8)   ///< 全局页 (Global): 切换 CR3 时不刷新此页的 TLB (需 CR4.PGE)
 
-#define PTE_ADDR_MASK       0x000FFFFFFFFFF000ULL  ///< 物理地址提取掩码 (Bits 12..51)
+#define PAGE_FRAME_MASK       0x000FFFFFFFFFF000ULL  ///< 物理地址提取掩码 (Bits 12..51)
 
 
 
@@ -116,13 +116,23 @@
  */
 typedef enum {
     VM_SUCCESS            =  0,  ///< 操作成功
-    VM_ERR_NOMEM          = -1,  ///< 内存耗尽：无法为中间目录申请物理帧
-    VM_ERR_ALREADY_MAPPED = -2,  ///< 冲突：目标地址已被占用 (且未指定 OVERWRITE)
-    VM_ERR_NOT_MAPPED     = -3,  ///< 访问异常：目标地址不存在有效映射
-    VM_ERR_INVALID_ARGS   = -4,  ///< 非法参数：地址未对齐、长度异常或级数非法
-    VM_ERR_CANONICAL      = -5,  ///< 越界：虚拟地址违反 x86_64 符号位扩展规则
+    VM_SUCCESS_4K         =  1,  ///< 映射存在：4KB 级别 (PT)
+    VM_SUCCESS_2M         =  2,  ///< 映射存在：2MB 大页 (PD)
+    VM_SUCCESS_1G         =  3,  ///< 映射存在：1GB 巨页 (PDPT)
+    VM_ERR_NOMEM          = -1,  ///< 内存耗尽
+    VM_ERR_ALREADY_MAPPED = -2,  ///< 冲突：目标地址已被占用
+    VM_ERR_NOT_MAPPED     = -3,  ///< 访问异常：目标地址不存在有效映射 (通用空洞)
+    VM_ERR_INVALID_ARGS   = -4,  ///< 非法参数
+    VM_ERR_CANONICAL      = -5,  ///< 越界：虚拟地址违反符号扩展
     VM_ERR_SPLIT_FAILED   = -6,  ///< 大页强拆失败
-    VM_ERR_UNSUPPORTED    = -7   ///< 硬件拒载：CPU 不支持请求的特性 (如 1G 巨页)
+    VM_ERR_UNSUPPORTED    = -7,  ///< 硬件拒载
+
+    // 细分空洞级别 (可选，用于高级页表管理)
+    VM_ERR_MISSING_PML5   = -8,  ///< 5级目录为空
+    VM_ERR_MISSING_PML4   = -9,  ///< 4级目录为空
+    VM_ERR_MISSING_PDPT   = -10, ///< 3级目录为空
+    VM_ERR_MISSING_PD     = -11, ///< 2级目录为空
+    VM_ERR_MISSING_PT     = -12  ///< 1级页表项为空
 } vm_status_e;
 
 /**
