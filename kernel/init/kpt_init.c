@@ -7,7 +7,7 @@
 #include "../mm/tlb.h"
 #include "video_init.h"
 
-extern vm_space_t kernel_space;
+vm_space_t kernel_space;
 
 
 // =========================================================================
