@@ -31,12 +31,12 @@ void output_init(void) {
 
 extern vm_space_t kernel_space;
 void tmp_video_mem_map(void) {
-    tmp_boot_info = pa_to_va((uint64)tmp_boot_info);
-    vm_map_range(&kernel_space,tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size,PAGE_KERNEL_MMIO_WC | SW_FLAG_MAX_1G);
+    vm_map_range(&kernel_space,(uint64)pa_to_va(tmp_boot_info->frame_buffer_base),tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size,PAGE_KERNEL_MMIO_WC | SW_FLAG_MAX_1G);
 }
 
 void video_mem_map(void) {
+    uint32 *new_fb_vaddr = ioremap_wc(tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size);
     vm_unmap_range(&kernel_space,tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size,UNMAP_FLAG_NONE);
-    Pos.FB_addr = ioremap_wc(tmp_boot_info->frame_buffer_base,tmp_boot_info->frame_buffer_size);
+    Pos.FB_addr = new_fb_vaddr;
     PR_INFO("Voide Memory Physics Address:%#lx -> Virtual Address:%#lx  Video Size:%#lx Resolution:%d * %d\n",tmp_boot_info->frame_buffer_base,Pos.FB_addr,Pos.FB_length,Pos.XResolution,Pos.YResolution);
 }

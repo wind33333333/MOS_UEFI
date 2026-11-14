@@ -214,6 +214,11 @@ uint64 memblock_alloc_node(uint64 size, uint64 align, uint8 target_nid) {
     return align_base;
 }
 
+// 通用兼容接口：谁不关心位置，就传 NUMA_NO_NODE
+uint64 memblock_alloc(uint64 size, uint64 align) {
+    return memblock_alloc_node(size, align, NUMA_NO_NODE);
+}
+
 /**
  * @brief 后期释放函数，从 reserved 销账并回填 memory
  */
@@ -442,5 +447,11 @@ void memblock_init(void) {
     }
 
     // 绑定内核全局 ops...
+    kernel_space.ops.alloc_pages = memblock_alloc_pages;
+    kernel_space.ops.free_pages  = memblock_free_pages;
+    kernel_space.ops.page_to_phys = memblock_page_to_pa;
+    kernel_space.ops.phys_to_page = memblock_pa_to_page;
+    kernel_space.ops.phys_to_virt = pa_to_va;
+    kernel_space.ops.virt_to_phys = va_to_pa;
     PR_INFO("Total Physics Memory: %d MB\n", phy_mem_size / 1024 / 1024);
 }
