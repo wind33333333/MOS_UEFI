@@ -41,13 +41,14 @@ static inline void mount_vmemmap_region(uint64 p_start, uint64 size, uint8 targe
         uint64 remaining = va_end - va_curr;
         uint64 step_size;
         uint64 map_flags = PAGE_KERNEL_DATA_RW;
+        uint64 vmemmap_pa;
 
         // 🌟 1档嗅探：针对 TB 级服务器，尝试 1GB 巨页映射
         // 条件：虚拟地址 1GB 对齐，且剩余元数据需求 >= 1GB (对应 64GB 的连续物理内存)
         if ((va_curr & PAGE_1G_OFFSET_MASK) == 0 && remaining >= PAGE_1G_SIZE) {
 
             // 尝试申请 1GB 的连续物理页来存放 struct page
-            uint64 vmemmap_pa = memblock_alloc_node(PAGE_1G_SIZE, PAGE_1G_SIZE, target_nid);
+            vmemmap_pa = memblock_alloc_node(PAGE_1G_SIZE, PAGE_1G_SIZE, target_nid);
 
             // 只有成功申请到 1GB 物理连续空间，才使用 1GB 映射档位
             if (vmemmap_pa) {
@@ -61,7 +62,7 @@ static inline void mount_vmemmap_region(uint64 p_start, uint64 size, uint8 targe
         // 🌟 2档嗅探：尝试 2MB 大页映射
         // 条件：虚拟地址 2MB 对齐，且剩余元数据需求 >= 2MB (对应 128MB 的连续物理内存)
         if ((va_curr & PAGE_2M_OFFSET_MASK) == 0 && remaining >= PAGE_2M_SIZE) {
-            uint64 vmemmap_pa = memblock_alloc_node(PAGE_2M_SIZE, PAGE_2M_SIZE, target_nid);
+            vmemmap_pa = memblock_alloc_node(PAGE_2M_SIZE, PAGE_2M_SIZE, target_nid);
             if (vmemmap_pa) {
                 step_size = PAGE_2M_SIZE;
                 map_flags |= SW_FLAG_MAX_2M;
@@ -71,7 +72,7 @@ static inline void mount_vmemmap_region(uint64 p_start, uint64 size, uint8 targe
 
         // 🌟 3档兜底：4KB 碎片映射 (如前 4GB 的零散内存)
         step_size = PAGE_4K_SIZE;
-        uint64 vmemmap_pa = memblock_alloc_node(PAGE_4K_SIZE, PAGE_4K_SIZE, target_nid);
+        vmemmap_pa = memblock_alloc_node(PAGE_4K_SIZE, PAGE_4K_SIZE, target_nid);
         if (!vmemmap_pa) {
             PR_ERROR("OOM allocating vmemmap (4KB)! Node %d\n", target_nid);
             while(1) asm_hlt();
@@ -113,39 +114,40 @@ void kpage_table_init(void) {
     // ---------------------------------------------------------------------
     // 映射内核 ELF 映像区 (精准控制 W^X 权限)
     // ---------------------------------------------------------------------
-    uint64 init_text_va = (uint64)_start_init_text;
-    uint64 init_text_pa = init_text_va - vm_layout.kernel_start;
-    uint64 init_text_sz = (uint64)_end_init_text - init_text_va;
-    vm_map_range(&kernel_space, init_text_va, init_text_pa, init_text_sz, PAGE_KERNEL_CODE); // RX
+    //init_text段
+    uint64 init_text_pa = (uint64)tmp_boot_info->KernelBase;
+    uint64 init_text_sz = (uint64)_end_init_text - (uint64)_start_init_text;
+    vm_map_range(&kernel_space, (uint64)_start_init_text, init_text_pa, init_text_sz, PAGE_KERNEL_CODE); // RX
 
-    uint64 init_rodata_va = (uint64)_start_init_rodata;
-    uint64 init_rodata_pa = init_rodata_va - vm_layout.kernel_start;
-    uint64 init_rodata_sz = (uint64)_end_init_rodata - init_rodata_va;
-    vm_map_range(&kernel_space, init_rodata_va, init_rodata_pa, init_rodata_sz, PAGE_KERNEL_DATA_RO); // R
+    //init_rodata段
+    uint64 init_rodata_pa = (uint64)tmp_boot_info->KernelBase + ((uint64)_start_init_rodata - (uint64)_start_init_text);
+    uint64 init_rodata_sz = (uint64)_end_init_rodata - (uint64)_start_init_rodata;
+    vm_map_range(&kernel_space, (uint64)_start_init_rodata, init_rodata_pa, init_rodata_sz, PAGE_KERNEL_DATA_RO); // R
 
-    uint64 init_data_va = (uint64)_start_init_data;
-    uint64 init_data_pa = init_data_va - vm_layout.kernel_start;
-    uint64 init_data_sz = (uint64)_end_init_bss - init_data_va;
-    vm_map_range(&kernel_space, init_data_va, init_data_pa, init_data_sz, PAGE_KERNEL_DATA_RW); // RW
+    //init_data 和 bss段
+    uint64 init_data_pa = (uint64)tmp_boot_info->KernelBase + ((uint64)_start_init_data - (uint64)_start_init_text);
+    uint64 init_data_sz = (uint64)_end_init_bss - (uint64)_start_init_data;
+    vm_map_range(&kernel_space, (uint64)_start_init_data, init_data_pa, init_data_sz, PAGE_KERNEL_DATA_RW); // RW
 
-    uint64 text_va = (uint64)_start_text;
-    uint64 text_pa = text_va - vm_layout.kernel_start;
-    uint64 text_sz = (uint64)_end_text - text_va;
-    vm_map_range(&kernel_space, text_va, text_pa, text_sz, PAGE_KERNEL_CODE); // RX
+    //正式text
+    uint64 text_pa = (uint64)tmp_boot_info->KernelBase + ((uint64)_start_text - (uint64)_start_init_text);
+    uint64 text_sz = (uint64)_end_text - (uint64)_start_text;
+    vm_map_range(&kernel_space, (uint64)_start_text, text_pa, text_sz, PAGE_KERNEL_CODE); // RX
 
-    uint64 rodata_va = (uint64)_start_rodata;
-    uint64 rodata_pa = rodata_va - vm_layout.kernel_start;
-    uint64 rodata_sz = (uint64)_end_rodata - rodata_va;
-    vm_map_range(&kernel_space, rodata_va, rodata_pa, rodata_sz, PAGE_KERNEL_DATA_RO); // R
+    //rodata
+    uint64 rodata_pa = (uint64)tmp_boot_info->KernelBase + ((uint64)_start_rodata - (uint64)_start_init_text);
+    uint64 rodata_sz = (uint64)_end_rodata - (uint64)_start_rodata;
+    vm_map_range(&kernel_space, (uint64)_start_rodata, rodata_pa, rodata_sz, PAGE_KERNEL_DATA_RO); // R
 
-    uint64 data_va = (uint64)_start_data;
-    uint64 data_pa = data_va - vm_layout.kernel_start;
-    uint64 data_sz = (uint64)_end_bss - data_va;
-    vm_map_range(&kernel_space, data_va, data_pa, data_sz, PAGE_KERNEL_DATA_RW); // RW
+    //data 和 bss
+    uint64 data_pa = (uint64)tmp_boot_info->KernelBase + ((uint64)_start_data - (uint64)_start_init_text);
+    uint64 data_sz = (uint64)_end_bss - (uint64)_start_data;
+    vm_map_range(&kernel_space, (uint64)_start_data, data_pa, data_sz, PAGE_KERNEL_DATA_RW); // RW
 
     // 载入新世界！
     asm_set_cr3(kernel_space.cr3_root);
     tlb_flush_all();
+
 
     PR_OK("Kernel page table switch successful, CR3:%lx \n", kernel_space.cr3_root);
 }
