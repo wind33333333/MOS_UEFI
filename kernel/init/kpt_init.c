@@ -91,9 +91,10 @@ do_map:
 static inline void vmemmap_init(void) {
     // 🌟 全景映射：遍历 phys_map，为所有合法 RAM (含 ACPI Reclaim) 提供 page 元数据基础
     for (uint32 i = 0; i < memblock.phys_map.count; i++) {
-        mount_vmemmap_region(memblock.phys_map.region[i].base,
-                             memblock.phys_map.region[i].size,
-                             memblock.phys_map.region[i].nid);
+        uint64 pa_base = memblock.phys_map.region[i].base;
+        uint64 size = memblock.phys_map.region[i].size;
+        uint8 nid = memblock.phys_map.region[i].nid;
+        mount_vmemmap_region(pa_base,size,nid);
     }
 }
 

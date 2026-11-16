@@ -11,7 +11,7 @@ extern vm_space_t kernel_space;
 // =========================================================================
 void buddy_system_init(void) {
     // 1. 定位 page_map 的虚拟基址
-    buddy_system.page_table = (page_t *)vm_layout.page_map_start;
+    buddy_system.page_table = (page_t *)vm_layout.vmemmap_start;
 
     // 2. 遍历初始化所有 Node 的所有阶空闲链表
     for (uint8 n = 0; n < CONFIG_NUMA_NODES; n++) {

@@ -84,12 +84,12 @@ static inline uint8 page_to_nid(page_t *page) {
 
 // page_t 对象地址 转换为 真实物理裸地址
 static inline uint64 page_to_pa(page_t *page) {
-    return (uint64)(page - (page_t*)vm_layout.page_map_start) << 12;
+    return (uint64)(page - (page_t*)vm_layout.vmemmap_start) << 12;
 }
 
 // 真实物理裸地址 转换为 page_t 对象地址
 static inline page_t* pa_to_page(uint64 pa) {
-    return (page_t*)vm_layout.page_map_start + (pa >> 12);
+    return (page_t*)vm_layout.vmemmap_start + (pa >> 12);
 }
 
 

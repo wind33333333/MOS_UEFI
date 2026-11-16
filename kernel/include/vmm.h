@@ -164,8 +164,8 @@ typedef struct {
     uint64 vmalloc_start;
     uint64 vmalloc_end;
 
-    uint64 page_map_start;
-    uint64 page_map_end;
+    uint64 vmemmap_start;
+    uint64 vmemmap_end;
 
     uint64 io_map_start;
     uint64 io_map_end;
