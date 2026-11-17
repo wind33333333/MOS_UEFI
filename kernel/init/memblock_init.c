@@ -210,14 +210,9 @@ uint64 memblock_alloc_node(uint64 size, uint64 align, uint8 target_nid) {
         memblock.memory.count++;
     }
 
-    asm_mem_set(pa_to_va(align_base), 0, size);
     return align_base;
 }
 
-// 通用兼容接口：谁不关心位置，就传 NUMA_NO_NODE
-uint64 memblock_alloc(uint64 size, uint64 align) {
-    return memblock_alloc_node(size, align, NUMA_NO_NODE);
-}
 
 /**
  * @brief 后期释放函数，从 reserved 销账并回填 memory
@@ -357,7 +352,7 @@ void memblock_set_node_by_intersection(memblock_type_t *mem_type, uint64 srat_ba
 
 static page_t *memblock_alloc_pages(uint32 order) {
     uint64 size = PAGE_4K_SIZE << order;
-    uint64 paddr = memblock_alloc_node(size, size, NUMA_NO_NODE); // 默认全局分配
+    uint64 paddr = memblock_zalloc(size, size); // 默认全局分配
     if (!paddr) return NULL;
     return (page_t *) paddr;
 }

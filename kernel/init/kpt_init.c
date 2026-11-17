@@ -103,7 +103,7 @@ static inline void vmemmap_init(void) {
 // 总装：页表初始化入口
 // =========================================================================
 void kpage_table_init(void) {
-    kernel_space.cr3_root = memblock_alloc(PAGE_4K_SIZE, PAGE_4K_SIZE);
+    kernel_space.cr3_root = memblock_zalloc(PAGE_4K_SIZE, PAGE_4K_SIZE);
     kernel_space.paging_level = tmp_paging_level;
 
     tmp_video_mem_map(); // 临时显存映射

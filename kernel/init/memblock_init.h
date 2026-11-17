@@ -1,5 +1,6 @@
 #pragma once
 
+#include "slub.h"
 #include "../include/moslib.h"
 #include "uefi_init.h"
 
@@ -36,8 +37,18 @@ extern memblock_t memblock;
 void numa_node_init(void);
 void memblock_init(void);
 uint64 memblock_alloc_node(uint64 size, uint64 align, uint8 target_nid);
-int32 memblock_free(uint64 ptr, uint64 size);
 // 通用兼容接口：谁不关心位置，就传 NUMA_NO_NODE
-uint64 memblock_alloc(uint64 size, uint64 align);
+static inline uint64 memblock_alloc(uint64 size, uint64 align) {
+    return memblock_alloc_node(size, align, NUMA_NO_NODE);
+}
+static inline uint64 memblock_zalloc_node(uint64 size, uint64 align, uint8 target_nid) {
+    uint64 pa = memblock_alloc_node(size, align, target_nid);
+    asm_mem_set(pa_to_va(pa), 0, size);
+    return pa;
+}
+static inline uint64 memblock_zalloc(uint64 size, uint64 align) {
+    return memblock_zalloc_node(size, align, NUMA_NO_NODE);
+}
+int32 memblock_free(uint64 ptr, uint64 size);
 void memblock_set_node_by_intersection(memblock_type_t *type, uint64 srat_base, uint64 srat_size, uint8 nid);
 
