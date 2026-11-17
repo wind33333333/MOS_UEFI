@@ -109,7 +109,6 @@ void kpage_table_init(void) {
     tmp_video_mem_map(); // 临时显存映射
 
     direct_map_init();   // 映射所有有效 RAM 到高半区 (使用 1GB/2MB 大页)
-    vmemmap_init();     // 映射 struct page 全局数组 (绑定 NUMA 本地内存)
 
     // ---------------------------------------------------------------------
     // 映射内核 ELF 映像区 (精准控制 W^X 权限)
@@ -148,6 +147,7 @@ void kpage_table_init(void) {
     asm_set_cr3(kernel_space.cr3_root);
     tlb_flush_all();
 
+    vmemmap_init();     // 映射 struct page 全局数组 (绑定 NUMA 本地内存)
 
     PR_OK("Kernel page table switch successful, CR3:%lx \n", kernel_space.cr3_root);
 }

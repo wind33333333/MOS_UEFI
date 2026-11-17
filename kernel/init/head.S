@@ -148,7 +148,7 @@ _start:
     // --------------------------------------------------------------------
     leaq     tmp_pdpt_direct(%rip), %rdi
     movq     $0x183, %rax               // 物理 0 开始，1GB大页 (PRESENT | RW | HUGE)
-    movl     $512, %rcx                 // 512 个 1GB 页 = 512GB
+    movq     $512, %rcx                 // 512 个 1GB 页 = 512GB
 .fill_direct_pdpt:
     stosq
     addq     $0x40000000, %rax          // 物理地址步长 1GB
