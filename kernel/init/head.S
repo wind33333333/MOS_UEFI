@@ -210,13 +210,13 @@ _start:
     /* ==================================================================== */
     movq     %cr4, %rax
     btq      $12, %rax                  // 探测 CR4.LA57 是否被 UEFI 开启
-    //jc       .already_in_la57
+    #jc       .already_in_la57
 
     movl     $7, %eax
     xorl     %ecx, %ecx
     cpuid
     btl      $16, %ecx                  // 探测 CPU 是否支持 LA57 指令集
-    //jc       .need_trampoline_la57
+    #jc       .need_trampoline_la57
 
     // 【降级分支】仅支持 4 级分页
     leaq     tmp_paging_level(%rip), %rax
