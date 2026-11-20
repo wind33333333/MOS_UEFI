@@ -371,36 +371,42 @@ static page_t *memblock_pa_to_page(uint64 paddr) {
     return (page_t *) paddr;
 }
 
+#define LOW_1M_LIMIT 0x100000ULL // 低 1MB 物理内存边界 (1024 * 1024 字节)
 // =========================================================================
-// 全局入口：极其清爽的启动扫描
+// 全局入口：物理内存启动扫描与三级账本构建 (简化版低 1MB 整体保留)
 // =========================================================================
 void memblock_init(void) {
     uint64 phy_mem_size = 0;
     uint32 count = tmp_boot_info->mem_map_size / tmp_boot_info->mem_descriptor_size;
-    uint8 *src_ptr = (uint8 *) tmp_boot_info->mem_map;
+    uint8 *src_ptr = (uint8 *)tmp_boot_info->mem_map;
 
     for (uint32 i = 0; i < count; i++) {
-        EFI_MEMORY_DESCRIPTOR *mem_des = (EFI_MEMORY_DESCRIPTOR *) src_ptr;
+        EFI_MEMORY_DESCRIPTOR *mem_des = (EFI_MEMORY_DESCRIPTOR *)src_ptr;
         if (mem_des->NumberOfPages == 0) {
             src_ptr += tmp_boot_info->mem_descriptor_size;
             continue;
         }
 
-        uint64 pa_start = mem_des->PhysicalStart;
-        uint64 size = mem_des->NumberOfPages << 12;
+        uint64 pa_start      = mem_des->PhysicalStart;
+        uint64 size          = mem_des->NumberOfPages << 12; // 页数转字节数 (4KB/页)
         EFI_MEMORY_TYPE type = mem_des->Type;
-        uint64 attr = mem_des->Attribute;
+        uint64 attr          = mem_des->Attribute;
 
-        // 🌟 统计全系统物理 RAM
-        if (type != EFI_RESERVED_MEMORY_TYPE && type != EFI_MEMORY_MAPPED_IO && type != EFI_UNUSABLE_MEMORY) {
+        // 🌟 统计全系统有效物理 RAM 总量 (排除 MMIO、ROM 空洞及损坏内存)
+        if (type != EFI_RESERVED_MEMORY_TYPE &&
+            type != EFI_MEMORY_MAPPED_IO &&
+            type != EFI_UNUSABLE_MEMORY) {
             phy_mem_size += size;
         }
 
         // ====================================================================
         // 第一层：全景物理视图 (phys_map) - 专供页表初始化使用
         // ====================================================================
-        // 无视原本 type（填 0），纯粹靠 base 缝合因为 Loader 而碎裂的物理内存！
-        // 但严格排除 NVS（防踩）和 Runtime（权限特殊），它们对全局直接映射隐身。
+        // 架构关键点：
+        // 1. 无视原本 type（统一填 0），纯粹靠 base 缝合因为 Loader 而碎裂的物理内存。
+        // 2. 低 1MB 区域依然完整加入 phys_map，从而确保从 0x0 开始的 1GB/2MB 巨页
+        //    对齐不被破坏，且低 1MB 拥有高半区直接映射（支持 pa_to_va 转换）。
+        // 3. 严格排除 NVS（防误写死机）和 Runtime（需独立映射 RX/RW 权限）。
         if (type == EFI_LOADER_DATA || type == EFI_LOADER_CODE ||
             type == EFI_BOOT_SERVICES_CODE || type == EFI_BOOT_SERVICES_DATA ||
             type == EFI_CONVENTIONAL_MEMORY || type == EFI_ACPI_RECLAIM_MEMORY) {
@@ -412,41 +418,67 @@ void memblock_init(void) {
         // 第二层：特权隔离与运行时备份
         // ====================================================================
         if (attr & EFI_MEMORY_RUNTIME) {
+            // 锁入 reserved 债务簿保护物理帧，并备份原始描述符供后期 SetVirtualAddressMap 使用
             memblock_add(&memblock.reserved, pa_start, size, type);
-            uint8 *dst_ptr = (uint8 *) efi_runtime_memmap.mem_map +
+            uint8 *dst_ptr = (uint8 *)efi_runtime_memmap.mem_map +
                              (efi_runtime_memmap.count * tmp_boot_info->mem_descriptor_size);
             asm_mem_cpy(dst_ptr, src_ptr, tmp_boot_info->mem_descriptor_size);
             efi_runtime_memmap.count++;
             src_ptr += tmp_boot_info->mem_descriptor_size;
-            continue; // Runtime 直接短路，不进入常规筛选
+            continue; // Runtime 处理完毕，直接短路
         }
 
         if (type == EFI_ACPI_MEMORY_NVS) {
-            memblock_add(&memblock.reserved, pa_start, size, type); // 关入死牢保护
+            // 主板 S3/S4 休眠固件私有区，锁入 reserved 死牢，绝不分配也绝不映射
+            memblock_add(&memblock.reserved, pa_start, size, type);
             src_ptr += tmp_boot_info->mem_descriptor_size;
-            continue; // NVS 直接短路
+            continue; // NVS 处理完毕，直接短路
         }
 
         // ====================================================================
-        // 第三层：纯净的状态自描述分类
+        // 第三层：纯净的状态自描述分类 (含低 1MB 原封不动划入 reserved 保护)
         // ====================================================================
         if (type == EFI_LOADER_DATA || type == EFI_LOADER_CODE || type == EFI_ACPI_RECLAIM_MEMORY) {
-            // 资产一律封存，保留其原有的 type 作为身份标识
+            // Bootloader 资产与 ACPI 表：一律封存进 reserved，保留原有 type 供后期溯源
             memblock_add(&memblock.reserved, pa_start, size, type);
-        } else if (type == EFI_BOOT_SERVICES_CODE || type == EFI_BOOT_SERVICES_DATA || type == EFI_CONVENTIONAL_MEMORY) {
-            // 空闲内存一律洗白充公，统一打上 EFI_CONVENTIONAL_MEMORY 标记
-            memblock_add(&memblock.memory, pa_start, size, EFI_CONVENTIONAL_MEMORY);
+        }
+        else if (type == EFI_BOOT_SERVICES_CODE ||
+                 type == EFI_BOOT_SERVICES_DATA ||
+                 type == EFI_CONVENTIONAL_MEMORY) {
+
+            // 🌟 核心简化：若当前可用内存区块起始地址低于 1MB (0x100000)，
+            // 直接将 1MB 以下的部分原封不动整体放入 memblock.reserved 债务簿中！
+            // 效果：
+            // 1. 包含第 0 页在内的整个低 1MB 区间被安全锁定，使 0 永远不会进入空闲池，
+            //    从而让 `0` 稳稳成为 `memblock_alloc` 失败的 NULL 哨兵。
+            // 2. 隔离了低 640KB 附近的 BIOS/EBDA 碎片区和遗留设备区。
+            // 3. 为后续多核唤醒 (SMP AP Boot Trampoline) 留下了现成的干净实模式内存池。
+            if (pa_start < LOW_1M_LIMIT) {
+                uint64 low_end  = MIN(pa_start + size, LOW_1M_LIMIT);
+                uint64 low_size = low_end - pa_start;
+
+                memblock_add(&memblock.reserved, pa_start, low_size, EFI_CONVENTIONAL_MEMORY);
+
+                pa_start += low_size;
+                size     -= low_size;
+            }
+
+            // 🌟 真正超越 1MB (>= 0x100000) 的纯净连续 RAM，正式投入 memory 空闲池供全系统分配！
+            if (size > 0) {
+                memblock_add(&memblock.memory, pa_start, size, EFI_CONVENTIONAL_MEMORY);
+            }
         }
 
         src_ptr += tmp_boot_info->mem_descriptor_size;
     }
 
-    // 绑定内核全局 ops...
-    kernel_space.ops.alloc_pages = memblock_alloc_pages;
-    kernel_space.ops.free_pages  = memblock_free_pages;
+    // 绑定 VMM 早期物理内存分配与地址转换回调接口
+    kernel_space.ops.alloc_pages  = memblock_alloc_pages;
+    kernel_space.ops.free_pages   = memblock_free_pages;
     kernel_space.ops.page_to_phys = memblock_page_to_pa;
     kernel_space.ops.phys_to_page = memblock_pa_to_page;
     kernel_space.ops.phys_to_virt = pa_to_va;
     kernel_space.ops.virt_to_phys = va_to_pa;
+
     PR_INFO("Total Physics Memory: %d MB\n", phy_mem_size / 1024 / 1024);
 }

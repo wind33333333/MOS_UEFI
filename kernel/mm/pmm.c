@@ -130,14 +130,14 @@ void free_pages(page_t *page) {
     page->flags &= ~(1ULL << PG_HEAD);
 
     // 🌟 自动寻祖：从 page 自身的 flag 中提取出它当初属于哪个物理 Node
-    uint8 nid = (page->flags >> PG_NID_SHIFT) & 0xFF;
+    uint8 nid = page_to_nid(page);
     numa_zone_t *zone = &buddy_system.zones[nid];
 
     // 1. 尝试与周边的伙伴同化并向上攀爬融合
     while (order < MAX_ORDER) {
-        uint64 page_idx  = page - buddy_system.page_table;
+        uint64 page_idx  = page - buddy_system.vmemmap;
         uint64 buddy_idx = page_idx ^ (1ULL << order);
-        page_t *buddy_page = buddy_system.page_table + buddy_idx;
+        page_t *buddy_page = buddy_system.vmemmap + buddy_idx;
 
         // 伙伴不在空闲链表、阶数不匹配、或者【属于不同的 NUMA Node】，直接终止融合！
         uint8 buddy_nid = page_to_nid(buddy_page);

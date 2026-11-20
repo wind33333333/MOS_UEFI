@@ -16,6 +16,10 @@
 #define PG_HEAD     2      /* 复合页面 (Compound Page) 的首节点 */
 #define PG_BUDDY    3      /* 页面当前处于闲置状态，归属伙伴系统空闲链表 */
 
+// NUMA Node ID 占据 flags 的最顶端 8 位 (Bit 56 ~ 63)
+#define PG_NID_SHIFT    56
+#define PG_NID_MASK     0xFFULL
+
 typedef struct kmem_cache_t kmem_cache_t;
 
 /**
@@ -36,9 +40,7 @@ typedef struct page_t {
     };
 } __attribute__((aligned(64))) page_t;
 
-// NUMA Node ID 占据 flags 的最顶端 8 位 (Bit 56 ~ 63)
-#define PG_NID_SHIFT    56
-#define PG_NID_MASK     0xFFULL
+
 
 
 typedef struct {
@@ -51,7 +53,7 @@ typedef struct {
 } numa_zone_t;
 
 typedef struct {
-    page_t *page_table;                     // 全局 page_t 映射表基址
+    page_t *vmemmap;                     // 全局 page_t 映射表基址
     numa_zone_t zones[CONFIG_NUMA_NODES];   // 核心升维：每个 Node 一个专属 Zone
 } buddy_system_t;
 
