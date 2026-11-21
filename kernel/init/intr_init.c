@@ -1,4 +1,4 @@
-#include "../x64/ecx_dispatcher.h"
+#include "../x64/exc_dispatcher.h"
 #include "../x64/idt.h"
 #include "printk.h"
 
