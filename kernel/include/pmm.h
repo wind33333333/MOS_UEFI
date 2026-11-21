@@ -41,21 +41,50 @@ typedef struct page_t {
 } __attribute__((aligned(64))) page_t;
 
 
-
-
 typedef struct {
     list_head_t list;
     uint32 count;
 } free_area_t;
 
 typedef struct {
-    free_area_t free_area[MAX_ORDER + 1]; // 单个 Node 的专属空闲链表
+    uint32      lock;                             // 🌟 SMP + IRQ 并发保护锁
+    free_area_t free_area[MAX_ORDER + 1];         // 0 ~ MAX_ORDER 阶空闲链表
+    uint64      free_pages_count;                 // 实时空闲 4KB 页统计 (便于监控与水位线判断)
+
+    // 🌟 预计算的按物理距离排序的降级路由表 (彻底消灭热路径排序)
+    uint8       fallback_nids[CONFIG_NUMA_NODES]; // [0] 恒为本节点，后续按 SLIT 距离升序
+    uint8       fallback_count;                   // 有效备选节点总数
 } numa_zone_t;
 
 typedef struct {
-    page_t *vmemmap;                     // 全局 page_t 映射表基址
-    numa_zone_t zones[CONFIG_NUMA_NODES];   // 核心升维：每个 Node 一个专属 Zone
+    page_t     *vmemmap;
+    uint8       active_nodes;                     // 系统实际激活的 NUMA 节点数 (至少为 1)
+    numa_zone_t zones[CONFIG_NUMA_NODES];
 } buddy_system_t;
+
+
+// 在 page->flags 标志位定义中增加 PCP 专属状态位
+#define PG_PCP           3       // 该页当前寄存在某个 CPU 的 PCP 本地缓存中 (此时 PG_BUDDY 必为 0)
+
+// 默认水位线参数 (可在 pcp_init_cpu 中按节点总内存动态微调)
+#define PCP_BATCH_MIN    8       // 极小内存节点下的最小批处理数
+#define PCP_BATCH_MAX    64      // 大内存服务器上的最大批处理数
+#define PCP_HIGH_FACTOR  6       // 高水位 = batch * 6 (典型值: batch=32, high=192)
+
+// =========================================================================
+// Per-CPU 单页缓存结构 (64B 缓存行对齐，彻底杜绝 SMP 伪共享)
+// =========================================================================
+typedef struct{
+    list_head_t list;            // 本核私有 Order 0 空闲页双向链表 (头热尾冷)
+    uint32      count;           // 当前缓存的 4KB 页数量
+    uint32      high;            // 高水位阈值：count 达到 high 时触发批量回流；0 表示本核 PCP 未启用
+    uint32      batch;           // 单次填充 / 回流的批量页数
+    uint8       nid;             // 缓存所属的本地 NUMA Node ID (初始化时固化，避免热路径反复推导)
+    uint8       _pad[3];
+    uint64      alloc_hits;      // 统计：快路径命中次数 (便于性能调优观测)
+    uint64      free_hits;       // 统计：快路径回收次数
+} pcp_pageset_t;
+
 
 extern buddy_system_t buddy_system;
 
@@ -79,6 +108,13 @@ static inline uint8 page_to_nid(page_t *page) {
     return (uint8)((page->flags >> PG_NID_SHIFT) & PG_NID_MASK);
 }
 
+// =========================================================================
+// 内部辅助：重置页标志位，仅安全保留物理 NUMA Node ID
+// =========================================================================
+static inline void page_reset_flags_keep_nid(page_t *page, uint8 nid) {
+    page->flags = 0;
+    set_page_nid(page, nid);
+}
 
 // -----------------------------------------------------------------------------
 // 高频内联寻址转换引擎
@@ -108,4 +144,5 @@ page_t *alloc_pages_node(uint32 order, uint8 target_nid);
 page_t *alloc_pages(uint32 order) {
     return alloc_pages_node(order, NUMA_NO_NODE);
 };
+void __buddy_free_locked(numa_zone_t *zone, page_t *page, uint32 order, uint8 nid);
 void free_pages(page_t *page);

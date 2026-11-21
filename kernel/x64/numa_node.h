@@ -1,5 +1,5 @@
 #pragma once
-#include "cpu.h"
+#include "config.h"
 #include "moslib.h"
 
 typedef struct {

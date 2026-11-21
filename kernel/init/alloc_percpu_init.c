@@ -1,11 +1,9 @@
 #include "../mm/alloc_percpu.h"
-#include "apic_init.h"
 #include "../x64/cpu.h"
 #include "list.h"
 #include "memblock_init.h"
 #include "moslib.h"
 #include "../x64/numa_node.h"
-#include "pmm.h"
 #include "vmm.h"
 
 extern list_head_t chunk_list;

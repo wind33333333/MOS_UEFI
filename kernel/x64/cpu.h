@@ -1,14 +1,15 @@
 #pragma once
+#include "config.h"
 #include "gdt_tss.h"
 #include "irq_dispatcher.h"
 #include "moslib.h"
 #include "msr.h"
+#include "pmm.h"
 #include "rbtree.h"
 #include "vmm.h"
 #include "../time/time_core.h"
 
-// 定义cpu核心最大物理槽位上限，编译时自定义，64的倍数，64/128/256/512/1024...
-#define CONFIG_NR_CPUS 512
+
 
 // 定义一个极其轻量级的硬件拓扑描述符
 typedef struct {
@@ -97,6 +98,7 @@ typedef struct cpu_control_block_t {
     uint32          fundamental_mhz;      // 基础频率 (MHz)
     uint32          maximum_mhz;          // 最大睿频 (MHz)
     uint32          bus_mhz;              // 总线/外频 (MHz)
+    pcp_pageset_t   pcp;
 }__attribute__((aligned(64)))cpu_control_block_t;
 
 //通过gs直接访问cpu控制块

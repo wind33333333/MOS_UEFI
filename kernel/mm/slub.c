@@ -1,5 +1,6 @@
 #include "../include/slub.h"
 #include "alloc_percpu.h"
+#include "../x64/cpu.h"
 #include "../include/pmm.h"
 #include "printk.h"
 

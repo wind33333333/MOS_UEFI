@@ -134,6 +134,77 @@ static inline void mount_vmemmap_clean(uint64 va_start, uint64 va_end, uint8 tar
 }
 
 // =========================================================================
+// 静态拓扑预计算：在 buddy_system_init 中调用一次即可
+// 为每个 NUMA Zone 提前构建好按 SLIT 物理距离升序排列的降级路由表
+// =========================================================================
+void buddy_build_zonelists(void) {
+    // 兼容无 SRAT/SLIT 表的 UMA 机器：至少保证 Node 0 激活
+    uint8 total_nodes = numa_info.numa_nodes_count;
+    if (total_nodes == 0) {
+        total_nodes = 1;
+    } else if (total_nodes > CONFIG_NUMA_NODES) {
+        total_nodes = CONFIG_NUMA_NODES;
+    }
+    buddy_system.active_nodes = total_nodes;
+
+    for (uint8 target_nid = 0; target_nid < total_nodes; target_nid++) {
+        numa_zone_t *zone = &buddy_system.zones[target_nid];
+        uint8 count = 0;
+
+        // 第 0 位永远锁死为本地节点 (最高优先级)
+        zone->fallback_nids[count++] = target_nid;
+
+        // 收集所有远端节点
+        uint8 sort_start = count;
+        for (uint8 i = 0; i < total_nodes; i++) {
+            if (i != target_nid) {
+                zone->fallback_nids[count++] = i;
+            }
+        }
+
+        // 启动期一次性按 SLIT 物理距离表排序，热路径从此 O(1) 零开销
+        for (uint8 i = sort_start; i < count; i++) {
+            for (uint8 j = i + 1; j < count; j++) {
+                uint8 node_a = zone->fallback_nids[i];
+                uint8 node_b = zone->fallback_nids[j];
+
+                uint8 dist_a = numa_info.numa_distance[target_nid][node_a];
+                uint8 dist_b = numa_info.numa_distance[target_nid][node_b];
+
+                if (dist_b < dist_a || (dist_b == dist_a && node_b < node_a)) {
+                    zone->fallback_nids[i] = node_b;
+                    zone->fallback_nids[j] = node_a;
+                }
+            }
+        }
+
+        zone->fallback_count = count;
+    }
+}
+
+// =========================================================================
+// 启动期专用交接接口 (供 buddy_system_init 调用，直接入库 Buddy)
+// =========================================================================
+void buddy_init_free_block(page_t *page, uint32 order, uint8 nid) {
+    if (!page || order > MAX_ORDER) return;
+    if (nid >= buddy_system.active_nodes) nid = 0;
+
+    uint64 num_pages = 1ULL << order;
+    for (uint64 i = 0; i < num_pages; i++) {
+        page[i].refcount = 0;
+        page[i].compound_head = 0;
+        page[i].order = 0;
+        page_reset_flags_keep_nid(&page[i], nid);
+    }
+
+    numa_zone_t *zone = &buddy_system.zones[nid];
+    uint64 irq_flags;
+    spin_lock_irqsave(&zone->lock,&irq_flags);
+    __buddy_free_locked(zone, page, order, nid);
+    spin_unlock_irqrestore(&zone->lock, irq_flags);
+}
+
+// =========================================================================
 // 总入口：先消毒，再映射
 // =========================================================================
 static void vmemmap_init(void) {
@@ -147,41 +218,54 @@ static void vmemmap_init(void) {
 }
 
 // =========================================================================
-// 伙伴系统 NUMA 感知初始化 (极致降维 O(1) 自动分拣版)
+// 伙伴系统 NUMA 感知初始化 (锁初始化 + 路由表预计算 + 专用交接引擎)
 // =========================================================================
 void buddy_system_init(void) {
-    vmemmap_init(); // 映射 struct page 全局数组 (绑定 NUMA 本地内存)
+    // 1. 映射 struct page 全局数组 (先做区间消毒，再按 NUMA 本地内存流式挂载)
+    vmemmap_init();
 
-    // 1. 定位 page_map 的虚拟基址
-    buddy_system.vmemmap = (page_t *) vm_layout.vmemmap_start;
+    // 2. 定位 vmemmap 虚拟基址
+    buddy_system.vmemmap = (page_t *)vm_layout.vmemmap_start;
 
-    // 2. 遍历初始化所有 Node 的所有阶空闲链表
+    // 3. 初始化所有 NUMA Zone 的自旋锁、空闲计数与各阶链表
     for (uint8 n = 0; n < CONFIG_NUMA_NODES; n++) {
-        for (uint64 i = 0; i <= MAX_ORDER; i++) {
+        buddy_system.zones[n].lock = 0;
+        buddy_system.zones[n].free_pages_count = 0;
+        buddy_system.zones[n].fallback_count   = 0;
+
+        for (uint32 i = 0; i <= MAX_ORDER; i++) {
             list_head_init(&buddy_system.zones[n].free_area[i].list);
             buddy_system.zones[n].free_area[i].count = 0;
         }
     }
 
-    // 3. 遍历已经被 SRAT 完美盖过戳的 memblock 资产簿
+    // 4. 🌟 一次性预计算全系统 NUMA 降级路由表，并确定 active_nodes
+    //    必须在遍历 memblock.memory 之前调用，确保后续 nid 校验与入库使用正确的节点数
+    buddy_build_zonelists();
+
+    // 5. 遍历经 SRAT 盖章后的 memblock.memory 资产簿，将空闲物理页移交伙伴系统
     for (uint32 i = 0; i < memblock.memory.count; i++) {
         uint64 start_pa = memblock.memory.region[i].base;
-        uint64 count = memblock.memory.region[i].size >> 12;
-        // 🌟 提取 Memblock 在早期阶段千辛万苦洗出来的物理 Node 归属
+        uint64 count    = memblock.memory.region[i].size >> 12;
+        if (count == 0) continue;
+
         uint8 region_nid = memblock.memory.region[i].nid;
 
-        // 容错：如果有漏网之鱼，强行划归 Node 0 避免游离
-        if (region_nid == NUMA_NO_NODE) region_nid = 0;
+        // 容错：未匹配 SRAT 或超出激活范围的节点统一安全回落到 Node 0
+        if (region_nid == NUMA_NO_NODE || region_nid >= buddy_system.active_nodes) {
+            region_nid = 0;
+        }
 
-        uint64 start_idx = pa_to_page(start_pa) - buddy_system.vmemmap;
-        uint64 end_idx = start_idx + count;
+        uint64 start_idx = (uint64)(pa_to_page(start_pa) - buddy_system.vmemmap);
+        uint64 end_idx   = start_idx + count;
 
         while (start_idx < end_idx) {
             uint32 order = MAX_ORDER;
 
-            // 智能嗅探当前游标能满足的最高阶数
+            // 嗅探当前游标能满足的最大 2^order 对齐阶数
             while (order > 0) {
-                if ((start_idx & ((1ULL << order) - 1)) == 0 && (start_idx + (1ULL << order) <= end_idx)) {
+                if ((start_idx & ((1ULL << order) - 1)) == 0 &&
+                    (start_idx + (1ULL << order) <= end_idx)) {
                     break;
                 }
                 order--;
@@ -189,35 +273,32 @@ void buddy_system_init(void) {
 
             page_t *p = buddy_system.vmemmap + start_idx;
 
-            // 彻底清洗该大块的数据
-            p->order = order;
-            p->flags = 0;
-            p->refcount = 0;
-
-            // 🌟 核心注入：在交接给伙伴系统前，把 Node ID 烙印在 Page 的标志位里！
-            // 这样稍后的 free_pages 就会通过这个标志，自动把它挂接到 buddy_system.zones[region_nid] 里！
-            p->flags |= ((uint64) region_nid << PG_NID_SHIFT);
-
-            // 顺带把尾部连续页也打上同样的印记 (用于后续分离合并时的识别)
-            for (uint32 j = 1; j < (1ULL << order); j++) {
-                (p + j)->flags = 0;
-                set_page_nid(p + j, region_nid);
-            }
-
-            // 扔进回收引擎，实现全自动分拣归位！
-            free_pages(p);
+            // 🌟 使用启动期专用交接接口：统一清洗块内所有页元数据 (flags/nid/refcount/compound_head)
+            //    并直接进入持锁融合引擎，避免触发运行期 free_pages 的 refcount 校验报错
+            buddy_init_free_block(p, order, region_nid);
 
             start_idx += (1ULL << order);
         }
     }
 
-    // 4. 将支持 NUMA 的伙伴系统正式绑定到虚拟内存 VMM 回调接口，接管天下
-    kernel_space.ops.alloc_pages = alloc_pages;
-    kernel_space.ops.free_pages = free_pages;
+    // 6. 将 NUMA 伙伴系统正式绑定到 VMM 物理页回调接口，完成控制权交接
+    //    (注：此后严禁再调用 memblock_alloc*，如需强约束可在此调用 memblock_mark_retired())
+    kernel_space.ops.alloc_pages  = alloc_pages;
+    kernel_space.ops.free_pages   = free_pages;
     kernel_space.ops.page_to_phys = page_to_pa;
     kernel_space.ops.phys_to_page = pa_to_page;
     kernel_space.ops.phys_to_virt = pa_to_va;
     kernel_space.ops.virt_to_phys = va_to_pa;
 
-    PR_OK("NUMA-Aware Buddy System init success.\n");
+    // 7. 打印各激活 NUMA 节点接管到的空闲内存统计，便于启动期核验
+    uint64 total_free_pages = 0;
+    for (uint8 n = 0; n < buddy_system.active_nodes; n++) {
+        uint64 node_pages = buddy_system.zones[n].free_pages_count;
+        total_free_pages += node_pages;
+        PR_INFO("  -> NUMA Node %d Free Memory: %ld MB (%ld pages)\n",
+                n, (node_pages << 12) / 1024 / 1024, node_pages);
+    }
+
+    PR_OK("NUMA-Aware Buddy System init success. Active Nodes: %d, Total Free: %ld MB\n",
+          buddy_system.active_nodes, (total_free_pages << 12) / 1024 / 1024);
 }

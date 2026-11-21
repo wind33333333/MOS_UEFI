@@ -119,12 +119,15 @@ void kernel_init(void) {
     tmp_boot_info_init();                                       //boot_info映射虚拟地址空间
     output_init();                                              //初始化输出控制台
     idt_init();                                                 //中断描述符表初始化
-    boot_exception_init();                                       //0-31号临时异常注册成功
-    memblock_init();                                             //初始化启动内存分配器
+    boot_exception_init();                                      //0-31号临时异常注册成功
+    memblock_init();                                            //初始化启动内存分配器
     cpu_topo_init();                                            //cpu拓扑
     numa_node_init();                                           //numa节点初始化
     kpage_table_init();                                         //初始化正式内核页表
+
     buddy_system_init();                                        //初始化伙伴系统
+
+
     slub_init();                                                //初始化slub内存分配器
     vmalloc_init();                                             //初始化vmalloc
 
