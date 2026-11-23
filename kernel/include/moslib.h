@@ -859,3 +859,14 @@ int32 copy_from_user(void *kdst,const void *usrc,  uint32 size);
 int32 copy_to_user(void *udst,const void *ksrc,  uint32 size);
 
 int32 strncpy_from_user(char *kdst,const char *usrc, uint32 max_len);
+
+/* =========================================================================
+ * 内部辅助 1：检测当前是否运行在虚拟化 Hypervisor 环境中
+ * 说明：CPUID 0x01 ECX Bit 31 为架构保留的 Hypervisor Present 标志位，
+ *       QEMU / KVM / VMware 等虚拟化平台下恒为 1，物理真机恒为 0。
+ * ========================================================================= */
+static inline boolean cpu_in_hypervisor(void) {
+    uint32 eax = 0, ebx = 0, ecx = 0, edx = 0;
+    asm_cpuid(0x01, &eax, &ebx, &ecx, &edx);
+    return (ecx & (1U << 31)) ? TRUE : FALSE;
+}

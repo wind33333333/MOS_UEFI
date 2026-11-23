@@ -107,11 +107,28 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 	-pkill udk-gdb-server
 	-pkill qemu-system-x86
 	qemu-system-x86_64 \
-		`# --- 1. 基础系统与 SMP 参数 (制造 APIC ID 空洞) ---` \
-		`# 核心魔法：12个总核心，但 cores=3 迫使 QEMU 每分配 3 个核心跳过 1 个 APIC 槽位` \
-		`# 实际产生的 APIC IDs: Socket0(0,1,2), Socket1(4,5,6), Socket2(8,9,10), Socket3(12,13,14)` \
-		-M q35 -m 8G -cpu max -smp sockets=4,cores=3,threads=1 -bios OVMF.fd \
+		`# --- 1. 基础系统与 SMP 拓扑 (12 颗开机在线 + 4 颗热插拔空槽 = 16 核上限) ---` \
+		`# 拓扑总槽位: 4 Sockets * 4 Cores * 1 Thread = 16 (APIC ID 0~15)` \
+		`# 先用 cpus=1 仅拉起 BSP (Socket0 Core0, APIC 0)，再通过 -device 精准插入其余 11 颗开机核` \
+		`# 效果：每个 Socket 保留 core-id=3 (APIC 3, 7, 11, 15) 作为热插拔槽位，` \
+		`#       开机在线核心 APIC ID 依然保持空洞: (0,1,2), (4,5,6), (8,9,10), (12,13,14)` \
+		-M q35 -m 8G -cpu max \
+		-smp cpus=1,maxcpus=16,sockets=4,cores=4,threads=1 \
+		-bios OVMF.fd \
 		-net none -S -s -monitor telnet:localhost:4444,server,nowait \
+		\
+		`# --- 1.1 精确插入其余 11 颗开机在线核心 (每 Socket 留出 core-id=3 待热插拔) ---` \
+		-device max-x86_64-cpu,id=cpu-s0c1,socket-id=0,core-id=1,thread-id=0 \
+		-device max-x86_64-cpu,id=cpu-s0c2,socket-id=0,core-id=2,thread-id=0 \
+		-device max-x86_64-cpu,id=cpu-s1c0,socket-id=1,core-id=0,thread-id=0 \
+		-device max-x86_64-cpu,id=cpu-s1c1,socket-id=1,core-id=1,thread-id=0 \
+		-device max-x86_64-cpu,id=cpu-s1c2,socket-id=1,core-id=2,thread-id=0 \
+		-device max-x86_64-cpu,id=cpu-s2c0,socket-id=2,core-id=0,thread-id=0 \
+		-device max-x86_64-cpu,id=cpu-s2c1,socket-id=2,core-id=1,thread-id=0 \
+		-device max-x86_64-cpu,id=cpu-s2c2,socket-id=2,core-id=2,thread-id=0 \
+		-device max-x86_64-cpu,id=cpu-s3c0,socket-id=3,core-id=0,thread-id=0 \
+		-device max-x86_64-cpu,id=cpu-s3c1,socket-id=3,core-id=1,thread-id=0 \
+		-device max-x86_64-cpu,id=cpu-s3c2,socket-id=3,core-id=2,thread-id=0 \
 		\
 		`# --- 2. NUMA 内存后端 ---` \
 		-object memory-backend-ram,id=mem0,size=2G \
@@ -120,18 +137,16 @@ debug-kernel: clean_kernel ${BUILD}/kernel.elf ${BUILD}/kernel.bin
 		-object memory-backend-ram,id=mem3,size=2G \
 		\
 		`# --- 3. NUMA 节点与内存绑定 ---` \
-		`# 现代语法：只在这里定义节点 ID 和 内存设备的映射` \
 		-numa node,nodeid=0,memdev=mem0 \
 		-numa node,nodeid=1,memdev=mem3 `# 故意把 node 1 指向最后一块内存 mem3` \
 		-numa node,nodeid=2,memdev=mem1 \
 		-numa node,nodeid=3,memdev=mem2 \
 		\
-		`# --- 4. 现代语法的 CPU 精确拓扑绑定 (打乱映射) ---` \
-		`# 直接将 Socket 绑定到指定的 Node，完美绕过逻辑索引越界，并形成乱序交叉` \
-		-numa cpu,node-id=0,socket-id=0 \
-		-numa cpu,node-id=1,socket-id=3 `# Node 1 绑定远端 Socket 3 (对应 APIC 12,13,14)` \
-		-numa cpu,node-id=2,socket-id=1 `# Node 2 绑定 Socket 1 (对应 APIC 4,5,6)` \
-		-numa cpu,node-id=3,socket-id=2 `# Node 3 绑定 Socket 2 (对应 APIC 8,9,10)` \
+		`# --- 4. 现代语法的 CPU 精确拓扑绑定 (自动覆盖开机核与热插拔槽位) ---` \
+		-numa cpu,node-id=0,socket-id=0 `# APIC 0,1,2 开机 + APIC 3 热插拔` \
+		-numa cpu,node-id=1,socket-id=3 `# APIC 12,13,14 开机 + APIC 15 热插拔` \
+		-numa cpu,node-id=2,socket-id=1 `# APIC 4,5,6 开机 + APIC 7 热插拔` \
+		-numa cpu,node-id=3,socket-id=2 `# APIC 8,9,10 开机 + APIC 11 热插拔` \
 		\
 		`# --- 5. NUMA 访问距离矩阵 (SLIT) ---` \
 		-numa dist,src=0,dst=0,val=10 -numa dist,src=0,dst=1,val=40 -numa dist,src=0,dst=2,val=20 -numa dist,src=0,dst=3,val=30 \
