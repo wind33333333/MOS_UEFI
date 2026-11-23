@@ -244,12 +244,13 @@ void buddy_system_init(void) {
     buddy_build_zonelists();
 
     // 5. 遍历经 SRAT 盖章后的 memblock.memory 资产簿，将空闲物理页移交伙伴系统
-    for (uint32 i = 0; i < memblock.memory.count; i++) {
-        uint64 start_pa = memblock.memory.region[i].base;
-        uint64 count    = memblock.memory.region[i].size >> 12;
+    uint32 memory_count = memblock.memory.count;
+    for (uint32 i = 0; i < memory_count; i++) {
+        memblock_region_t *region = &memblock.memory.region[i];
+        uint64 start_pa = region->base;
+        uint64 count    = region->size >> 12;
         if (count == 0) continue;
-
-        uint8 region_nid = memblock.memory.region[i].nid;
+        uint8 region_nid = region->nid;
 
         // 容错：未匹配 SRAT 或超出激活范围的节点统一安全回落到 Node 0
         if (region_nid == NUMA_NO_NODE || region_nid >= buddy_system.active_nodes) {
@@ -278,6 +279,13 @@ void buddy_system_init(void) {
             buddy_init_free_block(p, order, region_nid);
 
             start_idx += (1ULL << order);
+
+            //把释放进伙伴系统的内存进行清空，防止后面调用memblock_alloc函数导致错误分配物理内存。
+            region->base = 0;
+            region->size = 0;
+            region->nid = NUMA_NO_NODE;
+            region->type =  EFI_RESERVED_MEMORY_TYPE;
+            memblock.memory.count--;
         }
     }
 

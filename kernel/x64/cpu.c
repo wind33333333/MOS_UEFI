@@ -140,7 +140,7 @@ static uint64 cpu_topo_alloc_dynamic_tables(uint32 nr_possible) {
     uint64 sz_online    = CPU_TOPO_ALIGN64(mask_bytes);
     uint64 total_bytes  = sz_hw + sz_lid2aid + sz_possible + sz_present + sz_online;
 
-    uint64 pa = memblock_alloc(total_bytes, 64);
+    uint64 pa = memblock_zalloc(total_bytes, 64);
     if (pa == 0) {
         PR_ERROR("[CPU] memblock_alloc failed for topology tables (%ld bytes, nr_possible=%d)!\n",
                  total_bytes, nr_possible);
@@ -148,7 +148,6 @@ static uint64 cpu_topo_alloc_dynamic_tables(uint32 nr_possible) {
     }
 
     uint8 *base = (uint8 *)pa_to_va(pa);
-    asm_mem_set(base, 0, total_bytes);
 
     /* 按 64 字节边界依次切分 5 个动态指针 */
     uint64 off = 0;
@@ -190,9 +189,6 @@ void cpu_topo_init(void) {
     boolean        is_guest   = cpu_in_hypervisor();
     madt_header_t *madt_first = (madt_header_t *)&madt->entry;
     madt_header_t *cur        = NULL;
-
-    /* 清零全局拓扑结构体 (此时 5 个动态指针尚未分配，不可对其 memset) */
-    asm_mem_set(&cpu_topo, 0, sizeof(cpu_topo));
 
     /* 读取当前正在执行初始化的 BSP 硬件 APIC ID */
     uint32 bsp_apic_id = asm_rdmsr(APIC_ID_MSR);

@@ -1,6 +1,5 @@
 #pragma once
 #include "../mm/alloc_percpu.h"
-#include "config.h"
 #include "gdt_tss.h"
 #include "irq_dispatcher.h"
 #include "moslib.h"

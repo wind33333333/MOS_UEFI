@@ -55,9 +55,18 @@ static inline void acpi_parse_srat(void) {
     acpi_header_t *header = (acpi_header_t *) srat_ptr;
     PR_INFO("[ACPI] Parsing SRAT...\n");
 
+    uint32 nr_possible_cpus = cpu_topo.nr_possible_cpus;
+    uint8 *cpu_lid_to_numa_map =  (uint8*)memblock_alloc(nr_possible_cpus,8);
+    if (!cpu_lid_to_numa_map) {
+        PR_ERROR("[ACPI] memblock_alloc cpu_lid_to_numa_map !\n");
+        while (1) asm_hlt();
+    }
+    cpu_lid_to_numa_map = pa_to_va((uint64)cpu_lid_to_numa_map);
+    numa_info.cpu_lid_to_numa_map = cpu_lid_to_numa_map;
+
     // 初始化映射数组
-    for (int i = 0; i < CONFIG_NR_CPUS; i++) {
-        numa_info.cpu_lid_to_numa_map[i] = 0xFF;
+    for (int i = 0; i < nr_possible_cpus; i++) {
+        cpu_lid_to_numa_map[i] = 0xFF;
     }
 
     // SRAT 头部固定偏移 48 字节 (Header 36 + Reserved 12)

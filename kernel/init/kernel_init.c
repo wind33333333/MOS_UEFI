@@ -124,7 +124,6 @@ void kernel_init(void) {
     cpu_topo_init();                                            //cpu拓扑
     numa_node_init();                                           //numa节点初始化
     kpage_table_init();                                         //初始化正式内核页表
-
     buddy_system_init();                                        //初始化伙伴系统
 
 

@@ -1,5 +1,4 @@
 #pragma once
-#include "config.h"
 #include "moslib.h"
 
 typedef struct {
@@ -15,7 +14,7 @@ typedef struct {
 typedef struct {
     // 热路径数组：记录 逻辑CPU ID -> 逻辑NUMA Node ID 的映射
     // 初始化为 0xFF 表示该 CPU 尚未关联或不存在
-    uint8 cpu_lid_to_numa_map[CONFIG_NR_CPUS];
+    uint8 *cpu_lid_to_numa_map;
 
     // 核心映射表：物理 Domain 数组。数组的下标就是分配的【逻辑 Node ID】
     uint32 phys_domain_table[CONFIG_NUMA_NODES];
