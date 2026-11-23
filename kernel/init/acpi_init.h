@@ -61,12 +61,48 @@ typedef struct{
     uint8 length;           // 长度
 } madt_header_t;
 
+// =========================================================================
+// MADT Local APIC / x2APIC 标志位掩码定义 (ACPI 6.3+ 规范)
+// =========================================================================
+#define MADT_LAPIC_FLAG_ENABLED         (1U << 0)   // Bit 0: 启动时处理器已启用
+#define MADT_LAPIC_FLAG_ONLINE_CAPABLE  (1U << 1)   // Bit 1: 启动时未启用，但支持运行期热插拔上线
+
+// 判定该 MADT 条目是否为有效 CPU 槽位 (用于统计 nr_possible_cpus)
+#define MADT_LAPIC_IS_USABLE(flags) \
+    (((flags) & (MADT_LAPIC_FLAG_ENABLED | MADT_LAPIC_FLAG_ONLINE_CAPABLE)) != 0)
+
+/* MADT 子表条目类型常量 (ACPI 规范) */
+#define MADT_TYPE_LAPIC         0      /* Processor Local APIC (8 位 APIC ID) */
+#define MADT_TYPE_LAPIC_NMI     4      /* Local APIC NMI */
+#define MADT_TYPE_X2APIC        9      /* Processor Local x2APIC (32 位 APIC ID) */
+#define MADT_TYPE_X2APIC_NMI    10     /* Local x2APIC NMI */
+
 typedef struct {
-    madt_header_t                   madt_header;                    // 类型，0 表示本地 APIC条目 长度，通常为 8
-    uint8                           processor_id;                   // ACPI 处理器 ID
-    uint8                           apic_id;                        // 本地 APIC ID
-    uint32                          flags;                          // 启用状态（1 表示启用）
+    madt_header_t   madt_header;        // 类型 0：Processor Local APIC 条目，长度通常为 8 字节
+    uint8           processor_id;       // ACPI 处理器 ID (对应 DSDT 中的 Processor 对象)
+    uint8           apic_id;            // 8 位本地 APIC ID (仅支持 0 ~ 254)
+    uint32          flags;              // 本地 APIC 标志位：
+                                        //   Bit 0 (Enabled): 1 = 启动时已可用，SMP 阶段可直接发 SIPI 唤醒；
+                                        //                    0 = 启动时未启用，需结合 Bit 1 判断是否有效
+                                        //   Bit 1 (Online Capable, ACPI 6.3+):
+                                        //                    仅当 Bit 0 == 0 时有效（Bit 0 == 1 时硬件通常置 0，OS 应忽略）：
+                                        //                    1 = 支持运行期 CPU 热插拔，需预留 cpu_id 与 Per-CPU 槽位，但启动时不发 SIPI；
+                                        //                    0 = 无效/屏蔽的占位条目，OS 解析时必须直接跳过忽略
+                                        //   Bits 2..31:      保留位，必须为 0，解析时忽略
 } apic_entry_t;
+
+typedef struct {
+    madt_header_t   madt_header;        // 类型 9：Processor Local x2APIC 条目，长度通常为 16 字节（支持 32 位 APIC ID）
+    uint16          reserved;           // 保留字段，必须为 0
+    uint32          x2apic_id;          // 32 位 x2APIC 硬件 ID
+    uint32          flags;              // 本地 x2APIC 标志位（位布局与 Type 0 完全一致）：
+                                        //   Bit 0 (Enabled): 1 = 启动时已可用，可直接唤醒；0 = 未启用，需检查 Bit 1
+                                        //   Bit 1 (Online Capable, ACPI 6.3+):
+                                        //                    当 Bit 0 == 0 时：1 = 支持热插拔上线（计入 nr_possible_cpus，暂不唤醒）；
+                                        //                                      0 = 无效占位条目，直接丢弃
+                                        //   Bits 2..31:      保留位，必须为 0，解析时忽略
+    uint32          processor_id;       // ACPI 处理器唯一 ID (对应命名空间中 ACPI0007 设备的 _UID)
+} x2apic_entry_t;
 
 typedef struct {
     madt_header_t                   madt_header;                    // 类型，1 表示 IO APIC // 条目长度，通常为 12
@@ -103,13 +139,6 @@ typedef struct {
     uint64                          apic_address;              // 64 位 LAPIC 地址
 } apic_address_override_entry_t;
 
-typedef struct {
-    madt_header_t                   madt_header;         // 类型9,条目长度，通常为 16 字节x2APIC 是增强版的 APIC，支持更大范围的 APIC ID
-    uint16                          reserved;            // 保留字段，必须为 0
-    uint32                          x2apic_id;           // x2APIC 的 ID
-    uint32                          flags;               // 标志位，指示处理器是否启用
-    uint32                          processor_id;        // ACPI 中的处理器唯一 ID
-} x2apic_entry_t;
 
 typedef struct {
     madt_header_t                   madt_header;              // 类型10,条目长度，通常为 12 字节 x2APIC 处理器的 NMI（非屏蔽中断）

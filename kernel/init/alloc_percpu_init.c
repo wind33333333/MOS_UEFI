@@ -14,7 +14,7 @@ extern pcpu_block_t free_block;
 extern vm_space_t kernel_space;
 
 void alloc_percpu_init() {
-    uint32 cpu_count = cpu_topo.cpu_count;
+    uint32 cpu_count = cpu_topo.nr_possible_cpus;
     uint64 per_cpu_va = vm_layout.percpu_vaddr_start;
 
     for (uint32 i = 0; i < cpu_count; i++) {

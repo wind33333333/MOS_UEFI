@@ -330,7 +330,7 @@ static inline void get_cpu_info(void) {
 }
 
 void per_cpu_alloc_resources(void) {
-    uint32 cpu_count = cpu_topo.cpu_count;
+    uint32 cpu_count = cpu_topo.nr_possible_cpus;
     cpu_control_block_t *per_ccb = (void*)vm_layout.percpu_vaddr_start;
     cpu_hw_t *cpu_hw = cpu_topo.cpu_hw;
     for (uint32 i=0;i < cpu_count;i++) {
