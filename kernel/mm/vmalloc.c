@@ -372,6 +372,18 @@ vmap_area_t *find_vmap_area(uint64 va_start) {
 // 顶层 API 层：提供给系统驱动调用的终极接口
 // =========================================================================
 
+uint64 vmalloc_reserve_vaddr(uint64 size) {
+    // 从 vmalloc 专属管辖区申请虚拟地址区间
+    vmap_area_t *vmap = alloc_vmap_area(vm_layout.vmalloc_start, vm_layout.vmalloc_end, size, PAGE_4K_SIZE, 0, VM_ALLOC);
+    if (!vmap) return 0;
+    return  vmap->va_start;
+}
+
+void   vmalloc_release_vaddr(uint64 va, uint64 size) {
+
+}
+
+
 /**
  * @brief 分配一段逻辑连续、但物理离散的动态内存
  */
