@@ -31,13 +31,13 @@
  */
 void vm_layout_init(void) {
     if (tmp_paging_level == 5) {
-        //5级分页用户地址空间
+        //5级分页用户地址空间64TB
         vm_layout.user_map_start = 0x400000;
-        vm_layout.user_map_end   = 0xFFFFFFFFFFFFFF;
+        vm_layout.user_map_end   = 0x00FFFFFFFFFFF000;
 
-        // 【5 级页表模式 - LA57】(理论上限 128 PB，单位: PB)
+        // 【5 级页表模式 - LA57】(内核空间理论上限 64 PB，单位: PB)
         vm_layout.direct_map_start = 0xFF00000000000000ULL;
-        vm_layout.direct_map_end   = vm_layout.direct_map_start + 0x0080000000000000ULL; // 占用 32 PB
+        vm_layout.direct_map_end   = vm_layout.direct_map_start + 0x0010000000000000ULL; // x86-64物理地址线最多52位上限4pb
 
         vm_layout.vmemmap_start   = vm_layout.direct_map_end + 0x0004000000000000ULL;      // Guard Hole: 1 PB
         vm_layout.vmemmap_end     = vm_layout.vmemmap_start + 0x0004000000000000ULL;   // vmemmap 占用 1 PB
@@ -47,17 +47,17 @@ void vm_layout_init(void) {
 
         // 【安全隔离】：留出 1 PB 的 Guard Hole！越过直接映射区后不可立即接盘。
         vm_layout.vmalloc_start    = vm_layout.percpu_vaddr_end + 0x0004000000000000ULL;
-        vm_layout.vmalloc_end      = vm_layout.vmalloc_start + 0x0040000000000000ULL;    // vmalloc 占用 16 PB
+        vm_layout.vmalloc_end      = vm_layout.vmalloc_start + 0x0010000000000000ULL;    // vmalloc 占用4PB
 
         vm_layout.io_map_start     = vm_layout.vmalloc_end + 0x0004000000000000ULL;     // Guard Hole: 1 PB
         vm_layout.io_map_end       = vm_layout.io_map_start + 0x0004000000000000ULL;     // MMIO 占用 1 PB
 
     } else {
-        //4级分页用户地址空间
+        //4级分页用户地址空间128TB
         vm_layout.user_map_start = 0x400000;
-        vm_layout.user_map_end   = 0x7FFFFFFFFFFF;
+        vm_layout.user_map_end   = 0x00007FFFFFFFF000;
 
-        // 【4 级页表模式 - LA48】(理论上限 128 TB，单位: TB)
+        // 【4 级页表模式 - LA48】(内核空间理论上限 128 TB，单位: TB)
         vm_layout.direct_map_start = 0xFFFF800000000000ULL;
         vm_layout.direct_map_end   = vm_layout.direct_map_start + 0x0000400000000000ULL; // 占用 64 TB
 
@@ -84,7 +84,7 @@ void vm_layout_init(void) {
     vm_layout.module_end = MODULES_VA_END;
 
     // PR_INFO("Direct Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.direct_map_start,vm_layout.direct_map_end);
-    // PR_INFO("Page Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.page_map_start,vm_layout.page_map_end);
+    // PR_INFO("Page Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.vmemmap_start,vm_layout.vmemmap_end);
     // PR_INFO("PerCpu Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.percpu_vaddr_start,vm_layout.percpu_vaddr_end);
     // PR_INFO("Vmalloc Start Addr:%#lx  End Addr:%#lx \n",vm_layout.vmalloc_start,vm_layout.vmalloc_end);
     // PR_INFO("IO Map Start Addr:%#lx  End Addr:%#lx \n",vm_layout.io_map_start,vm_layout.io_map_end);
