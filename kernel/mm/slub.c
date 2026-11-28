@@ -66,7 +66,7 @@ void create_cache(char *cache_name, kmem_cache_t *cache, uint32 object_size) {
         // spinlock_init(&cache->node[i].list_lock); // 🌟 架构预留：未来在此处初始化自旋锁
     }
 
-    cache->cpu_slab = (kmem_cache_cpu_t *)alloc_percpu(sizeof(kmem_cache_cpu_t), 8);
+    cache->cpu_slab = (kmem_cache_cpu_t *)alloc_percpu(kmem_cache_cpu_t);
     for (int i = 0; i < cpu_topo.nr_possible_cpus; i++) {
         kmem_cache_cpu_t *c = per_cpu_ptr(cache->cpu_slab, i);
         c->freelist = NULL;

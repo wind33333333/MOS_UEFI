@@ -1,719 +1,695 @@
-#include "alloc_percpu.h"
-#include "../x64/cpu.h"
-#include "../x64/numa_node.h"
-#include "pmm.h"
-#include "printk.h"
-#include "slub.h"
-#include "list.h"
+#include "alloc_percpu_internal.h"
 
-extern vm_space_t kernel_space;
-
-/* 将任意位索引 x 向上对齐到满足 (x % align_bits == align_phase) 的最小位置 */
-#define ALIGN_UP_PHASE(x) ((((uint32)(x) + align_mask - align_phase) & ~align_mask) + align_phase)
+/* 批量回收空页时的栈上暂存物理页帧容量（512 B 栈空间，零堆依赖，减少跨核 IPI 次数） */
+#define PCPU_RECLAIM_BATCH_MAX  64U
 
 /* =========================================================================
- * vmalloc 纯虚拟地址区间预留/释放桥接钩子 (仅分配虚拟地址，不立即挂物理页)
- * ⚠️ 接入说明：
- *   请将下面两处声明替换为你内核 vmalloc 子系统中“仅保留虚拟地址区间”的实际接口
- *   (例如 vmm_alloc_vaddr / vm_area_alloc 等，要求返回 4KB 对齐的内核虚拟地址)。
- *   注意：不要直接调用“会立即分配并映射物理页”的常规 vmalloc()，否则会破坏
- *   按页按需挂载 (Populate-on-Alloc) 与各核本地 NUMA 物理页绑定。
- * ========================================================================= */
-extern uint64 vmalloc_reserve_vaddr(uint64 size);
-extern void   vmalloc_release_vaddr(uint64 va, uint64 size);
-
-static inline uint64 pcpu_vm_reserve_range(uint64 total_bytes) {
-    return vmalloc_reserve_vaddr(total_bytes);
-}
-
-static inline void pcpu_vm_release_range(uint64 base_va, uint64 total_bytes) {
-    vmalloc_release_vaddr(base_va, total_bytes);
-}
-
-/* =========================================================================
- * 全局 Per-CPU 分配器状态 (彻底移除固定 256-Chunk 上限，由 chunk_list 无限扩展)
- * ========================================================================= */
-static list_head_t  chunk_list;                 /* 所有活跃 Chunk 链表 (含创世 Chunk 0 及全部 vmalloc Chunk) */
-static uint32       pcpu_alloc_lock = 0;        /* Per-CPU 分配/释放/挂载全局自旋锁 */
-
-static pcpu_chunk_t first_chunk;                /* 创世 Chunk 0 (静态常驻，永不回收) */
-static uint32       first_chunk_reserved_bits;  /* Chunk 0 头部永久保留给 CCB 的 8B 单元数 */
-
-/* =========================================================================
- * 一、底层位图操作原语 (纯 64 位字长操作 + 硬件 TZCNT，严格规避向 tzcnt 传 0)
+ * 0. 运行期常驻全局状态定义（位于核心 .bss，绝不被 .init_* 丢弃）
  * ========================================================================= */
 
-/* 将任意正整数向上取整至最近的 2 的幂 (用于规范化 align 参数) */
-static inline uint32 pcpu_roundup_pow2(uint32 v) {
-    if (v <= 1U) {
-        return 1U;
-    }
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    return v + 1U;
-}
+uint64           g_pcpu_vaddr_base = 0ULL;
+uint32           g_pcpu_nr_cpus    = 0U;
 
-/* 构造覆盖逻辑页区间 [first_page, last_page] 的 64 位掩码 (0 <= first <= last < 64) */
-static inline uint64 pcpu_page_range_mask(uint32 first_page, uint32 last_page) {
-    uint32 count = last_page - first_page + 1U;
-    uint64 mask  = (count >= 64U) ? ~0ULL : ((1ULL << count) - 1ULL);
-    return mask << first_page;
-}
+pcpu_dir_entry_t g_pcpu_dir[PCPU_DIR_COUNT];
+uint64           g_pcpu_avail_mask[PCPU_MASK_WORDS];
+uint64           g_pcpu_uninit_mask[PCPU_MASK_WORDS];
 
-static inline boolean pcpu_bitmap_test(const uint64 *bitmap, uint32 bit) {
-    return ((bitmap[bit >> 6] & (1ULL << (bit & 63U))) != 0ULL) ? TRUE : FALSE;
-}
+uint32           g_pcpu_first_dyn_dir = 1U;
+uint32           g_pcpu_huge_dir_end  = 0U;
+boolean          g_pcpu_early_ready   = FALSE;
+boolean          g_pcpu_dyn_ready     = FALSE;
 
-static inline void pcpu_bitmap_set_bit(uint64 *bitmap, uint32 bit) {
-    bitmap[bit >> 6] |= (1ULL << (bit & 63U));
-}
+uint32           g_pcpu_stat_active_dirs  = 0U;
+uint32           g_pcpu_stat_pop_4k_pages = 0U;
+uint64           g_pcpu_stat_alloc_bytes  = 0ULL;
 
-static inline void pcpu_bitmap_clear_bit(uint64 *bitmap, uint32 bit) {
-    bitmap[bit >> 6] &= ~(1ULL << (bit & 63U));
-}
-
-/* 批量置位 [start, start + count) */
-static void pcpu_bitmap_set_range(uint64 *bitmap, uint32 start, uint32 count) {
-    uint32 bit = start;
-    uint32 end = start + count;
-
-    while (bit < end) {
-        uint32 word_idx = bit >> 6;
-        uint32 bit_off  = bit & 63U;
-        uint32 remain   = end - bit;
-        uint32 take     = (remain < (64U - bit_off)) ? remain : (64U - bit_off);
-        uint64 mask     = (take == 64U) ? ~0ULL : (((1ULL << take) - 1ULL) << bit_off);
-
-        bitmap[word_idx] |= mask;
-        bit += take;
-    }
-}
-
-/* 批量清零 [start, start + count) */
-static void pcpu_bitmap_clear_range(uint64 *bitmap, uint32 start, uint32 count) {
-    uint32 bit = start;
-    uint32 end = start + count;
-
-    while (bit < end) {
-        uint32 word_idx = bit >> 6;
-        uint32 bit_off  = bit & 63U;
-        uint32 remain   = end - bit;
-        uint32 take     = (remain < (64U - bit_off)) ? remain : (64U - bit_off);
-        uint64 mask     = (take == 64U) ? ~0ULL : (((1ULL << take) - 1ULL) << bit_off);
-
-        bitmap[word_idx] &= ~mask;
-        bit += take;
-    }
-}
-
-/* 在区间 [start, start + count) 内查找首个为 1 的位索引；全为 0 返回 -1 */
-static int32 pcpu_bitmap_find_first_set(const uint64 *bitmap, uint32 start, uint32 count) {
-    uint32 bit = start;
-    uint32 end = start + count;
-
-    while (bit < end) {
-        uint32 word_idx = bit >> 6;
-        uint32 bit_off  = bit & 63U;
-        uint32 remain   = end - bit;
-        uint32 take     = (remain < (64U - bit_off)) ? remain : (64U - bit_off);
-        uint64 mask     = (take == 64U) ? ~0ULL : (((1ULL << take) - 1ULL) << bit_off);
-
-        uint64 hit = bitmap[word_idx] & mask;
-        if (hit != 0ULL) {
-            return (int32)((word_idx << 6) + (uint32)asm_tzcnt(hit));
-        }
-        bit += take;
-    }
-    return -1;
-}
-
-/* =========================================================================
- * 二、页级按需物理挂载与空页回收引擎 (Populate-on-Alloc / Depopulate-on-Free)
- * ========================================================================= */
-
-/* 解除指定逻辑页掩码在所有 CPU 上的页表映射并归还物理页给 Buddy (自动跳过 pinned_map 固定页) */
-static void pcpu_depopulate_mask(pcpu_chunk_t *chunk, uint64 page_mask) {
-    uint64 unmap_mask = page_mask & chunk->populated_map & ~chunk->pinned_map;
-    if (unmap_mask == 0ULL) {
+/*
+ * 写入当前核心的 IA32_GS_BASE（放在常驻 .text 中，兼容后续 AP 热插拔唤醒）
+ */
+void alloc_percpu_setup_cpu_gs(uint32 cpu_id) {
+    if (!g_pcpu_early_ready || cpu_id >= g_pcpu_nr_cpus) {
         return;
     }
 
-    uint32 nr_cpus = cpu_topo.nr_possible_cpus;
-    while (unmap_mask != 0ULL) {
-        uint32 p = (uint32)asm_tzcnt(unmap_mask);
-        unmap_mask &= (unmap_mask - 1ULL);
+    uint64 gs_base = pcpu_cpu_off_to_va(cpu_id, 0ULL);
+    uint32 lo = (uint32)(gs_base & 0xFFFFFFFFULL);
+    uint32 hi = (uint32)(gs_base >> 32);
 
-        /* 对全部 nr_possible_cpus 解除第 p 页映射并释放 4KB 物理页
-         * 注：若多核运行期 vm_unmap_range 尚未内置跨核 TLB Shootdown，后续需补发 IPI 刷新远程核 TLB
-         */
-        for (uint32 i = 0; i < nr_cpus; i++) {
-            uint64 va = chunk->base_va
-                      + ((uint64)i * PCPU_CHUNK_SIZE)
-                      + ((uint64)p << PCPU_PAGE_SHIFT);
-            vm_unmap_range(&kernel_space, va, PCPU_PAGE_SIZE, UNMAP_FLAG_FREE_PHYS);
-        }
-
-        chunk->populated_map &= ~(1ULL << p);
-    }
+    __asm__ __volatile__("wrmsr" :: "c"(MSR_IA32_GS_BASE), "a"(lo), "d"(hi) : "memory");
 }
 
-/* 确保逻辑页区间 [first_page, last_page] 在所有 CPU 上均已挂载有效 4KB 物理页
- * 特性：
- *   1) 已挂载页 O(1) 位运算直接跳过；
- *   2) 仅申请 order=0 单页，彻底免疫高阶 Buddy 碎片 OOM；
- *   3) 任意核 OOM 时完整回滚本次已映射的全部物理页，保证原子性零泄漏。
- */
-static boolean pcpu_populate_range(pcpu_chunk_t *chunk, uint32 first_page, uint32 last_page) {
-    uint64 want_mask = pcpu_page_range_mask(first_page, last_page);
-    uint64 missing   = want_mask & ~chunk->populated_map;
+/* =========================================================================
+ * 1. 基础位图原语（无未定义移位、字级跳过优化）
+ * ========================================================================= */
 
-    /* 快路径：所需逻辑页全部已挂载，直接放行 */
-    if (missing == 0ULL) {
-        return TRUE;
+static inline boolean bitmap_test_bit(const uint64 *map, uint32 bit) {
+    return ((map[bit >> 6] & (1ULL << (bit & 63U))) != 0ULL) ? TRUE : FALSE;
+}
+
+static inline void bitmap_set_bit(uint64 *map, uint32 bit) {
+    map[bit >> 6] |= (1ULL << (bit & 63U));
+}
+
+static inline void bitmap_clear_bit(uint64 *map, uint32 bit) {
+    map[bit >> 6] &= ~(1ULL << (bit & 63U));
+}
+
+/* 批量置位 [start, start + count)，要求 count >= 1 */
+static void bitmap_set_range(uint64 *map, uint32 start, uint32 count) {
+    uint32 end_incl = start + count - 1U;
+    uint32 w_start  = start >> 6;
+    uint32 b_start  = start & 63U;
+    uint32 w_end    = end_incl >> 6;
+    uint32 b_end    = end_incl & 63U;
+    uint32 w;
+
+    if (w_start == w_end) {
+        uint64 mask = (~0ULL >> (63U - (b_end - b_start))) << b_start;
+        map[w_start] |= mask;
+        return;
     }
 
-    uint32 nr_cpus             = cpu_topo.nr_possible_cpus;
-    uint64 populated_this_call = 0ULL;
+    map[w_start] |= (~0ULL << b_start);
+    for (w = w_start + 1U; w < w_end; w++) {
+        map[w] = ~0ULL;
+    }
+    map[w_end] |= (~0ULL >> (63U - b_end));
+}
 
-    while (missing != 0ULL) {
-        uint32 p = (uint32)asm_tzcnt(missing);
-        missing &= (missing - 1ULL);
+/* 批量清零 [start, start + count)，要求 count >= 1 */
+static void bitmap_clear_range(uint64 *map, uint32 start, uint32 count) {
+    uint32 end_incl = start + count - 1U;
+    uint32 w_start  = start >> 6;
+    uint32 b_start  = start & 63U;
+    uint32 w_end    = end_incl >> 6;
+    uint32 b_end    = end_incl & 63U;
+    uint32 w;
 
-        for (uint32 i = 0; i < nr_cpus; i++) {
-            /* 申请单页 (order=0) 物理内存：
-             * 若你的伙伴系统已开放按节点分配接口，可直接替换为：
-             *   alloc_pages_node(0, cpu_lid_to_numa_lid(i))
-             * 以实现 100% 运行期 NUMA 本地物理页亲和。
-             */
-            page_t *page = alloc_pages_node(0,cpu_lid_to_numa_lid(i));
-            if (!page) {
-                PR_WARN("[PERCPU] alloc_pages(order=0) OOM at chunk=%#lx page=%d CPU#%d, rolling back.\n",
-                        chunk->base_va, p, i);
+    if (w_start == w_end) {
+        uint64 mask = (~0ULL >> (63U - (b_end - b_start))) << b_start;
+        map[w_start] &= ~mask;
+        return;
+    }
 
-                /* 回滚当前页 p 已为 CPU 0..i-1 映射的物理页 */
-                for (uint32 j = 0; j < i; j++) {
-                    uint64 rollback_va = chunk->base_va
-                                       + ((uint64)j * PCPU_CHUNK_SIZE)
-                                       + ((uint64)p << PCPU_PAGE_SHIFT);
-                    vm_unmap_range(&kernel_space, rollback_va, PCPU_PAGE_SIZE, UNMAP_FLAG_FREE_PHYS);
-                }
-                /* 回滚本次调用之前已完整挂载的其他页 */
-                pcpu_depopulate_mask(chunk, populated_this_call);
-                return FALSE;
-            }
+    map[w_start] &= ~(~0ULL << b_start);
+    for (w = w_start + 1U; w < w_end; w++) {
+        map[w] = 0ULL;
+    }
+    map[w_end] &= ~(~0ULL >> (63U - b_end));
+}
 
-            uint64 pa = page_to_pa(page);
-            uint64 va = chunk->base_va
-                      + ((uint64)i * PCPU_CHUNK_SIZE)
-                      + ((uint64)p << PCPU_PAGE_SHIFT);
-            /* Not-Present -> Present 映射在 x86-64 上无需跨核 TLB Shootdown */
-            vm_map_range(&kernel_space, va, pa, PCPU_PAGE_SIZE, PAGE_KERNEL_DATA_RW);
+/* 在 [start, total_bits) 内查找下一个值为 0 的位，未找到返回 total_bits */
+static uint32 bitmap_find_next_zero(const uint64 *map, uint32 total_bits, uint32 start) {
+    if (start >= total_bits) {
+        return total_bits;
+    }
+    uint32 w           = start >> 6;
+    uint32 bit         = start & 63U;
+    uint32 total_words = (total_bits + 63U) >> 6;
+    uint64 inv         = (~map[w]) & (~0ULL << bit);
+
+    while (inv == 0ULL) {
+        w++;
+        if (w >= total_words) {
+            return total_bits;
         }
-
-        chunk->populated_map |= (1ULL << p);
-        populated_this_call  |= (1ULL << p);
+        inv = ~map[w];
     }
 
+    uint32 res = (w << 6) + pcpu_ctz64(inv);
+    return (res < total_bits) ? res : total_bits;
+}
+
+/* 在 [start, total_bits) 内查找下一个值为 1 的位，未找到返回 total_bits */
+static uint32 bitmap_find_next_one(const uint64 *map, uint32 total_bits, uint32 start) {
+    if (start >= total_bits) {
+        return total_bits;
+    }
+    uint32 w           = start >> 6;
+    uint32 bit         = start & 63U;
+    uint32 total_words = (total_bits + 63U) >> 6;
+    uint64 val         = map[w] & (~0ULL << bit);
+
+    while (val == 0ULL) {
+        w++;
+        if (w >= total_words) {
+            return total_bits;
+        }
+        val = map[w];
+    }
+
+    uint32 res = (w << 6) + pcpu_ctz64(val);
+    return (res < total_bits) ? res : total_bits;
+}
+
+/* 在目录掩码 [start, end) 范围内查找下一个置 1 的目录号，未找到返回 end */
+static uint32 mask_find_next_one_range(const uint64 *mask, uint32 start, uint32 end) {
+    if (start >= end) {
+        return end;
+    }
+    uint32 w      = start >> 6;
+    uint32 bit    = start & 63U;
+    uint32 last_w = (end - 1U) >> 6;
+    uint64 val    = mask[w] & (~0ULL << bit);
+
+    while (val == 0ULL) {
+        w++;
+        if (w > last_w) {
+            return end;
+        }
+        val = mask[w];
+    }
+
+    uint32 res = (w << 6) + pcpu_ctz64(val);
+    return (res < end) ? res : end;
+}
+
+/* 单缓存行（64 B = 8 个 uint64）无分支判空：检查某 4 KB 数据页内是否全部空闲 */
+static inline boolean pcpu_page_is_empty(const pcpu_bmap_page_t *bmap, uint32 pg) {
+    uint32 base = pg << 3;
+    uint64 acc  = bmap->alloc_map[base + 0U] | bmap->alloc_map[base + 1U] |
+                  bmap->alloc_map[base + 2U] | bmap->alloc_map[base + 3U] |
+                  bmap->alloc_map[base + 4U] | bmap->alloc_map[base + 5U] |
+                  bmap->alloc_map[base + 6U] | bmap->alloc_map[base + 7U];
+    return (acc == 0ULL) ? TRUE : FALSE;
+}
+
+/* =========================================================================
+ * 2. 二级位图页懒加载激活与释放（仅依赖 Buddy order-0 页）
+ * ========================================================================= */
+
+static boolean pcpu_activate_dir(uint32 dir_idx) {
+    pcpu_dir_entry_t *dir = &g_pcpu_dir[dir_idx];
+
+    /* 申请 1 张 4 KB order-0 Buddy 页存放 alloc_map(2KB) + bound_map(2KB) */
+    uint64 phys = pcpu_arch_buddy_alloc_page_node(0U);
+    if (phys == 0ULL) {
+        return FALSE;
+    }
+
+    pcpu_bmap_page_t *bmap = (pcpu_bmap_page_t *)pcpu_arch_phys_to_virt(phys);
+    pcpu_memzero(bmap, (uint64)sizeof(pcpu_bmap_page_t));
+
+    /*
+     * 严禁覆盖 dir->populated_map：
+     * 前 2 MB 大页区内的目录即便排空释放了位图页，其 populated_map 仍为全 1。
+     */
+    dir->bmap        = bmap;
+    dir->free_bits   = (uint16)PCPU_BMAP_BITS;
+    dir->first_free  = 0U;
+    dir->high_water  = 0U;
+    dir->contig_hint = (uint16)PCPU_BMAP_BITS;
+
+    pcpu_mask_clear(g_pcpu_uninit_mask, dir_idx);
+    pcpu_mask_set(g_pcpu_avail_mask, dir_idx);
+    g_pcpu_stat_active_dirs++;
     return TRUE;
 }
 
-/* =========================================================================
- * 三、页级与 Chunk 级空闲摘要维护 (游程跳跃扫描，仅重算受影响的 4KB 页)
- * ========================================================================= */
-
-/* 重算单个 4KB 逻辑页 (8 个 uint64 字) 的空闲摘要 */
-static void pcpu_refresh_page_md(pcpu_chunk_t *chunk, uint32 page_idx) {
-    uint32 base_word   = page_idx * PCPU_WORDS_PER_PAGE;
-    pcpu_page_md_t *md = &chunk->page_md[page_idx];
-
-    uint16  first_free = PCPU_BITS_PER_PAGE;
-    uint16  max_contig = 0;
-    uint16  left_free  = 0;
-    uint16  cur_run    = 0;
-    boolean leading    = TRUE;
-
-    for (uint32 w = 0; w < PCPU_WORDS_PER_PAGE; w++) {
-        uint64 val      = chunk->alloc_map[base_word + w];
-        uint16 word_off = (uint16)(w << 6);
-
-        if (val == 0ULL) {
-            if (first_free == PCPU_BITS_PER_PAGE) {
-                first_free = word_off;
-            }
-            cur_run += 64U;
-            if (leading) {
-                left_free += 64U;
-            }
-            if (cur_run > max_contig) {
-                max_contig = cur_run;
-            }
-            continue;
-        }
-
-        if (val == ~0ULL) {
-            leading = FALSE;
-            cur_run = 0;
-            continue;
-        }
-
-        /* 混合字：利用硬件 TZCNT 按连续 0/1 游程跳跃统计 */
-        uint32 pos = 0;
-        while (pos < 64U) {
-            uint64 shifted = val >> pos;
-            if ((shifted & 1ULL) == 0ULL) {
-                uint32 zeros = (shifted == 0ULL) ? (64U - pos) : (uint32)asm_tzcnt(shifted);
-                if (first_free == PCPU_BITS_PER_PAGE) {
-                    first_free = (uint16)(word_off + pos);
-                }
-                cur_run += (uint16)zeros;
-                if (leading) {
-                    left_free += (uint16)zeros;
-                }
-                if (cur_run > max_contig) {
-                    max_contig = cur_run;
-                }
-                pos += zeros;
-            } else {
-                leading = FALSE;
-                cur_run = 0;
-                uint64 inv  = ~shifted;
-                uint32 ones = (inv == 0ULL) ? (64U - pos) : (uint32)asm_tzcnt(inv);
-                if (pos + ones > 64U) {
-                    ones = 64U - pos;
-                }
-                pos += ones;
-            }
-        }
+static void pcpu_deactivate_dir(uint32 dir_idx) {
+    pcpu_dir_entry_t *dir = &g_pcpu_dir[dir_idx];
+    if (dir->bmap == NULL) {
+        return;
     }
 
-    md->first_free  = first_free;
-    md->contig_hint = max_contig;
-    md->left_free   = left_free;
-    md->right_free  = cur_run;
-}
+    uint64 bmap_phys = pcpu_arch_virt_to_phys(dir->bmap);
+    dir->bmap        = NULL;
+    dir->free_bits   = 0U;
+    dir->first_free  = 0U;
+    dir->high_water  = 0U;
+    dir->contig_hint = 0U;
 
-/* 聚合 64 页摘要，更新整个 Chunk 的 first_free 与精确最大连续空闲块 (含跨页拼接) */
-static void pcpu_refresh_chunk_md(pcpu_chunk_t *chunk) {
-    uint32 chunk_first  = PCPU_CHUNK_BITS;
-    uint32 max_contig   = 0;
-    uint32 cross_contig = 0;
+    pcpu_mask_clear(g_pcpu_avail_mask, dir_idx);
+    pcpu_mask_set(g_pcpu_uninit_mask, dir_idx);
+    g_pcpu_stat_active_dirs--;
 
-    for (uint32 p = 0; p < PCPU_CHUNK_PAGES; p++) {
-        const pcpu_page_md_t *md = &chunk->page_md[p];
-
-        if (chunk_first == PCPU_CHUNK_BITS && md->first_free < PCPU_BITS_PER_PAGE) {
-            chunk_first = (p << PCPU_BITS_PER_PAGE_SHIFT) + md->first_free;
-        }
-        if (md->contig_hint > max_contig) {
-            max_contig = md->contig_hint;
-        }
-
-        uint32 combined = cross_contig + md->left_free;
-        if (combined > max_contig) {
-            max_contig = combined;
-        }
-
-        if (md->left_free == PCPU_BITS_PER_PAGE) {
-            cross_contig += PCPU_BITS_PER_PAGE;
-        } else {
-            cross_contig = md->right_free;
-        }
-    }
-
-    chunk->first_free  = chunk_first;
-    chunk->contig_hint = max_contig;
-}
-
-/* 将一个新建 Chunk 初始化为全空、零物理页挂载状态 */
-static void pcpu_chunk_init_empty(pcpu_chunk_t *chunk, uint64 base_va) {
-    asm_mem_set(chunk, 0, sizeof(pcpu_chunk_t));
-    list_head_init(&chunk->node);
-
-    chunk->base_va       = base_va;
-    chunk->free_bits     = PCPU_CHUNK_BITS;
-    chunk->first_free    = 0;
-    chunk->contig_hint   = PCPU_CHUNK_BITS;
-    chunk->populated_map = 0ULL;
-    chunk->pinned_map    = 0ULL;
-
-    for (uint32 p = 0; p < PCPU_CHUNK_PAGES; p++) {
-        chunk->page_md[p].first_free  = 0;
-        chunk->page_md[p].contig_hint = PCPU_BITS_PER_PAGE;
-        chunk->page_md[p].left_free   = PCPU_BITS_PER_PAGE;
-        chunk->page_md[p].right_free  = PCPU_BITS_PER_PAGE;
-    }
+    pcpu_arch_buddy_free_page(bmap_phys);
 }
 
 /* =========================================================================
- * 四、双位图提交与带对齐约束的首次适应 (First-Fit) 搜索核心
+ * 3. 4 KB 数据页按需 NUMA 挂载（含完整 OOM 回滚）与批量回收
  * ========================================================================= */
 
-/* 在双位图中提交 [start_bit, start_bit + nr_bits) 分配并刷新受影响页摘要 */
-static void pcpu_chunk_commit_alloc(pcpu_chunk_t *chunk, uint32 start_bit, uint32 nr_bits) {
-    uint32 end_bit = start_bit + nr_bits - 1U;
+/* 回滚尚未暴露给任何调用者的临时映射页，防止部分成功导致内存泄漏 */
+static void pcpu_rollback_pages(uint32 dir_idx, uint32 rollback_mask,
+                                uint32 partial_pg, uint32 partial_cpu_end) {
+    uint64 dir_base_off = ((uint64)dir_idx) << PCPU_BMAP_SPAN_SHIFT;
+    uint32 cpu;
 
-    pcpu_bitmap_set_range(chunk->alloc_map, start_bit, nr_bits);
-    pcpu_bitmap_set_bit(chunk->bound_map, end_bit);
-    chunk->free_bits -= nr_bits;
-
-    uint32 first_page = start_bit >> PCPU_BITS_PER_PAGE_SHIFT;
-    uint32 last_page  = end_bit   >> PCPU_BITS_PER_PAGE_SHIFT;
-    for (uint32 p = first_page; p <= last_page; p++) {
-        pcpu_refresh_page_md(chunk, p);
+    /* 1. 回滚当前失败页上已经分配映射的部分 CPU 副本 */
+    if (partial_cpu_end > 0U) {
+        uint64 pg_off = dir_base_off + (((uint64)partial_pg) << PCPU_PAGE_SHIFT);
+        for (cpu = 0U; cpu < partial_cpu_end; cpu++) {
+            uint64 phys = pcpu_arch_vmm_unmap_4k(pcpu_cpu_off_to_va(cpu, pg_off));
+            if (phys != 0ULL) {
+                pcpu_arch_buddy_free_page(phys);
+            }
+        }
     }
-    pcpu_refresh_chunk_md(chunk);
+
+    /* 2. 回滚本次调用中先前已全核挂载成功的整页 */
+    while (rollback_mask != 0U) {
+        uint32 pg = pcpu_ctz64((uint64)rollback_mask);
+        rollback_mask &= (rollback_mask - 1U);
+        uint64 pg_off = dir_base_off + (((uint64)pg) << PCPU_PAGE_SHIFT);
+
+        for (cpu = 0U; cpu < g_pcpu_nr_cpus; cpu++) {
+            uint64 phys = pcpu_arch_vmm_unmap_4k(pcpu_cpu_off_to_va(cpu, pg_off));
+            if (phys != 0ULL) {
+                pcpu_arch_buddy_free_page(phys);
+            }
+        }
+        g_pcpu_stat_pop_4k_pages--;
+    }
 }
 
-/* 首次适应搜索：注意对外要求按绝对虚拟地址对齐，因此同时兼容任意 4KB 对齐的 vmalloc base_va */
-static int32 pcpu_find_fit_in_chunk(const pcpu_chunk_t *chunk,
-                                    uint32 nr_bits,
-                                    uint32 align_bits) {
-    if (chunk->free_bits < nr_bits || chunk->contig_hint < nr_bits) {
-        return -1;
+/* 按需为 [pg_start, pg_end] 中尚未挂载的 4 KB 页向每核本地 NUMA 批页并映射 */
+static boolean pcpu_populate_range(uint32 dir_idx, uint32 pg_start, uint32 pg_end) {
+    pcpu_dir_entry_t *dir = &g_pcpu_dir[dir_idx];
+
+    /* 构造 [pg_start, pg_end] 的 32 位页掩码，筛出缺失页 */
+    uint32 cnt          = (pg_end - pg_start) + 1U;
+    uint32 range_mask   = (cnt == 32U) ? 0xFFFFFFFFU : (((1U << cnt) - 1U) << pg_start);
+    uint32 missing_mask = range_mask & (~dir->populated_map);
+
+    if (missing_mask == 0U) {
+        /* 命中前 2 MB 大页或已挂载热页：零开销直接返回 */
+        return TRUE;
     }
 
-    /* 若 vmalloc 返回的 base_va 对齐粒度小于请求的 align (如 base_va 仅 4KB 对齐但请求 16KB 对齐)，
-     * 计算补偿相位 align_phase，保证 (chunk->base_va + pos * 8) 严格满足 align 对齐！
+    uint64 dir_base_off   = ((uint64)dir_idx) << PCPU_BMAP_SPAN_SHIFT;
+    uint32 newly_pop_mask = 0U;
+
+    while (missing_mask != 0U) {
+        uint32 pg = pcpu_ctz64((uint64)missing_mask);
+        missing_mask &= (missing_mask - 1U);
+        uint64 pg_off = dir_base_off + (((uint64)pg) << PCPU_PAGE_SHIFT);
+        uint32 cpu;
+
+        for (cpu = 0U; cpu < g_pcpu_nr_cpus; cpu++) {
+            uint32 node = pcpu_arch_cpu_to_node(cpu);
+            uint64 phys = pcpu_arch_buddy_alloc_page_node(node);
+            if (phys == 0ULL) {
+                pcpu_rollback_pages(dir_idx, newly_pop_mask, pg, cpu);
+                return FALSE;
+            }
+
+            /* 映射前先经内核直接映射清零整页 */
+            pcpu_memzero(pcpu_arch_phys_to_virt(phys), PCPU_PAGE_SIZE);
+
+            uint64 vaddr = pcpu_cpu_off_to_va(cpu, pg_off);
+            if (!pcpu_arch_vmm_map_4k(vaddr, phys)) {
+                pcpu_arch_buddy_free_page(phys);
+                pcpu_rollback_pages(dir_idx, newly_pop_mask, pg, cpu);
+                return FALSE;
+            }
+        }
+
+        newly_pop_mask |= (1U << pg);
+        g_pcpu_stat_pop_4k_pages++;
+    }
+
+    dir->populated_map |= newly_pop_mask;
+    return TRUE;
+}
+
+/* 批量解除空页映射 -> 发一次跨核 TLB Shootdown IPI -> 归还 Buddy（严守硬件时序） */
+static void pcpu_unpopulate_pages(uint32 dir_idx, uint32 unmap_mask) {
+    uint64 dir_base_off = ((uint64)dir_idx) << PCPU_BMAP_SPAN_SHIFT;
+    uint64 phys_batch[PCPU_RECLAIM_BATCH_MAX];
+    uint32 batch_cnt = 0U;
+    uint32 i;
+
+    while (unmap_mask != 0U) {
+        uint32 pg = pcpu_ctz64((uint64)unmap_mask);
+        unmap_mask &= (unmap_mask - 1U);
+        uint64 pg_off = dir_base_off + (((uint64)pg) << PCPU_PAGE_SHIFT);
+        uint32 cpu;
+
+        for (cpu = 0U; cpu < g_pcpu_nr_cpus; cpu++) {
+            uint64 phys = pcpu_arch_vmm_unmap_4k(pcpu_cpu_off_to_va(cpu, pg_off));
+            if (phys != 0ULL) {
+                phys_batch[batch_cnt++] = phys;
+
+                /* 满 64 张时统一刷一次全核 TLB 后再批量归还 Buddy */
+                if (batch_cnt == PCPU_RECLAIM_BATCH_MAX) {
+                    pcpu_arch_tlb_shootdown_all();
+                    for (i = 0U; i < batch_cnt; i++) {
+                        pcpu_arch_buddy_free_page(phys_batch[i]);
+                    }
+                    batch_cnt = 0U;
+                }
+            }
+        }
+
+        g_pcpu_stat_pop_4k_pages--;
+    }
+
+    /* 尾批处理：确保所有核心 TLB 失效后再把物理页放回 Buddy */
+    if (batch_cnt > 0U) {
+        pcpu_arch_tlb_shootdown_all();
+        for (i = 0U; i < batch_cnt; i++) {
+            pcpu_arch_buddy_free_page(phys_batch[i]);
+        }
+    }
+}
+
+/* =========================================================================
+ * 4. 单个目录内搜索与提交分配逻辑
+ * ========================================================================= */
+
+/*
+ * 在已激活目录内查找满足对齐和长度要求的连续空闲位：
+ * 找到返回 TRUE 并写出 *out_pos；找不到返回 FALSE（并在全扫后收紧 contig_hint）。
+ */
+static boolean pcpu_find_in_dir(pcpu_dir_entry_t *dir,
+                                uint32 need_bits,
+                                uint32 align_bits,
+                                uint32 *out_pos) {
+    /* 惰性剪枝：余量或上界装不下时零访存直接跳过 */
+    if ((uint32)dir->free_bits < need_bits || (uint32)dir->contig_hint < need_bits) {
+        return FALSE;
+    }
+
+    uint32 align_mask = align_bits - 1U;
+
+    /*
+     * O(1) Bump 快路径：
+     * first_free == high_water 说明高水位下方无任何空洞，
+     * 直接在高水位处对齐切分，无需读取 4 KB 二级位图页。
      */
-    uint32 align_mask  = align_bits - 1U;
-    uint32 base_bits   = (uint32)((chunk->base_va >> PCPU_MIN_ALLOC_SHIFT) & align_mask);
-    uint32 align_phase = (align_bits - base_bits) & align_mask;
-
-    uint32 pos = ALIGN_UP_PHASE(chunk->first_free);
-
-    while (pos + nr_bits <= PCPU_CHUNK_BITS) {
-        uint32 page_idx = pos >> PCPU_BITS_PER_PAGE_SHIFT;
-        uint32 page_off = pos & (PCPU_BITS_PER_PAGE - 1U);
-        const pcpu_page_md_t *md = &chunk->page_md[page_idx];
-
-        /* 剪枝 1：整页已满 -> 直跳下一页 */
-        if (md->first_free == PCPU_BITS_PER_PAGE) {
-            pos = ALIGN_UP_PHASE((page_idx + 1U) << PCPU_BITS_PER_PAGE_SHIFT);
-            continue;
+    if (dir->first_free == dir->high_water) {
+        uint32 aligned_pos = ((uint32)dir->high_water + align_mask) & (~align_mask);
+        if (aligned_pos + need_bits <= PCPU_BMAP_BITS) {
+            *out_pos = aligned_pos;
+            return TRUE;
         }
-
-        /* 剪枝 2：当前游标落在本页首个空闲位之前 -> 直跳 first_free */
-        if (page_off < md->first_free) {
-            pos = ALIGN_UP_PHASE((page_idx << PCPU_BITS_PER_PAGE_SHIFT) + md->first_free);
-            continue;
-        }
-
-        /* 剪枝 3：本页最大连续空洞不足 -> 仅可能从页尾 right_free 发起跨页分配 */
-        if (md->contig_hint < nr_bits) {
-            uint32 tail_start = (page_idx << PCPU_BITS_PER_PAGE_SHIFT)
-                              + (PCPU_BITS_PER_PAGE - md->right_free);
-            if (pos < tail_start) {
-                pos = ALIGN_UP_PHASE(tail_start);
-                continue;
-            }
-        }
-
-        /* 字长级精确校验 [pos, pos + nr_bits) 是否全为 0 */
-        int32 bad_bit = pcpu_bitmap_find_first_set(chunk->alloc_map, pos, nr_bits);
-        if (bad_bit < 0) {
-            return (int32)pos; /* 首次适应命中 */
-        }
-
-        /* 遇到已占用位 -> 直接跳过冲突位并重新按相位对齐 */
-        pos = ALIGN_UP_PHASE((uint32)bad_bit + 1U);
+        return FALSE;
     }
 
-    return -1;
+    /* 常规低地址优先扫描：遍历所有连续 0 区间，顺带测量精确最大连续空洞 */
+    const uint64 *alloc_map = dir->bmap->alloc_map;
+    uint32 pos     = (uint32)dir->first_free;
+    uint32 max_run = 0U;
+
+    while (pos < PCPU_BMAP_BITS) {
+        uint32 run_start = bitmap_find_next_zero(alloc_map, PCPU_BMAP_BITS, pos);
+        if (run_start >= PCPU_BMAP_BITS) {
+            break;
+        }
+        uint32 run_end = bitmap_find_next_one(alloc_map, PCPU_BMAP_BITS, run_start);
+        uint32 run_len = run_end - run_start;
+        if (run_len > max_run) {
+            max_run = run_len;
+        }
+
+        uint32 aligned_start = (run_start + align_mask) & (~align_mask);
+        if (aligned_start + need_bits <= run_end) {
+            *out_pos = aligned_start;
+            return TRUE;
+        }
+        pos = run_end;
+    }
+
+    /* 全扫未命中：将 contig_hint 精确收紧为真实最大连续空洞长度 */
+    dir->contig_hint = (uint16)max_run;
+    return FALSE;
 }
 
-/* =========================================================================
- * 五、基于 vmalloc 的无限 Chunk 动态扩容与全空 Chunk 回收
- * ========================================================================= */
+/* 在目录 dir_idx 的 alloc_pos 处执行挂载、清零与双位图提交 */
+static boolean pcpu_commit_in_dir(uint32 dir_idx, uint32 alloc_pos, uint32 need_bits) {
+    pcpu_dir_entry_t *dir  = &g_pcpu_dir[dir_idx];
+    pcpu_bmap_page_t *bmap = dir->bmap;
 
-/* 创建新 Chunk：仅通过 vmalloc 预留虚拟区间 (0 字节物理页消耗)，具体页交由按需挂载 */
-static pcpu_chunk_t *pcpu_expand_chunk(void) {
-    uint64 total_vsize = (uint64)cpu_topo.nr_possible_cpus * PCPU_CHUNK_SIZE;
+    uint32 end_bit_incl = alloc_pos + need_bits - 1U;
+    uint32 pg_start     = alloc_pos >> PCPU_BITS_PER_PAGE_SHIFT;
+    uint32 pg_end       = end_bit_incl >> PCPU_BITS_PER_PAGE_SHIFT;
 
-    /* 1. 向 vmalloc 申请一片连续的虚拟地址空间 (无限扩容的核心) */
-    uint64 base_va = pcpu_vm_reserve_range(total_vsize);
-    if (base_va == 0ULL) {
-        PR_WARN("[PERCPU] vmalloc virtual range exhausted (need %ld bytes)!\n", total_vsize);
-        return NULL;
+    /* 第一步：保证所跨 4 KB 物理页全部按本地 NUMA 挂载就绪（失败自动回滚） */
+    if (!pcpu_populate_range(dir_idx, pg_start, pg_end)) {
+        return FALSE;
     }
 
-    /* 2. 分配并初始化 Chunk 控制块 (此时不分配任何物理载荷页) */
-    pcpu_chunk_t *new_chunk = kmalloc(sizeof(pcpu_chunk_t));
-    if (!new_chunk) {
-        pcpu_vm_release_range(base_va, total_vsize);
-        return NULL;
+    /* 第二步：全核清零新分配的对象区间（确保复用旧空洞与大页槽位均为全 0） */
+    uint64 obj_off   = (((uint64)dir_idx) << PCPU_BMAP_SPAN_SHIFT) +
+                       (((uint64)alloc_pos) << PCPU_MIN_ALLOC_SHIFT);
+    uint64 obj_bytes = ((uint64)need_bits) << PCPU_MIN_ALLOC_SHIFT;
+    uint32 cpu;
+    for (cpu = 0U; cpu < g_pcpu_nr_cpus; cpu++) {
+        pcpu_memzero((void *)pcpu_cpu_off_to_va(cpu, obj_off), obj_bytes);
     }
 
-    pcpu_chunk_init_empty(new_chunk, base_va);
+    /* 第三步：提交双位图（alloc_map 置满区间，bound_map 仅置末位） */
+    bitmap_set_range(bmap->alloc_map, alloc_pos, need_bits);
+    bitmap_set_bit(bmap->bound_map, end_bit_incl);
 
-    /* 挂入链表尾部：优先复用既有 Chunk (尤其是已挂载热页的 Chunk 0)，提升 dTLB 密度 */
-    list_add_tail(&new_chunk->node, &chunk_list);
-    return new_chunk;
-}
-
-/* 彻底回收全空的非创世 Chunk：解除残留物理页、归还 vmalloc 虚拟区间并释放结构体 */
-static void pcpu_recycle_empty_chunk(pcpu_chunk_t *chunk) {
-    if (chunk == &first_chunk || chunk->free_bits != PCPU_CHUNK_BITS) {
-        return;
+    /* 第四步：维护目录摘要游标 */
+    dir->free_bits = (uint16)(dir->free_bits - (uint16)need_bits);
+    if (alloc_pos + need_bits > (uint32)dir->high_water) {
+        dir->high_water = (uint16)(alloc_pos + need_bits);
     }
 
-    /* 防御性确保所有物理页均已解除映射并归还 Buddy */
-    if (chunk->populated_map != 0ULL) {
-        pcpu_depopulate_mask(chunk, chunk->populated_map);
-    }
-
-    uint64 total_vsize = (uint64)cpu_topo.nr_possible_cpus * PCPU_CHUNK_SIZE;
-    list_del(&chunk->node);
-    pcpu_vm_release_range(chunk->base_va, total_vsize);
-    kfree(chunk);
-}
-
-/* =========================================================================
- * 六、对外公开接口：创世 Chunk 0 初始化、无限动态分配与按页回收释放
- * ========================================================================= */
-
-/* 由 alloc_percpu_init() 在完成 Chunk 0 早期 memblock 预映射后调用 */
-void pcpu_first_chunk_setup(uint64 base_va, uint32 reserved_bytes, uint32 premapped_pages) {
-    if (reserved_bytes > PCPU_CHUNK_SIZE || premapped_pages > PCPU_CHUNK_PAGES) {
-        PR_ERROR("[PERCPU] Invalid first chunk setup: reserved=%d, premapped_pages=%d (max=%d)\n",
-                 reserved_bytes, premapped_pages, PCPU_CHUNK_PAGES);
-        while (1) asm_hlt();
-    }
-
-    list_head_init(&chunk_list);
-    pcpu_alloc_lock = 0;
-
-    pcpu_chunk_init_empty(&first_chunk, base_va);
-
-    /* 记录已由 memblock 预映射的页，ap 并同时置入 pinned_m防止运行期误还给 Buddy */
-    if (premapped_pages > 0) {
-        uint64 init_mask          = pcpu_page_range_mask(0, premapped_pages - 1U);
-        first_chunk.populated_map = init_mask;
-        first_chunk.pinned_map    = init_mask;
-    }
-
-    /* 在 Chunk 0 偏移 0 处永久锁定 cpu_control_block_t 所占空间 */
-    if (reserved_bytes > 0) {
-        uint32 nr_bits = (reserved_bytes + PCPU_MIN_ALLOC_SIZE - 1U) >> PCPU_MIN_ALLOC_SHIFT;
-        first_chunk_reserved_bits = nr_bits;
-        pcpu_chunk_commit_alloc(&first_chunk, 0, nr_bits);
+    if (dir->free_bits == 0U) {
+        dir->first_free  = (uint16)PCPU_BMAP_BITS;
+        dir->contig_hint = 0U;
+        pcpu_mask_clear(g_pcpu_avail_mask, dir_idx);
     } else {
-        first_chunk_reserved_bits = 0;
+        if (alloc_pos == (uint32)dir->first_free) {
+            dir->first_free = (uint16)bitmap_find_next_zero(bmap->alloc_map,
+                                                            PCPU_BMAP_BITS,
+                                                            alloc_pos + need_bits);
+        }
+        if (dir->first_free == dir->high_water) {
+            dir->contig_hint = (uint16)(PCPU_BMAP_BITS - dir->high_water);
+        } else if (dir->contig_hint > dir->free_bits) {
+            dir->contig_hint = dir->free_bits;
+        }
     }
 
-    list_add_tail(&first_chunk.node, &chunk_list);
+    g_pcpu_stat_alloc_bytes += obj_bytes;
+    return TRUE;
 }
 
-/**
- * 动态分配每核私有内存 (双位图 + 首次适应 + vmalloc 无限扩容 + 分配期按页按需挂载)
- * @param size  请求字节数 (1 .. PCPU_CHUNK_SIZE)
- * @param align 对齐字节数 (自动规整为 >= 8 且为 2 的幂，上限 PCPU_CHUNK_SIZE)
- * @return      相对 %gs 偏移量指针 (可直接配合 %gs / this_cpu_ptr / per_cpu_ptr)；失败返回 NULL
- */
-void *alloc_percpu(uint32 size, uint32 align) {
-    if (size == 0 || size > PCPU_CHUNK_SIZE) {
-        PR_WARN("[PERCPU] Invalid alloc size: %d (max %ld)\n", size, PCPU_CHUNK_SIZE);
-        return NULL;
-    }
-
-    if (align < PCPU_MIN_ALLOC_SIZE) {
-        align = PCPU_MIN_ALLOC_SIZE;
-    }
-    if (align > PCPU_CHUNK_SIZE) {
-        PR_WARN("[PERCPU] Invalid align: %d (max %ld)\n", align, PCPU_CHUNK_SIZE);
-        return NULL;
-    }
-    align = pcpu_roundup_pow2(align);
-
-    uint32 nr_bits     = (size + PCPU_MIN_ALLOC_SIZE - 1U) >> PCPU_MIN_ALLOC_SHIFT;
-    uint32 align_bits  = align >> PCPU_MIN_ALLOC_SHIFT;
-    uint32 alloc_bytes = nr_bits << PCPU_MIN_ALLOC_SHIFT;
-
-    uint64  target_base_va      = 0ULL;
-    uint32  target_in_chunk_off = 0U;
-    boolean success             = FALSE;
-
-    spin_lock(&pcpu_alloc_lock);
-
-    /* 1. 遍历所有现有 Chunk 执行首次适应搜索 (优先复用 Chunk 0 及已有热页) */
-    list_head_t *pos;
-    list_for_each(pos, &chunk_list) {
-        pcpu_chunk_t *chunk = CONTAINER_OF(pos, pcpu_chunk_t, node);
-        int32 bit = pcpu_find_fit_in_chunk(chunk, nr_bits, align_bits);
-        if (bit >= 0) {
-            uint32 start_bit  = (uint32)bit;
-            uint32 end_bit    = start_bit + nr_bits - 1U;
-            uint32 first_page = start_bit >> PCPU_BITS_PER_PAGE_SHIFT;
-            uint32 last_page  = end_bit   >> PCPU_BITS_PER_PAGE_SHIFT;
-
-            /* 分配期按页按需挂载物理页：确保返回前全核页表 100% 就绪，绝不触发运行期 #PF */
-            if (!pcpu_populate_range(chunk, first_page, last_page)) {
-                spin_unlock(&pcpu_alloc_lock);
-                return NULL;
-            }
-
-            pcpu_chunk_commit_alloc(chunk, start_bit, nr_bits);
-            target_base_va      = chunk->base_va;
-            target_in_chunk_off = start_bit << PCPU_MIN_ALLOC_SHIFT;
-            success             = TRUE;
+/* 尝试在 [dir_begin, dir_end) 内已激活目录中完成分配 */
+static uint64 pcpu_try_active_range(uint32 dir_begin, uint32 dir_end,
+                                    uint32 need_bits, uint32 align_bits) {
+    uint32 dir_idx = dir_begin;
+    while (dir_idx < dir_end) {
+        dir_idx = mask_find_next_one_range(g_pcpu_avail_mask, dir_idx, dir_end);
+        if (dir_idx >= dir_end) {
             break;
         }
-    }
 
-    /* 2. 现有 Chunk 均无法满足 -> 通过 vmalloc 无限扩容一个新 256KB Chunk */
-    if (!success) {
-        pcpu_chunk_t *new_chunk = pcpu_expand_chunk();
-        if (new_chunk) {
-            int32 bit = pcpu_find_fit_in_chunk(new_chunk, nr_bits, align_bits);
-            if (bit >= 0) {
-                uint32 start_bit  = (uint32)bit;
-                uint32 end_bit    = start_bit + nr_bits - 1U;
-                uint32 first_page = start_bit >> PCPU_BITS_PER_PAGE_SHIFT;
-                uint32 last_page  = end_bit   >> PCPU_BITS_PER_PAGE_SHIFT;
-
-                if (pcpu_populate_range(new_chunk, first_page, last_page)) {
-                    pcpu_chunk_commit_alloc(new_chunk, start_bit, nr_bits);
-                    target_base_va      = new_chunk->base_va;
-                    target_in_chunk_off = start_bit << PCPU_MIN_ALLOC_SHIFT;
-                    success             = TRUE;
-                } else {
-                    /* 物理页挂载 OOM：立即回收刚才新建的空 Chunk，零虚拟空间泄漏 */
-                    pcpu_recycle_empty_chunk(new_chunk);
-                }
-            } else {
-                /* 极端情况：vmalloc 地址对齐粒度不足以容纳超高对齐请求 (如 align == 256KB) */
-                PR_WARN("[PERCPU] New vmalloc chunk %#lx cannot satisfy align=%d size=%d\n",
-                        new_chunk->base_va, align, size);
-                pcpu_recycle_empty_chunk(new_chunk);
+        uint32 alloc_pos = 0U;
+        if (pcpu_find_in_dir(&g_pcpu_dir[dir_idx], need_bits, align_bits, &alloc_pos)) {
+            if (!pcpu_commit_in_dir(dir_idx, alloc_pos, need_bits)) {
+                return 0ULL;
             }
+            return (((uint64)dir_idx) << PCPU_BMAP_SPAN_SHIFT) +
+                   (((uint64)alloc_pos) << PCPU_MIN_ALLOC_SHIFT);
         }
+
+        dir_idx++;
+    }
+    return 0ULL;
+}
+
+/* 尝试在 [dir_begin, dir_end) 内懒加载激活首个未激活目录并完成分配 */
+static uint64 pcpu_try_uninit_range(uint32 dir_begin, uint32 dir_end, uint32 need_bits) {
+    uint32 dir_idx = mask_find_next_one_range(g_pcpu_uninit_mask, dir_begin, dir_end);
+    if (dir_idx >= dir_end) {
+        return 0ULL;
     }
 
-    spin_unlock(&pcpu_alloc_lock);
+    if (!pcpu_activate_dir(dir_idx)) {
+        return 0ULL;
+    }
 
-    if (!success) {
+    /* 新激活目录的起始偏移 0 天然满足任意 2 的幂对齐（<= 128 KB） */
+    if (!pcpu_commit_in_dir(dir_idx, 0U, need_bits)) {
+        /* 物理数据页挂载失败：顺手释放刚申请的 4 KB 位图页，确保零泄漏 */
+        pcpu_deactivate_dir(dir_idx);
+        return 0ULL;
+    }
+
+    return ((uint64)dir_idx) << PCPU_BMAP_SPAN_SHIFT;
+}
+
+/* =========================================================================
+ * 5. 对外核心分配、释放与统计接口
+ * ========================================================================= */
+
+void *alloc_percpu_align(uint64 size, uint64 align) {
+    if (!g_pcpu_dyn_ready || size == 0ULL) {
         return NULL;
     }
 
-    /* 3. 锁外清零所有 CPU 副本的新分配区域，防止复用脏数据并大幅缩短持锁时间 */
-    uint32 nr_cpus = cpu_topo.nr_possible_cpus;
-    for (uint32 i = 0; i < nr_cpus; i++) {
-        void *cpu_dst = (void *)(target_base_va
-                               + ((uint64)i * PCPU_CHUNK_SIZE)
-                               + target_in_chunk_off);
-        asm_mem_set(cpu_dst, 0, alloc_bytes);
+    /* 对齐合法性校验与规整 */
+    if (align == 0ULL) {
+        align = (uint64)PCPU_MIN_ALLOC_SIZE;
+    }
+    if ((align & (align - 1ULL)) != 0ULL || align > (uint64)PCPU_MAX_ALLOC_ALIGN) {
+        return NULL;
+    }
+    if (align < (uint64)PCPU_MIN_ALLOC_SIZE) {
+        align = (uint64)PCPU_MIN_ALLOC_SIZE;
     }
 
-    /* 4. 计算相对创世 Chunk 0 的 64 位模差偏移量 (与 %gs 基址自动抵消核间步长) */
-    uint64 delta = (target_base_va - first_chunk.base_va) + target_in_chunk_off;
-    return (void *)delta;
+    uint64 size_aligned = pcpu_align_up_u64(size, (uint64)PCPU_MIN_ALLOC_SIZE);
+    if (size_aligned > (uint64)PCPU_MAX_ALLOC_SIZE) {
+        return NULL;
+    }
+
+    uint32 need_bits  = (uint32)(size_aligned >> PCPU_MIN_ALLOC_SHIFT);
+    uint32 align_bits = (uint32)(align >> PCPU_MIN_ALLOC_SHIFT);
+    uint64 result_off = 0ULL;
+
+    pcpu_arch_lock();
+
+    /*
+     * 两段式低地址强聚合路由：
+     * 优先填满前 2 MB 热点 PMD 大页区 [first_dyn_dir, huge_dir_end)，
+     * 只有前 2 MB 装不下时，才溢出到 [huge_dir_end, 1024) 的 4 KB 按需挂载区。
+     */
+    uint32 huge_split = (g_pcpu_huge_dir_end > g_pcpu_first_dyn_dir)
+                            ? g_pcpu_huge_dir_end
+                            : g_pcpu_first_dyn_dir;
+
+    if (huge_split > g_pcpu_first_dyn_dir) {
+        result_off = pcpu_try_active_range(g_pcpu_first_dyn_dir, huge_split,
+                                           need_bits, align_bits);
+        if (result_off == 0ULL) {
+            result_off = pcpu_try_uninit_range(g_pcpu_first_dyn_dir, huge_split,
+                                               need_bits);
+        }
+    }
+
+    if (result_off == 0ULL) {
+        result_off = pcpu_try_active_range(huge_split, PCPU_DIR_COUNT,
+                                           need_bits, align_bits);
+    }
+    if (result_off == 0ULL) {
+        result_off = pcpu_try_uninit_range(huge_split, PCPU_DIR_COUNT,
+                                           need_bits);
+    }
+
+    pcpu_arch_unlock();
+    return (void *)result_off;
 }
 
-/**
- * 释放动态 Per-CPU 内存 (免传 size，自动隐式合并、空页物理归还与空 Chunk 虚拟回收)
- * @param ptr alloc_percpu 返回的相对偏移量指针
- */
 void free_percpu(void *ptr) {
-    if (!ptr) {
+    if (ptr == NULL || !g_pcpu_dyn_ready) {
         return;
     }
 
-    /* 还原为该对象在 CPU 0 视图下的真实虚拟地址 */
-    uint64 cpu0_va = first_chunk.base_va + (uint64)ptr;
+    uint64 off = (uint64)ptr;
 
-    spin_lock(&pcpu_alloc_lock);
+    /* 1. O(1) 基础合法性拦截：越界、非 8 B 对齐、误释放静态区 */
+    if (off >= PERCPU_WINDOW_SIZE || (off & ((uint64)PCPU_MIN_ALLOC_SIZE - 1ULL)) != 0ULL) {
+        pcpu_arch_log_warn("percpu: free invalid/unaligned ptr", off, 0ULL);
+        return;
+    }
 
-    /* 1. 定位所属 Chunk (Chunk 数量极少，直接范围匹配兼容任意 vmalloc 对齐地址) */
-    pcpu_chunk_t *target_chunk = NULL;
-    list_head_t  *pos;
-    list_for_each(pos, &chunk_list) {
-        pcpu_chunk_t *chunk = CONTAINER_OF(pos, pcpu_chunk_t, node);
-        if (cpu0_va >= chunk->base_va && cpu0_va < (chunk->base_va + PCPU_CHUNK_SIZE)) {
-            target_chunk = chunk;
-            break;
+    uint32 dir_idx = (uint32)(off >> PCPU_BMAP_SPAN_SHIFT);
+    if (dir_idx < g_pcpu_first_dyn_dir) {
+        pcpu_arch_log_warn("percpu: attempt to free static percpu var", off, (uint64)dir_idx);
+        return;
+    }
+
+    uint32 bit_start = (uint32)((off & (uint64)PCPU_BMAP_SPAN_MASK) >> PCPU_MIN_ALLOC_SHIFT);
+
+    pcpu_arch_lock();
+
+    pcpu_dir_entry_t *dir = &g_pcpu_dir[dir_idx];
+    if (dir->bmap == NULL) {
+        pcpu_arch_log_warn("percpu: free in unactivated dir", off, (uint64)dir_idx);
+        pcpu_arch_unlock();
+        return;
+    }
+
+    pcpu_bmap_page_t *bmap = dir->bmap;
+
+    /* 2. 带外安全校验：拦截重复释放（Double-Free） */
+    if (!bitmap_test_bit(bmap->alloc_map, bit_start)) {
+        pcpu_arch_log_warn("percpu: double free detected", off, (uint64)bit_start);
+        pcpu_arch_unlock();
+        return;
+    }
+
+    /* 3. 带外安全校验：拦截指向对象内部的野指针 */
+    if (bit_start > 0U &&
+        bitmap_test_bit(bmap->alloc_map, bit_start - 1U) &&
+        !bitmap_test_bit(bmap->bound_map, bit_start - 1U)) {
+        pcpu_arch_log_warn("percpu: interior wild pointer free detected", off, (uint64)bit_start);
+        pcpu_arch_unlock();
+        return;
+    }
+
+    /* 4. O(1) 查 bound_map 定位对象末位并精确还原长度 */
+    uint32 bit_end_incl = bitmap_find_next_one(bmap->bound_map, PCPU_BMAP_BITS, bit_start);
+    if (bit_end_incl >= PCPU_BMAP_BITS) {
+        pcpu_arch_log_warn("percpu: bound_map corrupted", off, (uint64)bit_start);
+        pcpu_arch_unlock();
+        return;
+    }
+
+    uint32 bit_count = (bit_end_incl - bit_start) + 1U;
+
+    /* 5. 清零双位图并恢复目录游标 */
+    bitmap_clear_range(bmap->alloc_map, bit_start, bit_count);
+    bitmap_clear_bit(bmap->bound_map, bit_end_incl);
+
+    dir->free_bits = (uint16)(dir->free_bits + (uint16)bit_count);
+    if (bit_start < (uint32)dir->first_free) {
+        dir->first_free = (uint16)bit_start;
+    }
+    if ((bit_end_incl + 1U) == (uint32)dir->high_water) {
+        dir->high_water = (uint16)bit_start;
+    }
+    /* 保守放大上界提示，后续若遇碎片未命中会自动收紧至精确值 */
+    dir->contig_hint = dir->free_bits;
+    pcpu_mask_set(g_pcpu_avail_mask, dir_idx);
+
+    g_pcpu_stat_alloc_bytes -= (((uint64)bit_count) << PCPU_MIN_ALLOC_SHIFT);
+
+    /* 6. 仅对 2 MB 之后的 4 KB 按需挂载区执行单缓存行空页检测与回收 */
+    if (dir_idx >= g_pcpu_huge_dir_end) {
+        uint32 pg_start   = bit_start >> PCPU_BITS_PER_PAGE_SHIFT;
+        uint32 pg_end     = bit_end_incl >> PCPU_BITS_PER_PAGE_SHIFT;
+        uint32 unmap_mask = 0U;
+        uint32 pg;
+
+        for (pg = pg_start; pg <= pg_end; pg++) {
+            if ((dir->populated_map & (1U << pg)) != 0U && pcpu_page_is_empty(bmap, pg)) {
+                unmap_mask |= (1U << pg);
+            }
+        }
+
+        if (unmap_mask != 0U) {
+            dir->populated_map &= (~unmap_mask);
+            pcpu_unpopulate_pages(dir_idx, unmap_mask);
         }
     }
 
-    if (!target_chunk) {
-        spin_unlock(&pcpu_alloc_lock);
-        PR_WARN("[PERCPU] free_percpu: invalid offset %#lx (cpu0_va=%#lx)!\n",
-                (uint64)ptr, cpu0_va);
+    /* 7. 整个 128 KB 目录排空后，将 4 KB 二级位图页本身也归还 Buddy */
+    if (dir->free_bits == (uint16)PCPU_BMAP_BITS) {
+        pcpu_deactivate_dir(dir_idx);
+    }
+
+    pcpu_arch_unlock();
+}
+
+void alloc_percpu_get_stats(pcpu_stats_t *out_stats) {
+    if (out_stats == NULL) {
         return;
     }
 
-    uint32 in_chunk_off = (uint32)(cpu0_va - target_chunk->base_va);
-    if ((in_chunk_off & (PCPU_MIN_ALLOC_SIZE - 1U)) != 0U) {
-        spin_unlock(&pcpu_alloc_lock);
-        PR_WARN("[PERCPU] free_percpu: unaligned offset %#lx!\n", (uint64)ptr);
-        return;
-    }
-
-    uint32 start_bit = in_chunk_off >> PCPU_MIN_ALLOC_SHIFT;
-
-    /* 2. 保护创世 Chunk 0 头部永久保留的 CCB 区域 */
-    if (target_chunk == &first_chunk && start_bit < first_chunk_reserved_bits) {
-        spin_unlock(&pcpu_alloc_lock);
-        PR_WARN("[PERCPU] free_percpu: attempt to free reserved CCB offset %#lx!\n", (uint64)ptr);
-        return;
-    }
-
-    /* 3. 校验 Double Free 与块内野指针 */
-    if (!pcpu_bitmap_test(target_chunk->alloc_map, start_bit)) {
-        spin_unlock(&pcpu_alloc_lock);
-        PR_WARN("[PERCPU] free_percpu: double free at offset %#lx!\n", (uint64)ptr);
-        return;
-    }
-    if (start_bit > 0 &&
-        pcpu_bitmap_test(target_chunk->alloc_map, start_bit - 1U) &&
-        !pcpu_bitmap_test(target_chunk->bound_map, start_bit - 1U)) {
-        spin_unlock(&pcpu_alloc_lock);
-        PR_WARN("[PERCPU] free_percpu: interior pointer free at offset %#lx!\n", (uint64)ptr);
-        return;
-    }
-
-    /* 4. 利用 bound_map 定位对象精确末位 end_bit */
-    int32 end_bit_res = pcpu_bitmap_find_first_set(target_chunk->bound_map,
-                                                   start_bit,
-                                                   PCPU_CHUNK_BITS - start_bit);
-    if (end_bit_res < 0) {
-        spin_unlock(&pcpu_alloc_lock);
-        PR_ERROR("[PERCPU] free_percpu: corrupted bound_map at offset %#lx!\n", (uint64)ptr);
-        return;
-    }
-
-    uint32 end_bit = (uint32)end_bit_res;
-    uint32 nr_bits = end_bit - start_bit + 1U;
-
-    /* 5. 清除占用区间与末位标志 (相邻空闲区域自然隐式合并) */
-    pcpu_bitmap_clear_range(target_chunk->alloc_map, start_bit, nr_bits);
-    pcpu_bitmap_clear_bit(target_chunk->bound_map, end_bit);
-    target_chunk->free_bits += nr_bits;
-
-    /* 6. 刷新受影响页摘要，收集已彻底变空的非固定 4KB 页并归还 Buddy */
-    uint32 first_page = start_bit >> PCPU_BITS_PER_PAGE_SHIFT;
-    uint32 last_page  = end_bit   >> PCPU_BITS_PER_PAGE_SHIFT;
-    uint64 empty_mask = 0ULL;
-
-    for (uint32 p = first_page; p <= last_page; p++) {
-        pcpu_refresh_page_md(target_chunk, p);
-        if (target_chunk->page_md[p].contig_hint == PCPU_BITS_PER_PAGE) {
-            empty_mask |= (1ULL << p);
-        }
-    }
-    pcpu_refresh_chunk_md(target_chunk);
-
-    /* 按页粒度及时回收空物理页 (自动跳过 pinned_map 早期页) */
-    if (empty_mask != 0ULL) {
-        pcpu_depopulate_mask(target_chunk, empty_mask);
-    }
-
-    /* 7. 若非创世 Chunk 全部 256KB 已变空，整块归还 vmalloc 虚拟空间 */
-    if (target_chunk != &first_chunk && target_chunk->free_bits == PCPU_CHUNK_BITS) {
-        pcpu_recycle_empty_chunk(target_chunk);
-    }
-
-    spin_unlock(&pcpu_alloc_lock);
+    pcpu_arch_lock();
+    out_stats->nr_cpus            = g_pcpu_nr_cpus;
+    out_stats->huge_dir_end       = g_pcpu_huge_dir_end;
+    out_stats->first_dyn_dir      = g_pcpu_first_dyn_dir;
+    out_stats->active_dirs        = g_pcpu_stat_active_dirs;
+    out_stats->populated_4k_pages = g_pcpu_stat_pop_4k_pages;
+    out_stats->total_alloc_bytes  = g_pcpu_stat_alloc_bytes;
+    pcpu_arch_unlock();
 }
